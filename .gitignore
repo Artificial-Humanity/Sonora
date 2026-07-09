@@ -29,8 +29,8 @@ share/python-wheels/
 *.ckpt
 *.pt
 *.pth
-outputs/
-data/
+outputs
+data
 .lightning/
 lightning_logs/
 

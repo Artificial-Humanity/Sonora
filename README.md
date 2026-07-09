@@ -1,8 +1,8 @@
-# Matcha-TTS Actor Training Workspace
+# Sonora — Expressive & Directable TTS Actor Training
 
-This repository handles the model training and fine-tuning pipeline for the **Prosodia Actor (TTS)** model used in the [Artificial-Humanity](file:///home/lmcfarlin/Projects/Artificial-Humanity) project. 
+Sonora is a directable, castable, and mobile-friendly text-to-speech (TTS) actor model developed for the [Artificial-Humanity](file:///home/lmcfarlin/Projects/Artificial-Humanity) project. 
 
-The base model is **Matcha-TTS** (non-autoregressive flow-matching mel decoder solved with a few-step ODE + HiFi-GAN vocoder). The primary goal is to train a directable, castable, and mobile-friendly model.
+The model is built on top of the **Matcha-TTS** architecture (conditional flow-matching mel decoder solved with a few-step ODE + HiFi-GAN vocoder), augmented with custom emotion conditioning and continuous voice casting features.
 
 ---
 
@@ -10,12 +10,12 @@ The base model is **Matcha-TTS** (non-autoregressive flow-matching mel decoder s
 
 To optimize disk speed and prevent wear on the OS system drive, this repository uses a **hybrid layout** that symlinks all heavy training inputs and outputs to a dedicated, high-speed 4TB NVME drive mounted at `/data`.
 
-* **Code Workspace (System SSD):** `~/Projects/model-training/matchatts/`
+* **Code Workspace (System SSD):** `~/Projects/model-training/sonora/`
 * **Data & Output Storage (NVME SSD):** `/data/model-training/`
 
 ### Symlinked Folders
-* `data/` -> `/data/model-training/matchatts/data/` (pre-processed datasets, wav paths, and phone files)
-* `outputs/` -> `/data/model-training/matchatts/outputs/` (saved checkpoints, logs, and exported models)
+* `data/` -> `/data/model-training/sonora/data/` (pre-processed datasets, wav paths, and phone files)
+* `outputs/` -> `/data/model-training/sonora/outputs/` (saved checkpoints, logs, and exported models)
 
 Shared raw datasets (e.g., LJSpeech, LibriTTS) should be stored in `/data/model-training/datasets/` to avoid duplicating space across different training runs or architectures.
 
@@ -40,7 +40,7 @@ docker run -it --network=host \
 ```
 
 Once inside the container:
-1. Navigate to `/projects/model-training/matchatts`.
+1. Navigate to `/projects/model-training/sonora`.
 2. Install project requirements (`pip install -r requirements.txt`).
 3. Compile custom training extensions (like `monotonic_align`).
 
@@ -51,7 +51,7 @@ Once inside the container:
 Training is structured in sequential phases to isolate complexity and de-risk the pipeline.
 
 ### Phase 1: Plain Fine-Tune (Learn the Loop)
-* **Goal:** Fine-tune a stock Matcha-TTS checkpoint on a small, clean dataset (e.g., LJSpeech or a single LibriTTS speaker) to verify the pipeline.
+* **Goal:** Fine-tune a stock checkpoint on a small, clean dataset (e.g., LJSpeech or a single LibriTTS speaker) to verify the pipeline.
 * **Process:** Configure Hydra/YAML data configs, run the training loop, and inspect Tensorboard outputs under `outputs/`.
 
 ### Phase 2: Export & On-Device Validation
@@ -66,8 +66,15 @@ Training is structured in sequential phases to isolate complexity and de-risk th
 * **Process:** Implement FiLM/AdaLN modulation on the text encoder + flow decoder, preprocess training data with VAT labels, and retrain.
 
 ### Phase 4: Casting & Speaker Embedding Blends
-* **Goal:** Re-derive the continuous voice spaces (age, masculinity, strain) in Matcha's speaker-embedding space.
+* **Goal:** Re-derive the continuous voice spaces (age, masculinity, strain) in speaker-embedding space.
 * **Process:** Train speaker-embedding Look-Up Tables (LUTs) for anchor voices and map the platform-level casting grid to this space.
+
+---
+
+## 📄 License & Credits
+Sonora is licensed under the **Apache License, Version 2.0**. 
+
+The project is built on the [Matcha-TTS](https://github.com/shivammehta25/Matcha-TTS) architecture (originally licensed under the MIT License). Attribution to the original creators can be found in the [NOTICE](NOTICE) file.
 
 ---
 
