@@ -10,7 +10,7 @@ The model is built on top of the **Matcha-TTS** architecture (conditional flow-m
 
 To optimize disk speed and prevent wear on the OS system drive, this repository uses a **hybrid layout** that symlinks all heavy training inputs and outputs to a dedicated, high-speed 4TB NVME drive mounted at `/data`.
 
-* **Code Workspace (System SSD):** `~/Projects/model-training/sonora/`
+* **Code Workspace (System SSD):** `~/Projects/Artificial-Humanity/Sonora/`
 * **Data & Output Storage (NVME SSD):** `/data/model-training/`
 
 ### Symlinked Folders
@@ -40,7 +40,7 @@ docker run -it --network=host \
 ```
 
 Once inside the container:
-1. Navigate to `/projects/model-training/sonora`.
+1. Navigate to `/projects/Artificial-Humanity/Sonora`.
 2. Install project requirements (`pip install -r requirements.txt`).
 3. Compile custom training extensions (like `monotonic_align`).
 
