@@ -2,6 +2,7 @@ import os
 import glob
 import argparse
 import tempfile
+import io
 from pathlib import Path
 import starlette.templating
 original_template_response = starlette.templating.Jinja2Templates.TemplateResponse
@@ -55,29 +56,27 @@ def get_checkpoints():
     ckpts.sort(key=os.path.getmtime, reverse=True)
     return ckpts
 
-def synthesize(checkpoint_path, text, n_timesteps, temperature, length_scale):
+def ensure_model_loaded(checkpoint_path):
     global current_checkpoint, model, vocoder, denoiser
-    
+    if current_checkpoint != checkpoint_path:
+        print(f"Loading checkpoint: {checkpoint_path}")
+        model = load_matcha("custom", checkpoint_path, device)
+        from matcha.utils.utils import get_user_data_dir
+        save_dir = Path(get_user_data_dir())
+        vocoder_path = save_dir / "hifigan_T2_v1"
+        if not vocoder_path.exists():
+            from matcha.cli import assert_model_downloaded, VOCODER_URLS
+            assert_model_downloaded(vocoder_path, VOCODER_URLS["hifigan_T2_v1"])
+        
+        vocoder, denoiser = load_vocoder("hifigan_T2_v1", vocoder_path, device)
+        current_checkpoint = checkpoint_path
+
+def synthesize(checkpoint_path, text, n_timesteps, temperature, length_scale):
     if not checkpoint_path:
         return "No checkpoint selected", None, None
         
     try:
-        # Load model if it's different
-        if current_checkpoint != checkpoint_path:
-            print(f"Loading checkpoint: {checkpoint_path}")
-            model = load_matcha("custom", checkpoint_path, device)
-            # Load the corresponding LJ Speech vocoder
-            # Note: since the training is on LJ Speech, we use hifigan_T2_v1
-            # We can download it locally or load it from the cache
-            from matcha.utils.utils import get_user_data_dir
-            save_dir = Path(get_user_data_dir())
-            vocoder_path = save_dir / "hifigan_T2_v1"
-            if not vocoder_path.exists():
-                from matcha.cli import assert_model_downloaded, VOCODER_URLS
-                assert_model_downloaded(vocoder_path, VOCODER_URLS["hifigan_T2_v1"])
-            
-            vocoder, denoiser = load_vocoder("hifigan_T2_v1", vocoder_path, device)
-            current_checkpoint = checkpoint_path
+        ensure_model_loaded(checkpoint_path)
             
         # Process text and run inference under no_grad to prevent autograd tracking
         with torch.no_grad():
@@ -192,7 +191,87 @@ def main():
             outputs=[error_box, audio_output, mel_spectrogram_output]
         )
         
-    demo.launch(server_name=cli_args.host, server_port=cli_args.port)
+    # Setup FastAPI app
+    from fastapi import FastAPI, Request
+    from fastapi.responses import StreamingResponse
+    import uvicorn
+    
+    app = FastAPI(title="Sonora OpenAI-Compatible TTS API")
+    
+    @app.get("/v1/models")
+    async def list_models():
+        ckpts = get_checkpoints()
+        model_list = []
+        for ckpt in ckpts:
+            name = os.path.basename(ckpt)
+            model_list.append({
+                "id": name,
+                "object": "model",
+                "created": int(os.path.getmtime(ckpt)),
+                "owned_by": "sonora"
+            })
+        return {"data": model_list}
+        
+    @app.get("/v1/audio/voices")
+    @app.get("/v1/voices")
+    async def list_voices():
+        return {"voices": ["ljspeech", "default"]}
+        
+    @app.post("/v1/audio/speech")
+    async def text_to_speech(request: Request):
+        try:
+            body = await request.json()
+            input_text = body.get("input", "")
+            model_name = body.get("model", "")
+            
+            # Find the checkpoint path matching model_name
+            ckpts = get_checkpoints()
+            checkpoint_path = None
+            for ckpt in ckpts:
+                if os.path.basename(ckpt) == model_name or ckpt == model_name:
+                    checkpoint_path = ckpt
+                    break
+            
+            # If no model matches, use the first available checkpoint
+            if not checkpoint_path and ckpts:
+                checkpoint_path = ckpts[0]
+                
+            if not checkpoint_path:
+                return StreamingResponse(io.BytesIO(b"Error: No checkpoints found"), status_code=400)
+                
+            # Load model
+            ensure_model_loaded(checkpoint_path)
+            
+            # Synthesize audio
+            with torch.no_grad():
+                output_text = process_text(1, input_text, device)
+                output = model.synthesise(
+                    output_text["x"],
+                    output_text["x_lengths"],
+                    n_timesteps=10,  # Default ODE steps for speed in API
+                    temperature=0.667,
+                    spks=None,
+                    length_scale=0.95,
+                )
+                waveform = to_waveform(output["mel"], vocoder, denoiser)
+                
+            # Write to BytesIO WAV stream
+            buffer = io.BytesIO()
+            sf.write(buffer, waveform.cpu().numpy(), 22050, format="WAV", subtype="PCM_24")
+            buffer.seek(0)
+            
+            return StreamingResponse(buffer, media_type="audio/wav")
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            print(tb)
+            return StreamingResponse(io.BytesIO(f"Error: {str(e)}".encode()), status_code=500)
+            
+    # Mount Gradio interface to FastAPI
+    app = gr.mount_gradio_app(app, demo, path="/")
+    
+    # Run server
+    uvicorn.run(app, host=cli_args.host, port=cli_args.port)
 
 if __name__ == "__main__":
     main()
