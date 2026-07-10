@@ -10,12 +10,22 @@ from omegaconf import DictConfig
 import torch
 import omegaconf
 try:
-    torch.serialization.add_safe_globals([
-        omegaconf.dictconfig.DictConfig,
-        omegaconf.listconfig.ListConfig,
-        omegaconf.nodes.AnyNode
-    ])
-except AttributeError:
+    globals_to_add = []
+    if hasattr(omegaconf, 'dictconfig') and hasattr(omegaconf.dictconfig, 'DictConfig'):
+        globals_to_add.append(omegaconf.dictconfig.DictConfig)
+    if hasattr(omegaconf, 'listconfig') and hasattr(omegaconf.listconfig, 'ListConfig'):
+        globals_to_add.append(omegaconf.listconfig.ListConfig)
+    if hasattr(omegaconf, 'base'):
+        if hasattr(omegaconf.base, 'ContainerMetadata'):
+            globals_to_add.append(omegaconf.base.ContainerMetadata)
+        if hasattr(omegaconf.base, 'Metadata'):
+            globals_to_add.append(omegaconf.base.Metadata)
+    if hasattr(omegaconf, 'nodes'):
+        for name in ['AnyNode', 'StringNode', 'IntegerNode', 'FloatNode', 'BooleanNode', 'EnumNode']:
+            if hasattr(omegaconf.nodes, name):
+                globals_to_add.append(getattr(omegaconf.nodes, name))
+    torch.serialization.add_safe_globals(globals_to_add)
+except Exception:
     pass
 
 from matcha import utils
