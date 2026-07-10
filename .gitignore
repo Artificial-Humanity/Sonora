@@ -47,3 +47,37 @@ venv.bak/
 .vscode/
 .idea/
 .DS_Store
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Cython compiled files
+matcha/utils/monotonic_align/core.c
+
+# Ignoring hifigan checkpoint
+generator_v1
+g_02500000
+gradio_cached_examples/
+synth_output/
+
+# Local Matcha-TTS artifacts and exports
+model_tflite/
+model_e2e_tflite/
+model_e2e_test_tflite/
+replace.json
+utterance_001.npy
+utterance_001.png
+utterance_001.wav
+*.onnx
+
