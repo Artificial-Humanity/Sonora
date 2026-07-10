@@ -70,16 +70,17 @@ def main():
                 dyn_resample = T.Resample(orig_freq=sr, new_freq=24000)
                 audio_tensor = dyn_resample(audio_tensor)
                 
-        # Save audio
-        speaker = item.get('speaker', 'unknown').lower()
+        # Save audio using soundfile
+        speaker = item.get('speaker_id', 'unknown').lower()
         clip_id = f"{speaker}_{i:06d}"
         filename = f"{clip_id}.wav"
         filepath = os.path.join(wav_dir, filename)
         
-        torchaudio.save(filepath, audio_tensor, 24000)
+        audio_np = audio_tensor.squeeze(0).numpy()
+        sf.write(filepath, audio_np, 24000)
         
         # Extract transcript and style/emotion keys
-        text = item.get('transcript', '').strip()
+        text = item.get('text', '').strip()
         style = item.get('style', 'neutral').lower()
         
         # Record relative path from the Sonora data folder's perspective
