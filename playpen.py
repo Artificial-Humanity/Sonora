@@ -79,25 +79,26 @@ def synthesize(checkpoint_path, text, n_timesteps, temperature, length_scale):
             vocoder, denoiser = load_vocoder("hifigan_T2_v1", vocoder_path, device)
             current_checkpoint = checkpoint_path
             
-        # Process text
-        output_text = process_text(1, text, device)
-        
-        # Synthesize mel
-        output = model.synthesise(
-            output_text["x"],
-            output_text["x_lengths"],
-            n_timesteps=n_timesteps,
-            temperature=temperature,
-            spks=None,
-            length_scale=length_scale,
-        )
-        
-        # Waveform generation
-        waveform = to_waveform(output["mel"], vocoder, denoiser)
+        # Process text and run inference under no_grad to prevent autograd tracking
+        with torch.no_grad():
+            output_text = process_text(1, text, device)
+            
+            # Synthesize mel
+            output = model.synthesise(
+                output_text["x"],
+                output_text["x_lengths"],
+                n_timesteps=n_timesteps,
+                temperature=temperature,
+                spks=None,
+                length_scale=length_scale,
+            )
+            
+            # Waveform generation
+            waveform = to_waveform(output["mel"], vocoder, denoiser)
         
         # Save to temp WAV
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fp:
-            sf.write(fp.name, waveform.numpy(), 22050, "PCM_24")
+            sf.write(fp.name, waveform.cpu().numpy(), 22050, "PCM_24")
             
         # Plot mel spectrogram
         mel_plot = plot_tensor(output["mel"].squeeze().cpu().numpy())
