@@ -9,8 +9,16 @@ from omegaconf import DictConfig
 
 import torch
 import omegaconf
+import typing
 try:
-    globals_to_add = []
+    globals_to_add = [
+        typing.Any,
+        typing.Dict,
+        typing.List,
+        typing.Tuple,
+        typing.Optional,
+        typing.Union,
+    ]
     if hasattr(omegaconf, 'dictconfig') and hasattr(omegaconf.dictconfig, 'DictConfig'):
         globals_to_add.append(omegaconf.dictconfig.DictConfig)
     if hasattr(omegaconf, 'listconfig') and hasattr(omegaconf.listconfig, 'ListConfig'):
