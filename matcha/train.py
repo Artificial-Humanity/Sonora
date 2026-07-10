@@ -7,6 +7,17 @@ from lightning import Callback, LightningDataModule, LightningModule, Trainer
 from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 
+import torch
+import omegaconf
+try:
+    torch.serialization.add_safe_globals([
+        omegaconf.dictconfig.DictConfig,
+        omegaconf.listconfig.ListConfig,
+        omegaconf.nodes.AnyNode
+    ])
+except AttributeError:
+    pass
+
 from matcha import utils
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
