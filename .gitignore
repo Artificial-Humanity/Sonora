@@ -30,7 +30,8 @@ share/python-wheels/
 *.pt
 *.pth
 outputs
-data
+/data
+logs/
 .lightning/
 lightning_logs/
 
