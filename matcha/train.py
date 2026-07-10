@@ -8,33 +8,17 @@ from lightning.pytorch.loggers import Logger
 from omegaconf import DictConfig
 
 import torch
-import omegaconf
-import typing
-try:
-    globals_to_add = [
-        typing.Any,
-        typing.Dict,
-        typing.List,
-        typing.Tuple,
-        typing.Optional,
-        typing.Union,
-    ]
-    if hasattr(omegaconf, 'dictconfig') and hasattr(omegaconf.dictconfig, 'DictConfig'):
-        globals_to_add.append(omegaconf.dictconfig.DictConfig)
-    if hasattr(omegaconf, 'listconfig') and hasattr(omegaconf.listconfig, 'ListConfig'):
-        globals_to_add.append(omegaconf.listconfig.ListConfig)
-    if hasattr(omegaconf, 'base'):
-        if hasattr(omegaconf.base, 'ContainerMetadata'):
-            globals_to_add.append(omegaconf.base.ContainerMetadata)
-        if hasattr(omegaconf.base, 'Metadata'):
-            globals_to_add.append(omegaconf.base.Metadata)
-    if hasattr(omegaconf, 'nodes'):
-        for name in ['AnyNode', 'StringNode', 'IntegerNode', 'FloatNode', 'BooleanNode', 'EnumNode']:
-            if hasattr(omegaconf.nodes, name):
-                globals_to_add.append(getattr(omegaconf.nodes, name))
-    torch.serialization.add_safe_globals(globals_to_add)
-except Exception:
-    pass
+
+# PyTorch 2.6+ changed default weights_only to True in torch.load.
+# This blocks loading/unpickling complex metadata objects (like OmegaConf configurations,
+# training schedulers, callbacks) stored in PyTorch Lightning checkpoints.
+# Since we trust our local checkpoints, we monkey-patch torch.load to force weights_only=False
+# and restore compatibility with standard checkpoint loading.
+_original_torch_load = torch.load
+def _patched_torch_load(*args, **kwargs):
+    kwargs['weights_only'] = False
+    return _original_torch_load(*args, **kwargs)
+torch.load = _patched_torch_load
 
 from matcha import utils
 
