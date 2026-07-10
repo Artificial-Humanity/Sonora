@@ -136,9 +136,8 @@ def intersperse(lst, item):
 
 
 def save_figure_to_numpy(fig):
-    data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep="")
-    data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
-    return data
+    rgba = np.asarray(fig.canvas.buffer_rgba())
+    return rgba[:, :, :3]
 
 
 def plot_tensor(tensor):
