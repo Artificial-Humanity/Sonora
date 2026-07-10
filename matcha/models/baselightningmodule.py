@@ -168,16 +168,28 @@ class BaseLightningClass(LightningModule, ABC):
     def on_validation_end(self) -> None:
         if self.trainer.is_global_zero:
             one_batch = next(iter(self.trainer.val_dataloaders))
+
+            def log_image(name, tensor):
+                img = plot_tensor(tensor.squeeze().cpu())
+                if hasattr(self.logger.experiment, "add_image"):
+                    self.logger.experiment.add_image(
+                        name,
+                        img,
+                        self.current_epoch,
+                        dataformats="HWC",
+                    )
+                elif hasattr(self.logger.experiment, "log"):
+                    import wandb
+                    self.logger.experiment.log(
+                        {name: wandb.Image(img)},
+                        step=self.global_step,
+                    )
+
             if self.current_epoch == 0:
                 log.debug("Plotting original samples")
                 for i in range(2):
                     y = one_batch["y"][i].unsqueeze(0).to(self.device)
-                    self.logger.experiment.add_image(
-                        f"original/{i}",
-                        plot_tensor(y.squeeze().cpu()),
-                        self.current_epoch,
-                        dataformats="HWC",
-                    )
+                    log_image(f"original/{i}", y)
 
             log.debug("Synthesising...")
             for i in range(2):
@@ -187,24 +199,9 @@ class BaseLightningClass(LightningModule, ABC):
                 output = self.synthesise(x[:, :x_lengths], x_lengths, n_timesteps=10, spks=spks)
                 y_enc, y_dec = output["encoder_outputs"], output["decoder_outputs"]
                 attn = output["attn"]
-                self.logger.experiment.add_image(
-                    f"generated_enc/{i}",
-                    plot_tensor(y_enc.squeeze().cpu()),
-                    self.current_epoch,
-                    dataformats="HWC",
-                )
-                self.logger.experiment.add_image(
-                    f"generated_dec/{i}",
-                    plot_tensor(y_dec.squeeze().cpu()),
-                    self.current_epoch,
-                    dataformats="HWC",
-                )
-                self.logger.experiment.add_image(
-                    f"alignment/{i}",
-                    plot_tensor(attn.squeeze().cpu()),
-                    self.current_epoch,
-                    dataformats="HWC",
-                )
+                log_image(f"generated_enc/{i}", y_enc)
+                log_image(f"generated_dec/{i}", y_dec)
+                log_image(f"alignment/{i}", attn)
 
     def on_before_optimizer_step(self, optimizer):
         self.log_dict({f"grad_norm/{k}": v for k, v in grad_norm(self, norm_type=2).items()})
