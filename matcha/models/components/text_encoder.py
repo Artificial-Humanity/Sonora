@@ -22,14 +22,16 @@ class LayerNorm(nn.Module):
         self.beta = torch.nn.Parameter(torch.zeros(channels))
 
     def forward(self, x):
-        n_dims = len(x.shape)
-        mean = torch.mean(x, 1, keepdim=True)
-        variance = torch.mean((x - mean) ** 2, 1, keepdim=True)
-
-        x = (x - mean) * torch.rsqrt(variance + self.eps)
-
-        shape = [1, -1] + [1] * (n_dims - 2)
-        x = x * self.gamma.view(*shape) + self.beta.view(*shape)
+        # Normalize over the channel dim (originally dim=1 of a [B, C, T] tensor).
+        # Rewritten as a channels-last LayerNorm — move channels to the last axis,
+        # normalize there, move them back — which is numerically identical to the
+        # original manual mean/rsqrt but makes the reduction happen over the LAST
+        # axis. onnx2tf's NHWC layout conversion remaps last-axis reductions
+        # correctly, whereas the original dim=1 reduction on a 3D tensor was
+        # mislowered (encoder garble; see Notes/Sonora export-fidelity findings).
+        x = x.transpose(1, -1)
+        x = torch.nn.functional.layer_norm(x, (self.channels,), self.gamma, self.beta, self.eps)
+        x = x.transpose(1, -1)
         return x
 
 
