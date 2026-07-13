@@ -82,3 +82,7 @@ utterance_001.png
 utterance_001.wav
 *.onnx
 
+
+# Sonora HF model-registry clone (huggingface.co/artificial-humanity/Sonora) —
+# a separate git repo living inside this one; never tracked here.
+/model/
