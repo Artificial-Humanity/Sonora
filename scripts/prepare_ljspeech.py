@@ -2,7 +2,8 @@ import os
 import random
 
 def main():
-    base_dir = "/home/lmcfarlin/Projects/Artificial-Humanity/Sonora/data/LJSpeech-1.1"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    base_dir = os.path.join(os.path.dirname(script_dir), "data", "LJSpeech-1.1")
     metadata_path = os.path.join(base_dir, "metadata.csv")
     train_path = os.path.join(base_dir, "train.txt")
     val_path = os.path.join(base_dir, "val.txt")
