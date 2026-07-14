@@ -8,6 +8,7 @@ import torchaudio as ta
 from lightning import LightningDataModule
 from torch.utils.data.dataloader import DataLoader
 
+from matcha.data.license_wall import enforce as enforce_license_wall
 from matcha.text import text_to_sequence
 from matcha.utils.audio import mel_spectrogram
 from matcha.utils.model import fix_len_compatibility, normalize
@@ -56,6 +57,12 @@ class TextMelDataModule(LightningDataModule):
         careful not to execute things like random split twice!
         """
         # load and split datasets only if not loaded already
+
+        # The license wall (north star §8.2): every dataset in the filelists
+        # must be declared permissive in configs/data_licenses.yaml.
+        enforce_license_wall(
+            [self.hparams.train_filelist_path, self.hparams.valid_filelist_path]
+        )
 
         self.trainset = TextMelDataset(  # pylint: disable=attribute-defined-outside-init
             self.hparams.train_filelist_path,
