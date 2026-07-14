@@ -66,6 +66,7 @@ class BaseLightningClass(LightningModule, ABC):
             spks=spks,
             out_size=self.out_size,
             durations=batch["durations"],
+            vat=batch.get("vat"),
         )
         return {
             "dur_loss": dur_loss,

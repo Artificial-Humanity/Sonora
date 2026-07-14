@@ -8,6 +8,7 @@ from conformer import ConformerBlock
 from diffusers.models.activations import get_activation
 from einops import pack, rearrange, repeat
 
+from matcha.models.components.film import FiLMLayer, VATTrunk
 from matcha.models.components.transformer import BasicTransformerBlock
 
 
@@ -212,11 +213,15 @@ class Decoder(nn.Module):
         down_block_type="transformer",
         mid_block_type="transformer",
         up_block_type="transformer",
+        vat_dim=3,
+        vat_cond_dim=0,
     ):
         super().__init__()
         channels = tuple(channels)
         self.in_channels = in_channels
         self.out_channels = out_channels
+        self.vat_dim = vat_dim
+        self.vat_cond_dim = vat_cond_dim
 
         self.time_embeddings = SinusoidalPosEmb(in_channels)
         time_embed_dim = channels[0] * 4
@@ -225,6 +230,15 @@ class Decoder(nn.Module):
             time_embed_dim=time_embed_dim,
             act_fn="silu",
         )
+
+        # VAT FiLM (vat-conditioning-design.md): shared trunk + one zero-init
+        # scale+shift per U-Net level, applied at that level's time
+        # resolution. Inert when vat_cond_dim == 0.
+        use_vat = vat_cond_dim > 0
+        self.vat_trunk = VATTrunk(vat_dim, vat_cond_dim) if use_vat else None
+        self.down_films = nn.ModuleList([]) if use_vat else None
+        self.mid_films = nn.ModuleList([]) if use_vat else None
+        self.up_films = nn.ModuleList([]) if use_vat else None
 
         self.down_blocks = nn.ModuleList([])
         self.mid_blocks = nn.ModuleList([])
@@ -254,6 +268,8 @@ class Decoder(nn.Module):
             )
 
             self.down_blocks.append(nn.ModuleList([resnet, transformer_blocks, downsample]))
+            if self.down_films is not None:
+                self.down_films.append(FiLMLayer(vat_cond_dim, output_channel))
 
         for i in range(num_mid_blocks):
             input_channel = channels[-1]
@@ -276,6 +292,8 @@ class Decoder(nn.Module):
             )
 
             self.mid_blocks.append(nn.ModuleList([resnet, transformer_blocks]))
+            if self.mid_films is not None:
+                self.mid_films.append(FiLMLayer(vat_cond_dim, output_channel))
 
         channels = channels[::-1] + (channels[0],)
         for i in range(len(channels) - 1):
@@ -308,12 +326,22 @@ class Decoder(nn.Module):
             )
 
             self.up_blocks.append(nn.ModuleList([resnet, transformer_blocks, upsample]))
+            if self.up_films is not None:
+                self.up_films.append(FiLMLayer(vat_cond_dim, output_channel))
 
         self.final_block = Block1D(channels[-1], channels[-1])
         self.final_proj = nn.Conv1d(channels[-1], self.out_channels, 1)
 
         self.initialize_weights()
         # nn.init.normal_(self.final_proj.weight)
+
+        # initialize_weights() kaiming-inits every Conv1d, which would defeat
+        # the FiLM zero-init identity guarantee (vat-conditioning-design.md) —
+        # re-zero the FiLM heads last.
+        for m in self.modules():
+            if isinstance(m, FiLMLayer):
+                nn.init.zeros_(m.head.weight)
+                nn.init.zeros_(m.head.bias)
 
     @staticmethod
     def get_block(block_type, dim, attention_head_dim, num_heads, dropout, act_fn):
@@ -368,7 +396,9 @@ class Decoder(nn.Module):
             mask (_type_): shape (batch_size, 1, time)
             t (_type_): shape (batch_size)
             spks (_type_, optional): shape: (batch_size, condition_channels). Defaults to None.
-            cond (_type_, optional): placeholder for future use. Defaults to None.
+            cond (torch.Tensor, optional): per-frame V/A/T conditioning,
+                shape (batch_size, vat_dim, time). None means neutral (zeros).
+                Ignored unless the decoder was built with vat_cond_dim > 0.
 
         Raises:
             ValueError: _description_
@@ -387,9 +417,17 @@ class Decoder(nn.Module):
             spks = repeat(spks, "b c -> b c t", t=x.shape[-1])
             x = pack([x, spks], "b * t")[0]
 
+        # Project VAT once; track it through U-Net resolutions like the masks.
+        c = None
+        if self.vat_trunk is not None:
+            if cond is None:
+                cond = torch.zeros(x.shape[0], self.vat_dim, x.shape[-1], dtype=x.dtype, device=x.device)
+            c = self.vat_trunk(cond * mask)
+
         hiddens = []
         masks = [mask]
-        for resnet, transformer_blocks, downsample in self.down_blocks:
+        conds = [c]
+        for level, (resnet, transformer_blocks, downsample) in enumerate(self.down_blocks):
             mask_down = masks[-1]
             x = resnet(x, mask_down, t)
             x = rearrange(x, "b c t -> b t c")
@@ -402,14 +440,19 @@ class Decoder(nn.Module):
                 )
             x = rearrange(x, "b t c -> b c t")
             mask_down = rearrange(mask_down, "b t -> b 1 t")
+            if c is not None:
+                x = self.down_films[level](x, conds[-1], mask_down)
             hiddens.append(x)  # Save hidden states for skip connections
             x = downsample(x * mask_down)
             masks.append(mask_down[:, :, ::2])
+            conds.append(conds[-1][:, :, ::2] if c is not None else None)
 
         masks = masks[:-1]
         mask_mid = masks[-1]
+        conds = conds[:-1]
+        cond_mid = conds[-1]
 
-        for resnet, transformer_blocks in self.mid_blocks:
+        for level, (resnet, transformer_blocks) in enumerate(self.mid_blocks):
             x = resnet(x, mask_mid, t)
             x = rearrange(x, "b c t -> b t c")
             mask_mid = rearrange(mask_mid, "b 1 t -> b t")
@@ -421,9 +464,12 @@ class Decoder(nn.Module):
                 )
             x = rearrange(x, "b t c -> b c t")
             mask_mid = rearrange(mask_mid, "b t -> b 1 t")
+            if c is not None:
+                x = self.mid_films[level](x, cond_mid, mask_mid)
 
-        for resnet, transformer_blocks, upsample in self.up_blocks:
+        for level, (resnet, transformer_blocks, upsample) in enumerate(self.up_blocks):
             mask_up = masks.pop()
+            cond_up = conds.pop() if c is not None else None
             x = resnet(pack([x, hiddens.pop()], "b * t")[0], mask_up, t)
             x = rearrange(x, "b c t -> b t c")
             mask_up = rearrange(mask_up, "b 1 t -> b t")
@@ -435,6 +481,8 @@ class Decoder(nn.Module):
                 )
             x = rearrange(x, "b t c -> b c t")
             mask_up = rearrange(mask_up, "b t -> b 1 t")
+            if c is not None:
+                x = self.up_films[level](x, cond_up, mask_up)
             x = upsample(x * mask_up)
 
         x = self.final_block(x, mask_up)
