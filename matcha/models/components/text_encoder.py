@@ -7,6 +7,7 @@ import torch.nn as nn  # pylint: disable=consider-using-from-import
 from einops import rearrange
 
 import matcha.utils as utils  # pylint: disable=consider-using-from-import
+from matcha.models.components.film import FiLMLayer, VATTrunk
 from matcha.utils.model import sequence_mask
 
 log = utils.get_pylogger(__name__)
@@ -284,6 +285,7 @@ class Encoder(nn.Module):
         n_layers,
         kernel_size=1,
         p_dropout=0.0,
+        vat_cond_dim=0,
         **kwargs,
     ):
         super().__init__()
@@ -299,6 +301,9 @@ class Encoder(nn.Module):
         self.norm_layers_1 = torch.nn.ModuleList()
         self.ffn_layers = torch.nn.ModuleList()
         self.norm_layers_2 = torch.nn.ModuleList()
+        # VAT FiLM (vat-conditioning-design.md): one zero-init scale+shift
+        # per encoder block; inert when vat_cond_dim == 0.
+        self.film_layers = torch.nn.ModuleList() if vat_cond_dim > 0 else None
         for _ in range(self.n_layers):
             self.attn_layers.append(MultiHeadAttention(hidden_channels, hidden_channels, n_heads, p_dropout=p_dropout))
             self.norm_layers_1.append(LayerNorm(hidden_channels))
@@ -312,8 +317,10 @@ class Encoder(nn.Module):
                 )
             )
             self.norm_layers_2.append(LayerNorm(hidden_channels))
+            if self.film_layers is not None:
+                self.film_layers.append(FiLMLayer(vat_cond_dim, hidden_channels))
 
-    def forward(self, x, x_mask):
+    def forward(self, x, x_mask, vat_cond=None):
         attn_mask = x_mask.unsqueeze(2) * x_mask.unsqueeze(-1)
         for i in range(self.n_layers):
             x = x * x_mask
@@ -323,6 +330,8 @@ class Encoder(nn.Module):
             y = self.ffn_layers[i](x, x_mask)
             y = self.drop(y)
             x = self.norm_layers_2[i](x + y)
+            if self.film_layers is not None and vat_cond is not None:
+                x = self.film_layers[i](x, vat_cond, x_mask)
         x = x * x_mask
         return x
 
@@ -336,6 +345,9 @@ class TextEncoder(nn.Module):
         n_vocab,
         n_spks=1,
         spk_emb_dim=128,
+        use_vat=False,
+        vat_dim=3,
+        vat_cond_dim=256,
     ):
         super().__init__()
         self.encoder_type = encoder_type
@@ -344,6 +356,9 @@ class TextEncoder(nn.Module):
         self.n_channels = encoder_params.n_channels
         self.spk_emb_dim = spk_emb_dim
         self.n_spks = n_spks
+        self.use_vat = use_vat
+        self.vat_dim = vat_dim
+        self.vat_trunk = VATTrunk(vat_dim, vat_cond_dim) if use_vat else None
 
         self.emb = torch.nn.Embedding(n_vocab, self.n_channels)
         torch.nn.init.normal_(self.emb.weight, 0.0, self.n_channels**-0.5)
@@ -367,6 +382,7 @@ class TextEncoder(nn.Module):
             encoder_params.n_layers,
             encoder_params.kernel_size,
             encoder_params.p_dropout,
+            vat_cond_dim=vat_cond_dim if use_vat else 0,
         )
 
         self.proj_m = torch.nn.Conv1d(self.n_channels + (spk_emb_dim if n_spks > 1 else 0), self.n_feats, 1)
@@ -377,7 +393,7 @@ class TextEncoder(nn.Module):
             duration_predictor_params.p_dropout,
         )
 
-    def forward(self, x, x_lengths, spks=None):
+    def forward(self, x, x_lengths, spks=None, vat=None):
         """Run forward pass to the transformer based encoder and duration predictor
 
         Args:
@@ -387,6 +403,10 @@ class TextEncoder(nn.Module):
                 shape: (batch_size,)
             spks (torch.Tensor, optional): speaker ids. Defaults to None.
                 shape: (batch_size,)
+            vat (torch.Tensor, optional): V/A/T conditioning; per-utterance
+                (batch_size, vat_dim) or per-token (batch_size, vat_dim,
+                max_text_length). None means neutral (zeros). Ignored unless
+                the encoder was built with use_vat.
 
         Returns:
             mu (torch.Tensor): average output of the encoder
@@ -403,7 +423,15 @@ class TextEncoder(nn.Module):
         x = self.prenet(x, x_mask)
         if self.n_spks > 1:
             x = torch.cat([x, spks.unsqueeze(-1).repeat(1, 1, x.shape[-1])], dim=1)
-        x = self.encoder(x, x_mask)
+        vat_cond = None
+        if self.use_vat:
+            t_len = x.shape[-1]
+            if vat is None:
+                vat = torch.zeros(x.shape[0], self.vat_dim, t_len, dtype=x.dtype, device=x.device)
+            elif vat.dim() == 2:
+                vat = vat.unsqueeze(-1).expand(-1, -1, t_len)
+            vat_cond = self.vat_trunk(vat * x_mask)
+        x = self.encoder(x, x_mask, vat_cond)
         mu = self.proj_m(x) * x_mask
 
         x_dp = torch.detach(x)

@@ -36,6 +36,10 @@ class MatchaTTS(BaseLightningClass):  # 🍵
         scheduler=None,
         prior_loss=True,
         use_precomputed_durations=False,
+        use_vat=False,
+        vat_dim=3,
+        vat_cond_dim=256,
+        vat_cond_dropout=0.15,
     ):
         super().__init__()
 
@@ -48,6 +52,9 @@ class MatchaTTS(BaseLightningClass):  # 🍵
         self.out_size = out_size
         self.prior_loss = prior_loss
         self.use_precomputed_durations = use_precomputed_durations
+        self.use_vat = use_vat
+        self.vat_dim = vat_dim
+        self.vat_cond_dropout = vat_cond_dropout
 
         if n_spks > 1:
             self.spk_emb = torch.nn.Embedding(n_spks, spk_emb_dim)
@@ -59,6 +66,9 @@ class MatchaTTS(BaseLightningClass):  # 🍵
             n_vocab,
             n_spks,
             spk_emb_dim,
+            use_vat=use_vat,
+            vat_dim=vat_dim,
+            vat_cond_dim=vat_cond_dim,
         )
 
         self.decoder = CFM(
@@ -68,12 +78,15 @@ class MatchaTTS(BaseLightningClass):  # 🍵
             decoder_params=decoder,
             n_spks=n_spks,
             spk_emb_dim=spk_emb_dim,
+            use_vat=use_vat,
+            vat_dim=vat_dim,
+            vat_cond_dim=vat_cond_dim,
         )
 
         self.update_data_statistics(data_statistics)
 
     @torch.inference_mode()
-    def synthesise(self, x, x_lengths, n_timesteps, temperature=1.0, spks=None, length_scale=1.0):
+    def synthesise(self, x, x_lengths, n_timesteps, temperature=1.0, spks=None, length_scale=1.0, vat=None):
         """
         Generates mel-spectrogram from text. Returns:
             1. encoder outputs
@@ -91,6 +104,9 @@ class MatchaTTS(BaseLightningClass):  # 🍵
                 shape: (batch_size,)
             length_scale (float, optional): controls speech pace.
                 Increase value to slow down generated speech and vice versa.
+            vat (torch.Tensor, optional): V/A/T conditioning; per-utterance
+                (batch_size, vat_dim) or per-token (batch_size, vat_dim,
+                max_text_length). None means neutral. Ignored unless use_vat.
 
         Returns:
             dict: {
@@ -116,7 +132,9 @@ class MatchaTTS(BaseLightningClass):  # 🍵
             spks = self.spk_emb(spks.long())
 
         # Get encoder_outputs `mu_x` and log-scaled token durations `logw`
-        mu_x, logw, x_mask = self.encoder(x, x_lengths, spks)
+        if self.use_vat and vat is not None and vat.dim() == 2:
+            vat = vat.unsqueeze(-1).expand(-1, -1, x.shape[-1])
+        mu_x, logw, x_mask = self.encoder(x, x_lengths, spks, vat=vat)
 
         w = torch.exp(logw) * x_mask
         w_ceil = torch.ceil(w) * length_scale
@@ -138,8 +156,13 @@ class MatchaTTS(BaseLightningClass):  # 🍵
         mu_y = mu_y.transpose(1, 2)
         encoder_outputs = mu_y[:, :, :y_max_length]
 
+        # Expand token-level VAT to mel frames through the same alignment.
+        vat_y = None
+        if self.use_vat and vat is not None:
+            vat_y = torch.matmul(attn.squeeze(1).transpose(1, 2), vat.transpose(1, 2)).transpose(1, 2)
+
         # Generate sample tracing the probability flow
-        decoder_outputs = self.decoder(mu_y, y_mask, n_timesteps, temperature, spks)
+        decoder_outputs = self.decoder(mu_y, y_mask, n_timesteps, temperature, spks, cond=vat_y)
         decoder_outputs = decoder_outputs[:, :, :y_max_length]
 
         t = (dt.datetime.now() - t).total_seconds()
@@ -154,7 +177,7 @@ class MatchaTTS(BaseLightningClass):  # 🍵
             "rtf": rtf,
         }
 
-    def forward(self, x, x_lengths, y, y_lengths, spks=None, out_size=None, cond=None, durations=None):
+    def forward(self, x, x_lengths, y, y_lengths, spks=None, out_size=None, cond=None, durations=None, vat=None):
         """
         Computes 3 losses:
             1. duration loss: loss between predicted token durations and those extracted by Monotonic Alignment Search (MAS).
@@ -179,8 +202,22 @@ class MatchaTTS(BaseLightningClass):  # 🍵
             # Get speaker embedding
             spks = self.spk_emb(spks)
 
+        # VAT conditioning: neutral when absent; conditioning dropout during
+        # training (vat-conditioning-design.md) keeps VAT=0 a trained neutral
+        # and enables CFG-style strength control at inference.
+        if self.use_vat:
+            if vat is None:
+                vat = torch.zeros(x.shape[0], self.vat_dim, dtype=torch.float32, device=x.device)
+            if self.training and self.vat_cond_dropout > 0:
+                keep = (torch.rand(vat.shape[0], device=vat.device) >= self.vat_cond_dropout).float()
+                vat = vat * keep.view(-1, *([1] * (vat.dim() - 1)))
+            if vat.dim() == 2:
+                vat = vat.unsqueeze(-1).expand(-1, -1, x.shape[-1])
+        else:
+            vat = None
+
         # Get encoder_outputs `mu_x` and log-scaled token durations `logw`
-        mu_x, logw, x_mask = self.encoder(x, x_lengths, spks)
+        mu_x, logw, x_mask = self.encoder(x, x_lengths, spks, vat=vat)
         y_max_length = y.shape[-1]
 
         y_mask = sequence_mask(y_lengths, y_max_length).unsqueeze(1).to(x_mask)
@@ -237,8 +274,14 @@ class MatchaTTS(BaseLightningClass):  # 🍵
         mu_y = torch.matmul(attn.squeeze(1).transpose(1, 2), mu_x.transpose(1, 2))
         mu_y = mu_y.transpose(1, 2)
 
+        # Expand token-level VAT to mel frames through the same alignment
+        # (attn is already the out_size-cut segment, so no extra slicing).
+        vat_y = None
+        if vat is not None:
+            vat_y = torch.matmul(attn.squeeze(1).transpose(1, 2), vat.transpose(1, 2)).transpose(1, 2)
+
         # Compute loss of the decoder
-        diff_loss, _ = self.decoder.compute_loss(x1=y, mask=y_mask, mu=mu_y, spks=spks, cond=cond)
+        diff_loss, _ = self.decoder.compute_loss(x1=y, mask=y_mask, mu=mu_y, spks=spks, cond=vat_y)
 
         if self.prior_loss:
             prior_loss = torch.sum(0.5 * ((y - mu_y) ** 2 + math.log(2 * math.pi)) * y_mask)

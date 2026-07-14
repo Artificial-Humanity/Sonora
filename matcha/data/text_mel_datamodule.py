@@ -43,6 +43,7 @@ class TextMelDataModule(LightningDataModule):
         data_statistics,
         seed,
         load_durations,
+        load_vat=False,
     ):
         super().__init__()
 
@@ -79,6 +80,7 @@ class TextMelDataModule(LightningDataModule):
             self.hparams.data_statistics,
             self.hparams.seed,
             self.hparams.load_durations,
+            load_vat=self.hparams.load_vat,
         )
         self.validset = TextMelDataset(  # pylint: disable=attribute-defined-outside-init
             self.hparams.valid_filelist_path,
@@ -95,6 +97,7 @@ class TextMelDataModule(LightningDataModule):
             self.hparams.data_statistics,
             self.hparams.seed,
             self.hparams.load_durations,
+            load_vat=self.hparams.load_vat,
         )
 
     def train_dataloader(self):
@@ -147,6 +150,7 @@ class TextMelDataset(torch.utils.data.Dataset):
         data_parameters=None,
         seed=None,
         load_durations=False,
+        load_vat=False,
     ):
         self.filepaths_and_text = parse_filelist(filelist_path)
         self.n_spks = n_spks
@@ -160,6 +164,7 @@ class TextMelDataset(torch.utils.data.Dataset):
         self.f_min = f_min
         self.f_max = f_max
         self.load_durations = load_durations
+        self.load_vat = load_vat
 
         if data_parameters is not None:
             self.data_parameters = data_parameters
@@ -169,6 +174,12 @@ class TextMelDataset(torch.utils.data.Dataset):
         random.shuffle(self.filepaths_and_text)
 
     def get_datapoint(self, filepath_and_text):
+        # VAT filelists append a final `v,a,t` float field:
+        #   path|text|v,a,t  or  path|spk|text|v,a,t
+        vat = None
+        if self.load_vat:
+            vat = torch.tensor([float(v) for v in filepath_and_text[-1].split(",")], dtype=torch.float32)
+            filepath_and_text = filepath_and_text[:-1]
         if self.n_spks > 1:
             filepath, spk, text = (
                 filepath_and_text[0],
@@ -184,7 +195,15 @@ class TextMelDataset(torch.utils.data.Dataset):
 
         durations = self.get_durations(filepath, text) if self.load_durations else None
 
-        return {"x": text, "y": mel, "spk": spk, "filepath": filepath, "x_text": cleaned_text, "durations": durations}
+        return {
+            "x": text,
+            "y": mel,
+            "spk": spk,
+            "filepath": filepath,
+            "x_text": cleaned_text,
+            "durations": durations,
+            "vat": vat,
+        }
 
     def get_durations(self, filepath, text):
         filepath = Path(filepath)
@@ -258,6 +277,7 @@ class TextMelBatchCollate:
         y_lengths, x_lengths = [], []
         spks = []
         filepaths, x_texts = [], []
+        vats = []
         for i, item in enumerate(batch):
             y_, x_ = item["y"], item["x"]
             y_lengths.append(y_.shape[-1])
@@ -267,12 +287,14 @@ class TextMelBatchCollate:
             spks.append(item["spk"])
             filepaths.append(item["filepath"])
             x_texts.append(item["x_text"])
+            vats.append(item.get("vat"))
             if item["durations"] is not None:
                 durations[i, : item["durations"].shape[-1]] = item["durations"]
 
         y_lengths = torch.tensor(y_lengths, dtype=torch.long)
         x_lengths = torch.tensor(x_lengths, dtype=torch.long)
         spks = torch.tensor(spks, dtype=torch.long) if self.n_spks > 1 else None
+        vat = torch.stack(vats) if all(v is not None for v in vats) else None
 
         return {
             "x": x,
@@ -283,4 +305,5 @@ class TextMelBatchCollate:
             "filepaths": filepaths,
             "x_texts": x_texts,
             "durations": durations if not torch.eq(durations, 0).all() else None,
+            "vat": vat,
         }
