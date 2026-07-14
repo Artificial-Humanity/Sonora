@@ -1,0 +1,46 @@
+# License manifest for the training data wall (north star §8.2).
+#
+# Every dataset that can appear in a training filelist MUST be declared here;
+# matcha/data/license_wall.py refuses to train on paths it cannot classify.
+# Verified license survey: Notes/Sonora/dataset-landscape.md (umbrella repo).
+#
+# class: permissive — allowed in the production corpus
+#        nc         — CC-BY-NC etc.: de-risk experiments only, NEVER production;
+#                     requires SONORA_LICENSE_WALL=derisk and taints the run.
+#
+# dirs are matched case-insensitively as exact path components of the filelist
+# path and of every audio path inside the filelist.
+
+datasets:
+  ljspeech:
+    dirs: [LJSpeech-1.1, ljspeech]
+    license: LJ Speech (LibriVox public domain recordings, public domain texts)
+    class: permissive
+  libritts_r:
+    dirs: [LibriTTS-R, libritts_r, libritts-r]
+    license: CC-BY-4.0
+    class: permissive
+  parler_libritts_r_annotated:
+    dirs: [parler-tts, libritts-r-filtered-speaker-descriptions]
+    license: CC-BY-4.0 (annotations over LibriTTS-R)
+    class: permissive
+  libritts_r_aligned:
+    dirs: [libritts-r-aligned]
+    license: CC-BY-4.0 (cdminix prosody measures/alignments)
+    class: permissive
+  emilia_yodas:
+    dirs: [emilia_yodas, Emilia-YODAS]
+    license: CC-BY-4.0 (YODAS subset ONLY — the original Emilia subset is NC)
+    class: permissive
+  globe_v2:
+    dirs: [globe_v2, GLOBE_V2]
+    license: CC0
+    class: permissive
+  expresso:
+    dirs: [expresso]
+    license: CC-BY-NC-4.0
+    class: nc
+  emilia_original:
+    dirs: [emilia, Emilia]
+    license: CC-BY-NC-4.0 (the original 101k-h Emilia subset; repo tag is misleading)
+    class: nc

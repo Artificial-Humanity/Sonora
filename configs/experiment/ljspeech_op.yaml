@@ -1,0 +1,19 @@
+# @package _global_
+
+# LJSpeech via the espeak-free G2P lane: trains on filelists pre-phonemized
+# by scripts/phonemize_filelist.py (OpenPhonemizer dict + DeepPhonemizer OOV),
+# so the training container needs neither espeak-ng nor the phonemizer
+# package. Run scripts/phonemize_filelist.py over train.txt/val.txt first.
+#
+# to execute this experiment run:
+# python train.py experiment=ljspeech_op
+
+defaults:
+  - override /data: ljspeech_op.yaml
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+tags: ["ljspeech", "op_g2p"]
+
+run_name: ljspeech_op

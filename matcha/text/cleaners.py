@@ -14,23 +14,34 @@ hyperparameter. Some cleaners are English-specific. You'll typically want to use
 import logging
 import re
 
-import phonemizer
 from unidecode import unidecode
 
-# To avoid excessive logging we set the log level of the phonemizer package to Critical
-critical_logger = logging.getLogger("phonemizer")
-critical_logger.setLevel(logging.CRITICAL)
+# Espeak is initialized lazily so this module imports in espeak-free
+# environments: the OpenPhonemizer lane (op_g2p.py) needs the pure-regex
+# helpers below, and pre-phonemized filelists use no_cleaners and never
+# reach espeak at all.
+global_phonemizer = None
 
-# Intializing the phonemizer globally significantly reduces the speed
-# now the phonemizer is not initialising at every call
-# Might be less flexible, but it is much-much faster
-global_phonemizer = phonemizer.backend.EspeakBackend(
-    language="en-us",
-    preserve_punctuation=True,
-    with_stress=True,
-    language_switch="remove-flags",
-    logger=critical_logger,
-)
+
+def _get_espeak():
+    global global_phonemizer
+    if global_phonemizer is None:
+        import phonemizer
+
+        # To avoid excessive logging we set the log level of the phonemizer package to Critical
+        critical_logger = logging.getLogger("phonemizer")
+        critical_logger.setLevel(logging.CRITICAL)
+
+        # Intializing the phonemizer once significantly reduces the speed
+        # now the phonemizer is not initialising at every call
+        global_phonemizer = phonemizer.backend.EspeakBackend(
+            language="en-us",
+            preserve_punctuation=True,
+            with_stress=True,
+            language_switch="remove-flags",
+            logger=critical_logger,
+        )
+    return global_phonemizer
 
 
 # Regular expression matching whitespace:
@@ -87,6 +98,11 @@ def convert_to_ascii(text):
     return unidecode(text)
 
 
+def no_cleaners(text):
+    """Identity — for filelists already phonemized offline (op_g2p lane)."""
+    return text
+
+
 def basic_cleaners(text):
     """Basic pipeline that lowercases and collapses whitespace without transliteration."""
     text = lowercase(text)
@@ -107,7 +123,7 @@ def english_cleaners2(text):
     text = convert_to_ascii(text)
     text = lowercase(text)
     text = expand_abbreviations(text)
-    phonemes = global_phonemizer.phonemize([text], strip=True, njobs=1)[0]
+    phonemes = _get_espeak().phonemize([text], strip=True, njobs=1)[0]
     # Added in some cases espeak is not removing brackets
     phonemes = remove_brackets(phonemes)
     phonemes = collapse_whitespace(phonemes)
