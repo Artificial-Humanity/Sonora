@@ -1,0 +1,27 @@
+# LibriTTS-R train-clean-100 @ native 24 kHz with VAT labels
+# (scripts/derive_vat_corpus.py; sample-rate-24khz-decision.md). Filelists are
+# pre-phonemized (op-G2P) with a trailing v,a,t field. Mel params match the
+# 24 kHz/80-band vocoder fine-tune config (hop 256, fmax 12000).
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_vat
+train_filelist_path: data/libritts_r_vat/train_op.txt
+valid_filelist_path: data/libritts_r_vat/val_op.txt
+batch_size: 32
+num_workers: 20
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 247
+n_fft: 1024
+n_feats: 80
+sample_rate: 24000
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 12000
+data_statistics:  # computed by matcha/utils/generate_data_statistics.py over this corpus
+  mel_mean: null
+  mel_std: null
+seed: ${seed}
+load_durations: false
+load_vat: true
