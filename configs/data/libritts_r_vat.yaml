@@ -19,9 +19,9 @@ hop_length: 256
 win_length: 1024
 f_min: 0
 f_max: 12000
-data_statistics:  # computed by matcha/utils/generate_data_statistics.py over this corpus
-  mel_mean: null
-  mel_std: null
+data_statistics:  # computed by matcha/utils/generate_data_statistics.py (2026-07-14, 29,441-clip train split)
+  mel_mean: -5.504811
+  mel_std: 2.386137
 seed: ${seed}
 load_durations: false
 load_vat: true
