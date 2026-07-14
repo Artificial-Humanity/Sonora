@@ -1,0 +1,20 @@
+# @package _global_
+
+# North-star §7 de-risk experiment: ONE trained channel (energy in the
+# arousal slot; V=T=0 in the corpus labels) through the FiLM VAT plumbing,
+# multi-speaker, native 24 kHz. Warm-start from the upstream multi-speaker
+# VCTK checkpoint (Phase-0 is single-speaker — its encoder shapes don't fit).
+# Verdict comes from scripts/eval_harness.py against the pre-registered
+# thresholds (rho >= 0.9, ECAPA leakage <= 0.2, WER delta <= +0.10).
+#
+# python train.py experiment=derisk_energy ckpt_path=<matcha_vctk warm start>
+
+defaults:
+  - override /data: libritts_r_vat.yaml
+
+tags: ["libritts_r", "vat", "derisk", "energy"]
+
+run_name: derisk_energy
+
+model:
+  use_vat: true
