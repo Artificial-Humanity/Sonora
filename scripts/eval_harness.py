@@ -76,9 +76,24 @@ def f0_median_hz(wav, sr):
     return float(np.median(f0)) if len(f0) else float("nan")
 
 
+def _ranks(x):
+    # Tie-averaged ranks. Positional tie-breaking (plain argsort-of-argsort)
+    # is a trap here: a sweep whose produced values are all IDENTICAL (e.g. a
+    # zero-init FiLM model ignoring the control) would get ranks 0..n-1 in
+    # manifest order and score a spurious rho=1.0 against the sorted requested
+    # values. Averaged ties make that case zero-variance -> nan -> FAIL.
+    x = np.asarray(x, dtype=float)
+    order = np.argsort(x)
+    ranks = np.empty(len(x), dtype=float)
+    ranks[order] = np.arange(len(x), dtype=float)
+    for v in np.unique(x):
+        tied = x == v
+        ranks[tied] = ranks[tied].mean()
+    return ranks
+
+
 def spearman(a, b):
-    ra = np.argsort(np.argsort(a)).astype(float)
-    rb = np.argsort(np.argsort(b)).astype(float)
+    ra, rb = _ranks(a), _ranks(b)
     if len(ra) < 2 or np.std(ra) == 0 or np.std(rb) == 0:
         return float("nan")
     return float(np.corrcoef(ra, rb)[0, 1])
