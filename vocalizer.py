@@ -1,4 +1,8 @@
-"""Sonora playpen: browser audition bench for any training checkpoint.
+"""Sonora Vocalizer: browser audition bench for any training checkpoint.
+
+The standing vetting surface for the model (owner call, 2026-07-16): every new
+model capability or control ships with a dial here in the same phase, so
+outputs stay auditable by ear at the current feature set.
 
 Two checkpoint lanes, detected from the checkpoint itself:
 
@@ -145,7 +149,7 @@ def encode_text(text):
 
 
 def render(checkpoint_path, text, n_timesteps, temperature, length_scale,
-           spk_id, valence, energy, tension):
+           spk_id, valence, energy, tension, guidance=1.0):
     ensure_model_loaded(checkpoint_path)
     with torch.no_grad():
         x, x_lengths = encode_text(text)
@@ -158,6 +162,7 @@ def render(checkpoint_path, text, n_timesteps, temperature, length_scale,
         if lane == "vat":
             kwargs["vat"] = torch.tensor(
                 [[float(valence), float(energy), float(tension)]])
+            kwargs["guidance"] = float(guidance)
         output = model.synthesise(
             x, x_lengths,
             n_timesteps=n_timesteps,
@@ -173,19 +178,20 @@ def render(checkpoint_path, text, n_timesteps, temperature, length_scale,
 
 
 def synthesize(checkpoint_path, text, n_timesteps, temperature, length_scale,
-               spk_id, valence, energy, tension):
+               spk_id, valence, energy, tension, guidance=1.0):
     if not checkpoint_path:
         return "No checkpoint selected", None, None, ""
     try:
         output, waveform = render(checkpoint_path, text, n_timesteps,
                                   temperature, length_scale,
-                                  spk_id, valence, energy, tension)
+                                  spk_id, valence, energy, tension, guidance)
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fp:
             sf.write(fp.name, waveform.cpu().numpy(), sample_rate, "PCM_24")
         mel_plot = plot_tensor(output["mel"].squeeze().cpu().numpy())
         info = (f"lane={lane} · {sample_rate} Hz · speakers={n_spks}"
-                + (" · V/A/T active (derisk ckpt: only energy is trained)"
-                   if lane == "vat" else " · V/A/T + speaker ignored"))
+                + (" · V/A/T active (derisk ckpt: only energy is trained) · "
+                   "guidance >1 wants ≥25 ODE steps"
+                   if lane == "vat" else " · V/A/T + speaker + guidance ignored"))
         return None, fp.name, mel_plot, info
     except Exception as e:
         import traceback
@@ -206,12 +212,12 @@ def main():
 
     initial_ckpts = get_checkpoints()
 
-    with gr.Blocks(title="🍵 Sonora Playpen") as demo:
-        gr.Markdown("# 🍵 Sonora Playpen")
+    with gr.Blocks(title="🎙️ Sonora Vocalizer") as demo:
+        gr.Markdown("# 🎙️ Sonora Vocalizer")
         gr.Markdown("Audition any training checkpoint on the CPU. VAT/multi-speaker "
-                    "checkpoints get the 24 kHz vocoder, a speaker picker, and "
-                    "valence/energy/tension direction; legacy LJSpeech checkpoints "
-                    "render exactly as before.")
+                    "checkpoints get the 24 kHz vocoder, a speaker picker, "
+                    "valence/energy/tension direction, and CFG amplification; "
+                    "legacy LJSpeech checkpoints render exactly as before.")
 
         with gr.Row():
             with gr.Column(scale=2):
@@ -256,6 +262,9 @@ def main():
                     tension = gr.Slider(
                         label="Tension", minimum=-1.0, maximum=1.0,
                         step=0.05, value=0.0)
+                    guidance = gr.Slider(
+                        label="Guidance (CFG ×, needs ≥25 ODE steps)",
+                        minimum=1.0, maximum=4.0, step=0.25, value=1.0)
 
                 synth_btn = gr.Button("🔊 Synthesize Speech", variant="primary")
                 error_box = gr.Textbox(label="Error Status", visible=False)
@@ -267,9 +276,9 @@ def main():
 
         refresh_btn.click(fn=refresh_checkpoints, outputs=checkpoint_dropdown)
 
-        def on_synth(checkpoint, text, steps, temp, length, spk, v, a, t):
+        def on_synth(checkpoint, text, steps, temp, length, spk, v, a, t, s):
             err, audio, mel, info = synthesize(checkpoint, text, steps, temp,
-                                               length, spk, v, a, t)
+                                               length, spk, v, a, t, s)
             if err:
                 return gr.update(value=err, visible=True), None, None, info
             return gr.update(visible=False), audio, mel, info
@@ -277,7 +286,7 @@ def main():
         synth_btn.click(
             fn=on_synth,
             inputs=[checkpoint_dropdown, text_input, n_timesteps, temperature,
-                    length_scale, spk_input, valence, energy, tension],
+                    length_scale, spk_input, valence, energy, tension, guidance],
             outputs=[error_box, audio_output, mel_spectrogram_output, lane_info]
         )
 
@@ -312,7 +321,9 @@ def main():
     @app.post("/v1/audio/speech")
     async def text_to_speech(request: Request):
         """OpenAI-ish TTS. Extra optional fields beyond input/model/voice:
-        valence, energy, tension (floats in [-1, 1]; VAT ckpts only)."""
+        valence, energy, tension (floats in [-1, 1]; VAT ckpts only);
+        guidance (CFG scale, default 1 = off); ode_steps (defaults 10, or 25
+        when guidance > 1 — amplification needs the finer solve)."""
         try:
             body = await request.json()
             input_text = body.get("input", "")
@@ -335,13 +346,16 @@ def main():
             except (TypeError, ValueError):
                 spk_id = 245  # a known-good LibriTTS-R val speaker
 
+            s = float(body.get("guidance", 1.0))
             _, waveform = render(
                 checkpoint_path, input_text,
-                n_timesteps=10, temperature=0.667, length_scale=1.0,
+                n_timesteps=int(body.get("ode_steps", 25 if s > 1.0 else 10)),
+                temperature=0.667, length_scale=1.0,
                 spk_id=spk_id,
                 valence=float(body.get("valence", 0.0)),
                 energy=float(body.get("energy", 0.0)),
                 tension=float(body.get("tension", 0.0)),
+                guidance=s,
             )
 
             buffer = io.BytesIO()
