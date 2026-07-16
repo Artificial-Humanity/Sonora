@@ -86,7 +86,8 @@ class MatchaTTS(BaseLightningClass):  # 🍵
         self.update_data_statistics(data_statistics)
 
     @torch.inference_mode()
-    def synthesise(self, x, x_lengths, n_timesteps, temperature=1.0, spks=None, length_scale=1.0, vat=None):
+    def synthesise(self, x, x_lengths, n_timesteps, temperature=1.0, spks=None, length_scale=1.0, vat=None,
+                   guidance=1.0):
         """
         Generates mel-spectrogram from text. Returns:
             1. encoder outputs
@@ -107,6 +108,10 @@ class MatchaTTS(BaseLightningClass):  # 🍵
             vat (torch.Tensor, optional): V/A/T conditioning; per-utterance
                 (batch_size, vat_dim) or per-token (batch_size, vat_dim,
                 max_text_length). None means neutral. Ignored unless use_vat.
+            guidance (float, optional): CFG scale on the decoder field (1.0 =
+                off; >1 amplifies the VAT direction, wants ~25 ODE steps —
+                ARCHITECTURE.md §1 Amplification). Encoder/durations stay at
+                the conditional VAT. No-op when vat is None.
 
         Returns:
             dict: {
@@ -162,7 +167,8 @@ class MatchaTTS(BaseLightningClass):  # 🍵
             vat_y = torch.matmul(attn.squeeze(1).transpose(1, 2), vat.transpose(1, 2)).transpose(1, 2)
 
         # Generate sample tracing the probability flow
-        decoder_outputs = self.decoder(mu_y, y_mask, n_timesteps, temperature, spks, cond=vat_y)
+        decoder_outputs = self.decoder(mu_y, y_mask, n_timesteps, temperature, spks, cond=vat_y,
+                                       guidance=guidance)
         decoder_outputs = decoder_outputs[:, :, :y_max_length]
 
         t = (dt.datetime.now() - t).total_seconds()

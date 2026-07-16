@@ -30,7 +30,7 @@ class BASECFM(torch.nn.Module, ABC):
         self.estimator = None
 
     @torch.inference_mode()
-    def forward(self, mu, mask, n_timesteps, temperature=1.0, spks=None, cond=None):
+    def forward(self, mu, mask, n_timesteps, temperature=1.0, spks=None, cond=None, guidance=1.0):
         """Forward diffusion
 
         Args:
@@ -42,7 +42,12 @@ class BASECFM(torch.nn.Module, ABC):
             temperature (float, optional): temperature for scaling noise. Defaults to 1.0.
             spks (torch.Tensor, optional): speaker ids. Defaults to None.
                 shape: (batch_size, spk_emb_dim)
-            cond: Not used but kept for future purposes
+            cond: frame-level VAT conditioning (batch_size, vat_dim, mel_timesteps), or None
+            guidance (float, optional): classifier-free guidance scale on `cond`.
+                1.0 = plain conditional. >1 extrapolates the vector field away
+                from the unconditional (vat=0) mode — needs ~25 ODE steps to
+                stay clean (ARCHITECTURE.md §1 Amplification). No-op if cond
+                is None.
 
         Returns:
             sample: generated mel-spectrogram
@@ -50,9 +55,10 @@ class BASECFM(torch.nn.Module, ABC):
         """
         z = torch.randn_like(mu) * temperature
         t_span = torch.linspace(0, 1, n_timesteps + 1, device=mu.device)
-        return self.solve_euler(z, t_span=t_span, mu=mu, mask=mask, spks=spks, cond=cond)
+        return self.solve_euler(z, t_span=t_span, mu=mu, mask=mask, spks=spks, cond=cond,
+                                guidance=guidance)
 
-    def solve_euler(self, x, t_span, mu, mask, spks, cond):
+    def solve_euler(self, x, t_span, mu, mask, spks, cond, guidance=1.0):
         """
         Fixed euler solver for ODEs.
         Args:
@@ -75,6 +81,10 @@ class BASECFM(torch.nn.Module, ABC):
 
         for step in range(1, len(t_span)):
             dphi_dt = self.estimator(x, mask, mu, t, spks, cond)
+            if guidance != 1.0 and cond is not None:
+                # CFG: uncond = vat 0, exactly the state vat_cond_dropout trained.
+                dphi_uncond = self.estimator(x, mask, mu, t, spks, torch.zeros_like(cond))
+                dphi_dt = dphi_uncond + guidance * (dphi_dt - dphi_uncond)
 
             x = x + dt * dphi_dt
             t = t + dt
