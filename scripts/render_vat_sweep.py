@@ -18,6 +18,11 @@ Usage:
     python scripts/render_vat_sweep.py \
         --checkpoint <matcha .ckpt> --out <dir> \
         [--channel energy] [--values -1,-0.5,0,0.5,1] [--n-clips 4]
+
+Multi-channel mode (3-channel VAT gate): --channels valence,energy,tension
+sweeps each channel with the others held at 0, sharing one baseline render
+per clip, and names groups "<clip>::<channel>" — the shape eval_harness.py's
+cross-channel independence gate expects (ARCHITECTURE §5).
 """
 
 import argparse
@@ -96,6 +101,9 @@ def main():
                     default=os.path.join(HIFIGAN, "config_24k_80band.json"))
     ap.add_argument("--val-filelist", default="data/libritts_r_vat/val_op.txt")
     ap.add_argument("--channel", default="energy", choices=sorted(CHANNEL_SLOT))
+    ap.add_argument("--channels", default=None,
+                    help="comma-separated multi-channel mode (overrides "
+                         "--channel); e.g. valence,energy,tension")
     ap.add_argument("--values", default="-1,-0.5,0,0.5,1",
                     help="comma-separated sweep; must include 0 (the baseline row)")
     ap.add_argument("--n-clips", type=int, default=4)
@@ -118,7 +126,20 @@ def main():
     clips = pick_clips(args.val_filelist, args.n_clips)
     os.makedirs(args.out, exist_ok=True)
 
-    slot = CHANNEL_SLOT[args.channel]
+    channels = args.channels.split(",") if args.channels else [args.channel]
+    for ch in channels:
+        if ch not in CHANNEL_SLOT:
+            raise SystemExit(f"unknown channel {ch!r}")
+    multi = args.channels is not None
+
+    def render(x, x_lengths, spks, vat):
+        torch.manual_seed(args.seed)
+        with torch.no_grad():
+            out = model.synthesise(x, x_lengths, n_timesteps=args.n_timesteps,
+                                   temperature=args.temperature, spks=spks,
+                                   length_scale=args.length_scale, vat=vat)
+            return vocoder(out["mel"]).squeeze().numpy()
+
     manifest = []
     for clip in clips:
         seq, _ = text_to_sequence(clip["phonemes"], ["no_cleaners"])
@@ -126,20 +147,29 @@ def main():
         x_lengths = torch.tensor([x.shape[-1]], dtype=torch.long)
         spks = torch.tensor([clip["spk"]], dtype=torch.long)
         group = os.path.basename(clip["wav"]).rsplit(".", 1)[0]
-        for v in values:
-            vat = torch.zeros(1, 3)
-            vat[0, slot] = v
-            torch.manual_seed(args.seed)
-            with torch.no_grad():
-                out = model.synthesise(x, x_lengths, n_timesteps=args.n_timesteps,
-                                       temperature=args.temperature, spks=spks,
-                                       length_scale=args.length_scale, vat=vat)
-                wav = vocoder(out["mel"]).squeeze().numpy()
-            fname = f"{group}_{args.channel}{v:+.2f}.wav"
-            sf.write(os.path.join(args.out, fname), wav, h.sampling_rate)
-            manifest.append({"wav": fname, "text": clip["text"], "group": group,
-                             "requested": {args.channel: v}, "baseline": v == 0.0})
-            print(f"rendered {fname} ({len(wav) / h.sampling_rate:.1f}s)")
+        if multi:
+            # One baseline render per clip, shared by every channel's group.
+            wav = render(x, x_lengths, spks, torch.zeros(1, 3))
+            base_fname = f"{group}_baseline.wav"
+            sf.write(os.path.join(args.out, base_fname), wav, h.sampling_rate)
+            print(f"rendered {base_fname} ({len(wav) / h.sampling_rate:.1f}s)")
+            for ch in channels:
+                manifest.append({"wav": base_fname, "text": clip["text"],
+                                 "group": f"{group}::{ch}",
+                                 "requested": {ch: 0.0}, "baseline": True})
+        for ch in channels:
+            for v in values:
+                if multi and v == 0.0:
+                    continue  # covered by the shared baseline row
+                vat = torch.zeros(1, 3)
+                vat[0, CHANNEL_SLOT[ch]] = v
+                wav = render(x, x_lengths, spks, vat)
+                fname = f"{group}_{ch}{v:+.2f}.wav"
+                sf.write(os.path.join(args.out, fname), wav, h.sampling_rate)
+                manifest.append({"wav": fname, "text": clip["text"],
+                                 "group": f"{group}::{ch}" if multi else group,
+                                 "requested": {ch: v}, "baseline": v == 0.0})
+                print(f"rendered {fname} ({len(wav) / h.sampling_rate:.1f}s)")
 
     with open(os.path.join(args.out, "manifest.jsonl"), "w", encoding="utf-8") as f:
         for row in manifest:
@@ -150,7 +180,7 @@ def main():
         f.write(clips[0]["wav"] + "\n" + clips[1]["wav"] + "\n")
     with open(os.path.join(args.out, "render_meta.json"), "w", encoding="utf-8") as f:
         json.dump({"checkpoint": args.checkpoint, "vocoder": args.vocoder,
-                   "channel": args.channel, "values": values,
+                   "channel": args.channel, "channels": channels, "values": values,
                    "clips": [c["wav"] for c in clips],
                    "n_timesteps": args.n_timesteps, "temperature": args.temperature,
                    "length_scale": args.length_scale, "seed": args.seed}, f, indent=2)

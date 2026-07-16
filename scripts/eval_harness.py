@@ -45,8 +45,11 @@ import numpy as np
 RHO_MIN = 0.9
 LEAKAGE_MAX = 0.2
 WER_DELTA_MAX = 0.10
+CROSS_MAX = 0.5  # independence: X-sweep may move Y's measure at most this
+                 # fraction of what Y's own sweep moves it (ARCHITECTURE §5)
 
-MEASURES = {"energy": "loudness_lufs", "duration": "seconds", "f0": "f0_median_hz"}
+MEASURES = {"energy": "loudness_lufs", "duration": "seconds", "f0": "f0_median_hz",
+            "tension": "phonation", "valence": "eiv_valence"}
 
 
 def load_wav(path):
@@ -74,6 +77,54 @@ def f0_median_hz(wav, sr):
     f0, _, _ = librosa.pyin(wav, fmin=65, fmax=400, sr=sr)
     f0 = f0[~np.isnan(f0)]
     return float(np.median(f0)) if len(f0) else float("nan")
+
+
+def phonation(wav, sr):
+    """Tension's produced measure: the phonation composite from
+    derive_vat_corpus (alpha + CPP - (H1-H2)), raw fixed-weight sum —
+    Spearman within a sweep is rank-based, so no z-scoring is needed."""
+    from derive_vat_corpus import phonation_measures
+
+    m = phonation_measures(wav.astype(np.float32), sr)
+    if m is None:
+        return float("nan")
+    return m["alpha_db"] + m["cpp"] - m["h1h2"]
+
+
+class EivValence:
+    """Valence's produced measure: the corpus labeler itself (EIV valence
+    head over EmoWhisper states, CPU) — valence has no honest acoustics-only
+    proxy, so the gate uses the same instrument that labeled the training
+    data. Heavier than the other measures; loaded only when a manifest
+    requests the valence channel."""
+
+    def __init__(self):
+        import torch
+        from transformers import WhisperProcessor, WhisperForConditionalGeneration
+        from eiv_score import Head, ENCODER_DEFAULT, HEADS_DIR_DEFAULT
+
+        self.torch = torch
+        enc_dir = os.environ.get("SONORA_EIV_ENCODER", ENCODER_DEFAULT)
+        heads_dir = os.environ.get("SONORA_EIV_HEADS", HEADS_DIR_DEFAULT)
+        self.processor = WhisperProcessor.from_pretrained(enc_dir)
+        self.encoder = WhisperForConditionalGeneration.from_pretrained(enc_dir) \
+            .get_encoder().eval()
+        sd = torch.load(os.path.join(heads_dir, "model_Valence_best.pth"),
+                        map_location="cpu", weights_only=True)
+        self.head = Head(sd).eval()
+
+    def score(self, wav, sr):
+        import librosa
+
+        y = librosa.resample(wav.astype(np.float32), orig_sr=sr, target_sr=16000) \
+            if sr != 16000 else wav.astype(np.float32)
+        y = y[: 30 * 16000]
+        feats = self.processor(y, sampling_rate=16000, return_tensors="pt").input_features
+        with self.torch.no_grad():
+            emb = self.encoder(input_features=feats).last_hidden_state
+            if emb.shape[1] < 1500:
+                emb = self.torch.nn.functional.pad(emb, (0, 0, 0, 1500 - emb.shape[1]))
+            return float(self.head(emb[:, :1500]).item())
 
 
 def _ranks(x):
@@ -165,6 +216,7 @@ def main():
     ap.add_argument("--rho-min", type=float, default=RHO_MIN)
     ap.add_argument("--leakage-max", type=float, default=LEAKAGE_MAX)
     ap.add_argument("--wer-delta-max", type=float, default=WER_DELTA_MAX)
+    ap.add_argument("--cross-max", type=float, default=CROSS_MAX)
     args = ap.parse_args()
 
     base_dir = os.path.dirname(os.path.abspath(args.manifest))
@@ -188,6 +240,16 @@ def main():
             embs.append(ecapa.embed(w, sr))
         inter_speaker_gap = 1.0 - cos(embs[0], embs[1])
 
+    # Lazy heavy measures: only when some row sweeps the channel. For the
+    # independence gate, tension/valence measures are computed on EVERY row
+    # of a multi-channel manifest (cross-effects need Y's measure under X's
+    # sweep), hence "any row requests" rather than per-row checks.
+    all_channels = {ch for r in rows for ch in r.get("requested", {})}
+    eiv = EivValence() if "valence" in all_channels else None
+    measure_tension = "tension" in all_channels
+    vat_present = sorted(all_channels & {"valence", "energy", "tension"})
+    multi = len(vat_present) > 1
+
     # Per-row measurements.
     for r in rows:
         wav, sr = load_wav(r["wav"])
@@ -197,6 +259,10 @@ def main():
         }
         if any(ch == "f0" for ch in r.get("requested", {})):
             r["_measures"]["f0_median_hz"] = f0_median_hz(wav, sr)
+        if measure_tension:
+            r["_measures"]["phonation"] = phonation(wav, sr)
+        if eiv:
+            r["_measures"]["eiv_valence"] = eiv.score(wav, sr)
         if whisper:
             hyp = whisper.transcribe(wav)
             r["_wer"] = wer(r["text"], hyp)
@@ -211,7 +277,8 @@ def main():
     report = {"groups": {}, "inter_speaker_gap": inter_speaker_gap,
               "thresholds": {"rho_min": args.rho_min,
                              "leakage_max": args.leakage_max,
-                             "wer_delta_max": args.wer_delta_max}}
+                             "wer_delta_max": args.wer_delta_max,
+                             "cross_max": args.cross_max}}
     failed = []
     for name, grp in sorted(groups.items()):
         g = {"n": len(grp)}
@@ -252,6 +319,40 @@ def main():
                     failed.append(f"{name}: leakage {leak:.3f}")
         report["groups"][name] = g
 
+    # Cross-channel independence (ARCHITECTURE §5): with groups named
+    # "<clip>::<channel>" (render_vat_sweep --channels), sweeping X must move
+    # Y's produced measure by at most --cross-max times what Y's own sweep
+    # moves it, per clip and ordered pair.
+    if multi:
+        def prange(grp, ch):
+            vals = [r["_measures"].get(MEASURES[ch]) for r in grp]
+            vals = [v for v in vals if v is not None and not math.isnan(v)]
+            return (max(vals) - min(vals)) if len(vals) >= 2 else None
+
+        by_clip = {}
+        for name, grp in groups.items():
+            if "::" in name:
+                clip, ch = name.rsplit("::", 1)
+                by_clip.setdefault(clip, {})[ch] = grp
+        indep = {}
+        for clip, chans in sorted(by_clip.items()):
+            for x in sorted(chans):
+                for y in vat_present:
+                    if y == x or y not in chans:
+                        continue
+                    cross = prange(chans[x], y)
+                    own = prange(chans[y], y)
+                    if cross is None or own is None or own <= 1e-9:
+                        continue
+                    ratio = cross / own
+                    key = f"{clip}:{x}->{y}"
+                    indep[key] = {"cross_range": cross, "own_range": own,
+                                  "ratio": ratio,
+                                  "pass": bool(ratio <= args.cross_max)}
+                    if not indep[key]["pass"]:
+                        failed.append(f"{key} cross-effect {ratio:.2f}")
+        report["independence"] = {"threshold": args.cross_max, "pairs": indep}
+
     for r in rows:
         r.pop("_emb", None)
     report["rows"] = [{k: v for k, v in r.items() if k != "_emb"} for r in rows]
@@ -279,6 +380,9 @@ def main():
                   + (f" leakage={leak:.3f} "
                      f"{'PASS' if ident['pass'] else 'FAIL'}" if leak is not None
                      else " (no speaker refs -> drift only)"))
+    for key, pair in report.get("independence", {}).get("pairs", {}).items():
+        print(f"  indep {key}: ratio={pair['ratio']:.2f} "
+              f"{'PASS' if pair['pass'] else 'FAIL'}")
     if failed:
         print("\nFAILED:", "; ".join(failed))
     else:
