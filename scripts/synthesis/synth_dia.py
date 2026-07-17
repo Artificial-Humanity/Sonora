@@ -17,6 +17,17 @@ from transformers import AutoProcessor, DiaForConditionalGeneration
 
 MODEL_DIR = "/data/reference/models/nari-labs/Dia-1.6B-0626"
 TEMP_FLOOR = 1.3
+TOKENS_PER_SEC = 86            # Dia audio-token frame rate
+CHARS_PER_SEC = 14.0           # mid-rate English speech estimate
+
+
+def token_budget(text):
+    """Pilot QC finding (2026-07-17): bare lines run to whatever cap they get,
+    improvising tails that fail the duration gate AND drag whole-clip DNSMOS
+    down. Budget generation length from the script text instead: estimated
+    duration x 1.8 headroom + 2 s grace."""
+    est = len(text) / CHARS_PER_SEC
+    return int((est * 1.8 + 2.0) * TOKENS_PER_SEC)
 
 
 def main():
@@ -40,7 +51,7 @@ def main():
             inputs = processor(text=[job["direction"]["render_text"]],
                                padding=True, return_tensors="pt").to("cuda")
             audio_tokens = model.generate(
-                **inputs, max_new_tokens=1536,
+                **inputs, max_new_tokens=token_budget(job["direction"]["render_text"]),
                 guidance_scale=job["direction"].get("guidance", 3.0),
                 temperature=temp, top_p=0.90, top_k=45)
             decoded = processor.batch_decode(audio_tokens)
