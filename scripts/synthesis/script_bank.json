@@ -121,6 +121,21 @@
                     "instruct": "Shout a declaration of love with heightened passion bordering on forceful aggression — defiant, tearful, joyous, holding nothing back."}
     },
     {
+      "id": "lullaby_probe_01", "engine": "dia", "register": "melodic_lullaby",
+      "owner_insight": "singing-roadmap.md S0 border probe: can teachers produce diegetic melodic speech with surviving affect? Lyrics authored in-repo (composition wall).",
+      "intended": {"V": 0.5, "A": -0.6, "T": -0.4}, "seed": 1234,
+      "text": "Hush now, little sailor, the harbor lights are low. Sleep now, little sailor, the tide will rock you slow.",
+      "direction": {"render_text": "[S1] (sings) Hush now, little sailor, the harbor lights are low. Sleep now, little sailor, the tide will rock you slow.",
+                    "temperature": 1.8, "guidance": 3.0}
+    },
+    {
+      "id": "lullaby_probe_02", "engine": "qwen", "register": "melodic_lullaby",
+      "intended": {"V": 0.5, "A": -0.6, "T": -0.4}, "seed": 1234,
+      "text": "Hush now, little sailor, the harbor lights are low. Sleep now, little sailor, the tide will rock you slow.",
+      "direction": {"design": "A warm adult woman's voice, soft and close, in American English.",
+                    "instruct": "Sing this gently as a slow lullaby to a child — soft, melodic, rocking rhythm, almost a whisper-song."}
+    },
+    {
       "id": "victory_peak_01", "engine": "dia", "register": "victory_peak",
       "intended": {"V": 0.9, "A": 0.95, "T": 0.3}, "seed": 1234,
       "text": "We won! We won, we won, WE WON! The championship is ours!",
