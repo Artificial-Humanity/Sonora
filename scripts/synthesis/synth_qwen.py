@@ -31,8 +31,11 @@ def main():
     gen = getattr(model, "generate_voice_design", None) or model.generate_custom_voice
 
     manifest_path = os.path.join(args.out, "qwen_manifest.jsonl")
-    with open(manifest_path, "w", encoding="utf-8") as mf:
+    with open(manifest_path, "a", encoding="utf-8") as mf:
         for job in jobs:
+            if os.path.exists(os.path.join(args.out, f"{job['id']}.wav")):
+                print(job["id"], "exists, skip", flush=True)
+                continue
             torch.manual_seed(job["seed"])
             kwargs = dict(text=job["text"], language="English",
                           instruct=job["direction"]["instruct"])

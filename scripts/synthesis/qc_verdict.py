@@ -56,6 +56,13 @@ def main():
     ap.add_argument("--campaign-dir", required=True)
     ap.add_argument("--eiv", required=True, help="eiv_score.py output jsonl")
     ap.add_argument("--z-confirm", type=float, default=0.25)
+    ap.add_argument("--per-engine", action="store_true",
+                    help="re-center measured z within each engine before direction "
+                         "checks (pilot finding: engines are channels with large "
+                         "offsets — Qwen A always positive, MOSS T always high). "
+                         "Assumes the campaign's registers are roughly balanced per "
+                         "engine so the engine mean approximates neutral. Requires "
+                         "enough clips per engine for stable stats (>=15).")
     ap.add_argument("--neutral-band", type=float, default=0.3,
                     help="|intended| below this = no direction requirement")
     args = ap.parse_args()
@@ -69,17 +76,38 @@ def main():
     eiv = {os.path.basename(d["wav"]): d for d in jload(args.eiv)}
     rows = jload(os.path.join(args.campaign_dir, "qc_measures.jsonl"))
 
+    def raw_measures(r):
+        e = eiv.get(os.path.basename(r["wav_abs"]))
+        if not (r.get("phonation") and e):
+            return {}
+        p = r["phonation"]
+        return {"T": (z("alpha_db", p["alpha_db"]) + z("cpp", p["cpp"])
+                      - z("h1h2", p["h1h2"]) - z("soft", e["Soft_vs._Harsh"])),
+                "A": z("arousal", e["Arousal"]),
+                "V": float(np.dot(W, [z(h, e.get(h, 0.0)) for h in HEADS]))}
+
+    all_measured = {r["id"]: raw_measures(r) for r in rows}
+    eng_stats = {}
+    if args.per_engine:
+        by_eng = {}
+        for r in rows:
+            m = all_measured[r["id"]]
+            if m:
+                by_eng.setdefault(r["engine"], []).append(m)
+        for eng, ms in by_eng.items():
+            if len(ms) >= 15:
+                eng_stats[eng] = {ax: (float(np.mean([m[ax] for m in ms])),
+                                       float(np.std([m[ax] for m in ms]) + 1e-6))
+                                  for ax in ("V", "A", "T")}
+        print(f"per-engine recentering active for: {sorted(eng_stats)}")
+
     verdicts, keeps = [], []
     print(f"{'id':26s} {'axis verdicts':40s} keep")
     for r in rows:
-        e = eiv.get(os.path.basename(r["wav_abs"]))
-        measured = {}
-        if r.get("phonation") and e:
-            p = r["phonation"]
-            measured["T"] = (z("alpha_db", p["alpha_db"]) + z("cpp", p["cpp"])
-                             - z("h1h2", p["h1h2"]) - z("soft", e["Soft_vs._Harsh"]))
-            measured["A"] = z("arousal", e["Arousal"])
-            measured["V"] = float(np.dot(W, [z(h, e.get(h, 0.0)) for h in HEADS]))
+        measured = dict(all_measured[r["id"]])
+        st = eng_stats.get(r["engine"])
+        if measured and st:
+            measured = {ax: (measured[ax] - st[ax][0]) / st[ax][1] for ax in measured}
 
         checks, notes = {}, []
         for axis in ("V", "A", "T"):

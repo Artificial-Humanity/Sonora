@@ -36,11 +36,15 @@ def main():
     sr = processor.model_config.sampling_rate
 
     manifest_path = os.path.join(args.out, "moss85_manifest.jsonl")
-    with open(manifest_path, "w", encoding="utf-8") as mf, torch.no_grad():
+    with open(manifest_path, "a", encoding="utf-8") as mf, torch.no_grad():
         for job in jobs:
+            if os.path.exists(os.path.join(args.out, f"{job['id']}.wav")):
+                print(job["id"], "exists, skip", flush=True)
+                continue
             torch.manual_seed(job["seed"])
             msg = processor.build_user_message(text=job["text"],
-                                               instruction=job["direction"]["instruct"])
+                                               instruction=job["direction"]["instruct"],
+                                               quality=job["direction"].get("quality"))
             batch = processor([[msg]], mode="generation")
             outputs = model.generate(input_ids=batch["input_ids"].to(device),
                                      attention_mask=batch["attention_mask"].to(device),

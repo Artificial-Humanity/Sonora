@@ -47,8 +47,11 @@ def main():
     model = DiaForConditionalGeneration.from_pretrained(MODEL_DIR).to("cuda")
 
     manifest_path = os.path.join(args.out, "dia_manifest.jsonl")
-    with open(manifest_path, "w", encoding="utf-8") as mf:
+    with open(manifest_path, "a", encoding="utf-8") as mf:
         for job in jobs:
+            if os.path.exists(os.path.join(args.out, f"{job['id']}.wav")):
+                print(job["id"], "exists, skip", flush=True)
+                continue
             temp = max(job["direction"].get("temperature", 1.8), TEMP_FLOOR)
             torch.manual_seed(job["seed"])
             inputs = processor(text=[job["direction"]["render_text"]],

@@ -1,0 +1,324 @@
+{
+  "version": "bulk-1",
+  "campaign": "bulk1",
+  "license_note": "All line texts and lyrics authored in-repo (original prose). Engines Apache-2.0/MIT only.",
+  "registers": {
+    "tenderness": {
+      "intended": {"V": 0.6, "A": -0.5, "T": -0.4},
+      "lines": [
+        "You don't have to say anything. Just rest. I'll be right here when you wake up.",
+        "Look how far you've come. I'm so proud of you I can hardly speak.",
+        "It's okay. It's okay. Everyone falls sometimes. Let me help you up.",
+        "I saved you the last piece. I always save you the last piece."
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234, 5150], "voice": "warmF",
+         "design": "A woman in her forties with a low, warm, natural adult voice, close to the microphone, in American English.",
+         "instruct": "Speak with quiet, unhurried tenderness and deep warmth, like comforting someone you love — soft, gentle, no urgency."},
+        {"engine": "moss85", "seeds": [1234], "voice": "warmM",
+         "instruct": "A middle-aged father speaking softly and warmly — slow, full of quiet love, almost a murmur, in American English.",
+         "quality": "clean studio recording, close microphone, no noise"}
+      ]
+    },
+    "intimate_warmth": {
+      "intended": {"V": 0.7, "A": 0.2, "T": -0.6},
+      "lines": [
+        "Come closer. The fire's warm and the night is long, and I have nowhere else in the world to be.",
+        "I could listen to you read the phone book, you know. It's the sound of your voice. It feels like home.",
+        "Don't get up yet. Five more minutes. Let me memorize this."
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234, 5150], "voice": "intimateF",
+         "design": "An adult woman in her thirties with a low, breathy, unhurried voice, very close to the microphone, in American English.",
+         "instruct": "Speak in an intimate, breathy near-whisper, warm and inviting, savoring every word slowly."},
+        {"engine": "qwen", "seeds": [1234], "voice": "intimateM",
+         "design": "An adult man in his thirties with a deep, soft, unhurried voice, very close to the microphone, in American English.",
+         "instruct": "Speak in an intimate, breathy near-whisper, warm and inviting, savoring every word slowly."}
+      ]
+    },
+    "fierce_devotion": {
+      "intended": {"V": 0.8, "A": 0.8, "T": 0.65},
+      "lines": [
+        "You saved my life! You are my brother! And no distance, no war, no winter will ever change that! Go! Live!",
+        "Listen to me! There is nothing — nothing — I would not cross to stand beside you again!",
+        "Tell them! Tell them all! That I loved her with everything I had, and I am not ashamed!"
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234, 5150], "voice": "fullF",
+         "design": "A grown woman in her late thirties with a full, rich, powerful adult voice — a stage actress, not childlike, in American English.",
+         "instruct": "Shout with heightened passion bordering on forceful aggression — but the emotion is fierce LOVE and pride, not anger; voice breaking with devotion."},
+        {"engine": "moss85", "seeds": [1234], "voice": "warriorM",
+         "instruct": "A warrior calling a farewell to his closest friend standing right in front of him — full-voiced and forceful but INTIMATE, spoken to one beloved person, not a crowd; voice cracking with love and pride, in American English."}
+      ]
+    },
+    "impassioned_oratory": {
+      "intended": {"V": 0.5, "A": 0.7, "T": 0.6},
+      "lines": [
+        "They said we could not build it. They said we would not last the winter. Well, look around you — we are still here!",
+        "I have seen what we can be when we stand together, and I will not — I cannot — let that dream die tonight!",
+        "This is our valley! Our home! And no storm, no army, no decree will take it from us!"
+      ],
+      "jobs": [
+        {"engine": "moss85", "seeds": [1234, 5150], "voice": "oratorM",
+         "instruct": "A leader delivering the climax of a rousing speech to a crowd — ringing, forceful, rhythmic, sweeping the listeners up, in American English."}
+      ]
+    },
+    "grief_herenow": {
+      "intended": {"V": -0.9, "A": 0.1, "T": 0.5},
+      "lines": [
+        "Don't do this. Please don't do this. I'm right here. I'm right here and I can't do anything.",
+        "She was just here. She was just... I was holding her hand a minute ago.",
+        "Wake up. Please wake up. You promised me the whole summer. You promised."
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234, 5150], "voice": "brokenM",
+         "design": "A middle-aged man with a rough, hollow, exhausted adult voice, in American English.",
+         "instruct": "Speak through raw, immediate grief — voice cracking, pleading, on the edge of tears, barely holding together."}
+      ]
+    },
+    "grief_processed": {
+      "intended": {"V": -0.6, "A": -0.5, "T": -0.2},
+      "lines": [
+        "It's been six months. I finally boxed up her coat yesterday. I kept one glove.",
+        "Some mornings I still make two cups of coffee. I drink them both now. It's fine. It's fine.",
+        "The garden went wild this summer. She would have hated that. I let it grow anyway."
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234], "voice": "quietF",
+         "design": "A woman in her fifties with a quiet, steady, tired adult voice, in American English.",
+         "instruct": "Speak with settled, processed grief — calm, slow, a sad steadiness with the tears long since cried."},
+        {"engine": "moss85", "seeds": [1234], "voice": "quietM",
+         "instruct": "A man speaking about a loss six months on — quiet, steady, slow, sorrow worn smooth rather than sharp, in American English.",
+         "quality": "clean studio recording, close microphone, no noise"}
+      ]
+    },
+    "grief_vengeful": {
+      "intended": {"V": -0.8, "A": 0.2, "T": 0.7},
+      "lines": [
+        "They took her from me. Every one of them walked away smiling. I remember every face.",
+        "Grief? No. Grief is for men with nothing left to do. I have a list, and I have time.",
+        "When I'm finished, they will understand exactly what they taught me about loss."
+      ],
+      "jobs": [
+        {"engine": "moss85", "seeds": [1234, 5150], "voice": "coldM",
+         "instruct": "A deep-voiced grown man speaking slowly through cold, contained grief hardened into resolve — quiet, dark, steady, in American English."}
+      ]
+    },
+    "fear_impending_loss": {
+      "intended": {"V": -0.7, "A": 0.4, "T": 0.6},
+      "lines": [
+        "No, no, stay with me. Stay with me, please. Don't you close your eyes. Not now.",
+        "The doctors keep saying soon. I keep asking how soon, and they keep saying soon.",
+        "Hold on. The lights are coming. Can you hear the sirens? Just hold on a little longer."
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234, 5150], "voice": "panicM",
+         "design": "A middle-aged man with a rough adult voice tight with panic, in American English.",
+         "instruct": "Speak with fear and desperate concern over a loss that has not happened yet — urgent, pleading, voice tight and trembling."}
+      ]
+    },
+    "threat_warning": {
+      "intended": {"V": -0.4, "A": -0.1, "T": 0.5},
+      "lines": [
+        "Walk away from this. Right now. You do not want to find out what happens if you stay.",
+        "That's the only warning you get. The next one isn't words.",
+        "Think very carefully about the next thing you say. Your whole future is listening."
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234, 5150], "voice": "levelM",
+         "design": "A calm adult man with a low, controlled, level voice, in American English.",
+         "instruct": "Deliver a stern, quiet warning — deliberate, unhurried, leaving absolutely no doubt."}
+      ]
+    },
+    "threat_noir": {
+      "intended": {"V": -0.5, "A": -0.3, "T": 0.7},
+      "lines": [
+        "Sit down. Finish your drink. We're going to talk about what you did, nice and slow.",
+        "Nice little shop you've got. Shame about the neighborhood. Accidents happen around here all the time.",
+        "You can leave whenever you like. Whether you make it home — that's a different conversation."
+      ],
+      "jobs": [
+        {"engine": "moss85", "seeds": [1234, 5150], "voice": "noirM",
+         "instruct": "A gravelly older man, stone cold and unhurried, like a black-and-white noir gangster — menacing without ever raising his voice, in American English."}
+      ]
+    },
+    "victory_peak": {
+      "intended": {"V": 0.9, "A": 0.9, "T": 0.3},
+      "lines": [
+        "We won! We won, we won, WE WON! The championship is ours!",
+        "Yes! YES! Did you all see that? Ring the bell, we did it, we actually did it!",
+        "It's over! We made it! Everybody, we made it, we're going home champions!"
+      ],
+      "jobs": [
+        {"engine": "dia", "seeds": [1234, 5150], "voice": "lottery",
+         "dia_tags": "(laughs) ", "temperature": 1.8},
+        {"engine": "moss85", "seeds": [1234], "voice": "bigM",
+         "instruct": "A deep-voiced adult man overwhelmed with genuine joy, almost shouting with delight, energy RISING into the final word, in American English."}
+      ]
+    },
+    "excited_good_news": {
+      "intended": {"V": 0.7, "A": 0.45, "T": 0.0},
+      "lines": [
+        "Ha! Did you see that? Thirty years I've waited for this. Somebody pinch me.",
+        "They called. They actually called! I got it, I start Monday!",
+        "It's benign. The doctor said it's benign. I could kiss every stranger on this bus."
+      ],
+      "jobs": [
+        {"engine": "moss85", "seeds": [1234, 5150], "voice": "everydayM",
+         "instruct": "An ordinary middle-aged man the moment genuinely great personal news lands — delighted, laughing, a little breathless, completely authentic, in American English."}
+      ]
+    },
+    "victory_whimsical": {
+      "intended": {"V": 0.85, "A": 0.75, "T": -0.2},
+      "lines": [
+        "We did it, we did it! Oh, stars and sparkles, we actually did it!",
+        "Hooray for us, hooray for cake, hooray for absolutely everything!"
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234, 5150], "voice": "brightF",
+         "design": "A grown woman in her twenties with a bright, warm, fully adult voice — playful but natural, NOT cartoonish or childlike, in American English.",
+         "instruct": "Speak with bubbly, giddy, musical delight, laughing through the words."}
+      ]
+    },
+    "arrogance": {
+      "intended": {"V": 0.2, "A": 0.0, "T": 0.2},
+      "lines": [
+        "Oh, you practiced? That's adorable. I was born better at this than you will ever be, and honestly, everyone here knows it.",
+        "Please. I've forgotten more about this game than you will ever learn.",
+        "When you've finished applauding yourselves, the professionals will take it from here."
+      ],
+      "jobs": [
+        {"engine": "moss85", "seeds": [1234, 5150], "voice": "smugM",
+         "instruct": "A smug, self-satisfied man speaking with lazy superiority — drawling, unhurried, savoring his own importance, in American English."}
+      ]
+    },
+    "dismissive": {
+      "intended": {"V": -0.3, "A": -0.4, "T": -0.1},
+      "lines": [
+        "Mm. Fascinating. Anyway. If that's everything, some of us have actual work to do.",
+        "Right, yes, very important, I'm sure. Leave it on the pile with the others.",
+        "Is this going to take long? It feels like it's going to take long."
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234, 5150], "voice": "flatF",
+         "design": "An adult woman with a flat, dry, unimpressed voice, in American English.",
+         "instruct": "Speak with bored, clipped dismissiveness — flat falling intonation, barely bothering to finish the words."}
+      ]
+    },
+    "simmering_resentment": {
+      "intended": {"V": -0.6, "A": 0.0, "T": 0.5},
+      "lines": [
+        "Oh, I'm not angry. Twelve years, and he tells me over voicemail. Why would I be angry?",
+        "She kept the house, the dog, and my best years. I kept the receipts.",
+        "No, go ahead, take the credit. Again. I'll just be here, doing the work."
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234], "voice": "tightF",
+         "design": "A woman in her forties with a controlled adult voice, tight with held-back anger, in American English.",
+         "instruct": "Speak with simmering, contained resentment — polite words over barely suppressed fury, clipped and cold."},
+        {"engine": "moss85", "seeds": [1234], "voice": "tightM",
+         "instruct": "A man speaking through simmering, contained resentment — calm surface, fury underneath, every word controlled, in American English."}
+      ]
+    },
+    "protective_urgency": {
+      "intended": {"V": -0.1, "A": 0.3, "T": 0.5},
+      "lines": [
+        "Shh. Stay behind me. Keep your head down and hold my hand. We're going to be fine.",
+        "Take my hand. Don't look back, don't stop, just run when I say run.",
+        "Get down. Stay quiet. Whatever happens, do not leave this room until I come back."
+      ],
+      "jobs": [
+        {"engine": "dia", "seeds": [1234, 5150], "voice": "lottery", "temperature": 1.8},
+        {"engine": "qwen", "seeds": [1234], "voice": "urgentF",
+         "design": "An adult woman's voice, hushed and intent, in American English.",
+         "instruct": "An urgent protective whisper to someone you love in danger — hushed, fast, fierce, keeping them calm and safe."}
+      ]
+    },
+    "neutral_narration": {
+      "intended": {"V": 0.0, "A": -0.2, "T": 0.0},
+      "lines": [
+        "By morning the tide had gone out so far that the boats lay on their sides in the sand, patient as sleeping animals.",
+        "The train left the valley just after noon, and the fields unrolled beside it like a long green letter that nobody needed to read.",
+        "The library opened at nine, but Mrs. Aldery arrived at eight, as she had for eleven years, to sort the returns and water the fern that nobody else remembered.",
+        "Snow had fallen in the night, and the town woke to a silence so complete that even the church bells seemed to hesitate before breaking it."
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234], "voice": "narratorF",
+         "design": "A warm, natural adult female audiobook narrator, clear and even, in American English.",
+         "instruct": "Calm, engaged audiobook narration with natural inflection."},
+        {"engine": "moss85", "seeds": [1234], "voice": "narratorM",
+         "instruct": "A warm, natural middle-aged male audiobook narrator, calm and engaged, even pacing, in American English."},
+        {"engine": "dia", "seeds": [1234], "voice": "lottery", "temperature": 1.8}
+      ]
+    },
+    "melodic_lullaby": {
+      "intended": {"V": 0.5, "A": -0.6, "T": -0.4},
+      "lines": [
+        "Hush now, little sailor, the harbor lights are low. Sleep now, little sailor, the tide will rock you slow.",
+        "Close your eyes, my little wren, the moon will mind the garden. Dream away the day again, the night will keep you warm.",
+        "Down the river floats a leaf, soft and slow and dreaming. On it rides a sleepy thief, stealing stars a-gleaming."
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234, 5150], "voice": "softF",
+         "design": "A warm adult woman's voice, soft and close, in American English.",
+         "instruct": "Sing this gently as a slow lullaby to a child — soft, melodic, rocking rhythm, almost a whisper-song."}
+      ]
+    },
+    "melodic_keening": {
+      "intended": {"V": -0.8, "A": 0.3, "T": -0.2},
+      "lines": [
+        "Oh, my heart, my heart, she is gone over the sea, and the waves will not carry her back to me.",
+        "Why did the morning take you? Why did the morning take you away, my love, my only?",
+        "The house stands, the fields grow, but you are nowhere, you are nowhere, you are nowhere."
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234, 5150], "voice": "mournF",
+         "design": "A grown woman's voice, worn and sorrowful, in American English.",
+         "instruct": "Keen this as a wailed lament, half sung and half wept — a rising and falling mourning song, grief carried on melody."}
+      ]
+    },
+    "melodic_chant": {
+      "intended": {"V": 0.6, "A": 0.5, "T": 0.5},
+      "lines": [
+        "By stone and by star, we hold the line. By root and by river, this land is ours to keep.",
+        "One voice, one fire, one unbroken circle. We remember, we remain, we rise.",
+        "Brothers of the road, sisters of the storm, we swear it now and we swear it always."
+      ],
+      "jobs": [
+        {"engine": "moss85", "seeds": [1234, 5150], "voice": "chantM",
+         "instruct": "Chant this as a solemn rhythmic vow — measured, resonant, on the border between speech and song, like an oath sworn aloud, in American English."}
+      ]
+    },
+    "singsong_whimsy": {
+      "intended": {"V": 0.7, "A": 0.4, "T": -0.3},
+      "lines": [
+        "Oh what a day, what a wonderful day, the kettle is singing and so am I!",
+        "Buttons and bows and a pocket of seeds — that's everything anyone possibly needs!",
+        "Skip to the corner and twice around back, the world is a song and we know every track!"
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234], "voice": "lilty",
+         "design": "A grown woman in her twenties with a bright, warm, fully adult voice — playful but natural, NOT cartoonish, in American English.",
+         "instruct": "Speak in a light sing-song lilt, musical and skipping, humming the words more than saying them."}
+      ]
+    },
+    "embodiment": {
+      "intended": {"V": 0.2, "A": 0.1, "T": 0.0},
+      "lines": [
+        {"text": "Then Marcus jabbed his stick at the ice and growled, \"This net is mine tonight. All mine.\" And nobody argued.",
+         "char": "when quoting the teenage boy Marcus, lower and roughen your voice to play him"},
+        {"text": "Gran leaned in, eyes twinkling, and rasped, \"I buried three husbands, dear. I can certainly handle one raccoon.\" Then she picked up the broom.",
+         "char": "when quoting Gran, soften and age your voice into a raspy twinkle to play her"},
+        {"text": "Maya tugged his sleeve and squeaked, \"But what if the stars get lonely up there?\" He had no answer for that.",
+         "char": "when quoting the small girl Maya, raise and lighten your voice to play her"},
+        {"text": "The innkeeper, a mountain of a man, rumbled, \"We don't serve wizards here. Not since the incident.\" His mustache bristled at the memory.",
+         "char": "when quoting the huge innkeeper, drop into a deep gravelly rumble to play him"}
+      ],
+      "jobs": [
+        {"engine": "qwen", "seeds": [1234, 5150], "voice": "narratorF",
+         "design": "A warm adult female audiobook narrator, in American English.",
+         "instruct": "Narrate warmly; {char}, then return to your own voice for the rest."}
+      ]
+    }
+  }
+}
