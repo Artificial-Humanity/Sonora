@@ -4,8 +4,9 @@
   "license_note": "Line texts authored in-repo for this project (original prose). Engines: Dia-1.6B-0626 Apache-2.0, Qwen3-TTS-VoiceDesign Apache-2.0, MOSS-TTS-8.5B Apache-2.0, LongCat-AudioDiT-3.5B MIT.",
   "lines": [
     {
-      "id": "grief_herenow_01", "engine": "qwen", "register": "grief_herenow",
-      "intended": {"V": -0.9, "A": 0.2, "T": 0.6}, "seed": 1234,
+      "id": "grief_herenow_01", "engine": "qwen", "register": "fear_impending_loss",
+      "owner_audit": "2026-07-17: emotion obvious; not grief — fear and concern over impending loss (plays as the scene before grief_herenow_02). Relabeled.",
+      "intended": {"V": -0.7, "A": 0.4, "T": 0.6}, "seed": 1234,
       "text": "No, no, stay with me. Stay with me, please. Don't you close your eyes. Not now.",
       "direction": {"design": "A middle-aged man's voice, rough with panic and love, in American English.",
                     "instruct": "Speak with raw, immediate grief and desperation, voice cracking, pleading through tears."}
@@ -26,6 +27,7 @@
     },
     {
       "id": "victory_whimsical_01", "engine": "qwen", "register": "victory_whimsical",
+      "owner_audit": "2026-07-17: conveyance fantastic (youthful jubilance), but the fairy voicing is niche-extreme — redesign the voice description next campaign, keep the register.",
       "intended": {"V": 0.9, "A": 0.8, "T": -0.2}, "seed": 1234,
       "text": "We did it, we did it! Oh, stars and sparkles, we actually did it!",
       "direction": {"design": "A bright, airy young woman's voice, playful and light, in American English.",
@@ -52,8 +54,9 @@
       "direction": {"instruct": "A gravelly older man's voice, stone cold and unhurried, like a black-and-white noir gangster — menacing without ever raising his voice, in American English."}
     },
     {
-      "id": "victory_everyday_01", "engine": "moss85", "register": "victory_everyday",
-      "intended": {"V": 0.8, "A": 0.6, "T": 0.0}, "seed": 1234,
+      "id": "victory_everyday_01", "engine": "moss85", "register": "excited_good_news",
+      "owner_audit": "2026-07-17: very good — 'the longshot job called' energy, not cup-final energy; victory too strong a word. Relabeled excited_good_news.",
+      "intended": {"V": 0.7, "A": 0.45, "T": 0.0}, "seed": 1234,
       "text": "Ha! Did you see that? Thirty years I've waited for this. Somebody pinch me.",
       "direction": {"instruct": "An ordinary middle-aged man in a bar the moment his team finally wins — delighted, laughing, a little breathless, completely genuine, in American English."}
     },
