@@ -34,7 +34,7 @@ P_BAK = np.poly1d([-0.13166888, 1.60915514, -0.39604546])
 P_OVR = np.poly1d([-0.06766283, 1.11546468, 0.04602535])
 
 TARGET_SR = 24000
-CHARS_PER_SEC_FAST = 22.0   # duration below text_len/22 s => truncated/collapsed
+CHARS_PER_SEC_FAST = 26.0   # duration below text_len/26 s => truncated/collapsed (26 not 22: a fast drawl nicked the pilot's arrogance take)
 CHARS_PER_SEC_SLOW = 5.0    # duration above text_len/5 + 2 s => improvised tail
 # Owner-audit finding 2026-07-17: DNSMOS cannot separate "expressive" from
 # "broken" in its 2.0-2.6 band (a great giddy clip scored 2.25; white-noise
