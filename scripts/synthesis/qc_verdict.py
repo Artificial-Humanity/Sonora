@@ -84,7 +84,7 @@ def main():
         checks, notes = {}, []
         for axis in ("V", "A", "T"):
             want = r["intended"][axis]
-            if abs(want) < args.neutral_band:
+            if abs(want) <= args.neutral_band:  # inclusive: 0.3 intents are weak, not directional
                 checks[axis] = abs(measured.get(axis, 0.0)) < 3.0 if measured else False
                 continue
             got = measured.get(axis)
