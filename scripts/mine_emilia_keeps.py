@@ -44,6 +44,10 @@ def main():
     ap.add_argument("--v-lo-pct", type=float, default=5.0)
     ap.add_argument("--a-pct", type=float, default=95.0)
     ap.add_argument("--cluster-cap", type=int, default=40)
+    ap.add_argument("--v-min-cluster", type=int, default=10,
+                    help="V criteria use WITHIN-CLUSTER z (owner audit 2026-07-17: "
+                         "global scales select timbre, not affect); clusters "
+                         "smaller than this are exempt from V mining")
     ap.add_argument("--audit-n", type=int, default=48)
     ap.add_argument("--seed", type=int, default=1234)
     args = ap.parse_args()
@@ -93,23 +97,38 @@ def main():
                          "dnsmos": m.get("dnsmos"), "T": t_full, "V": v_c, "A": a_z})
     print(f"{len(rows)} scored clips in batch")
 
-    T = np.array([r["T"] for r in rows]); V = np.array([r["V"] for r in rows])
-    A = np.array([r["A"] for r in rows])
+    # V: within-cluster z — a clip qualifies by being unusually dark/bright
+    # FOR ITS OWN SPEAKER (global scales pick timbre, not affect).
+    by_spk_v = {}
+    for r in rows:
+        by_spk_v.setdefault(r["speaker"], []).append(r["V"])
+    for r in rows:
+        vs = by_spk_v[r["speaker"]]
+        if len(vs) >= args.v_min_cluster:
+            r["Vz"] = (r["V"] - float(np.mean(vs))) / (float(np.std(vs)) + 1e-6)
+        else:
+            r["Vz"] = None
+    vz_all = np.array([r["Vz"] for r in rows if r["Vz"] is not None])
+    print(f"V-eligible clips (cluster >= {args.v_min_cluster}): {len(vz_all)}")
+
+    T = np.array([r["T"] for r in rows]); A = np.array([r["A"] for r in rows])
     thr = {"T_hi": float(np.percentile(T, args.t_pct)),
-           "V_hi": float(np.percentile(V, args.v_hi_pct)),
-           "V_lo": float(np.percentile(V, args.v_lo_pct)),
+           "V_hi": float(np.percentile(vz_all, args.v_hi_pct)),
+           "V_lo": float(np.percentile(vz_all, args.v_lo_pct)),
            "A_hi": float(np.percentile(A, args.a_pct))}
     print("thresholds:", {k: round(v, 3) for k, v in thr.items()})
 
     for r in rows:
         crit = []
         if r["T"] > thr["T_hi"]: crit.append("T+")
-        if r["V"] > thr["V_hi"]: crit.append("V+")
-        if r["V"] < thr["V_lo"]: crit.append("V-")
+        if r["Vz"] is not None and r["Vz"] > thr["V_hi"]: crit.append("V+")
+        if r["Vz"] is not None and r["Vz"] < thr["V_lo"]: crit.append("V-")
         if r["A"] > thr["A_hi"]: crit.append("A+")
         r["criteria"] = crit
-        r["margin"] = max([r["T"] - thr["T_hi"], r["V"] - thr["V_hi"],
-                           thr["V_lo"] - r["V"], r["A"] - thr["A_hi"]])
+        margins = [r["T"] - thr["T_hi"], r["A"] - thr["A_hi"]]
+        if r["Vz"] is not None:
+            margins += [r["Vz"] - thr["V_hi"], thr["V_lo"] - r["Vz"]]
+        r["margin"] = max(margins)
 
     cand = [r for r in rows if r["criteria"]]
     by_cluster = {}
