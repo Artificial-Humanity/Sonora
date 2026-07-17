@@ -107,6 +107,20 @@
                     "instruct": "Speak with bored, clipped dismissiveness — flat falling intonation, barely bothering to finish the words, utterly uninterested."}
     },
     {
+      "id": "fierce_devotion_01", "engine": "moss85", "register": "fierce_devotion",
+      "owner_insight": "2026-07-17: Dances-with-Wolves case — forceful, near-angry delivery carrying love, not rage. V+ at high A/T must be populated or pressed shouts collapse to 'hostile'.",
+      "intended": {"V": 0.8, "A": 0.8, "T": 0.7}, "seed": 1234,
+      "text": "You saved my life! You are my brother! And no distance, no war, no winter will ever change that! Go! Live!",
+      "direction": {"instruct": "A warrior shouting a farewell to his closest friend across a valley — full-voiced, forceful, almost aggressive, but overflowing with love and pride, voice breaking at the edges, in American English."}
+    },
+    {
+      "id": "passionate_vow_01", "engine": "qwen", "register": "fierce_devotion",
+      "intended": {"V": 0.9, "A": 0.85, "T": 0.6}, "seed": 1234,
+      "text": "I don't care who hears it! I love you! I have always loved you, and I will say it louder every year until the day I die!",
+      "direction": {"design": "An adult woman's voice at full power, in American English.",
+                    "instruct": "Shout a declaration of love with heightened passion bordering on forceful aggression — defiant, tearful, joyous, holding nothing back."}
+    },
+    {
       "id": "victory_peak_01", "engine": "dia", "register": "victory_peak",
       "intended": {"V": 0.9, "A": 0.95, "T": 0.3}, "seed": 1234,
       "text": "We won! We won, we won, WE WON! The championship is ours!",
