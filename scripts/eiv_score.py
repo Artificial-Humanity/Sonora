@@ -72,7 +72,8 @@ def collect_wavs(inputs):
     for item in inputs:
         if os.path.isdir(item):
             for root, _, names in os.walk(item):
-                wavs += [os.path.join(root, n) for n in sorted(names) if n.endswith(".wav")]
+                wavs += [os.path.join(root, n) for n in sorted(names)
+                         if n.endswith((".wav", ".mp3"))]
         elif item.endswith(".txt"):
             with open(item, encoding="utf-8") as f:
                 wavs += [line.split("|")[0] for line in f if line.strip()]
