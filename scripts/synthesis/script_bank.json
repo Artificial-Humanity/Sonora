@@ -74,6 +74,39 @@
     },
 
     {
+      "id": "tenderness_01", "engine": "qwen", "register": "tenderness",
+      "intended": {"V": 0.6, "A": -0.5, "T": -0.4}, "seed": 1234,
+      "text": "Hey. Look at me. You made it through today, and that's enough. Come here, you're safe now.",
+      "direction": {"design": "A warm adult woman's voice, low and close, in American English.",
+                    "instruct": "Speak with quiet, unhurried tenderness and deep warmth, like comforting someone you love — soft, gentle, no urgency at all."}
+    },
+    {
+      "id": "tenderness_02", "engine": "moss85", "register": "tenderness",
+      "intended": {"V": 0.6, "A": -0.5, "T": -0.4}, "seed": 1234,
+      "text": "I remember the day you were born. The whole world went quiet, and I knew every good thing I'd ever done had led me to you.",
+      "direction": {"instruct": "A middle-aged father speaking softly and warmly to his grown child — slow, full of quiet love, almost a murmur, in American English."}
+    },
+    {
+      "id": "intimate_warmth_01", "engine": "qwen", "register": "intimate_warmth",
+      "intended": {"V": 0.7, "A": 0.2, "T": -0.6}, "seed": 1234,
+      "text": "Stay a little longer. The morning can wait. I just want to be here, with you, exactly like this.",
+      "direction": {"design": "An adult woman's voice, low, breathy and unhurried, in American English.",
+                    "instruct": "Speak in an intimate, breathy near-whisper, warm and inviting, savoring every word slowly."}
+    },
+    {
+      "id": "arrogance_01", "engine": "moss85", "register": "arrogance",
+      "intended": {"V": 0.2, "A": 0.0, "T": 0.2}, "seed": 1234,
+      "text": "Oh, you practiced? That's adorable. I was born better at this than you will ever be, and honestly, everyone here knows it.",
+      "direction": {"instruct": "A smug, self-satisfied man speaking with lazy superiority — drawling, unhurried, savoring his own importance, in American English."}
+    },
+    {
+      "id": "dismissive_01", "engine": "qwen", "register": "dismissive",
+      "intended": {"V": -0.3, "A": -0.4, "T": -0.1}, "seed": 1234,
+      "text": "Mm. Fascinating. Anyway. If that's everything, some of us have actual work to do.",
+      "direction": {"design": "An adult woman's voice, flat and unimpressed, in American English.",
+                    "instruct": "Speak with bored, clipped dismissiveness — flat falling intonation, barely bothering to finish the words, utterly uninterested."}
+    },
+    {
       "id": "victory_peak_01", "engine": "dia", "register": "victory_peak",
       "intended": {"V": 0.9, "A": 0.95, "T": 0.3}, "seed": 1234,
       "text": "We won! We won, we won, WE WON! The championship is ours!",
