@@ -1,0 +1,109 @@
+{
+  "version": "pilot-1",
+  "campaign": "pilot",
+  "license_note": "Line texts authored in-repo for this project (original prose). Engines: Dia-1.6B-0626 Apache-2.0, Qwen3-TTS-VoiceDesign Apache-2.0, MOSS-TTS-8.5B Apache-2.0, LongCat-AudioDiT-3.5B MIT.",
+  "lines": [
+    {
+      "id": "grief_herenow_01", "engine": "qwen", "register": "grief_herenow",
+      "intended": {"V": -0.9, "A": 0.2, "T": 0.6}, "seed": 1234,
+      "text": "No, no, stay with me. Stay with me, please. Don't you close your eyes. Not now.",
+      "direction": {"design": "A middle-aged man's voice, rough with panic and love, in American English.",
+                    "instruct": "Speak with raw, immediate grief and desperation, voice cracking, pleading through tears."}
+    },
+    {
+      "id": "grief_herenow_02", "engine": "qwen", "register": "grief_herenow",
+      "intended": {"V": -0.9, "A": 0.0, "T": 0.4}, "seed": 1234,
+      "text": "She was just here. She was just... I was holding her hand a minute ago.",
+      "direction": {"design": "A middle-aged man's voice, hollow and stunned, in American English.",
+                    "instruct": "Speak in stunned, broken disbelief, trailing off, on the edge of tears."}
+    },
+    {
+      "id": "threat_warning_01", "engine": "qwen", "register": "threat_warning",
+      "intended": {"V": -0.4, "A": -0.1, "T": 0.5}, "seed": 1234,
+      "text": "Walk away from this. Right now. You do not want to find out what happens if you stay.",
+      "direction": {"design": "A calm adult man's voice, low and controlled, in American English.",
+                    "instruct": "Speak as a stern, level warning — quiet, deliberate, leaving no doubt."}
+    },
+    {
+      "id": "victory_whimsical_01", "engine": "qwen", "register": "victory_whimsical",
+      "intended": {"V": 0.9, "A": 0.8, "T": -0.2}, "seed": 1234,
+      "text": "We did it, we did it! Oh, stars and sparkles, we actually did it!",
+      "direction": {"design": "A bright, airy young woman's voice, playful and light, in American English.",
+                    "instruct": "Speak with bubbly, giddy, musical delight, laughing through the words."}
+    },
+    {
+      "id": "embodiment_01", "engine": "qwen", "register": "embodiment",
+      "intended": {"V": 0.3, "A": 0.3, "T": 0.1}, "seed": 1234,
+      "text": "Then Kevin puffed out his chest and said, \"Nobody skates past me. Nobody.\" And the whole locker room believed him.",
+      "direction": {"design": "A warm adult female audiobook narrator, in American English.",
+                    "instruct": "Narrate warmly; when quoting the teenage boy Kevin, lower and roughen your voice to play him, then return to your own voice for the last sentence."}
+    },
+
+    {
+      "id": "grief_vengeful_01", "engine": "moss85", "register": "grief_vengeful",
+      "intended": {"V": -0.8, "A": 0.2, "T": 0.7}, "seed": 1234,
+      "text": "They took her from me. Every one of them walked away smiling. I remember every face.",
+      "direction": {"instruct": "A deep-voiced grown man speaking slowly through cold, contained grief that has hardened into resolve — quiet, dark, steady, in American English."}
+    },
+    {
+      "id": "threat_noir_01", "engine": "moss85", "register": "threat_noir",
+      "intended": {"V": -0.5, "A": -0.3, "T": 0.7}, "seed": 1234,
+      "text": "Sit down. Finish your drink. We're going to talk about what you did, nice and slow.",
+      "direction": {"instruct": "A gravelly older man's voice, stone cold and unhurried, like a black-and-white noir gangster — menacing without ever raising his voice, in American English."}
+    },
+    {
+      "id": "victory_everyday_01", "engine": "moss85", "register": "victory_everyday",
+      "intended": {"V": 0.8, "A": 0.6, "T": 0.0}, "seed": 1234,
+      "text": "Ha! Did you see that? Thirty years I've waited for this. Somebody pinch me.",
+      "direction": {"instruct": "An ordinary middle-aged man in a bar the moment his team finally wins — delighted, laughing, a little breathless, completely genuine, in American English."}
+    },
+    {
+      "id": "neutral_narration_01", "engine": "moss85", "register": "neutral_narration",
+      "intended": {"V": 0.0, "A": -0.2, "T": 0.0}, "seed": 1234,
+      "text": "The train left the valley just after noon, and the fields unrolled beside it like a long green letter that nobody needed to read.",
+      "direction": {"instruct": "A warm, natural middle-aged male audiobook narrator, calm and engaged, even pacing, in American English."}
+    },
+    {
+      "id": "embodiment_02", "engine": "moss85", "register": "embodiment",
+      "intended": {"V": 0.2, "A": -0.2, "T": -0.1}, "seed": 1234,
+      "text": "His grandmother waved him closer and whispered, \"The garden remembers everyone who ever tended it.\" Then she smiled and went back to her tea.",
+      "direction": {"instruct": "A male audiobook narrator with a warm even voice; when quoting the grandmother, soften and age your voice into a gentle whisper to play her, then return to your own narrator voice, in American English."}
+    },
+
+    {
+      "id": "victory_peak_01", "engine": "dia", "register": "victory_peak",
+      "intended": {"V": 0.9, "A": 0.95, "T": 0.3}, "seed": 1234,
+      "text": "We won! We won, we won, WE WON! The championship is ours!",
+      "direction": {"render_text": "[S1] We won! (laughs) We won, we won, WE WON! The championship is ours!",
+                    "temperature": 1.5, "guidance": 3.0}
+    },
+    {
+      "id": "threat_direct_01", "engine": "dia", "register": "threat_direct",
+      "intended": {"V": -0.6, "A": 0.0, "T": 0.8}, "seed": 1234,
+      "text": "Give it back. Now. I will not ask twice.",
+      "direction": {"render_text": "[S1] Give it back. Now. I will not. Ask. Twice.",
+                    "temperature": 1.3, "guidance": 3.0}
+    },
+    {
+      "id": "grief_processed_01", "engine": "dia", "register": "grief_processed",
+      "intended": {"V": -0.6, "A": -0.5, "T": -0.2}, "seed": 1234,
+      "text": "It's been six months. I finally boxed up her coat yesterday. I kept one glove.",
+      "direction": {"render_text": "[S1] It's been six months. I finally boxed up her coat yesterday. (sighs) I kept one glove.",
+                    "temperature": 1.4, "guidance": 3.0}
+    },
+    {
+      "id": "protective_urgency_01", "engine": "dia", "register": "protective_urgency",
+      "intended": {"V": -0.1, "A": 0.3, "T": 0.5}, "seed": 1234,
+      "text": "Shh. Stay behind me. Keep your head down and hold my hand. We're going to be fine.",
+      "direction": {"render_text": "[S1] Shh. Stay behind me. Keep your head down and hold my hand. We're going to be fine.",
+                    "temperature": 1.4, "guidance": 3.0}
+    },
+    {
+      "id": "neutral_narration_02", "engine": "dia", "register": "neutral_narration",
+      "intended": {"V": 0.0, "A": -0.3, "T": 0.0}, "seed": 1234,
+      "text": "By morning the tide had gone out so far that the boats lay on their sides in the sand, patient as sleeping animals.",
+      "direction": {"render_text": "[S1] By morning the tide had gone out so far that the boats lay on their sides in the sand, patient as sleeping animals.",
+                    "temperature": 1.4, "guidance": 3.0}
+    }
+  ]
+}
