@@ -16,7 +16,10 @@ import torch
 from transformers import AutoProcessor, DiaForConditionalGeneration
 
 MODEL_DIR = "/data/reference/models/nari-labs/Dia-1.6B-0626"
-TEMP_FLOOR = 1.3
+# Pilot owner-audit 2026-07-17: 2/5 collapses at temp 1.3-1.4 (white noise /
+# wordless output). The audition's good renders used 1.8. 1.3 is the cliff,
+# not a floor — register control belongs to text/staging, not temperature.
+TEMP_FLOOR = 1.5
 TOKENS_PER_SEC = 86            # Dia audio-token frame rate
 CHARS_PER_SEC = 14.0           # mid-rate English speech estimate
 
@@ -46,7 +49,7 @@ def main():
     manifest_path = os.path.join(args.out, "dia_manifest.jsonl")
     with open(manifest_path, "w", encoding="utf-8") as mf:
         for job in jobs:
-            temp = max(job["direction"].get("temperature", 1.4), TEMP_FLOOR)
+            temp = max(job["direction"].get("temperature", 1.8), TEMP_FLOOR)
             torch.manual_seed(job["seed"])
             inputs = processor(text=[job["direction"]["render_text"]],
                                padding=True, return_tensors="pt").to("cuda")
