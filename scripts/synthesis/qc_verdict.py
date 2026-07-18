@@ -94,12 +94,25 @@ def main():
             m = all_measured[r["id"]]
             if m:
                 by_eng.setdefault(r["engine"], []).append(m)
+        # Zero point = the engine's NEUTRAL_NARRATION takes (bulk-1 finding: the
+        # full-pool mean is biased by register composition — Qwen's pool skews
+        # soft/sad, MOSS's dark — so correct strong deliveries failed direction
+        # checks against an already-shifted mean). Same logic as per-speaker z:
+        # each channel's neutral defines its zero. Spread still from full pool.
+        neutral = {}
+        for r in rows:
+            if r["register"] == "neutral_narration":
+                m = all_measured[r["id"]]
+                if m:
+                    neutral.setdefault(r["engine"], []).append(m)
         for eng, ms in by_eng.items():
             if len(ms) >= 15:
-                eng_stats[eng] = {ax: (float(np.mean([m[ax] for m in ms])),
+                zeros = neutral.get(eng) or ms
+                eng_stats[eng] = {ax: (float(np.mean([m[ax] for m in zeros])),
                                        float(np.std([m[ax] for m in ms]) + 1e-6))
                                   for ax in ("V", "A", "T")}
-        print(f"per-engine recentering active for: {sorted(eng_stats)}")
+        print(f"per-engine recentering active for: {sorted(eng_stats)} "
+              f"(neutral-anchored: {sorted(k for k in eng_stats if k in neutral)})")
 
     verdicts, keeps = [], []
     print(f"{'id':26s} {'axis verdicts':40s} keep")
