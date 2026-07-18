@@ -76,7 +76,7 @@ def collect_wavs(inputs):
                          if n.endswith((".wav", ".mp3"))]
         elif item.endswith(".txt"):
             with open(item, encoding="utf-8") as f:
-                wavs += [line.split("|")[0] for line in f if line.strip()]
+                wavs += [line.strip().split("|")[0] for line in f if line.strip()]
         else:
             wavs.append(item)
     seen, out = set(), []
