@@ -36,3 +36,14 @@ run "apt-get -qq update >/dev/null 2>&1; apt-get -qq install -y sox >/dev/null 2
      python /sonora/scripts/synthesis/synth_qwen.py --bank $BANK --out $OUT" || echo "  (qwen failed — continuing)"
 
 echo "== done: $(ls -1 "$OUT"/*.wav 2>/dev/null | wc -l) wav(s) in $OUT =="
+
+# Register the rendered clips into the audition queue (ratings.csv SSOT) so they
+# reach the review surface. Idempotent, host-side (uv, not the GPU container); only
+# queues clips whose wav lands under DATA_ROOT. Non-fatal if it can't run.
+echo "== register audition =="
+if command -v uv >/dev/null 2>&1; then
+  uv run "$SONORA/scripts/synthesis/register_audition.py" --audio-dir "$OUT" \
+    || echo "  (register_audition failed — clips rendered but not queued; run it manually)"
+else
+  echo "  (uv not found — skipped; run register_audition.py --audio-dir $OUT to queue)"
+fi
