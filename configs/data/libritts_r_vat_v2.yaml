@@ -1,0 +1,30 @@
+# LibriTTS-R train-clean-100 @ native 24 kHz, FULL 3-channel V/A/T labels
+# (scripts/derive_vat_corpus.py v2: V = EIV valence_combo_v1 per-speaker z,
+# A = LUFS z, T = phonation trio + soft-json harshness repair; independence
+# gate PASS all pairs — see data/libritts_r_vat_v2/derivation_report.json).
+# Same 29,441-clip audio split as libritts_r_vat, so mel statistics carry over.
+# Emilia tail keeps will EXTEND these filelists when integrated (vat-corpus
+# brief step 5) — recompute data_statistics if/when that lands.
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_vat_v2
+train_filelist_path: data/libritts_r_vat_v2/train_op.txt
+valid_filelist_path: data/libritts_r_vat_v2/val_op.txt
+batch_size: 32
+num_workers: 20
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 247
+n_fft: 1024
+n_feats: 80
+sample_rate: 24000
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 12000
+data_statistics:  # computed by matcha/utils/generate_data_statistics.py (2026-07-14, 29,441-clip train split)
+  mel_mean: -5.504811
+  mel_std: 2.386137
+seed: ${seed}
+load_durations: false
+load_vat: true

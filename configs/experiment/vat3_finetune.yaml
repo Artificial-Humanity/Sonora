@@ -1,0 +1,28 @@
+# @package _global_
+
+# Milestone-3 full-VAT round: all THREE channels (V = EIV valence combo,
+# A = LUFS, T = phonation+harshness) through the FiLM VAT plumbing,
+# multi-speaker, native 24 kHz — the corpus is libritts_r_vat_v2
+# (independence gate PASS all pairs). Warm-start from the PROMOTED §7
+# de-risk checkpoint (Registry/Sonora/derisk-energy-24k, epoch 099) —
+# identical architecture, so every tensor warms; fresh optimizer.
+# Verdict via scripts/eval_harness.py across all three channels
+# (energy->LUFS, tension->phonation, valence->eiv_valence measures).
+#
+# python scripts/make_warmstart.py --experiment vat3_finetune \
+#     --donor /data/model-training/sonora/logs/train/derisk_energy/runs/2026-07-15_00-20-31/checkpoints/checkpoint_epoch=099.ckpt \
+#     --out /data/model-training/sonora/warmstart/vat3_init.ckpt
+# python -m matcha.train experiment=vat3_finetune ckpt_path=/data/model-training/sonora/warmstart/vat3_init.ckpt
+#
+# Pre-flight: AI-Lab-0/scripts/inference-engines.sh stop  (spin-down rule +
+# GitOps guard), owner audits audit-tension-v2 / audit-valence-v1 signed off.
+
+defaults:
+  - override /data: libritts_r_vat_v2.yaml
+
+tags: ["libritts_r", "vat", "vat3", "valence", "tension", "energy"]
+
+run_name: vat3_finetune
+
+model:
+  use_vat: true
