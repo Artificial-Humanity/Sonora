@@ -5,8 +5,16 @@
 # Verified license survey: Notes/Sonora/dataset-landscape.md (umbrella repo).
 #
 # class: permissive — allowed in the production corpus
-#        nc         — CC-BY-NC etc.: de-risk experiments only, NEVER production;
-#                     requires SONORA_LICENSE_WALL=derisk and taints the run.
+#        nc         — bare CC-BY-NC (no agreement executed). Owner ruling 2026-07-19
+#                     (Notes/Sonora/nc-gray-area-and-candidate-quality.md §2):
+#                     risk-accepted for training use; SONORA_LICENSE_WALL=derisk +
+#                     run-taint are retained as LINEAGE AUDIT (so any release can
+#                     disclose exactly what's in the weights), not as prohibition.
+#                     Ship/don't-ship NC lineage is a flagged promotion-time call.
+#
+# Agreement-walled datasets (click-through / "by downloading you agree" terms,
+# e.g. EmoV-DB) are FULLY EXCLUDED by the same ruling: never downloaded, never
+# ingested, never declared here.
 #
 # dirs are matched case-insensitively as exact path components of the filelist
 # path and of every audio path inside the filelist.
