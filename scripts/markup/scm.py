@@ -2,11 +2,12 @@
 
 Sidecar-canonical: these helpers validate a sidecar object, render the human-facing
 inline projection (never parsed back), and verify measurable claims against the
-instrument decode (utterance VAT within ±0.25; spans activate when the span decode
+instrument decode (utterance VAT within ±0.35; spans activate when the span decode
 layer lands). Interpretive fields (style, direction) are never load-bearing.
 """
 
-VAT_TOL = 0.25  # ratified verifier tolerance on the clamped [-1, 1] scale
+VAT_TOL = 0.35  # ratified tolerance (owner amendment 2026-07-19: widened from
+                # 0.25 to match the 0.4 quantizer bin width; copy-through declined)
 SPAN_TYPES = {"emphasis", "pause_after", "pace", "pitch_move", "nonverbal", "quote"}
 PAUSE_BINS = {"micro", "short", "med", "long"}
 GENDERS = {"Male", "Female", "Undefined"}
