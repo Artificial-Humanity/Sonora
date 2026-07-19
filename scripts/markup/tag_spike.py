@@ -71,6 +71,24 @@ def select(rows, n_reg=50, n_corpus=50):
     return picked + neutrals + extremes
 
 
+def narrative_context(r, before=2, after=1):
+    """Neighboring sentences from the chapter dir (LibriTTS ordering); None elsewhere.
+    Audiobook prosody follows narrative context (owner, 2026-07-19) — give Gemma the
+    same local window the production Director reads."""
+    if r.get("source") != "libritts_r_vat_v2":
+        return None
+    wav = Path(r["wav"])
+    sibs = sorted(wav.parent.glob("*.normalized.txt"))
+    names = [x.name for x in sibs]
+    me = wav.with_suffix("").name + ".normalized.txt"
+    if me not in names:
+        return None
+    i = names.index(me)
+    prev = [x.read_text().strip() for x in sibs[max(0, i - before):i]]
+    nxt = [x.read_text().strip() for x in sibs[i + 1:i + 1 + after]]
+    return (prev, nxt)
+
+
 def prompt_for(r, lexicon, include_register_list=True):
     vat = row_vat(r)
     sym = ", ".join(f"{c}:{bin_sym(v)}" for c, v in vat.items())
@@ -80,6 +98,14 @@ def prompt_for(r, lexicon, include_register_list=True):
     secs = (r.get("measures") or {}).get("seconds") or (r.get("qc") or {}).get("duration") or "?"
     gender = r.get("gender") or "unknown"
     lex = " | ".join(sorted(lexicon))
+    ctx = narrative_context(r)
+    ctx_block = ""
+    if ctx:
+        prev, nxt = ctx
+        if prev:
+            ctx_block += 'CONTEXT (spoken just before, same reader): "' + " ".join(prev) + '"\n'
+        if nxt:
+            ctx_block += 'CONTEXT (spoken just after): "' + " ".join(nxt) + '"\n'
     return (
         "You annotate speech clips with Sonora Conveyance Markup (SCM v0.1).\n"
         "Given the TEXT of an utterance and INSTRUMENT readings from its audio recording, "
@@ -94,6 +120,13 @@ def prompt_for(r, lexicon, include_register_list=True):
         "- style: up to 3 adjectives describing the delivery you infer.\n"
         "- direction: one sentence a voice director would give to reproduce this exact "
         "delivery of this text.\n"
+        "The INSTRUMENT bins are measurements of the ACTUAL RECORDED AUDIO and are ground "
+        "truth about the delivery. Your vat values MUST lie inside each stated bin's range: "
+        "-2=[-1.0,-0.6) -1=[-0.6,-0.2) 0=[-0.2,0.2) +1=[0.2,0.6) +2=[0.6,1.0] — output DECIMAL values (e.g. -0.8), never the bin label itself. The text (or "
+        "its context) may SUGGEST a different emotion than the measured delivery — when they "
+        "disagree, trust the instruments, and let register/style/direction describe the "
+        "delivery as actually performed (the surrounding context often explains why).\n"
+        + ctx_block +
         f'TEXT: "{r.get("text", "")}"\n'
         f"INSTRUMENTS: vat bins {sym}; duration {secs}s; strongest EIV emotion heads: {emo}; "
         f"speaker gender: {gender}\n"
@@ -117,6 +150,7 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--no-register-audit", action="store_true",
                     help="skip appending the audit-markup-v0 campaign rows")
+    ap.add_argument("--out", default=str(OUT_DIR), help="output dir")
     args = ap.parse_args()
 
     rows = [json.loads(l) for l in open(NOTATION) if l.strip()]
@@ -126,7 +160,8 @@ def main():
     picks = select(rows)
     if args.limit:
         picks = picks[:args.limit]
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     results, n_valid, n_verified, reg_hits, reg_total = [], 0, 0, 0, 0
     for i, r in enumerate(picks):
@@ -163,7 +198,7 @@ def main():
               f"{'ok' if obj['provenance']['verified'] else 'FLAG'}"
               f"{' reg=' + str(obj['provenance'].get('register_hit')) if reg_total and r['source'] != 'libritts_r_vat_v2' else ''}")
 
-    with open(OUT_DIR / "scm_rows.jsonl", "w") as f:
+    with open(out_dir / "scm_rows.jsonl", "w") as f:
         for o in results:
             f.write(json.dumps(o, ensure_ascii=False) + "\n")
     report = {
@@ -172,7 +207,7 @@ def main():
         "register_recovery": {"hits": reg_hits, "total": reg_total},
         "errors": sum(1 for x in results if "error" in x),
     }
-    json.dump(report, open(OUT_DIR / "report.json", "w"), indent=1)
+    json.dump(report, open(out_dir / "report.json", "w"), indent=1)
     print("REPORT:", json.dumps(report))
 
     if args.no_register_audit:
