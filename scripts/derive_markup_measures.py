@@ -50,9 +50,10 @@ def main():
 
     # EIV for the synthetic campaigns, keyed by filename stem (paths differ post-rename).
     camp_eiv = {}
-    for f in Path("/data/model-training/datasets/synthetic_v1").glob("*/eiv_scores.jsonl"):
-        for r in jsonl(f):
-            camp_eiv[Path(r["wav"]).stem] = {k: v for k, v in r.items() if k != "wav"}
+    for pat in ("synthetic_v1/*/eiv_scores.jsonl", "book-prose/*/eiv_scores.jsonl"):
+        for f in Path("/data/model-training/datasets").glob(pat):
+            for r in jsonl(f):
+                camp_eiv[Path(r["wav"]).stem] = {k: v for k, v in r.items() if k != "wav"}
 
     rows, miss_txt, miss_meas = [], 0, 0
     for fl in ("train_op.txt", "val_op.txt"):
