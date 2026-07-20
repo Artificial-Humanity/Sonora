@@ -10,7 +10,9 @@ name: libritts_r_vat_v2
 train_filelist_path: data/libritts_r_vat_v2/train_op.txt
 valid_filelist_path: data/libritts_r_vat_v2/val_op.txt
 batch_size: 32
-num_workers: 20
+# 8, not 20: workers are now spawned (own torch import + RSS each, no COW
+# sharing with the trainer) — 8 saturates wav+mel loading on 16 cores.
+num_workers: 8
 pin_memory: True
 cleaners: [no_cleaners]
 add_blank: True
