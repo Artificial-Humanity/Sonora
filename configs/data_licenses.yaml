@@ -25,7 +25,7 @@ datasets:
     license: LJ Speech (LibriVox public domain recordings, public domain texts)
     class: permissive
   libritts_r:
-    dirs: [LibriTTS-R, libritts_r, libritts-r, libritts_r_vat]
+    dirs: [LibriTTS-R, libritts_r, libritts-r, libritts_r_vat, libritts_r_vat_v1, libritts_r_vat_v2]
     license: CC-BY-4.0
     class: permissive
   parler_libritts_r_annotated:
