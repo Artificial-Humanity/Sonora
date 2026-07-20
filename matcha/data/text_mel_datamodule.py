@@ -100,6 +100,17 @@ class TextMelDataModule(LightningDataModule):
             load_vat=self.hparams.load_vat,
         )
 
+    def _loader_mp_kwargs(self):
+        # Workers must be spawned, not forked: forking the GPU-initialized
+        # trainer (dozens of HIP/MIOpen threads, KFD SVM ranges) wedges for
+        # minutes per fork on gfx1151 (amdgpu restore-workqueue churn,
+        # observed 2026-07-20). Spawned workers never touch the parent's GPU
+        # address space; persistent workers pay the spawn cost once per fit
+        # instead of every epoch.
+        if self.hparams.num_workers == 0:
+            return {}
+        return {"multiprocessing_context": "spawn", "persistent_workers": True}
+
     def train_dataloader(self):
         return DataLoader(
             dataset=self.trainset,
@@ -108,6 +119,7 @@ class TextMelDataModule(LightningDataModule):
             pin_memory=self.hparams.pin_memory,
             shuffle=True,
             collate_fn=TextMelBatchCollate(self.hparams.n_spks),
+            **self._loader_mp_kwargs(),
         )
 
     def val_dataloader(self):
@@ -118,6 +130,7 @@ class TextMelDataModule(LightningDataModule):
             pin_memory=self.hparams.pin_memory,
             shuffle=False,
             collate_fn=TextMelBatchCollate(self.hparams.n_spks),
+            **self._loader_mp_kwargs(),
         )
 
     def teardown(self, stage: Optional[str] = None):
