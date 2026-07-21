@@ -65,12 +65,22 @@ DETP = r"(?:(?:the|a|an|his|her|their|my|that)\s+[a-z]+(?:\s+[a-z]+)?)"
 SPEAKER = f"(?:{NAME}|{PRON}|{DETP})"
 ADV = r"(?:\s+\w+ly)?"  # "said quietly," / "murmured gently the other"
 
+# Attribution detection is OPEN-CLASS (owner rule 2026-07-21): the syntactic
+# slot is the signal — in "…," <verb> <Speaker> almost any verb is an
+# utterance/expression verb. VERB_RE (the lexicon) is tried first for known
+# classes; ANYVERB catches the rest ("scolded", "whimpered", "retorted",
+# "ejaculated"...), recorded with classes=None so the lexicon grows from
+# real text instead of guesswork. Speaker-first shapes keep the closed
+# lexicon ("Jack laughed" ambiguity: was it speech or action?).
+ANYVERB = r"[a-z]+(?:ed|said|says|cried|told|began|sang|sung|spoke|went on)"
 # following/inverted clause, right after the closing quote:
 #   ", " mused Jack   |   ", " Sarah said   |   ", " said the girl softly
 POST_VERB_FIRST = re.compile(rf"^\s*({VERB_RE}){ADV}\s+({SPEAKER})", re.IGNORECASE)
+POST_ANYVERB_FIRST = re.compile(rf"^\s*({ANYVERB}){ADV}\s+({SPEAKER})")
 POST_NAME_FIRST = re.compile(rf"^\s*({SPEAKER})\s+({VERB_RE})\b", re.IGNORECASE)
 # preceding clause, right before the opening quote:  Laurie said, " | she muttered softly: "
 PRE_CLAUSE = re.compile(rf"({SPEAKER})\s+({VERB_RE}){ADV}\s*[,:.]?\s*$", re.IGNORECASE)
+PRE_ANYVERB = re.compile(rf"({SPEAKER})\s+({ANYVERB}){ADV}\s*[,:.]?\s*$")
 
 QUOTE = re.compile("“(.*?)”", re.DOTALL)  # SE curly double quotes
 
@@ -92,8 +102,11 @@ def mine_paragraph(text):
             a, b = pm.group(1), pm.group(2)
             verb, speaker = (a, b) if classify(a) else (b, a)
             pos = "post"
+        elif (om := POST_ANYVERB_FIRST.match(after)):
+            verb, speaker = om.group(1), om.group(2)
+            pos = "post"
         else:
-            bm = PRE_CLAUSE.search(before[-80:])
+            bm = PRE_CLAUSE.search(before[-80:]) or PRE_ANYVERB.search(before[-80:])
             if bm:
                 speaker, verb = bm.group(1), bm.group(2)
                 pos = "pre"
@@ -149,7 +162,7 @@ def main():
 
     in_len = [r for r in rows if args.min_secs <= r["est_seconds"] <= args.max_secs]
     attributed = [r for r in in_len if r["verb"]]
-    by_class = collections.Counter(cl for r in attributed for cl in r["classes"])
+    by_class = collections.Counter(cl for r in attributed for cl in (r["classes"] or []))
     by_pos = collections.Counter(r["clause"] for r in attributed)
     by_verb = collections.Counter(r["verb"] for r in attributed)
 
@@ -158,6 +171,12 @@ def main():
           f"({100 * len(attributed) / max(len(in_len), 1):.0f}%) | "
           f"narration-only paragraphs: {narration_paras}")
     print(f"clause position: {dict(by_pos)}")
+    unknown = collections.Counter(r["verb"] for r in attributed if r["classes"] is None)
+    if unknown:
+        print(f"\nopen-class verbs caught outside the lexicon "
+              f"({sum(unknown.values())} quotes) — lexicon candidates:")
+        for v, n in unknown.most_common(20):
+            print(f"  {v:14s} {n}")
     print("\nby class (attributed, in-length):")
     for cl, n in by_class.most_common():
         print(f"  {cl:14s} {n}")
