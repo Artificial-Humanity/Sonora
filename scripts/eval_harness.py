@@ -31,7 +31,8 @@ Usage:
         [--skip-identity] [--skip-wer] [--report out.json]
 
 Eval-only deps (NOT in requirements.txt — keep the training image lean):
-    uv pip install soundfile pyloudnorm librosa faster-whisper speechbrain
+    uv pip install soundfile pyloudnorm librosa faster-whisper speechbrain \
+        transformers  # transformers: the valence combo's EmoWhisper encoder
 """
 
 import argparse
@@ -92,11 +93,15 @@ def phonation(wav, sr):
 
 
 class EivValence:
-    """Valence's produced measure: the corpus labeler itself (EIV valence
-    head over EmoWhisper states, CPU) — valence has no honest acoustics-only
-    proxy, so the gate uses the same instrument that labeled the training
-    data. Heavier than the other measures; loaded only when a manifest
-    requests the valence channel."""
+    """Valence's produced measure: the frozen 9-head combo that labeled the
+    corpus (valence_combo_v1.json — per-speaker z each head, dot weights;
+    vat-corpus-decision-brief.md). NOT the single Valence head: that head is
+    near-degenerate (81% of corpus clips score a bit-identical dead-zone
+    constant — instrument test 2026-07-21, vat3_eval/valence_instrument_test)
+    and was already rejected for labeling when the combo was fit. score()
+    returns raw per-head scores; the recipe's per-speaker z + weighted dot
+    runs in main() once all of a clip's rows are measured (a sweep's rows
+    share one speaker, so the clip is the z population)."""
 
     def __init__(self):
         import torch
@@ -106,12 +111,21 @@ class EivValence:
         self.torch = torch
         enc_dir = os.environ.get("SONORA_EIV_ENCODER", ENCODER_DEFAULT)
         heads_dir = os.environ.get("SONORA_EIV_HEADS", HEADS_DIR_DEFAULT)
+        combo_path = os.environ.get(
+            "SONORA_VALENCE_COMBO",
+            "/data/model-training/sonora/eiv_scores/valence_combo_v1.json")
+        with open(combo_path, encoding="utf-8") as f:
+            combo = json.load(f)
+        self.combo = [(n, w) for n, w in zip(combo["heads"], combo["weights"])
+                      if w != 0.0]
         self.processor = WhisperProcessor.from_pretrained(enc_dir)
         self.encoder = WhisperForConditionalGeneration.from_pretrained(enc_dir) \
             .get_encoder().eval()
-        sd = torch.load(os.path.join(heads_dir, "model_Valence_best.pth"),
-                        map_location="cpu", weights_only=True)
-        self.head = Head(sd).eval()
+        self.heads = {}
+        for name, _w in self.combo:
+            sd = torch.load(os.path.join(heads_dir, f"model_{name}_best.pth"),
+                            map_location="cpu", weights_only=True)
+            self.heads[name] = Head(sd).eval()
 
     def score(self, wav, sr):
         import librosa
@@ -124,7 +138,32 @@ class EivValence:
             emb = self.encoder(input_features=feats).last_hidden_state
             if emb.shape[1] < 1500:
                 emb = self.torch.nn.functional.pad(emb, (0, 0, 0, 1500 - emb.shape[1]))
-            return float(self.head(emb[:, :1500]).item())
+            return {name: float(h(emb[:, :1500]).item())
+                    for name, h in self.heads.items()}
+
+    def finalize(self, rows):
+        """The combo's per-speaker z + dot, per clip: group names are
+        '<clip>::<channel>' (or just '<clip>'), and every row of a clip is
+        the same speaker. A head with zero variance within a clip (the
+        dead-zone failure mode) contributes 0 rather than exploding."""
+        by_clip = {}
+        for r in rows:
+            if "eiv_heads_raw" not in r["_measures"]:
+                continue
+            clip = r.get("group", "default").rsplit("::", 1)[0]
+            by_clip.setdefault(clip, []).append(r)
+        for clip_rows in by_clip.values():
+            for r in clip_rows:
+                r["_measures"]["eiv_valence"] = 0.0
+            for name, w in self.combo:
+                xs = np.array([r["_measures"]["eiv_heads_raw"][name]
+                               for r in clip_rows])
+                sd = xs.std()
+                if sd < 1e-9:
+                    continue
+                z = (xs - xs.mean()) / sd
+                for r, zv in zip(clip_rows, z):
+                    r["_measures"]["eiv_valence"] += w * float(zv)
 
 
 def _ranks(x):
@@ -262,13 +301,16 @@ def main():
         if measure_tension:
             r["_measures"]["phonation"] = phonation(wav, sr)
         if eiv:
-            r["_measures"]["eiv_valence"] = eiv.score(wav, sr)
+            r["_measures"]["eiv_heads_raw"] = eiv.score(wav, sr)
         if whisper:
             hyp = whisper.transcribe(wav)
             r["_wer"] = wer(r["text"], hyp)
             r["_transcript"] = hyp
         if ecapa:
             r["_emb"] = ecapa.embed(wav, sr)
+
+    if eiv:
+        eiv.finalize(rows)
 
     groups = {}
     for r in rows:
