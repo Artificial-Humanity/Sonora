@@ -119,6 +119,10 @@ def main():
     ap.add_argument("--min-secs", type=float, default=3.0)
     ap.add_argument("--max-secs", type=float, default=16.0)
     ap.add_argument("--neutral-controls", type=int, default=4)
+    ap.add_argument("--campaign", default="quote-pilot-v1")
+    ap.add_argument("--id-prefix", default="qp")
+    ap.add_argument("--exclude-banks", nargs="*", default=[],
+                    help="prior bank JSONs whose quotes must not be re-picked")
     ap.add_argument("--ollama", default="http://localhost:11434/api/chat")
     ap.add_argument("--model", default="gemma-4-26b-a4b-qat")
     args = ap.parse_args()
@@ -127,6 +131,11 @@ def main():
 
     rows = [json.loads(l) for l in open(args.candidates, encoding="utf-8")]
     pool = [r for r in rows if args.min_secs <= r["est_seconds"] <= args.max_secs]
+    used = set()
+    for b in args.exclude_banks:
+        for l in json.load(open(b, encoding="utf-8"))["lines"]:
+            used.add(l["text"][:60])
+    pool = [r for r in pool if r["quote"][:60] not in used]
 
     expressive = [r for r in pool if r.get("classes") and "neutral" not in r["classes"]]
     rest = [r for r in pool if r not in expressive]
@@ -134,15 +143,18 @@ def main():
                     key=lambda r: -r["quote"].count("!"))
     neutrals = [r for r in rest if "!" not in r["quote"]
                 and r.get("verb") == "said"][: args.neutral_controls]
+    # Controls are RESERVED slots (v1 lesson: exclamatory picks crowded them out).
+    quota = args.n - min(len(neutrals), args.neutral_controls)
     picked, seen = [], set()
-    for r in expressive + exclam + neutrals:
+    for r in expressive + exclam:
         key = r["quote"][:60]
         if key in seen:
             continue
         seen.add(key)
         picked.append(r)
-        if len(picked) == args.n:
+        if len(picked) == quota:
             break
+    picked += neutrals[: args.n - len(picked)]
     print(f"picked {len(picked)}: {len([r for r in picked if r in expressive])} "
           f"verb-expressive, {len([r for r in picked if r in exclam])} exclamatory, "
           f"{len([r for r in picked if r in neutrals])} neutral controls")
@@ -170,9 +182,9 @@ def main():
             # Dia's renderer contract (synth_dia.py): [S1]-tagged render text
             # + sampling knobs live in direction (book_ingest sets the same).
             direction.update({"render_text": f"[S1] {r['quote']}",
-                              "temperature": 1.8, "guidance": 3.0})
+                              "temperature": 1.8, "guidance": 4.0})
         lines.append({
-            "id": f"qp_{i:02d}_{cls}",
+            "id": f"{args.id_prefix}_{i:02d}_{cls}",
             "engine": d["engine"],
             "register": d["register"],
             "intended": {"V": round(float(d["valence"]), 2),
@@ -189,7 +201,7 @@ def main():
 
     bank = {
         "version": 1,
-        "campaign": "quote-pilot-v1",
+        "campaign": args.campaign,
         "license_note": "Text: The Necromancers (Standard Ebooks, CC0/public domain). "
                         "Audio: synthetic, rendered by Apache-2.0 teacher models "
                         "(Dia / Qwen3-TTS / MOSS-TTSD); labels = director-intended VAT.",
