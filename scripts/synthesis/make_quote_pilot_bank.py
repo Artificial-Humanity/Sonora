@@ -142,6 +142,12 @@ def main():
             print("    SKIPPED (director failed)")
             continue
         cls = (r.get("classes") or ["content"])[0]
+        direction = {"design": d["voice_design"], "instruct": d["instruct"]}
+        if d["engine"] == "dia":
+            # Dia's renderer contract (synth_dia.py): [S1]-tagged render text
+            # + sampling knobs live in direction (book_ingest sets the same).
+            direction.update({"render_text": f"[S1] {r['quote']}",
+                              "temperature": 1.8, "guidance": 3.0})
         lines.append({
             "id": f"qp_{i:02d}_{cls}",
             "engine": d["engine"],
@@ -151,7 +157,7 @@ def main():
                          "T": round(float(d["tension"]), 2)},
             "seed": 1234,
             "text": r["quote"],
-            "direction": {"design": d["voice_design"], "instruct": d["instruct"]},
+            "direction": direction,
             "source_ref": {"book": "pg:14275", "chapter": r["chapter"],
                            "para": r["para"], "verb": r.get("verb"),
                            "speaker": r.get("speaker"), "clause": r.get("clause"),
