@@ -58,14 +58,29 @@ def build_context(paras, para_idx, quote):
     return " ".join(pre_sents[-2:]), (post_sents[0] if post_sents else "")
 
 
+# Recording-style guardrails (owner audit of quote-pilot-v1, 2026-07-21: renders
+# arrived with hallucinated production values — 1960s-broadcast voicing, sermon-
+# in-a-hall reverb — that no direction asked for; the teachers fill the vacuum
+# with their training data's room tone unless told not to).
+DRY_CLAUSE = (" Recorded close-mic in a dry modern studio: no room reverb, no "
+              "echo, no radio/broadcast processing, no background ambience.")
+ENV_WORDS = re.compile(
+    r"\b(radio|broadcast|announcer|vintage|1[89]\d0s|echo|reverb|cathedral|"
+    r"church|hall|auditorium|stadium|megaphone|telephone|PA system|gramophone)\b",
+    re.IGNORECASE)
+STYLE_RULE = ("\nRecording style is FIXED: a dry, close-mic modern studio. Never "
+              "describe era, broadcast media, microphones, or room acoustics in "
+              "voice_design or instruct — only the speaker and the delivery.")
+
+
 def call_director(user, model, url, retries=3):
     from book_ingest import DIRECTOR_SYSTEM
 
-    for _ in range(retries):
+    for attempt in range(retries):
         body = json.dumps({
             "model": model, "stream": False, "think": False,
             "options": {"num_predict": 400, "temperature": 0.2},
-            "messages": [{"role": "system", "content": DIRECTOR_SYSTEM},
+            "messages": [{"role": "system", "content": DIRECTOR_SYSTEM + STYLE_RULE},
                          {"role": "user", "content": user}],
         }).encode()
         req = urllib.request.Request(url, data=body,
@@ -81,6 +96,14 @@ def call_director(user, model, url, retries=3):
                     raise KeyError(k)
             if d["engine"] not in ("dia", "qwen", "moss85"):
                 raise ValueError(d["engine"])
+            hits = ENV_WORDS.findall(d["voice_design"] + " " + d["instruct"])
+            if hits:
+                print(f"    direction lint hit {hits}; retrying")
+                user += ("\n\nIMPORTANT: your previous answer described recording "
+                         f"conditions ({', '.join(hits)}). Describe ONLY the speaker "
+                         "and delivery; the studio is always dry and modern.")
+                continue
+            d["voice_design"] = d["voice_design"].rstrip(".") + "." + DRY_CLAUSE
             return d
         except Exception as e:
             print(f"    director retry ({e!r})")
