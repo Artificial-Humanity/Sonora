@@ -1,0 +1,8 @@
+{
+  "lines": [
+    {"id": "victory", "target": "V+ A+ excitement", "text": "We won! We actually won the championship!"},
+    {"id": "grief", "target": "V- low-A sorrow", "text": "She's gone. I keep setting two cups out in the morning, and then I remember."},
+    {"id": "threat", "target": "T+ low-A pressed whisper", "text": "Don't move. Don't even breathe. If you make a sound, they will hear us."},
+    {"id": "longform", "target": "neutral narration baseline", "text": "The lighthouse keeper woke before dawn, as he had done every morning for thirty years. He put the kettle on the small iron stove and watched the window while the water warmed. Outside, the sea was the color of slate, and the gulls hung in the wind like scraps of paper."}
+  ]
+}
