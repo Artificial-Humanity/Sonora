@@ -48,8 +48,11 @@ DIRECTOR_SYSTEM = (
     '"engine": one of "dia"|"qwen"|"moss85", '
     '"voice_design": one sentence describing the speaker voice (age, gender, timbre, accent), '
     '"instruct": one imperative sentence directing delivery (pace, emotion, emphasis)}\n'
-    "Engine guide: dia = neutral/long narration and high-energy positive; "
-    "qwen = soft/tender/intimate/here-and-now grief; moss85 = dark/menace/oratory/force. "
+    "Engine guide: dia = NEUTRAL/long NARRATION ONLY (dia is undirectable at render "
+    "time — it reads only the text, so never assign it a line whose delivery depends "
+    "on your voice_design/instruct; owner ruling 2026-07-22); "
+    "qwen = expressive/emotional lines of any kind, soft/tender/intimate; "
+    "moss85 = dark/menace/oratory/force. "
     "Valence = pleasant(+)/unpleasant(-); Arousal = energy; Tension = held/threat/unease. JSON only."
 )
 
