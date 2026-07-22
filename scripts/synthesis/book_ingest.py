@@ -51,7 +51,10 @@ DIRECTOR_SYSTEM = (
     "Engine guide: dia = NEUTRAL/long NARRATION ONLY (dia is undirectable at render "
     "time — it reads only the text, so never assign it a line whose delivery depends "
     "on your voice_design/instruct; owner ruling 2026-07-22); "
-    "qwen = expressive/emotional lines of any kind, soft/tender/intimate; "
+    "qwen = expressive/emotional lines of any kind, soft/tender/intimate — NOTE: qwen "
+    "renders voices younger and higher-pitched than described (owner calibration "
+    "2026-07-22), so for mature/older characters exaggerate the descriptors "
+    "(explicit age bracket, 'low-pitched', 'deep', 'weathered') or prefer moss85; "
     "moss85 = dark/menace/oratory/force. "
     "Valence = pleasant(+)/unpleasant(-); Arousal = energy; Tension = held/threat/unease. JSON only."
 )
