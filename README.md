@@ -40,10 +40,10 @@ docker run -it --network=host \
 
 ### Installation
 Once inside the container:
-1. Navigate to the `Sonora` project folder.
-2. Install project requirements:
+1. Navigate to the `Sonora` project folder (this workspace's local checkout is named `Sonora-GH`, to disambiguate it from the `Sonora-HF` model registry checkout alongside it — the GitHub repo itself is still `Sonora`).
+2. Install project requirements with [uv](https://github.com/astral-sh/uv), this organization's standard for Python tooling:
    ```bash
-   pip install --no-build-isolation -e .
+   uv pip install --no-build-isolation -e .
    ```
    *(Note: `--no-build-isolation` is recommended when using pre-installed container PyTorch/NumPy dependencies to build Cython extensions.)*
 3. Install additional system packages (such as `espeak-ng`) if utilizing phonemization.
