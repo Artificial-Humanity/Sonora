@@ -14,7 +14,7 @@ import soundfile as sf
 import torch
 from transformers import AutoModel, AutoProcessor
 
-MODEL_DIR = "/data/reference/models/OpenMOSS-Team/MOSS-TTS"
+MODEL_DIR = "/data/models/OpenMOSS-Team/MOSS-TTS"
 
 
 def main():

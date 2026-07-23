@@ -7,7 +7,7 @@
 # device passthrough (torch.cuda.is_available() == False there), so synth runs in a
 # fresh `rocm/pytorch` container with --device /dev/kfd --device /dev/dri (mirrors the
 # ollama container's access; validated on the Strix Halo Radeon 8060S). Models are read
-# from /data/reference/models (paths hardcoded in the synth_*.py renderers).
+# from /data/models (paths hardcoded in the synth_*.py renderers).
 #
 # Usage:  synth_bank.sh <bank.json> <out_dir>
 # Output: <out_dir>/<id>.wav + <engine>_manifest.jsonl per engine.

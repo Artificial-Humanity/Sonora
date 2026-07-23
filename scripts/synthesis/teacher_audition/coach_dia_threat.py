@@ -8,7 +8,7 @@ from transformers import AutoProcessor, DiaForConditionalGeneration
 
 OUT = "/audition/out/dia_coach"
 os.makedirs(OUT, exist_ok=True)
-MODEL_DIR = "/data/reference/models/nari-labs/Dia-1.6B-0626"
+MODEL_DIR = "/data/models/nari-labs/Dia-1.6B-0626"
 
 processor = AutoProcessor.from_pretrained(MODEL_DIR)
 model = DiaForConditionalGeneration.from_pretrained(MODEL_DIR).to("cuda")

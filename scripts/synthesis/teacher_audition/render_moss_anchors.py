@@ -6,7 +6,7 @@ import torch
 import soundfile as sf
 from transformers import AutoModel, AutoProcessor
 
-MODEL = "/data/reference/models/OpenMOSS-Team/MOSS-VoiceGenerator"
+MODEL = "/data/models/OpenMOSS-Team/MOSS-VoiceGenerator"
 OUT = "/audition/out/anchors"
 os.makedirs(OUT, exist_ok=True)
 device = "cuda"

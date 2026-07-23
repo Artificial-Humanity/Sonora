@@ -8,7 +8,7 @@ import torch
 import soundfile as sf
 from transformers import AutoModel, AutoProcessor
 
-MODEL = "/data/reference/models/OpenMOSS-Team/MOSS-TTS"
+MODEL = "/data/models/OpenMOSS-Team/MOSS-TTS"
 OUT = "/audition/out/moss_tts"
 os.makedirs(OUT, exist_ok=True)
 device = "cuda"

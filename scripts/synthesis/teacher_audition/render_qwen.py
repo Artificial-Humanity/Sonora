@@ -6,7 +6,7 @@ from qwen_tts import Qwen3TTSModel
 OUT = "/audition/out/qwen3tts"
 os.makedirs(OUT, exist_ok=True)
 model = Qwen3TTSModel.from_pretrained(
-    "/data/reference/models/Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+    "/data/models/Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
     device_map="cuda:0", dtype=torch.bfloat16)
 print("methods:", [m for m in dir(model) if m.startswith("generate")])
 

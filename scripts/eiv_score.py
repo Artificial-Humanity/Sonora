@@ -31,8 +31,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-ENCODER_DEFAULT = "/data/reference/models/mkrausio/EmoWhisper-AnS-Small-v0.1"
-HEADS_DIR_DEFAULT = "/data/reference/models/laion/Empathic-Insight-Voice-Large"
+ENCODER_DEFAULT = "/data/models/mkrausio/EmoWhisper-AnS-Small-v0.1"
+HEADS_DIR_DEFAULT = "/data/models/laion/Empathic-Insight-Voice-Large"
 SR = 16000
 MAX_SECONDS = 30.0
 SEQ_LEN = 1500

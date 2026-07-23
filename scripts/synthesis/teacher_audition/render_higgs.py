@@ -13,7 +13,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 OUT = "/audition/out/higgs"
 os.makedirs(OUT, exist_ok=True)
-MODEL_DIR = "/data/reference/models/multimodalart/higgs-audio-v3-tts-4b-transformers"
+MODEL_DIR = "/data/models/multimodalart/higgs-audio-v3-tts-4b-transformers"
 
 tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
 model = AutoModelForCausalLM.from_pretrained(

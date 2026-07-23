@@ -15,7 +15,7 @@ import os
 import torch
 from transformers import AutoProcessor, DiaForConditionalGeneration
 
-MODEL_DIR = "/data/reference/models/nari-labs/Dia-1.6B-0626"
+MODEL_DIR = "/data/models/nari-labs/Dia-1.6B-0626"
 # Pilot owner-audit 2026-07-17: 2/5 collapses at temp 1.3-1.4 (white noise /
 # wordless output). The audition's good renders used 1.8. 1.3 is the cliff,
 # not a floor — register control belongs to text/staging, not temperature.
