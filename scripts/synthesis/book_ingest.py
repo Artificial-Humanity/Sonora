@@ -49,8 +49,9 @@ DIRECTOR_SYSTEM = (
     '"voice_design": one sentence describing the speaker voice (age, gender, timbre, accent), '
     '"instruct": one imperative sentence directing delivery (pace, emotion, emphasis)}\n'
     "Engine guide (owner hierarchy 2026-07-23): vibevoice = PREMIER default for all "
-    "lines incl. neutral (reference-cloned casting: your voice_design selects an "
-    "audited reference clip, so describe the voice concretely — gender, age, timbre); "
+    "lines incl. neutral (reference-cloned casting: gender AND AGE are copied from the "
+    "selected reference clip, so ALWAYS state age with one of: child, teen, young, "
+    "middle-aged, elderly — plus gender and timbre; these exact words drive selection); "
     "qwen and moss85 = prefer when strong DRAMATIC expression is expected "
     "(qwen: soft/tender/bright but renders younger/higher than described — for mature "
     "voices exaggerate descriptors or use moss85; moss85: dark/menace/oratory/force); "
