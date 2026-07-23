@@ -58,7 +58,7 @@ export lane already forces a ceiling:
 
 * **Hard technical ceiling (already fixed, not tunable):** the `litert-split/` lane — the one
   planned for the actor — is a **fixed-shape** graph: 256 phonemes / 512 mel frames per inference
-  call (Registry/Sonora/README.md item 5). At 24 kHz (hop 256, 93.75 fps) that's **~5.46 s**,
+  call (Sonora/huggingface/README.md item 5). At 24 kHz (hop 256, 93.75 fps) that's **~5.46 s**,
   roughly one sentence. A single call cannot exceed this regardless of what quality would
   tolerate — chunking is mandatory on this export lane independent of any quality finding.
 * **ANSWERED (2026-07-16, `scripts/chunk_size_sweep.py`):** quality holds far past the window.

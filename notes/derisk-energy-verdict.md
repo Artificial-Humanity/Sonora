@@ -78,7 +78,7 @@ sweep clips are single utterances ≤ ~8 s.
 
 1. **Full 3-channel VAT is now worth the investment** — and its blocker is a **corpus decision**,
    not architecture: no shippable valence/tension-labeled data exists (Expresso is NC).
-2. **Artifacts promoted** to `Registry/Sonora/derisk-energy-24k/` (checkpoint, eval report, sweep
+2. **Artifacts promoted** to `Sonora/huggingface/derisk-energy-24k/` (checkpoint, eval report, sweep
    WAVs, gate history) — staged locally, public HF push pending a deliberate call.
 3. **Export-harness adaptation unblocked** — there is now a 24 kHz/multi-speaker/VAT checkpoint
    worth exporting; `/data/toolchain/litert-conversion/` needs `spks` + `vat` wrapper inputs and

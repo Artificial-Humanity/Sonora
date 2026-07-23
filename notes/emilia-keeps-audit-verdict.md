@@ -76,4 +76,4 @@ lanes, both on standing infrastructure:
 
 Linked from: [emilia-mining-plan.md](emilia-mining-plan.md) · [STATE.md](STATE.md) ·
 [vat-corpus-decision-brief.md](vat-corpus-decision-brief.md) ·
-`Registry/Sonora/vat3-24k/README.md` (whose "Next (v1.1)" section this supersedes)
+`Sonora/huggingface/vat3-24k/README.md` (whose "Next (v1.1)" section this supersedes)

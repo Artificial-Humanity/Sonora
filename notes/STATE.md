@@ -18,7 +18,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   `Reference/models` in its workspace checkout), registry clone moved into its Sonora checkout's
   `model/`. Note the lowercase `models` — the box set the convention and the Mac followed.
   **Layout finalized later the same day (end-state C):** the registry clone moved once more,
-  `Sonora/model/` → workspace-root **`Registry/Sonora/`** (sibling of `Reference/`; kills the
+  `Sonora/model/` → workspace-root **`Sonora/huggingface/`** (sibling of `Reference/`; kills the
   repo-in-repo nesting; see [registry-housekeeping.md](registry-housekeeping.md)) — done on
   both machines the same day.
   Prosodia updated in lockstep: `prosodia_models.json` `modelsBase`, Swift fallback paths, `engine.rs` test paths,
@@ -38,7 +38,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
     * `checkpoint_epoch=199_e2e_float16.tflite` (89.8 MB) — Quantized, NPU/mobile-optimized model.
 * **Hugging Face Model Registry Configured (2026-07-11):**
   * Created the central model storage repository on Hugging Face.
-  * Successfully uploaded all Phase 0 TFLite models, full checkpoints, and the tensor mapping manifest to **[artificial-humanity/Sonora](https://huggingface.co/artificial-humanity/Sonora)** under the `v1-ljspeech` directory.
+  * Successfully uploaded all Phase 0 TFLite models, full checkpoints, and the tensor mapping manifest to **[artificial-humanity/Sonora](https://huggingface.co/artificial-humanity/Sonora)** under the `baseline-ljspeech-22k` directory.
   * **Local model layout reorganized (2026-07-11):** in the workspace-root `Models/` folder (gitignored; canonical listing in `Prosodia/apps/tuner/README.md`), the vendored Matcha-TTS source + export artifacts were renamed `Matcha-TTS` → **`shivammehta25/Matcha-TTS/` (spike workspace — see its ARCHIVE.md)**, and two HF repos were cloned alongside: **`Models/Sonora/`** (our artificial-humanity/Sonora registry, LFS hydrated) and **`Models/litert-community/Matcha-TTS/`** (litert-community/Matcha-TTS — the split-graph TFLite + espeak-free G2P assets adopted in roadmap item 2).
   * **Hugging Face Pro Resources Deployed:** Configured the high-capacity storage bucket **[artificial-humanity/Prosodia-Storage](https://huggingface.co/buckets/artificial-humanity/Prosodia-Storage)** and the hosted Gradio Space **[artificial-humanity/Prosodia](https://huggingface.co/spaces/artificial-humanity/Prosodia)** for remote sample verification.
 * **✅ Export-fidelity bug fixed & artifacts re-exported (2026-07-12):** the 2026-07-11 "TFLite
@@ -116,7 +116,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
     the user listened to the rendered samples remotely and confirmed they sound good — the first
     by-ear validation of the trained voice through any export path. (The desktop Tuner audition
     remains for the full app path, but voice quality itself is now confirmed.)
-  * **Artifacts** (✅ pushed to HF 2026-07-12, commit `b1a60b7` — [v1-ljspeech/litert-split](https://huggingface.co/artificial-humanity/Sonora/tree/main/v1-ljspeech/litert-split); `*.wav` added to the repo's LFS tracking en route):
+  * **Artifacts** (✅ pushed to HF 2026-07-12, commit `b1a60b7` — [baseline-ljspeech-22k/litert-split](https://huggingface.co/artificial-humanity/Sonora/tree/main/baseline-ljspeech-22k/litert-split); `*.wav` added to the repo's LFS tracking en route):
     `matcha_textenc_fp16.tflite` (14.8 MB), `matcha_decoder_fp16.tflite` (22.5 MB),
     `matcha_vocoder_fp16.tflite` (29.0 MB), `emb.bin` (178×192 f32 host lookup), `config.json`.
   * **Parity vs the ONNX path is transitive, not bitwise:** both artifacts verify ≥0.9996 against
@@ -205,7 +205,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
 > 5. Deferred housekeeping (info gathered, nothing decided): registry/artifact-flow tidy-up —
 >    model card, per-promotion provenance, `config.json` into the registry, revision pinning,
 >    and the layout question — **settled same day: end-state C, workspace-root
->    `Registry/Sonora/`**, implemented on both machines. See
+>    `Sonora/huggingface/`**, implemented on both machines. See
 >    [registry-housekeeping.md](registry-housekeeping.md).
 
 
@@ -265,7 +265,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
      CFM decoder / vocoder as three graphs, host-side Euler ODE loop + length regulator. The
      toolchain fork is **resolved in favor of `litert-torch`** (fixed-shape re-authoring,
      litert-community's route): it converted our checkpoint first-try and passed the per-graph
-     correlation gate (corr 1.000000 per graph; artifacts on HF at `v1-ljspeech/litert-split`).
+     correlation gate (corr 1.000000 per graph; artifacts on HF at `baseline-ljspeech-22k/litert-split`).
      Per-module `onnx2tf` was never needed; the fixed monolithic `onnx2tf` conversion is the
      Plan B fallback. The split surfaces the duration predictor's `logw`, so the Prosodia
      pipeline's `duration_scales`/`f0_bias` hooks can finally reach it — unlocking the
@@ -295,7 +295,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   real margin: controllability ρ ≈ 1.000 (perfectly monotonic), WER Δ ≤ 0.042 (guardrail 0.10),
   ECAPA leakage ≤ 0.091 (ceiling 0.2). Sweep renders human-audited: energy/loudness change judged
   clearly discernible and natural. Checkpoint promoted (not yet public) to
-  `Registry/Sonora/derisk-energy-24k/`. **Formal verdict:
+  `Sonora/huggingface/derisk-energy-24k/`. **Formal verdict:
   [derisk-energy-verdict.md](derisk-energy-verdict.md)** (criteria, setup, full numbers, what
   is/isn't proven, consequences).
 * **Action (original, items 1–2 done; item 3 blocked on a corpus decision):**
@@ -353,7 +353,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   +0.023; |r| < 0.3). Corpus-scale EIV artifacts in `/data/model-training/sonora/eiv_scores/`.
   Remaining pre-training gates (2026-07-19): **owner audits now mobile** — `audit-tension-v2`
   + `audit-valence-v1` (50 clips each, drawn from v2) registered in the Dataset Auditions app
-  (`audit-*` campaign convention, see AI-Lab-0/audition/README.md); Emilia tail integration
+  (`audit-*` campaign convention, see AI-Lab-AMD/audition/README.md); Emilia tail integration
   (13,143 raw keeps → ASR/24k/labels/filelists) — **owner call 2026-07-19: HINGES ON THE
   AUDITIONS.** The calibration audits (tension/valence) + markup cards decide it: if the
   audits validate the label semantics at audiobook range, Emilia mining/processing through
@@ -367,7 +367,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   `python -m matcha.train experiment=vat3_finetune ckpt_path=…/warmstart/vat3_init.ckpt`.
   (Env note: `sonora:latest` is the bare ROCm-torch image — project deps are pip-installed at
   container start with `PYTHONPATH=/workspace`; the in-tree prebuilt `monotonic_align` .so
-  makes `pip install -e .` unnecessary, and its numpy==1.24.3 build pin fails on py3.12 anyway.) Spin-down is now scripted: `AI-Lab-0/scripts/inference-engines.sh
+  makes `pip install -e .` unnecessary, and its numpy==1.24.3 build pin fails on py3.12 anyway.) Spin-down is now scripted: `AI-Lab-AMD/scripts/inference-engines.sh
   stop|start|status` (stops Portainer first so GitOps can't relaunch engines mid-run; start
   re-enables it last; cycle-tested 2026-07-19).
 * **AUDITS COMPLETE + vat3 LAUNCHED (2026-07-20).** All 196 audit cards rated in the app;
@@ -448,7 +448,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
 > continuity; the runbook is canonical.
 
 ### Docker Compose Unified Stack
-All containers are managed under the unified [docker-compose.yml](../../AI-Lab-0/docker-compose.yml) stack config. Recreate or restart containers using:
+All containers are managed under the unified [docker-compose.yml](../../AI-Lab-AMD/docker-compose.yml) stack config. Recreate or restart containers using:
 ```bash
 docker compose up -d
 ```
@@ -458,11 +458,11 @@ The Vocalizer (`sonora_vocalizer`, renamed from `sonora_playpen` 2026-07-16; the
 human-audit surface — see ARCHITECTURE.md §5) is part of the GitOps compose stack — it deploys
 automatically on push and needs no manual launch. To bounce it explicitly:
 ```bash
-docker compose -f AI-Lab-0/docker-compose.yml up -d sonora_vocalizer   # from the umbrella root
+docker compose -f AI-Lab-AMD/docker-compose.yml up -d sonora_vocalizer   # from the workspace root
 ```
 Training is profile-gated so syncs never start it; launch deliberately with:
 ```bash
-docker compose -f AI-Lab-0/docker-compose.yml --profile training up -d sonora_training
+docker compose -f AI-Lab-AMD/docker-compose.yml --profile training up -d sonora_training
 ```
 Container commands bootstrap `uv` and install via `uv pip install --python /opt/venv/bin/python`
 (AGENTS.md §7; the rocm/pytorch images ship their stack in `/opt/venv`).

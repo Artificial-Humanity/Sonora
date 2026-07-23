@@ -84,7 +84,7 @@ whether one novel yields hundreds or thousands of usable quotes.
 
 Merge survivors into the v1.1 corpus (`libritts_r_vat_v3`): filelists, speaker-table extension,
 mel-stats check, then continue training from the vat3 epoch-099 checkpoint
-(`Registry/Sonora/vat3-24k/`).
+(`Sonora/huggingface/vat3-24k/`).
 
 ## Start point
 

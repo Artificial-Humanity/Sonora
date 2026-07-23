@@ -29,7 +29,7 @@ class LayerNorm(nn.Module):
         # original manual mean/rsqrt but makes the reduction happen over the LAST
         # axis. onnx2tf's NHWC layout conversion remaps last-axis reductions
         # correctly, whereas the original dim=1 reduction on a 3D tensor was
-        # mislowered (encoder garble; see Notes/Sonora export-fidelity findings).
+        # mislowered (encoder garble; see notes/ export-fidelity findings).
         x = x.transpose(1, -1)
         x = torch.nn.functional.layer_norm(x, (self.channels,), self.gamma, self.beta, self.eps)
         x = x.transpose(1, -1)

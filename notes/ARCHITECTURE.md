@@ -7,7 +7,7 @@ commit that changes architectural behavior (corpus rules, contract, gates, promo
 this file in the same commit. Detail lives in the linked docs; what is written HERE is what's
 pinned._
 
-_Established by the Phase 0 (v1-ljspeech) and §7 de-risk (derisk-energy-24k) lineages; every
+_Established by the Phase 0 (baseline-ljspeech-22k) and §7 de-risk (derisk-energy-24k) lineages; every
 pinned item below has shipped at least once. Last updated: 2026-07-16._
 
 ---
@@ -113,7 +113,7 @@ dial there in the same phase, so outputs stay vettable by ear at the current fea
 
 ## 7. Promotion & registry
 
-* Promote the **audited, gated** checkpoint (not the latest) to `Registry/Sonora/<name>/` with:
+* Promote the **audited, gated** checkpoint (not the latest) to `Sonora/huggingface/<name>/` with:
   README (provenance: training run, stop signal, criterion + numbers, human-audit date, license
   statement), `gate_history.jsonl`, eval report, audited samples, render/export metadata.
 * Publish to HF (`artificial-humanity/Sonora`) on owner call only.
