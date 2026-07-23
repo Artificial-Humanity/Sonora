@@ -57,12 +57,25 @@ def _load_acoustics():
     return _f0_pct
 
 
+AGE_BAND_NAMES = {0.95: "child", 0.80: "teen", 0.70: "young", 0.30: "middle-aged", 0.10: "elderly"}
+
+
 def design_age_target(design: str):
     d = (design or "").lower()
     for pat, target in AGE_BANDS:
         if re.search(pat, d):
             return target
     return None  # unspecified: no age term applied
+
+
+def design_age_band(design: str):
+    """Canonical age label for training attribution (owner taxonomy:
+    child/teen/adult/middle-aged/elderly). 'young' maps to adult-band intent."""
+    t = design_age_target(design)
+    if t is None:
+        return "adult"
+    name = AGE_BAND_NAMES[t]
+    return "adult" if name == "young" else name
 
 
 def _load_pool():
@@ -108,6 +121,9 @@ def select_reference(design: str, intended: dict, used: set | None = None):
     if best is None:
         raise LookupError(f"no reference for gender={g}")
     used.add(best["file"])
-    return (str(POOL_ROOT / best["file"]), best["text"],
-            {"id": best["id"], "register": best["register"], "engine": best["engine"],
-             "gender": best["gender"], "score": round(best_score, 3)})
+    meta = {"id": best["id"], "register": best["register"], "engine": best["engine"],
+            "gender": best["gender"], "score": round(best_score, 3)}
+    pct = _load_acoustics().get(best["file"])
+    if pct is not None:
+        meta["ref_f0_pct"] = round(pct, 2)   # age evidence: within-gender F0 percentile
+    return (str(POOL_ROOT / best["file"]), best["text"], meta)

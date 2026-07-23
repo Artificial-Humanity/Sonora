@@ -23,7 +23,7 @@ from vibevoice.modular.modeling_vibevoice_inference import VibeVoiceForCondition
 from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ref_select import select_reference  # noqa: E402
+from ref_select import select_reference, design_age_band  # noqa: E402
 
 MODEL_DIR = "/data/models/FabioSarracino/VibeVoice-Large-Q8"
 
@@ -82,6 +82,8 @@ def render_bank(jobs, out, processor, model):
             sf.write(os.path.join(out, f"{job['id']}.wav"), wav, 24000)
             row = dict(job)
             row.update({"engine_license": "mit",
+                        "intended_age": design_age_band(job["direction"].get("design", "")),
+                        "intended_gender": ref_meta["gender"],
                         "weights_source": "FabioSarracino/VibeVoice-Large-Q8 (8-bit of aoi-ot mirror)",
                         "sr": 24000, "wav": f"{job['id']}.wav",
                         "ref": ref_meta | {"ref_text": ref_text}})
