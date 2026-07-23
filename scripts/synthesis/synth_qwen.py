@@ -14,7 +14,7 @@ import soundfile as sf
 import torch
 from qwen_tts import Qwen3TTSModel
 
-MODEL_DIR = "/data/reference/models/Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
+MODEL_DIR = "/data/models/Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
 
 
 def main():

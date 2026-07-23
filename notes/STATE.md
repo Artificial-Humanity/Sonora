@@ -14,7 +14,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   a reference model — moved out of it, from `Models/Sonora/` to `Sonora/model/` inside the Sonora
   project dir (untracked by the Sonora GitHub repo). Dated bullets below predate the move: read
   `Models/...` as `Reference/models/...` and `Models/Sonora/` as `Sonora/model/`. `ai-lab-0`
-  mirrored the full pattern the same day: `/data/Models` → `/data/reference/models` (symlinked as
+  mirrored the full pattern the same day: `/data/Models` → `/data/models` (symlinked as
   `Reference/models` in its workspace checkout), registry clone moved into its Sonora checkout's
   `model/`. Note the lowercase `models` — the box set the convention and the Mac followed.
   **Layout finalized later the same day (end-state C):** the registry clone moved once more,
@@ -340,7 +340,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   gate PASS: corr(T,A) = −0.092** (|r|<0.3); raw measures kept in `measures.jsonl`. Human-audit
   set built (`scripts/make_tension_audit_set.py` → `/data/model-training/sonora/tension_audit`,
   50 clips, pressed/breathy/neutral at |A|≤0.3 — **owner audit pending**). EIV assets staged in
-  `/data/reference/models/laion/`: 4 EIV-Large heads (Valence/Arousal/Distress/Soft-vs-Harsh;
+  `/data/models/laion/`: 4 EIV-Large heads (Valence/Arousal/Distress/Soft-vs-Harsh;
   each head = MLP 128→…→1 over flattened 1500×768 BUD-E-Whisper encoder states — encoder also
   downloaded). Next: EIV labeling harness → V labels → 3-channel training. Also 2026-07-16:
   convergence-gate **ntfy notifier** wired (see training-operations.md §Stop signal); public HF

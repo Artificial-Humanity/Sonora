@@ -140,7 +140,7 @@ spin-down rule. Spike first: ~100 clips (50 certified + 50 LibriTTS-R), owner-au
   (dogfooding/behavioral transfer), *explicitly not* valuable as "peer review." Family
   self-review is not independent review; the instrument round-trip verifier is the only
   independent check in the loop, and the design should keep treating it as load-bearing.
-  All three candidates now in the reference library (`/data/reference/models/{Google,unsloth}/…`,
+  All three candidates now in the reference library (`/data/models/{Google,unsloth}/…`,
   pulled 2026-07-19).
 
   **Serving status (2026-07-19):**

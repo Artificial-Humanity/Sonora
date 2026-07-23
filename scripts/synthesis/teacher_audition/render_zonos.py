@@ -6,7 +6,7 @@ from zonos.conditioning import make_cond_dict
 
 OUT = "/audition/out/zonos"
 os.makedirs(OUT, exist_ok=True)
-MODEL_DIR = "/data/reference/models/Zyphra/Zonos-v0.1-transformer"
+MODEL_DIR = "/data/models/Zyphra/Zonos-v0.1-transformer"
 model = Zonos.from_local(f"{MODEL_DIR}/config.json", f"{MODEL_DIR}/model.safetensors", device="cuda")
 
 # emotion vector: [happiness, sadness, disgust, fear, surprise, anger, other, neutral]

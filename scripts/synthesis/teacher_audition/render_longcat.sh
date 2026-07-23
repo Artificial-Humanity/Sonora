@@ -3,7 +3,7 @@
 # (synthetic MOSS anchors as prompts). MIT license — fully wall-clean.
 set -e
 cd /audition/longcat_src
-M=/data/reference/models/meituan-longcat/LongCat-AudioDiT-3.5B
+M=/data/models/meituan-longcat/LongCat-AudioDiT-3.5B
 O=/audition/out/longcat
 mkdir -p $O
 

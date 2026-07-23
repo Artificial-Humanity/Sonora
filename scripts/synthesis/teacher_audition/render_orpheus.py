@@ -11,7 +11,7 @@ from snac import SNAC
 
 OUT = "/audition/out/orpheus"
 os.makedirs(OUT, exist_ok=True)
-MODEL_DIR = "/data/reference/models/canopylabs/orpheus-3b-0.1-ft"
+MODEL_DIR = "/data/models/canopylabs/orpheus-3b-0.1-ft"
 
 tok = AutoTokenizer.from_pretrained(MODEL_DIR)
 model = AutoModelForCausalLM.from_pretrained(MODEL_DIR, dtype=torch.bfloat16).to("cuda").eval()

@@ -64,5 +64,5 @@ conflicts, or registry LFS bloat in the checkout) picks one.
 * [STATE.md](STATE.md) Current State 2026-07-13 bullets — the relayout + rename this builds on.
 * `bootstrap.sh` (umbrella root) — current materialization of the blessed actor artifact.
 * Notes/Ai-Lab-0 — the box mirrors the full layout (2026-07-13): reference layer behind
-  `Reference/models` → `/data/reference/models`, and its registry clone at `Registry/Sonora`
+  `Reference/models` → `/data/models`, and its registry clone at `Registry/Sonora`
   in its workspace checkout (moved out of the Sonora checkout's `model/` the same day).

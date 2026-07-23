@@ -113,7 +113,7 @@ binding. No 12B bake-off; the MoE is the pick. (Serving stack = ollama, decided 
 earlier "LM Studio" mention was an over-read of the model's LM-Studio catalog link, not a decision.)
 
 - **HF repo:** `google/gemma-4-26B-A4B-it-qat-q4_0-gguf` (Apache-2.0, QAT q4_0 GGUF, not gated).
-- **Local path:** `/data/reference/models/Google/gemma-4-26B-A4B-it-qat-q4_0-gguf` (the reference
+- **Local path:** `/data/models/Google/gemma-4-26B-A4B-it-qat-q4_0-gguf` (the reference
   library, alongside the on-device `gemma-4-E2B/E4B` Directors).
 - **Live serving 2026-07-18:** registered **persistently in the ollama container as
   `gemma-4-26b-a4b-qat:latest`** (14 GB blob) with an explicit Gemma multi-turn Modelfile `TEMPLATE`
