@@ -1,6 +1,6 @@
 """LibriVox quote mining, stage A: quote + attribution extraction (text side).
 
-First stage of Notes/Sonora/librivox-quote-mining-plan.md: over a REAL-AUDIO
+First stage of notes/librivox-quote-mining-plan.md: over a REAL-AUDIO
 book's SE text, find quoted dialogue spans and their attribution clauses —
 preceding ("then she muttered, “…”") and following/inverted
 ("…,” mused Jack" / "…,” Sarah said") — and tag each with

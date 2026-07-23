@@ -2,7 +2,7 @@
 
 The Director will chunk long text before handing it to the Actor; this sweep
 determines the chunk-size value (north-star follow-on to §7; see
-Notes/Sonora/model-size-target-decision.md, "Director-side chunking"). It
+notes/model-size-target-decision.md, "Director-side chunking"). It
 renders one fixed fresh prose passage at cumulative prefix lengths — token
 buckets bracketing the 256-token litert export ceiling from well below to
 ~16x above — through the torch pipeline (NOT the fixed-shape tflite graphs,

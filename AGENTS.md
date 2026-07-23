@@ -22,7 +22,7 @@ immediate must-do items.
 * This repo is a standalone PyTorch training repository for building, fine-tuning, and
   exporting voice actor models (Matcha-TTS). It is consumed by Project Prosodia
   (`ProsodiaActor`) via exported artifacts promoted into the `Sonora-HF` sibling repo (a
-  directly checked-out HF model repo, superseding the old `Registry/Sonora` gitignored-clone
+  directly checked-out HF model repo, superseding the old `Sonora/huggingface` gitignored-clone
   layout from the umbrella-workspace era).
 
 ---

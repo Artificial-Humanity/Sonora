@@ -1,4 +1,4 @@
-"""VAT FiLM conditioning (design: Notes/Sonora/vat-conditioning-design.md).
+"""VAT FiLM conditioning (design: notes/vat-conditioning-design.md).
 
 A per-token/per-frame [B, vat_dim, T] conditioning sequence is projected by a
 shared trunk, then per-block zero-initialized heads emit channel-wise scale

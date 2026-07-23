@@ -9,7 +9,7 @@ PROTOTYPE NOTES
 - Parsing/segmentation are done in Python here to validate the LANE fast. Production
   should converge onto Prosodia's `folioparser` (EPUB->text) + `stage::segmenter`
   (sentence split + Paragraph{target_characters}) for on-device dogfooding — see
-  Notes/Sonora/book-prose-operations.md.
+  notes/book-prose-operations.md.
 - Director = gemma-4-26b-a4b-qat served by ollama on :11434 (reasoning model; read
   `content`, give generous num_predict).
 

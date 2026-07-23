@@ -146,7 +146,7 @@ spin-down rule. Spike first: ~100 clips (50 certified + 50 LibriTTS-R), owner-au
   **Serving status (2026-07-19):**
   - `gemma-4-26b-a4b-qat` — live in ollama (~58 tok/s, proven).
   - `gemma-4-31b-qat` — **registered + smoke-tested: 11.6 tok/s measured** (predicted 10–15).
-    Source GGUF hardlinked at `/data/ollama/gemma4-31b/` (same Modelfile template, num_ctx 8192).
+    Source GGUF at `/data/models/Google/gemma-4-31B-it-qat-q4_0-gguf/` (same Modelfile template, num_ctx 8192; the ollama staging hardlink dir was pruned 2026-07-23).
   - `diffusiongemma-26b-a4b` — **GGUF on disk but NOT servable by ollama**: the
     `diffusion_gemma` arch is an open ollama feature request (ollama/ollama#16664, no support
     as of 0.32.1 — not fixable by a version bump). Serving landscape (checked 2026-07-19):
@@ -162,8 +162,8 @@ spin-down rule. Spike first: ~100 clips (50 certified + 50 LibriTTS-R), owner-au
     (b) **vLLM-ROCm with the original safetensors** (~52 GB pull) — the only true *server*
     support today (natively integrated; community ~800 tok/s on NVIDIA), at the cost of a
     gfx1151 vLLM bring-up;
-    (c) wait for the PR to merge → ollama/Lemonade inherit it. Prepared Modelfile kept at
-    `/data/ollama/diffusiongemma-26b/` for that day.
+    (c) wait for the PR to merge → ollama/Lemonade inherit it. Re-create the Modelfile from
+    `/data/models/unsloth/diffusiongemma-26B-A4B-it-GGUF/` alongside the source GGUF for that day (staging dir pruned 2026-07-23).
 - Schema shape: inline tags vs sidecar JSON? (Compiler prefers sidecar; humans prefer inline.)
 - Which corpus first — LibriTTS-R expressive subset, or the certified synthetic set (smaller,
   intended-direction known, closes the loop fastest)?

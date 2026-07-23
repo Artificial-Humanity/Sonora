@@ -66,3 +66,10 @@ conflicts, or registry LFS bloat in the checkout) picks one.
 * Notes/Ai-Lab-0 — the box mirrors the full layout (2026-07-13): reference layer behind
   `Reference/models` → `/data/models`, and its registry clone at `Registry/Sonora`
   in its workspace checkout (moved out of the Sonora checkout's `model/` the same day).
+
+---
+
+**Location note (2026-07-23):** paths in this record are as-executed on 2026-07-13. Since the
+2026-07-22 restructure the registry clone lives at `Sonora/huggingface/` (the umbrella repo,
+its `bootstrap.sh`, and the workspace-root `Registry/` are gone), and `v1-ljspeech` was renamed
+`baseline-ljspeech-22k` on HF (2026-07-22).

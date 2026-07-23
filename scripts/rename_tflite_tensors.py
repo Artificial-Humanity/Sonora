@@ -8,7 +8,7 @@ name (``x``, ``scales``) or substring (``x_lengths``). This round-trips the
 flatbuffer through the object API and restores the contract names.
 
 Requires the ``schema_generated.py`` produced by onnx2tf (kept alongside the
-exports, e.g. in the HF repo's ``v1-ljspeech/``) on sys.path or via
+exports, e.g. in the HF repo's ``baseline-ljspeech-22k/``) on sys.path or via
 ``--schema-dir``.
 
 Example:

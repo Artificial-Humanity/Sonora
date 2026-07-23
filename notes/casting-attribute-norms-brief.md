@@ -66,7 +66,7 @@ and Welsh takes book-wide coverage. Two designs, one per side of the lab/device 
   attributes, and each per-segment direction call gets the relevant cast entries injected.
   Chapter-batched fallback if a book overflows context. Narrators (LibriVox lane) get sheet
   entries too.
-* **Device (live reading): the story graph** (Notes/Prosodia/director-narrative-memory.md)
+* **Device (live reading): the story graph** (Prosodia/notes/director-narrative-memory.md)
   is the designed home — Character nodes carry exactly these attributes, stamped with
   `reveal_offset` + `source_span`. The wrinkle the graph already handles and the lab pass
   can ignore: **spoiler-gated casting** (a narrator whose gender is a late reveal must be
@@ -112,4 +112,4 @@ prompt adherence is unreliable — casting via measured, owner-defined norms is 
 Sonora-native alternative.
 
 Linked: [[teacher-synthesis-portfolio]] (engine traits) · [[vat-audit-verdicts]] ·
-[[rename-on-tag-mismatch]] · Notes/Sonora/vat-conditioning-design.md (FiLM pattern).
+[[rename-on-tag-mismatch]] · notes/vat-conditioning-design.md (FiLM pattern).

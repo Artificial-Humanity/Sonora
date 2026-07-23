@@ -4,7 +4,7 @@ _The operational "how" of model training: what runs where, how to launch/observe
 and the standing verification gates. Model **selection** rationale lives in
 [actor-model-and-training.md](actor-model-and-training.md); machine provisioning in
 [../Ai-Lab-0/machine-setup.md](../Ai-Lab-0/machine-setup.md); stack config is
-[AI-Lab-0/docker-compose.yml](../../AI-Lab-0/docker-compose.yml). Created 2026-07-14 during the
+[AI-Lab-AMD/docker-compose.yml](../../AI-Lab-AMD/docker-compose.yml). Created 2026-07-14 during the
 de-risk phase start; keep the "Current runs" table honest._
 
 ## Current runs (update when this changes)
@@ -13,11 +13,11 @@ de-risk phase start; keep the "Current runs" table honest._
 |---|---|---|---|
 | HiFi-GAN 24 kHz/80-band fine-tune | `vocoder_training` | **STOPPED 2026-07-15 @ g_02510000** — convergence watcher fired CONVERGED, A/B pairs human-audited (indistinguishable), checkpoint promoted (see below). Watcher timer disabled. | The 24 kHz vocoder ([decision](sample-rate-24khz-decision.md)) |
 | §7 de-risk energy fine-tune | `sonora_training` | **STOPPED 2026-07-16 @ checkpoint_epoch=099** — convergence watcher fired CONVERGED (all 4 sweep groups, real margin: energy ρ≈1.000, WER Δ≤0.042, leakage≤0.091), sweep renders human-audited (energy/loudness discernible, natural). Training had continued to epoch 106 before being stopped; epoch 099 is the promoted checkpoint. Watcher timer disabled. | One trained FiLM channel (energy) |
-| vat3 full 3-channel fine-tune | `sonora_training` | **STOPPED 2026-07-21 @ checkpoint_epoch=099** (owner call after the corrected audition; run had reached ~epoch 101 on a val-loss curve flat since epoch ~5). Verdict: energy PASS (ρ=1.0 ×4), tension near-pass (ρ=1.0 ×2, 0.90 ×2), **valence FAIL** (ρ scattered — labels, not steps, are the binding constraint). Eval-harness valence measure was found degenerate (raw EIV head, 81% dead zone) and switched to the valence_combo_v1 9-head combo mid-audit; both reports kept. Staged to `Registry/Sonora/vat3-24k/`; full resumable ckpt retained on host as the **v1.1 Emilia-continuation warm start**. MLflow run `wistful-dolphin-948` marked FINISHED. | First full-VAT (V/A/T) checkpoint; seed for v1.1 |
+| vat3 full 3-channel fine-tune | `sonora_training` | **STOPPED 2026-07-21 @ checkpoint_epoch=099** (owner call after the corrected audition; run had reached ~epoch 101 on a val-loss curve flat since epoch ~5). Verdict: energy PASS (ρ=1.0 ×4), tension near-pass (ρ=1.0 ×2, 0.90 ×2), **valence FAIL** (ρ scattered — labels, not steps, are the binding constraint). Eval-harness valence measure was found degenerate (raw EIV head, 81% dead zone) and switched to the valence_combo_v1 9-head combo mid-audit; both reports kept. Staged to `Sonora/huggingface/vat3-24k/`; full resumable ckpt retained on host as the **v1.1 Emilia-continuation warm start**. MLflow run `wistful-dolphin-948` marked FINISHED. | First full-VAT (V/A/T) checkpoint; seed for v1.1 |
 
 **No run queued behind this one.** Unlike vocoder→derisk_energy, there's no preset "next
-container to launch." Both promoted checkpoints (`Registry/Sonora/vocoder-24k-hifigan/`,
-`Registry/Sonora/derisk-energy-24k/`) are staged locally, not pushed to the public HF repo — same
+container to launch." Both promoted checkpoints (`Sonora/huggingface/vocoder-24k-hifigan/`,
+`Sonora/huggingface/derisk-energy-24k/`) are staged locally, not pushed to the public HF repo — same
 open question for both: they're validated *components* (a standalone vocoder; one VAT channel of
 three), not the shippable directable-actor deliverable, so publishing them sets a registry
 precedent worth a deliberate call rather than a default push. The real next steps are scope
@@ -29,14 +29,14 @@ decisions, not mechanical continuations:
    `vat(1,3,T)`; decoder `t_emb` is 224-dim, not 160 — multi-speaker widens the U-Net). All
    gates pass: per-graph corr 1.000000, e2e waveform corr ≥ 0.9993, energy monotonic through
    the TFLite pipeline, all graphs GPU-clean. Artifacts staged in
-   `Registry/Sonora/derisk-energy-24k/litert-split/`. Shapes stay 256/512 pending the
+   `Sonora/huggingface/derisk-energy-24k/litert-split/`. Shapes stay 256/512 pending the
    [model-size-target-decision.md](model-size-target-decision.md) ceiling options.
 2. **Full 3-channel VAT is gated on a corpus decision**, not just more training: valence/tension
    need labeled data the current corpus doesn't have, and Expresso (the expressive dataset on
    hand) is NC-tainted and can't ship. de-risk validated the FiLM/VAT *plumbing* on one clean
    channel — it didn't create a path to the other two.
 3. **Formal §7 write-up** of the de-risk verdict is still open (numbers are in
-   `Registry/Sonora/derisk-energy-24k/eval_report.json`; this table + the promotion commit are the
+   `Sonora/huggingface/derisk-energy-24k/eval_report.json`; this table + the promotion commit are the
    only record so far).
 
 **Build note (2026-07-15, kept for future watchers):** the derisk_energy watcher
@@ -54,7 +54,7 @@ plain `up -d` never start a GPU run:
 
 | Service | Profile | Launch |
 |---|---|---|
-| `sonora_training` (Matcha acoustic) | `training` | `docker compose -f AI-Lab-0/docker-compose.yml --profile training up -d sonora_training` |
+| `sonora_training` (Matcha acoustic) | `training` | `docker compose -f AI-Lab-AMD/docker-compose.yml --profile training up -d sonora_training` |
 | `vocoder_training` (HiFi-GAN) | `vocoder-training` | `... --profile vocoder-training up -d vocoder_training` |
 | `sonora_vocalizer` (inference/dev, CPU) | — (auto) | part of the normal stack |
 
@@ -114,7 +114,7 @@ All use `rocm/pytorch:latest`, `/dev/kfd` + `/dev/dri`, and bootstrap deps via `
 | Directability / §7 verdict | `scripts/eval_harness.py` (manifest-driven) | pre-registered: Spearman ρ ≥ 0.9, ECAPA leakage ≤ 0.2 (vs real inter-speaker gap), WER Δ ≤ +0.10. **3-channel since 2026-07-16:** produced measures tension→phonation composite, valence→EIV head; plus cross-channel independence (X-sweep moves Y's measure ≤ 0.5× Y's own sweep; groups `clip::channel` via `render_vat_sweep.py --channels`). Should-fail tested against the derisk ckpt: energy PASS, inert V/T + independence correctly FAIL (`/data/model-training/sonora/gate3_shouldfail/report.json`) |
 | Warm-start identity | `scripts/test_vat_identity.py` | bit-identical synthesise at init for vat = 0/None/hot |
 | Export (FiLM ops) | `scripts/test_film_export_gate.py` | litert-torch conversion GPU-clean, corr ≈ 1.0 |
-| Export (checkpoints) | litert-conversion harness (`/data/toolchain/litert-conversion/`; `convert_final.py` = 22.05k v1-ljspeech, **`convert_vat.py` = 24k/multi-speaker/VAT**) | per-graph corr ≈ 1.0 — re-run after ANY fine-tune. ~~FiLM graphs need the `vat` wrapper input (open)~~ done 2026-07-16: `spk` + `vat` inputs wired, energy-monotonicity check included |
+| Export (checkpoints) | litert-conversion harness (`/data/toolchain/litert-conversion/`; `convert_final.py` = 22.05k baseline-ljspeech-22k, **`convert_vat.py` = 24k/multi-speaker/VAT**) | per-graph corr ≈ 1.0 — re-run after ANY fine-tune. ~~FiLM graphs need the `vat` wrapper input (open)~~ done 2026-07-16: `spk` + `vat` inputs wired, energy-monotonicity check included |
 
 ## Stop signal — automated convergence watcher (STANDARD for long fine-tunes)
 
@@ -136,18 +136,18 @@ verdict (logged warning only). Tested live 2026-07-16. Future watchers copy this
 
 | Piece | What |
 |---|---|
-| `AI-Lab-0/scripts/vocoder_gate_watch.sh` | Timer-driven: newest `g_*` newer than `gate_watch/last_step` → runs the copy-synthesis gate in a **throwaway CPU-only container** (no `/dev/kfd`; training keeps the GPU) → postprocess. All paths/knobs env-overridable. |
-| `AI-Lab-0/scripts/vocoder_gate_postprocess.py` | Applies the rule **WER ≤ ASR floor + margin AND \|Δ mel-L1\| < plateau%** (defaults 0.064 + 0.02, 5% — `GATE_ASR_FLOOR`, `GATE_WER_MARGIN`, `GATE_MEL_PLATEAU_PCT`); appends `history.jsonl`; logs to MLflow `hifigan_24k_gate`; on convergence writes `gate_watch/CONVERGED` + a loud journal line. |
-| `AI-Lab-0/scripts/vocoder-gate-watch.{service,timer}` | systemd oneshot + half-hourly timer (`Persistent=true`), `User=lmcfarlin` (docker + datashare groups). Checkpoints land every ~7 h, so worst-case detection lag ≈ 7%. |
+| `AI-Lab-AMD/scripts/vocoder_gate_watch.sh` | Timer-driven: newest `g_*` newer than `gate_watch/last_step` → runs the copy-synthesis gate in a **throwaway CPU-only container** (no `/dev/kfd`; training keeps the GPU) → postprocess. All paths/knobs env-overridable. |
+| `AI-Lab-AMD/scripts/vocoder_gate_postprocess.py` | Applies the rule **WER ≤ ASR floor + margin AND \|Δ mel-L1\| < plateau%** (defaults 0.064 + 0.02, 5% — `GATE_ASR_FLOOR`, `GATE_WER_MARGIN`, `GATE_MEL_PLATEAU_PCT`); appends `history.jsonl`; logs to MLflow `hifigan_24k_gate`; on convergence writes `gate_watch/CONVERGED` + a loud journal line. |
+| `AI-Lab-AMD/scripts/vocoder-gate-watch.{service,timer}` | systemd oneshot + half-hourly timer (`Persistent=true`), `User=lmcfarlin` (docker + datashare groups). Checkpoints land every ~7 h, so worst-case detection lag ≈ 7%. |
 
 **Implementation (derisk_energy acoustic run — built 2026-07-15 from the template):**
 
 | Piece | What |
 |---|---|
 | `Sonora/scripts/render_vat_sweep.py` | The generation half (lives in the training repo — it knows the model): CPU-loads the acoustic ckpt + the promoted 24k HiFi-GAN (`g_02510000`), renders val clips at energy ∈ {−1, −0.5, 0, +0.5, +1} (fixed seed; sweep rows differ only in vat), writes WAVs + `manifest.jsonl` + `speaker_refs.txt` + `render_meta.json`. |
-| `AI-Lab-0/scripts/derisk_gate_watch.sh` | Timer-driven: newest `checkpoint_epoch=*.ckpt` under `logs/train/derisk_energy` newer than `derisk_gate_watch/last_ckpt` → render sweep + `eval_harness.py` in a **throwaway CPU-only container** → postprocess. Repo mounts **rw** (unlike the vocoder gate): the render imports matcha, so the container does the `Cython + -e .` install dance. Sweep WAVs land in `/data/model-training/sonora/derisk_eval/<runstamp>_epochNNN/`. |
-| `AI-Lab-0/scripts/derisk_gate_postprocess.py` | Aggregates the harness's per-group verdicts: **CONVERGED = every sweep group passes \|ρ\| ≥ 0.9 AND leakage ≤ 0.2 AND WER Δ ≤ +0.10** (the pre-registered §7 thresholds, applied by the harness itself); appends `history.jsonl`; logs to MLflow **`derisk_energy_gate`** (`gate_rho_min_abs`, `gate_leakage_max`, `gate_wer_delta_max`, `gate_converged`); on convergence writes `derisk_gate_watch/CONVERGED`. |
-| `AI-Lab-0/scripts/derisk-gate-watch.{service,timer}` | systemd oneshot + half-hourly timer (`*:11/30`, offset from the vocoder watcher's `:04/30`), `User=lmcfarlin`, `TimeoutStartSec=120min` (render + whisper + ECAPA + install dance). Checkpoints land every 100 epochs (`every_n_epochs: 100`), so a 30 min poll is generous. |
+| `AI-Lab-AMD/scripts/derisk_gate_watch.sh` | Timer-driven: newest `checkpoint_epoch=*.ckpt` under `logs/train/derisk_energy` newer than `derisk_gate_watch/last_ckpt` → render sweep + `eval_harness.py` in a **throwaway CPU-only container** → postprocess. Repo mounts **rw** (unlike the vocoder gate): the render imports matcha, so the container does the `Cython + -e .` install dance. Sweep WAVs land in `/data/model-training/sonora/derisk_eval/<runstamp>_epochNNN/`. |
+| `AI-Lab-AMD/scripts/derisk_gate_postprocess.py` | Aggregates the harness's per-group verdicts: **CONVERGED = every sweep group passes \|ρ\| ≥ 0.9 AND leakage ≤ 0.2 AND WER Δ ≤ +0.10** (the pre-registered §7 thresholds, applied by the harness itself); appends `history.jsonl`; logs to MLflow **`derisk_energy_gate`** (`gate_rho_min_abs`, `gate_leakage_max`, `gate_wer_delta_max`, `gate_converged`); on convergence writes `derisk_gate_watch/CONVERGED`. |
+| `AI-Lab-AMD/scripts/derisk-gate-watch.{service,timer}` | systemd oneshot + half-hourly timer (`*:11/30`, offset from the vocoder watcher's `:04/30`), `User=lmcfarlin`, `TimeoutStartSec=120min` (render + whisper + ECAPA + install dance). Checkpoints land every 100 epochs (`every_n_epochs: 100`), so a 30 min poll is generous. |
 
 State/watch dir: `/data/model-training/sonora/derisk_gate_watch/` (`last_ckpt`, `history.jsonl`,
 `CONVERGED`). ECAPA model cache persists at `/data/model-training/sonora/ecapa_cache`. Same
@@ -171,8 +171,8 @@ to carry decision weight, raise `--n` in the gate invocation rather than tighten
 
 **Install/refresh (deploy = copy, like the Caddyfile; swap `vocoder`↔`derisk` as needed):**
 ```
-sudo cp AI-Lab-0/scripts/derisk_gate_watch.sh AI-Lab-0/scripts/derisk_gate_postprocess.py /usr/local/bin/
-sudo cp AI-Lab-0/scripts/derisk-gate-watch.service AI-Lab-0/scripts/derisk-gate-watch.timer /etc/systemd/system/
+sudo cp AI-Lab-AMD/scripts/derisk_gate_watch.sh AI-Lab-AMD/scripts/derisk_gate_postprocess.py /usr/local/bin/
+sudo cp AI-Lab-AMD/scripts/derisk-gate-watch.service AI-Lab-AMD/scripts/derisk-gate-watch.timer /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now derisk-gate-watch.timer
 ```
 Disable with `sudo systemctl disable --now <name>-gate-watch.timer` when the run ends (the
