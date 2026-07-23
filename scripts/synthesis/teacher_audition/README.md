@@ -20,3 +20,10 @@ Migrated into source control 2026-07-22 from `/data/toolchain/teacher-audition/`
 ai-lab-0, where the working directory (rendered `out/` audio, engine weights) remains.
 Verdict ledger: the teacher-synthesis-portfolio notes and the Dataset Auditions app
 ratings are the source of truth; these scripts are the reproducible render side.
+
+## Watch list
+
+| Model | Why waiting | Trigger to audition |
+|---|---|---|
+| `zai-org/GLM-TTS` (MIT, zero-shot cloning, EN supported/CN-primary) | Released weights are the PRE-RL base; the headline GRPO multi-reward emotion pass ("RL-optimized weights") is unreleased — auditioning now would score a floor on exactly our decisive axis (expressiveness). Weights deliberately not kept on disk. | RL-optimized checkpoint lands on the HF repo (watch its "News": github.com/zai-org/GLM-TTS). Re-audition = the standing quote-pilot bank (v3d protocol: same 10 lines + audited reference clips); the pre/post-RL delta is itself useful evidence for a future Sonora expressiveness-RL lane. |
+| `moonshotai/Kimi-Audio-7B-Instruct` (MIT) | Not an actor (no casting interface — audio-LM). Shelved as candidate SER/valence instrument for the LibriVox lane. | Quote-mining lane reaches scale labeling and wants a fourth agreement vote. |
