@@ -13,6 +13,8 @@ teacher-synthesis portfolio (2026-07-17) and the later quote-pilot benchmark pas
 | `render_chatterbox.py`, `render_orpheus.py`, `render_zonos.py` | Chatterbox / Orpheus / Zonos | auditioned, not adopted |
 | `render_longcat.sh` | LongCat | transfer stage of the portfolio |
 | `coach_dia_threat.py` | — | Dia direction-sensitivity probe (collapse-class investigation) |
+| *(v3d, scripts in scratchpad-era)* | Orpheus-3B-pretrained | auditioned 2026-07-23, NOT adopted — top-tier peak quality but 4/10 net yield (systematic off-script drift, double-fail on re-roll) |
+| *(v3d)* | VibeVoice-Large (aoi-ot mirror, MIT) | **strongest performer yet** (2026-07-23): 10/10 QC, 10/10 rated mean 4.5 under the harsher holistic regime, zero gender errors — ADOPTION CANDIDATE (reference-cloning casting) |
 
 ## Provenance
 
