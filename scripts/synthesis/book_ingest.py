@@ -3,7 +3,7 @@
 Fetch a permissive ebook (Standard Ebooks / Project Gutenberg) -> parse -> chunk
 (narration windows + dialogue-with-attribution) -> Gemma-4 director-pass (VAD +
 register + per-engine direction, via the live ollama endpoint) -> emit the flat
-bank the synth_{dia,qwen,moss85}.py renderers consume.
+bank the synth_{vibevoice,dia,qwen,moss85}.py renderers consume.
 
 PROTOTYPE NOTES
 - Parsing/segmentation are done in Python here to validate the LANE fast. Production
@@ -45,17 +45,17 @@ DIRECTOR_SYSTEM = (
     "Output ONLY compact minified JSON, no markdown, with EXACTLY these keys:\n"
     '{"valence": float in [-1,1], "arousal": float in [-1,1], "tension": float in [-1,1], '
     '"register": short_snake_case_label, '
-    '"engine": one of "dia"|"qwen"|"moss85", '
+    '"engine": one of "vibevoice"|"qwen"|"moss85"|"dia", '
     '"voice_design": one sentence describing the speaker voice (age, gender, timbre, accent), '
     '"instruct": one imperative sentence directing delivery (pace, emotion, emphasis)}\n'
-    "Engine guide: dia = NEUTRAL/long NARRATION ONLY (dia is undirectable at render "
-    "time — it reads only the text, so never assign it a line whose delivery depends "
-    "on your voice_design/instruct; owner ruling 2026-07-22); "
-    "qwen = expressive/emotional lines of any kind, soft/tender/intimate — NOTE: qwen "
-    "renders voices younger and higher-pitched than described (owner calibration "
-    "2026-07-22), so for mature/older characters exaggerate the descriptors "
-    "(explicit age bracket, 'low-pitched', 'deep', 'weathered') or prefer moss85; "
-    "moss85 = dark/menace/oratory/force. "
+    "Engine guide (owner hierarchy 2026-07-23): vibevoice = PREMIER default for all "
+    "lines incl. neutral (reference-cloned casting: your voice_design selects an "
+    "audited reference clip, so describe the voice concretely — gender, age, timbre); "
+    "qwen and moss85 = prefer when strong DRAMATIC expression is expected "
+    "(qwen: soft/tender/bright but renders younger/higher than described — for mature "
+    "voices exaggerate descriptors or use moss85; moss85: dark/menace/oratory/force); "
+    "dia = neutral narration only (undirectable — reads only the text; never assign "
+    "it delivery-dependent lines), no longer preferred over the others for neutral. "
     "Valence = pleasant(+)/unpleasant(-); Arousal = energy; Tension = held/threat/unease. JSON only."
 )
 
@@ -296,11 +296,14 @@ def slug_from_url(url):
 
 
 def to_bank_line(idx, chunk, tag, slug, seed=1234):
-    engine = tag.get("engine", "qwen")
-    if engine not in ("dia", "qwen", "moss85"):
-        engine = "qwen"
+    engine = tag.get("engine", "vibevoice")
+    if engine not in ("vibevoice", "dia", "qwen", "moss85"):
+        engine = "vibevoice"
     text = chunk["text"]
-    if engine == "qwen":
+    if engine == "vibevoice":
+        # reference-cloned casting: design drives ref selection at render time
+        direction = {"design": tag.get("voice_design", ""), "instruct": tag.get("instruct", "")}
+    elif engine == "qwen":
         direction = {"design": tag.get("voice_design", ""), "instruct": tag.get("instruct", "")}
     elif engine == "moss85":
         vd = tag.get("voice_design", ""); ins = tag.get("instruct", "")
