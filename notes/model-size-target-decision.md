@@ -1,4 +1,9 @@
-# Model size target — "Kokoro+" ballpark, 150M max (2026-07-15)
+# Model size target — "Kokoro+" ballpark, ~100M ideal max (2026-07-23; was 150M)
+
+_Refined 2026-07-23 (owner): **ideal maximum ≈100M params, and even that is fairly loose** —
+supersedes the 150M ceiling below as the working number. Context of the correction: the
+VibeVoice-Realtime-0.5B study — 0.5B is "large compared to my target but tiny relative to
+the field." Not 18M: that figure is just what Phase-0 happened to weigh._
 
 _Owner call, informal (not yet load-bearing on a config): the acoustic model + vocoder together
 should aim for **Kokoro+** quality/capability at a **150M-parameter ceiling** (not a target to
