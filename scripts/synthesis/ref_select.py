@@ -18,9 +18,51 @@ from pathlib import Path
 
 POOL_PATH = Path("/data/model-training/datasets/sonora-expressive-registers/v1/metadata.jsonl")
 POOL_ROOT = POOL_PATH.parent
+ACOUSTICS_PATH = POOL_ROOT / "pool_acoustics.json"
 ENGINE_PREF = {"moss85": 0.0, "longcat": 0.05, "qwen": 0.15, "dia": 0.3}
 
+# Age is carried by the reference's acoustics (v3d/v3e finding: renders copy the
+# reference F0 register within ~2%), so the design's age band maps to an F0
+# percentile target WITHIN gender. Crude but directionally correct until the
+# measured casting norms land (casting-attribute-norms brief).
+AGE_BANDS = [
+    (r"\b(child|little (girl|boy)|kid)\b",          0.95),
+    (r"\b(teen|adolescent|girlish|boyish)\b",       0.80),
+    (r"\byoung\b",                                  0.70),
+    (r"\b(middle.?aged|matronly|mature|forties|fifties)\b", 0.30),
+    (r"\b(elderly|old (woman|man|lady)|aged|weathered|grandmother|grandfather)\b", 0.10),
+]
+AGE_WEIGHT = 0.8
+
 _pool = None
+_acoustics = None
+_f0_pct = None
+
+
+def _load_acoustics():
+    global _acoustics, _f0_pct
+    if _f0_pct is None:
+        _acoustics = json.loads(ACOUSTICS_PATH.read_text()) if ACOUSTICS_PATH.exists() else {}
+        _f0_pct = {}
+        by_gender = {}
+        for k in _load_pool():
+            a = _acoustics.get(k["file"])
+            if a:
+                by_gender.setdefault(k.get("gender", "?")[:1].upper(), []).append((a["f0_median"], k["file"]))
+        for g, vals in by_gender.items():
+            vals.sort()
+            n = max(len(vals) - 1, 1)
+            for i, (_, f) in enumerate(vals):
+                _f0_pct[f] = i / n
+    return _f0_pct
+
+
+def design_age_target(design: str):
+    d = (design or "").lower()
+    for pat, target in AGE_BANDS:
+        if re.search(pat, d):
+            return target
+    return None  # unspecified: no age term applied
 
 
 def _load_pool():
@@ -45,6 +87,7 @@ def select_reference(design: str, intended: dict, used: set | None = None):
     """Returns (ref_wav_path, ref_text, ref_meta). `used` biases toward variety."""
     used = used or set()
     want, g = _vat(intended), design_gender(design)
+    age_target = design_age_target(design)
     best, best_score = None, 1e9
     for k in _load_pool():
         if k.get("gender", "")[:1].upper() != g:
@@ -54,6 +97,10 @@ def select_reference(design: str, intended: dict, used: set | None = None):
         kv = _vat(k["intended_vat"])
         score = math.sqrt(sum((want[a] - kv[a]) ** 2 for a in "VAT"))
         score += ENGINE_PREF.get(k.get("engine"), 0.2)
+        if age_target is not None:
+            pct = _load_acoustics().get(k["file"])
+            if pct is not None:
+                score += AGE_WEIGHT * abs(pct - age_target)
         if k["file"] in used:
             score += 0.5
         if score < best_score:
