@@ -72,10 +72,10 @@ def render_bank(jobs, out, processor, model):
                                return_tensors="pt", return_attention_mask=True)
             inputs = {k: (v.to("cuda") if hasattr(v, "to") else v) for k, v in inputs.items()}
             with torch.no_grad():
-                out = model.generate(**inputs, max_new_tokens=None, cfg_scale=1.3,
+                gen = model.generate(**inputs, max_new_tokens=None, cfg_scale=1.3,
                                      tokenizer=processor.tokenizer,
                                      generation_config={"do_sample": False}, verbose=False)
-            wav = out.speech_outputs[0].squeeze().float().cpu().numpy()
+            wav = gen.speech_outputs[0].squeeze().float().cpu().numpy()
             if wav is None or len(wav) < 24000:
                 print(job["id"], "FAILED (short/empty)", flush=True)
                 continue
