@@ -30,15 +30,13 @@ MODEL_DIR = "/data/models/FabioSarracino/VibeVoice-Large-Q8"
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bank", required=True)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--bank", required=True, nargs="+",
+                    help="one or more script_bank.json paths; wavs land in <bankdir>/audio "
+                         "unless a single --out is given with a single bank")
+    ap.add_argument("--out", default=None)
     args = ap.parse_args()
-    os.makedirs(args.out, exist_ok=True)
-
-    bank = json.load(open(args.bank, encoding="utf-8"))
-    jobs = [l for l in bank["lines"] if l["engine"] == "vibevoice"]
-    if not jobs:
-        print("no vibevoice jobs in bank"); return
+    if args.out and len(args.bank) > 1:
+        raise SystemExit("--out only valid with a single --bank")
 
     processor = VibeVoiceProcessor.from_pretrained(MODEL_DIR)
     model = VibeVoiceForConditionalGenerationInference.from_pretrained(
@@ -46,11 +44,24 @@ def main():
     model.set_ddpm_inference_steps(num_steps=10)
     print("loaded", flush=True)
 
+    for bank_path in args.bank:
+        bank = json.load(open(bank_path, encoding="utf-8"))
+        jobs = [l for l in bank["lines"] if l["engine"] == "vibevoice"]
+        out = args.out or os.path.join(os.path.dirname(os.path.abspath(bank_path)), "audio")
+        os.makedirs(out, exist_ok=True)
+        print(f"== bank {bank.get('campaign','?')}: {len(jobs)} vibevoice jobs -> {out}", flush=True)
+        if not jobs:
+            continue
+        render_bank(jobs, out, processor, model)
+    print("VIBEVOICE-RENDERS-DONE", flush=True)
+
+
+def render_bank(jobs, out, processor, model):
     used = set()
-    manifest_path = os.path.join(args.out, "vibevoice_manifest.jsonl")
+    manifest_path = os.path.join(out, "vibevoice_manifest.jsonl")
     with open(manifest_path, "a", encoding="utf-8") as mf:
         for job in jobs:
-            if os.path.exists(os.path.join(args.out, f"{job['id']}.wav")):
+            if os.path.exists(os.path.join(out, f"{job['id']}.wav")):
                 print(job["id"], "exists, skip", flush=True)
                 continue
             torch.manual_seed(job["seed"])
@@ -68,7 +79,7 @@ def main():
             if wav is None or len(wav) < 24000:
                 print(job["id"], "FAILED (short/empty)", flush=True)
                 continue
-            sf.write(os.path.join(args.out, f"{job['id']}.wav"), wav, 24000)
+            sf.write(os.path.join(out, f"{job['id']}.wav"), wav, 24000)
             row = dict(job)
             row.update({"engine_license": "mit",
                         "weights_source": "FabioSarracino/VibeVoice-Large-Q8 (8-bit of aoi-ot mirror)",
@@ -76,7 +87,6 @@ def main():
                         "ref": ref_meta | {"ref_text": ref_text}})
             mf.write(json.dumps(row) + "\n")
             print(job["id"], f"{len(wav)/24000:.1f}s ref={ref_meta['id']}", flush=True)
-    print("VIBEVOICE-RENDERS-DONE", flush=True)
 
 
 if __name__ == "__main__":
