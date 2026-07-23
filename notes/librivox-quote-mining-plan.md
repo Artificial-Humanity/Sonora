@@ -72,6 +72,10 @@ whether one novel yields hundreds or thousands of usable quotes.
 
 * Label = verb-lexicon prior, **cross-checked** by the instruments; agreement filter decides
   keep/flag. Verb class is the primary label; instruments never promote a clip on their own.
+* *Candidate fourth vote (logged 2026-07-23):* **Kimi-Audio-7B-Instruct** (MIT weights) —
+  speech-emotion recognition from an architecturally unrelated audio-LM as an independent
+  cross-check on verb-prior/instrument agreement. Frozen-annotator rules apply (like Gemma).
+  Not an actor candidate: no casting interface (stop-me rule case, 2026-07-23).
 * **Human audition per campaign batch** (Auditions app, `audit-librivox-<book>` convention)
   *before* anything merges — same gate that just saved us.
 * Speaker rows: one per narrator (LibriVox narrator = the voice; cast names are within-narrator
