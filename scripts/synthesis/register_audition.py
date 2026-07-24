@@ -14,6 +14,13 @@ partial render adds more clips).
 Rows conform to the CSV's *actual on-disk header* (not an assumed schema), and the
 `link` is written relative to RATINGS_DIR so the app's DATA_ROOT confinement passes.
 
+The gender column is pre-populated from casting intent so the auditor only has to
+correct it, never enter it (owner standard 2026-07-24): manifest `intended_gender`
+when present (vibevoice), else parsed from the `direction.design` / `direction.instruct`
+casting text (qwen, moss85). Engines with no casting slot (dia) and deliberately
+non-gendered castings (children, non-human entities) are left blank — the app shows
+those as Undefined for the auditor to set by ear.
+
 Run:
   uv run Sonora/scripts/synthesis/register_audition.py \
       --book /data/model-training/datasets/book-prose/apple-cart [--dry-run]
@@ -26,6 +33,7 @@ import argparse
 import csv
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -74,6 +82,34 @@ def _manifest_rows(audio: Path):
                 yield rec, audio / rec.get("wav", "")
 
 
+# "female" must be tried before "male" (substring); word-boundaries keep
+# "human"/"woman-like" phrasing from mismatching.
+_FEMALE = re.compile(r"\b(female|woman|girl|feminine)\b", re.I)
+_MALE = re.compile(r"\b(male|man|boy|masculine)\b", re.I)
+
+
+def _predicted_gender(rec) -> str:
+    """Casting-intent gender for a manifest record; '' when there is none.
+
+    Priority: explicit intended_gender (vibevoice) > direction.design (qwen) >
+    direction.instruct (moss85 embeds the design phrase there). Blank means the
+    engine has no casting slot (dia) or the casting is deliberately non-gendered
+    (child / non-human) — the app then shows Undefined for the auditor to set.
+    """
+    g = rec.get("intended_gender") or ""
+    if g in ("Male", "Female"):
+        return g
+    d = rec.get("direction") or {}
+    for text in (d.get("design"), d.get("instruct")):
+        if not text:
+            continue
+        if _FEMALE.search(text):
+            return "Female"
+        if _MALE.search(text):
+            return "Male"
+    return ""
+
+
 def _under_data_root(p: Path) -> bool:
     """True if p resolves inside DATA_ROOT (the app confines served audio to it)."""
     p = p.resolve()
@@ -88,7 +124,7 @@ def _build_row(rec, wav: Path, book_slug: str, fields):
         "id": rec.get("id", ""),
         "engine": rec.get("engine", ""),
         "register": rec.get("register", ""),
-        "gender": "",           # derived on the fly by the app when blank
+        "gender": _predicted_gender(rec),  # pre-filled from casting intent; auditor corrects
         "score": "",
         "note": "",
         "status": "unaudited",  # -> lands in the `todo` filter
@@ -124,10 +160,12 @@ def register_audio_dir(audio: Path, slug: str, existing_ids, fields, dry_run: bo
         new_rows.append(_build_row(rec, wav, slug, fields))
         seen.add(cid)          # guard against dup ids across manifests
         added += 1
+    gendered = sum(1 for r in new_rows if r.get("gender"))
     verb = "would add" if dry_run else "queued"
     extra = "".join([f", {missing} missing-wav" if missing else "",
                      f", {outside} outside-data-root" if outside else ""])
-    print(f"  {slug}: {verb} {added}, skipped {skipped} (already present){extra}")
+    print(f"  {slug}: {verb} {added} ({gendered} gender-prefilled), "
+          f"skipped {skipped} (already present){extra}")
     return new_rows
 
 
