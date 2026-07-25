@@ -116,7 +116,7 @@ def main():
     ap.add_argument("--epub", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--n", type=int, default=20)
-    ap.add_argument("--min-secs", type=float, default=3.0)
+    ap.add_argument("--min-secs", type=float, default=4.0)  # owner floor 2026-07-25
     ap.add_argument("--max-secs", type=float, default=16.0)
     ap.add_argument("--neutral-controls", type=int, default=4)
     ap.add_argument("--campaign", default="quote-pilot-v1")
@@ -177,12 +177,8 @@ def main():
             print("    SKIPPED (director failed)")
             continue
         cls = (r.get("classes") or ["content"])[0]
-        direction = {"design": d["voice_design"], "instruct": d["instruct"]}
-        if d["engine"] == "dia":
-            # Dia's renderer contract (synth_dia.py): [S1]-tagged render text
-            # + sampling knobs live in direction (book_ingest sets the same).
-            direction.update({"render_text": f"[S1] {r['quote']}",
-                              "temperature": 1.8, "guidance": 4.0})
+        from book_ingest import build_direction
+        _engine, direction = build_direction(d, r["quote"], dia_guidance=4.0)
         lines.append({
             "id": f"{args.id_prefix}_{i:02d}_{cls}",
             "engine": d["engine"],

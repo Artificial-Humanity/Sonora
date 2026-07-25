@@ -37,12 +37,14 @@ def main():
                 print(job["id"], "exists, skip", flush=True)
                 continue
             torch.manual_seed(job["seed"])
-            kwargs = dict(text=job["text"], language="English",
-                          instruct=job["direction"]["instruct"])
-            try:
-                wavs, sr = gen(voice_description=job["direction"]["design"], **kwargs)
-            except TypeError:
-                wavs, sr = gen(speaker=job["direction"]["design"], **kwargs)
+            # `generate_voice_design(text, instruct, language)` — there is no
+            # `voice_description` parameter in any published qwen-tts release.
+            # The old call passed one; it landed in **kwargs and was silently
+            # discarded (no TypeError, so the fallback never fired), meaning the
+            # voice design never reached the model. build_direction() now merges
+            # design + instruct into this single string. (owner finding 2026-07-25)
+            wavs, sr = gen(text=job["text"], language="English",
+                           instruct=job["direction"]["instruct"])
             name = f"{job['id']}.wav"
             sf.write(os.path.join(args.out, name), wavs[0], sr)
             mf.write(json.dumps({
@@ -52,7 +54,11 @@ def main():
                 "seed": job["seed"], "sr": sr,
                 "engine_license": "Apache-2.0 (Qwen3-TTS-VoiceDesign)",
                 "bank_version": bank["version"], "campaign": bank["campaign"],
+                    # carry A/B pairing through to the manifest so campaigns
+                    # can be analysed without re-parsing clip ids
+                    "pair_key": job.get("pair_key"), "probe": job.get("probe"),
             }) + "\n")
+            mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)
             print(job["id"], f"{len(wavs[0])/sr:.1f}s", flush=True)
     print("SYNTH-QWEN-DONE")
 

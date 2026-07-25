@@ -79,10 +79,10 @@ def main():
                   + ("" if d else "  DIRECTOR FAILED"))
             if d is None:
                 continue
-            direction = {"design": d["voice_design"], "instruct": d["instruct"]}
-            if l["engine"] == "dia":
-                direction.update({"render_text": f"[S1] {l['text']}",
-                                  "temperature": 1.8, "guidance": 4.0})
+            from book_ingest import build_direction
+            # engine is pinned by the bench line, not the director's pick
+            _engine, direction = build_direction({**d, "engine": l["engine"]},
+                                                 l["text"], dia_guidance=4.0)
             lines.append({
                 "id": new_id, "engine": l["engine"], "register": d["register"],
                 "intended": {"V": round(float(d["valence"]), 2),

@@ -105,7 +105,7 @@ def select_reference(design: str, intended: dict, used: set | None = None):
     for k in _load_pool():
         if k.get("gender", "")[:1].upper() != g:
             continue
-        if not (3.0 <= float(k.get("duration", 0)) <= 10.0):
+        if not (4.0 <= float(k.get("duration", 0)) <= 10.0):   # owner floor 2026-07-25
             continue
         kv = _vat(k["intended_vat"])
         score = math.sqrt(sum((want[a] - kv[a]) ** 2 for a in "VAT"))

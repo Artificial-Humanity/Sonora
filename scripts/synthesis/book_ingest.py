@@ -3,7 +3,7 @@
 Fetch a permissive ebook (Standard Ebooks / Project Gutenberg) -> parse -> chunk
 (narration windows + dialogue-with-attribution) -> Gemma-4 director-pass (VAD +
 register + per-engine direction, via the live ollama endpoint) -> emit the flat
-bank the synth_{vibevoice,dia,qwen,moss85}.py renderers consume.
+bank the synth_{vibevoice,dia,qwen,moss_vg}.py renderers consume.
 
 PROTOTYPE NOTES
 - Parsing/segmentation are done in Python here to validate the LANE fast. Production
@@ -30,6 +30,17 @@ OLLAMA = "http://localhost:11434/api/chat"
 MODEL = "gemma-4-26b-a4b-qat"
 
 CHARS_PER_SEC = 14.0            # mirrors synth_dia.py length model
+# Owner floor (2026-07-25): nothing shorter than 4 s of speech enters a bank.
+# Purpose, in the owner's words: "avoid content too short to gauge performance
+# around". This gates INPUT TEXT, not render duration — a clip that lands slightly
+# under 4 s because the engine spoke fast is fine. Do NOT add an output-duration
+# gate at 4 s; the QC gate's duration-vs-text check already catches real failures.
+# Audit evidence — moss85 keep rate by estimated length: <2 s 60%, 2-4 s 40%,
+# 4-10 s 91%, 10 s+ 100%. Short lines are also where MOSS reads the prompt
+# aloud (the instruction:text ratio hits 13x on ~1 s dialogue fragments), and
+# nari-labs document that Dia input under ~5 s "will sound unnatural".
+MIN_CLIP_SECONDS = 4.0
+MIN_CLIP_CHARS = int(MIN_CLIP_SECONDS * CHARS_PER_SEC)   # 56
 WINDOW_MIN_CHARS = 90          # ~6 s of speech
 WINDOW_MAX_CHARS = 240        # ~17 s — engine-reliable ceiling
 ATTRIB_VERBS = (
@@ -39,25 +50,51 @@ ATTRIB_VERBS = (
     "called|returned|observed|remarked|insisted|protested|urged|warned"
 )
 
+def _lexicon():
+    """Controlled register lexicon (markup-schema-brief.md §Field semantics).
+
+    The brief always specified `utterance.register` as a controlled vocabulary
+    governed by the app's Recategorize flow; it was never enforced, and by
+    2026-07-25 ratings.csv held 138 distinct labels across 554 keeps. Regenerate
+    with build_register_lexicon.py.
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "register_lexicon.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)["lexicon"]
+    except Exception:
+        return []
+
+
+REGISTER_LEXICON = _lexicon()
+
+# Engine choice only. V/A/T + register are a SEPARATE pass (they describe the
+# line, not the target), and voice_design/instruct are a THIRD pass driven by the
+# per-engine skill files in director_skills/. Splitting these was forced by the
+# 2026-07-25 finding that a single combined call let the training labels drift
+# with whichever engine the director happened to be writing for.
 DIRECTOR_SYSTEM = (
     "You are the Emotional Director for an audiobook TTS pipeline. You read one passage "
-    "(narration, or a character's spoken line with its attribution) and emit performance notes. "
+    "(narration, or a character's spoken line with its attribution) and label it, then "
+    "choose which speech engine should render it.\n"
     "Output ONLY compact minified JSON, no markdown, with EXACTLY these keys:\n"
     '{"valence": float in [-1,1], "arousal": float in [-1,1], "tension": float in [-1,1], '
-    '"register": short_snake_case_label, '
-    '"engine": one of "vibevoice"|"qwen"|"moss85"|"dia", '
-    '"voice_design": one sentence describing the speaker voice (age, gender, timbre, accent), '
-    '"instruct": one imperative sentence directing delivery (pace, emotion, emphasis)}\n'
-    "Engine guide (owner hierarchy 2026-07-23): vibevoice = PREMIER default for all "
-    "lines incl. neutral (reference-cloned casting: gender AND AGE are copied from the "
-    "selected reference clip, so ALWAYS state age with one of: child, teen, young, "
-    "middle-aged, elderly — plus gender and timbre; these exact words drive selection); "
-    "qwen and moss85 = prefer when strong DRAMATIC expression is expected "
-    "(qwen: soft/tender/bright but renders younger/higher than described — for mature "
-    "voices exaggerate descriptors or use moss85; moss85: dark/menace/oratory/force); "
-    "dia = neutral narration only (undirectable — reads only the text; never assign "
-    "it delivery-dependent lines), no longer preferred over the others for neutral. "
-    "Valence = pleasant(+)/unpleasant(-); Arousal = energy; Tension = held/threat/unease. JSON only."
+    '"register": string, "engine": one of "vibevoice"|"qwen"|"moss_vg"|"dia"}\n'
+    "`register` MUST be copied EXACTLY from this controlled lexicon — never invent, "
+    "alter or compose a label; pick the closest fit:\n"
+    + ", ".join(REGISTER_LEXICON) + "\n"
+    "Engine guide: vibevoice = PREMIER default incl. neutral. It is REFERENCE-CLONED "
+    "and takes NO spoken direction at all — casting is everything, so choose it when "
+    "the voice matters more than the performance. qwen and moss_vg = the two engines "
+    "that actually follow written direction; prefer them when strong DRAMATIC "
+    "expression is expected (qwen renders younger and higher than described; moss_vg "
+    "handles dark/menace/oratory/force and situational framing well). dia = neutral "
+    "narration only — it reads the text and nothing else, so never assign it a line "
+    "whose meaning depends on delivery.\n"
+    "Do NOT write a voice design or delivery instruction here; a later pass does that "
+    "per engine. Valence = pleasant(+)/unpleasant(-); Arousal = energy; Tension = "
+    "held/threat/unease. JSON only."
 )
 
 
@@ -198,7 +235,7 @@ def _chunk_speech(text):
     """Window a spoken line to the engine-reliable ceiling WITHOUT dropping short lines
     (unlike narration windows, terse dialogue like 'My dear man,' is kept)."""
     if len(text) <= WINDOW_MAX_CHARS:
-        return [text] if len(text) >= 12 else []
+        return [text] if len(text) >= MIN_CLIP_CHARS else []
     out, cur = [], ""
     for s in split_sentences(text):
         if len(s) > WINDOW_MAX_CHARS:
@@ -211,7 +248,7 @@ def _chunk_speech(text):
             out.append(cur.strip()); cur = s
     if cur.strip():
         out.append(cur.strip())
-    return [c for c in out if len(c) >= 12]
+    return [c for c in out if len(c) >= MIN_CLIP_CHARS]
 
 
 def _window_sentences(sentences):
@@ -285,8 +322,79 @@ def director_tag(chunk, retries=2):
         except Exception:
             continue
         tag = _extract_json(content)
-        if tag:
-            return tag
+        if not tag:
+            continue
+        if REGISTER_LEXICON and tag.get("register") not in REGISTER_LEXICON:
+            print(f"    off-lexicon register {tag.get('register')!r} -> neutral")
+            tag["register"] = "neutral"
+        engine = tag.get("engine", "vibevoice")
+        if engine not in ("vibevoice", "qwen", "moss_vg", "dia"):
+            engine = "vibevoice"
+        tag["engine"] = engine
+        # Second pass: casting + delivery, written in the chosen engine's own
+        # language. Dia has no direction channel, so it is skipped entirely.
+        if engine != "dia":
+            cast = casting_pass(chunk["text"], engine)
+            if cast is None:
+                continue
+            tag.update(cast)
+        return tag
+    return None
+
+
+SKILL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "director_skills")
+
+CASTING_SYSTEM = (
+    "You are the Casting and Delivery Director for an audiobook TTS pipeline. You "
+    "write direction for ONE NAMED TTS ENGINE. A skill file for that engine follows; "
+    "it describes what that engine can and cannot actually be told. FOLLOW IT "
+    "EXACTLY — writing direction the engine cannot act on is worse than writing "
+    "none.\n"
+    "Do not emit valence, arousal, tension or register — those are already fixed for "
+    "this line.\nJSON only."
+)
+
+# Engine-shaped output schema. qwen and moss_vg read exactly ONE string, so asking
+# for two fields made the director emit its whole description twice — wasting the
+# token budget into truncated JSON and duplicating the instruction. vibevoice
+# genuinely has two: design is casting input, instruct is an audit-only note.
+CASTING_SCHEMA = {
+    "qwen":      '{"instruct": string}',
+    "moss_vg":   '{"instruct": string}',
+    "vibevoice": '{"voice_design": string, "instruct": string}',
+}
+
+
+def load_skill(engine):
+    with open(os.path.join(SKILL_DIR, f"{engine}.md"), encoding="utf-8") as f:
+        return f.read()
+
+
+def casting_pass(text, engine, retries=2):
+    """Per-engine casting/delivery, governed by director_skills/<engine>.md."""
+    system = (CASTING_SYSTEM
+              + "\nOutput ONLY compact minified JSON, no markdown, with EXACTLY "
+              + "these keys:\n" + CASTING_SCHEMA[engine]
+              + "\n\n===== SKILL FILE: " + engine + " =====\n" + load_skill(engine))
+    user = f"Target engine: {engine}\n\nThe line to be performed:\n“{text}”"
+    for _ in range(retries):
+        body = json.dumps({
+            "model": MODEL, "stream": False, "think": False,
+            "options": {"num_predict": 900, "temperature": 0.2},
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": user}],
+        }).encode()
+        req = urllib.request.Request(OLLAMA, data=body,
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=180) as r:
+                content = json.loads(r.read())["message"]["content"]
+        except Exception:
+            continue
+        d = _extract_json(content)
+        required = ("voice_design", "instruct") if engine == "vibevoice" else ("instruct",)
+        if d and all(k in d for k in required):
+            return d
     return None
 
 
@@ -296,21 +404,69 @@ def slug_from_url(url):
     return re.sub(r"[^a-z0-9-]", "", seg) or "book"
 
 
-def to_bank_line(idx, chunk, tag, slug, seed=1234):
+def _merge(vd, ins):
+    """One instruction string: persona sentence, then the delivery imperative.
+
+    Guards against duplication: a director following a single-string skill file
+    (MOSS, Qwen) often returns the same sentence in both fields, and blindly
+    concatenating would say it twice.
+    """
+    head, tail = (vd or "").strip(), (ins or "").strip()
+    if not head:
+        return tail
+    if not tail:
+        return head
+    a, b = head.rstrip(".!?").casefold(), tail.rstrip(".!?").casefold()
+    if a == b or a in b:
+        return tail
+    if b in a:
+        return head
+    if head[-1] not in ".!?":
+        head += "."
+    return head + " " + tail
+
+
+def build_direction(tag, text, dia_guidance=3.0):
+    """Assemble the per-engine `direction` payload.
+
+    Single source of truth for what each renderer is actually handed — the bank
+    builders previously disagreed, and moss85 silently lost its whole voice
+    design in the quote-pilot/director-bench banks because those builders wrote
+    a `design` key that synth_moss85.py never reads (owner finding 2026-07-25).
+
+    Renderer contracts, verified against each model's shipped API:
+      vibevoice -> design feeds ref_select only (gender + age band); the model
+                   itself gets text + a reference wav and has NO instruct slot.
+      qwen      -> `generate_voice_design(text, instruct, language)`. There is
+                   NO `voice_description` parameter; passing one lands it in
+                   **kwargs where it is silently dropped. A single merged
+                   instruct string is the only channel that reaches the model.
+      moss85    -> instruct only, so design MUST be merged in here too.
+      dia       -> render_text only; no instruct channel at all.
+    """
     engine = tag.get("engine", "vibevoice")
     if engine not in ("vibevoice", "dia", "qwen", "moss85"):
         engine = "vibevoice"
-    text = chunk["text"]
+    vd = tag.get("voice_design", "") or ""
+    ins = tag.get("instruct", "") or ""
     if engine == "vibevoice":
-        # reference-cloned casting: design drives ref selection at render time
-        direction = {"design": tag.get("voice_design", ""), "instruct": tag.get("instruct", "")}
-    elif engine == "qwen":
-        direction = {"design": tag.get("voice_design", ""), "instruct": tag.get("instruct", "")}
-    elif engine == "moss85":
-        vd = tag.get("voice_design", ""); ins = tag.get("instruct", "")
-        direction = {"instruct": (vd + " " + ins).strip()}
-    else:  # dia — no instruct channel; control is inline text
-        direction = {"render_text": f"[S1] {text}", "temperature": 1.8, "guidance": 3.0}
+        # design is casting metadata, not direction; keep it verbatim for
+        # ref_select's gender/age parse. instruct is retained for audit only.
+        return engine, {"design": vd, "instruct": ins}
+    if engine in ("qwen", "moss_vg", "moss85"):
+        # the casting pass already emitted ONE string for these; _merge only has
+        # work to do on legacy tags that still carry a separate voice_design.
+        return engine, {"instruct": _merge(vd, ins)}
+    # dia: control is inline text. nari-labs generation guidelines say to repeat
+    # the trailing speaker tag to improve end-of-audio quality (Dia improvises
+    # tails otherwise) — see the docs' "Generation Guidelines".
+    return engine, {"render_text": f"[S1] {text} [S1]",
+                    "temperature": 1.8, "guidance": dia_guidance}
+
+
+def to_bank_line(idx, chunk, tag, slug, seed=1234):
+    text = chunk["text"]
+    engine, direction = build_direction(tag, text)
     return {
         "id": f"{slug}_{chunk['chunk_type'][:3]}_{idx:04d}",
         "engine": engine,

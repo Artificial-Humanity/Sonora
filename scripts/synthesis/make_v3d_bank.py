@@ -48,7 +48,7 @@ for r in rows:
     for k in keeps:
         if k.get("gender", "")[:1].upper() != g:
             continue
-        if not (3.0 <= float(k.get("duration", 0)) <= 10.0):
+        if not (4.0 <= float(k.get("duration", 0)) <= 10.0):   # owner floor 2026-07-25
             continue
         score = vat_dist(r["intended"], keep_vat(k))
         score += ENGINE_PREF.get(k.get("engine"), 0.2)
