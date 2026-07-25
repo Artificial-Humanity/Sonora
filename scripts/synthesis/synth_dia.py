@@ -70,7 +70,11 @@ def main():
                 "seed": job["seed"], "sr": 44100,
                 "engine_license": "Apache-2.0 (Dia-1.6B-0626)",
                 "bank_version": bank["version"], "campaign": bank["campaign"],
+                    # carry A/B pairing through to the manifest so campaigns
+                    # can be analysed without re-parsing clip ids
+                    "pair_key": job.get("pair_key"), "probe": job.get("probe"),
             }) + "\n")
+            mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)
             print(job["id"], "done", flush=True)
     print("SYNTH-DIA-DONE")
 

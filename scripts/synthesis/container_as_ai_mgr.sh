@@ -28,6 +28,13 @@ for d in /dev/kfd /dev/dri/renderD*; do
   usermod -aG "$(getent group "$gid" | cut -d: -f1)" ai-mgr
 done
 mkdir -p /home/ai-mgr/.config
-ln -sfn /data/model-training/sonora/miopen /home/ai-mgr/.config/miopen
+# MIOpen's user find-db must be OWNED by the running user: it calls
+# std::filesystem::permissions() (chmod) on the .ufdb file, and chmod checks
+# ownership, not write bits. Pointing ai-mgr at the host-user-owned cache made
+# every render abort with "cannot set permissions: Operation not permitted"
+# mid-bank, even at mode 777 (owner finding 2026-07-25 — it killed 3 of 4 engines
+# in the teacher-ab-v1 run). ai-mgr therefore gets its OWN cache dir, seeded from
+# the shared one so it is not cold (the gfx1151 cold-db ≈1h fake-hang trap).
+ln -sfn /data/model-training/sonora/miopen-ai-mgr /home/ai-mgr/.config/miopen
 chown -R 105:109 /home/ai-mgr 2>/dev/null
 echo "ai-mgr ready: $(id ai-mgr)"

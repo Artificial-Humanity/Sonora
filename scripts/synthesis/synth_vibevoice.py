@@ -52,11 +52,11 @@ def main():
         print(f"== bank {bank.get('campaign','?')}: {len(jobs)} vibevoice jobs -> {out}", flush=True)
         if not jobs:
             continue
-        render_bank(jobs, out, processor, model)
+        render_bank(jobs, out, processor, model, bank)
     print("VIBEVOICE-RENDERS-DONE", flush=True)
 
 
-def render_bank(jobs, out, processor, model):
+def render_bank(jobs, out, processor, model, bank):
     used = set()
     manifest_path = os.path.join(out, "vibevoice_manifest.jsonl")
     with open(manifest_path, "a", encoding="utf-8") as mf:
@@ -82,12 +82,18 @@ def render_bank(jobs, out, processor, model):
             sf.write(os.path.join(out, f"{job['id']}.wav"), wav, 24000)
             row = dict(job)
             row.update({"engine_license": "mit",
+                        # the bank LINE carries no campaign (it lives at bank
+                        # top level); without this, register_audition falls back
+                        # to "book-<slug>" and splits the campaign in two.
+                        "campaign": bank["campaign"],
+                        "bank_version": bank["version"],
                         "intended_age": design_age_band(job["direction"].get("design", "")),
                         "intended_gender": ref_meta["gender"],
                         "weights_source": "FabioSarracino/VibeVoice-Large-Q8 (8-bit of aoi-ot mirror)",
                         "sr": 24000, "wav": f"{job['id']}.wav",
                         "ref": ref_meta | {"ref_text": ref_text}})
             mf.write(json.dumps(row) + "\n")
+            mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)
             print(job["id"], f"{len(wav)/24000:.1f}s ref={ref_meta['id']}", flush=True)
 
 
