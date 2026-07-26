@@ -85,6 +85,23 @@ no real speech**), not by the engine.
 MOSS-VG -24.1, VibeVoice -25.2 dBFS). Nothing is clipping (verified: zero flat-topping across all
 80 clips). Normalise before any A/B listening test or the louder engine wins on volume alone.
 
+## Rating vocabulary v4 (owner 2026-07-26)
+
+The audition score is **vocal and prosodic quality only** — a single axis, not a composite
+verdict. Categorisation (register, gender, accent) is corrected with the per-attribute
+dropdowns in the audition app and is never folded into the number. A clip with excellent
+delivery but the wrong register scores high *and* gets its register corrected; those are
+two separate facts and are recorded separately.
+
+This is what makes scores comparable. Under the previous composite scoring a low number
+could mean bad audio **or** a mislabel, so the score carried no reliable quality signal.
+It now does — but only for v4-era rows (`teacher-ab-v1` onward). Any analysis that treats
+`score` as quality (gate calibration, keep-rate comparisons between engines) must scope
+itself to those campaigns.
+
+The Recategorize action was retired at the same time; the dropdowns replace it and
+enforce the controlled register lexicon at the point of judgement.
+
 ## Principles (all owner-validated during the audition)
 
 1. **Generation-conditioned labels, verified by instrument.** Each line carries intended
