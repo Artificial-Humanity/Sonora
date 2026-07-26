@@ -367,8 +367,20 @@ CASTING_SCHEMA = {
 
 
 def load_skill(engine):
-    with open(os.path.join(SKILL_DIR, f"{engine}.md"), encoding="utf-8") as f:
-        return f.read()
+    """Load a per-engine director adapter.
+
+    Refuses WIP files: `director_skills/sonora.md` is written ahead of the interface
+    it describes and must never reach a live director pass. Encoding the refusal here
+    rather than trusting nobody sets engine="sonora" is the same discipline the relay
+    audit was written to enforce.
+    """
+    path = os.path.join(SKILL_DIR, f"{engine}.md")
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    if "WIP — NOT LOADED" in text or "WIP - NOT LOADED" in text:
+        raise RuntimeError(
+            f"{engine}.md is marked WIP and must not be loaded into a director pass")
+    return text
 
 
 def casting_pass(text, engine, retries=2):
