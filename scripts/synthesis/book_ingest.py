@@ -89,9 +89,10 @@ DIRECTOR_SYSTEM = (
     "the voice matters more than the performance. qwen and moss_vg = the two engines "
     "that actually follow written direction; prefer them when strong DRAMATIC "
     "expression is expected (qwen renders younger and higher than described; moss_vg "
-    "handles dark/menace/oratory/force and situational framing well). dia = neutral "
-    "narration only — it reads the text and nothing else, so never assign it a line "
-    "whose meaning depends on delivery.\n"
+    "handles dark/menace/oratory/force and situational framing well). dia = takes NO "
+    "written direction, but is NOT a flat reader: it is markedly expressive and its "
+    "punctuation is performed, so write the punctuation you want. Its measured quality "
+    "is the weakest of the four, so prefer another engine when the line matters.\n"
     "Do NOT write a voice design or delivery instruction here; a later pass does that "
     "per engine. Valence = pleasant(+)/unpleasant(-); Arousal = energy; Tension = "
     "held/threat/unease. JSON only."
@@ -460,6 +461,12 @@ def build_direction(tag, text, dia_guidance=3.0):
     # dia: control is inline text. nari-labs generation guidelines say to repeat
     # the trailing speaker tag to improve end-of-audio quality (Dia improvises
     # tails otherwise) — see the docs' "Generation Guidelines".
+    # Temperature 1.8 is CORRECT for Dia and was re-confirmed the hard way
+    # (2026-07-26): dropping to 1.5 to curb over-generation instead pushed 7/20
+    # clips into white-noise collapse — ASR word-error 0.79-1.00 with DNSMOS
+    # 1.2-1.8, the same failure the 2026-07-17 audit saw at 1.3-1.4. Over-length
+    # was never a temperature problem; it was synth_dia.token_budget(). Do not
+    # lower this again without re-reading that experiment.
     return engine, {"render_text": f"[S1] {text} [S1]",
                     "temperature": 1.8, "guidance": dia_guidance}
 

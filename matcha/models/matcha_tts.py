@@ -209,7 +209,7 @@ class MatchaTTS(BaseLightningClass):  # 🍵
             spks = self.spk_emb(spks)
 
         # VAT conditioning: neutral when absent; conditioning dropout during
-        # training (vat-conditioning-design.md) keeps VAT=0 a trained neutral
+        # training (vat-channels.md) keeps VAT=0 a trained neutral
         # and enables CFG-style strength control at inference.
         if self.use_vat:
             if vat is None:

@@ -139,9 +139,10 @@ DIA_TAG_SYSTEM = (
     "this closed list, or return an empty list if none genuinely fits:\n"
     + ", ".join(DIA_TAGS) +
     "\nChoose at most 2. Prefer an empty list: the engine's own guidance is to "
-    "use these sparingly, and unlisted or overused tags cause artifacts. The tag "
-    "is prepended to the line, so pick only what would plausibly happen BEFORE "
-    "the first word."
+    "use these sparingly, and unlisted or overused tags cause artifacts. The tag is "
+    "placed INSIDE the line at a natural clause boundary, never before the first "
+    "word — a leading bare tag is realised with no duration constraint and produces "
+    "extreme, non-human artefacts (owner audit 2026-07-26)."
 )
 
 ENGINES = [("moss_vg", "MVG"), ("qwen", "QWN"), ("vibevoice", "VV"), ("dia", "DIA")]
@@ -269,6 +270,26 @@ def pick_dia_tags(text, model, url):
     return [t for t in tags if t in DIA_TAGS][:2]
 
 
+
+def _place_tags(text, tags):
+    """Insert non-verbal tags at the first clause boundary, not before word one.
+
+    A leading bare tag has no preceding speech to bound it, and Dia realises it
+    without duration constraint — `[S1] (sighs) I keep setting a place…` produced an
+    "extreme, non-human" sigh and the worst tail in teacher-ab-v1 (2026-07-26).
+    nari-labs' own examples place tags mid-utterance.
+    """
+    if not tags:
+        return text
+    blob = " ".join(tags)
+    for mark in (". ", ", ", "! ", "? "):
+        i = text.find(mark)
+        if 0 < i < len(text) - len(mark):
+            cut = i + len(mark)
+            return text[:cut] + blob + " " + text[cut:]
+    return text + " " + blob      # single-clause line: trail it rather than lead
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
@@ -300,7 +321,7 @@ def main():
               flush=True)
 
         tags = pick_dia_tags(text, args.model, args.ollama)
-        tag_prefix = (" ".join(tags) + " ") if tags else ""
+        dia_text = _place_tags(text, tags)
 
         # ---- pass 2: casting/delivery per engine, governed by its skill file ----
         for engine, suffix in ENGINES:
@@ -318,7 +339,7 @@ def main():
             if engine == "dia":
                 # Dia takes no direction; its skill file exists to say so and to
                 # govern tag choice (done once, above).
-                row["direction"] = {"render_text": f"[S1] {tag_prefix}{text} [S1]",
+                row["direction"] = {"render_text": f"[S1] {dia_text} [S1]",
                                     "temperature": 1.8, "guidance": 3.0,
                                     "dia_tags": tags}
                 lines.append(row)

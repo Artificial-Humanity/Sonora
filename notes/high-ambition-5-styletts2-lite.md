@@ -21,7 +21,7 @@ This engineering note outlines the design, training strategy, and architecture o
 > *(Second correction, 2026-07-12: the priority reversed again once fixed-shape re-authoring made
 > `litert-torch` viable — the **split-graph `litert-torch` export is now Plan A** and the
 > ONNX→`onnx2tf` monolith the fallback; see the 📌 callout in
-> [next-steps.md](../Prosodia/next-steps.md). Any StyleTTS2-Lite re-platform should target the
+> [next-steps.md](../../../Prosodia/notes/next-steps.md). Any StyleTTS2-Lite re-platform should target the
 > split-graph pattern from the start.)*
 
 > [!NOTE]
@@ -29,7 +29,7 @@ This engineering note outlines the design, training strategy, and architecture o
 > *conditional Phase-2 re-platform*, **not** a committed next step. The first shipped actor is
 > [Matcha-TTS](high-ambition-1-matcha-actor.md); Prosodia moves to a custom StyleTTS2-Lite **only if**
 > Matcha's naturalness/expressiveness falls short (see the header and
-> [architecture-north-star.md §5](../Prosodia/architecture-north-star.md)). "From scratch" here means the StyleTTS2
+> [architecture-north-star.md §5](../../../Prosodia/notes/architecture-north-star.md)). "From scratch" here means the StyleTTS2
 > **re-architecture** (replace LSTMs, strip WavLM/discriminators, swap the diffusion sampler) —
 > warm-started from existing checkpoints where possible — which the North Star reserves for exactly
 > this v2 slot. It does not contradict the "build ON Matcha first" default.
@@ -113,7 +113,7 @@ graph TD
 * **The Problem:** Kokoro and standard StyleTTS2 pass text through a heavy pre-trained **PL-BERT** (or ALBERT) language model to generate semantic context embeddings before phonemization. This PL-BERT model is a heavy dependency, adding startup latency and memory overhead on low-end devices. Additionally, BERT-based TTS tends to synthesize in isolated sentence blocks, yielding a choppy, disconnected flow over paragraph boundaries.
 * **The Lite Solution:** Remove the PL-BERT model and introduce sliding-window sentence context:
   * Extract token-to-phoneme mapping logic directly using direct G2P dictionary lookups.
-  * Replace the BERT semantic layers with our own zero-dependency, compiled lookup maps utilizing the core `NativeBPETokenizer` in [crates/core](../../Prosodia/crates/core).
+  * Replace the BERT semantic layers with our own zero-dependency, compiled lookup maps utilizing the core `NativeBPETokenizer` in [crates/core](../../../Prosodia/crates/core).
   * Pass a sliding window of neighboring sentences (using explicit separators) into the **Text Encoder** rather than processing isolated sentences.
   * Train the Text Encoder layer directly on these contextual raw phoneme input sequences without PL-BERT context vectors.
 * **The Impact:** Drastically reduces the package footprint (saves ~50MB of binary size) and reduces inference cold-start latency to near-zero. Furthermore, the model learns paragraph-level semantic and rhythmic flow, avoiding the "choppy" boundaries typical of sentence-by-sentence Kokoro synthesizers.
@@ -252,7 +252,7 @@ edge_model.export("styletts2_lite.tflite")
 3. **Preprocessing:** Segment audio files, downsample to 24kHz, and generate phonemized transcripts using the G2P processor.
 4. **Training Stage 1 & 2:** Execute on a 24GB RTX 4090 container using our custom `train_lite.py` script.
 5. **Export to LiteRT:** Wrap the generator, style predictor, and text encoder subgraphs into a consolidated wrapper, compile to a `.tflite` model using `ai-edge-torch`, and deploy it via the LiteRT runtime integration in the actor engine using the `CompiledModel` API.
-6. **Alternative CoreML Export:** Alternatively, export modules to `.mlmodel` and compile on-device using [VoiceLoader](../../Prosodia/crates/actor/src/voice_loader.rs) in the actor crate.
+6. **Alternative CoreML Export:** Alternatively, export modules to `.mlmodel` and compile on-device using [VoiceLoader](../../../Prosodia/crates/actor/src/voice_loader.rs) in the actor crate.
 
 ---
 
@@ -261,7 +261,7 @@ edge_model.export("styletts2_lite.tflite")
 A de-risking spike against the real vanilla StyleTTS2-LibriTTS checkpoint (on a dev Mac, via a
 `uv` venv — `torch` 2.12 + `litert-torch`) **overturned the plan's assumption that `ai-edge-torch`
 is the export route.** Findings (full matrix in
-[next-steps.md §1](../Prosodia/next-steps.md)):
+[next-steps.md §1](../../../Prosodia/notes/next-steps.md)):
 
 * **`ai-edge-torch` / `litert_torch` is fragile for TTS building blocks on arbitrary modules:**
   bidirectional LSTM has no control-flow lowering (specializes sequence length); Conv1d at dynamic

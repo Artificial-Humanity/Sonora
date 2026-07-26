@@ -42,8 +42,8 @@ Contract changes bump the version and require an owner call.
 * **Label recipe (validated by the energy channel, ρ ≈ 1.000):** weak labels suffice. Continuous
   measures per utterance → **per-speaker z-score** → clamp/scale to [−1, 1]. Energy = LUFS.
   Valence = EIV pseudo-labels; tension = phonation composite (pressed↔breathy)
-  ([vat-corpus-decision-brief.md](vat-corpus-decision-brief.md),
-  [tension-definition-brief.md](tension-definition-brief.md) — both approved 2026-07-16).
+  ([vat-channels.md](vat-channels.md),
+  [vat-channels.md](vat-channels.md) — both approved 2026-07-16).
 * **Channel independence gate:** per-speaker |corr| < 0.3 between any two channels' labels,
   else residualize and re-check.
 * **Calibration before training:** anchor new labels against a known-ground-truth set
@@ -57,7 +57,7 @@ Contract changes bump the version and require an owner call.
 * Flow-matching acoustic model (backbone is the per-tier choice) + separate vocoder.
 * **Conditioning:** FiLM, **zero-init** (new channels start as exact no-ops — enables warm-start
   and the plumbing-test gate), applied per encoder/decoder block; VAT trunk in-graph
-  ([vat-conditioning-design.md](vat-conditioning-design.md)).
+  ([vat-channels.md](vat-channels.md)).
 * **Conditioning dropout `vat_cond_dropout=0.15`** — non-negotiable: it tolerates label noise AND
   keeps the unconditional mode alive for classifier-free-guidance-style amplification at
   inference (the "amp it up" lever — validated 2026-07-16, see contract §1 Amplification row and

@@ -1,6 +1,6 @@
 """Apply the pre-registered Emilia mining criteria and copy the keeps.
 
-Criteria (emilia-mining-plan.md, pre-registered 2026-07-17): over the scored
+Criteria (emilia-mining-and-verdict.md, pre-registered 2026-07-17): over the scored
 batch, keep any clip with T_full > p90, V_combo > p95, V_combo < p5, or
 EIV-Arousal > p95 (Emilia-internal percentiles; measures already filtered to
 DNSMOS >= 3.3, 1-16 s). Per-speaker-cluster cap 40, most-extreme first.

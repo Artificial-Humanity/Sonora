@@ -231,7 +231,7 @@ class Decoder(nn.Module):
             act_fn="silu",
         )
 
-        # VAT FiLM (vat-conditioning-design.md): shared trunk + one zero-init
+        # VAT FiLM (vat-channels.md): shared trunk + one zero-init
         # scale+shift per U-Net level, applied at that level's time
         # resolution. Inert when vat_cond_dim == 0.
         use_vat = vat_cond_dim > 0
@@ -336,7 +336,7 @@ class Decoder(nn.Module):
         # nn.init.normal_(self.final_proj.weight)
 
         # initialize_weights() kaiming-inits every Conv1d, which would defeat
-        # the FiLM zero-init identity guarantee (vat-conditioning-design.md) —
+        # the FiLM zero-init identity guarantee (vat-channels.md) —
         # re-zero the FiLM heads last.
         for m in self.modules():
             if isinstance(m, FiLMLayer):

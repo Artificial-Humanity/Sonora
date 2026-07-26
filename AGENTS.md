@@ -2,7 +2,7 @@
 
 This is the entry point for any agent or developer working on Project Sonora's training
 codebase. This is an independent GitHub repo (the PyTorch training pipeline that produces the
-actor model artifacts published to the `Sonora-HF` sibling repo). Internal engineering notes —
+actor model artifacts published to the `Sonora/huggingface` sibling checkout). Internal engineering notes —
 architecture, current state, open decisions — live in [notes/](notes/). Before starting work,
 read [notes/STATE.md](notes/STATE.md) for the current state of the project and the most
 immediate must-do items.
@@ -12,6 +12,17 @@ immediate must-do items.
 ## Core Stack Matrix
 
 * **Language Ecosystem:** Python-based ML training pipeline.
+* **Second lane — teacher synthesis (`scripts/synthesis/`):** four audited TTS engines
+  (`vibevoice`, `qwen`, `moss_vg`, `dia`) driven by a two-pass Gemma director — per-line
+  V/A/T + a register copied from the 47-label controlled lexicon
+  (`scripts/synthesis/register_lexicon.json`), then per-engine casting/delivery from
+  `scripts/synthesis/director_skills/<engine>.md`. **`build_direction()` in `book_ingest.py`
+  is the single source of truth for what each engine actually receives — never bypass it.**
+  The 2026-07-25 relay audit found rich direction had been silently dropped by every engine.
+  **Standing rule:** no TTS model enters the portfolio without a studied interface and a
+  Gemma skill-file adapter — see [notes/tts-engine-onboarding.md](notes/tts-engine-onboarding.md),
+  which also carries the known-gotchas reference. Minimum clip length is **4 s of estimated
+  speech**, gating input text (not render duration).
 * **Core Framework:** PyTorch & Matcha-TTS (conditional flow-matching).
 * **Environment:** AMD ROCm PyTorch Docker container (optimized for Ryzen AI Max+).
 
@@ -21,9 +32,10 @@ immediate must-do items.
 
 * This repo is a standalone PyTorch training repository for building, fine-tuning, and
   exporting voice actor models (Matcha-TTS). It is consumed by Project Prosodia
-  (`ProsodiaActor`) via exported artifacts promoted into the `Sonora-HF` sibling repo (a
-  directly checked-out HF model repo, superseding the old `Sonora/huggingface` gitignored-clone
-  layout from the umbrella-workspace era).
+  (`ProsodiaActor`) via exported artifacts promoted into the sibling **`Sonora/huggingface`**
+  checkout — a direct clone of `artificial-humanity/Sonora` alongside this repo's
+  `Sonora/github`, under the flat workspace layout adopted 2026-07-22 (the umbrella workspace
+  is gone). Lineage and `current` flags live in its `registry.json`.
 
 ---
 
@@ -60,7 +72,7 @@ case-insensitive macOS/Windows.
   * *Matplotlib AttributeError in Validation*: Matplotlib 3.9+ removes `tostring_rgb()`. Use `np.asarray(fig.canvas.buffer_rgba())[:, :, :3]` instead (see implementation in [matcha/utils/utils.py](matcha/utils/utils.py)).
   * *Isolated build failures (NumPy 1.24.3 source compilation on Python 3.12)*: Pre-install `Cython` and run `uv pip install --no-build-isolation -e .` to reuse container-native compiled libraries.
   * *Local Gitignore Masking*: This repo's root `.gitignore` must contain `/data` (not recursive `data`) to avoid ignoring source code folders like `matcha/data/`.
-* **Continuing Forward**: If a container run fails, apply the fix, commit to this repository, and relaunch via the GitOps compose stack — `docker compose --profile training up -d sonora_training` from the `AI-Lab-AMD` repo (the service is profile-gated so ordinary syncs never start it). Container state is ephemeral: recreation wipes `/tmp` and pip installs, so copy artifacts out immediately (to `/data/model-training/…`, or promote blessed ones into the `Sonora-HF` registry repo).
+* **Continuing Forward**: If a container run fails, apply the fix, commit to this repository, then **relaunch explicitly** (committing deploys nothing — GitOps was retired 2026-07-22; service deploys go through `AI-Lab-AMD/scripts/deploy.sh`) — `docker compose --profile training up -d sonora_training` from the `AI-Lab-AMD` repo (the service is profile-gated so ordinary syncs never start it). Container state is ephemeral: recreation wipes `/tmp` and pip installs, so copy artifacts out immediately (to `/data/model-training/…`, or promote blessed ones into the `Sonora/huggingface` registry checkout).
 
 ### 3. Python Tooling Mandate — uv
 
@@ -71,7 +83,7 @@ case-insensitive macOS/Windows.
 * **New work must use uv from the start** — new scripts, containers, CI steps, and docs. Do not
   introduce new `pip install` invocations.
 * **Existing pip usage is legacy** and is being migrated; the catalog of migration points and their
-  done-criteria lives in [AI-Lab-AMD/notes/cleanup-chores.md](../AI-Lab-AMD/notes/cleanup-chores.md)
+  done-criteria lives in [AI-Lab-AMD/notes/cleanup-chores.md](../../AI-Lab-AMD/notes/cleanup-chores.md)
   in the `AI-Lab-AMD` sibling repo. When touching a file that contains legacy pip usage, migrate it
   as part of the change when practical (small diffs, e.g. `pip install X` → `uv pip install
   --system X` in containers), rather than leaving new debt.

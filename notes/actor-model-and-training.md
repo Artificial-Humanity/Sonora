@@ -4,7 +4,7 @@ Consolidated guide for the Prosodia actor (TTS): **which model to train, on what
 (for a first-time trainer). The chosen first model is **Matcha-TTS** — production design in
 [high-ambition-1-matcha-actor.md](high-ambition-1-matcha-actor.md); the higher-ceiling
 [high-ambition-5-styletts2-lite.md](high-ambition-5-styletts2-lite.md) is the later re-platform.
-See also the export-toolchain spike in [next-steps.md](../Prosodia/next-steps.md).
+See also the export-toolchain spike in [next-steps.md](../../../Prosodia/notes/next-steps.md).
 
 > **Status (decision open, 2026-06-14):** recommendation leans **Matcha-TTS** for the first,
 > cost-conscious training effort, with **StyleTTS2-Lite** as the higher-ceiling Phase 2.
@@ -28,7 +28,7 @@ See also the export-toolchain spike in [next-steps.md](../Prosodia/next-steps.md
 5. **Permissive license (MIT / Apache-2.0)** end to end.
 6. **Exportable** to the on-device runtime (we proved `torch → ONNX` is the robust backbone for
    *stock dynamic-shape* modules; the official `ai-edge-torch`/`litert_torch` path is *not* reliable
-   for those — see the export spike in [next-steps.md](../Prosodia/next-steps.md). *Update
+   for those — see the export spike in [next-steps.md](../../../Prosodia/notes/next-steps.md). *Update
    2026-07-12:* with fixed-shape re-authoring, `litert-torch` split-graph export is proven on our
    own checkpoint and is now **Plan A**; the ONNX→`onnx2tf` monolith is the fallback).
 

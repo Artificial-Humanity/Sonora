@@ -1,6 +1,6 @@
 """Emilia tail integration, stage 1: transcode + ASR cross-check.
 
-First of the pre-registered tail steps (emilia-mining-plan.md; STATE.md
+First of the pre-registered tail steps (emilia-mining-and-verdict.md; STATE.md
 "ASR/24k/labels/filelists"): turn the mined keeps (mp3 + YODAS caption text)
 into corpus-ready audio with a per-clip transcript-quality signal.
 

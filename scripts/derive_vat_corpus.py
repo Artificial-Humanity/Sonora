@@ -6,7 +6,7 @@ speakers to contiguous ids, and emits `path|spk|ipa|v,a,t` filelists (the
 `load_vat` datamodule format) plus a speaker map and a derivation report.
 
 Label derivation v1 (owner-approved 2026-07-16; briefs:
-vat-corpus-decision-brief.md + tension-definition-brief.md):
+vat-channels.md):
     A (arousal slot) = per-speaker z-score of integrated loudness (LUFS),
         clamped to [-1, 1] at 2 sigma — unchanged from v0, validated at
         ρ ≈ 1.000 in the §7 de-risk. Per-speaker normalization is load-
@@ -84,7 +84,7 @@ F0_MIN, F0_MAX = 60.0, 400.0
 
 def phonation_measures(wav, sr):
     """Voiced-frame phonation measures for the tension composite
-    (tension-definition-brief.md): alpha ratio, CPP, H1-H2. numpy only.
+    (vat-channels.md): alpha ratio, CPP, H1-H2. numpy only.
     Returns None when too few usable voiced frames."""
     import numpy as np
 

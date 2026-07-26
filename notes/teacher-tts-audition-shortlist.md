@@ -82,22 +82,28 @@ verified against primary sources same day):
   if ever revisited: DramaBox as teacher for a PRIVATE-LINEAGE experiment only
   (/data/private-corpus firewall, never published/merged) — fully legal and fully in-policy.
 
+> **⚠ CORRECTED 2026-07-26 — the reading below is wrong and was load-bearing.** The 8.5B is an
+> **un-SFT'd PRE-TRAINED BASE model**: its card lists no `instruction` input, and OpenMOSS
+> maintainers state that instruction control lives in the *sibling*, MOSS-VoiceGenerator. A
+> processor kwarg is not an instruction-following model — `instruction` and `quality` are
+> untrained prompt text there, and on short lines the model reads them ALOUD. Everything below
+> about "adherence" is therefore measuring a model that never received the instructions.
+
 **MOSS-TTS 8.5B flagship auditioned 2026-07-17** (same Apache-2.0 as sibling): rendered the
 four canonical lines with the SAME anchored instructions as the 2.1B — the flagship's
-processor DOES accept `instruction=` (undocumented in README, present in
-processing_moss_tts.py), plus extra dials the sibling lacks: `quality`, `sound_event`,
+processor accepts an `instruction=` kwarg (undocumented in README, present in
+processing_moss_tts.py) *but does not act on it*, plus extra dials the sibling lacks: `quality`, `sound_event`,
 `ambient_sound`, `language`, `tokens` (duration), and reference-audio cloning. **OWNER
 VERDICTS (2026-07-17):** Longform "very good... as good as any other male longform voice."
 Threat "very good... stone cold... black and white noir Chicago gangster movie" — a NEW
 menace register (noir gangster) for the spectrum. Grief: Australian-accent drift, subtle,
 FAILS the self-evident test ("not obvious without knowing it's a depiction of grief"). 
 Victory: "up there with the best female voice depictions" — but the anchored instruction
-said DEEP-VOICED ADULT MAN: the flagship gender-flipped it. **Reading: the 8.5B has richer
-raw registers but WEAKER instruct adherence than the 2.1B sibling (gender flip on victory,
-accent drift on grief — the same anchoring that held rock-solid on the 2.1B). It does NOT
-displace the co-anchor. Role: situational register donor (noir threat; strong female
-victory) + its unique dials (duration control, sound_event/ambient, cloning) may serve the
-pipeline; anchor-adherence caveat noted for any batch use.**
+said DEEP-VOICED ADULT MAN: the flagship gender-flipped it. **Reading (CORRECTED 2026-07-26): the 8.5B never received the instructions at all.** The
+gender flip and accent wander are what an uninstructed base model does — not adherence drift.
+Accent is in any case not an instructable attribute on ANY engine in the portfolio; it belongs
+to casting (reference selection). Role: **cloning-only candidate** via its `reference` slot,
+which we have never used. It is NOT a directed generator.**
 
 ## What "teacher" means here (three escalating uses)
 
@@ -129,7 +135,7 @@ range, controllability, RTF on this box, output-license status.
 **Status:** MOSS-TTS + Qwen3-TTS-VoiceDesign downloaded to the reference library (teacher candidates). Higgs license read 2026-07-17: research/non-commercial -> benchmark-only, never a teacher.
 
 Linked from: [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (the license logic) ·
-[emilia-mining-plan.md](emilia-mining-plan.md) · [STATE.md](STATE.md) §3.
+[emilia-mining-and-verdict.md](emilia-mining-and-verdict.md) · [STATE.md](STATE.md) §3.
 
 ## Audition results (owner ears, 2026-07-17—)
 
@@ -220,17 +226,24 @@ touching the lineage:
 
 "I'd say keep Dia, Qwen, Moss 8.5 and Longcat as second stage."
 
-* **Stage 1 — generators**: **Dia-1.6B-0626** (V+/A+ ceiling, female narration/grief, coached
-  direct menace; QC gate mandatory, temp ≥1.3), **Qwen3-TTS VoiceDesign** (instruct affect
-  virtuoso: here-and-now grief, warning threat, whimsical register), **MOSS-TTS 8.5B**
-  (noir threat, top female victory, male longform; instruct-ADHERENCE caveat → its labels
-  come from post-hoc verification, not instruct intent). Working split Dia 40 / Qwen 30 /
-  MOSS-8.5B 30 until material needs say otherwise.
+* **Stage 1 — generators (roster as of 2026-07-26, superseding the 2026-07-17 split above)**:
+  **VibeVoice-Large** — premier casting engine, reference-cloned; takes NO instruction, and its
+  quality is bounded by the reference pool (193 clips, **100% own-synthesis, no real speech**),
+  not by the engine. **Qwen3-TTS VoiceDesign** — one merged `instruct` string; instruct affect
+  virtuoso (here-and-now grief, warning threat, whimsical register); best measured quality.
+  **MOSS-VoiceGenerator** (`moss_vg`) — one merged `instruct` string; dark/force/oratory and
+  situational framing. **Dia-1.6B-0626** — no instruct slot; inline text, the closed 21-tag
+  non-verbal set, and punctuation; **temperature 1.8, never lower** (1.5 collapses 7/20 clips to
+  white noise); markedly expressive but the weakest measured quality of the four.
+  **MOSS-8.5B is NOT a directed generator** — see the correction above.
 * **Stage 2 — transfer multiplier**: **LongCat-AudioDiT-3.5B** — validated stage-1
   performances as anchors, register-varied expansion, anchor labels inherited, blind QC on
   every output. Synthetic anchors only (never a real person's voice).
-* **Retired with credit**: MOSS-VG 2.1B (superseded by flagship on owner's ear; its
-  anchored-instruct recipe remains the template), Chatterbox and Zonos (owner: "probably
+* **UN-RETIRED 2026-07-26 — MOSS-VoiceGenerator** (engine `moss_vg`) is THE MOSS for all
+  directed work. Its 2026-07-17 retirement ("superseded by flagship on owner's ear") is
+  **REVERSED**: the flagship has no instruction input, so that comparison was never valid. Its
+  anchored-instruct recipe survives as the template for every `director_skills/` file.
+* **Retired with credit**: Chatterbox and Zonos (owner: "probably
   aren't worth keeping... our higher quality models can do what they can do" — their
   registers stay documented for recall: sarcasm/A+ dial via script-craft on the ratified
   three, implication menace via scene staging; coached-Dia proved registers are reachable
@@ -238,7 +251,8 @@ touching the lineage:
 * **Benchmark shelf (never train/calibrate)**: Higgs TTS 3, DramaBox (on ice).
 * **Every clip passes the blind QC bar**: affect obvious without the keyword; DNSMOS +
   duration-vs-text sanity; labels confirmed by instrument (EIV + phonation measures), which
-  also neutralizes the 8.5B drift caveat by construction.
+  also neutralizes any engine whose realized delivery diverges from intent. (The 8.5B is out
+  of the directed roster entirely, so its "drift caveat" no longer applies to anything we render.)
 
 ### Superseded proposal (v2, pre-ratification — kept for the record)
 
@@ -319,3 +333,26 @@ another voice* as an expressive move, not a speaker change. Implications:
 * Audition follow-up: add an embodiment line to the stress script when the synthesis pipeline
   is built, to verify teachers can actually do the within-line register shift rather than
   averaging the two voices.
+
+---
+
+## Standing rule and current measured standing (2026-07-26)
+
+**No TTS model enters the portfolio without (a) a studied interface — the actual renderer call
+signature, verified at the call site rather than from the README — and (b) a Gemma skill-file
+adapter in `scripts/synthesis/director_skills/`.** Pattern and known gotchas:
+[tts-engine-onboarding.md](tts-engine-onboarding.md). That note also carries the revisit list for
+engines whose failing grades predate knowing what actually reached them — **quality rejections
+only, never licence rejections**.
+
+**teacher-ab-v1 (20 texts x 4 engines, identical text and line labels, direction tailored per
+engine by skill file):**
+
+| engine | QC pass | median DNSMOS |
+|---|---|---|
+| Qwen | 19/20 | 3.46 |
+| VibeVoice | 19/20 | 3.40 |
+| MOSS-VoiceGenerator | 18/20 | 3.27 |
+| Dia | 12/20 | 2.53 |
+
+Loudness is not normalised across engines (~5 dB RMS spread); nothing is clipping (verified).

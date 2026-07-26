@@ -6,8 +6,8 @@
 > [2 — Dramatic Reader](high-ambition-2-dramatic-reader.md) ·
 > [5 — StyleTTS2-Lite](high-ambition-5-styletts2-lite.md).
 > Intended landing zone: the **conversation piece** —
-> [voice-interruption-and-discussion.md](../Prosodia/voice-interruption-and-discussion.md) ("Solo
-> Book Club") and [director-narrative-memory.md](../Prosodia/director-narrative-memory.md) — where
+> [voice-interruption-and-discussion.md](../../../Prosodia/notes/voice-interruption-and-discussion.md) ("Solo
+> Book Club") and [director-narrative-memory.md](../../../Prosodia/notes/director-narrative-memory.md) — where
 > the user talks *back* to the system.
 
 _Captured 2026-07-13 from the owner's framing. Status: **vision note** — parked deliberately for
@@ -31,7 +31,7 @@ transcription discards exactly the channel Prosodia is built to control.
 
 We do not need a new representation. The typed control contract
 (`crates/stage/src/prosody_payload.rs`; publicly disclosed in the
-[defensive publication](../../Prosodia/Docs/defensive-publication-expressive-control.md)) works as
+[defensive publication](../../../Prosodia/Docs/defensive-publication-expressive-control.md)) works as
 an *annotation* format exactly as well as a *dictation* format:
 
 ```
@@ -79,7 +79,7 @@ V/A/T + per-token tracks into the contract.
 The **listening direction is NOT covered by the 2026-07-13 defensive publication** (which discloses
 the dictation/synthesis direction and its contract). If/when the Audience becomes real work, make a
 fresh, explicit IP-posture decision (publish defensively vs. file) **before** the mechanism lands in
-a public repo — same discipline as [open-decision-licensing.md](../Prosodia/open-decision-licensing.md).
+a public repo — same discipline as [open-decision-licensing.md](../../../Prosodia/notes/open-decision-licensing.md).
 
 ## 🛑 What this note is not
 

@@ -9,7 +9,7 @@ EIV inference example verbatim.
 Used for: the valence labeling pass (--heads Valence over the corpus ->
 derive_vat_corpus.py --valence-json), and the tension recalibration
 (Soft_vs._Harsh / Distress vs. the phonation composite;
-tension-definition-brief.md calibration status).
+vat-channels.md calibration status).
 
 Inputs: wav paths, dirs, or `path|...` filelists. Output: JSONL rows
 {"wav": ..., "<head>": score, ...}.

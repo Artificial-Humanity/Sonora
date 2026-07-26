@@ -19,18 +19,37 @@ MODEL_DIR = "/data/models/nari-labs/Dia-1.6B-0626"
 # Pilot owner-audit 2026-07-17: 2/5 collapses at temp 1.3-1.4 (white noise /
 # wordless output). The audition's good renders used 1.8. 1.3 is the cliff,
 # not a floor — register control belongs to text/staging, not temperature.
-TEMP_FLOOR = 1.5
+# 1.5 is NOT a safe floor: at 1.5, 7/20 clips collapsed to noise (2026-07-26).
+# 1.8 is the validated operating point; treat this as a hard floor, not a target.
+TEMP_FLOOR = 1.8
 TOKENS_PER_SEC = 86            # Dia audio-token frame rate
 CHARS_PER_SEC = 14.0           # mid-rate English speech estimate
 
 
+HEADROOM = 1.35                # was 1.8; 1.35 leaves room for Dia's real ~11.6 ch/s rate
+GRACE_SEC = 1.0                # was 2.0
+TAG_SEC = 1.2                  # allowance per non-verbal tag
+
+
 def token_budget(text):
-    """Pilot QC finding (2026-07-17): bare lines run to whatever cap they get,
-    improvising tails that fail the duration gate AND drag whole-clip DNSMOS
-    down. Budget generation length from the script text instead: estimated
-    duration x 1.8 headroom + 2 s grace."""
+    """Bound Dia's generation to what the script actually needs.
+
+    Pilot QC finding (2026-07-17): bare lines run to whatever cap they get,
+    improvising tails that fail the duration gate AND drag whole-clip DNSMOS down.
+    That is still true — and the 2026-07-26 audit showed the old 1.8x + 2 s budget
+    was itself the cap being run to. Observed durations matched the formula almost
+    exactly (a 6.6 s script budgeted 13.9 s and rendered 14.9 s; a 9.2 s script
+    budgeted 18.6 s and rendered 19.6 s), while a line that chose to stop finished
+    at 7.7 s against a 13.5 s budget. Lowering temperature to 1.5 changed nothing,
+    because temperature was never the constraint.
+
+    So: tight headroom, and an explicit per-tag allowance instead of blanket grace.
+    Well-behaved lines emit their end token early and are unaffected; runaway lines
+    get cut off before they can improvise a second clip's worth of audio.
+    """
     est = len(text) / CHARS_PER_SEC
-    return int((est * 1.8 + 2.0) * TOKENS_PER_SEC)
+    tags = text.count("(")            # (sighs), (laughs) … each needs real time
+    return int((est * HEADROOM + GRACE_SEC + tags * TAG_SEC) * TOKENS_PER_SEC)
 
 
 def main():

@@ -14,12 +14,16 @@ call.
 ## What actually gets read out of your voice_design
 Exactly two things, by regex:
 
-1. **Gender** — matched on the words `female`, `woman`, `girl`, `feminine`
-   (otherwise it falls through to Male). Always use one of those words, or an
-   explicit `male`/`man`.
-2. **Age band** — matched on exactly one of: `child`, `teen`, `young`,
-   `middle-aged`, `mature`, `elderly`. Use one of these literal words. This maps to
-   an F0 percentile target within gender.
+1. **Gender** — matched by regex on exactly these four words: `female`, `woman`,
+   `maternal`, `girl`. Anything else falls through to **Male**. Use one of those four
+   literal words, or an explicit `male`/`man`. **`feminine` is NOT matched** and will
+   cast a male reference.
+2. **Age band** — matched by regex to an F0-percentile target within gender. Safe
+   literal choices: `child` (0.95), `teen` (0.80), `young` (0.70), `middle-aged`
+   (0.30), `elderly` (0.10). Careful: **`mature` and `matronly` map to the SAME band
+   as `middle-aged`, not to elderly** — say `elderly` if you mean old. The pool is
+   also filtered to a 4.0-10.0 s duration window and skews young, so an `elderly`
+   request is best-effort.
 
 Everything else you write — timbre, accent, emotion, personality — is **discarded
 before it can affect anything**. Reference selection then scores on intended V/A/T

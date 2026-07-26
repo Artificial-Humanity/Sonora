@@ -167,3 +167,117 @@ The revisit list above is the whole of the near-term work.
 > No TTS model enters the portfolio without a studied interface and a skill file
 > adapter for Gemma. If we cannot say what reaches the model, we cannot direct it,
 > and we must not grade it.
+
+---
+
+# Known gotchas
+
+Every one of these cost real time to find. They are recorded here because none of
+them announces itself — most present as something else entirely.
+
+## Per-engine interface traps
+
+**Qwen3-TTS-VoiceDesign — `voice_description` is not a parameter.**
+`generate_voice_design()` accepts only `text`, `instruct`, `language`. Passing
+`voice_description=` puts it in `**kwargs`, where it is silently dropped with **no
+exception** — so a `try/except TypeError` fallback around it is dead code that never
+fires. Symptom: direction appears correct in the manifest and has no effect on the
+audio. The name comes from Qwen's own demo Space, where it is a local variable and a
+Gradio label for the *same single* `instruct` field.
+
+**MOSS-TTS 8.5B is a base model and will read your prompt aloud.**
+The flagship is un-SFT'd; its card does not list `instruction` among its inputs.
+Its `<user_inst>` block is plain prompt text with no conditioning pathway, so when
+the `Text:` field is short relative to `Instruction:` the model simply continues the
+prompt — i.e. speaks the direction. Observed at instruction:text ratios of 5x and
+13x on ~1-2 s lines. Use **MOSS-VoiceGenerator** for anything directed.
+
+**MOSS unset fields become the literal string "None".**
+`UserMessage.__post_init__` does `.replace("{quality}", str(self.quality))`. Leaving
+a slot empty does not omit it — it writes `None` into the prompt. And `quality` is a
+**dead slot**: no string literal was ever assigned to it in the whole repo history,
+and no card, Space or example gives it a value. Do not spend a labelled field on
+nothing, and do not add prompt text to a base model.
+
+**MOSS-VoiceGenerator silently deletes bracketed text.**
+With `normalize_inputs=True` the processor runs `normalize_instruction()`, which
+does `re.sub(r"\[.*?\]", "", ...)` — anything inside `[...]` or `{...}` is destroyed
+without warning, and newlines are flattened. Never put bracketed stage directions in
+its instruction.
+
+**VibeVoice's TTS module is not in the official repo.**
+Microsoft restructured it away; `pip install transformers` alone yields
+`ModuleNotFoundError: No module named 'vibevoice'`. Install from the community fork:
+`pip install 'git+https://github.com/vibevoice-community/VibeVoice.git' soundfile
+bitsandbytes accelerate`. The bnb 8-bit shard load is ~7.5 min on gfx1151 — amortise
+it over a whole bank, and run VibeVoice last.
+
+**VibeVoice speaker numbering is 0-indexed for the voice prompt.**
+`_create_voice_prompt` uses `enumerate(speaker_samples)`, so a single reference is
+registered as `Speaker 0:` — the script must match. The docs and demo use
+`Speaker 1:`. Ours says `Speaker 0:` and is correct; do not "fix" it.
+
+**VibeVoice sings, and you cannot stop it.**
+Singing is an emergent capability they never trained for ("our training data doesn't
+contain any music data"), and background music is content-aware and spontaneous —
+"we can't directly control whether they are generated or not", made likelier by a
+voice prompt that itself contains music. It does not model overlapping speech, so
+multi-voice output is out-of-spec behaviour with no setting to correct it. Observed
+on high-arousal celebratory text.
+
+**Dia has a temperature cliff and 1.5 is on the wrong side of it.**
+Validated operating point is **1.8**. At 1.5, 7/20 clips collapsed to noise —
+word-error 0.79-1.00 with DNSMOS 1.2-1.8 — matching the white-noise collapse the
+2026-07-17 audit saw at 1.3-1.4. `TEMP_FLOOR = 1.8` is a hard floor, not a target.
+
+**Dia runs to whatever token cap you give it.**
+It rarely emits its own end token, so `max_new_tokens` decides the length and the
+model fills the space with invented content. Observed durations tracked the budget
+formula almost exactly. Budget tightly (`1.35x + 1.0 s + 1.2 s per tag`), but not
+below ~1.3x: **Dia's real speech rate is ~11.6 chars/sec**, not the 14.0 our estimate
+assumes, so a tighter cap truncates genuine speech.
+
+**A leading bare non-verbal tag has no duration constraint.**
+`[S1] (sighs) I keep setting a place…` produced an "extreme, non-human" sigh and the
+worst tail in the batch. nari-labs place tags *inside* the utterance. Their tag set
+is soft-closed: the encoder is a byte tokenizer, so unlisted tags are accepted
+silently and simply misbehave.
+
+**Accent is unsupported everywhere.** No engine we run has token- or config-level
+accent representation. MOSS's maintainers state it outright; Qwen's paper mentions
+accent once, about cloning *drift*. Accent is a casting problem.
+
+## Pipeline and infrastructure traps
+
+**MIOpen's find-db must be OWNED by the running user, not merely writable.**
+MIOpen calls `std::filesystem::permissions()` (chmod), and **chmod checks ownership,
+not write bits** — so a cache owned by another user aborts every render *even at mode
+777*. Symptom is nasty: a C++ `terminate()` with **no Python traceback**, engines
+dying partway through a bank, and it looks like OOM. ai-mgr has its own
+`miopen-ai-mgr` dir, seeded from the shared one so it is not cold (the gfx1151
+cold-db ≈1h fake-hang trap).
+
+**A C++ abort loses buffered manifest writes.**
+The above killed 3 of 4 engines and left 13 rendered wavs orphaned on disk with
+0-line manifests — audio with no record, unregistered and unauditable. All renderers
+now `mf.flush()` per line.
+
+**`HF_TOKEN` does not cross into Docker.** It lives in `.zshenv`; without explicit
+`-e` forwarding, `trust_remote_code` modules are fetched anonymously and rate-limited
+mid-run. `synth_bank.sh` forwards it.
+
+**A bank LINE carries no `campaign`** — that lives at bank top level. Building a
+manifest from `dict(job)` therefore omits it, and `register_audition.py` falls back
+to `book-<slug>`, silently splitting a campaign in two.
+
+**`peak dBFS` is not a clipping test.** A `-0.0 dBFS` peak may be a single grazing
+sample. Count runs of >=3 consecutive full-scale samples before calling anything
+clipped — we briefly and wrongly reported 14 clipped clips when the true count across
+all 80 was zero.
+
+**`qc_gate.py` needs Python 3.11.** On 3.12, librosa resolves a numba that refuses to
+build. Run it with `uv run --python 3.11`.
+
+**Engine keys are matched by prefix** in the audition app's RELAY table. `moss_vg`
+and `moss85` are distinct entries — neither name prefixes the other, and a missing
+key silently yields no relay annotation at all.

@@ -13,7 +13,7 @@ acoustics we control rather than in whatever a teacher model absorbed._
 |---|---|---|
 | **Gender** | `male` · `female` · `neutral` | Deliberately simplified to three. |
 | **Age** | `child` · `teen` · `adult` · `middle-aged` · `elderly` | Five bands. |
-| **Accent** | open list — e.g. `British`, `American`, `African American`, `Indian`, … | Owner framing: not truly "race" but general accent, which stereotypically can include one — "we'll have to accept stereotypes here in some regard." Widest category; no exhaustive list attempted yet. |
+| **Accent** | open list — e.g. `British`, `American`, `African American`, `Indian`, … | **ACCENT BELONGS TO CASTING, NOT DIRECTION (owner, 2026-07-25).** No TTS engine we run has any token- or config-level accent representation — MOSS's maintainers state accents are unsupported, Qwen's paper mentions accent only as cloning *drift*, and VibeVoice and Dia have no channel at all. Accent therefore never enters an instruct/markup payload; it is realised by **reference-clip selection** (`ref_select.py`) and recorded as an audited tag on the clip. Owner framing on the category itself: not truly "race" but general accent, which stereotypically can include one — "we'll have to accept stereotypes here in some regard." Widest category; no exhaustive list attempted yet. |
 
 Plus "other potentially useful characteristics" as they prove out (timbre classes, vocal
 weight, etc.).
@@ -112,4 +112,4 @@ prompt adherence is unreliable — casting via measured, owner-defined norms is 
 Sonora-native alternative.
 
 Linked: [[teacher-synthesis-portfolio]] (engine traits) · [[vat-audit-verdicts]] ·
-[[rename-on-tag-mismatch]] · notes/vat-conditioning-design.md (FiLM pattern).
+[[rename-on-tag-mismatch]] · notes/vat-channels.md (FiLM pattern).

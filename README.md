@@ -40,13 +40,13 @@ docker run -it --network=host \
 
 ### Installation
 Once inside the container:
-1. Navigate to the `Sonora` project folder (this workspace's local checkout is named `Sonora-GH`, to disambiguate it from the `Sonora-HF` model registry checkout alongside it — the GitHub repo itself is still `Sonora`).
+1. Navigate to the project folder. Since 2026-07-22 the workspace is flat: `Sonora/github` (this repo) sits alongside `Sonora/huggingface` (the model-registry checkout of `artificial-humanity/Sonora`). The GitHub repo itself is still named `Sonora`; there is no umbrella repo.
 2. Install project requirements with [uv](https://github.com/astral-sh/uv), this organization's standard for Python tooling:
    ```bash
    uv pip install --no-build-isolation -e .
    ```
    *(Note: `--no-build-isolation` is recommended when using pre-installed container PyTorch/NumPy dependencies to build Cython extensions.)*
-3. Install additional system packages (such as `espeak-ng`) if utilizing phonemization.
+3. **No `espeak-ng` required.** Sonora phonemizes through the permissive `op_g2p` lane (OpenPhonemizer dictionary → DeepPhonemizer TFLite OOV fallback) against a locked 178-symbol IPA vocab, shared by training and runtime. espeak-ng (GPL-3.0) was removed from the training path on 2026-07-14 and is banned from the runtime path by the licence wall.
 
 ---
 
@@ -59,13 +59,14 @@ Training is structured in sequential phases to isolate complexity:
 * **Process:** Configure data configs, execute the training loop via `python matcha/train.py`, and inspect Tensorboard outputs under `outputs/`.
 
 ### Phase 2: Export & On-Device Validation
-* **Goal:** Confirm the `torch → ONNX` and downstream compilation targets (such as `.tflite` or ONNX Runtime) operate correctly.
+* **Goal:** Confirm the split-graph `litert-torch` export (Plan A since 2026-07-12) produces GPU-clean `.tflite` graphs; `torch → ONNX` + `onnx2tf` is the fallback. See [`scripts/litert_export/`](scripts/litert_export/).
 * **Process:**
   1. Export checkpoint to ONNX: `python -m matcha.onnx.export`
   2. Validate that the exported model loads and synthesizes speech accurately inside your target runtime.
 
 ### Phase 3: Directability (VAT Conditioning)
-* **Goal:** Introduce Valence, Arousal, and Tension (VAT) conditioning to the model.
+* **Goal:** condition on `(valence, energy, tension)` — energy occupies the arousal slot — via zero-init FiLM in the text encoder and flow decoder.
+* **Status: shipped.** The de-risk run validated the architecture on energy (rho ~ 1.000, 2026-07-16); the full 3-channel run (`vat3-24k`, 2026-07-22) landed energy PASS, tension near-pass, **valence FAIL** — a corpus-label limit, not an architectural one.
 * **Process:** Implement FiLM/AdaLN modulation on the text encoder + flow decoder, preprocess training data with VAT labels, and retrain.
 
 ### Phase 4: Casting & Speaker Embedding Blends

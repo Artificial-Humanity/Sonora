@@ -1,5 +1,5 @@
 """Assemble the human-audit set for the tension label (calibration step 2,
-tension-definition-brief.md).
+vat-channels.md).
 
 Picks the strongest +T (pressed?) and -T (breathy?) clips from a v1-derived
 filelist at MATCHED LOUDNESS (|A| below a threshold), so the audit hears

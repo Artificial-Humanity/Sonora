@@ -41,6 +41,6 @@ LibriTTS-R, days of hands-off wall-clock on the Strix Halo.
 7. Warm start across the rate change is approximate for the decoder (mel content shifts) but
    full for the text encoder/durations; expected and acceptable for a fine-tune.
 
-Linked from: [next-steps §A Gate 2](../Prosodia/next-steps.md),
-[vat-conditioning-design.md](vat-conditioning-design.md) (sequencing note),
+Linked from: [next-steps §A Gate 2](../../../Prosodia/notes/next-steps.md),
+[vat-channels.md](vat-channels.md) (sequencing note),
 [dataset-landscape.md](dataset-landscape.md).

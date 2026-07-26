@@ -1,8 +1,30 @@
 # Project State — Project Sonora
 
-_Last updated: 2026-07-14._
 
-The committed, curated snapshot of where Project Sonora (TTS training, model, and dataset prep) stands and what to do next. Behavioral rules and the stack/layout manifest live in [AGENTS.md](../../AGENTS.md).
+## Current front — teacher synthesis (2026-07-22 → 07-26)
+
+After the Emilia campaign failed its gate, the v1.1 valence corpus is story-driven: LibriVox
+quote mining + **directed** teacher synthesis. Four engines are in the portfolio (`vibevoice`,
+`qwen`, `moss_vg`, `dia`).
+
+The Director is now **two passes**: per-line V/A/T + a register copied from a 47-label controlled
+lexicon (`scripts/synthesis/register_lexicon.json`), then per-engine casting/delivery from
+`scripts/synthesis/director_skills/<engine>.md`, emitted as engine-shaped JSON.
+`build_direction()` in `scripts/synthesis/book_ingest.py` is the single source of truth for what
+each renderer actually receives — the 2026-07-25 relay audit found that **no engine had ever
+received the voice design**.
+
+Standing rule: no TTS model enters the portfolio without a studied interface and a Gemma
+skill-file adapter — [tts-engine-onboarding.md](tts-engine-onboarding.md), which also carries the
+known-gotchas reference. Minimum clip length is 4 s of estimated speech (gates input text).
+
+Latest A/B (`teacher-ab-v1`, 2026-07-26): qwen 19/20 · vibevoice 19/20 · moss_vg 18/20 · dia
+12/20; median DNSMOS 3.46 / 3.40 / 3.27 / 2.53. Loudness is not normalised across engines
+(~5 dB spread) — an open decision. Nothing is clipping.
+
+_Last updated: 2026-07-26._
+
+The committed, curated snapshot of where Project Sonora (TTS training, model, and dataset prep) stands and what to do next. Behavioral rules and the stack/layout manifest live in [AGENTS.md](../AGENTS.md).
 
 ---
 
@@ -19,7 +41,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   `model/`. Note the lowercase `models` — the box set the convention and the Mac followed.
   **Layout finalized later the same day (end-state C):** the registry clone moved once more,
   `Sonora/model/` → workspace-root **`Sonora/huggingface/`** (sibling of `Reference/`; kills the
-  repo-in-repo nesting; see [registry-housekeeping.md](registry-housekeeping.md)) — done on
+  repo-in-repo nesting; see [registry-housekeeping.md](training-operations.md#registry-promotion-conventions)) — done on
   both machines the same day.
   Prosodia updated in lockstep: `prosodia_models.json` `modelsBase`, Swift fallback paths, `engine.rs` test paths,
   tuner README canonical listing. Same day, the staged actor file was **renamed
@@ -49,7 +71,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   pending an HF write token** (none available in the remote session). *(Resolved by 2026-07-13:
   the registry is pushed through the split-graph lane commit; model card + provenance convention +
   engine `config.json` added the same day — see
-  [registry-housekeeping.md](registry-housekeeping.md).)*
+  [registry-housekeeping.md](training-operations.md#registry-promotion-conventions).)*
 * **✅ Fixed artifacts verified end-to-end, server-side (2026-07-12, same session as the fix):**
   * **Multi-sentence ASR (stochastic, temp 0.667):** 8 short sentences rendered through the fixed
     float32 TFLite with matcha-CLI input parity (`english_cleaners2` + `intersperse` blanks) →
@@ -152,8 +174,8 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   50-token static limit, per-graph delegate placement, tunable ODE steps, 66 MB fp16), whereas the
   monolith's parity win only proved it *correct*, not *equal*. The ONNX stage remains the numerical
   oracle for any onnx2tf export; the LiteRT/TFLite runtime is unchanged either way. Docs updated in
-  lockstep: [Prosodia next-steps.md](../Prosodia/next-steps.md) (📌 callout + §B),
-  [architecture-north-star.md](../Prosodia/architecture-north-star.md), roadmap §§1–2 below.
+  lockstep: [Prosodia next-steps.md](../../../Prosodia/notes/next-steps.md) (📌 callout + §B),
+  [architecture-north-star.md](../../../Prosodia/notes/architecture-north-star.md), roadmap §§1–2 below.
 * **Local `Models/` layout on `ai-lab-0` (2026-07-12):** created `/data/Models` (owned by lmcfarlin)
   and symlinked it as `Models/` in the repo root (gitignored), mirroring the Mac layout. Cloned the
   HF registry into `Models/Sonora/` (git-lfs installed + hydrated). The vocoder checkpoint for
@@ -191,7 +213,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
 >    milestone 3: VAT training must own pitch + voice quality; it need not carry pace/energy.
 > 3. **VAT directability (milestone 3) — conditioning code SHIPPED, de-risk phase RUNNING
 >    (2026-07-14):** FiLM conditioning landed (Sonora `ad2baea`, design in
->    [vat-conditioning-design.md](../Sonora/vat-conditioning-design.md), identity-at-init +
+>    [vat-channels.md](vat-channels.md), identity-at-init +
 >    export gates green); de-risk corpus derived (30,351 clips / 45.7 h / 247 spk @ native
 >    24 kHz, energy labels — `derive_vat_corpus.py`); **HiFi-GAN 24 kHz/80-band vocoder
 >    fine-tune TRAINING NOW** (`vocoder_training` container, warm from UNIVERSAL_V1; see
@@ -206,7 +228,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
 >    model card, per-promotion provenance, `config.json` into the registry, revision pinning,
 >    and the layout question — **settled same day: end-state C, workspace-root
 >    `Sonora/huggingface/`**, implemented on both machines. See
->    [registry-housekeeping.md](registry-housekeeping.md).
+>    [registry-housekeeping.md](training-operations.md#registry-promotion-conventions).
 
 
 ### 1. Integration & Audition Verification (Project Prosodia)
@@ -259,7 +281,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   (c) enables per-graph delegate placement on mobile. **The split export is done (see Current
   State); the open Plan A work is the Rust multi-graph runtime (action 1b).**
 * **Original rationale (retained for record):** the split-graph re-export with per-graph correlation gates also removes the 50-token static limit and most of the ~14 s/forward latency of the monolithic graph.
-* **Goal:** Adopt the export/runtime learnings from [litert-community/Matcha-TTS](https://huggingface.co/litert-community/Matcha-TTS) (an fp16-TFLite conversion of the same upstream checkpoints we fine-tuned — no training code, so no pivot; full assessment in [next-steps.md](../Prosodia/next-steps.md)).
+* **Goal:** Adopt the export/runtime learnings from [litert-community/Matcha-TTS](https://huggingface.co/litert-community/Matcha-TTS) (an fp16-TFLite conversion of the same upstream checkpoints we fine-tuned — no training code, so no pivot; full assessment in [next-steps.md](../../../Prosodia/notes/next-steps.md)).
 * **Action:**
   1. ~~**Split-graph re-export** of `checkpoint_epoch=199`~~ **✅ DONE (2026-07-12)** — textenc /
      CFM decoder / vocoder as three graphs, host-side Euler ODE loop + length regulator. The
@@ -306,8 +328,8 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
      have. Expresso (the expressive dataset on hand) is NC-tainted and can't ship — a clean
      labeled alternative doesn't yet exist. This blocks going past the single validated channel,
      not the architecture. Two decision briefs now cover the path: corpus approach
-     ([vat-corpus-decision-brief.md](vat-corpus-decision-brief.md)) and tension semantics
-     ([tension-definition-brief.md](tension-definition-brief.md) — recommends phonation
+     ([vat-channels.md](vat-channels.md)) and tension semantics
+     ([vat-channels.md](vat-channels.md) — recommends phonation
      tension, pressed↔breathy, labeled with the validated energy-channel recipe). Both await
      owner calls.
 * **Long-passage check (2026-07-16, chunk-size sweep):** the derisk checkpoint does NOT
@@ -385,7 +407,12 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
     LibriTTS-R are perceptually subtle. **RULING: T-axis semantics rescoped to LAX ↔ TIGHT**;
     "breathy"/"strained" vocabulary reserved for data with real aspiration (own synth renders,
     Emilia). T channel stays in training — instrument-truthful, audible range on synth data.
-  * **Emilia — GO as a v1.1 continuation (owner call 2026-07-20):** vat3 trains now on the
+  * **Emilia — REVERSED to NO MERGE (2026-07-21).** The pre-registered 48-clip human gate fired
+  and failed the mining thesis (record: [emilia-mining-and-verdict.md](emilia-mining-and-verdict.md)).
+  The tail was never merged; vat3 trained on LibriTTS-R alone. Valence depth moved to
+  story-driven data: LibriVox quote mining + directed teacher synthesis. The superseded
+  2026-07-20 reasoning is kept below for the record.
+* ~~**Emilia — GO as a v1.1 continuation (owner call 2026-07-20):**~~ vat3 trains now on the
     staged corpus; the 13,143-clip tail goes through ASR/24k/labels/filelists after training
     frees the GPU, then training continues as v1.1. The tension result *strengthens* the case:
     Emilia's unrestored audio has exactly the phonation texture LibriTTS-R restoration strips.
@@ -448,15 +475,16 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
 > continuity; the runbook is canonical.
 
 ### Docker Compose Unified Stack
-All containers are managed under the unified [docker-compose.yml](../../AI-Lab-AMD/docker-compose.yml) stack config. Recreate or restart containers using:
+All containers are managed under the unified [docker-compose.yml](../../../AI-Lab-AMD/docker-compose.yml) stack config. Recreate or restart containers using:
 ```bash
 docker compose up -d
 ```
 
 ### Launch Vocalizer Container
 The Vocalizer (`sonora_vocalizer`, renamed from `sonora_playpen` 2026-07-16; the standing
-human-audit surface — see ARCHITECTURE.md §5) is part of the GitOps compose stack — it deploys
-automatically on push and needs no manual launch. To bounce it explicitly:
+human-audit surface — see ARCHITECTURE.md §5) is a compose service in the AI-Lab-AMD stack.
+**Pushes deploy nothing** — GitOps was retired 2026-07-22; deploy explicitly with
+`AI-Lab-AMD/scripts/deploy.sh`. To bounce it explicitly:
 ```bash
 docker compose -f AI-Lab-AMD/docker-compose.yml up -d sonora_vocalizer   # from the workspace root
 ```

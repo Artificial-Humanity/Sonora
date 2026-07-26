@@ -2,8 +2,8 @@
 
 > **Sequence:** 1 of 5 high-ambition goals — the **first actor model we actually ship** and the
 > foundation the others build on. Next: [2 — Dramatic Reader](high-ambition-2-dramatic-reader.md) ·
-> [3 — Child Voices](../Prosodia/high-ambition-3-child-voices.md) ·
-> [4 — Multilingual G2P](../Prosodia/high-ambition-4-multilingual-g2p.md) ·
+> [3 — Child Voices](../../../Prosodia/notes/high-ambition-3-child-voices.md) ·
+> [4 — Multilingual G2P](../../../Prosodia/notes/high-ambition-4-multilingual-g2p.md) ·
 > [5 — StyleTTS2-Lite](high-ambition-5-styletts2-lite.md) (the higher-ceiling re-platform, if Matcha
 > quality falls short). Model decision + training/hardware detail:
 > [actor-model-and-training.md](actor-model-and-training.md).
@@ -69,7 +69,7 @@ the dashed conditioning paths is stock Matcha; the additions below are ours.**
   already uses for the timestep/speaker conditioning — so it's an additive change, not surgery.
 * **Training signal:** pair training utterances with VAT labels (derive from prosodic features —
   pitch range, energy, rate — and/or LLM annotation; the Strix Halo can host a big labeler locally).
-  This is the same VAT contract the [Tuner calibration](../Prosodia/voicing-synthesis-and-tuning.md) and Director
+  This is the same VAT contract the [Tuner calibration](../../../Prosodia/notes/voicing-synthesis-and-tuning.md) and Director
   prompts already speak.
 * **Done looks like:** audibly distinct delivery across VAD slider settings in the Tuner.
 
@@ -77,7 +77,7 @@ the dashed conditioning paths is stock Matcha; the additions below are ours.**
 * **Key difference from StyleTTS2:** StyleTTS2 gives a disentangled 64/128-d **style vector** that our
   `voice_loader` interpolates directly. Matcha conditions on a **speaker embedding** instead. The
   *machinery ports unchanged* — the bilinear age/masculinity grid and the gruff/raspiness texture
-  blend in [voicing-synthesis-and-tuning.md](../Prosodia/voicing-synthesis-and-tuning.md) operate on whatever
+  blend in [voicing-synthesis-and-tuning.md](../../../Prosodia/notes/voicing-synthesis-and-tuning.md) operate on whatever
   vector conditions the decoder; only the **vector's semantics** change (speaker embedding vs style
   vector).
 * **Work:** define the anchor embeddings (train a small speaker-embedding LUT, or extract embeddings
@@ -91,14 +91,14 @@ the dashed conditioning paths is stock Matcha; the additions below are ours.**
 * **Path:** official exporter `python -m matcha.onnx.export` (can embed the HiFi-GAN vocoder) →
   **`onnx2tf` → TFLite** (keeps the LiteRT runtime + Rust `tflite.rs` actor) **or** ship ONNX via
   ONNX Runtime. The `onnx2tf` leg is the one still-unproven step — spike it early (see
-  [next-steps.md §1](../Prosodia/next-steps.md)). *(Update 2026-07-12: both legs since proven, and
+  [next-steps.md §1](../../../Prosodia/notes/next-steps.md)). *(Update 2026-07-12: both legs since proven, and
   the priority reversed — **Plan A is now the `litert-torch` fixed-shape split-graph export**
   (textenc/decoder/vocoder + host ODE, verified at parity on Epoch 199); the `onnx2tf` monolith is
   the Plan B fallback. ONNX Runtime was never adopted. See the 📌 callout in
-  [next-steps.md](../Prosodia/next-steps.md).)*
+  [next-steps.md](../../../Prosodia/notes/next-steps.md).)*
 * **I/O contract:** must match `crates/actor/src/engine.rs::forward_impl` — phonemes `[1,N] i32`,
   speaker/style `f32`, speed scalar `f32`, optional VAT `f32[3]`, output PCM `f32` mono 24 kHz. The
-  contract is documented in [next-steps.md](../Prosodia/next-steps.md) and is identical whether the base is Matcha
+  contract is documented in [next-steps.md](../../../Prosodia/notes/next-steps.md) and is identical whether the base is Matcha
   or StyleTTS2 — so the Rust actor doesn't care which model produced the graph.
 
 ---
@@ -142,7 +142,7 @@ this is just the cheapest forcing function to settle the decisions below.
 > **Scope note (reconciled 2026-06-18):** these are the *training-time* contracts the model commits
 > to. Their *discovery-spike / runtime-bridge* counterparts — the `map_styletts2_to_matcha_ipa` remap,
 > the 22.05→24 kHz runtime resample, the `[V,A,T]` payload representation, and the TFLite/`onnx2tf`
-> runtime — are already locked and checked in [next-steps.md](../Prosodia/next-steps.md). They are *not* the same
+> runtime — are already locked and checked in [next-steps.md](../../../Prosodia/notes/next-steps.md). They are *not* the same
 > items: the spike proves the **stock** model runs through the actor; the rows below are what must be
 > fixed **before training**. Three of the four rows below are now resolved (vocab + sample rate via
 > commit `7143617`, 2026-06-18; export/runtime via the `onnx2tf` spike) — only **data + label format**
@@ -153,7 +153,7 @@ this is just the cheapest forcing function to settle the decisions below.
   symbols** (removed the duplicate `'`, added the modifier-letter schwa `ᵊ`), and an `is_matcha_ipa`
   flag lets direct Matcha models bypass `map_styletts2_to_matcha_ipa` at runtime. The model must still
   be *trained* against this vocab, but the contract (G2P ↔ training ↔ `config.json` lockstep) is
-  settled — keep them in lockstep if the symbol set ever changes (see [next-steps.md](../Prosodia/next-steps.md)).
+  settled — keep them in lockstep if the symbol set ever changes (see [next-steps.md](../../../Prosodia/notes/next-steps.md)).
 - [x] **Sample rate.** ✅ **Decided (Gate 2, commit `7143617`, 2026-06-18):** native **24 kHz** — the
   preferred path that keeps the `StageAudioSink` / coordinator contract. `config.json` declares
   `"sample_rate": 24000`, and `get_model_sample_rate` in `engine.rs` reads the native rate and bypasses
@@ -162,7 +162,7 @@ this is just the cheapest forcing function to settle the decisions below.
   collecting/labeling, so the directability fine-tune (Phase 3) has consistent supervision.
 - [x] **Export/runtime decision.** ✅ **Resolved (2026-06-17):** keep **TFLite via `onnx2tf`**. The
   custom conversion was validated on `model_e2e.onnx` and the FFI contract locked — ONNX Runtime is not
-  needed (see [STATE.md](../Prosodia/STATE.md) and [next-steps.md](../Prosodia/next-steps.md)).
+  needed (see [STATE.md](../../../Prosodia/notes/STATE.md) and [next-steps.md](../../../Prosodia/notes/next-steps.md)).
 
 ---
 
@@ -191,7 +191,7 @@ the *first* success boring, then add novelty. (Phase 0 above runs first.)
 * **[2 — Dramatic Reader](high-ambition-2-dramatic-reader.md)** (full-cast) builds directly on this
   actor's directability + casting. Its multi-voice design was first written against StyleTTS2's style
   space; the Matcha analog is multiple speaker embeddings + the conditioning above.
-* **[3 — Child Voices](../Prosodia/high-ambition-3-child-voices.md)** extends the casting range; its DSP and
+* **[3 — Child Voices](../../../Prosodia/notes/high-ambition-3-child-voices.md)** extends the casting range; its DSP and
   fine-tune options are base-agnostic, its embedding-blend/extract options map onto the
   speaker-embedding space.
 * **[5 — StyleTTS2-Lite](high-ambition-5-styletts2-lite.md)** is the **optional quality-ceiling

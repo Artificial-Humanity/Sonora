@@ -10,8 +10,9 @@ public-lineage: engines Apache-2.0/MIT only, line texts authored in-repo (origin
 script_bank.json ──> stage-1 renderers ──> QC gate ──> keeps + verified labels
  (authored lines,     synth_dia.py          qc_gate.py       │
   intended V/A/T,     synth_qwen.py         + eiv_score.py   ├──> corpus slice (bounded minority)
-  per-engine          synth_moss85.py                        │
-  direction)                                                 └──> anchors ──> stage-2 LongCat
+  per-engine          synth_moss_vg.py                       │
+  direction)          synth_vibevoice.py                     │
+                                                             └──> anchors ──> stage-2 LongCat
                                                                    transfer (synth_longcat.py)
                                                                    ──> QC gate again
 ```
@@ -26,15 +27,63 @@ A bank line = `{id, engine, register, intended{V,A,T}, seed, text, direction{…
 
 | Engine | Control channels (in `direction`) | How it's passed (`synth_*.py`) |
 |---|---|---|
-| **Qwen** (`synth_qwen.py`) | `design` = natural-language **voice description**; `instruct` = natural-language **delivery instruction**; `text` = the words | `generate_voice_design(voice_description=design, text=text, instruct=instruct, language="English")` |
-| **MOSS-8.5B** (`synth_moss85.py`) | `instruct` = one bundled instruction anchoring **voice + delivery** together; optional `quality` | `processor.build_user_message(text=text, instruction=instruct, quality=…)` |
-| **Dia** (`synth_dia.py`) | **No instruct channel.** `render_text` embeds control **inline**: `[S1]` speaker tag + nonverbal tags (`(sings)`, `[laughs]`) + words; plus `temperature` (≥1.5 floor), `guidance` (3.0) | `processor(text=[render_text])` → `generate(temperature=, guidance_scale=, max_new_tokens=token_budget(...))` |
+| **VibeVoice-Large** (`synth_vibevoice.py`) | **No natural-language slot at all.** `design` is CASTING METADATA only — `ref_select.py` parses it for a gender word and an age band to pick a reference clip. `instruct` is kept for the audit card and never reaches the model. | `select_reference(design)` → model gets `"Speaker 0: {text}"` + a reference wav |
+| **Qwen** (`synth_qwen.py`) | ONE merged `instruct` string carrying voice **and** delivery together; `text` = the words | `generate_voice_design(text=text, instruct=instruct, language="English")` — there is **no** `voice_description` parameter; a separate `design` key lands in `**kwargs` and is silently dropped (owner finding 2026-07-25) |
+| **MOSS-VoiceGenerator** (`synth_moss_vg.py`, engine `moss_vg`) | ONE merged `instruct` string (voice + delivery). **This is THE MOSS for all directed work.** | `processor.build_user_message(text=text, instruction=instruct)` — `text` and `instruction` both required, no reference audio |
+| **MOSS-8.5B** (`synth_moss85.py`, engine `moss85`) | **NOT a directed engine.** Un-SFT'd pre-trained BASE model; its card lists no `instruction` input, and on short lines it reads the prompt aloud. Retained only as a possible CLONING engine via its unused `reference` slot. | — |
+| **Dia** (`synth_dia.py`) | **No instruct slot; only `render_text`.** Control is inline: `[S1]` speaker tags, the **closed 21-tag** non-verbal set (its one director-drivable channel), and punctuation/capitalisation (a real but undocumented channel). `temperature` **1.8 — validated, do not lower** (1.5 collapsed 7/20 clips to white noise, 2026-07-26); `guidance` 3.0. | `processor(text=[render_text])` → `generate(temperature=, guidance_scale=, max_new_tokens=token_budget(...))` |
+
+Over-length on Dia was never the model: it runs to whatever token cap it is given and rarely emits
+its own end token. `token_budget()` is now `1.35x + 1.0 s + 1.2 s per tag`; do not tighten below
+~1.3x, because Dia's real speech rate is ~11.6 chars/sec, not the 14.0 the estimate assumes.
 
 Takeaways that matter for any new text front-end (e.g. book-prose ingest): **the "direction" is
-what carries delivery**, it is engine-specific (Qwen/MOSS = a natural-language *instruction*; Dia =
-*inline text tags* + sampling), and **`intended{V,A,T}` is the label to emit** — producing those
+what carries delivery**, and it is **engine-shaped**: Qwen and MOSS-VoiceGenerator each take
+exactly ONE merged `instruct` string, VibeVoice takes no instruction at all (its `design` only
+selects a reference clip), and Dia takes only `render_text`. `build_direction()` in
+`scripts/synthesis/book_ingest.py` is the single source of truth for each engine's payload — bank
+builders must not invent keys (a `design` key written for moss85 was silently dropped for a whole
+campaign). Note also that **`intended{V,A,T}` is the label to emit** — producing those
 fields from source text is exactly what a `book_ingest` stage must do. Each renderer writes a
 `<engine>_manifest.jsonl` echoing the full `direction`, seed, and license per clip (provenance).
+
+## Director architecture (two passes, 2026-07-26)
+
+Labels describe the LINE; direction describes the ENGINE. They are separate calls, because when
+they were one the training labels drifted with whichever engine the director happened to be
+writing for — 54 distinct register labels for 20 lines, and identical V/A/T on only 4 of 20 items.
+Split, both are 20/20.
+
+1. **Line pass** (engine-agnostic) — emits `{V, A, T, register}`. `register` MUST be copied
+   verbatim from `scripts/synthesis/register_lexicon.json`; off-lexicon picks are coerced.
+2. **Casting pass** (per engine) — emits `voice_design`/`instruct` governed by
+   `scripts/synthesis/director_skills/<engine>.md`. The JSON schema is **engine-shaped**:
+   single-string engines are asked for one field only. Asking Qwen for two made it emit its
+   12-key block twice and overflow into truncated JSON on 5 of 20 calls.
+
+**Minimum clip length is 4 s of estimated speech** (`MIN_CLIP_SECONDS`, `book_ingest.py`). It gates
+the INPUT TEXT, not the rendered duration — a clip that lands slightly under because the engine
+spoke fast is fine.
+
+## Measured engine standing (teacher-ab-v1, 2026-07-26)
+
+20 texts x 4 engines, identical text and identical line labels across arms, direction tailored per
+engine by skill file.
+
+| engine | QC pass | median DNSMOS |
+|---|---|---|
+| Qwen | 19/20 | 3.46 |
+| VibeVoice | 19/20 | 3.40 |
+| MOSS-VoiceGenerator | 18/20 | 3.27 |
+| Dia | 12/20 | 2.53 |
+
+Dia's whole quality distribution straddles the 2.5 gate, so 8/20 fall below it against 0-1/20 for
+the others. VibeVoice's ceiling is bounded by its reference pool (193 clips, **100% own-synthesis,
+no real speech**), not by the engine.
+
+**Loudness is not normalised across engines** — ~5 dB RMS spread (Dia -20.2, Qwen -21.2,
+MOSS-VG -24.1, VibeVoice -25.2 dBFS). Nothing is clipping (verified: zero flat-topping across all
+80 clips). Normalise before any A/B listening test or the louder engine wins on volume alone.
 
 ## Principles (all owner-validated during the audition)
 
@@ -42,14 +91,20 @@ fields from source text is exactly what a `book_ingest` stage must do. Each rend
    V/A/T. Instruments (EIV heads via scripts/eiv_score.py, phonation composite + LUFS via
    derive_vat_corpus measures, LibriTTS-anchored z like the Emilia mining) must CONFIRM the
    intended direction or the clip is dropped/relabeled. This neutralizes MOSS-8.5B's
-   instruct-adherence drift and Dia's improvisation: we never trust intent, we measure.
+   Dia's improvisation and any engine whose realized delivery diverges from intent: we
+   never trust intent, we measure. (MOSS-8.5B is out of the directed roster entirely —
+   it has no instruction input, so there was never adherence to drift from.)
 2. **QC gate on every clip** (synthetic clips are guilty until proven): DNSMOS floor
    (computed locally — Microsoft P.835 ONNX), duration-vs-text sanity (catches Dia
-   improvised tails and collapse-to-noise), engine floors (Dia temp >= 1.3), instrument
+   improvised tails and collapse-to-noise), engine floors (Dia temp = **1.8** — 1.5 and below collapse to white noise), instrument
    label check. Owner blind-audits a stratified sample per campaign, Emilia-style —
    acceptance standard: affect obvious without the keyword.
 3. **Register diversity by design.** The bank samples each emotion across the owner's
-   register taxonomy (grief: processed / here-and-now / vengeful; threat: direct / noir /
+   register taxonomy — now a **controlled lexicon**, not free text:
+   `scripts/synthesis/register_lexicon.json` (47 labels, regenerated by
+   `build_register_lexicon.py` from certified keeps). The director's pass-1 must copy a
+   label verbatim; inventing one is a defect. Historic examples (grief: processed /
+   here-and-now / vengeful; threat: direct / noir /
    warning; victory: peak / everyday / whimsical; plus protective urgency, neutral
    narration, embodiment). "Not every depiction should be grief at the breaking point."
 4. **Stage-2 transfer multiplies, never originates.** LongCat anchors are stage-1 clips
@@ -65,7 +120,11 @@ fields from source text is exactly what a `book_ingest` stage must do. Each rend
 
 - `Sonora/scripts/synthesis/script_bank.json` — versioned line bank (id, engine, register,
   intended V/A/T, text, per-engine direction, seed).
-- `Sonora/scripts/synthesis/synth_{dia,qwen,moss85,longcat}.py` — per-engine renderers
+- `Sonora/scripts/synthesis/synth_{vibevoice,qwen,moss_vg,dia,longcat}.py` — per-engine renderers
+  (`synth_moss85.py` retained for possible cloning work only — it is not a directed engine)
+- `Sonora/scripts/synthesis/director_skills/<engine>.md` — the Gemma adapter per engine
+- `Sonora/scripts/synthesis/register_lexicon.json` + `build_register_lexicon.py` — controlled registers
+- `Sonora/scripts/synthesis/ref_select.py` — VibeVoice reference casting
   (throwaway-container pattern, recipes from the audition); each writes
   `<out>/<engine>_manifest.jsonl` alongside wavs (full provenance per clip).
 - `Sonora/scripts/synthesis/qc_gate.py` — DNSMOS + duration sanity + phonation/LUFS
@@ -137,7 +196,9 @@ Consequences:
   5-protocol discoveries: **tired** (from a dismissive take), **narration_low_western**
   ("Cold Mountain" narrator, from a failed vengeful), **sermon/preacher** concept (from
   fierce_devotion — "replace the words with a psalm... perfect preacher"; needs
-  distortion-free re-roll). Dia's voice lottery = **accent diversity feature**
+  distortion-free re-roll). Dia's voice lottery yields incidental accent variety, but it is **uncontrolled** — accent is a
+  CASTING concern (reference-clip selection), never a direction channel, and no engine we run
+  exposes an accent control
   (midwestern/UK/southern noted approvingly at 8-9).
   Systematics for bulk-2: bright Qwen voices sit a HALF-STEP too high (tweeter edge
   distortion on AirPods — physical, not aesthetic); MOSS-anchored LOUD transfers carry
@@ -219,6 +280,8 @@ Consequences:
   * **Dia production reliability**: 2/5 collapses at temp 1.3-1.4 (audition used 1.8 —
     the lowered temps were the mistake; the 1.3 "floor" from the coaching run is
     cliff-adjacent, not safe). Temp floor raised to 1.5, default 1.8; register control
+    *(SUPERSEDED 2026-07-26: 1.5 is itself inside the collapse zone — 7/20 clips white-noised.
+    1.8 is the operating point, not a default above a safe floor.)*
     belongs to text/staging, not temperature. grief_processed_01: 12 s file, 4 s speech
     (silence padding) → QC now measures effective speech duration. victory_peak: emotion
     perfect, but background inhale artifact + overlong pause — QC-passable, register

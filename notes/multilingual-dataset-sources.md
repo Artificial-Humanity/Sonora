@@ -10,7 +10,7 @@ English. Do not trust the parentheticals here as clearance; they are leads to ve
 The multilanguage phase does **not** relax either wall:
 
 1. **License wall — CC-BY-4.0 or freer, no NC/ND anywhere in the lineage**
-   ([open-decision-licensing.md](../Prosodia/open-decision-licensing.md) tightening #3;
+   ([open-decision-licensing.md](../../../Prosodia/notes/open-decision-licensing.md) tightening #3;
    [ARCHITECTURE.md](ARCHITECTURE.md) §2). Note the sharp edge: **CC-BY-SA is arguably *not*
    "freer" than CC-BY** — share-alike adds a copyleft obligation. Any SA-licensed subset must be
    split out and treated as excluded until we decide share-alike is acceptable in the public
@@ -80,6 +80,6 @@ Two distinct things wear the MLCommons name; keep them separate.
    convention as English, so the Apache "for everyone" claim stays auditable across languages.
 
 Cross-refs: [dataset-landscape.md](dataset-landscape.md) (English SSOT) ·
-[open-decision-licensing.md tightening #3](../Prosodia/open-decision-licensing.md) ·
+[open-decision-licensing.md tightening #3](../../../Prosodia/notes/open-decision-licensing.md) ·
 [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (the private-lineage boundary, unchanged
 cross-lingually) · [STATE.md](STATE.md).

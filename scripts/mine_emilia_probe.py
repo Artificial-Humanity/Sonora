@@ -1,4 +1,4 @@
-"""Emilia-YODAS mining probe (emilia-mining-plan.md step 1).
+"""Emilia-YODAS mining probe (emilia-mining-and-verdict.md step 1).
 
 Samples N utterances per extracted tar dir, applies the base filters
 (duration, DNSMOS floor), computes the standing acoustic measures (LUFS +

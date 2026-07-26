@@ -1,3 +1,9 @@
+> **Upstream verbatim.** This is the original Matcha-TTS README, kept for provenance
+> (attribution is carried by `NOTICE` and `LICENSE-Matcha`). It is **not** Sonora's setup
+> guide — see [README.md](README.md). Do not follow its conda/pip instructions; this repo
+> standardizes on `uv`, and Matcha is Sonora's *parent architecture*, not a dependency to
+> install separately.
+
 <div align="center">
 
 # 🍵 Matcha-TTS: A fast TTS architecture with conditional flow matching

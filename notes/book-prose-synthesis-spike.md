@@ -9,7 +9,7 @@ Ebooks and Project Gutenberg.** This brief spikes feasibility, not a build._
 
 **This is not a new pipeline — it is a new *text front-end* on the already-built teacher-synthesis
 pipeline** ([synthesis-pipeline.md](synthesis-pipeline.md)). Every downstream stage exists:
-`synth_{dia,qwen,moss85,longcat}.py` renderers, `qc_gate.py` (ASR-fidelity + DNSMOS-tier +
+`synth_{vibevoice,qwen,moss_vg,dia,longcat}.py` renderers, `qc_gate.py` (ASR-fidelity + DNSMOS-tier +
 duration sanity), instrument label verification (EIV + phonation/LUFS), the bounded-minority
 corpus rule, the CC-BY-4.0 publication plan. The **only new component** is a `book_ingest` stage
 that emits the existing `script_bank.json` schema (`id, engine, register, intended V/A/T, text,
@@ -134,7 +134,8 @@ Small, decisive, uses only the existing renderers + one throwaway `book_ingest` 
    translation filter on real files.
 2. `book_ingest` prototype on ~30 chunks: ~15 **contiguous narration** spans (continuity test) +
    ~15 **dialogue-with-attribution** spans (self-labeled-register test). Emit the bank schema.
-3. Render across the ratified three (Dia/Qwen/MOSS-8.5B), run the **unchanged** `qc_gate.py`.
+3. Render across the ratified four (VibeVoice / Qwen / MOSS-VoiceGenerator / Dia), run the
+   **unchanged** `qc_gate.py`.
 4. Read out: (a) hard-pass rate on longer book chunks vs authored one-liners; (b) does
    **attribution-derived register survive instrument verification** (the core bet of slice #2);
    (c) does contiguous-passage rendering hold prosody across sentences; (d) LongCat transfer on a

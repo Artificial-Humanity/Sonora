@@ -301,7 +301,7 @@ class Encoder(nn.Module):
         self.norm_layers_1 = torch.nn.ModuleList()
         self.ffn_layers = torch.nn.ModuleList()
         self.norm_layers_2 = torch.nn.ModuleList()
-        # VAT FiLM (vat-conditioning-design.md): one zero-init scale+shift
+        # VAT FiLM (vat-channels.md): one zero-init scale+shift
         # per encoder block; inert when vat_cond_dim == 0.
         self.film_layers = torch.nn.ModuleList() if vat_cond_dim > 0 else None
         for _ in range(self.n_layers):

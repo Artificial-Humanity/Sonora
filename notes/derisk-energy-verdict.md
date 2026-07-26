@@ -87,5 +87,5 @@ sweep clips are single utterances ≤ ~8 s.
    fine-tunes, including its "test the gate against a checkpoint that SHOULD fail" rule.
 
 Linked from: [STATE.md](STATE.md) §3 · [training-operations.md](training-operations.md) ·
-[vat-conditioning-design.md](vat-conditioning-design.md) ·
+[vat-channels.md](vat-channels.md) ·
 [model-size-target-decision.md](model-size-target-decision.md)

@@ -3,8 +3,8 @@
 _The operational "how" of model training: what runs where, how to launch/observe/stop/resume,
 and the standing verification gates. Model **selection** rationale lives in
 [actor-model-and-training.md](actor-model-and-training.md); machine provisioning in
-[../Ai-Lab-0/machine-setup.md](../Ai-Lab-0/machine-setup.md); stack config is
-[AI-Lab-AMD/docker-compose.yml](../../AI-Lab-AMD/docker-compose.yml). Created 2026-07-14 during the
+[../Ai-Lab-0/machine-setup.md](../../../AI-Lab-AMD/notes/machine-setup.md); stack config is
+[AI-Lab-AMD/docker-compose.yml](../../../AI-Lab-AMD/docker-compose.yml). Created 2026-07-14 during the
 de-risk phase start; keep the "Current runs" table honest._
 
 ## Current runs (update when this changes)
@@ -49,8 +49,9 @@ it.**
 
 ## Topology
 
-Three training-related services in the compose stack, all **profile-gated** so GitOps syncs and
-plain `up -d` never start a GPU run:
+Three training-related services in the compose stack, all **profile-gated** so an explicit
+`deploy.sh` run or a plain `up -d` never starts a GPU run. (GitOps was **retired 2026-07-22** —
+pushes deploy nothing; deploys are explicit via `AI-Lab-AMD/scripts/deploy.sh`.)
 
 | Service | Profile | Launch |
 |---|---|---|
@@ -205,10 +206,29 @@ rw mount for the matcha install).
    for this class of gap whenever a training command references `data/` and the deploy clone is
    freshly (re)cloned.
 
+7. **Spin down ALL inference before any training run** — the Gemma director, every `synth_*`
+   renderer, and the Vocalizer. Standing ai-lab-0 rule, not a courtesy: they share the one GPU.
+8. **`qc_gate.py` needs Python 3.11** — on 3.12 librosa resolves a numba that refuses to build.
+   Run it as `uv run --python 3.11 …`.
+9. **Renders run as ai-mgr (105:109), not root**, in throwaway `rocm/pytorch` containers via
+   `scripts/synthesis/container_as_ai_mgr.sh` + `umask 002`. MIOpen's find-db must be **owned**
+   by that user — chmod checks ownership, not write bits — hence the separate `miopen-ai-mgr`
+   cache. See the gotchas section of [tts-engine-onboarding.md](tts-engine-onboarding.md).
+
 ## Cross-references
 
 [sample-rate-24khz-decision.md](sample-rate-24khz-decision.md) ·
-[vat-conditioning-design.md](vat-conditioning-design.md) ·
+[vat-channels.md](vat-channels.md) ·
 [dataset-landscape.md](dataset-landscape.md) · [STATE.md](STATE.md) ·
-[next-steps §B](../Prosodia/next-steps.md) ·
-[../Ai-Lab-0/machine-setup.md](../Ai-Lab-0/machine-setup.md)
+[next-steps §B](../../../Prosodia/notes/next-steps.md) ·
+[../Ai-Lab-0/machine-setup.md](../../../AI-Lab-AMD/notes/machine-setup.md)
+
+## Registry promotion conventions
+
+*(Folded in from the retired `registry-housekeeping.md`, 2026-07-26 — the chores it tracked are
+all done; these four conventions are still policy.)*
+
+1. The **model card lives on the registry**, not in the training repo.
+2. Every promotion records **provenance**: the training commit SHA and the MLflow run id.
+3. `config.json` ships **in the registry** alongside the weights.
+4. **Consumers pin a revision** — never track a moving branch.

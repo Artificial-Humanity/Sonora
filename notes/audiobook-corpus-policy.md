@@ -63,4 +63,4 @@ copyrighted samples in any model.
 deliberate owner call per instance, under the firewall.
 
 Linked from: [ARCHITECTURE.md](ARCHITECTURE.md) §2 · [STATE.md](STATE.md) §3 ·
-[emilia-mining-plan.md](emilia-mining-plan.md) (the license-clean expressive-data lane).
+[emilia-mining-and-verdict.md](emilia-mining-and-verdict.md) (the license-clean expressive-data lane).

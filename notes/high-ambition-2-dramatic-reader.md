@@ -2,8 +2,8 @@
 
 > **Sequence:** 2 of 5. Builds directly on the [1 — Matcha-TTS actor](high-ambition-1-matcha-actor.md)
 > (needs a trained, directable, castable actor first). Then:
-> [3 — Child Voices](../Prosodia/high-ambition-3-child-voices.md) ·
-> [4 — Multilingual G2P](../Prosodia/high-ambition-4-multilingual-g2p.md) ·
+> [3 — Child Voices](../../../Prosodia/notes/high-ambition-3-child-voices.md) ·
+> [4 — Multilingual G2P](../../../Prosodia/notes/high-ambition-4-multilingual-g2p.md) ·
 > [5 — StyleTTS2-Lite](high-ambition-5-styletts2-lite.md).
 
 > [!NOTE]

@@ -171,8 +171,8 @@ spin-down rule. Spike first: ~100 clips (50 certified + 50 LibriTTS-R), owner-au
 - Where does reverse-conveyance run in the pipeline — a `derive_markup_corpus.py` sibling of
   `derive_vat_corpus.py`?
 
-Cross-refs: [vat-corpus-decision-brief.md](vat-corpus-decision-brief.md) ·
-[tension-definition-brief.md](tension-definition-brief.md) ·
+Cross-refs: [vat-channels.md](vat-channels.md) ·
+[vat-channels.md](vat-channels.md) ·
 [book-prose-operations.md](book-prose-operations.md) (director-pass) ·
 [high-ambition-1-matcha-actor.md](high-ambition-1-matcha-actor.md) (contract-lock) ·
 [high-ambition-6-audience-conveyance-stt.md](high-ambition-6-audience-conveyance-stt.md) ·

@@ -95,7 +95,7 @@ def phonation(wav, sr):
 class EivValence:
     """Valence's produced measure: the frozen 9-head combo that labeled the
     corpus (valence_combo_v1.json — per-speaker z each head, dot weights;
-    vat-corpus-decision-brief.md). NOT the single Valence head: that head is
+    vat-channels.md). NOT the single Valence head: that head is
     near-degenerate (81% of corpus clips score a bit-identical dead-zone
     constant — instrument test 2026-07-21, vat3_eval/valence_instrument_test)
     and was already rejected for labeling when the combo was fit. score()
