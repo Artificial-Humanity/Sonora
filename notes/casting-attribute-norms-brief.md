@@ -15,6 +15,16 @@ acoustics we control rather than in whatever a teacher model absorbed._
 | **Age** | `child` · `teen` · `adult` · `middle-aged` · `elderly` | Five bands. |
 | **Accent** | open list — e.g. `British`, `American`, `African American`, `Indian`, … | **ACCENT BELONGS TO CASTING, NOT DIRECTION (owner, 2026-07-25).** No TTS engine we run has any token- or config-level accent representation — MOSS's maintainers state accents are unsupported, Qwen's paper mentions accent only as cloning *drift*, and VibeVoice and Dia have no channel at all. Accent therefore never enters an instruct/markup payload; it is realised by **reference-clip selection** (`ref_select.py`) and recorded as an audited tag on the clip. Owner framing on the category itself: not truly "race" but general accent, which stereotypically can include one — "we'll have to accept stereotypes here in some regard." Widest category; no exhaustive list attempted yet. |
 
+> **Test status (2026-07-26): UNVERIFIED.** The `teacher-ab-v1` accent probes did NOT
+> settle this. Four items, one line each, judged in a pass where the owner was attending
+> to artifacts rather than accent ("more likely I didn't pay attention to those accent
+> markers… I don't recall a Scottish accent"). The VibeVoice arm could not have tested it
+> at all — accent is stripped from the design before casting, and two probes cloned the
+> same reference. The claim below rests on **vendor documentation only**. A proper test
+> must be *identification* ("what accent do you hear?"), not verification against a known
+> target, and must cover the two engines that actually have an instruction slot.
+
+
 Plus "other potentially useful characteristics" as they prove out (timbre classes, vocal
 weight, etc.).
 

@@ -46,7 +46,10 @@ any Qwen material, there is no published accent evaluation, and accent has no
 token-level representation in the model. Chinese dialects exist only as speaker IDs
 in a different checkpoint, and this checkpoint's dialect table is empty.
 
-So: fill the `accent:` key, keep it to a national variety, and do not rely on it.
+So: fill the `accent:` key and keep it to a national variety. Whether Qwen actually
+executes it is **untested** — our one attempt (teacher-ab-v1, 2026-07-26) was judged
+without attending to accent and proved nothing either way. Treat it as unverified rather
+than either working or inert, and do not promise an accent you cannot demonstrate.
 
 ## Do not
 - Do not describe rooms, microphones, eras or broadcast media. The recording style

@@ -20,7 +20,9 @@ Exactly two things, by regex:
    cast a male reference.
 2. **Age band** — matched by regex to an F0-percentile target within gender. Safe
    literal choices: `child` (0.95), `teen` (0.80), `young` (0.70), `middle-aged`
-   (0.30), `elderly` (0.10). Careful: **`mature` and `matronly` map to the SAME band
+   (0.30), `elderly` (0.10). Note the word you WRITE is `young`; the band it records
+   for training attribution is **`adult`**, matching the owner's five-band taxonomy.
+   Omitting an age word entirely records no band at all — say one. Careful: **`mature` and `matronly` map to the SAME band
    as `middle-aged`, not to elderly** — say `elderly` if you mean old. The pool is
    also filtered to a 4.0-10.0 s duration window and skews young, so an `elderly`
    request is best-effort.

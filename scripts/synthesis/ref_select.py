@@ -28,8 +28,12 @@ ENGINE_PREF = {"moss85": 0.0, "longcat": 0.05, "qwen": 0.15, "dia": 0.3}
 AGE_BANDS = [
     (r"\b(child|little (girl|boy)|kid)\b",          0.95),
     (r"\b(teen|adolescent|girlish|boyish)\b",       0.80),
-    (r"\byoung\b",                                  0.70),
-    (r"\b(middle.?aged|matronly|mature|forties|fifties)\b", 0.30),
+    # 0.70 = the "adult" band. `young` is the classic trigger, but designs routinely say
+    # "adult male" or give a decade ("mid-30s", "in her twenties") and those matched
+    # NOTHING before 2026-07-27 — 23 of 39 historical rows recorded no age band despite
+    # naming one in plain English.
+    (r"\b(young|adult|twenties|thirties|20s|30s)\b",  0.70),
+    (r"\b(middle.?aged|matronly|mature|forties|fifties|40s|50s)\b", 0.30),
     (r"\b(elderly|old (woman|man|lady)|aged|weathered|grandmother|grandfather)\b", 0.10),
 ]
 AGE_WEIGHT = 0.8
@@ -57,7 +61,11 @@ def _load_acoustics():
     return _f0_pct
 
 
-AGE_BAND_NAMES = {0.95: "child", 0.80: "teen", 0.70: "young", 0.30: "middle-aged", 0.10: "elderly"}
+# Owner taxonomy (casting-attribute-norms-brief.md): child / teen / adult /
+# middle-aged / elderly. The 0.70 band is named "adult" to match the brief — note the
+# TRIGGER WORD in a design is still "young" (that is what the regex matches and what a
+# director writes); only the recorded band name is "adult".
+AGE_BAND_NAMES = {0.95: "child", 0.80: "teen", 0.70: "adult", 0.30: "middle-aged", 0.10: "elderly"}
 
 
 def design_age_target(design: str):
@@ -69,13 +77,16 @@ def design_age_target(design: str):
 
 
 def design_age_band(design: str):
-    """Canonical age label for training attribution (owner taxonomy:
-    child/teen/adult/middle-aged/elderly). 'young' maps to adult-band intent."""
+    """Canonical age label for training attribution (owner taxonomy).
+
+    Returns "" when the design names no age at all. Previously this returned "adult"
+    for BOTH an explicit young/adult design and an unmarked one — and audit_sampler
+    skips "adult" as "no age claim to betray", so explicitly-aged designs were being
+    silently exempted from the age-mismatch check along with the genuinely unmarked
+    (found 2026-07-27). An unmarked design has no claim; an explicit one does.
+    """
     t = design_age_target(design)
-    if t is None:
-        return "adult"
-    name = AGE_BAND_NAMES[t]
-    return "adult" if name == "young" else name
+    return AGE_BAND_NAMES[t] if t is not None else ""
 
 
 def _load_pool():

@@ -51,12 +51,13 @@ POOL_ROOT = Path("/data/model-training/datasets/sonora-expressive-registers/v1")
 POOL_ACOUSTICS = POOL_ROOT / "pool_acoustics.json"
 POOL_META = POOL_ROOT / "metadata.jsonl"
 
-# intended_age -> within-gender F0 percentile target (ref_select's bands;
-# "adult" = the unmarked middle of the distribution)
-AGE_TARGETS = {"child": 0.95, "teen": 0.80, "adult": 0.55,
+# intended_age -> within-gender F0 percentile target. These must match ref_select's
+# AGE_BANDS: "adult" is the 0.70 band (an EXPLICIT claim, checkable), not a stand-in
+# for "unmarked" — unmarked designs now carry "" and are skipped below.
+AGE_TARGETS = {"child": 0.95, "teen": 0.80, "adult": 0.70,
                "middle-aged": 0.30, "elderly": 0.10}
 AGE_FLAG_DELTA = 0.40      # |measured_pct - target_pct| beyond this = mismatch
-AGE_SKIP = {"adult"}       # unmarked designs: no age claim to betray
+AGE_SKIP = {""}            # unmarked designs only: no age claim to betray
 NEAR_MISS_WER = (0.25, 0.35)
 NEAR_MISS_DNSMOS = (2.5, 2.7)
 RANDOM_RATE = 0.05
