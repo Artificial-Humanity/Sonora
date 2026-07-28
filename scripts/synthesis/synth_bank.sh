@@ -96,6 +96,19 @@ fi
 
 echo "== done: $(ls -1 "$OUT"/*.wav 2>/dev/null | wc -l) wav(s) in $OUT =="
 
+# Bring every engine to one loudness BEFORE anything measures or auditions the
+# clips. Measured 2026-07-28: 5.1 dB spread between per-engine medians, which
+# both biases the ear in audit and leaks an engine-shaped term into the
+# instrument's arousal channel. Must run before register_audition (audit) and
+# before qc_gate (measurement). Originals are kept in $OUT/_pre_loudnorm.
+echo "== normalize loudness =="
+if command -v uv >/dev/null 2>&1; then
+  uv run "$SONORA/scripts/synthesis/normalize_loudness.py" --dir "$OUT" \
+    || echo "  (normalize_loudness failed — clips are at raw engine level; DO NOT audition until fixed)"
+else
+  echo "  (uv not found — skipped; run normalize_loudness.py --dir $OUT before auditioning)"
+fi
+
 # Register the rendered clips into the audition queue (ratings.csv SSOT) so they
 # reach the review surface. Idempotent, host-side (uv, not the GPU container); only
 # queues clips whose wav lands under DATA_ROOT. Non-fatal if it can't run.

@@ -112,7 +112,7 @@ treats accent as a defect to suppress. Never request one.
   The dial raises intensity; it cannot lower valence. That failure is probably genuine.
 - Do not write prose. There is no slot for it.
 
-## ⚠ Publication constraint — unresolved (owner 2026-07-28)
+## ⚠ Publication constraint — RESOLVED (owner 2026-07-28): train-only
 
 Chatterbox watermarks every output with Perth, unconditionally: no flag, no config, no
 env var. The native component is unavailable on this box, so our renderers **disable it**
@@ -123,13 +123,14 @@ with a no-op patch. That creates a fork in the road, and both branches matter:
 - **Strip it** (what we do) → clean for training, but the clips are then unmarked synthetic
   speech, and our expressive-registers dataset is **published CC-BY-4.0 on HuggingFace**.
 
-Owner's position (2026-07-28): *"easily defensible for training but potentially problematic
-for public release… we may need to leave that out of the published dataset."*
+**Owner's decision (2026-07-28): strip the watermark, and use these clips for TRAINING
+ONLY — they never enter the published dataset.** So Chatterbox is fully available as a
+teacher; only republication is closed.
 
-**The mechanism to honour that does not exist yet.** Per-clip metadata carries a flat
-`license: CC-BY-4.0` with no publication tier and no `engine_license`, so a Chatterbox clip
-folded into `v1` would be published by default. Until a train-only tier exists, **no
-Chatterbox output should be promoted into the published dataset.**
+The mechanism now exists. Every metadata row carries `engine_license` and `publish`, and
+`scripts/synthesis/publish_tier.py` sets `publish: false` for every Chatterbox clip and
+**fails** if one is ever marked publishable. Run it before any release build.
 
 Note this is a responsible-AI measure, not a licence term — the MIT licence permits
-stripping it. That makes it a decision we own rather than one we can point at.
+stripping it. That makes it a decision we own rather than one we can point at, which is
+exactly why it is enforced in code and not just written down here.
