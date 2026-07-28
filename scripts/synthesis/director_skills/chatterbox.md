@@ -12,8 +12,10 @@ min_p=0.05, top_p=1.0, audio_prompt_path=None)`.
 **There is no natural-language instruction slot.** None. Prose direction has nowhere to go
 — do not write any.
 
-**Your entire output for this engine is two numbers: `exaggeration` and `cfg_weight`.**
-That is the whole adapter. See the refuted tag channel below before adding anything else.
+**Your entire output for this engine is a casting call and two numbers: `voice_design`,
+`exaggeration` and `cfg_weight`.** That is the whole adapter — and the `voice_design` is
+never spoken to the model, it only picks the reference clip (see Casting below). See the
+refuted tag channel below before adding anything else.
 
 ## Channel 1 — `exaggeration`, the arousal dial
 
@@ -90,11 +92,23 @@ All risk, no upside.
 ## Voice identity is casting, not direction
 Set by `audio_prompt_path` (a reference clip). **Only the first 6 seconds** reach the
 speaker prompt and the first 10 the vocoder — longer references are truncated, not
-averaged, so a long clip wastes its own best material. You do not pick the voice; the
-casting bank does.
+averaged, so a long clip wastes its own best material.
 
 Every clip in our 2026-07-17 audition used the single built-in fallback voice because no
 reference was passed. Casting has never actually been exercised on this engine.
+
+Your `voice_design` is consumed by our own casting code (`ref_select.select_reference`),
+never by the model. Exactly two things are read out of it, by regex — identical to
+VibeVoice, because it is the same function:
+
+1. **Gender** — matched on exactly these four words: `female`, `woman`, `maternal`,
+   `girl`. Anything else falls through to **Male**. **`feminine` is NOT matched.**
+2. **Age band** — safe literal choices: `child`, `teen`, `young`, `middle-aged`,
+   `elderly`. Omitting an age word records no band at all — say one. **`mature` and
+   `matronly` map to the SAME band as `middle-aged`**, not to elderly.
+
+So write: `middle-aged woman, warm even timbre`. Everything past those two words is
+discarded before it can affect anything.
 
 ## Accent
 Unsupported, and worse than merely absent: reference-clip accent **leaks uncontrollably**

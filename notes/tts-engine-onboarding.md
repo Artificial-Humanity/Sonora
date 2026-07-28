@@ -160,6 +160,51 @@ already governs these, and the reasoning is sound. Do not pull them forward:
 There is therefore **no teacher candidate currently sitting un-auditioned and ready**.
 The revisit list above is the whole of the near-term work.
 
+### Revisit progress — steps 4-6 done for three engines (2026-07-28)
+
+Chatterbox, Zonos and Orpheus are through **step 6**. Steps 1-3 (interface study,
+relay matrix, skill file) landed earlier the same day; what was missing was
+everything that turns a skill file into a rendered clip, and it was missing
+completely: `CASTING_SCHEMA` held only qwen/moss_vg/vibevoice, so a casting pass
+for any of the three raised `KeyError`, and `build_direction()` **silently rewrote
+every unrecognised engine to vibevoice** — a bank line tagged `zonos` would have
+been rendered by VibeVoice and audited as Zonos. That fallback also caught
+`moss_vg`, a live portfolio engine that was never in the whitelist. Unknown
+engines are now fatal.
+
+Now in place: engine-shaped schemas with validation (an invented Orpheus voice is
+rejected and scrubbed, a Zonos emotion vector that is not 8 floats is rejected, a
+Chatterbox `exaggeration` without its `cfg_weight` is rejected), `build_direction`
+branches per engine, three pipeline renderers (`synth_chatterbox.py`,
+`synth_zonos.py`, `synth_orpheus.py`), `synth_bank.sh` wiring, and the gate test
+extended from 27 claims to 79.
+
+**Smoke render — one line, all three engines, end to end.** Every clip came back
+**verbatim: 18/18 words, ASR similarity 1.000**, no repetition and no dropped
+words. Chatterbox 7.3 s, Zonos 4.5 s, Orpheus 6.3 s.
+
+- **Orpheus's void verdict is explained.** The old failure was "seemed to repeat
+  parts of the passage"; with `128261` + `128257` appended to the prompt it is
+  word-perfect. The `<laugh>` tag was not pronounced as text.
+- **Chatterbox was cast for the first time ever.** It rendered through a real
+  reference clip (a Female keep, F0 percentile 0.62) rather than the built-in
+  `conds.pt` fallback that every clip in the 2026-07-17 audition used.
+- **Zonos rendered at `pitch_std` 85**, inside the expressive band, against the
+  default 20.0 that every clip of its void audition used.
+- The director's own choices look right rather than merely valid: for a line whose
+  irony is end-loaded, Gemma picked `exaggeration 0.25` / `cfg_weight 0.3` — the
+  slow-the-punchline reading the skill file's situational rule asks for.
+
+**Not yet done: step 7.** Nothing has been auditioned. These clips prove the
+pipeline, not the engines — no verdict may be drawn from three clips of one line,
+and the smoke output was deliberately written outside `DATA_ROOT` so
+`register_audition` refused to queue it and `ratings.csv` was untouched.
+
+LongCat is deliberately still at step 3: its skill file says there is nothing to
+direct, and its 45% gender-flip standing is unsettled, so it is a reference-casting
+question rather than a direction one. It has a schema and a `build_direction`
+branch (so it can never hit the silent-fallback trap) and no renderer.
+
 ## The standing rule
 
 > No TTS model enters the portfolio without a studied interface and a skill file
@@ -244,6 +289,36 @@ silently and simply misbehave.
 **Accent is unsupported everywhere.** No engine we run has token- or config-level
 accent representation. MOSS's maintainers state it outright; Qwen's paper mentions
 accent once, about cloning *drift*. Accent is a casting problem.
+
+**Zonos's PyPI/git wheel is unimportable — run it from source.** `pip install
+git+https://github.com/Zyphra/Zonos.git` installs `zonos/model.py` but **omits the
+`zonos/backbone/` subpackage entirely**, so the very first import dies on
+`ModuleNotFoundError: No module named 'zonos.backbone'` regardless of deps or
+`--no-deps`. Verified 2026-07-28 by listing the installed tree and the wheel's own
+file manifest. Fix: `git clone --depth 1 … /data/toolchain/Zonos` and put it on
+`PYTHONPATH`. Related: `sudachipy` + `sudachidict-full` are **not** optional even
+for English — `conditioning.py` imports them at module scope.
+
+**Zonos's speaker cloner cannot be built on the GPU.** `make_speaker_embedding()`
+constructs `SpeakerEmbeddingLDA` inside `with torch.device("cuda")`, and
+torchaudio's `melscale_fbanks` mixes context-created and explicitly-CPU tensors in
+`_create_triangular_filterbank` — so the **constructor** raises "found at least two
+devices, cuda:0 and cpu" before any audio is read. Building and running it on CPU
+and moving only the embedding is the clean fix; the device is threaded through
+nested modules as a plain string, so moving the module afterwards leaves stale
+attributes behind. `synth_zonos.py` does this deliberately — do not "optimise" it
+back onto the GPU.
+
+**Chatterbox's `--no-deps` install drops `omegaconf`,** which breaks the import
+chain at `chatterbox/models/s3gen/flow.py`. It fails at import, not at render, so
+it costs a container start to find.
+
+**The director answers in the shape of the last thing it read.** The casting pass
+originally stated the JSON contract *before* the skill file. With a long, table-rich
+skill file last in the system prompt, Gemma replied with prose and a "Recommended
+Configuration" markdown table and zero JSON — reproducibly for `chatterbox.md`,
+while shorter skill files happened to survive. The contract is now repeated *after*
+the skill file, and that placement is load-bearing, not decoration.
 
 ## Pipeline and infrastructure traps
 

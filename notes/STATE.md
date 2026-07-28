@@ -19,10 +19,20 @@ skill-file adapter — [tts-engine-onboarding.md](tts-engine-onboarding.md), whi
 known-gotchas reference. Minimum clip length is 4 s of estimated speech (gates input text).
 
 Latest A/B (`teacher-ab-v1`, 2026-07-26): qwen 19/20 · vibevoice 19/20 · moss_vg 18/20 · dia
-12/20; median DNSMOS 3.46 / 3.40 / 3.27 / 2.53. Loudness is not normalised across engines
-(~5 dB spread) — an open decision. Nothing is clipping.
+12/20; median DNSMOS 3.46 / 3.40 / 3.27 / 2.53. Loudness **is** normalised as of 2026-07-28
+(−23 LUFS at build, `normalize_loudness.py` wired into `synth_bank.sh`); nothing is clipping.
 
-_Last updated: 2026-07-26._
+**Revisit engines — pipelines rebuilt, not yet re-auditioned (2026-07-28).** Chatterbox,
+Zonos and Orpheus are through step 6 of the onboarding pattern: engine-shaped casting
+schemas with validation, per-engine `build_direction` branches, three new renderers, and a
+smoke render in which all three came back **verbatim (18/18 words, ASR similarity 1.000)**.
+Fixed en route: `build_direction()` had been **silently rewriting every unrecognised engine
+to vibevoice** — including `moss_vg` — so a bank line tagged `zonos` would have rendered as
+VibeVoice and been audited as Zonos; unknown engines are now fatal. **Step 7 (audition) is
+the open work** — no verdict may be drawn from three clips of one line. Detail and the
+traps found: [tts-engine-onboarding.md](tts-engine-onboarding.md).
+
+_Last updated: 2026-07-28._
 
 The committed, curated snapshot of where Project Sonora (TTS training, model, and dataset prep) stands and what to do next. Behavioral rules and the stack/layout manifest live in [AGENTS.md](../AGENTS.md).
 

@@ -345,6 +345,21 @@ def director_tag(chunk, retries=2):
 
 SKILL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "director_skills")
 
+# Orpheus's two closed sets. Both are soft-closed: the shipped code validates
+# NEITHER (its voice-check function is dead code), so an unlisted voice name or tag
+# is interpolated into the prompt and spoken aloud as text. These live here, next to
+# the schema that publishes them, and orpheus.md is gated against them by
+# scripts/test_skill_files.py.
+ORPHEUS_VOICES = ("tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe")
+ORPHEUS_TAGS = ("<laugh>", "<chuckle>", "<sigh>", "<cough>",
+                "<sniffle>", "<groan>", "<yawn>", "<gasp>")
+
+# Every engine build_direction knows how to assemble a payload for. dia and moss85
+# take no casting pass, so they are here but not in CASTING_SCHEMA. Anything absent
+# is a hard error rather than a silent rewrite — see build_direction().
+KNOWN_ENGINES = ("vibevoice", "dia", "qwen", "moss_vg", "moss85",
+                 "chatterbox", "zonos", "orpheus", "longcat")
+
 CASTING_SYSTEM = (
     "You are the Casting and Delivery Director for an audiobook TTS pipeline. You "
     "write direction for ONE NAMED TTS ENGINE. A skill file for that engine follows; "
@@ -359,11 +374,85 @@ CASTING_SYSTEM = (
 # for two fields made the director emit its whole description twice — wasting the
 # token budget into truncated JSON and duplicating the instruction. vibevoice
 # genuinely has two: design is casting input, instruct is an audit-only note.
+#
+# The revisit engines (2026-07-28) are not prose-directable at all, so their schemas
+# are parameters, not sentences — the shape of each entry follows the shape of the
+# engine, exactly as its skill file does. `voice_design` appears wherever RELAY says
+# design == "casting": it never reaches the model, it selects the reference clip
+# through ref_select, and without it those engines draw an arbitrary voice per seed
+# (which is what produced Zonos's "gender-coverage gap" in the void 2026-07-17 run).
 CASTING_SCHEMA = {
-    "qwen":      '{"instruct": string}',
-    "moss_vg":   '{"instruct": string}',
-    "vibevoice": '{"voice_design": string, "instruct": string}',
+    "qwen":       {"instruct": "string"},
+    "moss_vg":    {"instruct": "string"},
+    "vibevoice":  {"voice_design": "string", "instruct": "string"},
+    "chatterbox": {"voice_design": "string",
+                   "exaggeration": "number 0.25-1.0",
+                   "cfg_weight": "number 0.2-0.6"},
+    "zonos":      {"voice_design": "string",
+                   "emotion": "array of EXACTLY 8 numbers, proportions not magnitudes, "
+                              "order [happiness,sadness,disgust,fear,surprise,anger,other,neutral]",
+                   "pitch_std": "number 20-150",
+                   "speaking_rate": "number 5-30"},
+    "orpheus":    {"voice": "EXACTLY one of: " + "|".join(ORPHEUS_VOICES),
+                   "render_text": "string — the line verbatim, optionally with at most "
+                                  "2 tags from " + " ".join(ORPHEUS_TAGS)},
+    "longcat":    {"voice_design": "string"},
 }
+
+
+def _schema_str(engine):
+    return "{" + ", ".join(f'"{k}": {v}' for k, v in CASTING_SCHEMA[engine].items()) + "}"
+
+
+def _validate_casting(engine, d):
+    """Reject a director emission the engine would mis-render, so casting_pass retries.
+
+    Every rule here is a failure some engine actually exhibits, not defensive
+    programming: an invented Orpheus voice name is interpolated into the prompt and
+    SPOKEN aloud (the validation function in the shipped code is dead), a short Zonos
+    emotion vector silently reshapes the conditioning, and a Chatterbox exaggeration
+    emitted without its cfg_weight reads rushed. Cheap to check, expensive to audit.
+    """
+    if engine == "orpheus":
+        if d.get("voice") not in ORPHEUS_VOICES:
+            return False
+        bad = set(re.findall(r"<[a-z]+>", d.get("render_text", ""))) - set(ORPHEUS_TAGS)
+        return not bad
+    if engine == "zonos":
+        e = d.get("emotion")
+        if not isinstance(e, list) or len(e) != 8:
+            return False
+        if not all(isinstance(x, (int, float)) and x >= 0 for x in e) or sum(e) <= 0:
+            return False
+        return _in_range(d.get("pitch_std"), 20, 150) and _in_range(d.get("speaking_rate"), 5, 30)
+    if engine == "chatterbox":
+        return (_in_range(d.get("exaggeration"), 0.25, 1.0)
+                and _in_range(d.get("cfg_weight"), 0.2, 0.6))
+    return True
+
+
+def _in_range(v, lo, hi):
+    return isinstance(v, (int, float)) and lo <= v <= hi
+
+
+def _clamp(v, lo, hi, default):
+    return min(max(float(v), lo), hi) if isinstance(v, (int, float)) else default
+
+
+def _l1(vec):
+    """Normalise Zonos's 8-float emotion vector to the shape the model receives.
+
+    Zonos L1-normalises internally, so magnitudes never arrive; doing it here makes
+    the manifest record what was actually conditioned on. A missing or malformed
+    vector falls back to neutral-dominant rather than to an arbitrary draw.
+    """
+    if not isinstance(vec, list) or len(vec) != 8:
+        return [0.05, 0.05, 0.02, 0.02, 0.02, 0.02, 0.05, 0.77]
+    vals = [max(float(x), 0.0) if isinstance(x, (int, float)) else 0.0 for x in vec]
+    total = sum(vals)
+    if total <= 0:
+        return [0.05, 0.05, 0.02, 0.02, 0.02, 0.02, 0.05, 0.77]
+    return [round(v / total, 4) for v in vals]
 
 
 def load_skill(engine):
@@ -385,10 +474,21 @@ def load_skill(engine):
 
 def casting_pass(text, engine, retries=2):
     """Per-engine casting/delivery, governed by director_skills/<engine>.md."""
+    # The output contract is repeated AFTER the skill file, and that placement is
+    # load-bearing. Stated only before it, the last thing the director reads is a
+    # long markdown document full of tables — and it answers in kind: chatterbox.md
+    # reliably produced a prose "Recommended Configuration" table and zero JSON
+    # (2026-07-28 smoke test), while the shorter skill files happened to survive.
+    # Recency wins, so the contract goes last.
+    schema = _schema_str(engine)
     system = (CASTING_SYSTEM
               + "\nOutput ONLY compact minified JSON, no markdown, with EXACTLY "
-              + "these keys:\n" + CASTING_SCHEMA[engine]
-              + "\n\n===== SKILL FILE: " + engine + " =====\n" + load_skill(engine))
+              + "these keys:\n" + schema
+              + "\n\n===== SKILL FILE: " + engine + " =====\n" + load_skill(engine)
+              + "\n===== END SKILL FILE =====\n\n"
+              + "Reply with ONE line: the minified JSON object and nothing else. No "
+              + "prose, no markdown, no table, no code fence, no explanation.\n"
+              + "Required keys, exactly these: " + schema)
     user = f"Target engine: {engine}\n\nThe line to be performed:\n“{text}”"
     for _ in range(retries):
         body = json.dumps({
@@ -405,8 +505,10 @@ def casting_pass(text, engine, retries=2):
         except Exception:
             continue
         d = _extract_json(content)
-        required = ("voice_design", "instruct") if engine == "vibevoice" else ("instruct",)
-        if d and all(k in d for k in required):
+        # Required keys ARE the schema keys. They were hard-coded to ("instruct",)
+        # for everything but vibevoice, which silently accepted a chatterbox emission
+        # carrying no numbers at all — the schema is the contract, so read it there.
+        if d and all(k in d for k in CASTING_SCHEMA[engine]) and _validate_casting(engine, d):
             return d
     return None
 
@@ -456,10 +558,24 @@ def build_direction(tag, text, dia_guidance=3.0):
                    instruct string is the only channel that reaches the model.
       moss85    -> instruct only, so design MUST be merged in here too.
       dia       -> render_text only; no instruct channel at all.
+      chatterbox-> two numbers (exaggeration + cfg_weight); design casts the
+                   reference clip. No prose slot exists.
+      zonos     -> emotion SHAPE + pitch_std + speaking_rate; design casts the
+                   speaker embedding. No prose slot exists.
+      orpheus   -> a voice from a closed 8, prefixed onto the text by the renderer;
+                   optional inline tags from a closed 8. Nothing else.
+      longcat   -> nothing at all. Reference selection is the whole decision.
     """
     engine = tag.get("engine", "vibevoice")
-    if engine not in ("vibevoice", "dia", "qwen", "moss85"):
-        engine = "vibevoice"
+    if engine not in KNOWN_ENGINES:
+        # Previously this silently rewrote anything unrecognised to "vibevoice".
+        # That is the exact failure this function was written to end: a bank line
+        # tagged `zonos` would have been handed to VibeVoice and audited as Zonos.
+        # It also caught `moss_vg` — a live portfolio engine that was never in the
+        # whitelist — so its lines were rewritten too. Unknown engines are fatal.
+        raise ValueError(
+            f"build_direction: unknown engine {engine!r}. Known: {', '.join(KNOWN_ENGINES)}. "
+            f"Add it here and to RELAY in audition/app/main.py before rendering a clip.")
     vd = tag.get("voice_design", "") or ""
     ins = tag.get("instruct", "") or ""
     if engine == "vibevoice":
@@ -470,6 +586,33 @@ def build_direction(tag, text, dia_guidance=3.0):
         # the casting pass already emitted ONE string for these; _merge only has
         # work to do on legacy tags that still carry a separate voice_design.
         return engine, {"instruct": _merge(vd, ins)}
+    if engine == "chatterbox":
+        # Two numbers and a casting call. `exaggeration` is a RATE PROFILE, not an
+        # emotion selector, and raising it alone reads rushed — cfg_weight is the
+        # other half of one control, so it is defaulted rather than left absent.
+        return engine, {"design": vd,
+                        "exaggeration": _clamp(tag.get("exaggeration"), 0.25, 1.0, 0.5),
+                        "cfg_weight": _clamp(tag.get("cfg_weight"), 0.2, 0.6, 0.5)}
+    if engine == "zonos":
+        # The emotion vector is silently L1-normalised downstream, so we normalise
+        # here too: what the model receives is then exactly what the manifest
+        # records, and an audit reading "happiness 0.85" can never again mean 0.616.
+        return engine, {"design": vd,
+                        "emotion": _l1(tag.get("emotion")),
+                        "pitch_std": _clamp(tag.get("pitch_std"), 20, 150, 45.0),
+                        "speaking_rate": _clamp(tag.get("speaking_rate"), 5, 30, 15.0)}
+    if engine == "orpheus":
+        # The only string that reaches the model is f"{voice}: {text}", assembled in
+        # the renderer. An unlisted voice would be spoken aloud, so fall back to the
+        # maintainers' default rather than trusting the emission.
+        voice = tag.get("voice") if tag.get("voice") in ORPHEUS_VOICES else "tara"
+        rt = tag.get("render_text") or text
+        if set(re.findall(r"<[a-z]+>", rt)) - set(ORPHEUS_TAGS):
+            rt = text     # an invented tag is pronounced; drop the whole emission
+        return engine, {"voice": voice, "render_text": rt}
+    if engine == "longcat":
+        # Nothing is directable. Casting the reference is the entire decision.
+        return engine, {"design": vd}
     # dia: control is inline text. nari-labs generation guidelines say to repeat
     # the trailing speaker tag to improve end-of-audio quality (Dia improvises
     # tails otherwise) — see the docs' "Generation Guidelines".

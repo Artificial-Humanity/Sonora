@@ -61,6 +61,19 @@ A 5–30 s reference clip becomes a 128-d embedding. **Never leave `speaker` uns
 model then draws an arbitrary unconditional voice per seed, which is exactly what produced
 the "gender-coverage gap" in our audition.
 
+Your `voice_design` is consumed by our own casting code (`ref_select.select_reference`),
+never by the model — it selects that reference clip. Exactly two things are read out of
+it, by regex:
+
+1. **Gender** — matched on exactly these four words: `female`, `woman`, `maternal`,
+   `girl`. Anything else falls through to **Male**. **`feminine` is NOT matched.**
+2. **Age band** — safe literal choices: `child`, `teen`, `young`, `middle-aged`,
+   `elderly`. Omitting an age word records no band at all — say one. **`mature` and
+   `matronly` map to the SAME band as `middle-aged`**, not to elderly.
+
+So write: `middle-aged woman, warm even timbre`. Everything past those two words is
+discarded before it can affect anything.
+
 ## Accent — the one genuine maybe, still unproven
 Zonos is the first engine where accent is not a clean "no". It accepts `en-us`, `en-gb`,
 `en-gb-scotland`, `en-gb-x-rp` with **distinct language ids**, and the phonemes really do

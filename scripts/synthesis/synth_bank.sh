@@ -20,6 +20,8 @@
 #
 # Usage:  synth_bank.sh <bank.json> <out_dir> [engine ...]
 #         engines default to: dia moss_vg qwen vibevoice
+#         also available, opt-in by name: chatterbox zonos orpheus (revisit list,
+#         2026-07-28 — verdicts void, pipelines rebuilt, not yet re-auditioned)
 # Output: <out_dir>/<id>.wav + <engine>_manifest.jsonl per engine.
 set -uo pipefail
 BANK="${1:?usage: synth_bank.sh <bank.json> <out_dir> [engine ...]}"
@@ -81,6 +83,49 @@ if has qwen; then
       || echo "  (qwen failed — continuing)"
 fi
 
+# --- revisit engines (2026-07-28) -------------------------------------------------
+# Off by default and named explicitly, because their prior verdicts were void and a
+# clip is only worth what its provenance is worth: audition ONLY output from a fully
+# fixed pipeline. Their pip recipes are the first ever recorded for these engines and
+# are UNVERIFIED until a smoke render passes — fix them here, not in a shell history.
+
+if has chatterbox; then
+  # CLASSIC English weights, not Turbo (Turbo discards `exaggeration`).
+  # resemble-perth is imported and patched to a no-op by the renderer: the native
+  # watermarker is unavailable here, and these clips are TRAIN-ONLY by owner decision.
+  echo "== CHATTERBOX (train-only output) =="
+  run "pip install -q --no-deps chatterbox-tts >/dev/null 2>&1;
+       pip install -q librosa s3tokenizer diffusers resemble-perth conformer transformers safetensors soundfile omegaconf >/dev/null 2>&1;" \
+      "python /sonora/scripts/synthesis/synth_chatterbox.py --bank $BANK --out $OUT" \
+      || echo "  (chatterbox failed — continuing)"
+fi
+
+if has zonos; then
+  # RUN FROM SOURCE, NOT PIP. `pip install git+…Zonos` yields an UNIMPORTABLE
+  # package: the wheel omits the zonos.backbone subpackage entirely (verified
+  # 2026-07-28 — model.py ships, zonos/backbone/ does not), so the first import
+  # dies on ModuleNotFoundError no matter what deps are present. The checkout at
+  # /data/toolchain/Zonos is the source of truth; PYTHONPATH is the whole fix.
+  #   git clone --depth 1 https://github.com/Zyphra/Zonos.git /data/toolchain/Zonos
+  # espeak-ng is a hard requirement (Zonos phonemizes before conditioning), and
+  # sudachipy/sudachidict-full are NOT optional despite being the Japanese
+  # tokenizer: conditioning.py imports them at module scope, so an English-only
+  # run still fails without them.
+  echo "== ZONOS =="
+  run "apt-get -qq update >/dev/null 2>&1; apt-get -qq install -y espeak-ng >/dev/null 2>&1;
+       pip install -q phonemizer inflect kanjize soundfile transformers huggingface-hub sudachipy sudachidict-full >/dev/null 2>&1;" \
+      "PYTHONPATH=/data/toolchain/Zonos python /sonora/scripts/synthesis/synth_zonos.py --bank $BANK --out $OUT" \
+      || echo "  (zonos failed — continuing)"
+fi
+
+if has orpheus; then
+  # snac decodes the audio tokens; the renderer pulls snac_24khz from the Hub.
+  echo "== ORPHEUS (-ft checkpoint) =="
+  run "pip install -q transformers soundfile snac >/dev/null 2>&1;" \
+      "python /sonora/scripts/synthesis/synth_orpheus.py --bank $BANK --out $OUT" \
+      || echo "  (orpheus failed — continuing)"
+fi
+
 if has vibevoice; then
   # The TTS module lives in the COMMUNITY fork — Microsoft restructured it out of
   # the official repo. Installing transformers alone yields
@@ -97,10 +142,15 @@ fi
 echo "== done: $(ls -1 "$OUT"/*.wav 2>/dev/null | wc -l) wav(s) in $OUT =="
 
 # Bring every engine to one loudness BEFORE anything measures or auditions the
-# clips. Measured 2026-07-28: 5.1 dB spread between per-engine medians, which
-# both biases the ear in audit and leaks an engine-shaped term into the
-# instrument's arousal channel. Must run before register_audition (audit) and
-# before qc_gate (measurement). Originals are kept in $OUT/_pre_loudnorm.
+# clips. Measured 2026-07-28: 5.1 dB spread between per-engine medians. That
+# biases the ear in audit (louder reads as more present before the performance is
+# judged) and spreads the conditioning signal for every cloning engine, since v1
+# is the pool ref_select draws references from. It does NOT leak into the
+# instrument's arousal channel — EIV normalises each clip against its own maximum,
+# so a constant gain cancels; that claim was asserted here without reading the
+# consumer and was retracted the same day (see normalize_loudness.py's docstring).
+# Must run before register_audition (audit) and before qc_gate (measurement).
+# Originals are kept in $OUT/_pre_loudnorm.
 echo "== normalize loudness =="
 if command -v uv >/dev/null 2>&1; then
   uv run "$SONORA/scripts/synthesis/normalize_loudness.py" --dir "$OUT" \
