@@ -98,8 +98,6 @@ Reinstated 2026-07-25 as the `moss_vg` arm of `teacher-ab-v1`. Its
 *anchored-instruct recipe* — always anchor age + gender + timbre before the
 delivery imperative — survived as the template for every skill file we now write.
 
-| Engine | Prior verdict | Why it deserves a second look |
-|---|---|---|
 **Scope (owner 2026-07-25): quality rejections only.** Licence rejections are not
 revisited — a licence wall is not a judgement we got wrong, and re-auditioning it
 changes nothing. The reason quality rejections *are* in scope is the owner's:
@@ -115,7 +113,7 @@ mismatch between that instruction and an interface nobody had studied.
 | **Chatterbox-Turbo** (Resemble, 0.5B, MIT) | Retired with credit 2026-07-17. Exaggeration dial "REAL and monotonic on arousal"; grief rendered as casual chat (FAIL on V−/low-A); menace came out comic-villain. | It has **no text-instruct channel — but it does have a real control channel**, the exaggeration dial. That is precisely the Dia situation: the adapter is not prose, it is a parameter. A skill file mapping our arousal axis onto the dial has never existed. Its V− failure may be genuine; its A+ and sarcasm registers were rated real. |
 | **Zonos v0.1** (Zyphra) | Retired alongside Chatterbox; threat "passes entirely", other verdicts left *pending*. | Retired with its audition unfinished, and never studied for an interface. |
 | **MOSS-VG** | Retired as "superseded by flagship on owner's ear" | Reversed — see above. The purest example of the owner's reasoning: the comparison was against a model that cannot take instructions at all. |
-| **`orpheus3b-pt`** (canopylabs) | 5 clips: **4 keeps at 5/5/4/5**, 1 drop | **Promote, not rehabilitate.** This is not a failing grade — owner notes read *"Faithful adherence and high quality result"* and *"This was truly fantastic"*. It simply never got a full audition (5 clips), and never had a skill file. The strongest under-sampled candidate we have. |
+| **`orpheus3b-pt`** (canopylabs) | 5 clips: **4 keeps at 5/5/4/5**, 1 drop | **The verdict is void — we tested the wrong checkpoint through a malformed prompt** (interface study 2026-07-28). (a) `-pretrained` is the BASE model: **no named voices, no emotion tags at all**; every control channel lives in `-ft`, which we have never rendered. (b) Both renderers end the prompt at `[EOT, EOH]` and omit `128261` (start-of-AI) + `128257` (start-of-speech) — the trained form continues with both. The model is therefore left at end-of-human and must decide whether to emit the audio header or keep going as a text LLM, which is precisely the observed *"seemed to repeat parts of the passage"*. (c) The bank was 10 lines; 5 shipped, **5 were re-rolled and never reached ratings.csv**. Re-audition `-ft`, with the prompt fixed, or repeat the same mistake in a new form. |
 | `moss85` (8.5B flagship) | 78 keeps, but leaked prompts aloud | Not a quality failure — wrong tool. It is a *cloning* foundation model. It may still earn a place through its `reference` slot, which we have never used. |
 | `longcat` | 51 keeps, transfer stage | Never had a skill file or a studied interface. |
 | `piper` (rhasspy) | 10 clips, **10 dropped** | **Low priority; the verdict probably stands.** The drop notes are *"Highly robotic. Undulation of pitch is way off"*, *"Robot."* — that is a **synthesis-naturalness** rejection, not a directability one, and Piper has no control channel a skill file could drive. Re-run only to establish a floor. |
