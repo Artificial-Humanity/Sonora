@@ -17,7 +17,7 @@ teacher + EIV scorer + mining instruments concurrently)
 | 2 | **Qwen3-TTS-12Hz-1.7B-VoiceDesign** (+ CustomVoice sibling) | 1.9B | **Apache-2.0** ✓ | Description-based voice design + fine-grained control — the "dynamic voicing, avoid 'voices'" philosophy as a product; 3-s cloning in the CustomVoice variant (we'd use design, not cloning). Massive ecosystem (vLLM-Omni, GGUF). Fast enough for bulk synthesis. |
 | 3 | **Boson Higgs-TTS-3** | 4.7B | **NC — verdict rendered 2026-07-17** ✗teacher / ✓benchmark | License is literally named `boson-higgs-tts-3-research-and-non-commercial-license`. Per the wall (audeering precedent: NC excluded even as pipeline tool): NO outputs into training or calibration. Retained as the **benchmark bar** — its VAD conveyance is what our renders get judged against in audits. |
 | 4 | Orpheus-3B (Canopy) | 3B | Apache-2.0 ✓ | Emotion tags (`<laugh>`, `<sigh>`, guided emotion); proven, simple. |
-| 5 | Chatterbox-Turbo (Resemble) | 0.5B | MIT ✓ | **Emotion-exaggeration dial** — maps directly onto our A/T axes; small enough to be a cheap bulk generator. |
+| 5 | **Chatterbox** (Resemble) | 0.5B | MIT ✓ | **Emotion-exaggeration dial** — maps directly onto our A/T axes; small enough to be a cheap bulk generator. *[Name corrected 2026-07-28: this is CLASSIC Chatterbox, not Turbo. `render_chatterbox.py` imports `ChatterboxTTS`. Turbo's `generate()` ACCEPTS `exaggeration` and then discards it with a log warning — the dial does not exist there. Resemble's own Turbo marketing still advertises it; the shipped code disagrees.]*
 
 | 6 | Zonos-v0.1-transformer (Zyphra) | 1.6B | Apache-2.0 ✓ | **Explicit emotion conditioning vector** (happiness/sadness/fear/anger/surprise/neutral) + pitch/rate — the closest native V/A/T interface in the field. v0.1 quality uneven; must earn its place by ear. Transformer variant only (hybrid needs Mamba kernels, ROCm-dicey). |
 | 7 | Dia-1.6B (Nari) | 1.6B | Apache-2.0 ✓ | Dialogue-native, nonverbals ([laughs]/sighs/coughs), wildly expressive; run-to-run voice instability is near-feature for identity-free delivery data. Feeds the parked expressive-fine-tune stage too. |
@@ -120,7 +120,7 @@ which we have never used. It is NOT a directed generator.**
 
 ## Audition field (owner call, 2026-07-17; widened same day)
 
-**MOSS-TTS, Qwen3-TTS-VoiceDesign, Zonos, Dia, Chatterbox-Turbo** (teacher candidates,
+**MOSS-TTS, Qwen3-TTS-VoiceDesign, Zonos, Dia, Chatterbox** (teacher candidates,
 Apache/MIT, on disk) + **Higgs** (benchmark bar, NC, non-competing, on disk). **Orpheus:
 approval-gated on HF (discovered 2026-07-17) — owner access request pending; joins when granted.**
 
