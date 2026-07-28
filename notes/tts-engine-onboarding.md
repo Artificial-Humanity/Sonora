@@ -195,10 +195,38 @@ words. Chatterbox 7.3 s, Zonos 4.5 s, Orpheus 6.3 s.
   irony is end-loaded, Gemma picked `exaggeration 0.25` / `cfg_weight 0.3` — the
   slow-the-punchline reading the skill file's situational rule asks for.
 
-**Not yet done: step 7.** Nothing has been auditioned. These clips prove the
-pipeline, not the engines — no verdict may be drawn from three clips of one line,
-and the smoke output was deliberately written outside `DATA_ROOT` so
-`register_audition` refused to queue it and `ratings.csv` was untouched.
+**Campaign `revisit-v1` RENDERED and QUEUED (2026-07-28).** 60 clips — the same 20
+teacher-ab-v1 texts, seeds and intended V/A/T across all three engines, so every
+clip pairs line-for-line with the measured portfolio through `pair_key`. All 60
+normalised to −23 LUFS and queued into `ratings.csv` (820 → 880 rows, all
+`unaudited`, 40 gender-prefilled).
+
+Structural gate, all 60 clips through faster-whisper `small.en`:
+
+| engine | n | median WER | mean WER | above the 0.35 gate |
+|---|---|---|---|---|
+| chatterbox | 20 | 0.000 | 0.017 | 0 |
+| zonos | 20 | 0.000 | 0.032 | 0 |
+| orpheus | 20 | 0.000 | 0.023 | 0 |
+
+Every structural failure that the three void verdicts described is gone: no
+repetition, no dropped words, no collapse. Durations: chatterbox 4.3–7.3 s
+(median 5.6), zonos 3.4–7.6 s (median 5.5), orpheus 5.5–10.2 s (median 8.0).
+
+**This settles only that the engines WORK.** Whether they are directable, and
+whether they belong in the portfolio, is the owner's ear on those 60 cards — a WER
+of 0.000 is exactly as true of a flat, lifeless read as of a good one.
+
+**Open defect found by the render: cap Zonos's `speaking_rate`.** Two clips landed
+below the 4 s owner floor (`rev_00_victory_ZON` 3.5 s, `rev_09_goodnews_ZON` 3.4 s)
+and they are precisely the only two the director wrote at `speaking_rate` 24.0. The
+schema permits 5–30 and the skill file quotes the docs' "~15 normal, 30 very fast",
+but on ~95-character lines anything above ~20 undershoots the floor. Cap the band
+before the next campaign rather than letting `qc_gate` silently drop the clips.
+
+**Not yet done: step 7 itself.** Nothing has been auditioned. The smoke output that
+preceded this was deliberately written outside `DATA_ROOT` so `register_audition`
+refused to queue it; only the campaign clips reached `ratings.csv`.
 
 LongCat is deliberately still at step 3: its skill file says there is nothing to
 direct, and its 45% gender-flip standing is unsettled, so it is a reference-casting

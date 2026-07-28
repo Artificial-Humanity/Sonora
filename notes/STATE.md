@@ -26,6 +26,10 @@ Latest A/B (`teacher-ab-v1`, 2026-07-26): qwen 19/20 · vibevoice 19/20 · moss_
 Zonos and Orpheus are through step 6 of the onboarding pattern: engine-shaped casting
 schemas with validation, per-engine `build_direction` branches, three new renderers, and a
 smoke render in which all three came back **verbatim (18/18 words, ASR similarity 1.000)**.
+Campaign **`revisit-v1` is rendered and queued**: 60 clips on the teacher-ab-v1 texts,
+median WER **0.000** for all three engines, 0 clips above the 0.35 gate, now sitting
+`unaudited` in `ratings.csv` (880 rows). Every structural failure the void verdicts
+described is gone — which settles that the engines work, not that they are good.
 Fixed en route: `build_direction()` had been **silently rewriting every unrecognised engine
 to vibevoice** — including `moss_vg` — so a bank line tagged `zonos` would have rendered as
 VibeVoice and been audited as Zonos; unknown engines are now fatal. **Step 7 (audition) is
