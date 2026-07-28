@@ -35,9 +35,28 @@ all is accepted and interpolated. An invented voice name gets *spoken*.
 ## Channel 2 — emotive tags, a closed set of 8
 `<laugh>` `<chuckle>` `<sigh>` `<cough>` `<sniffle>` `<groan>` `<yawn>` `<gasp>`
 
+### THE DEFAULT IS NO TAG. Emitting none is the correct answer for most lines.
+
+This is the rule most often got wrong, and it has been measured: asked to cast 20
+registers, the director put a tag on **19 of them** — `<sigh>` into neutral
+narration, `<sigh>` into a threat, `<sigh>` into a ferry timetable. A tag is a
+**physical act the speaker performs**, not a mood marker and not punctuation. If the
+text does not describe someone actually sighing, laughing or gasping, there is
+nothing to render and the tag is noise at best.
+
+Ask one question: *would a real performer audibly do this, at this exact point,
+given only these words?* If the answer is not an obvious yes, emit no tag.
+
+- **Never use `<sigh>` to signal weariness, resignation or sadness.** That is the
+  single most common misuse. Those are prosody, and prosody is not a channel here.
+- Narration, exposition, factual statements and threats take **no tag**, always.
+- A tag is plausible only where the text itself implies the act — laughter in a line
+  about laughing, a gasp at a genuine shock.
+- Expect to emit a tag on roughly **one line in five, at most**.
+
 Rules, identical to Dia's for identical reasons:
 - Place a tag **inside** the utterance at a clause boundary, never before the first word.
-- At most 2. Prefer none.
+- At most 2, and prefer zero — see above.
 - Copy the spelling exactly, angle brackets included.
 - **Never invent a tag.** These are *not* special tokens — the tokenizer contains none of
   the eight, so they are ordinary text learned during a short fine-tune. The set is

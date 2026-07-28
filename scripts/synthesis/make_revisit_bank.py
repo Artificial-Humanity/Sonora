@@ -109,12 +109,16 @@ def main():
     lines, failures = [], []
     with open(partial_path, "a", encoding="utf-8") as pf:
         for engine, suffix in ENGINES:
-            if engine not in args.engines:
-                continue
+            # An unselected engine still contributes its CACHED lines. Skipping the
+            # engine outright would write a bank containing only the selected one —
+            # so re-running a single engine would silently delete the other two.
+            selected = engine in args.engines
             for s in src:
                 lid = f"rev_{s['idx']:02d}_{s['slug']}_{suffix}"
                 if lid in done:
                     lines.append(done[lid])
+                    continue
+                if not selected:
                     continue
                 # The line's labels go in as fixed context. Without them the
                 # director picked Chatterbox's AROUSAL dial without being told the
