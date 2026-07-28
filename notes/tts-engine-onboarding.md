@@ -276,6 +276,13 @@ all 80 was zero.
 **`qc_gate.py` needs Python 3.11.** On 3.12, librosa resolves a numba that refuses to
 build. Run it with `uv run --python 3.11`.
 
+**An ad-hoc render script must live where `ai-mgr` can read it.** Renders drop privileges
+to uid 105, and the session scratchpad under `/tmp/claude-*` is owned by the human user with
+permissions ai-mgr cannot traverse. Mounting it gives
+`python: can't open file '/smoke/x.py': [Errno 13] Permission denied` — which reads like a
+missing file, not a permissions problem. Put smoke scripts under `/data` (group `datashare`,
+mode 664) or inside the repo mount.
+
 **Engine keys are matched by prefix** in the audition app's RELAY table. `moss_vg`
 and `moss85` are distinct entries — neither name prefixes the other, and a missing
 key silently yields no relay annotation at all.

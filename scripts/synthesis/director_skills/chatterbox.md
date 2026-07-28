@@ -81,3 +81,25 @@ treats accent as a defect to suppress. Never request one.
 - **Do not send V−/low-arousal grief here.** Our audition found it renders as casual chat.
   The dial raises intensity; it cannot lower valence. That failure is probably genuine.
 - Do not write prose. There is no slot for it.
+
+## ⚠ Publication constraint — unresolved (owner 2026-07-28)
+
+Chatterbox watermarks every output with Perth, unconditionally: no flag, no config, no
+env var. The native component is unavailable on this box, so our renderers **disable it**
+with a no-op patch. That creates a fork in the road, and both branches matter:
+
+- **Keep the watermark** → Sonora trains on watermarked audio and may learn to reproduce
+  the artifact, so our own student would emit Resemble's mark. Contamination.
+- **Strip it** (what we do) → clean for training, but the clips are then unmarked synthetic
+  speech, and our expressive-registers dataset is **published CC-BY-4.0 on HuggingFace**.
+
+Owner's position (2026-07-28): *"easily defensible for training but potentially problematic
+for public release… we may need to leave that out of the published dataset."*
+
+**The mechanism to honour that does not exist yet.** Per-clip metadata carries a flat
+`license: CC-BY-4.0` with no publication tier and no `engine_license`, so a Chatterbox clip
+folded into `v1` would be published by default. Until a train-only tier exists, **no
+Chatterbox output should be promoted into the published dataset.**
+
+Note this is a responsible-AI measure, not a licence term — the MIT licence permits
+stripping it. That makes it a decision we own rather than one we can point at.
