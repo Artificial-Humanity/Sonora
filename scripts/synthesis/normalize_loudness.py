@@ -10,14 +10,30 @@ qwen -22.1 dBFS. That is not a cosmetic problem:
 
   1. It biases the audition. Louder reads as more present and more confident, so
      the ear is being told which engine it is before it judges the performance.
-  2. It contaminates the arousal label. The instrument's A channel keys partly on
-     level, so `measured_z.A` was encoding *which engine rendered the clip* rather
-     than how activated the speaker was. Valence/arousal labels are already the
-     known bottleneck (vat3 failed on labels, not training) — an engine-shaped
-     term in the arousal channel is exactly the sort of thing that causes it.
+  2. It makes the reference pool inconsistent. v1 is what `ref_select.py` draws
+     cloning references from, and VibeVoice/LongCat/Chatterbox/Zonos all condition
+     on a reference clip — so a 5 dB spread across references is a 5 dB spread in
+     the conditioning signal.
 
-So this runs at BUILD time: after render, before audition and before qc_gate's
-measurement pass. Both consumers then see one level.
+CORRECTION (2026-07-28): an earlier version of this file claimed loudness also
+contaminated the measured arousal label. **That was wrong, and it was asserted
+without checking.** For the synth lane, `qc_verdict.raw_measures` takes A from the
+EIV Arousal head, and EIV is EmoWhisper — a `WhisperFeatureExtractor` front end,
+whose log-mel is normalised against each clip's OWN max (`max(log_spec,
+log_spec.max() - 8.0)`). A constant gain cancels there, so EIV is level-invariant
+and `measured_z` survives normalisation unchanged. The large per-engine A and T
+offsets that `qc_verdict --per-engine` exists to correct are real, but they come
+from how the engines actually deliver, not from their output gain.
+
+⚠ DO NOT RUN THIS ON THE LibriTTS-R CORPUS LANE. `derive_vat_corpus.py` derives
+A as the **per-speaker z-score of integrated loudness** — there, level IS the
+arousal label. Normalising every clip to one LUFS would drive that variance to
+zero and annihilate the channel. This script is for TEACHER SYNTHESIS banks only,
+where A comes from EIV. The two lanes disagree about what loudness means, and
+that is a real trap, not a stylistic difference.
+
+So this runs at BUILD time: after render, before audition. Both the ear and the
+reference pool then see one level.
 
 Target is **-23 LUFS integrated (EBU R128)** with a **-1.0 dBFS peak ceiling**. If
 the gain needed to hit -23 would push the peak above the ceiling, we take the
@@ -65,6 +81,9 @@ def main():
     ap.add_argument("--target", type=float, default=-23.0, help="target LUFS (default -23, EBU R128)")
     ap.add_argument("--peak-ceiling", type=float, default=-1.0, help="max peak dBFS after gain")
     ap.add_argument("--dry-run", action="store_true", help="report what would change, write nothing")
+    ap.add_argument("--backup-dir", default=None,
+                    help="where originals go (default: <dir>/_pre_loudnorm). Point this "
+                         "OUTSIDE a published dataset tree so the backups are not shipped.")
     args = ap.parse_args()
 
     root = pathlib.Path(args.dir)
@@ -85,7 +104,7 @@ def main():
                 except Exception:
                     pass
 
-    backup = root / BACKUP_DIR
+    backup = pathlib.Path(args.backup_dir) if args.backup_dir else root / BACKUP_DIR
     ceiling_amp = 10 ** (args.peak_ceiling / 20.0)
 
     changed = skipped = untouched = 0
