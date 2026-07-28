@@ -32,6 +32,24 @@ own 2026-07-17 audition mapped it by ear and that remains the only calibration i
 **Cap at 1.0.** Higher is reachable (nothing in the code clamps it) but is documented as
 unstable, and unstable output costs more than the extra intensity is worth.
 
+### Choosing a value — start from the line's arousal, then adjust
+
+You are given the line's arousal as fixed context. Map it first. This is the table
+above expressed on the A axis — not a new measurement, just the same calibration in
+the terms you are actually handed:
+
+| the line's arousal | `exaggeration` | `cfg_weight` |
+|---|---|---|
+| A ≥ +0.6 — elated, urgent, shouting | 0.8–1.0 | 0.3 |
+| A +0.2 to +0.6 — animated, insistent | 0.6–0.7 | 0.4 |
+| A −0.2 to +0.2 — level, conversational | 0.5 | 0.5 |
+| A ≤ −0.2 — subdued, weary, flat | 0.25–0.4 | 0.5 |
+
+**The sarcasm rule below is an exception for ironic lines, not the default.** If you
+are writing 0.25 for a line that is neither ironic nor subdued, you have mistaken the
+exception for the rule — that failure is real and measured: across 20 registers the
+director once emitted (0.25, 0.3) for 18 of them, victory and urgency included.
+
 ### What the dial actually is: a RATE PROFILE, not a register selector
 
 This is the key to using it well, and it was established by ear on 2026-07-28.
@@ -107,8 +125,18 @@ VibeVoice, because it is the same function:
    `elderly`. Omitting an age word records no band at all — say one. **`mature` and
    `matronly` map to the SAME band as `middle-aged`**, not to elderly.
 
-So write: `middle-aged woman, warm even timbre`. Everything past those two words is
-discarded before it can affect anything.
+Write a casting call that fits **this line's speaker**. The speaker varies, so the
+casting must vary — any of these shapes:
+
+> young man, bright open timbre
+> elderly woman, dry and unhurried
+> teen girl, quick and breathless
+> middle-aged man, gravelled and tired
+
+Everything past the gender and age words is discarded before it can affect anything,
+so spend no effort on the timbre clause. But **do not reuse one casting call across
+different registers**: identical casting for a victory line and a grief line means
+the reference pool was never really consulted.
 
 ## Accent
 Unsupported, and worse than merely absent: reference-clip accent **leaks uncontrollably**

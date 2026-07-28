@@ -71,8 +71,18 @@ it, by regex:
    `elderly`. Omitting an age word records no band at all — say one. **`mature` and
    `matronly` map to the SAME band as `middle-aged`**, not to elderly.
 
-So write: `middle-aged woman, warm even timbre`. Everything past those two words is
-discarded before it can affect anything.
+Write a casting call that fits **this line's speaker**. The speaker varies, so the
+casting must vary — any of these shapes:
+
+> young man, bright open timbre
+> elderly woman, dry and unhurried
+> teen girl, quick and breathless
+> middle-aged man, gravelled and tired
+
+Everything past the gender and age words is discarded before it can affect anything,
+so spend no effort on the timbre clause. But **do not reuse one casting call across
+different registers**: identical casting for a victory line and a grief line means
+the reference pool was never really consulted.
 
 ## Accent — the one genuine maybe, still unproven
 Zonos is the first engine where accent is not a clean "no". It accepts `en-us`, `en-gb`,

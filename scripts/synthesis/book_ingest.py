@@ -335,7 +335,9 @@ def director_tag(chunk, retries=2):
         # Second pass: casting + delivery, written in the chosen engine's own
         # language. Dia has no direction channel, so it is skipped entirely.
         if engine != "dia":
-            cast = casting_pass(chunk["text"], engine)
+            cast = casting_pass(chunk["text"], engine, labels={
+                "V": tag.get("valence", 0.0), "A": tag.get("arousal", 0.0),
+                "T": tag.get("tension", 0.0), "register": tag.get("register", "")})
             if cast is None:
                 continue
             tag.update(cast)
@@ -402,6 +404,37 @@ CASTING_SCHEMA = {
 
 def _schema_str(engine):
     return "{" + ", ".join(f'"{k}": {v}' for k, v in CASTING_SCHEMA[engine].items()) + "}"
+
+
+# Machine-enforced shape for ollama's structured-output `format`. Prompt wording alone
+# does NOT hold: chatterbox.md is long and table-rich, and the director answered it
+# with a prose "Recommended Configuration" table, and later with ZONOS's schema —
+# right engine named, right skill file loaded, wrong shape emitted (2026-07-28).
+# Moving the contract after the skill file bought a working smoke test and nothing
+# more; one more table in the file broke it again. Constrained decoding makes the
+# shape structural instead of persuasive. Ranges and closed sets are still checked in
+# _validate_casting — this guarantees the KEYS and TYPES, not the values.
+_NUM = {"type": "number"}
+_STR = {"type": "string"}
+CASTING_JSON_SCHEMA = {
+    "qwen":       {"instruct": _STR},
+    "moss_vg":    {"instruct": _STR},
+    "vibevoice":  {"voice_design": _STR, "instruct": _STR},
+    "chatterbox": {"voice_design": _STR, "exaggeration": _NUM, "cfg_weight": _NUM},
+    "zonos":      {"voice_design": _STR,
+                   "emotion": {"type": "array", "items": _NUM,
+                               "minItems": 8, "maxItems": 8},
+                   "pitch_std": _NUM, "speaking_rate": _NUM},
+    "orpheus":    {"voice": {"type": "string", "enum": list(ORPHEUS_VOICES)},
+                   "render_text": _STR},
+    "longcat":    {"voice_design": _STR},
+}
+
+
+def _json_schema(engine):
+    props = CASTING_JSON_SCHEMA[engine]
+    return {"type": "object", "properties": props,
+            "required": list(props), "additionalProperties": False}
 
 
 def _validate_casting(engine, d):
@@ -472,8 +505,19 @@ def load_skill(engine):
     return text
 
 
-def casting_pass(text, engine, retries=2):
-    """Per-engine casting/delivery, governed by director_skills/<engine>.md."""
+def casting_pass(text, engine, labels=None, retries=2):
+    """Per-engine casting/delivery, governed by director_skills/<engine>.md.
+
+    `labels` is the line's already-decided {V, A, T, register}, passed as READ-ONLY
+    context. Step 5 of the onboarding pattern separates the line pass from the engine
+    pass so the training labels stop drifting with whichever engine is being written
+    for — but separating the passes was mistaken for withholding the labels, and for
+    a parameter-only engine that is fatal. Chatterbox's whole output is `exaggeration`,
+    an AROUSAL dial, and the director was being asked to choose it with the arousal
+    withheld: across 20 registers it emitted (0.25, 0.3) on 18 of them, including
+    victory and urgency (2026-07-28). Knowing the label is not the same as relabelling;
+    emitting one is still forbidden below.
+    """
     # The output contract is repeated AFTER the skill file, and that placement is
     # load-bearing. Stated only before it, the last thing the director reads is a
     # long markdown document full of tables — and it answers in kind: chatterbox.md
@@ -490,9 +534,18 @@ def casting_pass(text, engine, retries=2):
               + "prose, no markdown, no table, no code fence, no explanation.\n"
               + "Required keys, exactly these: " + schema)
     user = f"Target engine: {engine}\n\nThe line to be performed:\n“{text}”"
+    if labels:
+        vat = ", ".join(f"{k}={labels[k]:+.2f}" for k in ("V", "A", "T") if k in labels)
+        user += ("\n\nAlready decided for this line — treat as FIXED CONTEXT you must "
+                 "serve, never restate:\n"
+                 f"  register: {labels.get('register', 'unspecified')}\n"
+                 f"  valence/arousal/tension: {vat}\n"
+                 "Your direction must FIT THIS LINE. Direction identical to what you "
+                 "would write for a different register is a failure.")
     for _ in range(retries):
         body = json.dumps({
             "model": MODEL, "stream": False, "think": False,
+            "format": _json_schema(engine),
             "options": {"num_predict": 900, "temperature": 0.2},
             "messages": [{"role": "system", "content": system},
                          {"role": "user", "content": user}],
