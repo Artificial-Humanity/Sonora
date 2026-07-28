@@ -412,6 +412,13 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
     3 drops. Failures concentrate in ≤6-token LibriTTS fragments (9/14 fails vs 3/64 keeps) —
     the owner's phrase-selection call, quantified. **SCM/Gemma annotator validated as the
     labeling pass**; future rounds get a token-count floor on corpus picks.
+    **SUPERSEDED 2026-07-28 — the gate is COMPLETENESS, not length.** Length was
+    the correlate, not the cause: the owner knowingly passes short-but-whole clips
+    ("Yes." is ratable), while an *incomplete* clip destroys the judgement, since
+    prosody lives in the arc of a finished utterance. A token floor would reject
+    good short clips and pass every long fragment. `is_complete_utterance()` now
+    gates every lane. Note the score cannot detect this — under v4 it means vocals
+    and prosody only, so fragments rated 4.33 mean vs 4.32 for complete lines.
   * **`audit-valence-v1` — moderate pass (62%):** V-neg 70% · neutral 60% · V-pos 55%;
     disagreements systematically relabeled to narrative/embodiment (acted character voices).
     Direction of the axis confirmed; acceptable clip-level noise for a continuous channel.

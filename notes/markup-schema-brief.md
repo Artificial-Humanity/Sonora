@@ -117,7 +117,9 @@ Gemma-debugging material, excluded from training pairs.
    inline projections into an `audit-markup-v0` campaign for owner spot-audit in the app.
    **DONE + owner-audited 2026-07-20 — PASS (93%):** 89/96 kept, 64 at 4–5, 4 register
    relabels, 3 drops. Failures concentrate in ≤6-token LibriTTS fragments (9/14 fails vs
-   3/64 keeps) → future rounds get a token-count floor on corpus picks. Full readout:
+   3/64 keeps) → ~~future rounds get a token-count floor on corpus picks~~
+   **superseded 2026-07-28: the gate is completeness, not length — see
+   `is_complete_utterance()` and scripts/test_text_selection.py**. Full readout:
    `markup_prep/spike_v1/audit_results.json`. The SCM/Gemma annotator is validated as the
    labeling pass.
 4. **Migrate the director-pass** prompt to SCM output (book lane inherits the schema).
