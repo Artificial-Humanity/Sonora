@@ -30,6 +30,36 @@ own 2026-07-17 audition mapped it by ear and that remains the only calibration i
 **Cap at 1.0.** Higher is reachable (nothing in the code clamps it) but is documented as
 unstable, and unstable output costs more than the extra intensity is worth.
 
+### What the dial actually is: a RATE PROFILE, not a register selector
+
+This is the key to using it well, and it was established by ear on 2026-07-28.
+
+Lower exaggeration **slows** the line; higher **speeds it up** (the docs say as much for the
+upper end). It is prosodic intensity and pace — *not* an emotion control. That is why it
+cannot reach negative valence: it changes how hard and how fast, never how the speaker
+feels.
+
+**Consequence for sarcasm — do NOT hard-map it to a value.** Which setting reads as ironic
+is **situational by text**, and it depends on where the sarcastic weight sits:
+
+| the line's shape | choose | why |
+|---|---|---|
+| irony **front-loaded**, with a throwaway tail | **0.5** | the tail speeds up and lands dismissive — something to get past |
+| irony **end-loaded**, the punchline last | **0.25** | the ending slows and gets room to land |
+
+Owner's own examples, same test: *"Oh, brilliant. That is exactly what I needed today,
+**thank you so much**"* is more sarcastic at **0.5** — the tail is sped up and turns
+dismissive. *"Sure. That sounds like a completely reasonable plan **with no obvious
+problems**"* is more sarcastic at **0.25** — the punchline is slowed and gets focus.
+
+So the director's question is not "how intense is this line" but **"where does the weight
+need to fall, and does that phrase need time or contempt?"** Read the line, find the ironic
+payload, then pick.
+
+Confirming measurement: every 0.25 render ran longer than its 0.5 control (up to +0.7 s on a
+3.5 s line, ~20%). The dial does real prosodic work — unlike the refuted tag channel below,
+where changed clips came out *shorter* and sounded identical.
+
 ## Channel 2 — `cfg_weight`, and it is NOT optional
 
 `exaggeration` and `cfg_weight` are **one control with two knobs**. Raising exaggeration
