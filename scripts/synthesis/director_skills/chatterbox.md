@@ -10,7 +10,10 @@
 min_p=0.05, top_p=1.0, audio_prompt_path=None)`.
 
 **There is no natural-language instruction slot.** None. Prose direction has nowhere to go
-— do not write any. Your output is two numbers and, optionally, tags inlined in the text.
+— do not write any.
+
+**Your entire output for this engine is two numbers: `exaggeration` and `cfg_weight`.**
+That is the whole adapter. See the refuted tag channel below before adding anything else.
 
 ## Channel 1 — `exaggeration`, the arousal dial
 
@@ -37,25 +40,22 @@ alone speeds the speech up and reads rushed. The documented pairing:
 
 **Always emit both.** Emitting exaggeration alone is a defect.
 
-## Channel 3 — paralinguistic tags (verify before relying on)
+## ~~Channel 3 — paralinguistic tags~~ — TESTED AND REFUTED (2026-07-28)
 
-The tokenizer carries 34 atomic tokens. Use the **classic** spellings only:
+**There is no tag channel. Never emit one.**
 
-`[UH]` `[UM]` `[giggle]` `[laughter]` `[guffaw]` `[inhale]` `[exhale]` `[sigh]` `[cry]`
-`[singing]` `[whistle]` `[humming]` `[gasp]` `[groan]` `[whisper]` `[mumble]` `[sniff]`
-`[sneeze]` `[cough]` `[snore]` `[clear_throat]` `[kiss]` `[shhh]` `[gibberish]`
+The tokenizers do carry 34 atomic tokens (`[whisper]`, `[sigh]`, `[laughter]`, …) and they
+genuinely tokenize as single units — that much is code-verified. But a smoke test rendering
+the identical line, same seed, plain vs `[whisper]` vs `[sigh]` produced audio the owner
+judged **identical to plain**. Vocabulary presence is not trained behaviour, and here it is
+demonstrably not.
 
-Rules, and they are Dia's rules again:
-- Place a tag **inside** the utterance at a clause boundary, never before the first word.
-- At most 2. Prefer none.
-- **Do not use Turbo spellings** — `[laugh]`, `[chuckle]`, `[clear throat]` (with a space)
-  belong to a different, disjoint vocabulary. Cross-writing them shreds the tag into
-  individual characters, which are then pronounced.
-- Never invent one. Unknown brackets are shredded and spoken, exactly like Dia.
+Corroborating detail: both tagged renders came out *shorter* than plain (2.8 s and 2.9 s vs
+3.1 s). A realised sigh adds time; consumed-and-discarded tag text removes it.
 
-> **STATUS: the tag channel is UNVERIFIED.** The tokens tokenize atomically — that is
-> proven — but vocabulary presence is not evidence of trained behaviour. Until the
-> `[whisper]` smoke test passes, prefer none.
+So emitting a tag is at best inert and at worst harmful — a misspelling (Turbo's
+`[laugh]` for classic's `[laughter]`, say) is shredded into characters and **pronounced**.
+All risk, no upside.
 
 ## Voice identity is casting, not direction
 Set by `audio_prompt_path` (a reference clip). **Only the first 6 seconds** reach the
