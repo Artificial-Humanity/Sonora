@@ -127,10 +127,22 @@ def main():
     ap.add_argument("--model", default="gemma-4-26b-a4b-qat")
     args = ap.parse_args()
 
-    from book_ingest import parse_epub
+    from book_ingest import parse_epub, is_complete_utterance
 
     rows = [json.loads(l) for l in open(args.candidates, encoding="utf-8")]
     pool = [r for r in rows if args.min_secs <= r["est_seconds"] <= args.max_secs]
+    # Completeness gate (owner 2026-07-28). This lane mined 34 of the 79 fragments
+    # that reached the audit surface — quotes ending on a comma, quotes starting
+    # mid-word. A fragment is not a short clip, it is an UNJUDGEABLE one: prosody
+    # lives in the arc of a finished utterance, so the owner cannot rate a
+    # performance of half a sentence however good the voice is. Filtering at
+    # selection is the cheap end; the expensive end is an audited clip nobody can
+    # score. Deliberately NOT a length floor — short-but-whole is fine.
+    incomplete = [r for r in pool if not is_complete_utterance(r["quote"])]
+    if incomplete:
+        print(f"  dropped {len(incomplete)} incomplete quote(s) at selection; "
+              f"e.g. {incomplete[0]['quote'][:60]!r}")
+    pool = [r for r in pool if is_complete_utterance(r["quote"])]
     used = set()
     for b in args.exclude_banks:
         for l in json.load(open(b, encoding="utf-8"))["lines"]:

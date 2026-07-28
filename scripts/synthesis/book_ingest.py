@@ -183,24 +183,104 @@ def split_sentences(text):
     return [s.strip() for s in seg.segment(text) if s.strip()]
 
 
-def extract_dialogue(paragraph):
-    """If the paragraph contains quoted speech, return (quote, attribution_phrase) else None.
-    Standard Ebooks uses curly quotes U+201C/U+201D."""
-    m = re.search(r"“(.+?)”", paragraph)
-    if not m:
-        return None
-    quote = m.group(1).strip()
-    if len(quote) < 12:
-        return None
-    # attribution = the non-quoted remainder, if it names a speech verb
-    remainder = (paragraph[: m.start()] + " " + paragraph[m.end():]).strip()
-    attr = ""
-    am = re.search(r"([A-Z][\w' ]{0,40}?\b(?:" + ATTRIB_VERBS + r")\b[\w' ]{0,30})", remainder)
-    if am:
-        attr = am.group(1).strip()
-    elif re.search(r"\b(?:" + ATTRIB_VERBS + r")\b", remainder):
-        attr = re.search(r".{0,25}\b(?:" + ATTRIB_VERBS + r")\b.{0,20}", remainder).group(0).strip()
-    return quote, attr
+_OPENERS = "“\"'([‘"
+_CLOSERS = "”\"')]’"
+_TERMINALS = ".!?…"
+
+
+def is_complete_utterance(text):
+    """Is this text a whole utterance a listener could judge a performance of?
+
+    THE GATE THAT MATTERS FOR AUDITABILITY (owner, 2026-07-28). A clip that is
+    merely short stays judgeable — the owner has knowingly let short-but-whole
+    clips through, because the sentence is still there. A clip that is INCOMPLETE
+    destroys the judgement itself: prosody lives in the arc of a finished
+    utterance, so a fragment ending on a comma has no terminal contour to assess
+    and no amount of vocal quality rescues it.
+
+    This is why the gate is completeness and NOT a token-count floor.
+    audit-markup-v0 read its ≤6-token failures as a LENGTH problem and prescribed
+    a floor; length was the correlate, not the cause. A floor would reject good
+    short-but-whole clips and pass every long fragment.
+
+    Note the rating vocabulary cannot see this defect: under v4 the score means
+    vocals and prosody only, so fragments were rated 4-5 for a fine-sounding voice
+    and are statistically invisible in ratings.csv. 79 of them reached the audit
+    surface across two independent lanes. The instrument will not catch this; the
+    gate has to.
+    """
+    t = (text or "").strip()
+    if not t:
+        return False
+    core = t.rstrip(_CLOSERS).rstrip()
+    if not core or core[-1] not in _TERMINALS:
+        return False        # ends on a comma, dash, conjunction — mid-utterance
+    head = t.lstrip(_OPENERS).lstrip()
+    if not head or not (head[0].isupper() or head[0].isdigit()):
+        return False        # starts mid-word or mid-clause ("se it was true—")
+    return True
+
+
+def extract_utterances(paragraph):
+    """Every quoted utterance in the paragraph, as (utterance, attribution).
+
+    Replaces extract_dialogue(), which took `re.search(r"“(.+?)”")` — non-greedy,
+    FIRST MATCH ONLY — and so had three failure modes, all of which reached the
+    audit surface (2026-07-28):
+
+      1. A SPLIT QUOTATION yielded only its first half. "Come here," she said,
+         "and sit down." became `Come here,` — the commonest dialogue form in
+         prose, reduced to a fragment ending on a comma.
+      2. Everything after the first quote in a paragraph was DISCARDED, so
+         multi-exchange paragraphs lost all but one utterance.
+      3. Any curly-quoted span matched, so scare-quotes and quoted phrases became
+         "dialogue": `the railroad magnate`, `especially cool,`.
+
+    Split quotations are rejoined here rather than dropped — the words are the
+    speaker's, and the halves reconstruct the line they actually said. Everything
+    else is left to is_complete_utterance(), which rejects (1) and (3) on shape
+    without needing to know why they are malformed.
+    """
+    spans = list(re.finditer(r"“(.+?)”", paragraph))
+    if not spans:
+        return []
+    verb = re.compile(r"\b(?:" + ATTRIB_VERBS + r")\b")
+
+    merged, i = [], 0
+    while i < len(spans):
+        text, start, end = spans[i].group(1).strip(), spans[i].start(), spans[i].end()
+        # absorb continuations: this half does not finish the sentence, and the
+        # gap to the next quote is a short attribution rather than new narration
+        while i + 1 < len(spans):
+            gap = paragraph[end:spans[i + 1].start()]
+            if len(gap) > 60 or not verb.search(gap):
+                break
+            if text.rstrip(_CLOSERS).rstrip()[-1:] in _TERMINALS:
+                break
+            # An attribution that CLOSES its sentence ends the utterance too:
+            # “No,” she said. “That is not…” is two sentences, not one split
+            # quotation, and merging them yields "No, That is not…".
+            if gap.strip()[-1:] in _TERMINALS:
+                break
+            text = text + " " + spans[i + 1].group(1).strip()
+            end = spans[i + 1].end()
+            i += 1
+        merged.append((text, start, end))
+        i += 1
+
+    out = []
+    for text, start, end in merged:
+        if not is_complete_utterance(text):
+            continue
+        remainder = (paragraph[:start] + " " + paragraph[end:]).strip()
+        attr = ""
+        am = re.search(r"([A-Z][\w' ]{0,40}?\b(?:" + ATTRIB_VERBS + r")\b[\w' ]{0,30})", remainder)
+        if am:
+            attr = am.group(1).strip()
+        elif verb.search(remainder):
+            attr = re.search(r".{0,25}\b(?:" + ATTRIB_VERBS + r")\b.{0,20}", remainder).group(0).strip()
+        out.append((text, attr))
+    return out
 
 
 def build_chunks(sections):
@@ -216,15 +296,21 @@ def build_chunks(sections):
                     })
         else:                                            # prose: quoted dialogue + narration windows
             for pi, para in enumerate(items):
-                dlg = extract_dialogue(para)
-                if dlg and dlg[1]:
-                    quote, attr = dlg
+                # every utterance, not just the first; unattributed speech is kept
+                # rather than silently dropping the whole paragraph, which is what
+                # the old `if dlg and dlg[1]` did — a quote with no attribution
+                # produced neither a dialogue chunk nor narration windows.
+                utterances = extract_utterances(para)
+                for quote, attr in utterances:
                     dialogue.append({
                         "chunk_type": "dialogue", "text": quote,
-                        "source_ref": {"section": si, "para": pi, "kind": "prose", "attribution": attr},
+                        "source_ref": {"section": si, "para": pi, "kind": "prose",
+                                       "attribution": attr or "unattributed dialogue"},
                     })
-                elif not dlg:
+                if not utterances:
                     for sent_group in _window_sentences(split_sentences(para)):
+                        if not is_complete_utterance(sent_group):
+                            continue
                         narration.append({
                             "chunk_type": "narration", "text": sent_group,
                             "source_ref": {"section": si, "para": pi, "kind": "prose"},
@@ -249,7 +335,7 @@ def _chunk_speech(text):
             out.append(cur.strip()); cur = s
     if cur.strip():
         out.append(cur.strip())
-    return [c for c in out if len(c) >= MIN_CLIP_CHARS]
+    return [c for c in out if len(c) >= MIN_CLIP_CHARS and is_complete_utterance(c)]
 
 
 def _window_sentences(sentences):
