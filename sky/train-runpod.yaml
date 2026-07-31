@@ -1,0 +1,109 @@
+# Sonora / Matcha-TTS — vat3 fine-tune on a rented Runpod GPU.
+#
+#   Launch:  sky launch -c sonora-train sky/train-runpod.yaml --idle-minutes-to-autostop 30
+#   Watch:   sky logs sonora-train
+#   Fetch:   rsync -Pavz sonora-train:'~/sky_workdir/logs/train/vat3_finetune/runs/*/checkpoints/' ./ckpts/
+#   Stop:    sky down sonora-train        # <-- the discipline. autostop is a backstop, not a plan.
+#
+# Run this from the HOST (`sky` on PATH), not inside the container — the host
+# CLI talks to the API server on localhost:46580 and uploads file_mounts from
+# host paths.
+#
+# WHY A NAMED CLUSTER, NOT `sky jobs launch`:
+# file_mounts ships 9 GB of LibriTTS_R up your home uplink on first launch. A
+# named cluster keeps that data across runs; a managed job tears the pod down on
+# completion and re-uploads every time. Use `sky jobs launch` only once the data
+# lives on a Runpod network volume or a bucket.
+
+name: sonora-vat3-finetune
+
+resources:
+  infra: runpod
+  accelerators: RTX4090:1   # 24 GB; notes/actor-model-and-training.md §2 calls a
+                            # fine-tune memory-light (~18M params) and compute-bound.
+                            # 1x = 5 vCPU / 29 GB host RAM / ~$0.69 per hour.
+  disk_size: 100            # 9 GB dataset + ~250 MB warmstart + torch/CUDA wheels + ckpts.
+
+workdir: .                  # 9.4 MB. .gitignore already excludes /data and logs,
+                            # so the dangling `data` symlink is NOT synced — the
+                            # filelist dir below recreates it as a real directory.
+
+file_mounts:
+  # Absolute path, deliberately identical to the host. Two things depend on it:
+  #   1. train_op.txt stores ABSOLUTE wav paths (/data/model-training/datasets/...).
+  #   2. matcha/data/license_wall.py matches exact case-insensitive path
+  #      components against configs/data_licenses.yaml — rehosting this at, say,
+  #      /sky/data/audio would raise LicenseWallError for an unclassified path.
+  # ~9 GB: slow on first launch, then cached on the cluster.
+  /data/model-training/datasets/LibriTTS_R: /data/model-training/datasets/LibriTTS_R
+
+  # Derived VAT filelists — 15 MB, and NOT in git (training-operations.md footgun
+  # #6: a fresh clone has no data/ dir). Must be shipped explicitly.
+  ~/sky_workdir/data/libritts_r_vat_v2: /data/model-training/sonora/data/libritts_r_vat_v2
+
+  # 90 MB resumable epoch-0 checkpoint built by scripts/make_warmstart.py.
+  ~/warmstart/vat3_init.ckpt: /data/model-training/sonora/warmstart/vat3_init.ckpt
+
+setup: |
+  set -euo pipefail
+  # soundfile is the audio path (get_mel uses sf.read, not torchaudio.load).
+  sudo apt-get update -qq && sudo apt-get install -y -qq libsndfile1
+
+  pip install uv
+  # requirements.txt pins no ROCm wheels — plain PyPI gives CUDA builds here.
+  # mlflow and Cython are not in requirements.txt; the local container installs
+  # them separately, so do the same.
+  uv pip install --system Cython mlflow
+  # --no-build-isolation reuses the installed torch/numpy to build the
+  # matcha.utils.monotonic_align Cython extension. The checked-in .so is
+  # cp312-specific, so it gets rebuilt for whatever Python this image ships.
+  uv pip install --system --no-build-isolation -e .
+
+run: |
+  set -euo pipefail
+  cd ~/sky_workdir
+  nvidia-smi
+
+  python3 -m matcha.train experiment=vat3_finetune \
+    ckpt_path=~/warmstart/vat3_init.ckpt \
+    trainer.max_epochs=100 \
+    callbacks.model_checkpoint.every_n_epochs=10 \
+    trainer.precision=bf16-mixed \
+    data.num_workers=4
+
+# ── Things that are deliberate, and what to change if you disagree ────────────
+#
+# trainer.max_epochs=100
+#   configs/trainer/default.yaml ships max_epochs: -1 — the run NEVER stops
+#   itself. On a metered GPU that is the single biggest cost risk here, and
+#   notes/training-operations.md carries a standing policy (2026-07-14): "no
+#   unbounded training run starts without a stop signal in place." 100 epochs is
+#   a bound, not a convergence estimate — I have no basis for the right number.
+#
+# every_n_epochs=10  (repo default: 100)
+#   The default writes its FIRST checkpoint at epoch 100. A pod that dies at
+#   epoch 99 would lose everything, and pod disk is ephemeral. Every 10 epochs
+#   gives ~10 recovery points; combined with save_top_k: 10 nothing is evicted.
+#   Retrieve them before `sky down` — teardown destroys the disk.
+#
+# precision=bf16-mixed  (repo default: 16-mixed)
+#   fp16 AMP is the ROCm-era default. Ada handles bf16 natively and it is
+#   numerically safer. Drop this override to reproduce local runs exactly.
+#
+# data.num_workers=4  (repo default: 8)
+#   8 was chosen for the 16-core AMD box. A 1x RTX4090 pod has 5 vCPU. The
+#   loader also forces multiprocessing_context="spawn" — an AMD workaround for
+#   gfx1151 fork wedges (text_mel_datamodule.py:103) — which is harmless on CUDA
+#   but makes each worker re-import torch, so RSS is the binding constraint.
+#   If loaders crash on shared memory, lower this before anything else: Docker's
+#   default /dev/shm is 64 MB and SkyPilot does not expose an ipc/shm knob.
+#
+# logger: left at the tensorboard default.
+#   The production incantation uses logger=mlflow with
+#   tracking_uri=https://mlflow.ai-lab-0.mcfarlin.family, but that host resolves
+#   only on the LAN (dnsmasq on OPNsense) and is unreachable from Runpod. To use
+#   it, expose MLflow publicly with auth first — do not just append the flag.
+#
+# NOT VERIFIED: this YAML has never been launched. The setup block in particular
+# is only as good as the base image's Python — check `uv pip install` output on
+# the first run before trusting a long training job to it.
