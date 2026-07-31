@@ -56,19 +56,37 @@ setup: |
   sudo apt-get update -qq && sudo apt-get install -y -qq libsndfile1
 
   pip install uv
-  # requirements.txt pins no ROCm wheels — plain PyPI gives CUDA builds here.
   # mlflow and Cython are not in requirements.txt; the local container installs
   # them separately, so do the same.
   uv pip install --system Cython mlflow
+  # Pin the CUDA build to the POD'S DRIVER, and do it BEFORE the editable
+  # install below. MEASURED 2026-07-31 on 1x_RTX4090_SECURE: the image ships
+  # driver 570.195.03, i.e. CUDA 12.8. requirements.txt asks only for
+  # torch>=2.0.0, so plain PyPI resolves to 2.13.0+cu130 and every CUDA call
+  # dies with "The NVIDIA driver on your system is too old (found version
+  # 12080)". Installing cu128 first leaves torch>=2.0.0 already satisfied, so
+  # the editable install below will not quietly pull cu130 back in.
+  # If Runpod ever ships a >=580 driver this pin can rise — check nvidia-smi.
+  uv pip install --system torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu128
   # --no-build-isolation reuses the installed torch/numpy to build the
   # matcha.utils.monotonic_align Cython extension. The checked-in .so is
-  # cp312-specific, so it gets rebuilt for whatever Python this image ships.
+  # cp312-specific; VERIFIED 2026-07-31 that it rebuilds — the image ships
+  # Python 3.10.13, not 3.12.
   uv pip install --system --no-build-isolation -e .
 
 run: |
   set -euo pipefail
   cd ~/sky_workdir
   nvidia-smi
+
+  # SkyPilot exports CUDA_VISIBLE_DEVICES as the EMPTY STRING on this pod, and
+  # CUDA reads empty as "no GPUs at all": torch.cuda.device_count() == 0 while
+  # nvidia-smi happily lists the 4090. MEASURED 2026-07-31 — it cost a failed
+  # job to find, and it would have failed at epoch 0 of a metered run.
+  # Clear it ONLY when empty, so a legitimately-set value (multi-GPU, or a
+  # future SkyPilot fix) is left alone.
+  [ -z "${CUDA_VISIBLE_DEVICES:-}" ] && unset CUDA_VISIBLE_DEVICES || true
 
   python3 -m matcha.train experiment=vat3_finetune \
     ckpt_path=~/warmstart/vat3_init.ckpt \
@@ -110,6 +128,13 @@ run: |
 #   only on the LAN (dnsmasq on OPNsense) and is unreachable from Runpod. To use
 #   it, expose MLflow publicly with auth first — do not just append the flag.
 #
-# NOT VERIFIED: this YAML has never been launched. The setup block in particular
-# is only as good as the base image's Python — check `uv pip install` output on
-# the first run before trusting a long training job to it.
+# VERIFIED 2026-07-31 by sky/smoke-runpod.yaml on a real 1x_RTX4090_SECURE pod:
+# the setup block installs cleanly, monotonic_align rebuilds against the image's
+# Python 3.10.13, matcha.train imports, and a bf16 matmul runs on the GPU.
+# Two live defects were found and fixed there — the cu130/driver mismatch and
+# the empty CUDA_VISIBLE_DEVICES, both annotated above.
+#
+# STILL UNVERIFIED, because the smoke test deliberately skips it: file_mounts.
+# Nothing has yet exercised the ~9 GB upload, the license_wall path matching, or
+# the derived filelists. The first launch of THIS file is still the first time
+# those run.

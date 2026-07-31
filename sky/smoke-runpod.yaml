@@ -1,0 +1,98 @@
+# Sonora — runway check for sky/train-runpod.yaml. NOT a training run.
+#
+#   Launch:  sky launch -c sonora-smoke sky/smoke-runpod.yaml -y -i 10 --down
+#   Kill:    sky down sonora-smoke        # ALWAYS. --down above is the backstop.
+#
+# WHY THIS EXISTS: train-runpod.yaml carried "NOT VERIFIED — never launched".
+# A dryrun proves the YAML parses and the resources resolve; it does NOT
+# execute `setup:`, which is where the real risk lives:
+#   1. the base image's Python version is unknown, and the checked-in
+#      matcha.utils.monotonic_align .so is cp312-specific — it MUST rebuild;
+#   2. `uv pip install --no-build-isolation -e .` depends on torch/numpy
+#      already being importable at build time;
+#   3. requirements.txt pins no ROCm wheels, so this is the first proof that
+#      plain PyPI actually yields a working CUDA build here.
+#
+# The setup: block below is byte-identical to train-runpod.yaml. That is the
+# whole point — if it passes here it passes there. Do not "improve" it in one
+# file without the other.
+#
+# WHAT IS DELIBERATELY MISSING: file_mounts. Skipping the ~9 GB LibriTTS_R
+# upload is what makes this cost cents instead of an afternoon. It also means
+# this does NOT validate the license_wall path-matching or the filelists.
+
+name: sonora-smoke
+
+resources:
+  infra: runpod/US          # same pin as train-runpod.yaml; see that file for why.
+  accelerators: RTX4090:1   # match the real target — this is a runway check for
+                            # THAT pod, not a generic "does CUDA work" test.
+  disk_size: 60             # no dataset here, but torch/CUDA wheels are bulky.
+
+workdir: .                  # 9.4 MB. Needed: `-e .` and the matcha imports below.
+
+setup: |
+  set -euo pipefail
+  # soundfile is the audio path (get_mel uses sf.read, not torchaudio.load).
+  sudo apt-get update -qq && sudo apt-get install -y -qq libsndfile1
+
+  pip install uv
+  # mlflow and Cython are not in requirements.txt; the local container installs
+  # them separately, so do the same.
+  uv pip install --system Cython mlflow
+  # Pin the CUDA build to the POD'S DRIVER, and do it BEFORE the editable
+  # install below. MEASURED 2026-07-31 on 1x_RTX4090_SECURE: the image ships
+  # driver 570.195.03, i.e. CUDA 12.8. requirements.txt asks only for
+  # torch>=2.0.0, so plain PyPI resolves to 2.13.0+cu130 and every CUDA call
+  # dies with "The NVIDIA driver on your system is too old (found version
+  # 12080)". Installing cu128 first leaves torch>=2.0.0 already satisfied, so
+  # the editable install below will not quietly pull cu130 back in.
+  # If Runpod ever ships a >=580 driver this pin can rise — check nvidia-smi.
+  uv pip install --system torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu128
+  # --no-build-isolation reuses the installed torch/numpy to build the
+  # matcha.utils.monotonic_align Cython extension. The checked-in .so is
+  # cp312-specific; VERIFIED 2026-07-31 that it rebuilds — the image ships
+  # Python 3.10.13, not 3.12.
+  uv pip install --system --no-build-isolation -e .
+
+run: |
+  set -euo pipefail
+  cd ~/sky_workdir
+  nvidia-smi
+
+  # SkyPilot exports CUDA_VISIBLE_DEVICES as the EMPTY STRING on this pod, and
+  # CUDA reads empty as "no GPUs at all": torch.cuda.device_count() == 0 while
+  # nvidia-smi happily lists the 4090. Clear it ONLY when empty, so a
+  # legitimately-set value (multi-GPU, or a future SkyPilot fix) is left alone.
+  # Keep this identical to train-runpod.yaml — it is half of what this file tests.
+  [ -z "${CUDA_VISIBLE_DEVICES:-}" ] && unset CUDA_VISIBLE_DEVICES || true
+
+  python3 - <<'PY'
+  import platform, sys
+  print(f"[env] python {platform.python_version()}  ({sys.executable})")
+
+  import torch
+  print(f"[torch] {torch.__version__}  cuda={torch.version.cuda}  hip={torch.version.hip}")
+  assert torch.cuda.is_available(), "CUDA not available — the CUDA wheel assumption is WRONG"
+  print(f"[torch] device: {torch.cuda.get_device_name(0)}")
+  assert torch.cuda.is_bf16_supported(), "bf16 unsupported — precision=bf16-mixed would fail"
+  print("[torch] bf16 supported")
+
+  # The one that actually rebuilds. A stale cp312 .so surfaces here, not at
+  # epoch 0 of a metered run.
+  from matcha.utils.monotonic_align import maximum_path
+  print(f"[cython] monotonic_align OK -> {maximum_path.__module__}")
+
+  import soundfile, lightning, mlflow, hydra
+  print(f"[deps] soundfile={soundfile.__version__} lightning={lightning.__version__} mlflow={mlflow.__version__}")
+
+  # Prove the trainer entrypoint and its Hydra config tree actually resolve.
+  import matcha.train
+  print("[entry] matcha.train imports")
+
+  # A real bf16 matmul on the GPU — cheapest possible proof the stack computes.
+  a = torch.randn(2048, 2048, device="cuda", dtype=torch.bfloat16)
+  print(f"[compute] bf16 matmul ok, mean={(a @ a).float().mean().item():.4f}")
+  print("\n=== RUNWAY CLEAR ===")
+  PY
