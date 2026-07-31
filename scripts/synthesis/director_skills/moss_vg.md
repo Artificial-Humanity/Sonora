@@ -32,6 +32,55 @@ handles narrative framing better than attribute lists.
 There is no rate parameter. Pace must be described in words inside the instruction
 ("slow and deliberate", "fast, tumbling over the words").
 
+## Narration (Neutral / Newscaster / Documentary delivery)
+
+With VibeVoice and Dia set aside (2026-07-29), narration renders on this portfolio. MOSS
+takes narration the way it takes everything — one persona sentence. Describe a **narrator
+as a person**, not a medium (the broadcast-media rule below applies; "news anchor" is a
+persona and fine, "as heard on the radio" is a medium and is not). Starting shapes —
+**provisional, not yet auditioned as narration**:
+
+> A composed adult male narrator's voice, even and unhurried, reading descriptive prose
+> in American English with quiet authority.
+
+> A professional news anchor's voice, female, brisk and crisp in American English,
+> delivering information with detached urgency.
+
+> A warm, measured documentary narrator's voice, middle-aged male, unhurried and
+> explanatory in American English, with quiet fascination.
+
+Narrator identity must hold across a book: no reference audio means identity lives
+entirely in the sentence, so **freeze the persona clause per book** and vary only the
+delivery tail.
+
+## Narration failure modes (measured, delivery-v1-narration 2026-07-30)
+
+Three stochastic defects surfaced at 10/33 audited narration clips — none is steerable
+from the instruction, all are reroll-on-new-seed cases, and none is QC-detectable, so
+they are what the ear samples are FOR:
+
+1. **Early stop mid-sentence** ("stops after 'among the rest'") — EOS fired at a clause
+   boundary on long prose. WER deletions catch the severe cases; reroll.
+
+   ⚠ **Two different faults hide under this one symptom (measured 2026-07-31).** Part of
+   it was never stochastic at all: `max_new_tokens` defaulted to 1000 in MOSS's own
+   `generate()` and the renderer never overrode it, capping EVERY read at **~31 s**
+   (~32.4 Hz frame rate). Any passage needing more than that was cut deterministically —
+   `the-return_nar_0050_doc_MOS`, 840 chars, stopped at 30.88 s. That is fixed in
+   `synth_moss_vg._token_budget`, which sizes the budget to the passage; **reseeding a
+   long-passage truncation before 2026-07-31 could never have worked.**
+
+   What remains genuinely stochastic is early EOS on SHORT passages — 113 to 266 chars,
+   nowhere near the ceiling. Those are still reroll-on-new-seed. When a truncation
+   appears, check the passage length first: over ~600 chars suspect the budget, well
+   under it suspect the model.
+2. **"Mid-1900s radio transmission" vocal effect** — an era/medium timbre the model
+   drifted into on its own on Documentary personas, with NO media words in the
+   instruction (the ban above was respected; the drift is the model's prior on
+   documentary-flavored persona language). Reroll; if a persona draws it twice,
+   reword the persona away from documentary-associated phrasing.
+3. **Robotic IVR-like flow** — human timbre, machine cadence. Reroll.
+
 ## Accent
 **Not supported.** The maintainers state on the record: "MOSS-TTS currently does not
 support specifying accents in user input." Their one British example phrases it as a

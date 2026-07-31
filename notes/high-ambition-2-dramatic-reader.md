@@ -1,10 +1,10 @@
 # High-Ambition 2 — 🚀 "Dramatic Reader" & Full-Cast Audiobooks
 
-> **Sequence:** 2 of 5. Builds directly on the [1 — Matcha-TTS actor](high-ambition-1-matcha-actor.md)
+> **Sequence:** 2 of 6. ([index — all six, and which repo each lives in](high-ambition-index.md)) Builds directly on the [1 — Matcha-TTS actor](high-ambition-1-matcha-actor.md)
 > (needs a trained, directable, castable actor first). Then:
 > [3 — Child Voices](../../../Prosodia/notes/high-ambition-3-child-voices.md) ·
 > [4 — Multilingual G2P](../../../Prosodia/notes/high-ambition-4-multilingual-g2p.md) ·
-> [5 — StyleTTS2-Lite](high-ambition-5-styletts2-lite.md).
+> [5 — StyleTTS2-Lite](archive/high-ambition-5-styletts2-lite.md).
 
 > [!NOTE]
 > **Base-model framing:** this note was written against **StyleTTS2's disentangled style-vector
@@ -12,8 +12,10 @@
 > **Matcha** as the now-first base, the *challenges* (timbre↔prosody disentanglement, diarization,
 > boundary smoothing) are unchanged, but the *mechanism* maps to **per-character speaker embeddings +
 > the VAT/FiLM conditioning** from [high-ambition-1](high-ambition-1-matcha-actor.md). The
-> StyleTTS2-specific design below applies as-written if/when we graduate to
-> [5 — StyleTTS2-Lite](high-ambition-5-styletts2-lite.md).
+> StyleTTS2-specific design below is historical: the re-platform was **retired 2026-07-29**
+> (rationale in [5 — StyleTTS2-Lite](archive/high-ambition-5-styletts2-lite.md)); the quality-ceiling
+> path is now a scaled flow-matching tier, to which the *challenges* here carry over but the
+> style-space mechanics do not.
 
 This engineering note outlines the design challenges, architecture adjustments, and training plan modifications required to evolve the StyleTTS2-Lite model from a single-narrator text-to-speech model into a **"dramatic reader" variant** capable of rendering **full-cast audiobooks** (multi-voice, multi-character performances with consistent identities).
 

@@ -1,10 +1,10 @@
 # High-Ambition 6 — 👂 The "Audience": Conveyance-Aware Speech-to-Text
 
-> **Sequence:** 6. The *reverse* of the actor lane: instead of dictating prosody into speech,
+> **Sequence:** 6 of 6. ([index — all six, and which repo each lives in](high-ambition-index.md)) The *reverse* of the actor lane: instead of dictating prosody into speech,
 > perceive prosody out of it. Sibling notes:
 > [1 — Matcha-TTS actor](high-ambition-1-matcha-actor.md) ·
 > [2 — Dramatic Reader](high-ambition-2-dramatic-reader.md) ·
-> [5 — StyleTTS2-Lite](high-ambition-5-styletts2-lite.md).
+> [5 — StyleTTS2-Lite](archive/high-ambition-5-styletts2-lite.md).
 > Intended landing zone: the **conversation piece** —
 > [voice-interruption-and-discussion.md](../../../Prosodia/notes/voice-interruption-and-discussion.md) ("Solo
 > Book Club") and [director-narrative-memory.md](../../../Prosodia/notes/director-narrative-memory.md) — where

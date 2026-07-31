@@ -96,8 +96,8 @@ lanes, both on standing infrastructure:
    QC-gated and owner-auditioned through the existing workflow. Already the designated source for
    breathy/strained tension vocabulary (T-audit ruling); valence extremes join that charter.
 
-Linked from: [emilia-mining-and-verdict.md](emilia-mining-and-verdict.md) · [STATE.md](STATE.md) ·
-[vat-channels.md](vat-channels.md) ·
+Linked from: [emilia-mining-and-verdict.md](emilia-mining-and-verdict.md) · [STATE.md](../STATE.md) ·
+[vat-channels.md](../vat-channels.md) ·
 `Sonora/huggingface/vat3-24k/README.md` (whose "Next (v1.1)" section this supersedes)
 
 
@@ -207,9 +207,9 @@ mining for the one dimension acoustics cannot measure.**
   (results above)**. Launch kit for the 3-channel run stays staged — it fires when
   `libritts_r_vat_v3` exists and passes its gates.
 
-Linked from: [vat-channels.md](vat-channels.md) ·
-[vat-channels.md](vat-channels.md) · [STATE.md](STATE.md) §3 ·
-[ARCHITECTURE.md](ARCHITECTURE.md) §2 (corpus accumulation as standing activity).
+Linked from: [vat-channels.md](../vat-channels.md) ·
+[vat-channels.md](../vat-channels.md) · [STATE.md](../STATE.md) §3 ·
+[ARCHITECTURE.md](../ARCHITECTURE.md) §2 (corpus accumulation as standing activity).
 
 ## OUTCOME (2026-07-21): audit failed the campaign — NO MERGE
 

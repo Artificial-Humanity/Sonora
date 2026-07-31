@@ -125,6 +125,11 @@ def _build_row(rec, wav: Path, book_slug: str, fields):
         "engine": rec.get("engine", ""),
         "register": rec.get("register", ""),
         "gender": _predicted_gender(rec),  # pre-filled from casting intent; auditor corrects
+        # Same verify-don't-enter standard as gender (owner 2026-07-24): when the bank
+        # states the lane it was DIRECTED toward (delivery-mix campaigns, 2026-07-30),
+        # pre-fill it. The auditor's dropdown correction is then itself signal — a
+        # Neutral-directed clip re-tagged Newscaster is an engine drifting broadcast.
+        "delivery": rec.get("intended_delivery", ""),
         "score": "",
         "note": "",
         "status": "unaudited",  # -> lands in the `todo` filter
@@ -133,10 +138,77 @@ def _build_row(rec, wav: Path, book_slug: str, fields):
     return {k: full.get(k, "") for k in fields}
 
 
-def register_audio_dir(audio: Path, slug: str, existing_ids, fields, dry_run: bool):
+# --- QC triage (2026-07-31) ---------------------------------------------------
+# Renders used to reach the queue with no objective QC unless somebody ran qc_gate
+# by hand, and nothing in synth_bank.sh did. The cost was measured the same day:
+# windfairies_nar_0042_neu_MOS was queued at 3.1 s against a 7.9 s floor (ASR WER
+# 0.72 — 11 of 40 words) and spent an audition slot proving what the instrument
+# already knew.
+#
+# OWNER RULE 2026-07-31: **every QC failure is auditioned, at every tier, on every
+# engine.** An earlier draft of this file auto-rerolled "obviously broken" clips to
+# save the ear a slot. That was overruled, and the data says why: the owner scored
+# the-return_nar_0051_doc_MOS a 5 with no note while it rendered 20 of its 47 words,
+# because MOSS ended cleanly mid-sentence. The ear cannot hear text that is missing —
+# so the instrument's job is to TELL the ear what to check, not to decide alone.
+# Auto-rerolling would also have hidden the failure from the person calibrating on it.
+#
+# A QC failure therefore never changes a clip's fate here. It is queued like any other
+# clip, with the finding written into the note so the auditor knows what to look for,
+# and its id written to qc_flags.txt so pick_audit_subset routes it to the ear however
+# thin that engine's sampling tier is.
+MIN_SPEECH_SECONDS = 4.0        # owner floor 2026-07-25; keep-rate cliff is exactly here
+
+
+def _qc_triage(qc_path):
+    """Read qc_measures.jsonl -> ({id: note}, [flagged ids]). Never changes status."""
+    notes, flagged = {}, []
+    for line in qc_path.read_text(encoding="utf-8").splitlines():
+        try:
+            r = json.loads(line)
+        except Exception:
+            continue
+        cid, g = r.get("id"), r.get("gates") or {}
+        if not cid:
+            continue
+        why = []
+        if not g.get("asr_ok", True):
+            heard = len((r.get("asr_hyp") or "").split())
+            want = len(str(r.get("text", "")).split())
+            # Direction matters: short means text is MISSING, long means the engine
+            # improvised or repeated a tail, and the two send the ear looking for
+            # opposite things. Saying "check completeness" on an over-run points the
+            # auditor at the wrong end of the clip.
+            if heard < want * 0.9:
+                what = (f"transcribed only {heard} words of {want} — "
+                        f"CHECK THE END, text may be MISSING")
+            elif heard > want * 1.1:
+                what = (f"transcribed {heard} words but the passage has {want} — "
+                        f"CHECK FOR AN IMPROVISED OR REPEATED TAIL")
+            else:
+                what = (f"{heard} words vs {want} in the passage — wording differs; "
+                        f"check for misreadings")
+            why.append(f"ASR WER {r.get('asr_wer'):.2f}, {what}")
+        speech = r.get("speech_dur")
+        if speech is not None and speech < MIN_SPEECH_SECONDS:
+            why.append(f"only {speech:.1f}s of speech (floor {MIN_SPEECH_SECONDS}s)")
+        if not g.get("duration_ok", True) and len(why) == 0:
+            why.append("duration outside the expected band for this passage length")
+        if not g.get("dnsmos_ok", True):
+            why.append(f"DNSMOS {r.get('dnsmos_ovr', 0):.2f} below floor")
+        if not g.get("measures_ok", True):
+            why.append("phonation measures unavailable")
+        if why:
+            notes[cid] = "QC: " + "; ".join(why)
+            flagged.append(cid)
+    return notes, flagged
+
+
+def register_audio_dir(audio: Path, slug: str, existing_ids, fields, dry_run: bool,
+                       qc=None):
     """Return list of new row-dicts for one manifests dir; reports skips/missing."""
     new_rows, seen = [], set(existing_ids)
-    added = skipped = missing = outside = 0
+    added = skipped = missing = outside = qc_noted = 0
     for rec, wav in _manifest_rows(audio):
         cid = rec.get("id", "")
         if not cid:
@@ -157,14 +229,21 @@ def register_audio_dir(audio: Path, slug: str, existing_ids, fields, dry_run: bo
                   file=sys.stderr)
             outside += 1
             continue
-        new_rows.append(_build_row(rec, wav, slug, fields))
+        row = _build_row(rec, wav, slug, fields)
+        if qc and cid in qc:
+            # Note only — status stays `unaudited`. The finding guides the ear; it
+            # never decides for it (owner rule, see _qc_triage).
+            row["note"] = qc[cid]
+            qc_noted += 1
+        new_rows.append(row)
         seen.add(cid)          # guard against dup ids across manifests
         added += 1
     gendered = sum(1 for r in new_rows if r.get("gender"))
     verb = "would add" if dry_run else "queued"
     extra = "".join([f", {missing} missing-wav" if missing else "",
-                     f", {outside} outside-data-root" if outside else ""])
-    print(f"  {slug}: {verb} {added} ({gendered} gender-prefilled), "
+                     f", {outside} outside-data-root" if outside else "",
+                     f", {qc_noted} carrying a QC finding" if qc_noted else ""])
+    print(f"  {slug}: {verb} {added} for the ear ({gendered} gender-prefilled), "
           f"skipped {skipped} (already present){extra}")
     return new_rows
 
@@ -181,7 +260,25 @@ def main():
                     help=f"process every book under {BOOK_PROSE_ROOT}")
     ap.add_argument("--dry-run", action="store_true",
                     help="report what would be added without writing")
+    ap.add_argument("--qc", metavar="QC_MEASURES.JSONL", default=None,
+                    help="qc_gate output. Clips failing ASR or the 4s speech floor are "
+                         "registered as `reroll` instead of reaching the ear; every "
+                         "other gate failure is still queued and also written to "
+                         "<campaign>/qc_flags.txt for pick_audit_subset --flags.")
     args = ap.parse_args()
+
+    qc_map, advisory = None, []
+    if args.qc:
+        qc_path = Path(args.qc)
+        if not qc_path.is_file():
+            ap.error(f"--qc file not found: {qc_path}")
+        qc_map, advisory = _qc_triage(qc_path)
+        print(f"QC triage: {len(qc_map)} clips carry a QC finding — all queued for the "
+              f"ear regardless of engine tier")
+        if advisory and not args.dry_run:
+            flags = qc_path.parent / "qc_flags.txt"
+            flags.write_text("\n".join(advisory) + "\n", encoding="utf-8")
+            print(f"wrote {flags} ({len(advisory)} ids)")
 
     # Build the list of (audio_dir, slug) targets from whichever flags were given.
     targets = []
@@ -216,15 +313,44 @@ def main():
         print(f"[dry-run] {len(all_new)} rows would be appended to ratings.csv")
         return
 
-    # Append conforming to the on-disk header; create with header if absent.
+    _append_guarded(all_new, fields)
+
+
+def _append_guarded(all_new, fields, attempts=5):
+    """Append rows, verifying they survived a concurrent app write.
+
+    ⚠ The audition app is a LIVE WRITER and saves via read-all -> modify -> write
+    tmp -> os.replace (audition/app/main.py `_write_rows`). The replace is atomic, so a
+    plain O_APPEND here can never corrupt the file — but rows appended inside the app's
+    read/write window are SILENTLY LOST when the swap lands. An auditor saving one rating
+    at the wrong moment would drop a whole campaign's queue with no error anywhere.
+
+    So: append, then read back and confirm our ids are actually on disk. If the file was
+    replaced underneath us, re-append only what went missing. Verification is the guard —
+    checking mtime beforehand only narrows the window, it does not close it.
+    """
     new_file = not RATINGS_CSV.is_file()
     RATINGS_DIR.mkdir(parents=True, exist_ok=True)
-    with open(RATINGS_CSV, "a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fields)
-        if new_file:
-            w.writeheader()
-        w.writerows(all_new)
-    print(f"appended {len(all_new)} unaudited rows to ratings.csv")
+    pending = list(all_new)
+    for attempt in range(1, attempts + 1):
+        with open(RATINGS_CSV, "a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fields)
+            if new_file:
+                w.writeheader()
+                new_file = False
+            w.writerows(pending)
+        _, on_disk = _read_header_and_ids()
+        missing = [r for r in pending if r["id"] not in on_disk]
+        if not missing:
+            print(f"appended {len(all_new)} unaudited rows to ratings.csv"
+                  + (f" (took {attempt} attempts; app wrote concurrently)" if attempt > 1 else ""))
+            return
+        print(f"  ! {len(missing)} row(s) lost to a concurrent app write; "
+              f"retrying ({attempt}/{attempts})", file=sys.stderr)
+        pending = missing
+    print(f"ERROR: {len(pending)} row(s) still missing after {attempts} attempts. "
+          f"Is someone auditioning right now? Re-run when the app is idle.", file=sys.stderr)
+    sys.exit(1)
 
 
 if __name__ == "__main__":

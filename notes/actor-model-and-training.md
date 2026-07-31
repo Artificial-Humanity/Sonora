@@ -3,7 +3,7 @@
 Consolidated guide for the Prosodia actor (TTS): **which model to train, on what hardware, and how**
 (for a first-time trainer). The chosen first model is **Matcha-TTS** — production design in
 [high-ambition-1-matcha-actor.md](high-ambition-1-matcha-actor.md); the higher-ceiling
-[high-ambition-5-styletts2-lite.md](high-ambition-5-styletts2-lite.md) is the later re-platform.
+[high-ambition-5-styletts2-lite.md](archive/high-ambition-5-styletts2-lite.md) is the later re-platform.
 See also the export-toolchain spike in [next-steps.md](../../../Prosodia/notes/next-steps.md).
 
 > **Status (decision open, 2026-06-14):** recommendation leans **Matcha-TTS** for the first,
@@ -11,6 +11,20 @@ See also the export-toolchain spike in [next-steps.md](../../../Prosodia/notes/n
 > Bias throughout: **minimize first-run risk and wasted spend.** The expensive mistake is not a
 > cloud GPU bill (TTS models are small and cheap to train) — it's sinking days into a toolchain
 > that fights you.
+
+> [!IMPORTANT]
+> **Decision REAFFIRMED and fallback changed (owner, 2026-07-29).** After a month of directing
+> seven teacher engines for the training corpus, Matcha is confirmed as the base — the campaign's
+> central lesson (an engine's usable range is set by its conditioning interface, not its raw
+> quality) argues *for* a from-scratch base whose conditioning surface we define, and the
+> reference-style failure modes we measured (excursion-driven voice splits, 45% gender flips on
+> cloning, synthetic ref pools) argue against reference-derived style machinery.
+> **StyleTTS2-Lite is RETIRED as the Phase-2 contingency** (banner + rationale in
+> [high-ambition-5-styletts2-lite.md](archive/high-ambition-5-styletts2-lite.md)); if the quality ceiling
+> ever disappoints, the escape hatch is **scaling the flow-matching backbone** per
+> [model-decisions.md § The size ladder](model-decisions.md). Kokoro remains out: frozen voicepacks,
+> no training recipe — the pattern we left. The Part-1 comparison below is kept as the June
+> record; read "StyleTTS2-Lite as Phase 2" statements as superseded.
 
 ---
 ---
@@ -46,7 +60,7 @@ See also the export-toolchain spike in [next-steps.md](../../../Prosodia/notes/n
 - **"Lite" means re-architecture, not fine-tuning:** to ship it we'd replace the LSTMs
   (transformer/conv), strip WavLM + discriminators, prune PL-BERT, and swap the diffusion sampler
   for a deterministic VAT-conditioned style predictor. That is real model surgery *plus* research.
-  Full design: [high-ambition-5-styletts2-lite.md](high-ambition-5-styletts2-lite.md).
+  Full design: [high-ambition-5-styletts2-lite.md](archive/high-ambition-5-styletts2-lite.md).
 
 ### Matcha-TTS — MIT
 
@@ -124,10 +138,11 @@ advantage — its native style space — is offset by the fact that our **VAT di
 something we build regardless**, so it ports to Matcha; and its training (adversarial, multi-stage)
 is a genuinely hard place to *learn* model training.
 
-**Keep StyleTTS2-Lite as the higher-ceiling Phase 2.** If, after shipping a Matcha-based actor,
-naturalness or style-control quality falls short, revisit the StyleTTS2 re-architecture with the
-training experience you'll have gained. Don't make the hardest, most adversarial model your *first*
-training project.
+**~~Keep StyleTTS2-Lite as the higher-ceiling Phase 2.~~** *(Superseded 2026-07-29 — see the
+banner at the top of this file: the contingency is now a scaled flow-matching backbone, and
+StyleTTS2-Lite is retired to historical record.)* The underlying principle stands: don't make the
+hardest, most adversarial model your *first* training project — and after the teacher-corpus
+campaign, don't make it your *second* either.
 
 **Independent of model choice — de-GPL the G2P.** Both StyleTTS2 and Matcha default to
 `phonemizer` → **espeak-ng (GPL-3.0)**. That, not the acoustic model, is the live risk to a
@@ -212,7 +227,7 @@ Key vocabulary: **epoch** (one pass over the data), **batch size** (clips per st
   from-scratch run is **multi-day** with retries.
 - **Difficulty for a newbie:** **High.** Adversarial + multi-stage + custom architecture is a brutal
   first project. Best attempted once you've shipped one model end-to-end. Full design:
-  [high-ambition-5-styletts2-lite.md](high-ambition-5-styletts2-lite.md).
+  [high-ambition-5-styletts2-lite.md](archive/high-ambition-5-styletts2-lite.md).
 
 **Takeaway:** Matcha is the gentle on-ramp; StyleTTS2-Lite is the advanced course. Learn on Matcha.
 

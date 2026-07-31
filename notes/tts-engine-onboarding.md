@@ -263,6 +263,51 @@ the `Text:` field is short relative to `Instruction:` the model simply continues
 prompt — i.e. speaks the direction. Observed at instruction:text ratios of 5x and
 13x on ~1-2 s lines. Use **MOSS-VoiceGenerator** for anything directed.
 
+**MOSS-VoiceGenerator truncates any read longer than ~31 s, and it is a DEFAULT, not
+a drift.** `modeling_moss_tts.py:397` declares `max_new_tokens: int = 1000` and
+`synth_moss_vg.py` never passed the argument, so every render inherited a hard ceiling.
+Measured 2026-07-31 on delivery-v1-narration: the two longest clips in the whole
+campaign land at **30.88 s and 30.80 s** and nothing exceeds them.
+`the-return_nar_0050_doc_MOS` (840 chars) stopped dead mid-sentence at 30.88 s;
+`crock-of-gold_nar_0042_neu_MOS` (628 chars) finished at 30.80 s with **zero** tail
+loss — it fit with nothing to spare. Implied audio frame rate 1000 / 30.88 ≈ **32.4 Hz**,
+i.e. ~1.6 tokens per character at narration pace. Fixed by sizing the budget to the
+passage (`_token_budget`, 2.4 tokens/char = 1.5x headroom) and recording the value in
+the manifest's `decoding` block so a future truncation can be told apart from this era
+by reading provenance rather than re-deriving it.
+
+⚠ It presents as the stochastic early-EOS defect and is not the same thing. MOSS also
+truncates passages of 113–266 chars, far below the ceiling, and those remain genuinely
+random — reseeding is the only lever there. **Two failures wearing one symptom**; do
+not read the budget fix as a clean bill of health for MOSS.
+
+**Zonos "neutral emotion" still conditions — and it cost half the engine's keep rate.**
+`make_cond_dict`'s default `unconditional_keys` is only `{vqscore_8, dnsmos_ovrl}`, so
+OMITTING the emotion argument still conditions on the default neutral mixture, and
+passing a neutral-dominant vector conditions harder still. Zyphra's own UI turns emotion
+off by ADDING it to `unconditional_keys`. Symptom: a 3–5 s pause at a clause boundary,
+then rushed resumption, often skipping words or truncating the end. Measured on the same
+campaign, splitting by how the final take was conditioned:
+
+| conditioning | heard | keep | drop | reroll | fail |
+|---|---|---|---|---|---|
+| emotion **vector** | 32 | 16 | 16 | 0 | **50%** |
+| `emotion: null` | 32 | 28 | **0** | 4 | **12%** |
+
+Emit `emotion: null`; the renderer compiles that to true unconditional. Separately,
+`speaking_rate` 13 stretches comma and colon pauses out of proportion — hold prose at
+**≥14** (see `director_skills/zonos.md`).
+
+**The generalisable lesson — an engine's failure rate is a property of the INTERFACE
+until proven otherwise.** Qwen was nearly discarded pre-fix and became the most trusted
+engine in the portfolio once its single `instruct` field was understood. Zonos read 31%
+across a mixed population and 12% once conditioned correctly. Both headline numbers were
+averages over a pre-fix and a post-fix era, and both would have justified dropping a good
+engine. **Before assigning an engine a failure rate, check that every clip behind that
+number was rendered through the interface you now believe is correct** — and re-measure
+after any interface change rather than carrying the old rate forward. This is the same
+error the relay audit and the VibeVoice/Dia set-aside were written to prevent.
+
 **MOSS unset fields become the literal string "None".**
 `UserMessage.__post_init__` does `.replace("{quality}", str(self.quality))`. Leaving
 a slot empty does not omit it — it writes `None` into the prompt. And `quality` is a
