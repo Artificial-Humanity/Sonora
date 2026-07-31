@@ -1,0 +1,13 @@
+# Records steps/sec and data-stall per epoch, next to the run's checkpoints.
+# Costs microseconds per step plus one torch.cuda.synchronize() every 50, so it
+# is left on by default -- the data is only useful if it was already running
+# when the interesting run happened.
+#
+# Disable for a run with: ~callbacks.throughput_probe
+
+throughput_probe:
+  _target_: matcha.utils.throughput_probe.ThroughputProbe
+  out_name: throughput_probe.jsonl      # one line per epoch, written as it goes
+  summary_name: throughput_summary.json # written at train end AND on crash
+  sync_every: 50                        # sample a true GPU-synced step this often
+  warmup_steps: 25                      # ignore worker spin-up under "spawn"
