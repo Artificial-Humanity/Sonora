@@ -18,7 +18,13 @@
 name: sonora-vat3-finetune
 
 resources:
-  infra: runpod
+  infra: runpod/US           # PIN THE REGION. Runpod prices the 1x_RTX4090_SECURE at
+                            # $0.690/hr in ALL 14 regions (AU CA CZ DK FR IN IS JP NL
+                            # NO RO SE SG US), so the optimizer picks first-among-equals
+                            # and lands on AU. That is free in dollars and expensive in
+                            # hours: file_mounts below pushes ~9 GB up a home uplink in
+                            # Denver, and Australia is the worst place to send it.
+                            # Nothing else here depends on the region.
   accelerators: RTX4090:1   # 24 GB; notes/actor-model-and-training.md §2 calls a
                             # fine-tune memory-light (~18M params) and compute-bound.
                             # 1x = 5 vCPU / 29 GB host RAM / ~$0.69 per hour.
