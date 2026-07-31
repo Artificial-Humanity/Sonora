@@ -47,11 +47,50 @@ from zonos.conditioning import make_cond_dict
 from zonos.speaker_cloning import SpeakerEmbeddingLDA
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ref_select import select_reference, design_age_band  # noqa: E402
+from ref_select import (select_reference, pinned_reference, design_age_band,  # noqa: E402
+                        REF_BLACKLIST)
 
 MODEL_DIR = "/data/models/Zyphra/Zonos-v0.1-transformer"
 FMAX_CLONING = 22050.0
 MAX_SECONDS = 30.0   # hard cap AND a training limit; cut text rather than slow the rate
+
+# Speaking-rate ceiling (measured on revisit-v1, 2026-07-28). Both clips the
+# director sent at rate 24 came back with the owner's "layered / ghostly" verdict
+# AND a separate "spoken too quickly" complaint; all 17 clips at rate <=18 were
+# clean of it. Zyphra's own UI presets top out at 21.0 ("high"), so 24 was already
+# off the end of the supported range — the model was being asked to fit the
+# phonemes into fewer frames than it can articulate, and the overlap it produces
+# is what the ear reads as a doubled voice.
+#
+# Clamped here rather than only documented in the skill file because the skill is
+# advice to a director model and this is a correctness bound: a director that
+# writes 24 should still get usable audio.
+#
+# LOWERED 18 -> 16 (stress-v1, 2026-07-29). Rate 18 is articulable — no doubling, no
+# audio flaw — but it is not PERFORMABLE: 5 of 10 stress clips at rate 18 were dropped
+# with the identical verdict "spoken fairly quickly and without any noticeable emotional
+# conveyance... dry like an actor reading a line half-heartedly", and the keeps scored
+# 4/5/1/1/2. Separately, 9 of 10 landed under the 4 s speech floor (~23 chars/s at rate
+# 18 needs 92+ chars of text; see min-clip-length rule). So between the two ceilings —
+# 18 where audio breaks, 16 where delivery does — the corpus wants the lower one.
+# 16 itself is untested (measured points are 18 bad, ~15 fine); if fast reads at 16
+# still come back flat, the next stop is 15, not another guess upward.
+MAX_SPEAKING_RATE = 16.0
+
+# Zonos is NOT immune to the emphasis-peak voice split (routing probe, 2026-07-29):
+# rt_news_ZON was dropped for layering — the highest-arousal line, pitch_std 85, on a
+# high-excursion bright reference. 1 of 5, against roughly 4 of 8 on Chatterbox, so the
+# rate is lower but not zero. Zonos was briefly treated as a safe haven for bright/teen
+# female casting on the strength of one unflagged clip; that was the same weak evidence
+# that misled us on Chatterbox, and it was wrong here too.
+#
+# ⚠ AND THE RATE CLAMP IS NOT THE LAYERING FIX (retake-v1, 2026-07-29). Both clips
+# re-rendered at the clamped rate 18 layered again — 0 of 2 — while the three clips whose
+# defect was silence/stutter and got a NEUTRAL EMOTION VECTOR instead all came back clean,
+# 3 of 3 at score 5. So: emotion instability is real and the documented remedy works;
+# rate is a pacing control, not a layering guard. Both failures used the same reference
+# that also breaks Chatterbox, which is why REF_BLACKLIST is now shared.
+MAX_REF_EXCURSION = 240.0
 
 
 _cloner = None
@@ -108,22 +147,55 @@ def main():
                 print(job["id"], "exists, skip", flush=True)
                 continue
             d = job["direction"]
+            rate = d["speaking_rate"]
+            if rate > MAX_SPEAKING_RATE:
+                print(job["id"], f"CLAMP speaking_rate {rate} -> {MAX_SPEAKING_RATE} "
+                                 f"(doubling above ~20; see MAX_SPEAKING_RATE)", flush=True)
+                rate = MAX_SPEAKING_RATE
             # phoneme count is unknown before phonemization; letters are a safe
             # over-estimate, so this warns early rather than truncating late.
-            est = len(job["text"].replace(" ", "")) / max(d["speaking_rate"], 1e-6)
+            est = len(job["text"].replace(" ", "")) / max(rate, 1e-6)
             if est > MAX_SECONDS:
                 print(job["id"], f"WARN est {est:.0f}s > {MAX_SECONDS}s cap — cut the text, "
                                  f"do not slow the rate", flush=True)
 
-            ref_wav, ref_text, ref_meta = select_reference(
-                d.get("design", ""), job.get("intended", {}), used)
+            # A bank line may PIN its reference by pool id (same contract as
+            # synth_chatterbox): casting is not consulted and the excursion guard
+            # does not apply — an explicit choice by the bank author outranks a
+            # guard aimed at casting. This is how a book narrator stays ONE voice
+            # across hundreds of clips (zonos.md narration section: "Pin ONE
+            # reference per narrator"); per-clip casting would re-consult the pool
+            # every line. Added for delivery-v1-narration (2026-07-30).
+            if job.get("ref_id"):
+                ref_wav, ref_text, ref_meta = pinned_reference(job["ref_id"])
+            else:
+                ref_wav, ref_text, ref_meta = select_reference(
+                    d.get("design", ""), job.get("intended", {}), used,
+                    max_excursion=MAX_REF_EXCURSION, exclude=REF_BLACKLIST)
             torch.manual_seed(job["seed"])
+            # emotion=None means TRULY unconditional — measured distinction that
+            # matters (2026-07-30): make_cond_dict's default unconditional_keys is
+            # only {vqscore_8, dnsmos_ovrl}, so "omitting" the emotion arg still
+            # CONDITIONS on the default neutral mixture, and passing a
+            # neutral-dominant vector conditions harder still. Zyphra's UI ships
+            # emotion "off" by ADDING it to unconditional_keys — that is what the
+            # skill file's "omit emotion for narration" must compile to. The
+            # delivery-v1 narration audit showed the documented emotion-conditioning
+            # instability (long clause-boundary pauses, rushed resumption, skipped
+            # words) on 5 of 9 zonos groups that carried a neutral-dominant VECTOR.
+            uncond = {"vqscore_8", "dnsmos_ovrl"}
+            emo = d.get("emotion")
+            kw = {}
+            if emo is None:
+                uncond = uncond | {"emotion"}
+            else:
+                kw["emotion"] = emo
             cond = make_cond_dict(text=job["text"], language="en-us",
                                   speaker=_speaker_embedding(model, ref_wav),
-                                  emotion=d["emotion"],
                                   pitch_std=d["pitch_std"],
-                                  speaking_rate=d["speaking_rate"],
-                                  fmax=FMAX_CLONING)
+                                  speaking_rate=rate,
+                                  fmax=FMAX_CLONING,
+                                  unconditional_keys=uncond, **kw)
             codes = model.generate(model.prepare_conditioning(cond))
             wav = model.autoencoder.decode(codes).squeeze().float().cpu().numpy()
             sf.write(os.path.join(args.out, f"{job['id']}.wav"), wav, sr_out)
@@ -137,11 +209,14 @@ def main():
                 "intended_age": design_age_band(d.get("design", "")),
                 "intended_gender": ref_meta["gender"],
                 "ref": ref_meta | {"ref_text": ref_text},
+                # `direction` carries what the director ASKED for; this is what the
+                # model was actually conditioned on. They differ when the clamp fires.
+                "applied_speaking_rate": rate,
             })
             mf.write(json.dumps(row) + "\n")
             mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)
             print(job["id"], f"{len(wav)/sr_out:.1f}s pitch_std={d['pitch_std']} "
-                             f"rate={d['speaking_rate']} ref={ref_meta['id']}", flush=True)
+                             f"rate={rate} ref={ref_meta['id']}", flush=True)
     print("SYNTH-ZONOS-DONE")
 
 

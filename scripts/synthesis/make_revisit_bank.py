@@ -42,7 +42,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import book_ingest as bi  # noqa: E402
+import book_ingest as bi
+from ref_select import route_engines  # noqa: E402
 
 SOURCE_BANK = "/data/model-training/datasets/teacher-ab-v1/bank.json"
 ENGINES = [("chatterbox", "CBX"), ("zonos", "ZON"), ("orpheus", "ORP")]
@@ -128,6 +129,17 @@ def main():
                 if not cast:
                     print(f"  {lid}: DIRECTOR FAILED", flush=True)
                     failures.append(lid)
+                    continue
+                # Engine routing: a casting call may be one an engine must not take.
+                # Rule lives in ref_select.route_engines so it is stated once and shows
+                # up in this log rather than in per-builder engine lists. Empty today —
+                # Chatterbox's bright-female ban was withdrawn 2026-07-29 when the guard
+                # moved to pitch excursion — but the mechanism stays wired so the next
+                # such finding is one dict entry, not a builder edit.
+                _kept, _dropped = route_engines(cast.get("voice_design", ""), [engine])
+                if not _kept:
+                    for _e, _why in _dropped:
+                        print(f"  {lid}: ROUTED AWAY from {_e} — {_why}", flush=True)
                     continue
                 tag = dict(cast)
                 tag["engine"] = engine

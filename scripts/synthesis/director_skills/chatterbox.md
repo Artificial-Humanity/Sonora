@@ -107,6 +107,28 @@ So emitting a tag is at best inert and at worst harmful — a misspelling (Turbo
 `[laugh]` for classic's `[laughter]`, say) is shredded into characters and **pronounced**.
 All risk, no upside.
 
+## Narration (Neutral / Newscaster / Documentary delivery)
+
+With VibeVoice and Dia set aside (2026-07-29), narration renders on this portfolio.
+Chatterbox's audited Neutral record is 7/7 — it has simply almost never been asked.
+Remember the dial is a RATE PROFILE (see above): for narration you are choosing a pace,
+not an emotion. Starting points — **provisional, not yet auditioned as narration**:
+
+| lane | `exaggeration` | `cfg_weight` | why |
+|---|---|---|---|
+| Neutral | 0.5 | 0.5 | the documented neutral — do NOT drift lower; low exag reads subdued/ironic, not neutral |
+| Documentary | 0.4 | 0.5 | measured, slightly slower — the 0.25 end is sarcasm territory, stay off it |
+| Newscaster | 0.6 | 0.4 | brisk and projected via the rate profile |
+
+- **No tag channel, no prose** — unchanged; narration gives you nothing new to emit.
+- **Cast a steady, LOW-EXCURSION reference and pin it per narrator/book.** Narration is
+  hundreds of clips in one voice: per-clip casting consults the pool every time, and any
+  splitting would surface repeatedly in the one place a listener spends the most time.
+  Steady references are also exactly the split-safe end of the pool, so narration casting
+  is naturally conservative.
+- The V−/grief prohibition below still applies: somber documentary passages about loss
+  are a poor fit — route those lines to Qwen or Orpheus.
+
 ## Voice identity is casting, not direction
 Set by `audio_prompt_path` (a reference clip). **Only the first 6 seconds** reach the
 speaker prompt and the first 10 the vocoder — longer references are truncated, not
@@ -137,6 +159,54 @@ Everything past the gender and age words is discarded before it can affect anyth
 so spend no effort on the timbre clause. But **do not reuse one casting call across
 different registers**: identical casting for a victory line and a grief line means
 the reference pool was never really consulted.
+
+### The voice splits at emphasis peaks — casting handles it, you do not
+**Cast bright and teen female voices normally.** An engine-level ban existed briefly and
+was withdrawn: a blind 16-clip audition (2026-07-29) showed median pitch does not predict
+the split at all — a 227 Hz reference split and a 335 Hz one did not — while pitch
+**excursion** does. `MAX_REF_EXCURSION` now refuses swooping references at casting time
+and leaves steady-but-high ones available, so the constraint costs 39% of the female pool
+instead of the 62% a pitch ceiling cost.
+
+What this means in practice: **lilty, singsong, whimsical and keening references are the
+dangerous ones** — three of the four blind failures were exactly those registers. A
+steady-but-high voice is comparatively safe at any median pitch. Casting enforces this;
+nothing is required of you.
+
+Two things you should know rather than act on:
+
+**It is stochastic.** The same reference at a different seed renders clean or splits
+(`cbx_A_f258_s8899` clean, `cbx_A_f258_s1234` split). The excursion ceiling lowers the
+rate; it does not eliminate it. A split clip is a re-roll, not a casting mistake.
+
+**No measurement catches it — audition is the gate.** Four detectors have failed
+(whole-clip envelope autocorrelation, local CPP dip, emphasis-subharmonic delta, and
+median-F0 as a proxy). In the blind test the owner caught 4 of 8 with **zero** false
+alarms, so the ear is both the detector and the specificity check. Never treat a clean
+`qc_artifacts.py` run as evidence a Chatterbox bank is free of splitting.
+
+The mechanism, in the owner's words: *"at certain emphasis points (either higher pitch,
+loudness or the combination), the vocal splits into layering."* The break is at PEAK
+pitch, not median — so the median ceiling is a proxy, and a crude one.
+
+**`exaggeration` modulates the break but never gates it** (sweep 0.1→0.75 on the 266 Hz
+reference, 2026-07-29): minimal at 0.3, worse at 0.5, and at 0.75 it spreads across the
+whole line instead of one phrase. Below 0.3 it does not clear — it simply moves to a
+different phrase, and costs ~30% pacing. So there is a severity floor near 0.3 and no
+setting that removes it.
+
+The harm is an **interaction**, not an exaggeration effect: seven revisit-v1 clips ran at
+0.75 on low-F0 references and were all clean. On a reference under the ceiling, use the
+full `exaggeration` range as documented above — nothing here constrains you. It is only
+high emphasis ON a high-pitched reference that breaks.
+
+**Do not rely on `qc_artifacts.py` to catch this.** Three detectors have failed on it
+(whole-clip envelope autocorrelation, local CPP dip, emphasis-subharmonic delta — the
+last reached 20% precision on 40 labelled clips). A clean QC run is not evidence that a
+Chatterbox bank is free of splitting. This defect is currently ear-gated only.
+
+One reference is blacklisted in `synth_chatterbox.REF_BLACKLIST`
+(`protective_urgency_00_urgentF_s1234`, worst in every condition tried).
 
 ## Accent
 Unsupported, and worse than merely absent: reference-clip accent **leaks uncontrollably**

@@ -53,6 +53,16 @@ would survive and be spoken.
 None. Fifth engine, same answer. Accent transfers only insofar as it is present in the
 reference clip, which makes it a property of the bank rather than a control.
 
+## Narration (Neutral / Newscaster / Documentary delivery)
+
+Same answer as everything else on this engine: **it is a reference-selection question.**
+Clone from a certified keep that already carries the target delivery — a Neutral-labelled
+keep for Neutral, etc.; the delivery column in ratings.csv is the shopping list. Two
+cautions specific to narration: the 45% gender-flip rate is intolerable for a book
+narrator (one voice across hundreds of clips — audit the first clip of any narrator
+before rendering the rest), and the affect-transfer experiment below is a prerequisite
+here too. Do not build a narration lane on LongCat before it passes.
+
 ## Measured standing (2026-07-28) — read before spending render budget
 Its stated value is **label multiplication**: clone a certified performance onto new text
 and inherit the human-validated V/A/T. That targets our real bottleneck, since valence
