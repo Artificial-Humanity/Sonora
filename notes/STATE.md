@@ -1,6 +1,52 @@
 # Project State — Project Sonora
 
 
+## VAT corpus v3 — derived, gates passed (2026-08-01)
+
+`data/libritts_r_vat_v3`: **31,445 clips / 51.3 h / 247 speakers** (v2: 30,351 / 45.7 h /
+247), at the raised `MAX_SECONDS=22`. Independence gate **PASS** — corr(T,A) = −0.059,
+corr(T,V) = −0.066, corr(V,A) = +0.027. G2P resolved every word: dict 95.39%, neural
+fallback 25,629, **unresolved 0**, 0 vocab violations.
+
+**The version bump is much softer than the cap-change note predicted.** Against v2 on the
+30,351 shared clips the labels barely move: corr **0.9993 / 0.9994 / 0.9997** for V/A/T,
+mean |Δ| 0.007 / 0.013 / 0.006, p99 0.055 / 0.072 / 0.044, and **under 0.02% of clips
+shift more than 0.25** on any channel. The warning that a per-speaker z-score population
+change invalidates every label is true in principle but small in fact here — 1,094 new
+clips across 247 speakers is ~4.4 clips per speaker. **vat3 is a viable fine-tune base for
+v3;** a from-scratch retrain is not forced by the label change. Phonemes are byte-identical
+on all 30,351 shared clips.
+
+Two blockers were cleared to get here, both worth remembering as diagnostic lessons:
+
+* **The "spawn workers lose the venv" blocker did not exist.** It rested on a
+  `multiprocessing/pool.py` frame resolving under the base interpreter — which is *normal*,
+  because a venv does not copy the stdlib. That frame is not evidence. The script uses
+  **fork** (no `set_start_method` anywhere), so `sys.executable` is never consulted and the
+  proposed `mp.set_executable` fix was a no-op against a mechanism not in use. numpy was
+  simply not installed in the `.venv` yet.
+* **The real failure was a stale path.** `op_g2p.py` resolved its G2P assets to
+  `<repo>/../Reference/models/…`, the umbrella workspace deleted 2026-07-22, so `__init__`
+  died opening `g2p_dict.txt.gz`. Assets live at `/data/models/litert-community/Matcha-TTS`;
+  resolution now probes candidates. **When a host script fails after the flat-repo move,
+  suspect a stale `../` path before suspecting the interpreter.**
+
+**EIV coverage closed.** The 22 s cap admitted 1,094 utterances the labelling run never
+saw — all at ≥16 s, confirming the gap is exactly the band the cap opened. The pending note
+framed this as a tension-only problem; **valence had the identical gap**, so v3 would have
+derived those clips with the whole V channel absent. Appending would not have fixed it: the
+combo is `dot(weights, per-speaker z(head))`, so growing a speaker's population moves clips
+already scored. `scripts/eiv_merge_corpus.py` therefore rebuilds all 31,445 from the
+immutable raw scores → `corpus_{soft,valence_combo}_v2.json`. New wrapper
+`scripts/eiv_score.sh`; none existed, which is why the corpus scores sit in two files with
+different head sets and no record of the invocation.
+
+Incidental finding worth not re-deriving later: the newly admitted long clips sit **0.18 σ
+below** the corpus valence mean while their softness mean is **identical** (+0.320 both).
+Length moves V and A, not T — consistent with the duration/loudness result recorded in
+`derive_vat_corpus.py`.
+
+
 ## Sibling case studies — standing comparison bench (2026-08-01)
 
 Owner: *"if we're going to do it, let's do it to the best of our abilities"* and
