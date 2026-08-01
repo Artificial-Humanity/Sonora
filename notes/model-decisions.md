@@ -328,6 +328,19 @@ or the ear catches it: local/windowed attention, or a shallow conv stem in the p
 embedding. Reference implementations: F5-TTS (flow matching on DiT, publicly available)
 — consult for block shape, do not import its no-alignment training style; we keep MAS.
 
+**Answered 2026-08-01 by [matcha-siblings-study.md](matcha-siblings-study.md).** This
+risk is already retired in public MIT code: StableTTS runs a 31M `DiTConVBlock` —
+adaLN-Zero, **fully convolutional FFN inside every block**, U-Net-style long skips across
+the stack — while keeping MAS, a duration predictor and a length regulator. Start the
+spike from that block shape rather than a plain DiT. Two amendments follow from the
+study: (a) carry the **CFG amplification lever already adopted 2026-07-16**
+([STATE.md](STATE.md): conditioning dropout 0.15) into this spike's scope — it was never
+written into it, and StableTTS confirms it survives a DiT decoder, buying an
+inference-time *direction-strength* dial per [[vocalizer-vetting-surface]];
+(b) consistency-FM training (RapFlow-TTS, ~2 NFE,
+Apache-2.0 code **and** weights) is a 5–10× throughput lever but changes the objective —
+it gets its OWN de-risk cycle later, not a ride on this one.
+
 ## Sequencing
 
 Runs parallel to delivery-v1 corpus assembly (architecture work is CPU-side until the

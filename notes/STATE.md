@@ -1,6 +1,33 @@
 # Project State — Project Sonora
 
 
+## Sibling case studies — standing comparison bench (2026-08-01)
+
+Owner: *"if we're going to do it, let's do it to the best of our abilities"* and
+*"keep all of these sources on tap as case studies."* Six Matcha-adjacent models surveyed
+→ **[matcha-siblings-study.md](matcha-siblings-study.md)**, now the standing bench to
+check before designing any component blind.
+
+* **The Decoder v2 spike's one named risk is already retired in public MIT code.**
+  StableTTS runs a 31M `DiTConVBlock` — adaLN-Zero, **fully convolutional FFN inside
+  every block**, U-Net-style long skips — while keeping MAS, duration predictor and
+  length regulator. Start the spike from that block shape. Also confirms DiT and MAS
+  coexist, so declining F5-TTS's alignment-free style costs nothing.
+* **No pivot.** The decoder is **491 of 6,473 lines (7.6%)** of this codebase; the other
+  92% (G2P, licence wall, VAT/FiLM conditioning, split-graph export, gates) is the part
+  that is ours. Port the block, keep the harness — [[matcha-base-reaffirmed]] stands.
+* **RapFlow-TTS logged as a separate later spike:** consistency-FM on Matcha's own
+  architecture, **~2 NFE** (claimed 5–10× NFE reduction), Apache-2.0 code *and* weights,
+  English. Big throughput lever for long-form reading, but it changes the training
+  objective → its own de-risk cycle, not a ride on the decoder's.
+* **CFG lever carried forward.** The 2026-07-16 conditioning-dropout-0.15 lever (below)
+  never made it into § Decoder v2's scope; StableTTS confirms it survives a DiT decoder.
+* **Baichuan-Audio belongs to Prosodia, not here** — its tokenizer is the leading
+  candidate for the Solo Book Club "ear"; see
+  [voice-interruption-and-discussion.md §6](../../../Prosodia/notes/voice-interruption-and-discussion.md).
+* ⚠️ Licence flags: F5-TTS **weights are CC-BY-NC** (code MIT); StableTTS weights
+  unstated (code MIT — we train our own regardless).
+
 ## Pipeline hardening + audit policy (2026-07-31)
 
 Triggered by a power loss mid-audition; the recovery was clean (no clip re-judged without a
