@@ -75,7 +75,7 @@ Linked from: [next-steps §B](../../../Prosodia/notes/next-steps.md) (VAT-condit
 
 ## §2 Label sourcing and the corpus decision
 
-_The §7 de-risk verdict ([derisk-energy-verdict.md](derisk-energy-verdict.md)) closed the
+_The §7 de-risk verdict ([derisk-energy-verdict.md](archive/derisk-energy-verdict.md)) closed the
 architecture question; the blocker for full 3-channel VAT training is **labels**: valence and
 tension need per-utterance values the current corpus doesn't have, and every input must stay
 CC-BY-4.0-or-freer (open-decision tightening #3 — no NC anywhere in the lineage, which excludes
@@ -164,7 +164,7 @@ Caveat recorded: d'≈0.9 = noisy-but-directionally-right labels, the regime the
 already proved workable; Emilia tails remain the depth fix.
 
 Linked from: [dataset-landscape.md](dataset-landscape.md) (the thesis this executes) ·
-[derisk-energy-verdict.md](derisk-energy-verdict.md) · [vat-channels.md](vat-channels.md) ·
+[derisk-energy-verdict.md](archive/derisk-energy-verdict.md) · [vat-channels.md](vat-channels.md) ·
 [STATE.md](STATE.md) §3.
 
 
@@ -274,5 +274,5 @@ speech fixes the +T tail at the data level, which no label formula can. Dominanc
 retired unless Emilia-enriched +T also fails audit.
 
 Linked from: [vat-channels.md](vat-channels.md) ·
-[vat-channels.md](vat-channels.md) · [derisk-energy-verdict.md](derisk-energy-verdict.md) ·
+[vat-channels.md](vat-channels.md) · [derisk-energy-verdict.md](archive/derisk-energy-verdict.md) ·
 [STATE.md](STATE.md) §3.

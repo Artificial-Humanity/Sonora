@@ -1,4 +1,26 @@
-# Direction Interface — Design Brief (2026-07-19, PROPOSAL — no owner decisions yet)
+# Direction Interface — Design Brief (2026-07-19; DECIDED 2026-07-30)
+
+> [!IMPORTANT]
+> **Owner decisions, 2026-07-30** (the planning session this brief was waiting for):
+> 1. **Delivery becomes a learned conditioning input in the next training run** — a small
+>    embedded vector (5 lanes + unknown) through the same zero-init FiLM path as V/A/T.
+>    Contract bumped to **v2** in [ARCHITECTURE.md](ARCHITECTURE.md) §1.
+> 2. **Register stays Director-side.** The 47-label lexicon compiles to (V/A/T + delivery);
+>    the Actor never receives a register id. (The teacher campaign ran this pattern all
+>    month: Gemma compiles registers into engine-native parameters.)
+> 3. **Tempo & loudness stay host-side** (duration_scales / pre-vocoder dB bias — surgical
+>    per the exploit-before-train measurement). Training owns pitch + phonation.
+> 4. **Casting** unchanged: 64-d speaker vector, casting-grid milestone; accent is casting.
+> 5. **Span-level direction: SPIKE NOW, TRAIN LATER** — run the ~100-clip reverse-conveyance
+>    calibration spike in parallel with corpus assembly; span-FiLM architecture waits until
+>    the utterance-level certified run passes its gates.
+> 6. **Labeler update (supersedes §7's bulk default):** measured 2026-07-29, the MoE
+>    26B-A4B emits malformed JSON 13/100 vs 0/100 for the dense models — bulk labeler is
+>    now **e4b** (0/100, fast), judge stays **dense 31b**. DiffusionGemma still unservable.
+> Contract-relevant evidence from the teacher campaign: the most directable engine interface
+> was low-dimensional continuous numeric dials (Zonos); the categorical 8-dim emotion vector
+> was that engine's documented instability source; prose slots drifted most. Lean continuous
+> contract confirmed.
 
 _Owner prompt 2026-07-19: "We never did fully plan out exactly how Sonora should receive
 direction on VAD, prosody, gender-depiction, age-depiction and so on" + the proposal to have
@@ -173,7 +195,7 @@ spin-down rule. Spike first: ~100 clips (50 certified + 50 LibriTTS-R), owner-au
 
 Cross-refs: [vat-channels.md](vat-channels.md) ·
 [vat-channels.md](vat-channels.md) ·
-[book-prose-operations.md](book-prose-operations.md) (director-pass) ·
+[book-prose-lane.md § Part 1 — Operations](book-prose-lane.md) (director-pass) ·
 [high-ambition-1-matcha-actor.md](high-ambition-1-matcha-actor.md) (contract-lock) ·
 [high-ambition-6-audience-conveyance-stt.md](high-ambition-6-audience-conveyance-stt.md) ·
 [dataset-landscape.md](dataset-landscape.md) §Strategy.

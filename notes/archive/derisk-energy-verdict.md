@@ -9,7 +9,7 @@ Answer: **yes, decisively.**_
 ## Pre-registered criteria (set before training, unchanged)
 
 From the eval harness (`Sonora/scripts/eval_harness.py`, thresholds in code) and recorded in
-[training-operations.md](training-operations.md) before launch:
+[training-operations.md](../training-operations.md) before launch:
 
 | Criterion | Threshold | Measures |
 |---|---|---|
@@ -86,6 +86,6 @@ sweep clips are single utterances ≤ ~8 s.
 4. **The watcher pattern is validated twice** (vocoder + this run) as the standard for unbounded
    fine-tunes, including its "test the gate against a checkpoint that SHOULD fail" rule.
 
-Linked from: [STATE.md](STATE.md) §3 · [training-operations.md](training-operations.md) ·
-[vat-channels.md](vat-channels.md) ·
-[model-size-target-decision.md](model-size-target-decision.md)
+Linked from: [STATE.md](../STATE.md) §3 · [training-operations.md](../training-operations.md) ·
+[vat-channels.md](../vat-channels.md) ·
+[model-decisions.md § The size target](../model-decisions.md)

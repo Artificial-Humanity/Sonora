@@ -11,7 +11,7 @@ de-risk phase start; keep the "Current runs" table honest._
 
 | Run | Container | State (2026-07-21) | Purpose |
 |---|---|---|---|
-| HiFi-GAN 24 kHz/80-band fine-tune | `vocoder_training` | **STOPPED 2026-07-15 @ g_02510000** — convergence watcher fired CONVERGED, A/B pairs human-audited (indistinguishable), checkpoint promoted (see below). Watcher timer disabled. | The 24 kHz vocoder ([decision](sample-rate-24khz-decision.md)) |
+| HiFi-GAN 24 kHz/80-band fine-tune | `vocoder_training` | **STOPPED 2026-07-15 @ g_02510000** — convergence watcher fired CONVERGED, A/B pairs human-audited (indistinguishable), checkpoint promoted (see below). Watcher timer disabled. | The 24 kHz vocoder ([decision](model-decisions.md)) |
 | §7 de-risk energy fine-tune | `sonora_training` | **STOPPED 2026-07-16 @ checkpoint_epoch=099** — convergence watcher fired CONVERGED (all 4 sweep groups, real margin: energy ρ≈1.000, WER Δ≤0.042, leakage≤0.091), sweep renders human-audited (energy/loudness discernible, natural). Training had continued to epoch 106 before being stopped; epoch 099 is the promoted checkpoint. Watcher timer disabled. | One trained FiLM channel (energy) |
 | vat3 full 3-channel fine-tune | `sonora_training` | **STOPPED 2026-07-21 @ checkpoint_epoch=099** (owner call after the corrected audition; run had reached ~epoch 101 on a val-loss curve flat since epoch ~5). Verdict: energy PASS (ρ=1.0 ×4), tension near-pass (ρ=1.0 ×2, 0.90 ×2), **valence FAIL** (ρ scattered — labels, not steps, are the binding constraint). Eval-harness valence measure was found degenerate (raw EIV head, 81% dead zone) and switched to the valence_combo_v1 9-head combo mid-audit; both reports kept. Staged to `Sonora/huggingface/vat3-24k/`; full resumable ckpt retained on host as the **v1.1 Emilia-continuation warm start**. MLflow run `wistful-dolphin-948` marked FINISHED. | First full-VAT (V/A/T) checkpoint; seed for v1.1 |
 
@@ -30,7 +30,7 @@ decisions, not mechanical continuations:
    gates pass: per-graph corr 1.000000, e2e waveform corr ≥ 0.9993, energy monotonic through
    the TFLite pipeline, all graphs GPU-clean. Artifacts staged in
    `Sonora/huggingface/derisk-energy-24k/litert-split/`. Shapes stay 256/512 pending the
-   [model-size-target-decision.md](model-size-target-decision.md) ceiling options.
+   [model-decisions.md § The size target](model-decisions.md) ceiling options.
 2. **Full 3-channel VAT is gated on a corpus decision**, not just more training: valence/tension
    need labeled data the current corpus doesn't have, and Expresso (the expressive dataset on
    hand) is NC-tainted and can't ship. de-risk validated the FiLM/VAT *plumbing* on one clean
@@ -217,7 +217,7 @@ rw mount for the matcha install).
 
 ## Cross-references
 
-[sample-rate-24khz-decision.md](sample-rate-24khz-decision.md) ·
+[model-decisions.md § Sample rate](model-decisions.md) ·
 [vat-channels.md](vat-channels.md) ·
 [dataset-landscape.md](dataset-landscape.md) · [STATE.md](STATE.md) ·
 [next-steps §B](../../../Prosodia/notes/next-steps.md) ·

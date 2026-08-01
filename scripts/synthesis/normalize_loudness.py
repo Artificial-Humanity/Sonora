@@ -61,6 +61,13 @@ import soundfile as sf
 
 SIDECAR = "loudnorm.jsonl"
 BACKUP_DIR = "_pre_loudnorm"
+# Quarantine dirs live INSIDE the bank's audio dir, so rglob walks straight into
+# them. Their clips were normalized once already, under their old top-level name —
+# the sidecar keys on the path, so the move makes them look unprocessed and the
+# next run gains them a second time (measured 2026-07-31: 45 clips re-gained by a
+# routine 11-clip reroll). Skipping them here rather than at the call site keeps
+# the guarantee where the recursion is.
+SKIP_DIRS = {BACKUP_DIR, "_dropped", "_superseded"}
 # pyloudnorm's BS.1770 meter uses a 400 ms block; anything shorter has no
 # integrated loudness at all and must be passed through untouched.
 MIN_SECONDS = 0.45
@@ -90,7 +97,7 @@ def main():
     if not root.is_dir():
         sys.exit(f"not a directory: {root}")
 
-    wavs = sorted(p for p in root.rglob("*.wav") if BACKUP_DIR not in p.parts)
+    wavs = sorted(p for p in root.rglob("*.wav") if not SKIP_DIRS & set(p.parts))
     if not wavs:
         sys.exit(f"no wavs under {root}")
 

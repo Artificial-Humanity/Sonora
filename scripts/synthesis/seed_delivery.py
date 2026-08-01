@@ -5,22 +5,27 @@
 """seed_delivery — pre-fill the Dialogue/Neutral axis so the ear pass is a binary.
 
 The `delivery` column is a MIX-BALANCE axis (owner 2026-07-28): it exists so the
-training set does not over-concentrate in one speaking mode. Its four values are
-Dialogue, Documentary, Neutral, Newscaster.
+training set does not over-concentrate in one speaking mode. Its values are
+Dialogue, Documentary, Neutral, Newscaster, Speech (the last added 2026-07-29:
+public address — rally, sermon, toast; a mode of address, not an emotional colour,
+which is why the oratory registers alone weren't enough).
 
 For balance, coverage is what matters, and it stood at 10 of 730 keeps. But the
-four values do not all come from the same place:
+values do not all come from the same place:
 
   * Dialogue vs Neutral is a property of the TEXT — is this a character speaking,
     or is it narration? That is knowable without listening.
   * Newscaster vs Documentary is a property of the RENDER. An engine can deliver
     narration in a broadcast voice, and 9 of the 10 existing tags are VibeVoice,
     which is exactly that happening.
+  * Speech is a property of BOTH — the text must address an audience, and the
+    render must project. This seeder does not attempt it.
 
 So this script seeds ONLY the text axis. What remains for the owner is the fast
-binary "does this actually sound like a broadcast read?" rather than a four-way
+binary "does this actually sound like a broadcast read?" rather than a multi-way
 judgement on 700+ clips. It never emits Newscaster or Documentary — those are
-promotions the ear makes from a seeded Neutral.
+promotions the ear makes from a seeded Neutral — and never Speech, which the ear
+promotes from a seeded Dialogue.
 
 SIGNALS, in order of authority:
 

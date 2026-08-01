@@ -1,11 +1,86 @@
 # Project State — Project Sonora
 
 
+## Sibling case studies — standing comparison bench (2026-08-01)
+
+Owner: *"if we're going to do it, let's do it to the best of our abilities"* and
+*"keep all of these sources on tap as case studies."* Six Matcha-adjacent models surveyed
+→ **[matcha-siblings-study.md](matcha-siblings-study.md)**, now the standing bench to
+check before designing any component blind.
+
+* **The Decoder v2 spike's one named risk is already retired in public MIT code.**
+  StableTTS runs a 31M `DiTConVBlock` — adaLN-Zero, **fully convolutional FFN inside
+  every block**, U-Net-style long skips — while keeping MAS, duration predictor and
+  length regulator. Start the spike from that block shape. Also confirms DiT and MAS
+  coexist, so declining F5-TTS's alignment-free style costs nothing.
+* **No pivot.** The decoder is **491 of 6,473 lines (7.6%)** of this codebase; the other
+  92% (G2P, licence wall, VAT/FiLM conditioning, split-graph export, gates) is the part
+  that is ours. Port the block, keep the harness — [[matcha-base-reaffirmed]] stands.
+* **RapFlow-TTS logged as a separate later spike:** consistency-FM on Matcha's own
+  architecture, **~2 NFE** (claimed 5–10× NFE reduction), Apache-2.0 code *and* weights,
+  English. Big throughput lever for long-form reading, but it changes the training
+  objective → its own de-risk cycle, not a ride on the decoder's.
+* **CFG lever carried forward.** The 2026-07-16 conditioning-dropout-0.15 lever (below)
+  never made it into § Decoder v2's scope; StableTTS confirms it survives a DiT decoder.
+* **Baichuan-Audio belongs to Prosodia, not here** — its tokenizer is the leading
+  candidate for the Solo Book Club "ear"; see
+  [voice-interruption-and-discussion.md §6](../../../Prosodia/notes/voice-interruption-and-discussion.md).
+* ⚠️ Licence flags: F5-TTS **weights are CC-BY-NC** (code MIT); StableTTS weights
+  unstated (code MIT — we train our own regardless).
+
+## Pipeline hardening + audit policy (2026-07-31)
+
+Triggered by a power loss mid-audition; the recovery was clean (no clip re-judged without a
+fresh render — manifest record counts prove it) but the review exposed a chain of real gaps.
+
+* **The QC gate never ran automatically, and could not have.** `qc_gate.py` had no PEP 723
+  header, so `uv run qc_gate.py` began with an empty environment and died on `import librosa`.
+  `synth_bank.sh` never invoked it either. It is now a mandatory step that **exits without
+  registering** if it fails, and its deps are pinned (python <3.13 + `numba>=0.60`: the host
+  default is 3.14, which numba does not support, and the resolver otherwise backsolves to
+  numba 0.53.1 and tries to build from source). Details:
+  [synthesis-pipeline.md](synthesis-pipeline.md).
+* **Every QC failure is auditioned, at every tier, on every engine** (owner rule). Findings
+  attach as a direction-aware note ("CHECK THE END, text may be MISSING" vs "CHECK FOR AN
+  IMPROVISED OR REPEATED TAIL") and never change a clip's status — the instrument tells the
+  ear what to check, it does not decide. First run caught a **deferred qwen** clip that
+  trusted-tier sampling would have folded unheard.
+* **WER cannot see a tail truncation.** `the-return_nar_0050_doc_MOS` lost 19 of 139 words —
+  ear-confirmed — at WER 0.24, inside the 0.35 gate. New `tail_ok` gate difflib-aligns the
+  transcript and asks WHERE the read stopped. Threshold is not yet ear-calibrated.
+* **MOSS's `max_new_tokens` defaulted to 1000 → a hard ~31 s ceiling** on every read since
+  the renderer never passed the argument. Deterministic, not stochastic; now sized per
+  passage. It does NOT explain MOSS's short-passage early-EOS, which stays random.
+* **Zonos is a two-era engine like Qwen.** 50% failure conditioned on an emotion vector,
+  **12% with zero drops** unconditional. Its 31% headline was an average across a pre-fix and
+  post-fix population. Standing lesson recorded in
+  [tts-engine-onboarding.md](tts-engine-onboarding.md): an engine's failure rate is a property
+  of the interface until proven otherwise.
+* **Three audit tiers, and tier ≠ allocation.** trusted (qwen, chatterbox) 1/group + 3% tail;
+  standard (orpheus +1) 2/group + 10%; scrutinized (moss_vg, zonos) **100% heard, nothing
+  folds unheard** — their defects are per-clip stochastic, which group certification cannot
+  cover. Render share is a separate table (`ref_select.ENGINE_MIX`) because the standard tier
+  holds one engine and a tier-based split would over-weight it.
+* **Corpus integrity verified.** ASR completeness sweep over all **809 keeps: zero
+  truncations** (median word ratio 1.00), re-confirmed on the 49 most suspicious with the
+  stricter tail-alignment test. The audition app's passage field — added late and previously
+  collapsed at 100 characters, which is precisely how a truncated read looked complete — now
+  shows full text with a word count.
+* **Dropped clips quarantined** into per-campaign `_dropped/` with links rewritten (224
+  clips); `audit-*` campaigns and licensed source corpora are never swept.
+
 ## Current front — teacher synthesis (2026-07-22 → 07-26)
 
 After the Emilia campaign failed its gate, the v1.1 valence corpus is story-driven: LibriVox
-quote mining + **directed** teacher synthesis. Four engines are in the portfolio (`vibevoice`,
-`qwen`, `moss_vg`, `dia`).
+quote mining + **directed** teacher synthesis.
+
+> **Portfolio superseded twice since this section was written.** The current five are
+> **chatterbox · qwen · zonos · orpheus · moss_vg**. VibeVoice and Dia were **set aside
+> 2026-07-29** (`ref_select.SET_ASIDE`, reversible) — VibeVoice stages scenes on dialogue,
+> and the survivors already narrate at 94%. Standing on each engine, with production and
+> adversarial rates kept apart, is in
+> [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md); audit tiers and
+> render shares are in [delivery-mix-campaign.md](delivery-mix-campaign.md).
 
 The Director is now **two passes**: per-line V/A/T + a register copied from a 47-label controlled
 lexicon (`scripts/synthesis/register_lexicon.json`), then per-engine casting/delivery from
@@ -36,7 +111,15 @@ VibeVoice and been audited as Zonos; unknown engines are now fatal. **Step 7 (au
 the open work** — no verdict may be drawn from three clips of one line. Detail and the
 traps found: [tts-engine-onboarding.md](tts-engine-onboarding.md).
 
-_Last updated: 2026-07-28._
+**Base-model decision reaffirmed (owner, 2026-07-29):** Sonora stays on **Matcha** — the
+teacher-campaign lessons (conditioning-interface ownership, reference-style failure modes,
+single-stage training fit) all point the same way. **StyleTTS2-Lite is retired** as the
+quality-ceiling contingency; the named escape hatch is now a **scaled flow-matching backbone**
+(the mid/heavy tier in [model-decisions.md § The size ladder](model-decisions.md)). Rationale in the
+banner of [high-ambition-5-styletts2-lite.md](archive/high-ambition-5-styletts2-lite.md); Kokoro remains
+out (frozen voicepacks, no training recipe).
+
+_Last updated: 2026-07-29._
 
 The committed, curated snapshot of where Project Sonora (TTS training, model, and dataset prep) stands and what to do next. Behavioral rules and the stack/layout manifest live in [AGENTS.md](../AGENTS.md).
 
@@ -218,7 +301,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
 >    the first Speak were silently discarded by a stale director cache — ear-verified fixed.
 > 2. ✅ **Exploit-before-train measurement DONE (2026-07-14):** run on `ai-lab-0` against the
 >    Epoch-199 litert split graphs (`exploit_measure.py` in the conversion harness; full results
->    in [exploit-before-train-measurement.md](exploit-before-train-measurement.md)). Headline:
+>    in [exploit-before-train-measurement.md](archive/exploit-before-train-measurement.md)). Headline:
 >    **pace and loudness are free at inference** — per-token `duration_scales` through host
 >    `logw` is surgical (phrase-local ×1.5–2.0, context drift ≤1.4%, WER 0, Spearman ρ = 1.0),
 >    and a per-frame dB bias on the log-mel before the vocoder is dB-exact (−6 req → −6.04 meas,
@@ -231,7 +314,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
 >    export gates green); de-risk corpus derived (30,351 clips / 45.7 h / 247 spk @ native
 >    24 kHz, energy labels — `derive_vat_corpus.py`); **HiFi-GAN 24 kHz/80-band vocoder
 >    fine-tune TRAINING NOW** (`vocoder_training` container, warm from UNIVERSAL_V1; see
->    [sample-rate-24khz-decision.md](sample-rate-24khz-decision.md)); §7 de-risk acoustic run
+>    [model-decisions.md § Sample rate](model-decisions.md)); §7 de-risk acoustic run
 >    queued behind it (`sonora_training` compose command preset; warm-start ckpt at
 >    `/data/model-training/sonora/warmstart/derisk_energy_init.ckpt`). Verdict via
 >    `scripts/eval_harness.py` (ρ ≥ 0.9, leakage ≤ 0.2, WER Δ ≤ +0.10). Corpus survey:
@@ -332,7 +415,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   ECAPA leakage ≤ 0.091 (ceiling 0.2). Sweep renders human-audited: energy/loudness change judged
   clearly discernible and natural. Checkpoint promoted (not yet public) to
   `Sonora/huggingface/derisk-energy-24k/`. **Formal verdict:
-  [derisk-energy-verdict.md](derisk-energy-verdict.md)** (criteria, setup, full numbers, what
+  [derisk-energy-verdict.md](archive/derisk-energy-verdict.md)** (criteria, setup, full numbers, what
   is/isn't proven, consequences).
 * **Action (original, items 1–2 done; item 3 blocked on a corpus decision):**
   1. ~~Modify the Matcha-TTS network architecture... to condition on `[V, A, T]`.~~ Done —
@@ -356,7 +439,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   not by model quality.
 * **Size target (informal, 2026-07-15):** "Kokoro+" quality/capability at a **150M-param
   ceiling** for acoustic model + vocoder combined — not size-driven (Kokoro was never too big;
-  see [model-size-target-decision.md](model-size-target-decision.md) for the actual shortcomings
+  see [model-decisions.md § The size target](model-decisions.md) for the actual shortcomings
   being targeted, including a newly-flagged one: long-passage quality degradation).
 * **Model family + canon architecture (2026-07-16):** owner wants a size ladder (sonora-mini =
   the current commitment; mid/heavy per target hardware) without training into a corner.
@@ -364,7 +447,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
   architecture, the pinned Director↔Actor contract v1 (text lane, V/A/T semantics,
   speaker-as-vector — never an id, mel interchange, chunking), gates, and promotion rules, with
   a maintenance covenant (changes land in the same commit as the behavior they pin). Rationale:
-  [model-family-strategy.md](model-family-strategy.md). Also adopted: Emilia tail mining moved
+  [model-decisions.md § The size ladder](model-decisions.md). Also adopted: Emilia tail mining moved
   in-scope for the first 3-channel run (conveyance depth is corpus-bounded), and a
   classifier-free-guidance amplification lever noted (conditioning dropout 0.15 keeps the
   unconditional mode alive — testable on the current checkpoint).
@@ -429,7 +512,7 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
     "breathy"/"strained" vocabulary reserved for data with real aspiration (own synth renders,
     Emilia). T channel stays in training — instrument-truthful, audible range on synth data.
   * **Emilia — REVERSED to NO MERGE (2026-07-21).** The pre-registered 48-clip human gate fired
-  and failed the mining thesis (record: [emilia-mining-and-verdict.md](emilia-mining-and-verdict.md)).
+  and failed the mining thesis (record: [emilia-mining-and-verdict.md](archive/emilia-mining-and-verdict.md)).
   The tail was never merged; vat3 trained on LibriTTS-R alone. Valence depth moved to
   story-driven data: LibriVox quote mining + directed teacher synthesis. The superseded
   2026-07-20 reasoning is kept below for the record.
@@ -491,32 +574,11 @@ The committed, curated snapshot of where Project Sonora (TTS training, model, an
 
 ## Environment & Command Reference
 
-> Operational runbook (launch/stop/resume, locations, MLflow, gates, footguns):
-> [training-operations.md](training-operations.md). The commands below are kept for
-> continuity; the runbook is canonical.
+**Moved 2026-07-31.** This section duplicated the runbook and said so itself ("kept for continuity; the runbook is canonical"), which meant two copies of the same
+launch/stop/resume commands drifting apart. There is now one:
 
-### Docker Compose Unified Stack
-All containers are managed under the unified [docker-compose.yml](../../../AI-Lab-AMD/docker-compose.yml) stack config. Recreate or restart containers using:
-```bash
-docker compose up -d
-```
-
-### Launch Vocalizer Container
-The Vocalizer (`sonora_vocalizer`, renamed from `sonora_playpen` 2026-07-16; the standing
-human-audit surface — see ARCHITECTURE.md §5) is a compose service in the AI-Lab-AMD stack.
-**Pushes deploy nothing** — GitOps was retired 2026-07-22; deploy explicitly with
-`AI-Lab-AMD/scripts/deploy.sh`. To bounce it explicitly:
-```bash
-docker compose -f AI-Lab-AMD/docker-compose.yml up -d sonora_vocalizer   # from the workspace root
-```
-Training is profile-gated so syncs never start it; launch deliberately with:
-```bash
-docker compose -f AI-Lab-AMD/docker-compose.yml --profile training up -d sonora_training
-```
-Container commands bootstrap `uv` and install via `uv pip install --python /opt/venv/bin/python`
-(AGENTS.md §7; the rocm/pytorch images ship their stack in `/opt/venv`).
-
-### Accessing GPU Stats (Host)
-```bash
-amd-smi monitor
-```
+* **Training + inference ops** — launch, stop, resume, spin-down, MLflow, verification
+  gates, footguns: [training-operations.md](training-operations.md).
+* **Synthesis + audition ops** — render, QC gate, registration, audit sampling:
+  [synthesis-pipeline.md](synthesis-pipeline.md) and
+  [delivery-mix-campaign.md](delivery-mix-campaign.md).

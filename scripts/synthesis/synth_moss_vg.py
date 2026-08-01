@@ -36,6 +36,32 @@ AUDIO_TOP_P = 0.6
 AUDIO_TOP_K = 50
 AUDIO_REPETITION_PENALTY = 1.1
 
+# --- Generation budget (measured 2026-07-31) ----------------------------------
+# modeling_moss_tts.py:397 defaults max_new_tokens=1000 and this renderer never
+# overrode it, so MOSS silently truncated ANY passage needing more than ~31 s of
+# speech. It is a hard ceiling, not a stochastic drift: the two longest renders in
+# delivery-v1-narration land at 30.88 s and 30.80 s and nothing in the campaign
+# exceeds them. the-return_nar_0050_doc_MOS (840 chars) stopped dead at 30.88 s
+# mid-sentence; crock-of-gold_nar_0042_neu_MOS (628 chars) finished at 30.80 s with
+# zero tail loss — i.e. it fit with nothing to spare.
+#
+# Implied audio frame rate: 1000 tokens / 30.88 s ~= 32.4 Hz, which makes the token
+# cost of a passage ~1.6 tokens per character at narration pace. TOKENS_PER_CHAR
+# carries 1.5x headroom over that so a slow or heavily-paused read still completes.
+#
+# This does NOT explain MOSS's short-passage truncations (113-266 chars) — those sit
+# far below the ceiling and remain the stochastic early-EOS defect. Two distinct
+# failures wearing the same symptom; only this one has a lever.
+AUDIO_FRAME_RATE_HZ = 32.4
+TOKENS_PER_CHAR = 2.4
+MIN_NEW_TOKENS = 1000          # never go below the model default
+MAX_NEW_TOKENS_CAP = 6000      # ~3 min of audio; a runaway guard, not a target
+
+
+def _token_budget(text):
+    """max_new_tokens sized to the passage, with headroom. See the note above."""
+    return int(min(MAX_NEW_TOKENS_CAP, max(MIN_NEW_TOKENS, len(text) * TOKENS_PER_CHAR)))
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -71,33 +97,51 @@ def main():
                 print(job["id"], "exists, skip", flush=True)
                 continue
             torch.manual_seed(job["seed"])
-            msg = processor.build_user_message(
-                text=job["text"], instruction=job["direction"]["instruct"])
-            batch = processor([[msg]], mode="generation")
-            outputs = model.generate(
-                input_ids=batch["input_ids"].to(device),
-                attention_mask=batch["attention_mask"].to(device),
-                audio_temperature=AUDIO_TEMPERATURE,
-                audio_top_p=AUDIO_TOP_P,
-                audio_top_k=AUDIO_TOP_K,
-                audio_repetition_penalty=AUDIO_REPETITION_PENALTY,
-            )
-            for message in processor.decode(outputs):
+            # One bad generation must not kill the bank (2026-07-30: clip
+            # windfairies_nar_0040 hit a split_with_sizes off-by-one inside
+            # MOSS's own _parse_audio_codes — a malformed audio-code stream —
+            # and the uncaught exception orphaned the 7 clips behind it).
+            # Stochastic: a re-run under skip-if-exists retries only the
+            # failures, which is exactly the recovery this except enables.
+            try:
+                msg = processor.build_user_message(
+                    text=job["text"], instruction=job["direction"]["instruct"])
+                batch = processor([[msg]], mode="generation")
+                outputs = model.generate(
+                    input_ids=batch["input_ids"].to(device),
+                    attention_mask=batch["attention_mask"].to(device),
+                    max_new_tokens=_token_budget(job["text"]),
+                    audio_temperature=AUDIO_TEMPERATURE,
+                    audio_top_p=AUDIO_TOP_P,
+                    audio_top_k=AUDIO_TOP_K,
+                    audio_repetition_penalty=AUDIO_REPETITION_PENALTY,
+                )
+                decoded = list(processor.decode(outputs))
+            except Exception as e:
+                print(job["id"], f"FAILED ({type(e).__name__}: {e}) — continuing",
+                      flush=True)
+                continue
+            for message in decoded:
                 audio = message.audio_codes_list[0].float().cpu().numpy()
                 sf.write(os.path.join(args.out, name), audio, sr)
-                mf.write(json.dumps({
-                    "id": job["id"], "engine": "moss_vg", "wav": name,
-                    "register": job["register"], "intended": job["intended"],
-                    "text": job["text"], "direction": job["direction"],
-                    "seed": job["seed"], "sr": sr,
+                # dict(job) first: passthrough fields (intended_delivery, book,
+                # ref_id …) must reach the manifest — register_audition prefill
+                # and the fold read them from here (2026-07-30).
+                row = dict(job)
+                row.update({
+                    "engine": "moss_vg", "wav": name, "sr": sr,
                     "engine_license": "Apache-2.0 (MOSS-VoiceGenerator)",
                     "decoding": {"audio_temperature": AUDIO_TEMPERATURE,
                                  "audio_top_p": AUDIO_TOP_P,
                                  "audio_top_k": AUDIO_TOP_K,
-                                 "audio_repetition_penalty": AUDIO_REPETITION_PENALTY},
+                                 "audio_repetition_penalty": AUDIO_REPETITION_PENALTY,
+                                 # Recorded so a future truncation can be told apart
+                                 # from the pre-2026-07-31 budget ceiling by reading
+                                 # the manifest instead of re-deriving it.
+                                 "max_new_tokens": _token_budget(job["text"])},
                     "bank_version": bank["version"], "campaign": bank["campaign"],
-                    "pair_key": job.get("pair_key"), "probe": job.get("probe"),
-                }) + "\n")
+                })
+                mf.write(json.dumps(row) + "\n")
                 mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)
                 print(job["id"], f"{len(audio)/sr:.1f}s", flush=True)
     print("SYNTH-MOSS-VG-DONE")

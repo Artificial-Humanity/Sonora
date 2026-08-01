@@ -42,7 +42,24 @@ CHARS_PER_SEC = 14.0            # mirrors synth_dia.py length model
 MIN_CLIP_SECONDS = 4.0
 MIN_CLIP_CHARS = int(MIN_CLIP_SECONDS * CHARS_PER_SEC)   # 56
 WINDOW_MIN_CHARS = 90          # ~6 s of speech
-WINDOW_MAX_CHARS = 240        # ~17 s — engine-reliable ceiling
+# Raised 240 -> 300 (owner, 2026-08-01), i.e. ~17 s -> ~21.4 s of speech.
+#
+# TWO reasons, and the production one is the point. Training: MAX_SECONDS in
+# derive_vat_corpus went 16 -> 22 s, so the model is fitted on longer utterances and a
+# longer render window is no longer out of distribution. Production: every window costs a
+# Gemma director pass, so window size sets the Gemma -> instruct -> Sonora cycle count for
+# a whole book. Measured on the delivery-v1 bank (mean window 200 ch, 71% packing at the
+# 240 cap), 300 cuts chunks — and director passes — by ~20% across the 31 ingested books.
+#
+# The old comment called 240 the "engine-reliable ceiling". Our own audit data says
+# otherwise: 120-240 ch fails 18% (n=146), 240-310 ch fails 11% (n=27), 310-400 ch fails
+# 0% (n=6). Reliability does not degrade until HARD_MAX_CHARS; 240 was conservative.
+#
+# ⚠ 300 is not a round number, it is CHATTERBOX'S limit (synth_chatterbox.MAX_CHARS = 300,
+# past which it warns and risks its 1000-token / ~40 s ceiling). Do not raise this to the
+# 308 that 22 s x CHARS_PER_SEC would allow without changing that renderer first — the
+# binding constraint here is the engine, not the training cap.
+WINDOW_MAX_CHARS = 300
 ATTRIB_VERBS = (
     "said|asked|replied|whispered|murmured|cried|shouted|snarled|muttered|"
     "answered|exclaimed|gasped|breathed|hissed|demanded|pleaded|sighed|"
@@ -302,27 +319,54 @@ def build_chunks(sections):
                 # produced neither a dialogue chunk nor narration windows.
                 utterances = extract_utterances(para)
                 for quote, attr in utterances:
-                    dialogue.append({
-                        "chunk_type": "dialogue", "text": quote,
-                        "source_ref": {"section": si, "para": pi, "kind": "prose",
-                                       "attribution": attr or "unattributed dialogue"},
-                    })
-                if not utterances:
-                    for sent_group in _window_sentences(split_sentences(para)):
-                        if not is_complete_utterance(sent_group):
-                            continue
-                        narration.append({
-                            "chunk_type": "narration", "text": sent_group,
-                            "source_ref": {"section": si, "para": pi, "kind": "prose"},
+                    # Through _chunk_speech, not appended raw. Raw appends applied NO
+                    # length bound at all, so one-second fragments — "Mr. Heathcliff?",
+                    # "Rough weather!" — entered banks as passages. They are complete
+                    # utterances, which is why the completeness gate passes them, but
+                    # they carry no prosodic arc to perform or judge. This is also the
+                    # bulk of the measured 37% too-short rate. _chunk_speech applies the
+                    # floor AND windows an over-long speech to the engine ceiling.
+                    for w in _chunk_speech(quote):
+                        dialogue.append({
+                            "chunk_type": "dialogue", "text": w,
+                            "source_ref": {"section": si, "para": pi, "kind": "prose",
+                                           "attribution": attr or "unattributed dialogue"},
                         })
+                # Narration comes from EVERY prose paragraph, not only the quote-free
+                # ones. `if not utterances:` used to gate this, so in a dialogue-heavy
+                # novel each mixed paragraph contributed its quote and threw away the
+                # surrounding prose — "He said nothing for a while. <quote> and turned
+                # back to the window." lost both halves of the narration. Measured over
+                # the 13 books on hand that is ~1,500 good passages discarded.
+                # Quoted spans are removed first so dialogue is not also emitted as
+                # narration; what remains is the narrator's own voice.
+                src = para if not utterances else _strip_quotes(para)
+                for sent_group in _window_sentences(split_sentences(src)):
+                    if not is_complete_utterance(sent_group):
+                        continue
+                    narration.append({
+                        "chunk_type": "narration", "text": sent_group,
+                        "source_ref": {"section": si, "para": pi, "kind": "prose"},
+                    })
     return dialogue, narration
 
 
 def _chunk_speech(text):
-    """Window a spoken line to the engine-reliable ceiling WITHOUT dropping short lines
-    (unlike narration windows, terse dialogue like 'My dear man,' is kept)."""
+    """Window a spoken line to the engine-reliable ceiling, applying the length floor.
+
+    The docstring here used to claim terse dialogue was deliberately KEPT, which the
+    code has never done — it has always applied MIN_CLIP_CHARS. Corrected rather than
+    made true: a 15-character clip has no arc to perform, and the owner's 4 s floor was
+    set from a measured keep-rate cliff.
+    """
     if len(text) <= WINDOW_MAX_CHARS:
-        return [text] if len(text) >= MIN_CLIP_CHARS else []
+        # The completeness gate applies here too. It did not, and that is how
+        # 'You do not seem to understand me,' — a fragment from the Shaw play — reached
+        # the CERTIFIED pool, where ref_select can still cast it. Drama speeches take
+        # this short path, so the gate was skipped for every play we ingested.
+        if len(text) < MIN_CLIP_CHARS or not is_complete_utterance(text):
+            return []
+        return [text]
     out, cur = [], ""
     for s in split_sentences(text):
         if len(s) > WINDOW_MAX_CHARS:
@@ -338,13 +382,29 @@ def _chunk_speech(text):
     return [c for c in out if len(c) >= MIN_CLIP_CHARS and is_complete_utterance(c)]
 
 
+# Past this a passage is unrenderable, not merely long: Zonos caps at 30 s and
+# Chatterbox warns past 300 characters. The old code took any over-long sentence
+# "alone", which emitted one 3,964-character passage (~283 s) among others.
+HARD_MAX_CHARS = 400
+
+
+_QUOTED_SPAN = re.compile(r'[\u201c"][^\u201d"]{2,}[\u201d"]')
+
+
+def _strip_quotes(para):
+    """Paragraph with quoted dialogue removed, leaving the narrator's own prose."""
+    return re.sub(r'\s+', ' ', _QUOTED_SPAN.sub(' ', para)).strip()
+
+
 def _window_sentences(sentences):
     windows, cur = [], ""
     for s in sentences:
         if len(s) > WINDOW_MAX_CHARS:               # a single long sentence: take it alone
             if cur:
                 windows.append(cur.strip()); cur = ""
-            windows.append(s.strip()); continue
+            if len(s) <= HARD_MAX_CHARS:            # ...unless no engine can render it
+                windows.append(s.strip())
+            continue
         if len(cur) + len(s) + 1 <= WINDOW_MAX_CHARS:
             cur = (cur + " " + s).strip()
         else:
@@ -783,7 +843,11 @@ def to_bank_line(idx, chunk, tag, slug, seed=1234):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", required=True)
+    # --epub: ingest an epub already on disk. Every book we have routed keeps its
+    # book.epub beside its output, and re-downloading to re-ingest is both wasteful and
+    # a live dependency on the source site staying up. Exactly one of --url/--epub.
+    ap.add_argument("--url", default=None)
+    ap.add_argument("--epub", default=None, help="local .epub path (instead of --url)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--title", default="")
     ap.add_argument("--author", default="")
@@ -805,9 +869,12 @@ def main():
         print("  router: no LibriVox match → SYNTHESIZE lane (correct).", flush=True)
 
     print("== fetch + parse ==", flush=True)
-    epub_url = se_epub_url(args.url) if "standardebooks.org" in args.url else args.url
+    if not args.url and not args.epub:
+        sys.exit("need --url or --epub")
+    epub_url = None if args.epub else (
+        se_epub_url(args.url) if "standardebooks.org" in args.url else args.url)
     print("  epub:", epub_url, flush=True)
-    sections = parse_epub(fetch(epub_url))
+    sections = parse_epub(open(args.epub, "rb").read() if args.epub else fetch(epub_url))
     n_drama = sum(1 for _, k, _ in sections if k == "drama")
     total_items = sum(len(items) for _, _, items in sections)
     print(f"  sections: {len(sections)} ({n_drama} drama / {len(sections) - n_drama} prose)  units: {total_items}", flush=True)

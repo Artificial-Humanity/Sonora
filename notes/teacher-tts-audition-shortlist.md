@@ -135,7 +135,7 @@ range, controllability, RTF on this box, output-license status.
 **Status:** MOSS-TTS + Qwen3-TTS-VoiceDesign downloaded to the reference library (teacher candidates). Higgs license read 2026-07-17: research/non-commercial -> benchmark-only, never a teacher.
 
 Linked from: [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (the license logic) ·
-[emilia-mining-and-verdict.md](emilia-mining-and-verdict.md) · [STATE.md](STATE.md) §3.
+[emilia-mining-and-verdict.md](archive/emilia-mining-and-verdict.md) · [STATE.md](STATE.md) §3.
 
 ## Audition results (owner ears, 2026-07-17—)
 
@@ -223,6 +223,15 @@ touching the lineage:
    Threat is not one register; the T+/V− synthesis slice should sample the spectrum.
 
 ## FINAL TEACHER PORTFOLIO — OWNER-RATIFIED 2026-07-17
+
+> [!IMPORTANT]
+> **SUPERSEDED — read "Measured production standing" at the end of this file first.**
+> This section is the 2026-07-17/26 roster and is kept as the record of how the portfolio
+> was reasoned about, not as the current answer. Two changes since:
+> **VibeVoice and Dia were set aside 2026-07-29** (reversible), so "VibeVoice-Large —
+> premier casting engine" below is no longer true; and **measurement on 2026-07-27 made
+> qwen the gold standard**, replacing the VibeVoice-premier hierarchy this section states.
+> Current five: chatterbox · qwen · zonos · orpheus · moss_vg.
 
 "I'd say keep Dia, Qwen, Moss 8.5 and Longcat as second stage."
 
@@ -356,3 +365,30 @@ engine by skill file):**
 | Dia | 12/20 | 2.53 |
 
 Loudness is not normalised across engines (~5 dB RMS spread); nothing is clipping (verified).
+
+### Measured production standing (delivery-v1-narration, 2026-07-31)
+
+Probe and stress campaigns are EXCLUDED below. They are adversarial by construction and
+libel every engine — chatterbox reads 0% on production work and 35% on probes, so mixing
+the two produces a number that describes neither.
+
+| engine | production fail | audit tier | render share | note |
+|---|---|---|---|---|
+| chatterbox | 0/38 | trusted | 27.5% | **provisional** — the whole claim is 38 clips in one campaign, and its SPLIT reverb is ear-only (four detectors failed) |
+| qwen | 0/37 here; 1/83, 2/20 recent | trusted | 27.5% | earned across many campaigns |
+| orpheus | 1/19 | standard | 15% | 5% rests on n=19; its probe record is 29% |
+| zonos | 20/64 headline → **12% post-fix** | scrutinized | 20% | only engine with numeric prosody dials |
+| moss_vg | 16/68 | scrutinized | 10% | overlaps qwen's instruct niche at a much higher failure rate |
+
+**Tier is a tag on an engine, not an allocation bucket** (owner 2026-07-31). How much an
+engine RENDERS (`ref_select.ENGINE_MIX`) and how much gets AUDITIONED
+(`pick_audit_subset.TIERS`) are separate tables on purpose: the standard tier holds exactly
+one engine, so a "50/30/20 by tier" split would hand orpheus a bigger share than either
+trusted engine — the thinnest evidence base taking the largest slice.
+
+**Zonos's headline number is an artifact of averaging two eras**, exactly as Qwen's was.
+Split by how the final take was conditioned: emotion vector 16 drops in 32 (50%),
+`emotion: null` **zero drops** in 32 (12%, and the 4 remaining are recoverable rerolls).
+Expect it to graduate toward standard after one batch rendered wholly post-fix. See the
+generalisable lesson in [tts-engine-onboarding.md](tts-engine-onboarding.md) — an engine's
+failure rate is a property of the interface until proven otherwise.

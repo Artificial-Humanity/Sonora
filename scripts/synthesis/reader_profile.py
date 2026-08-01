@@ -1,0 +1,219 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
+"""reader_profile — learn a LibriVox reader's casting attributes once, apply them everywhere.
+
+Owner observation 2026-08-01, on auditing the first force-aligned book: "since this is a
+single author book, the tags I added for accent, age, etc can be systematically applied
+to all other clips from the same title."
+
+The propagation unit is **(reader, title)** — not the reader alone. Owner 2026-08-01:
+"I don't mind if we re-verify these tags for another title by the same reader name. Some
+names may belong to multiple readers and, more likely, longtime readers might fall under
+both 'adult' and 'middle age'."
+
+Both hazards are real and they are different:
+
+  * **Name collision** — a LibriVox display name is not an identity. Two people can
+    share one, and nothing in the catalogue disambiguates them.
+  * **Age drift** — a reader with a fifteen-year catalogue genuinely IS "adult" in the
+    early recordings and "middle-aged" in the late ones. That is a true fact about the
+    recordings, not an inconsistent tag, and a global per-reader profile would have
+    flagged it as a conflict or silently overwritten it.
+
+So: attributes propagate FREELY within a title (one session, one person, one age), and a
+reader's other titles supply only a PRE-FILL HINT that still needs one ear confirmation
+per title. That is the cheap half of the win — the auditor verifies a suggestion instead
+of entering three values from scratch — without asserting an identity we cannot check.
+
+This is the real-audio counterpart of the synthesis lane's casting-intent pre-fill
+(register_audition, owner standard 2026-07-24): the auditor should VERIFY an attribute,
+never re-enter it. Delivery is deliberately NOT propagated — it is the mix-balance axis,
+a per-clip judgement about how a given passage was read, not a property of the reader.
+
+    --learn     derive profiles from already-audited clips, write reader_profiles.json
+    --apply     fill EMPTY attribute cells in ratings.csv from those profiles
+
+`--apply` never overwrites a value the ear has set; it only fills blanks. ratings.csv is
+a live writer (the audition app), so every write is mtime-guarded.
+"""
+from __future__ import annotations
+
+import argparse
+import collections
+import csv
+import json
+import os
+import pathlib
+import shutil
+import tempfile
+
+DATASETS = pathlib.Path("/data/model-training/datasets")
+RATINGS = DATASETS / "sonora-expressive-registers/ratings.csv"
+PROFILES = DATASETS / "reader_profiles.json"
+ATTRS = ("gender", "age", "accent")     # reader properties. NOT delivery.
+MIN_AGREE = 0.80                        # modal value must hold this share to be trusted
+
+
+def clip_meta() -> dict[str, tuple[str, str]]:
+    """clip id -> (reader, title), from every librivox manifest on disk."""
+    out: dict[str, tuple[str, str]] = {}
+    for man in DATASETS.rglob("librivox_manifest.jsonl"):
+        for line in man.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if rec.get("id") and rec.get("reader"):
+                out[rec["id"]] = (rec["reader"], rec.get("book") or "?")
+    return out
+
+
+def _title_of(cid: str, manifests: dict) -> str:
+    return manifests.get(cid, ("", ""))[1]
+
+
+def learn(rows: list[dict], meta: dict[str, tuple[str, str]]) -> dict:
+    """Profiles keyed reader -> title -> attrs, learned only from AUDITED clips."""
+    per: dict[str, dict[str, dict[str, collections.Counter]]] = collections.defaultdict(
+        lambda: collections.defaultdict(lambda: collections.defaultdict(collections.Counter)))
+    for r in rows:
+        reader, title = meta.get(r["id"], (None, None))
+        if not reader or r.get("status") == "unaudited":
+            continue
+        for a in ATTRS:
+            if r.get(a):
+                per[reader][title][a][r[a]] += 1
+    profiles: dict[str, dict] = {}
+    for reader, titles in per.items():
+        entry: dict[str, object] = {"titles": {}}
+        for title, attrs in titles.items():
+            t: dict[str, object] = {}
+            seen = 0
+            for a in ATTRS:
+                c = attrs.get(a)
+                if not c:
+                    continue
+                val, n = c.most_common(1)[0]
+                total = sum(c.values())
+                seen = max(seen, total)
+                if n / total >= MIN_AGREE:
+                    t[a] = val
+                    t[f"{a}_agreement"] = round(n / total, 3)
+                else:
+                    # Disagreement WITHIN one title is a real inconsistency (same
+                    # session, same person, same age), unlike disagreement across
+                    # titles, which is expected.
+                    t[f"{a}_CONFLICT"] = dict(c)
+            t["clips_seen"] = seen
+            entry["titles"][title] = t
+        # Cross-title summary: a HINT only. Where a reader's titles disagree the value
+        # is recorded as varies-by-title rather than resolved — see age drift above.
+        hint: dict[str, object] = {}
+        for a in ATTRS:
+            vals = {t.get(a) for t in entry["titles"].values() if t.get(a)}
+            if len(vals) == 1:
+                hint[a] = vals.pop()
+            elif len(vals) > 1:
+                hint[a] = None
+                hint[f"{a}_varies_by_title"] = sorted(v for v in vals if v)
+        entry["hint"] = hint
+        profiles[reader] = entry
+    return profiles
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--learn", action="store_true")
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--ratings", default=str(RATINGS))
+    args = ap.parse_args()
+    if not (args.learn or args.apply):
+        ap.error("pass --learn and/or --apply")
+
+    rpath = pathlib.Path(args.ratings)
+    meta = clip_meta()
+    print(f"{len(meta)} clips carry a reader across all librivox manifests")
+
+    with rpath.open(newline="", encoding="utf-8") as fh:
+        rdr = csv.DictReader(fh)
+        hdr, rows = rdr.fieldnames or [], list(rdr)
+
+    profiles = json.loads(PROFILES.read_text(encoding="utf-8")) if PROFILES.is_file() else {}
+
+    if args.learn:
+        learned = learn(rows, meta)
+        for reader, entry in learned.items():
+            prev = profiles.get(reader, {})
+            merged_titles = {**(prev.get("titles") or {}), **entry["titles"]}
+            profiles[reader] = {**prev, **entry, "titles": merged_titles}
+            print(f"  {reader}")
+            for title, t in sorted(entry["titles"].items()):
+                bits = ", ".join(f"{a}={t[a]}" for a in ATTRS if a in t) or "(nothing yet)"
+                print(f"    {title}: {bits}  ({t['clips_seen']} audited clips)")
+                for a in ATTRS:
+                    if f"{a}_CONFLICT" in t:
+                        print(f"      !! {a} disagrees WITHIN this title: "
+                              f"{t[f'{a}_CONFLICT']} — not propagated")
+            for a in ATTRS:
+                if entry["hint"].get(f"{a}_varies_by_title"):
+                    print(f"    ~ {a} varies across titles "
+                          f"{entry['hint'][f'{a}_varies_by_title']} — expected for a "
+                          f"long-running reader (or two people sharing a name); "
+                          f"re-verified per title, never merged")
+        PROFILES.write_text(json.dumps(profiles, indent=1, ensure_ascii=False),
+                            encoding="utf-8")
+        print(f"  wrote {PROFILES} ({len(profiles)} readers)")
+
+    if args.apply:
+        before = rpath.stat().st_mtime_ns
+        filled = collections.Counter()
+        hinted = collections.Counter()
+        for r in rows:
+            reader, title = meta.get(r["id"], ("", ""))
+            entry = profiles.get(reader) or {}
+            confirmed = ((entry.get("titles") or {}).get(title)) or {}
+            for a in ATTRS:
+                if a not in hdr or r.get(a):
+                    continue
+                if confirmed.get(a):
+                    # Same title, ear-confirmed: propagate freely.
+                    r[a] = confirmed[a]
+                    filled[a] += 1
+                elif (entry.get("hint") or {}).get(a) and confirmed:
+                    # Cross-title hint, but only once THIS title has an ear pass —
+                    # otherwise a name collision or an age shift would propagate
+                    # unchecked into a title nobody has heard.
+                    r[a] = entry["hint"][a]
+                    hinted[a] += 1
+        if not (filled or hinted):
+            print("  nothing to fill")
+            return 0
+        if rpath.stat().st_mtime_ns != before:
+            print("  ABORT: ratings.csv changed under us (live writer)")
+            return 1
+        fd, tmp = tempfile.mkstemp(dir=str(rpath.parent), suffix=".tmp")
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=hdr)
+            w.writeheader()
+            w.writerows(rows)
+        if rpath.stat().st_mtime_ns != before:
+            os.unlink(tmp)
+            print("  ABORT: ratings.csv changed during write")
+            return 1
+        shutil.copymode(str(rpath), tmp)
+        os.replace(tmp, str(rpath))
+        if filled:
+            print("  filled (same title, ear-confirmed): "
+                  + ", ".join(f"{n} {a}" for a, n in filled.items()))
+        if hinted:
+            print("  filled (cross-title hint, title already ear-checked): "
+                  + ", ".join(f"{n} {a}" for a, n in hinted.items()))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

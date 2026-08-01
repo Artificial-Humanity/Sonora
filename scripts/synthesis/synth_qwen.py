@@ -47,17 +47,18 @@ def main():
                            instruct=job["direction"]["instruct"])
             name = f"{job['id']}.wav"
             sf.write(os.path.join(args.out, name), wavs[0], sr)
-            mf.write(json.dumps({
-                "id": job["id"], "engine": "qwen", "wav": name,
-                "register": job["register"], "intended": job["intended"],
-                "text": job["text"], "direction": job["direction"],
-                "seed": job["seed"], "sr": sr,
+            # dict(job) first: passthrough fields (pair_key, probe, and now
+            # intended_delivery/book for the delivery-mix campaigns) must reach
+            # the manifest — register_audition prefill and the fold read them
+            # from here (2026-07-30; the explicit-keys version silently dropped
+            # every bank field it hadn't been taught about).
+            row = dict(job)
+            row.update({
+                "engine": "qwen", "wav": name, "sr": sr,
                 "engine_license": "Apache-2.0 (Qwen3-TTS-VoiceDesign)",
                 "bank_version": bank["version"], "campaign": bank["campaign"],
-                    # carry A/B pairing through to the manifest so campaigns
-                    # can be analysed without re-parsing clip ids
-                    "pair_key": job.get("pair_key"), "probe": job.get("probe"),
-            }) + "\n")
+            })
+            mf.write(json.dumps(row) + "\n")
             mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)
             print(job["id"], f"{len(wavs[0])/sr:.1f}s", flush=True)
     print("SYNTH-QWEN-DONE")

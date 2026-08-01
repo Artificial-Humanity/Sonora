@@ -1,11 +1,12 @@
 # High-Ambition 1 — 🎙️ Matcha-TTS Directable Production Actor
 
-> **Sequence:** 1 of 5 high-ambition goals — the **first actor model we actually ship** and the
+> **Sequence:** 1 of 6 ([index — all six, and which repo each lives in](high-ambition-index.md)) high-ambition goals — the **first actor model we actually ship** and the
 > foundation the others build on. Next: [2 — Dramatic Reader](high-ambition-2-dramatic-reader.md) ·
 > [3 — Child Voices](../../../Prosodia/notes/high-ambition-3-child-voices.md) ·
 > [4 — Multilingual G2P](../../../Prosodia/notes/high-ambition-4-multilingual-g2p.md) ·
-> [5 — StyleTTS2-Lite](high-ambition-5-styletts2-lite.md) (the higher-ceiling re-platform, if Matcha
-> quality falls short). Model decision + training/hardware detail:
+> [5 — StyleTTS2-Lite](archive/high-ambition-5-styletts2-lite.md) (**RETIRED 2026-07-29** — the
+> quality-ceiling contingency is now a scaled flow-matching backbone, see
+> [model-decisions.md § The size ladder](model-decisions.md)). Model decision + training/hardware detail:
 > [actor-model-and-training.md](actor-model-and-training.md).
 
 This note is the production design for a **Matcha-TTS-based** Prosodia actor: a small, fast,
@@ -13,7 +14,8 @@ This note is the production design for a **Matcha-TTS-based** Prosodia actor: a 
 trains in a single stable stage (no GAN), ships an official ONNX exporter that matches our validated
 `torch → ONNX` backbone, and uses export-friendly transformer/conv ops (no LSTM CPU fallback on
 mobile delegates). The hard, novel work is **not** the base model — it is the **directability and
-casting layer we add on top**, which transfers to StyleTTS2-Lite later if we graduate to it.
+casting layer we add on top**, which transfers to any later tier of the family (the scale-up
+path is a bigger flow-matching backbone; the StyleTTS2-Lite re-platform was retired 2026-07-29).
 
 ---
 
@@ -123,8 +125,9 @@ this is just the cheapest forcing function to settle the decisions below.
 **Spike steps:**
 1. **Stock Matcha standalone on the M1 Max** — synthesize your own sample passages, A/B against
    StyleTTS2 / Kokoro. *Hours.* Confirms the quality bar clears *before* spending a dollar (if it
-   disappoints on expressiveness, that's the real signal to weight
-   [5 — StyleTTS2-Lite](high-ambition-5-styletts2-lite.md) sooner).
+   disappoints on expressiveness, that's the real signal to weight the quality-ceiling
+   contingency sooner — as of 2026-07-29 that means a scaled flow-matching backbone, not
+   [5 — StyleTTS2-Lite](archive/high-ambition-5-styletts2-lite.md)).
 2. **Export spike** — stock checkpoint → official ONNX export → `onnx2tf` → `.tflite`, run it from the
    Rust actor. *A few days.* This is the unproven leg, and it's where the contract mismatches below
    surface.
@@ -194,13 +197,16 @@ the *first* success boring, then add novelty. (Phase 0 above runs first.)
 * **[3 — Child Voices](../../../Prosodia/notes/high-ambition-3-child-voices.md)** extends the casting range; its DSP and
   fine-tune options are base-agnostic, its embedding-blend/extract options map onto the
   speaker-embedding space.
-* **[5 — StyleTTS2-Lite](high-ambition-5-styletts2-lite.md)** is the **optional quality-ceiling
-  re-platform**, attempted only if Matcha's naturalness/expressiveness falls short (the dramatic
-  axis is where StyleTTS2's higher ceiling shows most). **Crucially, the work here transfers:** the
-  VAT directability design, the casting machinery, the data pipeline, and the `torch→ONNX→TFLite`
-  export are all reused — so Matcha-first is not a throwaway even if we later graduate.
+* **[5 — StyleTTS2-Lite](archive/high-ambition-5-styletts2-lite.md)** — **RETIRED as the contingency
+  (owner decision, 2026-07-29).** If Matcha's naturalness/expressiveness falls short, the escape
+  hatch is now **scaling the flow-matching backbone** (the DiT-style mid/heavy tier in
+  [model-decisions.md § The size ladder](model-decisions.md)) — same OT-CFM family, same contract, so
+  the transfer story below is *stronger* than it was to StyleTTS2. Rationale (teacher-corpus
+  learnings: interface ownership, reference-style failure modes, adversarial-training misfit)
+  is recorded in the banner of high-ambition-5 itself.
 
-**What transfers vs what's Matcha-specific**
+**What transfers vs what's Matcha-specific** *(table kept for the historical StyleTTS2 comparison;
+every ✅ row transfers at least as cleanly to a scaled flow-matching tier)*
 
 | Asset | Transfers to StyleTTS2-Lite? |
 |---|---|

@@ -173,5 +173,5 @@ Example with cast + quote (book-dialogue shape):
 
 Cross-refs: [direction-interface-brief.md](direction-interface-brief.md) (pipeline, model
 choices, notation store) · [synthesis-pipeline.md](synthesis-pipeline.md) (register vocabulary)
-· [book-prose-operations.md](book-prose-operations.md) (director-pass) ·
+· [book-prose-lane.md § Part 1 — Operations](book-prose-lane.md) (director-pass) ·
 [high-ambition-1-matcha-actor.md](high-ambition-1-matcha-actor.md) (contract-lock).

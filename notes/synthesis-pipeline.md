@@ -17,6 +17,77 @@ script_bank.json ──> stage-1 renderers ──> QC gate ──> keeps + verif
                                                                    ──> QC gate again
 ```
 
+> **Renderer roster in the diagram is illustrative, not current.** The five live engines are
+> **chatterbox · qwen · zonos · orpheus · moss_vg**; `synth_vibevoice.py` and `synth_dia.py`
+> still ship but are **set aside** (2026-07-29, reversible, `ref_select.SET_ASIDE`). The relay
+> matrix and teacher-ab tables below deliberately keep VibeVoice and Dia — they document what
+> those interfaces DO and what was measured, which stays true whether or not they are in use.
+
+### The QC gate is MANDATORY and automatic (owner rule, 2026-07-31)
+
+The diagram above was always the intent; it was not the behaviour. `synth_bank.sh` ran
+loudness normalisation and `register_audition` but **never invoked `qc_gate`**, so every
+batch reached the audition queue ungated unless someone remembered to run it by hand.
+The root cause was mundane and total: `qc_gate.py` had **no PEP 723 header**, so
+`uv run qc_gate.py` started with an empty environment and died on `import librosa` — it
+never worked the way every other script in that directory works.
+
+What that cost, both found the same day:
+- `windfairies_nar_0042_neu_MOS` reached the owner at **3.1 s** against a 7.9 s floor
+  (ASR WER 0.72, 11 of 40 words) and spent an audition slot proving what the instrument
+  already knew.
+- `the-return_nar_0051_doc_MOS` was scored **5/5 with no note** while rendering 20 of its
+  47 words, because MOSS ends cleanly mid-sentence. **The ear cannot hear text that is
+  absent.**
+
+The pipeline is now:
+
+```
+render ──> normalize_loudness ──> qc_gate ──> register_audition --qc ──> audition queue
+                                    │
+                                    └── FAILS ⇒ synth_bank.sh EXITS WITHOUT REGISTERING.
+                                        Clips stay on disk, out of the queue; the script
+                                        prints the two recovery commands. An ungated
+                                        batch is how the two clips above got through.
+```
+
+**Every QC failure is auditioned — at every trust tier, on every engine.** An earlier
+draft auto-rerolled "obviously broken" clips to save the ear a slot; the owner overruled
+it, and the data agrees: auto-rerolling would have repaired `the-return_0051` while
+hiding the failure from the person calibrating on it. A QC finding therefore attaches as
+a **note** and never changes a clip's status — the instrument tells the ear what to check,
+it does not decide. Findings are direction-aware, since truncation and over-run send the
+auditor to opposite ends of the clip:
+
+> `QC: ASR WER 0.66, transcribed only 20 words of 47 — CHECK THE END, text may be MISSING`
+> `QC: ASR WER 0.42, transcribed 52 words but the passage has 37 — CHECK FOR AN IMPROVISED OR REPEATED TAIL`
+
+Vindicated on its first real run: it caught a **deferred qwen** clip
+(`the-return_nar_0043_neu_QWE`) that trusted-tier sampling would have folded unheard.
+
+### Gate composition, and why WER is not enough
+
+`asr_ok` is a GLOBAL error rate and structurally cannot see a tail truncation.
+`the-return_nar_0050_doc_MOS` lost its final 19 words of 139 — the owner confirmed
+*"cuts off after 'thinks himself a failure'"* — and scored **WER 0.24**, comfortably
+inside the 0.35 threshold. Nineteen missing words out of 139 is a small error rate and a
+completely unusable clip.
+
+So `tail_ok` asks **where** the render stopped rather than how many words differ:
+difflib-align hypothesis to reference, find the last reference word that matched, and
+fail if more than 5% of the passage and at least 3 real words remain unspoken. On its
+first pass it flagged 8 clips that every other gate passed, across qwen, orpheus, zonos
+and moss_vg, all at WER 0.13–0.28.
+
+⚠ **`tail_ok`'s threshold is NOT yet ear-calibrated.** Several catches are 3-word losses
+that could equally be ASR dropping a quiet final phrase. Confirm a batch by ear before
+treating this gate's count as a defect rate.
+
+One more correctness note: a manifest APPENDS a record per render, so a rerolled clip has
+several — all pointing at the single wav on disk. `qc_gate` used to score every record and
+inflated its own counts (416 records over 301 wavs). Last record wins; it is the take that
+actually exists.
+
 ## Control interface — how text becomes *directed* audio (per engine)
 
 There is no separate "tagging" layer: the mechanism is a per-line **`direction`** object in the

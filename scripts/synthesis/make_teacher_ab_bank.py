@@ -33,6 +33,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from ref_select import route_engines
 from book_ingest import (MIN_CLIP_CHARS, MIN_CLIP_SECONDS, DIRECTOR_SYSTEM,
                          MODEL, OLLAMA, _merge, _extract_json)
 
@@ -360,6 +361,16 @@ def main():
             d = direct(brief, text, engine, args.model, args.ollama)
             if d is None:
                 print(f"    {engine}: SKIPPED (director failed)")
+                continue
+            # Routing is checked HERE, not at the top of the loop: the rule reads the
+            # voice_design the director just wrote, which does not exist until now.
+            # Empty today (Chatterbox's bright-female ban was withdrawn 2026-07-29 when
+            # its guard moved to pitch excursion), wired so the next such finding is one
+            # dict entry in ref_select rather than an edit to every builder.
+            _kept, _dropped = route_engines(d.get("voice_design", ""), [engine])
+            if not _kept:
+                for _e, _why in _dropped:
+                    print(f"    {_e}: ROUTED AWAY — {_why}")
                 continue
             if engine == "vibevoice":
                 # design verbatim so ref_select can parse gender + age band;

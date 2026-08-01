@@ -19,16 +19,16 @@
 # is kept below only for un-directed / cloning work and is OFF by default.
 #
 # Usage:  synth_bank.sh <bank.json> <out_dir> [engine ...]
-#         engines default to: dia moss_vg qwen vibevoice
-#         also available, opt-in by name: chatterbox zonos orpheus (revisit list,
-#         2026-07-28 — verdicts void, pipelines rebuilt, not yet re-auditioned)
+#         engines default to the survivor portfolio: chatterbox moss_vg orpheus qwen zonos
+#         (vibevoice + dia are SET ASIDE, owner 2026-07-29 — see ref_select.SET_ASIDE;
+#         their run blocks remain below, opt-in by name, for if they are reinstated)
 # Output: <out_dir>/<id>.wav + <engine>_manifest.jsonl per engine.
 set -uo pipefail
 BANK="${1:?usage: synth_bank.sh <bank.json> <out_dir> [engine ...]}"
 OUT="${2:?usage: synth_bank.sh <bank.json> <out_dir> [engine ...]}"
 shift 2
 ENGINES=("$@")
-[ ${#ENGINES[@]} -eq 0 ] && ENGINES=(dia moss_vg qwen vibevoice)
+[ ${#ENGINES[@]} -eq 0 ] && ENGINES=(chatterbox moss_vg orpheus qwen zonos)
 
 SONORA="$(cd "$(dirname "$0")/../.." && pwd)"   # Sonora repo root (mounted at /sonora)
 GPU="--device /dev/kfd --device /dev/dri --security-opt seccomp=unconfined --group-add video"
@@ -159,12 +159,47 @@ else
   echo "  (uv not found — skipped; run normalize_loudness.py --dir $OUT before auditioning)"
 fi
 
+# Objective QC BEFORE the ear ever sees a clip. This step used to be manual, and
+# nothing here invoked it — so every batch reached the audition queue ungated unless
+# somebody remembered. Measured cost on the 2026-07-31 reroll: a 3.1 s MOSS clip
+# (ASR WER 0.72, 11 of 40 words) went straight to the owner, and a second clip that
+# lost 27 of its 47 words was scored 5 by ear because it ended cleanly mid-sentence.
+# Both are trivially machine-detectable. The gate is stage 1 only (measures + hard
+# gates); qc_verdict.py still owns the intended-vs-measured merge.
+# OWNER RULE 2026-07-31: the QC run FOLLOWS EVERY dataset-generation pass. It is not
+# advisory and it is not optional, so a failure here stops the pipeline rather than
+# quietly queueing ungated clips — an ungated batch is exactly how a 3.1 s truncation
+# reached the ear, and how a clip missing 27 of its 47 words got scored 5.
+CAMPAIGN_DIR="$(dirname "$OUT")"
+echo "== qc gate =="
+QC_MEASURES=""
+if ! command -v uv >/dev/null 2>&1; then
+  echo "  !! uv not found — cannot run the QC gate."
+  echo "  !! NOT registering: clips are rendered in $OUT but stay out of the queue."
+  echo "  !! Recover with: qc_gate.py --campaign-dir $CAMPAIGN_DIR"
+  echo "  !!         then: register_audition.py --audio-dir $OUT --qc $CAMPAIGN_DIR/qc_measures.jsonl"
+  exit 1
+fi
+if uv run "$SONORA/scripts/synthesis/qc_gate.py" --campaign-dir "$CAMPAIGN_DIR"; then
+  QC_MEASURES="$CAMPAIGN_DIR/qc_measures.jsonl"
+else
+  echo "  !! qc_gate FAILED — clips are rendered in $OUT but will NOT be queued."
+  echo "  !! Fix the gate, then:"
+  echo "  !!   qc_gate.py --campaign-dir $CAMPAIGN_DIR"
+  echo "  !!   register_audition.py --audio-dir $OUT --qc $CAMPAIGN_DIR/qc_measures.jsonl"
+  exit 1
+fi
+
 # Register the rendered clips into the audition queue (ratings.csv SSOT) so they
 # reach the review surface. Idempotent, host-side (uv, not the GPU container); only
 # queues clips whose wav lands under DATA_ROOT. Non-fatal if it can't run.
+# With --qc, structural failures (ASR / 4 s floor) register as `reroll` instead of
+# spending an audition slot; advisory flags are still queued AND written to
+# qc_flags.txt for pick_audit_subset --flags, because the QC-flag path never relaxes.
 echo "== register audition =="
 if command -v uv >/dev/null 2>&1; then
   uv run "$SONORA/scripts/synthesis/register_audition.py" --audio-dir "$OUT" \
+      ${QC_MEASURES:+--qc "$QC_MEASURES"} \
     || echo "  (register_audition failed — clips rendered but not queued; run it manually)"
 else
   echo "  (uv not found — skipped; run register_audition.py --audio-dir $OUT to queue)"

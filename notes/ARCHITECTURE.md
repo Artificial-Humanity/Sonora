@@ -12,19 +12,28 @@ pinned item below has shipped at least once. Last updated: 2026-07-16._
 
 ---
 
-## 1. The Director↔Actor contract (v1)
+## 1. The Director↔Actor contract (v2)
 
 Every tier is an implementation of this contract. A consumer (Director, Prosodia, the Vocalizer) built
 against it must work against any tier unchanged.
+
+_v1→v2 (owner call, 2026-07-30): added the **Delivery** channel. The delivery axis proved to be
+a real orthogonal mode dimension during the teacher campaign (an engine can pass narration at
+94% and fail dialogue at 54%), the corpus is deliberately balanced on it (50/30/8/6/6, see
+[delivery-mix-campaign.md](delivery-mix-campaign.md)), and every certified clip now carries the
+label. Also pinned in the same call: **register stays Director-side** (the 47-label lexicon
+compiles to V/A/T + delivery + text; the Actor never sees a register id), and tempo/loudness
+remain host-side per the exploit-before-train measurement — training owns pitch + phonation._
 
 | Interface | Pinned as | Notes |
 |---|---|---|
 | **Text** | 178-symbol locked IPA vocab; op_g2p lane (OpenPhonemizer dict → DeepPhonemizer TFLite OOV fallback, U+0303 rule); `cleaners=[no_cleaners]`; intersperse-0 | Digits/abbreviations are the **caller's** job (op_g2p does not expand them). espeak is banned from the runtime path. |
 | **Control** | `vat = (valence, energy, tension)`, each float ∈ [−1, 1], 0 = speaker-neutral | Semantics are per-speaker z-scores of the corpus measures (§2). Slot map `{valence:0, energy:1, tension:2}`. Per-utterance today; per-token is the plumbing's native shape (expansion via the duration alignment). |
+| **Delivery** (v2) | one of `{Dialogue, Neutral, Documentary, Newscaster, Speech}` + `unknown`, embedded host-side to a small vector on the same zero-init FiLM path as `vat` | `unknown` ≡ zero vector ≡ v1 behavior, so v1 consumers work unchanged. First implementation: the next training run; de-risked with the §7 playbook (identity-at-init, leakage ≤ 0.2). Vocabulary changes are contract changes. |
 | **Speaker** | 64-dim float vector | **Never an id.** The mini tier resolves ids→vectors via a host-side table; a future speaker encoder produces the same vector. Nothing downstream may assume a roster. |
 | **Rate** | `length_scale` (1.0 default) | Deliberate: speaking rate is NOT a learned channel. |
 | **Amplification (optional)** | CFG guidance scale `s` on the decoder field; unconditional = vat 0; default 1 (off) | Pure host orchestration — the decoder graph is unchanged, run twice per ODE step and extrapolated. Validated by ear at s = 2–3 **with ≥ 25 ODE steps** (2026-07-16); at 10 steps solver artifacts dominate. Raw out-of-range VAT input saturates — never use input extrapolation. |
-| **Audio interchange** | 80-band mel, 24 kHz, n_fft 1024, hop 256, win 1024, fmin 0, fmax 12000 | Acoustic↔vocoder boundary ([sample-rate-24khz-decision.md](sample-rate-24khz-decision.md)). Mel normalization stats are corpus properties (shipped in each export's `config.json`), not contract. |
+| **Audio interchange** | 80-band mel, 24 kHz, n_fft 1024, hop 256, win 1024, fmin 0, fmax 12000 | Acoustic↔vocoder boundary ([model-decisions.md § Sample rate](model-decisions.md)). Mel normalization stats are corpus properties (shipped in each export's `config.json`), not contract. |
 | **Chunking** | Director chunks on sentence/clause boundaries within the tier's export budget (mini: 256 interspersed tokens / 512 mel frames ≈ 5.46 s) | Model quality does not bind before ~2 min (chunk-size sweep, 2026-07-16) — the budget is an export-shape property. Cross-chunk seams are a Director concern (pause-based joins). |
 
 Contract changes bump the version and require an owner call.
@@ -118,9 +127,9 @@ dial there in the same phase, so outputs stay vettable by ear at the current fea
   statement), `gate_history.jsonl`, eval report, audited samples, render/export metadata.
 * Publish to HF (`artificial-humanity/Sonora`) on owner call only.
 * Tier naming: the current lineage is **sonora-mini** (150M ceiling, on-device;
-  [model-size-target-decision.md](model-size-target-decision.md)); mid/heavy tiers reuse this
+  [model-decisions.md § The size target](model-decisions.md)); mid/heavy tiers reuse this
   architecture end-to-end with per-tier backbone, budget, and export target
-  ([model-family-strategy.md](model-family-strategy.md)).
+  ([model-decisions.md § The size ladder](model-decisions.md)).
 
 ## 8. Staged capability (any tier)
 

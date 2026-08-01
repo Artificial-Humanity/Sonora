@@ -1,7 +1,7 @@
 # LibriVox Quote Mining — the story-driven valence/register lane (spec, 2026-07-21)
 
 _The lead workstream of the v1.1 rescope
-([emilia-mining-and-verdict.md](emilia-mining-and-verdict.md)): harvest **quoted character
+([emilia-mining-and-verdict.md](archive/emilia-mining-and-verdict.md)): harvest **quoted character
 dialogue** — with its attribution clause — from LibriVox audiobooks aligned to their SE/PG texts.
 Owner direction (2026-07-21): clip the quoted segments, and capture the attribution statements
 around them — preceding ("then she muttered, …") and following ("… mused Jack", "shouted
@@ -102,8 +102,8 @@ Directed teacher-synthesis valence renders (labels exact by construction) remain
 depth source per the verdict note — and the two lanes share the audition workflow, so
 their batches can interleave in the same campaign rhythm.
 
-Linked from: [emilia-mining-and-verdict.md](emilia-mining-and-verdict.md) ·
-[book-prose-operations.md](book-prose-operations.md) · [STATE.md](STATE.md)
+Linked from: [emilia-mining-and-verdict.md](archive/emilia-mining-and-verdict.md) ·
+[book-prose-lane.md § Part 1 — Operations](book-prose-lane.md) · [STATE.md](STATE.md)
 
 ## Full-cast / dramatic readings (owner submissions 2026-07-22)
 
