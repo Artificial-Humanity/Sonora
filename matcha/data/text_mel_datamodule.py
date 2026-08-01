@@ -21,6 +21,54 @@ def parse_filelist(filelist_path, split_char="|"):
     return filepaths_and_text
 
 
+
+class LengthBucketBatchSampler(torch.utils.data.Sampler):
+    """Batch indices so each batch holds utterances of similar length.
+
+    Why this exists (2026-08-01): the loader ran `shuffle=True` with no length
+    awareness, so every batch padded to its longest member. That was tolerable while
+    MAX_SECONDS was 16 s; at 22 s a single long utterance inflates its whole batch by
+    ~40%, and the cost lands on whichever batch happens to catch one. Padding waste is
+    also pure compute — the padded frames are masked out of the loss.
+
+    Standard bucketing, deliberately not a full length-sort: indices are shuffled, cut
+    into megabatches of `batch_size * multiplier`, sorted WITHIN each megabatch, then
+    split into batches whose order is shuffled again. So batches are internally
+    homogeneous while the epoch still sees a fresh, non-length-ordered sequence — a
+    global sort would make every epoch identical and feed the model all its short
+    utterances first.
+
+    Length key is the TEXT field, not the audio: it needs no I/O at setup, and for TTS
+    mel length is near-proportional to phoneme count. It only has to rank, not measure.
+    """
+
+    def __init__(self, lengths, batch_size, multiplier=20, shuffle=True, seed=42):
+        self.lengths = list(lengths)
+        self.batch_size = batch_size
+        self.megabatch = batch_size * multiplier
+        self.shuffle = shuffle
+        self.seed = seed
+        self.epoch = 0
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+
+    def __iter__(self):
+        idx = list(range(len(self.lengths)))
+        if self.shuffle:
+            random.Random(self.seed + self.epoch).shuffle(idx)
+        batches = []
+        for i in range(0, len(idx), self.megabatch):
+            chunk = sorted(idx[i : i + self.megabatch], key=lambda k: self.lengths[k])
+            batches += [chunk[j : j + self.batch_size] for j in range(0, len(chunk), self.batch_size)]
+        if self.shuffle:
+            random.Random(self.seed + self.epoch + 1).shuffle(batches)
+        return iter(batches)
+
+    def __len__(self):
+        return (len(self.lengths) + self.batch_size - 1) // self.batch_size
+
+
 class TextMelDataModule(LightningDataModule):
     def __init__(  # pylint: disable=unused-argument
         self,
@@ -112,12 +160,27 @@ class TextMelDataModule(LightningDataModule):
         return {"multiprocessing_context": "spawn", "persistent_workers": True}
 
     def train_dataloader(self):
+        # bucket_multiplier=0 restores the old length-blind shuffle, so this can be
+        # turned off from config without editing code if it ever needs bisecting.
+        mult = getattr(self.hparams, "bucket_multiplier", 20)
+        if not mult:
+            return DataLoader(
+                dataset=self.trainset,
+                batch_size=self.hparams.batch_size,
+                num_workers=self.hparams.num_workers,
+                pin_memory=self.hparams.pin_memory,
+                shuffle=True,
+                collate_fn=TextMelBatchCollate(self.hparams.n_spks),
+                **self._loader_mp_kwargs(),
+            )
+        lengths = [len(r[2] if self.hparams.n_spks > 1 else r[1])
+                   for r in self.trainset.filepaths_and_text]
         return DataLoader(
             dataset=self.trainset,
-            batch_size=self.hparams.batch_size,
+            batch_sampler=LengthBucketBatchSampler(
+                lengths, self.hparams.batch_size, multiplier=mult, seed=self.hparams.seed),
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
-            shuffle=True,
             collate_fn=TextMelBatchCollate(self.hparams.n_spks),
             **self._loader_mp_kwargs(),
         )

@@ -49,7 +49,38 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 DEFAULT_ROOT = "/data/model-training/datasets/LibriTTS_R/train-clean-100"
 MIN_SECONDS = 1.0
-MAX_SECONDS = 16.0
+# Raised 16.0 -> 22.0 (owner, 2026-08-01) so the base corpus stops disagreeing with the
+# teacher corpus about length. Our synthesized clips average 12.5 s against LibriTTS-R's
+# 5.9 s, and ~20% of them exceeded the old ceiling — the two halves of the corpus were
+# built to different length policies and only one was written down. No rationale for 16.0
+# was ever recorded; this note exists so 22.0 does not repeat that.
+#
+# What 22.0 buys, measured on a 5,000-utterance sample of train-clean-100: LibriTTS-R has
+# 4.2% of utterances over 16 s and 1.8% over 20 s, with a corpus maximum of 30.6 s. So this
+# recovers roughly 790 utterances (~2.4%), and almost nothing exists past 25 s at any
+# setting. It is an arc-diversity change, NOT a long-form-capability change: Matcha is
+# non-autoregressive (flow-matching decoder, MAS at training only), so inference length is
+# bounded by memory rather than by anything learned about length. Long-form reading is a
+# cross-chunk continuity problem, not a clip-length one.
+#
+# ⚠ TWO CONSEQUENCES, both load-bearing:
+#   1. All three VAT channels are PER-SPEAKER z-scores clamped at 2 sigma, so changing the
+#      population changes every existing label. This is a corpus version bump (v2 -> v3)
+#      and a retrain, not a config tweak — the vat3 checkpoint was fitted to v2 labels.
+#   2. Duration correlates with integrated loudness at r = -0.385 (longer utterances are
+#      quieter; 12-16 s clips sit 1.28 LU below the sub-12 s body, ~0.69 sigma). Since
+#      A = per-speaker z(LUFS), longer utterances carry systematically lower arousal.
+#      TESTED AND REJECTED (2026-08-01): the obvious explanation — that long reads hold
+#      more pause and pause drags integrated loudness down — is WRONG. Measured on 600
+#      clips (300 <8 s, 300 >=12 s), gating loudness to speech frames only left the
+#      correlation unchanged (-0.415 whole-file vs -0.430 speech-only) and the short/long
+#      gap identical at -1.46 LU; speech fraction differs by just 3.3% (0.979 vs 0.946).
+#      Long utterances are genuinely quieter WHILE SPEAKING. That is plausibly real
+#      acoustics — intensity declination across a long utterance, and LibriTTS's short
+#      segments being disproportionately exclamations and dialogue — in which case A is
+#      reporting a true difference rather than a length artifact. Do not "fix" this
+#      without first establishing which it is; a speech-gated meter is not the answer.
+MAX_SECONDS = 22.0
 SAMPLE_RATE = 24000
 VAL_FRACTION = 0.03
 SEED = 1234
@@ -75,6 +106,7 @@ def find_clips(root):
                     text = f.read().strip()
                 if text:
                     yield os.path.join(ch_dir, name), text, spk
+
 
 
 FRAME = 2048   # 85 ms @ 24 kHz — long enough for cepstral f0 down to ~60 Hz

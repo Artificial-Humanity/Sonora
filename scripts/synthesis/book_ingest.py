@@ -42,7 +42,24 @@ CHARS_PER_SEC = 14.0            # mirrors synth_dia.py length model
 MIN_CLIP_SECONDS = 4.0
 MIN_CLIP_CHARS = int(MIN_CLIP_SECONDS * CHARS_PER_SEC)   # 56
 WINDOW_MIN_CHARS = 90          # ~6 s of speech
-WINDOW_MAX_CHARS = 240        # ~17 s — engine-reliable ceiling
+# Raised 240 -> 300 (owner, 2026-08-01), i.e. ~17 s -> ~21.4 s of speech.
+#
+# TWO reasons, and the production one is the point. Training: MAX_SECONDS in
+# derive_vat_corpus went 16 -> 22 s, so the model is fitted on longer utterances and a
+# longer render window is no longer out of distribution. Production: every window costs a
+# Gemma director pass, so window size sets the Gemma -> instruct -> Sonora cycle count for
+# a whole book. Measured on the delivery-v1 bank (mean window 200 ch, 71% packing at the
+# 240 cap), 300 cuts chunks — and director passes — by ~20% across the 31 ingested books.
+#
+# The old comment called 240 the "engine-reliable ceiling". Our own audit data says
+# otherwise: 120-240 ch fails 18% (n=146), 240-310 ch fails 11% (n=27), 310-400 ch fails
+# 0% (n=6). Reliability does not degrade until HARD_MAX_CHARS; 240 was conservative.
+#
+# ⚠ 300 is not a round number, it is CHATTERBOX'S limit (synth_chatterbox.MAX_CHARS = 300,
+# past which it warns and risks its 1000-token / ~40 s ceiling). Do not raise this to the
+# 308 that 22 s x CHARS_PER_SEC would allow without changing that renderer first — the
+# binding constraint here is the engine, not the training cap.
+WINDOW_MAX_CHARS = 300
 ATTRIB_VERBS = (
     "said|asked|replied|whispered|murmured|cried|shouted|snarled|muttered|"
     "answered|exclaimed|gasped|breathed|hissed|demanded|pleaded|sighed|"
