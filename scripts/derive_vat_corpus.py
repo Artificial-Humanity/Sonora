@@ -7,6 +7,36 @@
 # ///
 """VAT corpus derivation over LibriTTS-R (dataset-landscape.md §Strategy).
 
+HOW TO RUN IT (owner decision 2026-08-01): the repo **.venv**, not `uv run`.
+
+    .venv/bin/python scripts/derive_vat_corpus.py --out data/libritts_r_vat_v3 ...
+
+uv still MANAGES that venv (`uv pip install --python .venv/bin/python`) — nothing here
+introduces bare pip. `uv run` binds to the repo pyproject.toml instead of the inline
+PEP 723 block below, which is what made four launch attempts fail on 2026-08-01, each
+with a different missing module. The inline block stays as a record of what is needed.
+
+KNOWN BLOCKER, unfixed as of 2026-08-01. Under .venv the PARENT imports numpy and the
+spawn WORKERS do not:
+
+    File ".../uv/python/cpython-3.11.15-.../multiprocessing/pool.py"
+    ModuleNotFoundError: No module named 'numpy'
+
+Note the path — that is the BASE interpreter, not the venv. This uses spawn workers
+(fork after GPU wedges gfx1151), and spawn relaunches python via sys.executable, which
+is resolving past the venv so workers start without its site-packages. Likely fix:
+mp.set_executable(sys.executable) at start-up. Verify before the next run.
+
+WHAT ALREADY WORKS: the logic is sound at MAX_SECONDS=22. A run on 2026-08-01 measured
+all 33,232 utterances, applied the soft-json and passed the independence gate at
+corr(T,A) = -0.059, failing only at the final G2P relabel.
+
+CORPUS DECISION PENDING: `soft-json: 30351 scores, 1094 kept clips uncovered`. The newly
+admitted 16-22 s clips have NO EIV soft score (that labelling run predates the cap
+change), so they would derive with the tension blend's fourth component absent while the
+other 30,351 have it. Decide whether to re-run EIV over the new band before trusting v3.
+
+
 Walks a local LibriTTS-R subset, measures per-clip features, derives V/A/T
 labels, phonemizes transcripts through the espeak-free op-G2P lane, remaps
 speakers to contiguous ids, and emits `path|spk|ipa|v,a,t` filelists (the
