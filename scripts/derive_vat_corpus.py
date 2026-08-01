@@ -2,8 +2,14 @@
 # requires-python = ">=3.11,<3.13"
 # dependencies = [
 #   "numpy", "soundfile", "pyloudnorm", "librosa>=0.10", "numba>=0.60",
-#   "unidecode", "pyyaml", "openphonemizer", "torch",
+#   "unidecode", "pyyaml", "ai-edge-litert", "ml_dtypes",
 # ]
+# # NOT openphonemizer and NOT torch. Both were listed here until 2026-08-01 and
+# # neither is imported anywhere on this path: "OpenPhonemizer" names the 275k
+# # DICTIONARY we vendor, not the PyPI package, and the OOV fallback is a TFLite
+# # graph run through ai-edge-litert (ml_dtypes is its undeclared runtime dep).
+# # The whole point of the espeak-free lane is that it has no heavyweight
+# # inference dependency — listing torch here contradicted north star §8.3.
 # ///
 """VAT corpus derivation over LibriTTS-R (dataset-landscape.md §Strategy).
 
@@ -16,16 +22,38 @@ introduces bare pip. `uv run` binds to the repo pyproject.toml instead of the in
 PEP 723 block below, which is what made four launch attempts fail on 2026-08-01, each
 with a different missing module. The inline block stays as a record of what is needed.
 
-KNOWN BLOCKER, unfixed as of 2026-08-01. Under .venv the PARENT imports numpy and the
-spawn WORKERS do not:
+THE "sys.executable" BLOCKER WAS A MISDIAGNOSIS — resolved 2026-08-01, kept here as a
+warning about the evidence. The symptom was real:
 
     File ".../uv/python/cpython-3.11.15-.../multiprocessing/pool.py"
     ModuleNotFoundError: No module named 'numpy'
 
-Note the path — that is the BASE interpreter, not the venv. This uses spawn workers
-(fork after GPU wedges gfx1151), and spawn relaunches python via sys.executable, which
-is resolving past the venv so workers start without its site-packages. Likely fix:
-mp.set_executable(sys.executable) at start-up. Verify before the next run.
+and it was read as "the pool relaunched the BASE interpreter, so workers lost the venv's
+site-packages; fix with mp.set_executable(sys.executable)". Every step of that is wrong:
+
+  * A venv does not copy the stdlib. `multiprocessing/pool.py` ALWAYS resolves under
+    sys.base_prefix, in a healthy venv as much as a broken one. That frame proves
+    nothing about which interpreter is running, and it is the only "evidence" there was.
+  * This pool uses **fork**, not spawn — no set_start_method call exists anywhere in the
+    file. Fork inherits the parent's memory outright; sys.executable is never consulted,
+    so the proposed fix was a no-op against a mechanism not in use.
+  * sys.executable already resolves to .venv/bin/python. The venv was simply BARE: numpy
+    had not been installed into it yet. The import failed in the worker because it would
+    have failed anywhere.
+
+Verified after installing the deps: `mp.Pool(4).imap_unordered(measure_clip, ...)`
+measures 24/24 clips under .venv, start method `fork`, sys.executable inside the venv.
+
+Fork is safe HERE specifically because nothing touches the GPU before the pool — the
+espeak-free G2P is a TFLite/CPU graph. That is a property of this script, not a general
+licence; fork-after-GPU still wedges gfx1151 ([[gfx1151-rocm-diffusion]]).
+
+THE ACTUAL BLOCKER was the next line down, and it was a stale path. OpenPhonemizerG2P
+resolved its assets to <repo>/../Reference/models/litert-community/Matcha-TTS — the
+umbrella layout deleted 2026-07-22 — so __init__ died opening g2p_dict.txt.gz. The
+assets are at /data/models/litert-community/Matcha-TTS; op_g2p.py now probes for the
+dictionary instead of hard-coding one location. Full lane re-verified end to end:
+274,927 dictionary entries loaded, neural OOV fallback resolving unknown words, 0 misses.
 
 WHAT ALREADY WORKS: the logic is sound at MAX_SECONDS=22. A run on 2026-08-01 measured
 all 33,232 utterances, applied the soft-json and passed the independence gate at

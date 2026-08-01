@@ -11,8 +11,14 @@ loanwords — is stripped (validated 2026-07-12: with that rule, 99.997% of
 entries phonemize entirely into the locked vocab).
 
 Asset directory resolution order: explicit argument, $SONORA_G2P_ASSETS,
-then ../Reference/models/litert-community/Matcha-TTS relative to the repo
-root (the workspace layout on both dev machines).
+then the first _ASSET_CANDIDATES entry that exists on disk.
+
+The old default — ../Reference/models/... relative to the repo root — was the
+umbrella-workspace layout, deleted 2026-07-22 when the repos went flat. It was
+still the hard-coded default on 2026-08-01, so every caller without the env var
+died in __init__ on a missing g2p_dict.txt.gz. The assets live under /data with
+the other model weights; that path is checked first now, and the old one is kept
+last so a machine still carrying the umbrella layout keeps working.
 """
 
 import gzip
@@ -30,7 +36,23 @@ from matcha.text.cleaners import (
 from matcha.text.symbols import symbols
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_DEFAULT_ASSETS = os.path.join(_REPO_ROOT, "..", "Reference", "models", "litert-community", "Matcha-TTS")
+_ASSET_CANDIDATES = (
+    "/data/models/litert-community/Matcha-TTS",
+    os.path.join(_REPO_ROOT, "..", "Reference", "models", "litert-community", "Matcha-TTS"),
+)
+
+
+def _default_assets():
+    """First candidate that actually holds the dictionary, else the first one.
+
+    Falling back to candidate 0 rather than to None keeps the failure legible: a
+    missing-file error naming /data/models beats a None that surfaces later as a
+    confusing TypeError.
+    """
+    for cand in _ASSET_CANDIDATES:
+        if os.path.isfile(os.path.join(cand, "g2p_dict.txt.gz")):
+            return cand
+    return _ASSET_CANDIDATES[0]
 
 # Word tokens may carry apostrophes; everything else passes through only if
 # it is vocab punctuation (hyphens/brackets are separators, handled upstream).
@@ -46,7 +68,7 @@ class OpenPhonemizerG2P:
 
     def __init__(self, assets_dir=None, use_neural_oov=True):
         self.assets_dir = os.path.abspath(
-            assets_dir or os.environ.get("SONORA_G2P_ASSETS") or _DEFAULT_ASSETS
+            assets_dir or os.environ.get("SONORA_G2P_ASSETS") or _default_assets()
         )
         self.dict = {}
         dict_path = os.path.join(self.assets_dir, "g2p_dict.txt.gz")
