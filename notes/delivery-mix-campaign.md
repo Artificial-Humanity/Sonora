@@ -126,6 +126,35 @@ LongCat: excluded until the affect-transfer experiment passes (standing rule).
 - Render batches of ~100–150 so audition and reroll cycles interleave; register each
   batch via `register_audition.py` (guarded append).
 
+## Why the lanes are uneven on purpose (owner 2026-08-01)
+
+> "There will just be more dialogue and narration since it's the majority of actual
+> content. This is fine since the final model will also read those things a majority of
+> the time."
+
+The 50/30/8/6/6 mix is **not a balancing target** — it is an estimate of what books
+actually contain, and therefore of what the production model will spend its life reading.
+Shaping the corpus like the job is the point; flattening the lanes would train for a
+distribution that never occurs at inference.
+
+Two consequences worth stating, because both have been mis-reasoned once already:
+
+1. **Dialogue is the ANCHOR, not the surplus.** Measured 2026-08-01: Dialogue 579 of 919
+   keeps (63%). That reads "over target" only if the other lanes are assumed fixed. Held
+   as the 50% anchor instead, the corpus completes at **1158** and needs +80 Neutral,
+   +35 Documentary, +61 Newscaster, +61 Speech — **and no further dialogue at all.**
+   The remedy for an over-weight lane here is growth elsewhere, never reduction.
+2. **The minority lanes are a CAPABILITY requirement, not a volume one.** Newscaster and
+   Speech at 6% exist so the model can deliver them on request, not so it delivers them
+   often.
+
+**Open question the ratio cannot answer.** [[direction-contract-v2]] makes delivery the
+4th FiLM channel (5 lanes + unknown≡zero). "What share of the corpus" and "how many
+examples before a FiLM channel VALUE separates" are different questions, and only the
+first is settled. If ~69 clips proves to be under the floor for a channel value to learn
+a direction, the fix is to grow the corpus until 6% of it clears that floor — not to
+reshape the mix away from what books are actually made of.
+
 ## Sequence
 
 1. **delivery-v1-narration** — Neutral (+194→~230 renders) + Documentary (+73→~90):
