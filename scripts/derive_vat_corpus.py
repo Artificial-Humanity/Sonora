@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.11,<3.13"
+# dependencies = [
+#   "numpy", "soundfile", "pyloudnorm", "librosa>=0.10", "numba>=0.60",
+#   "unidecode", "pyyaml", "openphonemizer", "torch",
+# ]
+# ///
 """VAT corpus derivation over LibriTTS-R (dataset-landscape.md §Strategy).
 
 Walks a local LibriTTS-R subset, measures per-clip features, derives V/A/T

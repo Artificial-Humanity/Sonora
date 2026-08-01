@@ -155,6 +155,30 @@ first is settled. If ~69 clips proves to be under the floor for a channel value 
 a direction, the fix is to grow the corpus until 6% of it clears that floor — not to
 reshape the mix away from what books are actually made of.
 
+### What text suits which lane (sourcing guide, owner 2026-08-01)
+
+`seed_delivery.py` sets the rule that matters: Dialogue/Neutral is a property of the
+**text**, Newscaster/Documentary a property of the **render**, and Speech of **both**. So
+"find Documentary text" is the wrong request — what you can source is text that INVITES
+the delivery, and then direct (synthesis) or hear it (real audio).
+
+| lane | text that suits it | examples |
+|---|---|---|
+| **Speech** | addresses an audience — rally, sermon, toast, oration | Cicero *Against Catilina* (pg:39355); Dickens *Speeches: Literary and Social* (pg:824) |
+| **Documentary** | third-person exposition | natural history, travel writing — Darwin *Beagle* (pg:944), White *Selborne* (pg:1408), Muir, Kingsley |
+| **Documentary** | **biography** — owner 2026-08-01: "biographies can also be categorized as documentaries. The delivery is much the same" | any third-person *Life of…* |
+| **Neutral** | first-person recollection | **AUTOBIOGRAPHY — explicitly NOT documentary** (owner, same): "those tend to be more narrative" |
+
+The biography/autobiography split is grammatical stance, not subject matter. Third-person
+exposition about a subject stands on the same footing as natural history, which is why
+the delivery transfers intact. First-person recollection is narration that happens to be
+about a real life — same subject, different footing, different read.
+
+Caveat for the real-audio lane: none of this decides the tag. Whether a LibriVox reading
+of Darwin IS Documentary depends on the reader's manner, not the book — some deliver it
+measured and expository, others flat, which is Neutral. The text choice raises the odds;
+the ear still calls it, once per (reader, title).
+
 ## Sequence
 
 1. **delivery-v1-narration** — Neutral (+194→~230 renders) + Documentary (+73→~90):
