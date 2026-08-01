@@ -210,8 +210,10 @@ def main():
             # Quarantined (_dropped/_superseded) or hand-moved clips still have a
             # manifest record. Skipping keeps a whole campaign's gate run from dying
             # on a clip that was deliberately swept aside.
-            alt = os.path.join(eng_dir, "_dropped", row["wav"])
-            if os.path.isfile(alt):
+            alt = next((p for p in (os.path.join(eng_dir, d, row["wav"])
+                                    for d in ("_dropped", "_superseded"))
+                        if os.path.isfile(p)), None)
+            if alt:
                 wav_path = alt
             else:
                 print(f"{row.get('id','?'):26s} SKIP (wav not found)", flush=True)
