@@ -123,6 +123,14 @@ def wer(ref, hyp):
 # but it scored WER 0.24 and sailed through ASR_MAX_WER. A global error rate cannot see
 # a tail truncation: 19 missing words out of 139 is a small error rate and a totally
 # unusable clip. Ask WHERE the render stopped, not how many words differ.
+# The 30 s ceiling is named in director_skills/zonos.md as "a hard cap and a training
+# limit", and nothing enforced it anywhere. Measured 2026-07-31: one 840-char quoted
+# monologue produced a 61.3 s clip on qwen and 64.2 s after re-cast — both a COMPLETE,
+# correct read, so every CONTENT gate passed them. At hop 256 that is ~5,750 mel frames,
+# and the datamodule has no duration filter, so one such clip pads its whole training
+# batch. Length is not a content defect, which is why it needs a gate of its own.
+MAX_CLIP_SECONDS = 30.0
+
 TAIL_LOST_MAX = 0.05        # >5% of the passage unspoken at the end
 TAIL_WORDS_MIN = 3          # ...and at least 3 real words, so one dropped "the" is not a gate
 
@@ -224,6 +232,7 @@ def main():
         gates["asr_ok"] = asr_wer <= ASR_MAX_WER
         tl_frac, tl_words = tail_lost(row["text"], hyp)
         gates["tail_ok"] = not (tl_frac > TAIL_LOST_MAX and tl_words >= TAIL_WORDS_MIN)
+        gates["length_ok"] = dur <= MAX_CLIP_SECONDS
         scores = dnsmos.score(wav)
         # DNSMOS demoted to advisory quality tier (register-biased);
         # collapse detection now belongs to the ASR gate.

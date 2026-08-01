@@ -189,11 +189,21 @@ def _qc_triage(qc_path):
                 what = (f"{heard} words vs {want} in the passage — wording differs; "
                         f"check for misreadings")
             why.append(f"ASR WER {r.get('asr_wer'):.2f}, {what}")
+        # tail_ok is the gate WER cannot substitute for: a read that simply stops
+        # scores a small global error rate and is still unusable. Report it in its own
+        # words, and before the duration message, because it names WHERE to listen.
+        if not g.get("tail_ok", True):
+            lost, frac = r.get("tail_words_lost"), r.get("tail_lost_frac") or 0
+            why.append(f"stops early — last {lost} words ({frac*100:.0f}% of the passage) "
+                       f"never spoken. LISTEN TO THE END")
         speech = r.get("speech_dur")
         if speech is not None and speech < MIN_SPEECH_SECONDS:
             why.append(f"only {speech:.1f}s of speech (floor {MIN_SPEECH_SECONDS}s)")
         if not g.get("duration_ok", True) and len(why) == 0:
             why.append("duration outside the expected band for this passage length")
+        if not g.get("length_ok", True):
+            why.append(f"{r.get('duration', 0):.0f}s exceeds the 30s training cap — the read "
+                       f"may be fine; the LINE needs splitting, not a reroll")
         if not g.get("dnsmos_ok", True):
             why.append(f"DNSMOS {r.get('dnsmos_ovr', 0):.2f} below floor")
         if not g.get("measures_ok", True):
