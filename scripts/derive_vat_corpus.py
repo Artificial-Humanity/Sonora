@@ -5,11 +5,13 @@
 #   "unidecode", "pyyaml", "ai-edge-litert", "ml_dtypes",
 # ]
 # # NOT openphonemizer and NOT torch. Both were listed here until 2026-08-01 and
-# # neither is imported anywhere on this path: "OpenPhonemizer" names the 275k
-# # DICTIONARY we vendor, not the PyPI package, and the OOV fallback is a TFLite
-# # graph run through ai-edge-litert (ml_dtypes is its undeclared runtime dep).
-# # The whole point of the espeak-free lane is that it has no heavyweight
-# # inference dependency — listing torch here contradicted north star §8.3.
+# # neither is imported anywhere on this path. "OpenPhonemizer" names the upstream
+# # PROJECT (NeuralVox/OpenPhonemizer, Clear BSD) whose two artefacts we vendor —
+# # the 275k espeak-IPA dictionary and the ForwardTransformer OOV checkpoint — not
+# # its PyPI package, whose runtime we never call. The checkpoint ships here as a
+# # TFLite graph run through ai-edge-litert (ml_dtypes is its undeclared runtime
+# # dep), so nothing on this path needs torch at all. That is the point of the
+# # espeak-free lane; listing torch here contradicted north star §8.3.
 # ///
 """VAT corpus derivation over LibriTTS-R (dataset-landscape.md §Strategy).
 
@@ -59,10 +61,30 @@ WHAT ALREADY WORKS: the logic is sound at MAX_SECONDS=22. A run on 2026-08-01 me
 all 33,232 utterances, applied the soft-json and passed the independence gate at
 corr(T,A) = -0.059, failing only at the final G2P relabel.
 
-CORPUS DECISION PENDING: `soft-json: 30351 scores, 1094 kept clips uncovered`. The newly
-admitted 16-22 s clips have NO EIV soft score (that labelling run predates the cap
-change), so they would derive with the tension blend's fourth component absent while the
-other 30,351 have it. Decide whether to re-run EIV over the new band before trusting v3.
+COVERAGE GAP CLOSED 2026-08-01 (owner: "let's re-run EIV first"). The symptom was
+`soft-json: 30351 scores, 1094 kept clips uncovered` — the utterances the 16 -> 22 s cap
+admitted postdate the labelling run. Two things the original note got wrong:
+
+  * It read as a TENSION problem. **Valence had the identical gap** — all 1,094 were
+    missing from corpus_valence_combo.json too, so v3 would have derived them with the
+    whole V channel absent, not just the tension blend's fourth component.
+  * A gap is not closed by appending. The combo is dot(weights, per-speaker z(head)), so
+    growing a speaker's population moves clips that were ALREADY scored; appending only
+    the new rows recreates the same two-inconsistent-halves defect one level up.
+
+So: all 1,094 scored over the same 12 heads (scripts/eiv_score.sh), then every derived
+value rebuilt from the immutable raw scores by scripts/eiv_merge_corpus.py. Pass the _v2
+files to --valence-json / --soft-json; the originals cover 30,351 and are superseded.
+
+    --valence-json /data/model-training/sonora/eiv_scores/corpus_valence_combo_v2.json
+    --soft-json    /data/model-training/sonora/eiv_scores/corpus_soft_v2.json
+
+Verified: 31,445 in-band clips, 0 uncovered by either file. Worth knowing before reading
+v3 labels — the newly admitted long clips sit 0.086 BELOW the corpus valence mean (about
+0.18 sd), while their softness mean is identical to the corpus (+0.320 both). Whatever is
+different about long utterances shows up in V, not in T. That is consistent with the
+already-recorded duration/loudness finding at the head of this file, and it means the A
+and V channels move together with length while T does not.
 
 
 Walks a local LibriTTS-R subset, measures per-clip features, derives V/A/T
