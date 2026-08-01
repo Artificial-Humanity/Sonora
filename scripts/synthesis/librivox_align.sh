@@ -38,9 +38,17 @@ echo "== qc gate =="
 if command -v uv >/dev/null 2>&1; then
   uv run "$SONORA/scripts/synthesis/qc_gate.py" --campaign-dir "$OUT" || {
     echo "  !! qc_gate FAILED — clips are in $OUT but will NOT be queued"; exit 1; }
-  uv run "$SONORA/scripts/synthesis/register_audition.py" --audio-dir "$OUT/audio" \
-      --qc "$OUT/qc_measures.jsonl" \
-    || echo "  (register_audition failed — run it manually)"
+  # DELIBERATELY NOT REGISTERING. The aligner fills the POOL; the pool is not the
+  # audition queue. Owner design 2026-08-01: segment everything, then stage a linear
+  # slice — so `stage_pool.py` is the ONLY thing that writes this lane into
+  # ratings.csv, and it applies the ear-confirmed (reader, title) tags as it goes.
+  #
+  # Registering here auto-queued 652 unaudited rows off one book on 2026-08-01, which
+  # is exactly the flood the pool/staging split exists to prevent. QC still runs above
+  # (mandatory, every pass) and its findings ride along in qc_flags.txt; stage_pool
+  # reads them and sends any flagged clip to the ear when it is staged.
+  echo "  pool filled — NOT queued. Stage it with:"
+  echo "    .venv/bin/python scripts/synthesis/stage_pool.py --campaign $(basename "$OUT") --stage N --apply"
 else
   echo "  !! uv not found — NOT registering. Run qc_gate.py then register_audition.py."
   exit 1
