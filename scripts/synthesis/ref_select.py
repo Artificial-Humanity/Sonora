@@ -235,13 +235,62 @@ ENGINE_MIX = {
 }
 
 
-def allocate_engines(n_lines, mix=None):
-    """Split n_lines across engines by ENGINE_MIX. Returns {engine: count}.
+# Dialogue draws from a DIFFERENT mix than narration (owner 2026-08-01, on ebooks with
+# no LibriVox audio: "we may want to lean on our most directable models for these ...
+# where we are dealing more dramatic and quoted content").
+#
+# The reason is structural, not preference. A narration line needs one steady voice; a
+# quoted line needs per-line CASTING and DELIVERY — which character, in what state —
+# and that can only be relayed to an engine that HAS an instruction slot. The
+# direction-relay audit (2026-07-25) established the slots are unevenly distributed, and
+# routing dialogue by the flat mix spends 35% of it on the two engines that can hear the
+# least of what the Director says.
+#
+# Narration keeps ENGINE_MIX: breadth of voice matters more there, and zonos's numeric
+# prosody dials still serve the delivery-as-FiLM-channel work.
+#
+# ENGINE MIX IS NOT A LANE BUDGET (owner 2026-08-01: "I don't expect these lanes to be
+# synchronous in count. Dialog and Narration very well should be the largest categories,
+# by far"). These weights say WHICH ENGINES render a line of a given kind; they say
+# nothing about how many lines of that kind exist. Lane SIZE comes from the ratified
+# delivery mix (Dialogue 50 / Neutral 30 / Documentary 8 / Newscaster 6 / Speech 6) and
+# from the source text, which for a novel is overwhelmingly narration and quoted speech.
+# Measured 2026-08-01: Dialogue 579 of 919 keeps is ON SHAPE, not oversupplied — held as
+# the 50% anchor the corpus completes at 1158, needing +80 Neutral, +35 Documentary,
+# +61 Newscaster, +61 Speech and no further dialogue at all.
+ENGINE_MIX_DIALOGUE = {
+    "qwen":       0.450,   # richest instruct slot by a distance (12 references in its
+                           # skill file vs 1-2 for most), and the measured gold standard.
+                           # Casting + delivery + accent all reach it as TEXT.
+    "chatterbox": 0.350,   # no text-instruction slot, but it carries voice IDENTITY
+                           # through reference audio — which is what keeps a character
+                           # stable across 200 pages. Different directability, equally
+                           # needed for a full cast.
+    "orpheus":    0.120,   # tag-based (<laugh>, <sigh>): a narrow channel, but a
+                           # genuinely dialogue-shaped one.
+    "moss_vg":    0.080,   # has instruct slots and they are real; held low because the
+                           # stochastic triad (early-EOS, radio drift, IVR cadence) is
+                           # worst exactly where dialogue is most exposed.
+    "zonos":      0.000,   # OUT of the dialogue lane. Its emotion vector must be
+                           # switched off entirely to render cleanly (unconditional_keys
+                           # + {"emotion"}), so the one channel dialogue most needs is
+                           # the one channel we must disable. Keeps its 20% of narration.
+}
+
+
+def allocate_engines(n_lines, mix=None, lane=None):
+    """Split n_lines across engines by a mix. Returns {engine: count}.
+
+    lane="dialogue" selects ENGINE_MIX_DIALOGUE; anything else keeps ENGINE_MIX. An
+    explicit `mix` still wins, so callers can override either.
 
     Largest-remainder, so the counts always sum to exactly n_lines rather than
     drifting by a clip or two per lane the way independent rounding does.
     """
+    if mix is None and lane == "dialogue":
+        mix = ENGINE_MIX_DIALOGUE
     mix = mix or ENGINE_MIX
+    mix = {e: w for e, w in mix.items() if w > 0}
     total = sum(mix.values())
     exact = {e: n_lines * w / total for e, w in mix.items()}
     out = {e: int(v) for e, v in exact.items()}
