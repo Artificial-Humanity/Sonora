@@ -157,12 +157,88 @@ def _write_guarded(mutate, attempts=5):
 
 
 def _bank_groups(campaign):
-    """id -> (group_key, engine) from the campaign's bank."""
-    bank = json.load(open(f"{DATASETS}/{campaign}/bank.json", encoding="utf-8"))
+    """id -> (group_key, engine), from the campaign's bank OR its librivox manifest.
+
+    Synthesis campaigns have a bank.json whose lines carry book + intended_delivery.
+    The REAL-AUDIO lane has no bank at all — its "bank" is a book someone read aloud —
+    so fall back to the aligner's manifest, grouping by book|section and treating
+    `librivox` as the engine. Without this, `select` cannot run on a force-aligned
+    campaign, and the new-reader rule below could never fire on the very lane it exists
+    to serve.
+
+    register_audition writes real-audio campaigns as `book-<dir>`, so strip that prefix
+    when resolving the directory.
+    """
+    import glob
+    direct = f"{DATASETS}/{campaign}/bank.json"
+    stripped = campaign[len("book-"):] if campaign.startswith("book-") else campaign
+    for path in (direct, f"{DATASETS}/{stripped}/bank.json"):
+        if os.path.exists(path):
+            bank = json.load(open(path, encoding="utf-8"))
+            out = {}
+            for l in bank["lines"]:
+                grp = f'{l.get("book", "?")}|{l.get("intended_delivery", "?")}'
+                out[l["id"]] = (grp, l["engine"])
+            return out
+
     out = {}
-    for l in bank["lines"]:
-        grp = f'{l.get("book", "?")}|{l.get("intended_delivery", "?")}'
-        out[l["id"]] = (grp, l["engine"])
+    for man in glob.glob(f"{DATASETS}/{stripped}/**/librivox_manifest.jsonl",
+                         recursive=True):
+        with open(man, encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("id"):
+                    grp = f'{rec.get("book", "?")}|sec{rec.get("section", "?")}'
+                    out[rec["id"]] = (grp, rec.get("engine", "librivox"))
+    if not out:
+        raise SystemExit(f"no bank.json and no librivox manifest for {campaign}")
+    return out
+
+
+PROFILES_PATH = "/data/model-training/datasets/reader_profiles.json"
+
+
+def _clip_readers():
+    """clip id -> (reader, title), from every librivox manifest on disk."""
+    import glob
+    out = {}
+    for man in glob.glob("/data/model-training/datasets/**/librivox_manifest.jsonl",
+                         recursive=True):
+        with open(man, encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("id") and rec.get("reader"):
+                    out[rec["id"]] = (rec["reader"], rec.get("book") or "?")
+    return out
+
+
+def _confirmed_reader_titles():
+    """{(reader, title)} the ear has already confirmed.
+
+    Keyed on the PAIR, not the reader (owner 2026-08-01). A LibriVox display name is not
+    an identity — two people can share one — and a long-running reader legitimately
+    reads as "adult" in early recordings and "middle-aged" in later ones. So a new TITLE
+    by a known name still earns one ear pass; only then may that title's clips be filled.
+    """
+    if not os.path.exists(PROFILES_PATH):
+        return set()
+    with open(PROFILES_PATH, encoding="utf-8") as fh:
+        prof = json.load(fh)
+    out = set()
+    for reader, entry in prof.items():
+        for title, t in (entry.get("titles") or {}).items():
+            if all(t.get(a) for a in ("gender", "age", "accent")):
+                out.add((reader, title))
     return out
 
 
@@ -180,6 +256,28 @@ def cmd_select(args):
         by_group[(grp, eng)].append(r["id"])
 
     keep_ids = set(i for i in flagged if any(i in ids for ids in by_group.values()))
+
+    # NEW-READER RULE (owner 2026-08-01): "if we have a set of clips from a new reader,
+    # it would do us well to have me review at least one clip, always. The voice
+    # identity attributes I apply can then be widened to the rest."
+    #
+    # Enforced HERE rather than trusted to sampling, because it is a precondition for
+    # propagation, not a coverage preference: reader_profile.py learns gender/age/accent
+    # only from AUDITED clips, so a reader whose clips are all deferred can never be
+    # profiled, and every future book they narrate arrives untagged. One guaranteed clip
+    # unlocks that title. Cross-title reuse is only ever a pre-fill hint, never an
+    # assertion of identity — see reader_profile.py for why the pair is the unit.
+    readers = _clip_readers()
+    confirmed = _confirmed_reader_titles()
+    campaign_ids = {i for ids in by_group.values() for i in ids}
+    new_readers = defaultdict(list)
+    for cid in sorted(campaign_ids):
+        pair = readers.get(cid)
+        if pair and pair not in confirmed:
+            new_readers[pair].append(cid)
+    for rd, ids in sorted(new_readers.items()):
+        if not (set(ids) & keep_ids):        # nothing of theirs is queued yet
+            keep_ids.add(sorted(ids)[len(ids) // 2])   # a mid clip, not an edge one
     for (grp, eng), ids in sorted(by_group.items()):
         ids = sorted(ids)
         n = min(cert_count(eng), len(ids))
@@ -217,6 +315,9 @@ def cmd_select(args):
     print(f"{args.campaign}: {len(keep_ids)} in the audit queue "
           f"({len(flagged & keep_ids)} QC-flagged), {n} deferred, "
           f"{len(by_group)} groups")
+    if new_readers:
+        print(f"  reader/title pairs needing an ear pass ({len(new_readers)}): "
+              + ", ".join(f"{r} / {t}" for r, t in sorted(new_readers)))
     for (grp, eng), ids in sorted(by_group.items()):
         in_q = sum(1 for i in ids if i in keep_ids)
         tname = ENGINE_TIER.get(eng, DEFAULT_TIER)

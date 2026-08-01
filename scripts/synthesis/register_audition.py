@@ -160,6 +160,37 @@ def _build_row(rec, wav: Path, book_slug: str, fields):
 MIN_SPEECH_SECONDS = 4.0        # owner floor 2026-07-25; keep-rate cliff is exactly here
 
 
+def _tail_beyond(canonical: str, heard: str) -> str:
+    """The words ASR heard AFTER the canonical text ran out.
+
+    Used to pre-fill the suspected missing line when a reader's edition carries text
+    ours does not. Matching is on normalised words so punctuation and casing cannot
+    hide the join; the returned string is the raw ASR tail, for the owner to verify and
+    correct rather than transcribe from scratch.
+    """
+    import difflib
+    import re as _re
+
+    def norm(t):
+        return [w for w in _re.sub(r"[^a-z0-9\s]", " ", t.lower()).split() if w]
+
+    a, b = norm(canonical), norm(heard)
+    if not a or not b:
+        return ""
+    sm = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
+    blocks = [bl for bl in sm.get_matching_blocks() if bl.size]
+    if not blocks:
+        return ""
+    last = blocks[-1]
+    if last.a + last.size < len(a) - 2:      # canonical text itself was not finished
+        return ""
+    tail = b[last.b + last.size:]
+    if len(tail) < 3:
+        return ""
+    words = heard.split()
+    return " ".join(words[-len(tail):]) if len(words) >= len(tail) else " ".join(tail)
+
+
 def _qc_triage(qc_path):
     """Read qc_measures.jsonl -> ({id: note}, [flagged ids]). Never changes status."""
     notes, flagged = {}, []
@@ -183,8 +214,34 @@ def _qc_triage(qc_path):
                 what = (f"transcribed only {heard} words of {want} — "
                         f"CHECK THE END, text may be MISSING")
             elif heard > want * 1.1:
-                what = (f"transcribed {heard} words but the passage has {want} — "
-                        f"CHECK FOR AN IMPROVISED OR REPEATED TAIL")
+                # An over-run has TWO causes and they need opposite responses. On a
+                # SYNTHESIS clip the engine improvised. On REAL AUDIO a high align_score
+                # alongside high WER means the alignment was good and the reader simply
+                # spoke words the canonical edition does not contain — measured
+                # 2026-08-01 on uneasy-money_lv002_0232, which the owner scored 5/5 and
+                # annotated by hand. That is a TEXT gap, not a clip defect, and no
+                # alignment work can fix it.
+                # Owner rule 2026-08-01: "rule in these possibilities and always subject
+                # suspected clips for review. I can then attempt to fill the gap." So
+                # name the cause and PRE-FILL the suspected missing words from ASR —
+                # verify-don't-enter, the same standard as the attribute columns.
+                score = r.get("align_score")
+                if score is not None and score >= 0.75:
+                    extra = _tail_beyond(r.get("text", ""), r.get("asr_hyp") or "")
+                    what = ("alignment is GOOD (align_score "
+                            f"{score:.2f}) but {heard} words were spoken against {want} "
+                            "in the source — the reader's EDITION LIKELY CONTAINS TEXT "
+                            "OURS DOES NOT. Not a clip defect. Suspected missing text, "
+                            f"from ASR, please verify: \u201c{extra}\u201d"
+                            if extra else
+                            "alignment is GOOD (align_score "
+                            f"{score:.2f}) but {heard} words were spoken against {want} "
+                            "in the source — the reader's EDITION LIKELY CONTAINS TEXT "
+                            "OURS DOES NOT. Not a clip defect; please supply the extra "
+                            "text.")
+                else:
+                    what = (f"transcribed {heard} words but the passage has {want} — "
+                            f"CHECK FOR AN IMPROVISED OR REPEATED TAIL")
             else:
                 what = (f"{heard} words vs {want} in the passage — wording differs; "
                         f"check for misreadings")
