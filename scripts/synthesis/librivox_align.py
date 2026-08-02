@@ -84,23 +84,48 @@ def split_sentences(text: str) -> list[str]:
     return [s for s in out if s]
 
 
-def chapter_slice(text: str, index: int, n_sections: int) -> str:
+def chapter_slice(text: str, index: int, n_sections: int,
+                  durations: dict[int, float] | None = None) -> str:
     """Best-effort chapter extraction.
 
     LibriVox sections usually map to chapters, but the mapping is not guaranteed and the
     Gutenberg text's chapter headings vary wildly. We try headings first and fall back to
-    an even split, which is good enough because the ASR anchor pass re-finds the true
-    position inside whatever slice we hand it.
+    a proportional split, which is good enough because the ASR anchor pass re-finds the
+    true position inside whatever slice we hand it.
+
+    SPLIT BY DURATION, NOT BY SECTION INDEX. An even index split assumes every section is
+    the same length. That holds for a novel — it is why *Uneasy Money* aligned at 94% —
+    and fails completely for a collection. Dickens's *Speeches* opens with a 73-minute
+    editorial introduction (sections 1-2) and then has speeches as short as 2.6 minutes;
+    an even split put section 3's window at 3.3% of the text when the words were near
+    10.8%, so the anchor pass located **0%** of the heard words and every clip was
+    dropped. The 35% padding is not remotely enough to bridge that.
+
+    Cumulative playtime fraction fixes it, and it rests on the assumption the even split
+    was already making implicitly and more weakly: that reading pace is roughly constant
+    within one reader. Where durations are missing we fall back to the old even split.
     """
     heads = list(re.finditer(r"(?im)^\s*(chapter|section)\s+([IVXLC]+|\d+)\b.*$", text))
     if len(heads) >= n_sections and 0 <= index - 1 < len(heads):
         a = heads[index - 1].start()
         b = heads[index].start() if index < len(heads) else len(text)
         return text[a:b]
-    per = len(text) / max(n_sections, 1)
-    pad = per * 0.35                      # generous overlap; the anchor pass trims it
-    a = max(0, int((index - 1) * per - pad))
-    b = min(len(text), int(index * per + pad))
+
+    total = sum(durations.values()) if durations else 0.0
+    if durations and total > 0 and index in durations:
+        before = sum(d for i, d in durations.items() if i < index)
+        f0, f1 = before / total, (before + durations[index]) / total
+    else:
+        per = 1.0 / max(n_sections, 1)
+        f0, f1 = (index - 1) * per, index * per
+
+    span = f1 - f0
+    # Pad relative to this section's own span, with a floor: a 2.6-minute section inside
+    # an 11-hour book has a span so small that a purely relative pad cannot absorb any
+    # drift in reading pace.
+    pad = max(span * 0.35, 0.01)
+    a = max(0, int((f0 - pad) * len(text)))
+    b = min(len(text), int((f1 + pad) * len(text)))
     return text[a:b]
 
 
@@ -281,6 +306,18 @@ def main() -> int:
     # re-enter the same three values a thousand times.
     readers = {int(sec["index"]): sec.get("reader")
                for sec in (book.get("sections") or []) if sec.get("index")}
+    # Per-section playtime drives the text split (see chapter_slice). This must cover
+    # EVERY section in the book, not just the ones being aligned now — the fraction is
+    # cumulative over the whole work, so a --sections 3-5 run still needs to know how
+    # long sections 1 and 2 were.
+    durations: dict[int, float] = {}
+    for sec in (book.get("sections") or []):
+        try:
+            durations[int(sec["index"])] = float(sec.get("playtime") or 0)
+        except (TypeError, ValueError, KeyError):
+            continue
+    if durations and not all(durations.values()):
+        durations = {}                     # a zero anywhere makes the cumsum a lie
     n_written = 0
 
     for mp3 in present:
@@ -295,7 +332,7 @@ def main() -> int:
             n_sec = int(book.get("num_sections") or 0) or len(present)
         except (TypeError, ValueError):
             n_sec = len(present)
-        chap = chapter_slice(full_text, idx, n_sec)
+        chap = chapter_slice(full_text, idx, n_sec, durations)
         sents = split_sentences(chap)
         canon_words, sent_of = [], []
         for si, s in enumerate(sents):

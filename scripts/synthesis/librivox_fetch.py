@@ -61,28 +61,114 @@ def fetch(url: str, timeout: int = 60) -> bytes:
         return fh.read()
 
 
+_ROMAN = {"i": 1, "v": 5, "x": 10, "l": 50, "c": 100, "d": 500, "m": 1000}
+
+
+def _roman(tok: str) -> str:
+    """'viii' -> '8'. Anything that is not a clean roman numeral passes through.
+
+    LibriVox slugs and titles disagree on numeral form within one series: the slug
+    `...-volume-8-...` belongs to the title "World's Famous Orations, Vol. VIII". Volume
+    number is the ONLY thing distinguishing volumes of an anthology by one author, so
+    without this the series cannot be resolved at all.
+    """
+    if not tok or any(c not in _ROMAN for c in tok):
+        return tok
+    total = prev = 0
+    for c in reversed(tok):
+        v = _ROMAN[c]
+        total += -v if v < prev else v
+        prev = max(prev, v)
+    return str(total) if total else tok
+
+
+def _words(s: str) -> list[str]:
+    """Normalized comparison tokens.
+
+    Apostrophes are DELETED rather than spaced (so "World's" -> "worlds", matching the
+    slug) — the same rule book_router already uses. A leading article is dropped because
+    slugs carry one the titles often omit, and "vol"/"volume" and roman numerals are
+    folded so an anthology's volumes compare.
+    """
+    w = re.sub(r"[^\w\s]", " ", (s or "").replace("'", "").replace("’", "")).lower().split()
+    if w and w[0] in ("the", "a", "an"):
+        w = w[1:]
+    return [_roman("vol" if t == "volume" else t) for t in w]
+
+
 def api_book(url_or_title: str) -> dict | None:
-    """Resolve a LibriVox project, preferring an id lookup over a title search."""
+    """Resolve a LibriVox project from its URL slug.
+
+    The API's `title=^...` is a LITERAL prefix match against the stored title, so a slug
+    can never reproduce a title that carries punctuation. "Speeches: Literary and Social"
+    slugs to `speeches-literary-and-social-by-charles-dickens`, and both
+    `^speeches literary and social` and the two-word `^speeches literary` miss on the
+    colon — which is why this returned "no match" for Dickens and for two of the three
+    World's Famous Orations volumes on 2026-08-01.
+
+    So the query is deliberately SHORT and the real matching happens client-side on
+    punctuation-stripped words. Tiers narrow the candidate set; they do not decide.
+
+    The old blind `return books[0]` is gone. It was the same defect already fixed in
+    book_router: with a one-word query "^Speeches" the first result is *Speeches Against
+    Catilina*, so asking for Dickens would have silently fetched Cicero. A wrong project
+    is far worse than no project — the caller can warn, but it cannot detect this.
+    """
     slug = urllib.parse.urlparse(url_or_title).path.strip("/").split("/")[-1] \
         if "librivox.org" in url_or_title else url_or_title
-    q = re.sub(r"-by-.*$", "", slug).replace("-", " ").strip()
-    for params in ({"title": f"^{q}", "limit": 50}, {"title": f"^{' '.join(q.split()[:2])}",
-                                                     "limit": 50}):
-        u = API + "?" + urllib.parse.urlencode({**params, "extended": 1, "format": "json"})
+    title_part, _, author_part = slug.partition("-by-")
+    want = _words(title_part.replace("-", " "))
+    want_author = _words(author_part.replace("-", " "))
+    if not want:
+        return None
+
+    # Query and comparison are deliberately different alphabets. `want` is normalized for
+    # COMPARING; the query must use RAW slug text, because `title=^` is literal against the
+    # stored title. And the slug has already lost punctuation the title keeps, so a whole
+    # token can be unmatchable: "World's Famous Orations" slugs to `worlds-...`, and
+    # `^worlds` matches nothing. Truncating the first token to a character prefix restores
+    # it — `^world` does match. Leading articles are tried both ways for the same reason.
+    raw = re.sub(r"[^\w\s]", " ", title_part.replace("-", " ")).lower().split()
+    heads = [raw]
+    if raw and raw[0] in ("the", "a", "an"):
+        heads.append(raw[1:])
+    queries: list[str] = []
+    for toks in heads:
+        for n in (len(toks), 3, 2, 1):
+            if 0 < n <= len(toks):
+                queries.append(" ".join(toks[:n]))
+        if toks:
+            queries += [toks[0][:k] for k in (6, 5, 4) if len(toks[0]) > k]
+
+    tried: list[str] = []
+    for q in queries:
+        if not q or q in tried:
+            continue
+        tried.append(q)
+        u = API + "?" + urllib.parse.urlencode(
+            {"title": f"^{q}", "limit": 500, "extended": 1, "format": "json"})
         try:
             books = json.loads(fetch(u)).get("books") or []
-        except urllib.error.HTTPError as exc:
-            if exc.code != 404:
+        except (urllib.error.HTTPError, json.JSONDecodeError) as exc:
+            if isinstance(exc, urllib.error.HTTPError) and exc.code != 404:
                 raise
             books = []
         time.sleep(SLEEP)
-        want = re.sub(r"[^\w\s]", " ", q.lower()).split()
-        for b in books:
-            t = re.sub(r"[^\w\s]", " ", (b.get("title") or "").lower()).split()
-            if t == want or t[: len(want)] == want:
-                return b
-        if books:
-            return books[0]
+        cand = [b for b in books
+                if (lambda t: t == want or t[: len(want)] == want)(_words(b.get("title")))]
+        if len(cand) == 1:
+            return cand[0]
+        if len(cand) > 1 and want_author:
+            # Author is a TIE-BREAKER, never a filter. For an anthology the slug names
+            # the EDITOR while the API lists the individual orators — requiring agreement
+            # rejected World's Famous Orations Vols VIII and X, whose titles already
+            # disambiguate them by volume number. Only reach for the author when the
+            # title genuinely leaves more than one candidate standing.
+            narrowed = [b for b in cand if set(want_author) & set(_words(" ".join(
+                f"{a.get('first_name', '')} {a.get('last_name', '')}"
+                for a in (b.get("authors") or []))))]
+            if len(narrowed) == 1:
+                return narrowed[0]
     return None
 
 

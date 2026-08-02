@@ -67,11 +67,14 @@ from __future__ import annotations
 import argparse
 import collections
 import csv
+import datetime
 import json
 import os
 import pathlib
 import shutil
 import tempfile
+
+DATE = datetime.date.today().isoformat()   # was hard-coded "2026-08-01"
 
 DATASETS = pathlib.Path("/data/model-training/datasets")
 RATINGS = DATASETS / "sonora-expressive-registers/ratings.csv"
@@ -133,6 +136,9 @@ def main() -> int:
     ap.add_argument("--campaign", required=True, help="dir under datasets/, e.g. librivox-v1")
     ap.add_argument("--stage", type=int, default=0, help="how many clips to stage")
     ap.add_argument("--status", action="store_true")
+    ap.add_argument("--seed-ear", action="store_true",
+                    help="register the minimum needed to unlock a new (reader, title): "
+                         "one mid clip per unconfirmed pair, plus every QC-flagged clip")
     ap.add_argument("--apply", action="store_true", help="write; otherwise dry-run")
     args = ap.parse_args()
 
@@ -153,27 +159,73 @@ def main() -> int:
         print(f"         {b}: {n}")
     print(f"STAGED {len(staged_ids)} across {len(log['runs'])} run(s)")
     print(f"POOLED {len(unstaged)} still available")
-    if args.status or not args.stage:
+    if args.status or (not args.stage and not args.seed_ear):
         for run in log["runs"]:
             print(f"  run {run['run']}: {run['count']} clips, "
                   f"reading-order range {run['range'][0]}..{run['range'][1]} ({run['date']})")
         return 0
 
-    take = unstaged[: args.stage]
+    if args.seed_ear:
+        # THE DEADLOCK THIS BREAKS
+        # ------------------------
+        # stage_pool refuses to stage a (reader, title) with no ear-confirmed attributes
+        # ([[new-reader-ear-rule]]). pick_audit_subset can only queue clips that are
+        # ALREADY rows in ratings.csv. And stage_pool is the only thing that writes rows
+        # for this lane. So a brand-new book could never reach the ear at all: the first
+        # audition was unreachable by construction. Found on the first Speech-lane book,
+        # 2026-08-02 — the pool/staging split created it and nothing had exercised it yet.
+        #
+        # The seed is deliberately the MINIMUM that unlocks propagation: one clip per
+        # unconfirmed pair, plus every QC-flagged clip (which is owed an ear regardless of
+        # source or tier, [[qc-gate-mandatory]]). No tags are written — the whole point is
+        # that the ear supplies them.
+        pairs: dict[tuple[str, str], list[dict]] = collections.defaultdict(list)
+        for r in unstaged:
+            pairs[(r.get("reader") or "?", r.get("book") or "?")].append(r)
+        seed: list[dict] = []
+        for pair, recs in sorted(pairs.items()):
+            if confirmed_tags(recs[0]):
+                print(f"  {pair[0]} / {pair[1]}: already ear-confirmed, no seed needed")
+                continue
+            mid = recs[len(recs) // 2]        # mid, not an edge — edges are the ragged ones
+            seed.append(mid)
+            print(f"  {pair[0]} / {pair[1]}: {len(recs)} pooled -> seeding 1 ({mid['id']})")
+        extra = [r for r in unstaged if r["id"] in flagged and r not in seed]
+        for r in extra:
+            print(f"  + QC-flagged, owed an ear regardless: {r['id']}")
+        take = seed + extra
+        if not take:
+            print("nothing to seed — every pair is confirmed and no clip is QC-flagged")
+            return 0
+    else:
+        take = unstaged[: args.stage]
     if not take:
         print("nothing left to stage")
         return 0
     order = {r["id"]: i for i, r in enumerate(pool)}
     rng = [order[take[0]["id"]], order[take[-1]["id"]]]
     n_flag = sum(1 for r in take if r["id"] in flagged)
-    tags = confirmed_tags(take[0])
-    print(f"\nstaging {len(take)} clips, reading-order {rng[0]}..{rng[1]}")
-    print(f"  tags from the ear-confirmed profile: {tags or '(NONE — refusing)'}")
-    print(f"  {len(take)-n_flag} enter as keep; {n_flag} carry a QC finding -> unaudited")
-    if not tags:
-        print("  !! no confirmed (reader, title) profile — audition one clip first "
-              "([[new-reader-ear-rule]])")
-        return 1
+    # Tags are resolved PER CLIP, not once from take[0]. A staging run can span two books
+    # (the pool is sorted by book, then reading order), and one book's confirmed profile
+    # must never be written onto another's clips.
+    tags_of = {r["id"]: confirmed_tags(r) for r in take}
+    if args.seed_ear:
+        print(f"\nseeding {len(take)} clips for the ear — NO tags, all unaudited")
+        print("  this is the minimum that unlocks propagation; it is not a staging run")
+    else:
+        untagged = [r for r in take if not tags_of[r["id"]]]
+        print(f"\nstaging {len(take)} clips, reading-order {rng[0]}..{rng[1]}")
+        shown = {k: v for k, v in list(tags_of.values())[0].items()} if tags_of else {}
+        print(f"  tags from the ear-confirmed profile: {shown or '(NONE — refusing)'}")
+        print(f"  {len(take)-n_flag} enter as keep; {n_flag} carry a QC finding -> unaudited")
+        if untagged:
+            pairs = sorted({(r.get('reader') or '?', r.get('book') or '?')
+                            for r in untagged})
+            print(f"  !! {len(untagged)} clips have no confirmed (reader, title) profile:")
+            for p in pairs:
+                print(f"       {p[0]} / {p[1]}")
+            print("     seed the ear first:  --seed-ear --apply   ([[new-reader-ear-rule]])")
+            return 1
     if not args.apply:
         print("\nDRY RUN — pass --apply to write")
         return 0
@@ -188,14 +240,16 @@ def main() -> int:
         if rec["id"] in have:
             continue
         row = {k: "" for k in hdr}
+        unaudited = args.seed_ear or rec["id"] in flagged
         row.update({
             "campaign": f"book-{args.campaign}", "id": rec["id"],
             "engine": rec.get("engine", "librivox"),
-            "status": "unaudited" if rec["id"] in flagged else "keep",
-            "score": "" if rec["id"] in flagged else "5",
+            "status": "unaudited" if unaudited else "keep",
+            "score": "" if unaudited else "5",
             "link": f"../{args.campaign}/audio/{rec['wav']}",
         })
-        row.update({a: v for a, v in tags.items() if a in hdr})
+        if not args.seed_ear:
+            row.update({a: v for a, v in tags_of[rec["id"]].items() if a in hdr})
         rows.append(row)
         added += 1
     if RATINGS.stat().st_mtime_ns != before:
@@ -214,13 +268,24 @@ def main() -> int:
     os.replace(tmp, str(RATINGS))
 
     log["runs"].append({
-        "run": len(log["runs"]) + 1, "date": "2026-08-01", "count": len(take),
-        "range": rng, "qc_flagged": n_flag, "tags": tags,
+        "run": len(log["runs"]) + 1, "date": DATE, "count": len(take),
+        # A seed is NOT a contiguous reading-order range — it is one clip per pair plus
+        # the QC-flagged. Recording a range for it would misrepresent what was taken and
+        # break the "resume from where staging stopped" contract.
+        "kind": "seed-ear" if args.seed_ear else "stage",
+        "range": None if args.seed_ear else rng,
+        "qc_flagged": n_flag,
+        "tags": None if args.seed_ear else {i: t for i, t in tags_of.items() if t},
         "ids": [r["id"] for r in take],
     })
     log_path.write_text(json.dumps(log, indent=1, ensure_ascii=False), encoding="utf-8")
-    print(f"\nstaged {added} new rows into ratings.csv; {len(pool)-len(staged_ids)-len(take)} "
-          f"left in the pool")
+    left = len(pool) - len(staged_ids) - len(take)
+    if args.seed_ear:
+        print(f"\nseeded {added} clips into ratings.csv as unaudited; {left} still pooled")
+        print("  audition them, then:  reader_profile.py --learn --apply")
+        print("  then stage the rest:  stage_pool.py --campaign <c> --stage N --apply")
+    else:
+        print(f"\nstaged {added} new rows into ratings.csv; {left} left in the pool")
     print(f"  recorded in {log_path}")
     return 0
 
