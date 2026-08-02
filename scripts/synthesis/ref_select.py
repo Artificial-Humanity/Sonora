@@ -5,21 +5,38 @@ certified dataset (gender parse + intended-VAT proximity + duration window +
 casting-faithful engine preference). This is the production home of the logic
 piloted in make_v3d_bank.py.
 
-Known limitation (v3d/v3e finding, 2026-07-23): the current reference pool is
-own-synthesis keeps whose heritage skews young — age fidelity is bounded by the
-pool, not the cloning engine (measured: render-vs-reference dF0 ~ +1-3%).
-Real-speech pools + measured age norms (casting-attribute-norms brief) are the
-upgrade path; swap POOL_PATH when they land.
+The v3d/v3e limitation this was written under — "the pool is own-synthesis keeps
+whose heritage skews young; age fidelity is bounded by the pool, not the cloning
+engine" — is RESOLVED as of 2026-08-02. The upgrade this docstring asked for
+(real-speech pools) landed: `reference-pool-v2` is 243 LibriTTS-R references, one
+per speaker, merged with the 193 synthetic clips whose expressive registers still
+have no real-audio equivalent. Built by `build_reference_pool.py`.
 """
 import json
 import math
 import re
 from pathlib import Path
 
-POOL_PATH = Path("/data/model-training/datasets/sonora-expressive-registers/v1/metadata.jsonl")
+# v2 (2026-08-02). v1 was 193 clips, ALL synthetic, from moss85/qwen/dia/longcat —
+# and three of those four engines are retired, so we were cloning voices for the
+# current five from clips made by engines we no longer use. Of 16 narration-register
+# references only 4 came from a live engine, and the narration lanes exhausted the
+# male side mid-build. v2 takes neutral_narration from 16 to 259 and its gender
+# balance from 6 F / 10 M to 120 F / 123 M. v1 is untouched on disk.
+POOL_PATH = Path("/data/model-training/datasets/reference-pool-v2/metadata.jsonl")
 POOL_ROOT = POOL_PATH.parent
 ACOUSTICS_PATH = POOL_ROOT / "pool_acoustics.json"
-ENGINE_PREF = {"moss85": 0.0, "longcat": 0.05, "qwen": 0.15, "dia": 0.3}
+# Lower is preferred. `libritts-r` is NEGATIVE, and that is the half of the pool
+# switch that actually does the work: an unlisted engine defaults to 0.2, so real
+# speech would have ranked BELOW moss85 (0.0) and longcat (0.05) — both retired.
+# Measured over 18 narration casts against the merged pool: unlisted gave
+# moss85 9 / longcat 3 / libritts-r 6; at -0.10 it gives libritts-r 18. Building
+# the pool without this line leaves two thirds of narration casting on engines we
+# do not use. Real recorded speech is the better voice reference on its face — the
+# synthetic entries are kept for registers real audio does not yet cover, not
+# because they are preferable.
+ENGINE_PREF = {"libritts-r": -0.10, "moss85": 0.0, "longcat": 0.05,
+               "qwen": 0.15, "dia": 0.3}
 
 # Age is carried by the reference's acoustics (v3d/v3e finding: renders copy the
 # reference F0 register within ~2%), so the design's age band maps to an F0
