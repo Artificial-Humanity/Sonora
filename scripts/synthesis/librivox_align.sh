@@ -19,8 +19,14 @@ GPU="--device /dev/kfd --device /dev/dri --security-opt seccomp=unconfined --gro
 IMG=rocm/pytorch:latest
 mkdir -p "$OUT"
 
+# Value-less -e forwards from this shell's environment instead of writing the
+# token into the docker argv, where `ps` and `docker inspect` expose it.
 HF_ENV=""
-[ -n "${HF_TOKEN:-}" ] && HF_ENV="-e HF_TOKEN=$HF_TOKEN -e HUGGING_FACE_HUB_TOKEN=$HF_TOKEN"
+if [ -n "${HF_TOKEN:-}" ]; then
+  export HF_TOKEN
+  export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+  HF_ENV="-e HF_TOKEN -e HUGGING_FACE_HUB_TOKEN"
+fi
 
 echo "== librivox align =="
 docker run --rm $GPU $HF_ENV -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c "
