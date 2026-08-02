@@ -103,6 +103,19 @@ TIERS = {
 ENGINE_TIER = {
     "qwen": "trusted", "chatterbox": "trusted",
     "moss_vg": "scrutinized", "zonos": "scrutinized",
+    # Everything below was riding on DEFAULT_TIER when that default was
+    # "normal". Naming them keeps their measured tier explicit now that the
+    # default is conservative — otherwise tightening the default would have
+    # silently promoted 15 established engines to 100%-heard and multiplied
+    # the audit load, which is not what the onboarding rule asks for. The rule
+    # is about engines with NO track record; these have one.
+    "orpheus": "normal",        # 80% keep / mean 4.49 once `tara` is excluded
+    "vibevoice": "normal", "dia": "normal", "moss85": "normal",
+    "longcat": "normal",
+    # Real human audio and licensed corpora: no engine drift to sample for.
+    # The new-reader ear rule governs librivox, not this tier table.
+    "librivox": "normal", "libritts-r": "normal", "emilia-yodas": "normal",
+    "scm-spike-v1": "normal",
 }
 # Unknown engines fall to the CONSERVATIVE tier, not the folding one. A brand-new
 # engine has no measured drift rate, so "normal" handed it ride-along folding
