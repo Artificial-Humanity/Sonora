@@ -219,6 +219,21 @@ fi
 # quietly queueing ungated clips — an ungated batch is exactly how a 3.1 s truncation
 # reached the ear, and how a clip missing 27 of its 47 words got scored 5.
 CAMPAIGN_DIR="$(dirname "$OUT")"
+# The layout the gate assumes is <campaign>/<engine-out>/, so that
+# `<campaign>/*/ *_manifest.jsonl` matches this campaign and nothing else. A
+# single-level OUT (e.g. /data/model-training/datasets/foo-v1) makes
+# CAMPAIGN_DIR the datasets ROOT: the gate then globs every campaign at once
+# and drops qc_measures.jsonl in the shared root. newscaster-v1 did exactly
+# this on 2026-08-02 and only stayed correct because it happened to be the
+# one campaign with top-level manifests.
+DATASETS_ROOT="/data/model-training/datasets"
+if [ "$CAMPAIGN_DIR" = "$DATASETS_ROOT" ]; then
+  echo "!! OUT is a single-level campaign dir ($OUT), so the QC campaign dir"
+  echo "!! would be the datasets root — the gate would sweep every campaign"
+  echo "!! and write qc_measures.jsonl into the shared root."
+  echo "!! Render into <campaign>/<engine-out>, e.g. $OUT/renders" >&2
+  exit 2
+fi
 echo "== qc gate =="
 QC_MEASURES=""
 if ! "$PY" "$SONORA/scripts/synthesis/qc_gate.py" --campaign-dir "$CAMPAIGN_DIR"; then
