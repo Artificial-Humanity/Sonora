@@ -79,7 +79,54 @@ DATE = datetime.date.today().isoformat()   # was hard-coded "2026-08-01"
 DATASETS = pathlib.Path("/data/model-training/datasets")
 RATINGS = DATASETS / "sonora-expressive-registers/ratings.csv"
 PROFILES = DATASETS / "reader_profiles.json"
+LEDGER = DATASETS / "books_ledger.json"
 ATTRS = ("gender", "age", "accent")
+LANES = ("Newscaster", "Documentary", "Neutral", "Dialogue", "Speech")
+
+
+def ledger() -> dict:
+    return json.loads(LEDGER.read_text(encoding="utf-8")) if LEDGER.is_file() else {}
+
+
+def ledger_key_for(rec: dict, led: dict) -> str:
+    """The ledger key for a manifest record, '' if none.
+
+    The manifest's own `ledger_key` is NOT canonical. librivox_fetch writes `lv:<slug>`,
+    while book_router keys the ledger by Gutenberg etext-id when one exists — Dickens's
+    *Speeches* is `pg:824` in the ledger and `lv:speeches-literary-and-social-...` in the
+    manifest, so a direct lookup misses. The librivox project URL is carried by both and
+    identifies the same project either way, so it is the reliable join.
+
+    (The right long-term fix is for librivox_fetch to write the canonical key; until then
+    every consumer joining these two files needs this.)
+    """
+    k = rec.get("ledger_key") or ""
+    if k in led:
+        return k
+    url = (rec.get("librivox_url") or "").rstrip("/")
+    if url:
+        for key, e in led.items():
+            if key != "_doc" and (e.get("url") or "").rstrip("/") == url:
+                return key
+    return ""
+
+
+def homogeneous_delivery(rec: dict, led: dict | None = None) -> str:
+    """Title-level delivery, or '' — see --mark-delivery for why this exists.
+
+    Delivery is normally a PER-CLIP ear judgement and never propagates: it is the
+    mix-balance axis, a statement about how a passage was read, and it genuinely varies
+    across a novel. A collection of speeches is a different object. Every section of
+    Dickens's *Speeches: Literary and Social* is a speech; the title itself carries the
+    delivery, and asking the ear the same question 300 times spends it on something the
+    source already answers. Owner agreed to this amendment 2026-08-02.
+
+    It is an explicit MARK, never an inference. Nothing here guesses homogeneity from
+    a title or a genre — `--mark-delivery` writes it, and only after the ear has already
+    said the same thing about a clip from that title.
+    """
+    led = led if led is not None else ledger()
+    return (led.get(ledger_key_for(rec, led)) or {}).get("delivery_homogeneous") or ""
 
 
 def load_pool(campaign_dir: pathlib.Path) -> list[dict]:
@@ -136,6 +183,10 @@ def main() -> int:
     ap.add_argument("--campaign", required=True, help="dir under datasets/, e.g. librivox-v1")
     ap.add_argument("--stage", type=int, default=0, help="how many clips to stage")
     ap.add_argument("--status", action="store_true")
+    ap.add_argument("--mark-delivery", metavar="LANE", choices=LANES,
+                    help="mark every title in this campaign as delivery-homogeneous in "
+                         "LANE, so staging propagates it. Refused unless the ear has "
+                         "already said the same about a clip from that title.")
     ap.add_argument("--seed-ear", action="store_true",
                     help="register the minimum needed to unlock a new (reader, title): "
                          "one mid clip per unconfirmed pair, plus every QC-flagged clip")
@@ -159,6 +210,51 @@ def main() -> int:
         print(f"         {b}: {n}")
     print(f"STAGED {len(staged_ids)} across {len(log['runs'])} run(s)")
     print(f"POOLED {len(unstaged)} still available")
+    if args.mark_delivery:
+        # The mark PROPAGATES a judgement the ear has already made; it never asserts a new
+        # one. So it is checked against every audited clip from the title, and a single
+        # disagreement refuses the whole mark — disagreement is the evidence that the
+        # title is not homogeneous, which is exactly the thing being claimed.
+        with RATINGS.open(newline="", encoding="utf-8") as fh:
+            heard = {r["id"]: (r.get("delivery") or "").strip()
+                     for r in csv.DictReader(fh)
+                     if (r.get("status") or "") not in ("unaudited", "")}
+        by_title: dict[str, dict] = {}
+        for r in pool:
+            by_title.setdefault(r.get("book") or "?", r)
+        led = ledger()
+        ok = True
+        for title, rec in sorted(by_title.items()):
+            said = {heard[r["id"]] for r in pool
+                    if (r.get("book") or "?") == title and heard.get(r["id"])}
+            key = ledger_key_for(rec, led)
+            if not said:
+                print(f"  !! {title}: no audited clip yet — audition one first")
+                ok = False
+            elif said != {args.mark_delivery}:
+                print(f"  !! {title}: the ear said {sorted(said)}, not "
+                      f"{{{args.mark_delivery}}} — not homogeneous, refusing")
+                ok = False
+            elif not key:
+                print(f"  !! {title}: no ledger entry matches "
+                      f"{rec.get('librivox_url') or rec.get('ledger_key')} to mark")
+                ok = False
+            else:
+                print(f"  {title}: ear agrees ({args.mark_delivery}) -> "
+                      f"{key}.delivery_homogeneous")
+        if not ok:
+            return 1
+        if not args.apply:
+            print("\nDRY RUN — pass --apply to write the ledger")
+            return 0
+        for title, rec in by_title.items():
+            k = ledger_key_for(rec, led)
+            led[k]["delivery_homogeneous"] = args.mark_delivery
+            led[k]["delivery_marked"] = DATE
+        LEDGER.write_text(json.dumps(led, indent=1, ensure_ascii=False), encoding="utf-8")
+        print(f"\nmarked {len(by_title)} title(s) in {LEDGER}")
+        return 0
+
     if args.status or (not args.stage and not args.seed_ear):
         for run in log["runs"]:
             print(f"  run {run['run']}: {run['count']} clips, "
@@ -209,6 +305,7 @@ def main() -> int:
     # (the pool is sorted by book, then reading order), and one book's confirmed profile
     # must never be written onto another's clips.
     tags_of = {r["id"]: confirmed_tags(r) for r in take}
+    led_cache = ledger()
     if args.seed_ear:
         print(f"\nseeding {len(take)} clips for the ear — NO tags, all unaudited")
         print("  this is the minimum that unlocks propagation; it is not a staging run")
@@ -250,6 +347,9 @@ def main() -> int:
         })
         if not args.seed_ear:
             row.update({a: v for a, v in tags_of[rec["id"]].items() if a in hdr})
+            lane = homogeneous_delivery(rec, led_cache)
+            if lane and "delivery" in hdr:
+                row["delivery"] = lane
         rows.append(row)
         added += 1
     if RATINGS.stat().st_mtime_ns != before:
