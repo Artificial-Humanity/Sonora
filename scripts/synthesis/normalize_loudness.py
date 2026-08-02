@@ -47,7 +47,7 @@ beside it before being rewritten, and the applied gain is recorded in
 re-running after adding one engine to a bank does not re-gain the rest.
 
 Usage:
-    uv run normalize_loudness.py --dir <bank_dir> [--target -23.0] [--dry-run]
+    .venv/bin/python scripts/synthesis/normalize_loudness.py --dir <bank_dir> [--target -23.0] [--dry-run]
 """
 import argparse
 import json

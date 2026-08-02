@@ -27,8 +27,8 @@ SEVERITY. `fail` rejects the passage; `warn` flags it for a human. Nothing here 
 rewrites text — a QC pass that edits its input cannot be trusted to report on it.
 
 Usage:
-    uv run qc_passages.py --bank <bank.json> [--json report.jsonl] [--write-clean out.json]
-    uv run qc_passages.py --chunks <chunks.jsonl>          # book_ingest intermediate
+    .venv/bin/python scripts/synthesis/qc_passages.py --bank <bank.json> [--json report.jsonl] [--write-clean out.json]
+    .venv/bin/python scripts/synthesis/qc_passages.py --chunks <chunks.jsonl>          # book_ingest intermediate
 Exit status is non-zero when any passage fails, so this can gate a pipeline step.
 """
 import argparse

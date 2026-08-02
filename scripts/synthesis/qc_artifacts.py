@@ -84,7 +84,7 @@ MAX_SPEAKING_RATE in synth_zonos.py, and the `tara` ban in director_skills/orphe
 This script is the net under them, for defects those three do not anticipate.
 
 Usage:
-    uv run qc_artifacts.py --dir <campaign_dir> [--rank] [--json out.jsonl]
+    .venv/bin/python scripts/synthesis/qc_artifacts.py --dir <campaign_dir> [--rank] [--json out.jsonl]
 """
 import argparse
 import glob

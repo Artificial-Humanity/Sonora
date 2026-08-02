@@ -13,8 +13,7 @@ classes, estimated seconds) plus a stdout sizing report by verb class —
 the stage-B go/no-go input.
 
 Usage:
-    uv run --with ebooklib --with beautifulsoup4 --with lxml \
-        python scripts/mine_quote_candidates.py \
+    .venv/bin/python scripts/mine_quote_candidates.py \
         --url https://standardebooks.org/ebooks/robert-hugh-benson/the-necromancers \
         --out /data/model-training/datasets/book-prose/necromancers
 """

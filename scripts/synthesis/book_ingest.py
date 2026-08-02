@@ -14,8 +14,7 @@ PROTOTYPE NOTES
   `content`, give generous num_predict).
 
 Run:
-  uv run --with ebooklib --with beautifulsoup4 --with lxml --with pysbd \
-    Sonora/scripts/synthesis/book_ingest.py --url <SE url> --out <dir> [--dry-run] [--max-per-type N]
+  .venv/bin/python scripts/synthesis/book_ingest.py --url <SE url> --out <dir> [--dry-run] [--max-per-type N]
 """
 import argparse
 import json

@@ -10,7 +10,7 @@ campaign in the Auditions app (clip + inline projection in the note).
 Outputs under /data/model-training/sonora/markup_prep/spike_v0/:
   scm_rows.jsonl   one SCM sidecar per clip + verifier verdicts
   report.json      schema-valid rate, VAT verify rate, register recovery
-Run:  uv run python scripts/markup/tag_spike.py [--model gemma-4-26b-a4b-qat]
+Run:  .venv/bin/python scripts/markup/tag_spike.py [--model gemma-4-26b-a4b-qat]
       [--limit N] [--no-register]
 """
 import argparse

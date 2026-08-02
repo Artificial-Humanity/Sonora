@@ -13,8 +13,7 @@ first, then the most content-expressive of the rest (exclamatory/questioning),
 topped up with plain "said" neutrals as controls.
 
 Usage:
-    uv run --with ebooklib --with beautifulsoup4 --with lxml --with pysbd \
-        python scripts/synthesis/make_quote_pilot_bank.py \
+    .venv/bin/python scripts/synthesis/make_quote_pilot_bank.py \
         --candidates /data/model-training/datasets/book-prose/necromancers/quote_candidates.jsonl \
         --epub /data/model-training/datasets/book-prose/necromancers/book.epub \
         --out /data/model-training/datasets/book-prose/necromancers/quote_pilot_bank.json

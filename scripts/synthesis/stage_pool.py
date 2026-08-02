@@ -59,8 +59,8 @@ QC failure is auditioned regardless of source or tier ([[qc-gate-mandatory]]). A
 a known quantity; a flagged clip inside it is not.
 
 Usage:
-    uv run stage_pool.py --campaign librivox-v1 --status
-    uv run stage_pool.py --campaign librivox-v1 --stage 250 --apply
+    .venv/bin/python scripts/synthesis/stage_pool.py --campaign librivox-v1 --status
+    .venv/bin/python scripts/synthesis/stage_pool.py --campaign librivox-v1 --stage 250 --apply
 """
 from __future__ import annotations
 

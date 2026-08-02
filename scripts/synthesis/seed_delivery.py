@@ -50,8 +50,8 @@ NOT SEEDED, deliberately:
 Existing values are NEVER overwritten — the owner's 10 hand-set tags win.
 
 Usage:
-    uv run seed_delivery.py --ratings <ratings.csv>            # dry run
-    uv run seed_delivery.py --ratings <ratings.csv> --apply
+    .venv/bin/python scripts/synthesis/seed_delivery.py --ratings <ratings.csv>            # dry run
+    .venv/bin/python scripts/synthesis/seed_delivery.py --ratings <ratings.csv> --apply
 """
 import argparse
 import csv

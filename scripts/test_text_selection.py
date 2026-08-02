@@ -16,7 +16,7 @@ which is exactly why it needs a gate instead of an audit.
 Every case below is a REAL text that reached the audit surface. 79 of them did,
 across two independent lanes (book prose and quote-pilot mining).
 
-Run:  uv run scripts/test_text_selection.py
+Run:  .venv/bin/python scripts/test_text_selection.py
 """
 import os
 import sys

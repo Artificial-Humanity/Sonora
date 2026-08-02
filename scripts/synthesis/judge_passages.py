@@ -36,8 +36,8 @@ lesson of the audio work is that a plausible instrument can be confidently wrong
 what it PASSED, blind, before it gates anything.
 
 Usage:
-    uv run judge_passages.py --bank clean.json --model gemma-4-26b-a4b-qat --out judged.jsonl
-    uv run judge_passages.py --bank clean.json --compare gemma-4-e4b-qat,gemma-4-26b-a4b-qat
+    .venv/bin/python scripts/synthesis/judge_passages.py --bank clean.json --model gemma-4-26b-a4b-qat --out judged.jsonl
+    .venv/bin/python scripts/synthesis/judge_passages.py --bank clean.json --compare gemma-4-e4b-qat,gemma-4-26b-a4b-qat
 """
 import argparse
 import json

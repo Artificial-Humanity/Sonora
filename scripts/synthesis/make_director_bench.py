@@ -11,7 +11,7 @@ per model is flagged cold (includes ollama load). Emits the combined bank plus
 director_bench.json (per-call latencies, retries, per-arm summary).
 
 Usage:
-    uv run --no-project python scripts/synthesis/make_director_bench.py \
+    .venv/bin/python scripts/synthesis/make_director_bench.py \
         --v2-bank /data/model-training/datasets/book-prose/necromancers/quote_pilot_v2_bank.json \
         --out-bank /data/model-training/datasets/book-prose/necromancers/quote_pilot_v3_bank.json \
         --out-bench /data/model-training/datasets/book-prose/necromancers/director_bench.json

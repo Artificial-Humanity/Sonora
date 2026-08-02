@@ -33,7 +33,7 @@ for a loudness guard to act on. Peak, RMS, crest and short-term loudness all ove
 between the doubled and clean groups; F0 was the only clean separator measured.
 
 Usage:
-    uv run make_artifact_probe.py --out-dir /data/model-training/datasets
+    .venv/bin/python scripts/synthesis/make_artifact_probe.py --out-dir /data/model-training/datasets
 """
 import argparse
 import json

@@ -29,7 +29,7 @@ instrument-rejects/ear-keeps cell may indict the DIRECTOR's labels rather than
 the engine or the instrument — check which before concluding anything.
 
 Usage:
-    uv run gate_calibration.py --campaign-dir /data/.../revisit-v1 \
+    .venv/bin/python scripts/synthesis/gate_calibration.py --campaign-dir /data/.../revisit-v1 \
         [--verdicts qc_verdicts.per_engine.jsonl] [--keep-score 4]
 """
 import argparse

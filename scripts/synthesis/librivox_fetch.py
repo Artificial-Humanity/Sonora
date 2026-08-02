@@ -31,8 +31,8 @@ Resumable: an existing, non-empty file of the expected size is left alone, so a 
 run costs only the section it was on.
 
 Usage:
-    uv run scripts/synthesis/librivox_fetch.py --key lv:uneasy-money-by-p-g-wodehouse
-    uv run scripts/synthesis/librivox_fetch.py --url https://librivox.org/... --sections 1-3
+    .venv/bin/python scripts/synthesis/librivox_fetch.py --key lv:uneasy-money-by-p-g-wodehouse
+    .venv/bin/python scripts/synthesis/librivox_fetch.py --url https://librivox.org/... --sections 1-3
 """
 from __future__ import annotations
 

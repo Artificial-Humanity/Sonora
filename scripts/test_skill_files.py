@@ -13,7 +13,7 @@ This turns the load-bearing claims into assertions. It is the red/green half of 
 "write the skill file first" discipline (owner's framing: TDD for the director
 interface) — the half a markdown file cannot provide on its own.
 
-Run:  uv run scripts/test_skill_files.py
+Run:  .venv/bin/python scripts/test_skill_files.py
 Exit: 0 all claims hold; 1 otherwise.
 """
 import os

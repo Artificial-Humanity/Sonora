@@ -32,8 +32,8 @@ weights licences are not recorded anywhere in the repo. Rather than guess one in
 published dataset, this refuses to run and says so. Add the entry once verified.
 
 Usage:
-    uv run publish_tier.py --meta <metadata.jsonl>            # check (default)
-    uv run publish_tier.py --meta <metadata.jsonl> --apply    # backfill missing fields
+    .venv/bin/python scripts/synthesis/publish_tier.py --meta <metadata.jsonl>            # check (default)
+    .venv/bin/python scripts/synthesis/publish_tier.py --meta <metadata.jsonl> --apply    # backfill missing fields
 """
 import argparse
 import json

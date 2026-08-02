@@ -34,7 +34,7 @@ Resumable: each completed line is appended to <out>.partial.jsonl, so a director
 pass that dies at line 47 of 60 does not restart from zero.
 
 Usage:
-    uv run make_revisit_bank.py --out /data/model-training/datasets/revisit-v1/bank.json
+    .venv/bin/python scripts/synthesis/make_revisit_bank.py --out /data/model-training/datasets/revisit-v1/bank.json
 """
 import argparse
 import json

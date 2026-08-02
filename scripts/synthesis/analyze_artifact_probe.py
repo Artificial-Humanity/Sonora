@@ -19,7 +19,7 @@ nothing about the campaign that motivated it.
               casting and drop the ceiling.
 
 Usage:
-    uv run analyze_artifact_probe.py --dir <probe_campaign_dir>
+    .venv/bin/python scripts/synthesis/analyze_artifact_probe.py --dir <probe_campaign_dir>
 """
 import argparse
 import glob

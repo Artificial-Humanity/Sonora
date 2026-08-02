@@ -78,8 +78,15 @@ case-insensitive macOS/Windows.
 
 * **`uv` is the standard for all Python tooling in this organization**: interpreter/version
   management, virtual environments, dependency resolution, and tool execution. Prefer `uv pip`,
-  `uv venv`, `uv run`, `uv sync` (with `pyproject.toml` + `uv.lock`), and `uv tool run` over bare
+  `uv venv`, `uv sync` (with `pyproject.toml` + `uv.lock`), and `uv tool run` over bare
   `pip` / `python -m venv` / `pipx` / conda / poetry.
+* **`uv run` is the one exception, and only for HOST scripts** (owner, 2026-08-01). Invoke them
+  as **`.venv/bin/python scripts/…`**. `uv run` resolves dependencies against the repo
+  `pyproject.toml` and *ignores* the inline PEP 723 block these scripts carry, which is what made
+  four launch attempts fail that day, each on a different missing module. uv still owns the venv —
+  create it with `uv venv`, populate it with `uv pip install --python .venv/bin/python …` — so the
+  standard above is intact; only the invocation changes. Container scripts are unaffected.
+  `tests/test_gate_scripts.py` enforces this for both shell scripts and Python docs.
 * **New work must use uv from the start** — new scripts, containers, CI steps, and docs. Do not
   introduce new `pip install` invocations.
 * **Existing pip usage is legacy** and is being migrated; the catalog of migration points and their

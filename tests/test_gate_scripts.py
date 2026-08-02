@@ -13,6 +13,7 @@ runnable on any machine.
 """
 
 import os
+import re
 import subprocess
 import sys
 
@@ -92,3 +93,40 @@ def test_no_uv_run_in_host_shell_scripts():
                     if "uv run" in stripped:
                         offenders.append(f"{os.path.relpath(path, REPO)}:{i}")
     assert not offenders, ("`uv run` used on the host in: " + ", ".join(offenders))
+
+
+def test_no_uv_run_in_python_docstrings():
+    """The .sh check above missed where the drift actually lived.
+
+    Review finding D-L1: nineteen host scripts still opened with `Run: uv run …`.
+    Nothing executes a docstring, so the shell-script guard never saw them — but a
+    docstring is the copy-paste source, which is exactly how a retired invocation
+    style comes back. Swept 2026-08-02; this keeps it swept.
+
+    `uv` itself is untouched by this: it still creates and populates the venv
+    (`uv pip install --python .venv/bin/python`). Only `uv run` is out, because it
+    resolves against pyproject.toml and ignores the inline PEP 723 blocks these
+    scripts carry.
+    """
+    # Matches a PRESCRIPTION only, and the anchor is what does that work.
+    # `derive_vat_corpus.py` explains at length why `uv run` is wrong here, and
+    # `qc_gate.py` recounts the day it failed — prose about the retired style has
+    # to stay legal, or the guard deletes its own rationale. A command sits at the
+    # head of its line (after a `Run:`/`Usage:`/`$` lead-in); an explanation
+    # mentions it mid-sentence, usually in backticks.
+    invocation = re.compile(
+        r"^\s*(?:[Rr]un:|Usage:|\$|#)?\s*`?uv run"
+        r"(?:\s+--\S+(?:\s+\S+)?)*\s+(?:python\b|[\w./-]+\.py)")
+    offenders = []
+    for root, _dirs, files in os.walk(SCRIPTS):
+        for name in files:
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(root, name)
+            with open(path, encoding="utf-8") as f:
+                for i, line in enumerate(f, 1):
+                    if invocation.search(line):
+                        offenders.append(f"{os.path.relpath(path, REPO)}:{i}")
+    assert not offenders, (
+        "`uv run` prescribed in host Python docs: " + ", ".join(offenders)
+        + " — use `.venv/bin/python <path>` instead.")

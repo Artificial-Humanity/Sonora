@@ -26,8 +26,8 @@ Escalation: any stratum with >=2 instrument-rejects out of its clips is flagged
 for full audit in the console report (acceptance-sampling rung).
 
 Run (after qc_gate + eiv_score + qc_verdict have produced qc_verdicts.jsonl):
-  uv run scripts/synthesis/audit_sampler.py --book <book-prose/slug> [--dry-run]
-  uv run scripts/synthesis/audit_sampler.py --all [--dry-run]
+  .venv/bin/python scripts/synthesis/audit_sampler.py --book <book-prose/slug> [--dry-run]
+  .venv/bin/python scripts/synthesis/audit_sampler.py --all [--dry-run]
 
 Deps: numpy, librosa (render F0 for the age trigger), soundfile.
 """

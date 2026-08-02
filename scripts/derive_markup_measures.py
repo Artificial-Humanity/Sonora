@@ -22,7 +22,7 @@ new measurement. Span-level (per-token) measures are NOT here yet: that
 substrate is the cdminix/libritts-r-aligned layer (cleared CC-BY-4.0, not
 on disk) or a forced-alignment pass — see the brief §6.
 
-Run:  uv run python scripts/derive_markup_measures.py
+Run:  .venv/bin/python scripts/derive_markup_measures.py
 """
 import json
 from pathlib import Path

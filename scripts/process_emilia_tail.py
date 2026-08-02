@@ -20,8 +20,7 @@ Fully CPU (multiprocessing, one whisper per worker) — safe alongside GPU
 work. Resumable: clips already in asr.jsonl are skipped.
 
 Usage:
-    uv run --with librosa --with soundfile --with faster-whisper \
-        python scripts/process_emilia_tail.py \
+    .venv/bin/python scripts/process_emilia_tail.py \
         --keeps /data/model-training/datasets/emilia_kept \
         --out /data/model-training/datasets/emilia_kept_24k \
         [--workers 12]

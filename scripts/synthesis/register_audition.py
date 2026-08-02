@@ -22,12 +22,12 @@ non-gendered castings (children, non-human entities) are left blank — the app 
 those as Undefined for the auditor to set by ear.
 
 Run:
-  uv run Sonora/scripts/synthesis/register_audition.py \
+  .venv/bin/python scripts/synthesis/register_audition.py \
       --book /data/model-training/datasets/book-prose/apple-cart [--dry-run]
   # every book under the book-prose root:
-  uv run Sonora/scripts/synthesis/register_audition.py --all [--dry-run]
+  .venv/bin/python scripts/synthesis/register_audition.py --all [--dry-run]
   # or point straight at a manifests dir (what synth_bank.sh passes as its out_dir):
-  uv run Sonora/scripts/synthesis/register_audition.py --audio-dir <out_dir> [--dry-run]
+  .venv/bin/python scripts/synthesis/register_audition.py --audio-dir <out_dir> [--dry-run]
 """
 import argparse
 import csv
