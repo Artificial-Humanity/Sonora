@@ -610,6 +610,12 @@ ORPHEUS_FALLBACK = "jess"
 KNOWN_ENGINES = ("vibevoice", "dia", "qwen", "moss_vg", "moss85",
                  "chatterbox", "zonos", "orpheus", "longcat")
 
+# The delivery lanes that are a NARRATOR reading, as opposed to a character
+# speaking. Kept here rather than imported from ref_select so build_direction has
+# no import-time dependency on the allocation tables — this is a property of the
+# lane vocabulary (ARCHITECTURE §1), which is contract, not of the render mix.
+NARRATION_LANES = ("Neutral", "Documentary", "Newscaster")
+
 CASTING_SYSTEM = (
     "You are the Casting and Delivery Director for an audiobook TTS pipeline. You "
     "write direction for ONE NAMED TTS ENGINE. A skill file for that engine follows; "
@@ -856,8 +862,13 @@ def _merge(vd, ins):
     return head + " " + tail
 
 
-def build_direction(tag, text, dia_guidance=3.0):
+def build_direction(tag, text, dia_guidance=3.0, lane=None):
     """Assemble the per-engine `direction` payload.
+
+    `lane` is the delivery lane (Dialogue / Neutral / Documentary / Newscaster /
+    Speech). Optional, so every existing caller is unaffected; passing it lets this
+    function enforce the lane rules a skill file can only ask for — see the zonos
+    branch, where narration is forced unconditional.
 
     Single source of truth for what each renderer is actually handed — the bank
     builders previously disagreed, and moss85 silently lost its whole voice
@@ -912,8 +923,21 @@ def build_direction(tag, text, dia_guidance=3.0):
         # The emotion vector is silently L1-normalised downstream, so we normalise
         # here too: what the model receives is then exactly what the manifest
         # records, and an audit reading "happiness 0.85" can never again mean 0.616.
+        emotion = _l1(tag.get("emotion"))
+        # NARRATION IS UNCONDITIONAL, ENFORCED — not requested. zonos.md says
+        # `emotion` is omitted on every narration lane "without exception", because
+        # a neutral-dominant vector is the measured cause of the pause-and-rush
+        # instability that broke 5 of 9 narration groups on 2026-07-30 (8% keep on
+        # Neutral against 91% with it off). The director obeys that ~97% of the
+        # time, which is not the same as always: one line of 38 in
+        # delivery-v1-narration-r2 came back `[0,…,0.2,0.8]` — the exact shape.
+        # Leaving it to the prompt makes the rule a wish, and this pipeline has
+        # already learned that lesson once, from a banned voice that stayed the
+        # director's fallback. `lane` is optional so existing callers are unchanged.
+        if emotion is not None and lane in NARRATION_LANES:
+            emotion = None
         return engine, {"design": vd,
-                        "emotion": _l1(tag.get("emotion")),
+                        "emotion": emotion,
                         "pitch_std": _clamp(tag.get("pitch_std"), 20, 150, 45.0),
                         "speaking_rate": _clamp(tag.get("speaking_rate"), 5, 30, 15.0)}
     if engine == "orpheus":

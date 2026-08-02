@@ -1,0 +1,254 @@
+"""Build delivery-v1-narration round 2 — the last two open lanes.
+
+Closes Neutral (+81) and Documentary (+35), the only gaps left in the ratified
+50/30/8/6/6 mix (delivery-mix-campaign.md). Text comes from the five books
+ingested 2026-08-02; labels (V/A/T + register) are inherited from their book banks,
+which pass 1 emits engine-agnostically on purpose.
+
+WHAT MAKES THIS ROUND DIFFERENT, and why it is worth stating: the book banks route
+220 of 220 narration lines to zonos, because pass 1 lets the director pick an engine
+per line and it has a strong opinion about narration. Rendering that as-is would
+make both lanes a single engine's timbre. Allocation here comes from
+`ref_select.ENGINE_MIX_BY_LANE` instead — measured per lane, floored so no engine
+starves, capped so no lane collapses to one voice — and pass 2 is re-run for
+whichever engine each line actually lands on. A qwen line must be cast in qwen's
+language, not handed zonos's numbers.
+
+This is also the end-to-end test the zonos tier decision was waiting on. Every
+prior zonos narration bank had `emotion: null` hand-patched after the fact; here it
+has to come out of `casting_pass` -> `_l1(None)` -> `build_direction` on its own.
+
+    .venv/bin/python scripts/synthesis/make_narration_bank.py            # report
+    .venv/bin/python scripts/synthesis/make_narration_bank.py --apply
+
+Then render with `synth_bank.sh` (which runs the mandatory QC gate), and queue with
+`pick_audit_subset.py`.
+"""
+import argparse
+import collections
+import json
+import os
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+
+import book_ingest as bi  # noqa: E402
+import ref_select  # noqa: E402
+
+BOOKS = pathlib.Path("/data/model-training/datasets/book-prose")
+CAMPAIGN = "delivery-v1-narration-r2"
+OUT_DEFAULT = pathlib.Path("/data/model-training/datasets") / CAMPAIGN
+
+# Lane per book. Documentary is a RENDER style over narration text, so the text only
+# has to INVITE it — third-person exposition does, first-person recollection does
+# not (owner, 2026-08-01: autobiography is "more narrative", i.e. Neutral).
+LANES = {
+    "voyage-of-the-beagle":    "Documentary",   # natural history + travel
+    "conan-stories":           "Neutral",
+    "up-from-slavery":         "Neutral",       # autobiography
+    "franklin-autobiography":  "Neutral",       # autobiography
+    "walden":                  "Neutral",       # first-person recollection
+}
+
+# Renders per lane, sized from the measured gaps at ~90% keep with a little headroom.
+TARGETS = {"Documentary": 45, "Neutral": 96}
+
+# References must be narration-shaped. A dialogue reference drags the read toward
+# performance, which is the opposite of what these lanes want.
+REF_REGISTERS = {"neutral_narration", "narrative", "formal_narrative"}
+
+SEED_BASE = 8200
+
+
+def narration_lines(slug):
+    path = BOOKS / slug / f"{slug}_bank.json"
+    bank = json.load(open(path, encoding="utf-8"))
+    return [l for l in bank["lines"] if l.get("chunk_type") == "narration"]
+
+
+def spread(items, n):
+    """Even spread across the book rather than the first n — a book's opening pages
+    are not representative of its prose, and the ingest already sampled evenly."""
+    if len(items) <= n:
+        return items
+    step = len(items) / n
+    return [items[int(i * step)] for i in range(n)]
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default=str(OUT_DEFAULT))
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--limit", type=int, help="cap lines per book (smoke tests)")
+    args = ap.parse_args()
+
+    # --- pick the text -------------------------------------------------------
+    per_lane = collections.defaultdict(list)
+    for slug, lane in LANES.items():
+        lines = narration_lines(slug)
+        for l in lines:
+            l["_book"] = slug
+        per_lane[lane].append((slug, lines))
+
+    selected = []
+    for lane, books in per_lane.items():
+        want = TARGETS[lane]
+        each = max(1, want // len(books))
+        # INTERLEAVE the books round-robin before the engines are dealt over this
+        # list. Concatenating them instead put each book in one contiguous block,
+        # and since the engine queue is also blocked by engine, every book came out
+        # as a SINGLE engine (conan 24/24 qwen, up-from-slavery 24/24 chatterbox,
+        # franklin 24/24 zonos — measured, first build). That confounds engine with
+        # text perfectly: if pulpy adventure prose keeps at 100% and dense 19th-c
+        # philosophical prose at 70%, nothing in the result can say which caused it.
+        # It is the same confound that made moss_vg's newscaster 20/20 unreadable.
+        picked = [[(lane, slug, l) for l in spread(lines, min(each, args.limit or each))]
+                  for slug, lines in books]
+        for idx in range(max(len(p) for p in picked)):
+            selected.extend(p[idx] for p in picked if idx < len(p))
+        got = sum(1 for s in selected if s[0] == lane)
+        print(f"{lane:12s} {got:3d} lines from {len(books)} book(s), interleaved")
+
+    # --- allocate engines PER LANE, not per line -----------------------------
+    plan = {}
+    for lane in TARGETS:
+        n = sum(1 for s in selected if s[0] == lane)
+        plan[lane] = ref_select.allocate_engines(n, lane=lane)
+        print(f"  {lane:12s} {plan[lane]}")
+
+    # Deal engines out within a lane. `selected` is already interleaved across books
+    # (above), so a blocked engine queue now lands each engine across ALL the lane's
+    # books rather than one book each — which is the point: the frozen-voice
+    # discipline is per (book, engine), and a book that only ever sees one engine
+    # gives the lane no within-book comparison between engines.
+    queues = {lane: [e for e, k in sorted(plan[lane].items(), key=lambda kv: -kv[1])
+                     for _ in range(k)] for lane in plan}
+    for q in queues.values():
+        q.reverse()
+
+    # --- freeze one voice per (book, engine) ---------------------------------
+    # "A book's narration is one voice across hundreds of clips." For the
+    # reference-cloned engines that means a pinned ref; for the instruct engines the
+    # instruct IS the voice, so the persona is frozen from the book's first casting.
+    off_register = {k["id"] for k in ref_select._load_pool()
+                    if k.get("register") not in REF_REGISTERS}
+    pinned, personas, taken = {}, {}, set()
+
+    lines_out, skipped = [], collections.Counter()
+    for i, (lane, slug, src) in enumerate(selected):
+        engine = queues[lane].pop() if queues[lane] else None
+        if engine is None:
+            skipped["no engine left in lane"] += 1
+            continue
+
+        labels = {"V": src["intended"]["V"], "A": src["intended"]["A"],
+                  "T": src["intended"]["T"], "register": src.get("register", "")}
+        cast = bi.casting_pass(src["text"], engine, labels=labels)
+        if cast is None:
+            skipped[f"{engine}: casting_pass failed"] += 1
+            continue
+
+        # Freeze identity. The per-line casting still supplies everything else —
+        # numbers for zonos, exaggeration for chatterbox — so the line is still
+        # directed; only WHO is speaking is held constant.
+        key = (slug, engine)
+        if engine in ("qwen", "moss_vg"):
+            personas.setdefault(key, cast.get("instruct", ""))
+            cast["instruct"] = personas[key]
+        elif engine in ("zonos", "chatterbox"):
+            if key not in pinned:
+                # Distinctness WITHIN a book is the requirement — a book's zonos
+                # narrator should not be its chatterbox narrator, or the two engines
+                # are being compared on the same voice. Distinctness ACROSS books is
+                # only a preference, and hard-excluding every pin globally made it a
+                # requirement: the narration-register pool is 16 clips (10 M / 6 F)
+                # before select_reference applies its own excursion and blacklist
+                # filters, and this round pins 10 voices. It ran out and raised
+                # LookupError mid-build. `used` still biases toward variety; running
+                # out now costs a repeated voice across two books, not the round.
+                same_book = {v for (b, _e), v in pinned.items() if b == slug}
+                try:
+                    _wav, _text, meta = ref_select.select_reference(
+                        cast.get("voice_design", ""), labels, used=taken,
+                        exclude=off_register | same_book)
+                    rid = meta.get("id") if isinstance(meta, dict) else None
+                except LookupError:
+                    rid = None
+                if not rid:
+                    reused = next((v for (b, e2), v in pinned.items() if e2 == engine), None)
+                    if not reused:
+                        skipped[f"{engine}: no narration reference available at all"] += 1
+                        continue
+                    rid = reused
+                    skipped[f"{engine}: reused a pinned ref (pool exhausted)"] += 1
+                pinned[key] = rid
+                taken.add(rid)
+
+        tag = {"engine": engine, **labels, **cast}
+        eng, direction = bi.build_direction(tag, src["text"], lane=lane)
+
+        kept, dropped = ref_select.route_engines(
+            cast.get("voice_design", ""), [eng], lane)
+        if not kept:
+            skipped[f"routed out: {dropped}"] += 1
+            continue
+
+        lines_out.append({
+            "id": f"{slug}_r2_{i:04d}_{eng[:3].upper()}",
+            "engine": eng,
+            "register": src.get("register", "neutral_narration"),
+            "chunk_type": "narration",
+            "intended": src["intended"],
+            "seed": SEED_BASE + i,
+            "text": src["text"],
+            "direction": direction,
+            "intended_delivery": lane,
+            "book": slug,
+            "ref_id": pinned.get((slug, eng)),
+            "source_ref": src.get("source_ref", {}),
+        })
+
+    # --- report --------------------------------------------------------------
+    by = collections.Counter((l["intended_delivery"], l["engine"]) for l in lines_out)
+    print(f"\n{len(lines_out)} lines built" + (f", {sum(skipped.values())} skipped" if skipped else ""))
+    for k, v in sorted(by.items()):
+        print(f"  {k[0]:12s} {k[1]:11s} {v:3d}")
+    for reason, n in skipped.items():
+        print(f"  !! {n} x {reason}")
+
+    z = [l for l in lines_out if l["engine"] == "zonos"]
+    if z:
+        nul = sum(1 for l in z if l["direction"].get("emotion") is None)
+        print(f"\nzonos: {nul}/{len(z)} emotion null "
+              f"({'PASS — director path clean' if nul == len(z) else 'CHECK the rest'})")
+    print(f"pinned refs: {len(pinned)}   frozen personas: {len(personas)}")
+
+    if not args.apply:
+        print("\nreport only — pass --apply to write")
+        return 0
+
+    out = pathlib.Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    bank = {
+        "version": f"{CAMPAIGN}-1",
+        "campaign": CAMPAIGN,
+        "note": ("Round 2 of the narration push: Neutral +81 / Documentary +35, the last "
+                 "two open lanes. Engine allocation from ref_select.ENGINE_MIX_BY_LANE "
+                 "(measured per lane, floored, capped) rather than pass-1's per-line "
+                 "choice, which routed 220/220 narration lines to zonos. Pass 2 re-run "
+                 "per assigned engine. One frozen voice per (book, engine). This is also "
+                 "the end-to-end director-path test for zonos emotion=null."),
+        "license_note": ("Text: Standard Ebooks CC0. Synthetic audio from Apache/MIT "
+                         "teacher models. Director: Gemma 4 (Apache-2.0)."),
+        "lines": lines_out,
+    }
+    path = out / "bank.json"
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(bank, f, indent=2, ensure_ascii=False)
+    print(f"\nwrote {len(lines_out)} lines -> {path}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
