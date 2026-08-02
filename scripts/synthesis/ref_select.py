@@ -277,20 +277,197 @@ ENGINE_MIX_DIALOGUE = {
                            # switched off entirely to render cleanly (unconditional_keys
                            # + {"emotion"}), so the one channel dialogue most needs is
                            # the one channel we must disable. Keeps its 20% of narration.
+                           # ⚠ Measured 2026-08-02: zonos WITH the vector keeps 74%
+                           # (32/43) on Dialogue — bad on narration (8%), only mediocre
+                           # here. Held at 0 anyway because Dialogue is AT TARGET and
+                           # 74% is the worst of the four; revisit if the lane reopens.
 }
+
+
+# --- Layers 2 + 3: measured per-lane weights, with a diversity floor -----------
+# Built 2026-08-02 from every HEARD verdict on a survivor engine in a PRODUCTION
+# campaign (probe/stress/revisit excluded — adversarial by construction), and — the
+# part that changes the answer — with each engine scored on the interface it was
+# actually given.
+#
+#   keep rate (n)   Dialogue    Neutral   Documentary  Newscaster
+#   qwen             81% (161)  100% (38)   100% (19)   100% (27)
+#   chatterbox         —        100% (35)   100% ( 7)      —
+#   zonos  emotion OFF  —        91% (34)   100% (14)    94% (31)
+#   zonos  w/ vector   74% (43)    8% (12)    25% ( 8)      —
+#   orpheus            —         95% (19)      —           —
+#   moss_vg          89% (19)    74% (35)    56% (18)     95% (21)
+#
+# TWO THINGS THIS OVERTURNS.
+#
+# 1. Zonos's headline 31% failure rate was two populations averaged. Conditioned
+#    correctly it is a 93.7% engine (74/79) across all three narration lanes. The
+#    old flat ENGINE_MIX priced it on the average of a bug we have since fixed —
+#    the exact error the onboarding rule names: an engine's failure rate is a
+#    property of the interface until proven otherwise.
+# 2. moss_vg is not uniformly weak; it is lane-shaped. Worst on Documentary (56%),
+#    near-best on Newscaster (95%) — because its documented failure mode (radio-
+#    timbre drift, IVR cadence) stops reading as a defect when the target register
+#    IS a broadcast read. A single global share cannot express that, and the flat
+#    10% both overpaid it on Documentary and underpaid it on Newscaster.
+#
+# WHY THIS IS NOT "ALLOCATE BY KEEP RATE". Ranking share on reliability alone hands
+# the corpus to qwen, and a TEACHER corpus that collapses to one engine's timbre and
+# prosody has failed at its actual job. The objective is usable diversity per unit
+# of the owner's listening time, so:
+#   * MIN_SHARE keeps every eligible engine present — thin cells are how a lane
+#     earns evidence, and a 0% share can never produce the data that would raise it.
+#   * MAX_SHARE_NARRATION caps any one engine, so no narration lane can become a
+#     single voice however well that engine scores.
+# Cells marked (no data) are floor shares placed deliberately TO generate evidence.
+MIN_SHARE = 0.05
+MAX_SHARE_NARRATION = 0.30
+
+ENGINE_MIX_BY_LANE = {
+    # All five clear 74%+; zonos, chatterbox and qwen are the reliable core.
+    "Neutral": {
+        "qwen":       0.25,   # 100% (38)
+        "chatterbox": 0.25,   # 100% (35)
+        "zonos":      0.25,   # 91% (34) with emotion off — was priced at 8%
+        "orpheus":    0.15,   # 95% but n=19; mid share until the n grows
+        "moss_vg":    0.10,   # 74% (35) — the weakest here, held at low share
+    },
+    # moss_vg's documented weak lane; zonos and qwen both perfect.
+    "Documentary": {
+        "qwen":       0.30,   # 100% (19)
+        "zonos":      0.30,   # 100% (14) with emotion off
+        "chatterbox": 0.25,   # 100% but n=7 — real, thin
+        "orpheus":    0.10,   # no data in this lane; share exists to get some
+        "moss_vg":    0.05,   # 56% (18). Floor, not zero — the failure is
+                              # characterised, not mysterious, so a small share
+                              # still tells us whether a skill file fixes it.
+    },
+    # moss_vg's STRONG lane, and the clearest case for lane-conditioning at all.
+    "Newscaster": {
+        "qwen":       0.30,   # 100% (27)
+        "zonos":      0.30,   # 94% (31) with emotion off
+        "moss_vg":    0.25,   # 95% (21) — 2.5x its flat share, earned in-lane
+        "chatterbox": 0.10,   # no data in this lane
+        "orpheus":    0.05,   # no data in this lane
+    },
+    # Deliberately the ratified dialogue mix, near-unchanged: this lane is AT
+    # TARGET, so it is the wrong place to spend renders chasing evidence.
+    "Dialogue": ENGINE_MIX_DIALOGUE,
+}
+
+# Speech routes with Dialogue (DIALOGUE_DELIVERIES) and has NO per-engine evidence
+# — not one heard verdict splits by engine there. It is at target (69/69), so the
+# honest thing is to inherit rather than invent weights for it.
+ENGINE_MIX_BY_LANE["Speech"] = ENGINE_MIX_BY_LANE["Dialogue"]
+
+_NARRATION_LANES = ("Neutral", "Documentary", "Newscaster")
+
+
+def mix_for_lane(lane):
+    """Resolve a delivery lane to its mix. Unknown lanes fall back to ENGINE_MIX."""
+    if not lane:
+        return ENGINE_MIX
+    # "dialogue" (lowercase) is the pre-2026-08-02 caller convention; keep it working.
+    key = {"dialogue": "Dialogue", "speech": "Speech", "neutral": "Neutral",
+           "documentary": "Documentary", "newscaster": "Newscaster"}.get(
+               str(lane).lower(), lane)
+    return ENGINE_MIX_BY_LANE.get(key, ENGINE_MIX)
+
+
+def _validate_mixes():
+    """Fail at import if a lane table breaks its own invariants.
+
+    A weight table is exactly the kind of thing that gets edited by hand under time
+    pressure and silently stops meaning what it says — a share nudged to 0 quietly
+    retires an engine, and nothing anywhere would notice.
+    """
+    problems = []
+    for lane, mix in ENGINE_MIX_BY_LANE.items():
+        total = sum(mix.values())
+        if abs(total - 1.0) > 1e-6:
+            problems.append(f"{lane}: weights sum to {total:.3f}, not 1.0")
+        for engine, w in mix.items():
+            if engine in SET_ASIDE and w > 0:
+                problems.append(f"{lane}: {engine} is SET_ASIDE but has share {w}")
+            if 0 < w < MIN_SHARE - 1e-9:
+                problems.append(f"{lane}: {engine} at {w} is under MIN_SHARE "
+                                f"{MIN_SHARE} — use 0 to retire it, or the floor")
+            if lane in _NARRATION_LANES and w > MAX_SHARE_NARRATION + 1e-9:
+                problems.append(f"{lane}: {engine} at {w} exceeds "
+                                f"MAX_SHARE_NARRATION {MAX_SHARE_NARRATION}")
+    if problems:
+        raise ValueError("ENGINE_MIX_BY_LANE is inconsistent:\n  "
+                         + "\n  ".join(problems))
+
+
+_validate_mixes()
+
+
+# --- Layer 1: what direction channel each engine actually HAS ------------------
+# The direction-relay audit (2026-07-25) established that the engines' input slots
+# are unevenly distributed, and that table has lived in markdown ever since — which
+# means a line whose delivery must be DESCRIBED could be routed to an engine with
+# nowhere to put the description, and the only symptom is a clip that is worse than
+# expected. `build_direction` documents the same contracts, verified against each
+# model's shipped API; this is that knowledge made checkable.
+#
+#   prose      a natural-language instruction reaches the model
+#   numeric    continuous prosody dials (a real, repeatable pacing/pitch control)
+#   coarse     a knob, but not a scale you can direct with — chatterbox's
+#              `exaggeration` is a rate profile, not an emotion selector
+#   reference  voice IDENTITY comes from a reference clip
+#   voice_set  a closed set of named voices, and nothing else
+#   tags       closed inline markup
+#   none       nothing is directable; casting is the whole decision
+ENGINE_CHANNELS = {
+    "qwen":       {"prose"},
+    "moss_vg":    {"prose"},
+    "moss85":     {"prose"},
+    "chatterbox": {"coarse", "reference"},
+    "zonos":      {"numeric", "reference"},
+    "orpheus":    {"voice_set", "tags"},
+    # vibevoice takes text + a reference wav and has NO instruct slot — its
+    # `voice_design` is consumed by OUR casting code, never by the model. That is
+    # exactly the trap this table exists to make visible.
+    "vibevoice":  {"reference"},
+    "dia":        {"punctuation"},
+    "longcat":    {"reference"},
+}
+
+
+def route_engines_for(requires, engines):
+    """Drop engines that lack a channel this line REQUIRES. Returns (kept, dropped).
+
+    `requires` is a set of channel names the line's direction genuinely needs — not
+    a wish list. Ask for "prose" only when the delivery must be described (an
+    accent, a named emotional state, a situational frame); asking for it on every
+    line would collapse the portfolio to qwen and moss_vg and throw away the
+    reference-cloned identity that keeps a character stable across a book.
+    """
+    kept, dropped = [], []
+    for e in engines:
+        have = ENGINE_CHANNELS.get(e, set())
+        missing = set(requires or ()) - have
+        if missing:
+            dropped.append((e, f"no {'/'.join(sorted(missing))} channel — "
+                               f"has {'/'.join(sorted(have)) or 'nothing'}"))
+        else:
+            kept.append(e)
+    return kept, dropped
 
 
 def allocate_engines(n_lines, mix=None, lane=None):
     """Split n_lines across engines by a mix. Returns {engine: count}.
 
-    lane="dialogue" selects ENGINE_MIX_DIALOGUE; anything else keeps ENGINE_MIX. An
-    explicit `mix` still wins, so callers can override either.
+    `lane` selects a measured per-delivery-lane mix (see ENGINE_MIX_BY_LANE);
+    "dialogue" and the five delivery names all resolve. An explicit `mix` still
+    wins, so callers can override either.
 
     Largest-remainder, so the counts always sum to exactly n_lines rather than
     drifting by a clip or two per lane the way independent rounding does.
     """
-    if mix is None and lane == "dialogue":
-        mix = ENGINE_MIX_DIALOGUE
+    if mix is None and lane:
+        mix = mix_for_lane(lane)
     mix = mix or ENGINE_MIX
     mix = {e: w for e, w in mix.items() if w > 0}
     total = sum(mix.values())
@@ -303,7 +480,7 @@ def allocate_engines(n_lines, mix=None, lane=None):
     return out
 
 
-def route_engines(design: str, engines, delivery: str = None):
+def route_engines(design: str, engines, delivery: str = None, requires=None):
     """Drop engines that must not take this casting. Returns (kept, [(engine, why), ...]).
 
     Bank builders call this instead of hand-maintaining per-engine line lists, so the
@@ -313,15 +490,26 @@ def route_engines(design: str, engines, delivery: str = None):
     `delivery` is the mix-balance axis from ratings.csv (Dialogue / Neutral / Newscaster /
     Documentary). Passing it enforces NARRATION_ONLY; omitting it leaves that rule off, so
     existing two-argument callers are unaffected.
+
+    `requires` is the CHANNEL veto (see ENGINE_CHANNELS): the set of direction
+    channels this line genuinely needs. It is checked last so that a casting ban
+    still reports the casting reason — an engine excluded for both should say the
+    stronger thing. Omitting it leaves the rule off, same as `delivery`.
     """
     kept, dropped = [], []
     bright = is_bright_female(design)
+    channel_veto = {}
+    if requires:
+        _, lacking = route_engines_for(requires, engines)
+        channel_veto = dict(lacking)
     for e in engines:
         why = SET_ASIDE.get(e)
         if why is None and bright:
             why = NO_BRIGHT_FEMALE.get(e)
         if why is None and delivery in DIALOGUE_DELIVERIES:
             why = NARRATION_ONLY.get(e)
+        if why is None:
+            why = channel_veto.get(e)
         (dropped.append((e, why)) if why else kept.append(e))
     return kept, dropped
 
