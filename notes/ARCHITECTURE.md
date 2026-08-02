@@ -30,12 +30,29 @@ remain host-side per the exploit-before-train measurement — training owns pitc
 |---|---|---|
 | **Text** | 178-symbol locked IPA vocab; op_g2p lane (OpenPhonemizer dict → DeepPhonemizer TFLite OOV fallback, U+0303 rule); `cleaners=[no_cleaners]`; intersperse-0 | Digits/abbreviations are the **caller's** job (op_g2p does not expand them). espeak is banned from the runtime path. |
 | **Control** | `vat = (valence, energy, tension)`, each float ∈ [−1, 1], 0 = speaker-neutral | Semantics are per-speaker z-scores of the corpus measures (§2). Slot map `{valence:0, energy:1, tension:2}`. Per-utterance today; per-token is the plumbing's native shape (expansion via the duration alignment). |
-| **Delivery** (v2) | one of `{Dialogue, Neutral, Documentary, Newscaster, Speech}` + `unknown`, embedded host-side to a small vector on the same zero-init FiLM path as `vat` | `unknown` ≡ zero vector ≡ v1 behavior, so v1 consumers work unchanged. First implementation: the next training run; de-risked with the §7 playbook (identity-at-init, leakage ≤ 0.2). Vocabulary changes are contract changes. |
+| **Delivery** (v2) | one of `{Dialogue, Neutral, Documentary, Newscaster, Speech}` + `unknown`, embedded host-side to a small vector on the same zero-init FiLM path as `vat` | `unknown` ≡ zero vector ≡ v1 behavior, so v1 consumers work unchanged. First implementation: the next training run; de-risked with the §7 playbook (identity-at-init, leakage ≤ 0.2). Vocabulary changes are contract changes. **Per-utterance today, and the vocabulary is deliberately closed at five — see the embodiment note below.** |
 | **Speaker** | 64-dim float vector | **Never an id.** The mini tier resolves ids→vectors via a host-side table; a future speaker encoder produces the same vector. Nothing downstream may assume a roster. |
 | **Rate** | `length_scale` (1.0 default) | Deliberate: speaking rate is NOT a learned channel. |
 | **Amplification (optional)** | CFG guidance scale `s` on the decoder field; unconditional = vat 0; default 1 (off) | Pure host orchestration — the decoder graph is unchanged, run twice per ODE step and extrapolated. Validated by ear at s = 2–3 **with ≥ 25 ODE steps** (2026-07-16); at 10 steps solver artifacts dominate. Raw out-of-range VAT input saturates — never use input extrapolation. |
 | **Audio interchange** | 80-band mel, 24 kHz, n_fft 1024, hop 256, win 1024, fmin 0, fmax 12000 | Acoustic↔vocoder boundary ([model-decisions.md § Sample rate](model-decisions.md)). Mel normalization stats are corpus properties (shipped in each export's `config.json`), not contract. |
 | **Chunking** | Director chunks on sentence/clause boundaries within the tier's export budget (mini: 256 interspersed tokens / 512 mel frames ≈ 5.46 s) | Model quality does not bind before ~2 min (chunk-size sweep, 2026-07-16) — the budget is an export-shape property. Cross-chunk seams are a Director concern (pause-based joins). |
+
+**Embodiment is NOT a sixth delivery value** (owner, 2026-08-02). An embodiment clip is
+narration in which the narrator voices a character mid-sentence and returns — *"Then Marcus
+jabbed his stick and growled, "This net is mine tonight." And nobody argued."* Its delivery
+does not have a value; it **changes partway through**. Adding it to the vocabulary would
+teach the model that "embodiment" is a uniform manner of speaking, which is the one thing it
+is not, so these clips stay **delivery-blank** (`seed_delivery.py` already refuses to guess
+them) and sit outside the 50/30/8/6/6 percentages.
+
+It is instead the case that forces **span-scoped** delivery, the way the Control row already
+anticipates per-token VAT: the same zero-init FiLM path, expanded through the duration
+alignment, with delivery varying across the utterance. That is a later phase — the clip-level
+channel ships first. The corpus asset is already accruing: an attribution verb (*growled*,
+*rasped*, *whispered*) names both where the span begins and how it should be delivered, which
+makes book prose the cheapest span-labelled data available, and is the same signal the
+quote-mining lane already harvests. Current evidence is 28 rows / 17 keeps at mean 3.71 —
+**untested rather than weak**, since only qwen of those engines is still in the portfolio.
 
 Contract changes bump the version and require an owner call.
 

@@ -198,7 +198,24 @@ delete sections when empty.
 - [ ] **D-L5:** `derive_markup_measures.py` frozen at v2 paths; stores the contiguous v2
       index under `"speaker"` — mis-keying trap for the span-markup spike.
 
-## 9 · Parked dataset decisions
+## 9 · Embodiment — approved, sequenced after the clip-level channel
+
+Owner approved the position 2026-08-02; the reasoning is canon in
+[ARCHITECTURE.md § 1](ARCHITECTURE.md) and is not repeated here.
+
+- [ ] **Embodiment bank across the current five survivor engines**, folded into a
+      narration round rather than run as its own campaign. It settles whether the
+      mean of 3.71 is the MODE or was just the old engines — of the four engines in
+      those 28 rows (qwen 8, longcat 8, libritts-r 10, scm-spike 2) only qwen is
+      still in the portfolio, so we have almost no result rather than a bad one.
+- [ ] **Keep embodiment clips delivery-blank** and outside the 50/30/8/6/6
+      percentages. This is a standing rule, not a task — listed so a future
+      balance pass does not "fix" the blanks.
+- [ ] **Span-FiLM phase (later):** delivery varying across an utterance on the same
+      zero-init path, expanded through the duration alignment. The 17 keeps are the
+      pilot set. Prerequisite: the clip-level delivery channel ships first.
+
+## 10 · Parked dataset decisions
 
 SSOT is `training-sources.md` — not duplicated here. Headlines: the Expresso two-ruling
 conflict (owner call), the other 90% of LibriTTS-R, Hi-Fi TTS parquet→wav conversion,
