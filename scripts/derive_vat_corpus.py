@@ -126,10 +126,10 @@ the manifest as `libritts_r` (permissive). Run from the Sonora repo root:
 """
 
 import argparse
+import hashlib
 import json
 import multiprocessing as mp
 import os
-import random
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -170,7 +170,26 @@ MIN_SECONDS = 1.0
 MAX_SECONDS = 22.0
 SAMPLE_RATE = 24000
 VAL_FRACTION = 0.03
-SEED = 1234
+# SEED is gone with the shuffle it seeded. Leaving an unused knob named `SEED`
+# beside a hash split is an invitation to "fix" reproducibility by changing it.
+# The salt, not a seed, is what re-rolls a hash split. Changing it is a deliberate
+# act with a cost (every prior checkpoint's val set stops being comparable), so it
+# carries the date it was chosen rather than a bare number nobody can date.
+SPLIT_SALT = "sonora-vat-split-20260802"
+
+
+def _in_val(row):
+    """Is this clip in val? Decided by the clip alone, so growth never re-rolls it.
+
+    Keyed on the wav BASENAME, not the full path: LibriTTS-R names are globally
+    unique (`{speaker}_{chapter}_{utt}_{seg}`), and keying on the absolute path
+    would silently re-roll the whole split the day the corpus moves directories —
+    reintroducing exactly the bug this replaces, from a direction nobody would
+    think to look.
+    """
+    clip = os.path.splitext(os.path.basename(row.split("|", 1)[0]))[0]
+    digest = hashlib.blake2b(f"{SPLIT_SALT}:{clip}".encode(), digest_size=8).digest()
+    return int.from_bytes(digest, "big") / 2 ** 64 < VAL_FRACTION
 
 
 def find_clips(root):
@@ -506,18 +525,37 @@ def main():
                 f"ship as literal letters, e.g. {sorted(g2p.oov_words)[:10]}"
             )
 
-    # Canonical order before shuffling, so the train/val split depends only on
-    # SEED and the clip set — not on how the rows happened to be assembled.
-    # --reuse-from builds them train-then-val while a fresh run uses
-    # find_clips() order, so the same seed used to produce two different
-    # permutations and any val-loss comparison across label versions (the
-    # whole point of a relabel) was contaminated.
+    # SPLIT BY PER-CLIP HASH, not by shuffling the row list (owner, 2026-08-02).
+    #
+    # Sorting before the shuffle fixed half the problem: it made the split depend
+    # only on SEED and the clip SET rather than on assembly order (--reuse-from
+    # built rows train-then-val while a fresh run used find_clips() order, so one
+    # seed produced two different permutations). What it could not fix is growth.
+    # A shuffle assigns membership by POSITION, so adding one clip re-rolls every
+    # clip after it. Measured on the corpus this was found in: v2-val and v3-val
+    # share 19 clips of ~910, and 889 of v3's val clips sit in v2's TRAIN set —
+    # so evaluating the v2 checkpoint against v3 val leaks, and no cross-version
+    # val-loss comparison means anything. A relabel exists to be compared across
+    # versions; the split silently made that impossible.
+    #
+    # A hash of the clip path decides membership on its own, so a clip's side is a
+    # property OF THE CLIP. Grow the corpus, relabel it, re-derive it — every clip
+    # that was in val stays in val, and the comparison holds.
+    #
+    # The trade is that val size is now binomial rather than exact: at 3% of ~31k
+    # rows expect roughly +/-30 clips of VAL_FRACTION. That is the correct thing to
+    # give up — an exactly-sized val set that means something different every
+    # version is worth less than a slightly ragged one that does not move.
     rows.sort()
-    random.seed(SEED)
-    random.shuffle(rows)
-    n_val = max(int(len(rows) * VAL_FRACTION), 1)
+    val_rows = [r for r in rows if _in_val(r)]
+    train_rows = [r for r in rows if not _in_val(r)]
+    if not val_rows:
+        sys.exit(f"ABORT: hash split put 0 of {len(rows)} rows in val. Check "
+                 f"VAL_FRACTION ({VAL_FRACTION}) and SPLIT_SALT.")
+    print(f"hash split: {len(val_rows)} val / {len(train_rows)} train "
+          f"({len(val_rows) / max(len(rows), 1):.2%}, target {VAL_FRACTION:.0%})")
     os.makedirs(args.out, exist_ok=True)
-    for name, part in (("val_op.txt", rows[:n_val]), ("train_op.txt", rows[n_val:])):
+    for name, part in (("val_op.txt", val_rows), ("train_op.txt", train_rows)):
         with open(os.path.join(args.out, name), "w", encoding="utf-8") as f:
             f.write("\n".join(part) + "\n")
         print(f"wrote {len(part)} rows -> {os.path.join(args.out, name)}")

@@ -10,8 +10,9 @@ PROTOTYPE NOTES
   should converge onto Prosodia's `folioparser` (EPUB->text) + `stage::segmenter`
   (sentence split + Paragraph{target_characters}) for on-device dogfooding — see
   notes/book-prose-operations.md.
-- Director = gemma-4-26b-a4b-qat served by ollama on :11434 (reasoning model; read
-  `content`, give generous num_predict).
+- Director = the `MODEL` constant below, served by ollama on :11434 (read `content`,
+  give generous num_predict). Named once, there — a second copy in prose is a second
+  thing to forget, which is how this line spent a day naming the wrong model.
 
 Run:
   .venv/bin/python scripts/synthesis/book_ingest.py --url <SE url> --out <dir> [--dry-run] [--max-per-type N]
@@ -21,6 +22,7 @@ import json
 import os
 import re
 import sys
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -476,14 +478,33 @@ def _window_sentences(sentences):
 
 
 def librivox_check(title):
-    """Informational router probe: does a permissive audiobook already exist?"""
+    """Informational router probe: does a permissive audiobook already exist?
+
+    Returns a list of matching titles, or None for "could not tell".
+
+    The API answers a zero-result query with **HTTP 404**, not an empty list, so
+    the no-match case arrived here as an exception and was returned as a string —
+    indistinguishable from a real outage, and main() printed "no LibriVox match ->
+    SYNTHESIZE lane (correct)" for both. Routing does not actually depend on this
+    (an SE/PG URL routes straight to SYNTHESIZE by owner policy 2026-07-22; the
+    submission IS the lane decision), so nothing was mis-routed. But a log line
+    asserting a negative it never established is the shape of finding that keeps
+    turning up in this pipeline, so the two cases are now separated: 404 means no
+    match, anything else means unknown.
+    """
+    q = urllib.parse.urlencode({"title": title, "format": "json"})
     try:
-        q = urllib.parse.urlencode({"title": title, "format": "json"})
-        data = json.loads(fetch("https://librivox.org/api/feed/audiobooks/?" + q).decode("utf-8", "replace"))
-        books = data.get("books", [])
-        return [b.get("title") for b in books][:5]
+        data = json.loads(fetch("https://librivox.org/api/feed/audiobooks/?" + q)
+                          .decode("utf-8", "replace"))
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return []          # the API's way of saying "nothing matched"
+        print(f"  librivox probe unavailable: HTTP {e.code}", flush=True)
+        return None
     except Exception as e:
-        return f"(librivox probe failed: {e})"
+        print(f"  librivox probe unavailable: {e}", flush=True)
+        return None
+    return [b.get("title") for b in data.get("books", [])][:5]
 
 
 def _extract_json(content):
@@ -961,6 +982,10 @@ def main():
     if isinstance(lv, list) and lv:
         print("  ⚠️ router: a LibriVox recording exists — normally this routes REAL-AUDIO "
               "(force-align lane). Running SYNTHESIZE anyway (explicit).", flush=True)
+    elif lv is None:
+        print("  router: LibriVox could NOT be checked — this is not a negative result. "
+              "Proceeding on the queue's routing decision, which is what governs.",
+              flush=True)
     else:
         print("  router: no LibriVox match → SYNTHESIZE lane (correct).", flush=True)
 
@@ -996,7 +1021,7 @@ def main():
             print(f"    [{c['chunk_type']}] {c['text'][:90]}", flush=True)
         return
 
-    print("== director-pass (Gemma 4 26B via ollama) ==", flush=True)
+    print(f"== director-pass ({MODEL} via ollama) ==", flush=True)
     lines, failures = [], 0
     for i, chunk in enumerate(sample):
         tag = director_tag(chunk)
