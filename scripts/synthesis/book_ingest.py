@@ -26,7 +26,31 @@ import urllib.request
 
 UA = "Mozilla/5.0 (book_ingest prototype; contact lmcfarlin)"
 OLLAMA = "http://localhost:11434/api/chat"
-MODEL = "gemma-4-26b-a4b-qat"
+# Measured 2026-08-02 on 24 real narration passages, casting for zonos with the live
+# skill file, register and V/A/T supplied exactly as casting_pass supplies them. The
+# 2026-07-29 malformed-JSON finding does NOT discriminate here — pass 2 is grammar-
+# constrained by `format` and pass 1 is short, so all three variants parsed 24/24.
+# What separates them is whether they OBEY the skill file:
+#
+#   model                    emotion omitted   rate 14-16   pitch 20-45   distinct casts
+#   gemma-4-26b-a4b-qat        8/24             14/24        12/24         4/24
+#   gemma-4-31b-qat-spec      24/24             24/24        24/24        16/24
+#   gemma-4-e4b-qat-spec       5/24             24/24        24/24         5/24
+#
+# The MoE was the default, and on 16 of 24 narration lines it emitted an emotion
+# vector — 15 of them neutral-dominant, several the literal [0,…,0,1.0]. zonos.md
+# says "`emotion` is omit on every narration lane, without exception" because that
+# exact conditioning destabilized 5 of 9 zonos narration groups on 2026-07-30. The
+# renderer's unconditional path and _l1(None) both shipped; the model in the chair
+# would have re-introduced the defect on two thirds of the lines anyway, and the
+# director path would have looked broken when the fault was model selection.
+#
+# The reuse column matters too: zonos.md calls one casting call across different
+# registers "a failure", and the two rejected variants emit 4-5 distinct castings
+# across 24 lines. 4.0 s/call against 2.4 is not a real cost on a pass that runs a
+# few dozen times per book. e4b stays the right pick for high-volume judging
+# (judge_passages), where there is no skill file to obey.
+MODEL = "gemma-4-31b-qat-spec"
 
 CHARS_PER_SEC = 14.0            # mirrors synth_dia.py length model
 # Owner floor (2026-07-25): nothing shorter than 4 s of speech enters a bank.
@@ -85,31 +109,67 @@ def _lexicon():
 
 REGISTER_LEXICON = _lexicon()
 
+# The roster is DERIVED, never typed here. It used to be the literal string
+# "vibevoice"|"qwen"|"moss_vg"|"dia", frozen at the 2026-07-25 portfolio, and the
+# portfolio moved twice underneath it: vibevoice and dia were set aside on
+# 2026-07-29, and zonos, chatterbox and orpheus joined. So this prompt offered two
+# retired engines, withheld three live ones, and called vibevoice the "PREMIER
+# default" — an ingest run today would have routed a whole book to engines nothing
+# is allowed to render on. `ref_select` already owns that decision for every other
+# bank builder; reading it here is the same rule the ENGINE_MIX comment states.
+def _castable_engines():
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import ref_select
+    return [e for e in ref_select.ENGINE_MIX if e not in ref_select.SET_ASIDE]
+
+
+CASTABLE_ENGINES = _castable_engines()
+
 # Engine choice only. V/A/T + register are a SEPARATE pass (they describe the
 # line, not the target), and voice_design/instruct are a THIRD pass driven by the
 # per-engine skill files in director_skills/. Splitting these was forced by the
 # 2026-07-25 finding that a single combined call let the training labels drift
 # with whichever engine the director happened to be writing for.
+#
+# Each engine is described by the CHANNEL it offers, because that is what the
+# choice actually turns on — the direction-relay audit (2026-07-25) established
+# that the slots are unevenly distributed, and a line whose delivery must be
+# described cannot go to an engine with nowhere to put the description.
+_ENGINE_GUIDE = {
+    "qwen": "the richest instruction slot in the portfolio and the measured gold "
+            "standard — casting, delivery and accent all reach it as plain text. "
+            "The default for a line whose PERFORMANCE must be described. Renders "
+            "younger and higher than you describe; account for it.",
+    "chatterbox": "no text-instruction slot at all: two numbers and a reference "
+                  "clip. Voice IDENTITY comes from the reference, so choose it "
+                  "when who is speaking matters more than how.",
+    "zonos": "the only engine with NUMERIC prosody dials (pitch_std, "
+             "speaking_rate). No prose slot. Its measured weakness — a dry, "
+             "level read — is the requirement for narration, so it is the "
+             "natural first choice for narration windows.",
+    "orpheus": "a voice from a closed set, prefixed onto the text, plus a few "
+               "inline tags. Nothing else reaches it. Reasonable for plain "
+               "dialogue; it cannot be told anything a voice name does not say.",
+    "moss_vg": "instruct-driven like qwen, and strong on dark, menace, oratory, "
+               "force and situational framing. It overlaps qwen and fails more "
+               "often, so prefer qwen unless the line is squarely in that band.",
+}
+
 DIRECTOR_SYSTEM = (
     "You are the Emotional Director for an audiobook TTS pipeline. You read one passage "
     "(narration, or a character's spoken line with its attribution) and label it, then "
     "choose which speech engine should render it.\n"
     "Output ONLY compact minified JSON, no markdown, with EXACTLY these keys:\n"
     '{"valence": float in [-1,1], "arousal": float in [-1,1], "tension": float in [-1,1], '
-    '"register": string, "engine": one of "vibevoice"|"qwen"|"moss_vg"|"dia"}\n'
+    '"register": string, "engine": one of '
+    + "|".join(f'"{e}"' for e in CASTABLE_ENGINES) + "}\n"
     "`register` MUST be copied EXACTLY from this controlled lexicon — never invent, "
     "alter or compose a label; pick the closest fit:\n"
     + ", ".join(REGISTER_LEXICON) + "\n"
-    "Engine guide: vibevoice = PREMIER default incl. neutral. It is REFERENCE-CLONED "
-    "and takes NO spoken direction at all — casting is everything, so choose it when "
-    "the voice matters more than the performance. qwen and moss_vg = the two engines "
-    "that actually follow written direction; prefer them when strong DRAMATIC "
-    "expression is expected (qwen renders younger and higher than described; moss_vg "
-    "handles dark/menace/oratory/force and situational framing well). dia = takes NO "
-    "written direction, but is NOT a flat reader: it is markedly expressive and its "
-    "punctuation is performed, so write the punctuation you want. Its measured quality "
-    "is the weakest of the four, so prefer another engine when the line matters.\n"
-    "Do NOT write a voice design or delivery instruction here; a later pass does that "
+    "Engine guide:\n"
+    + "".join(f"  {e} = {_ENGINE_GUIDE[e]}\n"
+              for e in CASTABLE_ENGINES if e in _ENGINE_GUIDE)
+    + "Do NOT write a voice design or delivery instruction here; a later pass does that "
     "per engine. Valence = pleasant(+)/unpleasant(-); Arousal = energy; Tension = "
     "held/threat/unease. JSON only."
 )
@@ -473,9 +533,20 @@ def director_tag(chunk, retries=2):
         if REGISTER_LEXICON and tag.get("register") not in REGISTER_LEXICON:
             print(f"    off-lexicon register {tag.get('register')!r} -> neutral")
             tag["register"] = "neutral"
-        engine = tag.get("engine", "vibevoice")
-        if engine not in ("vibevoice", "qwen", "moss_vg", "dia"):
-            engine = "vibevoice"
+        # This used to default to "vibevoice" and coerce any unrecognised name to
+        # it — the same silent-fallback shape that build_direction now treats as
+        # fatal, and for the same reason: a line ends up rendered by an engine
+        # nobody chose and audited under a name nobody wrote. It aged into
+        # something worse than a mis-attribution, because vibevoice was set aside
+        # on 2026-07-29, so the fallback pointed at an engine that must not render
+        # at all. An off-roster emission is now treated exactly like unparseable
+        # JSON: retry, and if the retries are spent, drop the chunk loudly rather
+        # than substitute a choice.
+        engine = tag.get("engine")
+        if engine not in CASTABLE_ENGINES:
+            print(f"    off-roster engine {engine!r} (castable: "
+                  f"{', '.join(CASTABLE_ENGINES)}) — retrying", flush=True)
+            continue
         tag["engine"] = engine
         # Second pass: casting + delivery, written in the chosen engine's own
         # language. Dia has no direction channel, so it is skipped entirely.

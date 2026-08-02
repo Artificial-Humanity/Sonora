@@ -221,7 +221,18 @@ def main():
     # records over 301 wavs on delivery-v1-narration, 2026-07-31). Last record wins:
     # it is the take that actually exists.
     jobs = {}
-    manifests = sorted(glob.glob(os.path.join(args.campaign_dir, "*", "*_manifest.jsonl")))
+    # Two layouts exist and both are ours. `synth_bank.sh` writes engine subdirs
+    # (`<campaign>/audio/qwen_manifest.jsonl`); the hand-authored banks — newscaster-v1
+    # is the live example — write manifests and wavs flat at the campaign root. Only
+    # the nested pattern was globbed, so pointing the gate at a flat campaign found
+    # nothing. That used to mean a silent 0/0 pass; since the empty-glob fix below it
+    # means a hard QC-GATE-FAIL on a campaign that is perfectly well formed. Either
+    # way the layout, not the audio, decided the outcome. `eng_dir` is just
+    # dirname(manifest), and wav paths are resolved against it, so the flat case needs
+    # no other special-casing.
+    manifests = sorted(
+        glob.glob(os.path.join(args.campaign_dir, "*", "*_manifest.jsonl"))
+        + glob.glob(os.path.join(args.campaign_dir, "*_manifest.jsonl")))
     for mpath in manifests:
         eng_dir = os.path.dirname(mpath)
         for line in open(mpath, encoding="utf-8"):
@@ -237,8 +248,8 @@ def main():
     # mandatory gate over nothing, and the batch went to the ear ungated.
     # A gate with nothing to measure has not passed; it has not run.
     if not manifests:
-        sys.exit(f"QC-GATE-FAIL: no *_manifest.jsonl under "
-                 f"{args.campaign_dir}/*/ — nothing to gate. Check the "
+        sys.exit(f"QC-GATE-FAIL: no *_manifest.jsonl in {args.campaign_dir} "
+                 f"or {args.campaign_dir}/*/ — nothing to gate. Check the "
                  f"campaign dir (a trailing slash breaks the glob).")
     if not jobs:
         sys.exit(f"QC-GATE-FAIL: {len(manifests)} manifest(s) found but no "
