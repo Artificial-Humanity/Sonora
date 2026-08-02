@@ -39,7 +39,9 @@ import librosa
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from derive_vat_corpus import phonation_measures  # noqa: E402
+import silero_vad  # noqa: E402
 
 DNSMOS_ONNX = "/data/toolchain/dnsmos/sig_bak_ovr.onnx"
 DNSMOS_SR = 16000
@@ -133,6 +135,31 @@ MAX_CLIP_SECONDS = 30.0
 
 TAIL_LOST_MAX = 0.05        # >5% of the passage unspoken at the end
 TAIL_WORDS_MIN = 3          # ...and at least 3 real words, so one dropped "the" is not a gate
+
+# Internal dead air. WER cannot see this: a clip can transcribe perfectly and still
+# stall mid-sentence, and both clips the ear dropped from newscaster-v1 passed every
+# other gate (WER 0.00 and 0.045, DNSMOS 3.3) while the owner's notes on both said
+# "long pause". silero_vad.py was written for exactly this failure and was wired
+# into nothing until 2026-08-02.
+#
+# Calibrated against 369 already-audited clips (newscaster-v1, delivery-v1-narration,
+# revisit-v1): 303 keeps, and 21 drops whose ear note names a pause. Sweeping the
+# worst internal silence against those labels:
+#   1.40 s -> catches 20 of 21 (95%), flags 3.3% of keeps
+#   2.50 s -> catches 15 of 21 (71%), flags 0.0% of keeps
+# The single clip 1.40 s misses has no measurable pause at all, so 95% is the
+# practical ceiling for this instrument.
+#
+# Two levels, because the cost of being wrong is asymmetric. Past PAUSE_HARD_MAX the
+# defect is unambiguous (the observed cases run 3-8 s, usually with a rushed
+# resumption after) and zero good clips reach it, so it is a hard gate. Between the
+# two the clip is suspicious but a long pause can be legitimately dramatic, so it
+# only earns an audition — the ear decides. A relative threshold (pause / duration)
+# was tested and matched, not beat, the absolute one; absolute is easier to reason
+# about at the console.
+PAUSE_HARD_MAX = 2.5        # longest internal silence a clip may contain
+PAUSE_FLAG_MAX = 1.4        # ...above this it is advisory: queue it for the ear
+PAUSE_MIN_GAP = 0.30        # silences shorter than this are ordinary phrasing
 
 
 def tail_lost(ref, hyp):
@@ -254,7 +281,16 @@ def main():
         intervals = librosa.effects.split(wav, top_db=35)
         speech_dur = float(sum(e - s for s, e in intervals)) / TARGET_SR
 
+        # Internal dead air, measured with a trained speech detector rather than the
+        # energy gate above — which cannot tell a quiet consonant from a pause.
+        # Leading/trailing silence is excluded by long_silences(): that is a trim
+        # question, not a performance defect.
+        wav16 = librosa.resample(wav, orig_sr=TARGET_SR, target_sr=16000)
+        sils = silero_vad.long_silences(wav16, min_s=PAUSE_MIN_GAP)
+        worst_pause = max((b - a for a, b in sils), default=0.0)
+
         gates = {}
+        gates["pause_ok"] = worst_pause <= PAUSE_HARD_MAX
         gates["duration_ok"] = (n_chars / CHARS_PER_SEC_FAST) <= speech_dur <= (n_chars / CHARS_PER_SEC_SLOW + 2.0)
         segs, _ = asr.transcribe(wav_path, language="en")
         hyp = " ".join(s.text for s in segs)
@@ -277,6 +313,8 @@ def main():
 
         row.update({"wav_abs": wav_path, "duration": dur,
                     "speech_dur": speech_dur, "asr_wer": asr_wer,
+                    "worst_pause": round(worst_pause, 3),
+                    "pause_count": len(sils),
                     "tail_lost_frac": tl_frac, "tail_words_lost": tl_words,
                     "asr_hyp": hyp.strip(), **scores,
                     "lufs": lufs, "phonation": phon, "gates": gates,
@@ -284,8 +322,9 @@ def main():
                     "hard_pass": all(gates.values()) and not quarantined})
         rows.append(row)
         print(f"{row['id']:26s} {dur:5.1f}s speech={speech_dur:4.1f}s "
-              f"wer={asr_wer:.2f} ovr={scores['dnsmos_ovr']:.2f} "
-              f"pass={row['hard_pass']}", flush=True)
+              + (f"pause={worst_pause:4.1f}s " if worst_pause >= PAUSE_FLAG_MAX else "")
+              + f"wer={asr_wer:.2f} ovr={scores['dnsmos_ovr']:.2f} "
+              + f"pass={row['hard_pass']}", flush=True)
 
     out = os.path.join(args.campaign_dir, "qc_measures.jsonl")
     with open(out, "w", encoding="utf-8") as f:

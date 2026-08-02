@@ -158,6 +158,10 @@ def _build_row(rec, wav: Path, book_slug: str, fields):
 # and its id written to qc_flags.txt so pick_audit_subset routes it to the ear however
 # thin that engine's sampling tier is.
 MIN_SPEECH_SECONDS = 4.0        # owner floor 2026-07-25; keep-rate cliff is exactly here
+# Mirrors qc_gate.PAUSE_FLAG_MAX — the advisory band for internal dead air, where
+# the clip earns an audition rather than a rejection. Kept in sync by
+# test_skill_files.py so the two cannot drift apart silently.
+PAUSE_FLAG_SECONDS = 1.4
 
 
 def _tail_beyond(canonical: str, heard: str) -> str:
@@ -253,6 +257,17 @@ def _qc_triage(qc_path):
             lost, frac = r.get("tail_words_lost"), r.get("tail_lost_frac") or 0
             why.append(f"stops early — last {lost} words ({frac*100:.0f}% of the passage) "
                        f"never spoken. LISTEN TO THE END")
+        # Internal dead air. Named before the duration line for the same reason
+        # tail_ok is: it tells the auditor WHERE in the clip to listen. The
+        # advisory band exists because a long pause is sometimes a real dramatic
+        # choice — 3.3% of ear-keeps land in it — so this queues the clip rather
+        # than condemning it. Past the hard cap the gate has already failed it.
+        pause = r.get("worst_pause")
+        if pause is not None and pause >= PAUSE_FLAG_SECONDS:
+            verdict = ("exceeds the hard cap" if not g.get("pause_ok", True)
+                       else "suspicious but within the cap")
+            why.append(f"{pause:.1f}s of silence mid-clip ({verdict}) — "
+                       f"LISTEN TO THE MIDDLE for a stall or a rushed resumption")
         speech = r.get("speech_dur")
         if speech is not None and speech < MIN_SPEECH_SECONDS:
             why.append(f"only {speech:.1f}s of speech (floor {MIN_SPEECH_SECONDS}s)")

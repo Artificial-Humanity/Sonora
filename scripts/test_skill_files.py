@@ -180,6 +180,29 @@ def test_zonos_emotion_off_is_representable():
           f"build_direction must pass emotion=None through, got {d['emotion']!r}")
 
 
+# --- the pause gate's two thresholds live in two files and must agree -------------
+def test_pause_thresholds_agree():
+    """qc_gate measures the pause; register_audition writes the advisory note.
+
+    The advisory band is the range where the clip is queued for the ear rather
+    than failed outright, so if the two constants drift the auditor either gets
+    no note on a flagged clip or a note on a clip nothing flagged. Calibrated
+    2026-08-02 against 369 audited clips; the numbers are load-bearing, not
+    decorative.
+    """
+    sys.path.insert(0, os.path.join(HERE, "synthesis"))
+    import qc_gate
+    import register_audition
+
+    check(qc_gate.PAUSE_FLAG_MAX == register_audition.PAUSE_FLAG_SECONDS,
+          f"pause advisory threshold drifted: qc_gate {qc_gate.PAUSE_FLAG_MAX} "
+          f"vs register_audition {register_audition.PAUSE_FLAG_SECONDS}")
+    check(qc_gate.PAUSE_FLAG_MAX < qc_gate.PAUSE_HARD_MAX,
+          "the advisory band must sit BELOW the hard cap, else it can never fire")
+    check(qc_gate.PAUSE_MIN_GAP < qc_gate.PAUSE_FLAG_MAX,
+          "silences are measured at a finer grain than the flag threshold")
+
+
 # --- the relay matrix must exist in BOTH places it is meant to live ---------------
 def test_relay_matrix_agrees():
     """Step 2 of the onboarding pattern: encode the relay matrix twice so it cannot
@@ -309,7 +332,7 @@ def test_casting_schema_shapes():
 def main():
     for fn in (test_casting_words, test_dia_tag_vocabulary,
                test_orpheus_closed_sets, test_zonos_emotion_off_is_representable,
-               test_relay_matrix_agrees,
+               test_pause_thresholds_agree, test_relay_matrix_agrees,
                test_wip_guard, test_register_lexicon, test_casting_schema_shapes):
         try:
             fn()
