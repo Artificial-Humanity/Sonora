@@ -4,10 +4,10 @@
 > foundation the others build on. Next: [2 — Dramatic Reader](high-ambition-2-dramatic-reader.md) ·
 > [3 — Child Voices](../../../Prosodia/notes/high-ambition-3-child-voices.md) ·
 > [4 — Multilingual G2P](../../../Prosodia/notes/high-ambition-4-multilingual-g2p.md) ·
-> [5 — StyleTTS2-Lite](archive/high-ambition-5-styletts2-lite.md) (**RETIRED 2026-07-29** — the
+> 5 — StyleTTS2-Lite (**RETIRED 2026-07-29**; note deleted 2026-08-02, git history — the
 > quality-ceiling contingency is now a scaled flow-matching backbone, see
-> [model-decisions.md § The size ladder](model-decisions.md)). Model decision + training/hardware detail:
-> [actor-model-and-training.md](actor-model-and-training.md).
+> [model-decisions.md § The size ladder](model-decisions.md)). Model decision record:
+> [model-decisions.md §5](model-decisions.md).
 
 This note is the production design for a **Matcha-TTS-based** Prosodia actor: a small, fast,
 **directable** and **castable** on-device TTS model. Matcha is the chosen *first* base because it
@@ -127,7 +127,7 @@ this is just the cheapest forcing function to settle the decisions below.
    StyleTTS2 / Kokoro. *Hours.* Confirms the quality bar clears *before* spending a dollar (if it
    disappoints on expressiveness, that's the real signal to weight the quality-ceiling
    contingency sooner — as of 2026-07-29 that means a scaled flow-matching backbone, not
-   [5 — StyleTTS2-Lite](archive/high-ambition-5-styletts2-lite.md)).
+   StyleTTS2-Lite).
 2. **Export spike** — stock checkpoint → official ONNX export → `onnx2tf` → `.tflite`, run it from the
    Rust actor. *A few days.* This is the unproven leg, and it's where the contract mismatches below
    surface.
@@ -161,8 +161,9 @@ this is just the cheapest forcing function to settle the decisions below.
   preferred path that keeps the `StageAudioSink` / coordinator contract. `config.json` declares
   `"sample_rate": 24000`, and `get_model_sample_rate` in `engine.rs` reads the native rate and bypasses
   resampling when the model already outputs 24 kHz (stock 22.05 kHz checkpoints still resample).
-- [ ] **Data + label format.** Lock the filelist schema and **how VAT labels are represented** before
-  collecting/labeling, so the directability fine-tune (Phase 3) has consistent supervision.
+- [x] **Data + label format.** ✅ **Locked** — filelist schema `path|spk|phonemes|v,a,t`,
+  pre-phonemized, labels as per-speaker z clamped @2σ (ARCHITECTURE §2); the vat3 run
+  trained against it.
 - [x] **Export/runtime decision.** ✅ **Resolved (2026-06-17):** keep **TFLite via `onnx2tf`**. The
   custom conversion was validated on `model_e2e.onnx` and the FFI contract locked — ONNX Runtime is not
   needed (see [STATE.md](../../../Prosodia/notes/STATE.md) and [next-steps.md](../../../Prosodia/notes/next-steps.md)).
@@ -171,7 +172,7 @@ this is just the cheapest forcing function to settle the decisions below.
 
 ## 🔄 Phased training plan
 
-Mirror the de-risking order in [actor-model-and-training.md §3](actor-model-and-training.md) — make
+Mirror the de-risking order in [model-decisions.md §5](model-decisions.md) — make
 the *first* success boring, then add novelty. (Phase 0 above runs first.)
 
 1. **Plain fine-tune** a pretrained Matcha checkpoint on a small clean single-speaker set (LibriTTS
@@ -197,7 +198,7 @@ the *first* success boring, then add novelty. (Phase 0 above runs first.)
 * **[3 — Child Voices](../../../Prosodia/notes/high-ambition-3-child-voices.md)** extends the casting range; its DSP and
   fine-tune options are base-agnostic, its embedding-blend/extract options map onto the
   speaker-embedding space.
-* **[5 — StyleTTS2-Lite](archive/high-ambition-5-styletts2-lite.md)** — **RETIRED as the contingency
+* **5 — StyleTTS2-Lite** (git history) — **RETIRED as the contingency
   (owner decision, 2026-07-29).** If Matcha's naturalness/expressiveness falls short, the escape
   hatch is now **scaling the flow-matching backbone** (the DiT-style mid/heavy tier in
   [model-decisions.md § The size ladder](model-decisions.md)) — same OT-CFM family, same contract, so

@@ -8,7 +8,8 @@ this file in the same commit. Detail lives in the linked docs; what is written H
 pinned._
 
 _Established by the Phase 0 (baseline-ljspeech-22k) and §7 de-risk (derisk-energy-24k) lineages; every
-pinned item below has shipped at least once. Last updated: 2026-07-16._
+pinned item below has shipped at least once except the v2 Delivery row (first implementation:
+the next training run). Last updated: 2026-08-02._
 
 ---
 

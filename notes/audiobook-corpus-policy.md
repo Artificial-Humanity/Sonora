@@ -62,5 +62,5 @@ copyrighted samples in any model.
 **Status:** policy adopted 2026-07-17. Default posture = uses 1–2; any use-3 experiment is a
 deliberate owner call per instance, under the firewall.
 
-Linked from: [ARCHITECTURE.md](ARCHITECTURE.md) §2 · [STATE.md](STATE.md) §3 ·
-[emilia-mining-and-verdict.md](archive/emilia-mining-and-verdict.md) (the license-clean expressive-data lane).
+Linked from: [ARCHITECTURE.md](ARCHITECTURE.md) §2 · [STATE.md](STATE.md) ·
+[dataset-landscape.md](dataset-landscape.md) (the license-clean expressive-data lanes).

@@ -1,13 +1,13 @@
 # Model decisions — shape, size, rate, decoder
 
 > **Consolidated 2026-07-31** from `model-family-strategy.md` + `model-size-target-decision.md`
-> + `sample-rate-24khz-decision.md` + `decoder-v2-dit-spike.md`. Four closed briefs that all
-> answer one question — *what shape is the model* — and that cross-referenced each other in
-> every footer. They are kept verbatim below rather than summarised, because each records an
+> + `sample-rate-24khz-decision.md` + `decoder-v2-dit-spike.md`; **§5 (base model) folded in
+> 2026-08-02** from the retired `actor-model-and-training.md`. Closed briefs that all answer
+> one question — *what shape is the model* — kept largely verbatim because each records an
 > owner decision and the reasoning that produced it.
 >
-> Live architecture canon is [ARCHITECTURE.md](ARCHITECTURE.md); training mechanics are in
-> [actor-model-and-training.md](actor-model-and-training.md).
+> Live architecture canon is [ARCHITECTURE.md](ARCHITECTURE.md); training operations are in
+> [training-operations.md](training-operations.md).
 
 ## Contents
 
@@ -15,6 +15,7 @@
 2. **The size target — mobile-anchored, 150M loose max** — from `model-size-target-decision.md`
 3. **Sample rate — 24 kHz native** — from `sample-rate-24khz-decision.md`
 4. **Decoder v2 — staged DiT spike** — from `decoder-v2-dit-spike.md`
+5. **The base model — Matcha, reaffirmed** — from `actor-model-and-training.md`
 
 ---
 
@@ -41,7 +42,7 @@ scale-free:
 | Director↔Actor contract (V/A/T semantics, speaker-as-vector, text lane, chunking) | ✅ | Pinned in ARCHITECTURE.md §1; tiers are implementations of it. |
 | Export/gate discipline (split graphs, GPU-clean rules, parity gates) | ✅ method | Fixed shapes/budgets are per-tier parameters of the same method. |
 | Vocoder | per-tier, separable | Already a separate graph; swaps independently at the mel interchange. |
-| Backbone + weights | ❌ per-tier | Expected. Matcha's encoder/decoder plausibly stretches to a ~100–300M mid (trainable on ai-lab-0 with patience); a heavy tier likely wants a DiT-style flow-matching backbone — still the same contract, mel interchange, and gates. **Ratified 2026-07-29:** this scale-up path is now also the *named quality-ceiling contingency* for mini — the StyleTTS2-Lite re-platform is retired ([rationale](archive/high-ambition-5-styletts2-lite.md)). **Advanced 2026-07-30 (owner: keep the ceiling fluid):** the DiT decoder moves from contingency to *staged spike NOW* — mini/mid/heavy collapse onto one config-scalable backbone if it passes the parity gate vs the U-Net baseline; plan in **§ Decoder v2** (below). |
+| Backbone + weights | ❌ per-tier | Expected. Matcha's encoder/decoder plausibly stretches to a ~100–300M mid (trainable on ai-lab-0 with patience); a heavy tier likely wants a DiT-style flow-matching backbone — still the same contract, mel interchange, and gates. **Ratified 2026-07-29:** this scale-up path is now also the *named quality-ceiling contingency* for mini — the StyleTTS2-Lite re-platform is retired (rationale in §5 below; the full high-ambition-5 design is in git history). **Advanced 2026-07-30 (owner: keep the ceiling fluid):** the DiT decoder moves from contingency to *staged spike NOW* — mini/mid/heavy collapse onto one config-scalable backbone if it passes the parity gate vs the U-Net baseline; plan in **§ Decoder v2** (below). |
 
 ## The two real corner-risks and their insurance (both cheap, both taken)
 
@@ -87,7 +88,7 @@ should aim for **Kokoro+** quality/capability at a **150M-parameter ceiling** (n
 spend in full). Explicitly **not** driven by Kokoro's own footprint — Kokoro is ~82M and that was
 never the problem. Mobile pairing target: alongside a Gemma-class on-device Director (STATE.md
 §3 calls it "Gemma 4 Director"; the actor-model doc's measured comfort case is Gemma E2B
-≈1.5–3 GB quantized + TTS actor ≈0.1–0.3 GB on 32 GB dev hardware, actor-model-and-training.md:302-303)._
+≈1.5–3 GB quantized + TTS actor ≈0.1–0.3 GB on 32 GB dev hardware — §5's measured comfort case)._
 
 ## Why Kokoro was left (the actual shortcomings — none are about size)
 
@@ -95,7 +96,7 @@ never the problem. Mobile pairing target: alongside a Gemma-class on-device Dire
    fantastic — could not be *directed*" (high-ambition-6-audience-conveyance-stt.md:26). Static/
    implicit style control (target reference audio or averaged style matrices) makes programmatic
    mood/inflection control impossible (high-ambition-5-styletts2-lite.md:122).
-2. **LSTM architecture** — export/mobile-delegate hostile (actor-model-and-training.md:143),
+2. **LSTM architecture** — export/mobile-delegate hostile (§5),
    unlike Matcha's transformer + flow-matching decoder, already proven to export at
    corr ≈ 1.000000 (litert-conversion).
 3. **Heavy PL-BERT dependency** — startup latency cost Matcha doesn't have (no BERT layer;
@@ -216,8 +217,8 @@ Ballpark, not yet wired into any config or eval-harness threshold. Revisit when 
 target vocoder config and speaker-conditioning approach against this budget.
 
 Linked from: **§ Sample rate** (below) (vocoder size
-precedent), [actor-model-and-training.md](actor-model-and-training.md) (Kokoro license/
-architecture table), [high-ambition-5-styletts2-lite.md](archive/high-ambition-5-styletts2-lite.md) and
+precedent), **§5** (Kokoro license/architecture table; the `high-ambition-5-styletts2-lite.md:N`
+citations above reference the retired design, now in git history) and
 [high-ambition-6-audience-conveyance-stt.md](high-ambition-6-audience-conveyance-stt.md) (Kokoro
 shortcomings), [STATE.md](STATE.md) §3 (VAT goal, Gemma 4 Director pairing).
 
@@ -347,3 +348,42 @@ Runs parallel to delivery-v1 corpus assembly (architecture work is CPU-side unti
 de-risk training run; that run obeys [[spin-down-inference-before-training]] and waits
 for a render-idle window). The certified-corpus direction-taking run starts on whichever
 decoder holds the gate when the corpus is folded.
+
+---
+
+# The base model — Matcha over StyleTTS2-Lite (2026-06-14, reaffirmed 2026-07-29)
+
+_Distilled 2026-08-02 from the retired `actor-model-and-training.md` (full June record —
+decision matrix, training 101, RunPod-vs-local hardware guide — in git history; the
+hardware question is now governed by [local-vs-runpod-decision.md](local-vs-runpod-decision.md)
+and all runs to date have been local)._
+
+**The decision:** Sonora's base is **Matcha-TTS** (MIT). It won on the axes that carry
+first-run risk: single-stage non-adversarial training (no GAN), an export-clean
+transformer/conv architecture (no LSTM CPU-fallback on mobile delegates), an official
+ONNX exporter matching the validated `torch → ONNX` backbone, and speaker-embedding
+conditioning that the FiLM/VAT layer extends additively. StyleTTS2's higher raw
+ceiling routes through multi-stage adversarial training and a reference-derived style
+prior we don't control — "Lite" meant re-architecture, not fine-tuning.
+
+**Reaffirmed (owner, 2026-07-29)** after a month of directing seven teacher engines:
+the campaign's central lesson — *an engine's usable range is set by its conditioning
+interface, not its raw quality* — argues **for** a base whose conditioning surface we
+define, and the measured reference-style failure modes (excursion-driven voice splits,
+45% gender flips on cloning, synthetic ref pools) argue **against** reference-derived
+style machinery. **StyleTTS2-Lite is retired as the quality-ceiling contingency**; the
+escape hatch is scaling the flow-matching backbone (§1/§4). Kokoro stays out: frozen
+voicepacks, no training recipe, LSTM export hostility, heavy PL-BERT startup —
+non-directability is the origin reason (§2 records the full shortcoming list).
+
+**License verification (GitHub API, 2026-06-14):** StyleTTS2 / PL-BERT / HiFi-GAN /
+**Matcha-TTS** / VITS / Piper / MeloTTS / F5-TTS all MIT ✅ · Kokoro Apache-2.0 ✅ ·
+espeak-ng **GPL-3.0** ⚠️ (removed from the training path 2026-07-14; banned from
+runtime) · Coqui XTTS repo MPL-2.0 but **weights CPML non-commercial** ❌ ·
+fish-speech custom ❌. Standing lesson: **repo license ≠ weights license** — always
+check weights and training-data terms separately ([[nc-license-stance]] stop-me rule).
+
+**The guiding principle, kept:** make the first success boring — and after the teacher
+campaign, don't make an adversarial GAN stack the second project either. The
+differentiating work (VAT directability, casting, export discipline) was never the base
+model; it transfers to any tier of the family.

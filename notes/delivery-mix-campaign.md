@@ -52,22 +52,29 @@ not the audio. But if the expressive corpus is ever merged into the VAT filelist
 those sentences would sit on both sides of the merge. Check before that merge, not
 before the render.
 
-### Open: the director picks engines per line, and ENGINE_MIX does not
+### RESOLVED (2026-08-02): three-layer allocation replaces the flat mix
 
-`book_ingest`'s pass 1 has the director choose an engine per line. On conan-stories
-that produced **40 zonos / 36 qwen / 4 moss_vg** — chatterbox and orpheus never
-chosen at all — against the ratified `ENGINE_MIX` of 27.5 / 27.5 / 20 / 15 / 10.
+The per-line-choice vs `ENGINE_MIX` contradiction was dissolved by measuring first
+(`ref_select.py`, commit `1faac46`; owner: "we know various engines have their
+strengths and perhaps we can play to them better"):
 
-Both behaviours are deliberate and they contradict. `ENGINE_MIX`'s own comment says
-bank builders must read it "rather than hand-rolling a split", and the owner
-ratified allocation as a per-engine decision on 2026-07-31. Per-line choice is the
-older design, from before that table existed.
+1. **Capability veto** — `ENGINE_CHANNELS` makes the direction-relay audit executable
+   (`route_engines(..., requires={...})` drops engines that cannot hear what a line
+   needs; vibevoice = reference-only is the load-bearing entry).
+2. **Measured per-lane weights** — `ENGINE_MIX_BY_LANE` replaces the flat
+   27.5/27.5/20/15/10, built from heard PRODUCTION verdicts only. The measurement that
+   reframed it: zonos conditioned correctly is a **93.7% engine (74/79)** across all
+   three narration lanes (its 31% headline averaged a pre-fix era), and moss_vg is
+   lane-SHAPED (Newscaster 95% / Documentary 56%) — one global share both overpaid and
+   underpaid it.
+3. **Diversity floor** — `MIN_SHARE` keeps every eligible engine present (a 0% share
+   can never produce the evidence that would raise it) and `MAX_SHARE_NARRATION` caps
+   any one engine: max keep-rate is NOT the objective; a one-timbre teacher corpus has
+   failed at its job.
 
-It has not caused harm yet, because delivery campaigns build their own banks from
-the book banks and re-allocate there (delivery-v1 inherited pass-1 labels and redid
-pass 2). But a book bank rendered directly would follow the director's split.
-**Unresolved — owner's call**: keep per-line choice, allocate by `ENGINE_MIX`, or
-let the director choose and rebalance afterwards.
+The director's pass-1 roster now derives from `ENGINE_MIX − SET_ASIDE` (the frozen
+2026-07-25 prompt roster is gone), `_validate_mixes()` runs at import, and Dialogue
+keeps the ratified mix near-unchanged — that lane is at target.
 
 ---
 
@@ -147,29 +154,18 @@ LongCat: excluded until the affect-transfer experiment passes (standing rule).
   `owner_audit=group-sampled` — ratings.csv scores stay ear-only, and the certified
   register lexicon never counts unheard clips. Expect ~1/3 of a first-of-its-kind batch
   in the queue, dropping toward ~15% once a lane's voices are proven.
-- **Render allocation is PER ENGINE, and a tier is a tag — not a bucket** (owner
-  2026-07-31). The two questions are separate: `ref_select.ENGINE_MIX` says how much
-  each engine RENDERS, `pick_audit_subset.TIERS` says how much gets AUDITIONED. The
-  owner caught why they must not be fused: the standard tier holds exactly one engine,
-  so a "50/30/20 by tier" split hands orpheus a larger share (30%) than either trusted
-  engine (25% each) — the thinnest evidence base taking the biggest slice. Before this
-  there was nowhere in the tree for allocation to live, which is the real defect: the
-  round-1 mix (52% trusted / 9% standard / 39% scrutinized) was never decided, it
-  accumulated.
-
-  | engine | tier | share | audited | note |
-  |---|---|---|---|---|
-  | qwen | trusted | 27.5% | 11% | earned across many campaigns |
-  | chatterbox | trusted | 27.5% | 11% | **provisional** — 38 clips, one campaign; SPLIT is ear-only |
-  | zonos | scrutinized | 20% | **100%** | only engine with numeric prosody dials |
-  | orpheus | standard | 15% | 27% | 5% rests on n=19; earns more by surviving a round |
-  | moss_vg | scrutinized | 10% | **100%** | overlaps qwen's niche at 24% vs qwen's ~1% |
-
-  Shares are ordered by measured PRODUCTION failure rate with probe/stress campaigns
-  excluded — those are adversarial by construction and libel every engine (chatterbox
-  reads 0% production but 35% probe). On a 342-clip batch this is **137 auditions
-  versus the 195 actually done in round 1**: less listening, and nothing rendered by a
-  scrutinized engine is wasted, because all of it is heard.
+- **Render allocation is PER ENGINE (per lane), and a tier is a tag — not a bucket**
+  (owner 2026-07-31). The two questions stay separate: `ref_select.ENGINE_MIX_BY_LANE`
+  says how much each engine RENDERS in each lane (three-layer allocation, see the
+  RESOLVED section above — the flat table that used to sit here is superseded),
+  `pick_audit_subset.TIERS` says how much gets AUDITIONED. Tiers as of 2026-08-02:
+  trusted (qwen; chatterbox **provisional** — 38 clips, one campaign, SPLIT is
+  ear-only) · normal (orpheus — explicit; its record was dragged by the now-banned
+  `tara` fallback: non-tara 80.0% keep / mean 4.49 vs tara 9.5%) · scrutinized (zonos,
+  moss_vg — **100% heard**; zonos promotion pending one audited director-driven bank).
+  Unknown engines default to scrutinized. Shares derive from measured PRODUCTION
+  failure rates with probe/stress campaigns excluded — those are adversarial by
+  construction and libel every engine (chatterbox reads 0% production but 35% probe).
 - **Every QC failure is auditioned, at every tier, on every engine** (owner
   2026-07-31). `qc_gate` now runs as a mandatory step in `synth_bank.sh` — if it fails,
   the batch is NOT registered. Findings attach as a note ("transcribed only 20 words of

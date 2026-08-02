@@ -3,8 +3,7 @@
 > **Sequence:** 6 of 6. ([index — all six, and which repo each lives in](high-ambition-index.md)) The *reverse* of the actor lane: instead of dictating prosody into speech,
 > perceive prosody out of it. Sibling notes:
 > [1 — Matcha-TTS actor](high-ambition-1-matcha-actor.md) ·
-> [2 — Dramatic Reader](high-ambition-2-dramatic-reader.md) ·
-> [5 — StyleTTS2-Lite](archive/high-ambition-5-styletts2-lite.md).
+> [2 — Dramatic Reader](high-ambition-2-dramatic-reader.md).
 > Intended landing zone: the **conversation piece** —
 > [voice-interruption-and-discussion.md](../../../Prosodia/notes/voice-interruption-and-discussion.md) ("Solo
 > Book Club") and [director-narrative-memory.md](../../../Prosodia/notes/director-narrative-memory.md) — where
@@ -74,12 +73,14 @@ extractors a listener needs. Architecturally, a plausible v0 is not even a new m
 ASR (whisper-class or smaller) plus a lightweight prosody head over alignments emitting
 V/A/T + per-token tracks into the contract.
 
-## ⚠️ IP note
+## ⚠️ IP note (updated 2026-08-01)
 
-The **listening direction is NOT covered by the 2026-07-13 defensive publication** (which discloses
-the dictation/synthesis direction and its contract). If/when the Audience becomes real work, make a
-fresh, explicit IP-posture decision (publish defensively vs. file) **before** the mechanism lands in
-a public repo — same discipline as [open-decision-licensing.md](../../../Prosodia/notes/open-decision-licensing.md).
+The 2026-07-13 defensive publication covers the dictation/synthesis direction only, not
+listening. **The posture question is now settled project-wide: no patent track, ever** —
+defensive statement in-repo plus fully Apache-2.0 ([[no-patent-defensive-posture]]).
+When the Audience becomes real work, extend the defensive statement to the listening
+direction before the mechanism lands publicly; there is no publish-vs-file decision left
+to make.
 
 ## 🛑 What this note is not
 

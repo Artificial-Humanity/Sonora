@@ -3,21 +3,25 @@
 This is the entry point for any agent or developer working on Project Sonora's training
 codebase. This is an independent GitHub repo (the PyTorch training pipeline that produces the
 actor model artifacts published to the `Sonora/huggingface` sibling checkout). Internal engineering notes —
-architecture, current state, open decisions — live in [notes/](notes/). Before starting work,
-read [notes/STATE.md](notes/STATE.md) for the current state of the project and the most
-immediate must-do items.
+architecture, current state, open decisions — live in [notes/](notes/), mapped one-line-per-file
+in [notes/README.md](notes/README.md). Before starting work, read
+[notes/STATE.md](notes/STATE.md) for the current state of the project and
+[notes/todo.md](notes/todo.md) for the open work.
 
 ---
 
 ## Core Stack Matrix
 
 * **Language Ecosystem:** Python-based ML training pipeline.
-* **Second lane — teacher synthesis (`scripts/synthesis/`):** four audited TTS engines
-  (`vibevoice`, `qwen`, `moss_vg`, `dia`) driven by a two-pass Gemma director — per-line
+* **Second lane — teacher synthesis (`scripts/synthesis/`):** five audited TTS engines
+  (`chatterbox`, `qwen`, `zonos`, `orpheus`, `moss_vg`; `vibevoice` + `dia` are set aside,
+  reversible — `ref_select.SET_ASIDE`) driven by a two-pass Gemma director — per-line
   V/A/T + a register copied from the 47-label controlled lexicon
   (`scripts/synthesis/register_lexicon.json`), then per-engine casting/delivery from
-  `scripts/synthesis/director_skills/<engine>.md`. **`build_direction()` in `book_ingest.py`
-  is the single source of truth for what each engine actually receives — never bypass it.**
+  `scripts/synthesis/director_skills/<engine>.md`. Engine allocation is the three-layer
+  `ref_select.ENGINE_MIX_BY_LANE` (capability veto · measured per-lane weights ·
+  diversity floor). **`build_direction()` in `book_ingest.py` is the single source of
+  truth for what each engine actually receives — never bypass it; unknown engines are fatal.**
   The 2026-07-25 relay audit found rich direction had been silently dropped by every engine.
   **Standing rule:** no TTS model enters the portfolio without a studied interface and a
   Gemma skill-file adapter — see [notes/tts-engine-onboarding.md](notes/tts-engine-onboarding.md),

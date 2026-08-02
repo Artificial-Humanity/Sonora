@@ -2,7 +2,7 @@
 
 _The operational "how" of model training: what runs where, how to launch/observe/stop/resume,
 and the standing verification gates. Model **selection** rationale lives in
-[actor-model-and-training.md](actor-model-and-training.md); machine provisioning in
+[model-decisions.md §5](model-decisions.md); machine provisioning in
 [../Ai-Lab-0/machine-setup.md](../../../AI-Lab-AMD/notes/machine-setup.md); stack config is
 [AI-Lab-AMD/docker-compose.yml](../../../AI-Lab-AMD/docker-compose.yml). Created 2026-07-14 during the
 de-risk phase start; keep the "Current runs" table honest._
@@ -208,8 +208,9 @@ rw mount for the matcha install).
 
 7. **Spin down ALL inference before any training run** — the Gemma director, every `synth_*`
    renderer, and the Vocalizer. Standing ai-lab-0 rule, not a courtesy: they share the one GPU.
-8. **`qc_gate.py` needs Python 3.11** — on 3.12 librosa resolves a numba that refuses to build.
-   Run it as `uv run --python 3.11 …`.
+8. **`qc_gate.py` needs Python ≤3.12** — newer hosts resolve a numba that refuses to build.
+   The repo `.venv` is 3.11: run it as `.venv/bin/python scripts/synthesis/qc_gate.py …`
+   (never `uv run` on the host — AGENTS §3).
 9. **Renders run as ai-mgr (105:109), not root**, in throwaway `rocm/pytorch` containers via
    `scripts/synthesis/container_as_ai_mgr.sh` + `umask 002`. MIOpen's find-db must be **owned**
    by that user — chmod checks ownership, not write bits — hence the separate `miopen-ai-mgr`

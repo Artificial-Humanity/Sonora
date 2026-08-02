@@ -107,13 +107,15 @@ books instead of a hand-authored `bulk_spec.json`. Four steps:
      labels, and before this was enforced ratings.csv had drifted to 138 distinct labels.
    * **Pass 2 — write casting/delivery PER ENGINE**, governed by
      `scripts/synthesis/director_skills/<engine>.md`. The JSON schema is **engine-shaped**:
-     single-string engines (`qwen`, `moss_vg`) are asked for ONE field; VibeVoice is asked for
-     casting metadata that `ref_select.py` parses; Dia is asked for inline text control only.
+     single-string engines (`qwen`, `moss_vg`) are asked for ONE field; zonos for its numeric
+     dials; chatterbox for its `exaggeration`/`cfg_weight` pair; orpheus for a castable voice.
    `build_direction()` in `book_ingest.py` is the single source of truth for what each renderer is
-   actually handed. Engine assignment stays with pass 1 (portfolio affinities: soft→Qwen,
-   force/dark/oratory→`moss_vg`, casting-led→VibeVoice; Dia is markedly expressive but the weakest
-   measured quality, so it is no longer the default narration lane). **This IS the production
-   Director's job** (character attribution/diarization + span→profile+VAT, per
+   actually handed; unknown engines are fatal. Engine assignment in pass 1 offers **only the roster
+   derived from `ref_select.ENGINE_MIX − SET_ASIDE`** (fixed 2026-08-02 — the prompt had frozen at
+   the 2026-07-25 portfolio, offering two set-aside engines and withholding three live ones), each
+   described by the CHANNEL it offers; final render allocation is the three-layer
+   `ENGINE_MIX_BY_LANE` (capability veto · measured per-lane weights · diversity floor).
+   **This IS the production Director's job** (character attribution/diarization + span→profile+VAT, per
    [high-ambition-2](high-ambition-2-dramatic-reader.md)) run offline at larger size — so it
    **dogfoods the Director** and its output schema should match the production Director's annotation
    schema. Dialogue attribution seeds the read cheaply; narration defaults neutral unless cued.
@@ -206,12 +208,37 @@ needed.
 
 ## Stage C — synthesis + vetting (already built, unchanged)
 
-`book_ingest` bank → `synth_{vibevoice,qwen,moss_vg,dia}.py` → `qc_gate.py` (ASR-fidelity + DNSMOS-tier +
-duration sanity — ASR-fidelity weighs more here since chunks are longer) → `eiv_score.py` /
+`book_ingest` bank → the live `synth_*` renderers (five-engine portfolio, VV/Dia set aside —
+[synthesis-pipeline.md](synthesis-pipeline.md)) → `qc_gate.py` (ASR-fidelity + dead-air + tail +
+DNSMOS-tier — ASR-fidelity weighs more here since chunks are longer) → `eiv_score.py` /
 phonation instrument label check → `qc_verdict.py` → **Dataset Auditions app** (`audition.ai-lab-0
 :8095`) + `ratings.csv` (SSOT), owner blind-audit at the standing bar ("affect obvious without the
 keyword"). LongCat transfer multiplies certified keeps. Book-prose stays a **bounded minority** of
 the corpus.
+
+## Quote mining & full-cast readings (folded from `librivox-quote-mining-plan.md`, 2026-08-02)
+
+The 2026-07-21 quote-mining spec is implemented as the real-audio lane
+(`librivox_fetch` → `librivox_align` force-alignment; `mine_quote_candidates.py` for
+quote+attribution extraction). What stays decision-relevant from the plan:
+
+- **Three signals must agree before a label ships**: the attribution verb (a textual
+  label of vocal delivery written by the author), the standing instruments, and the
+  ear. Verb-class is the primary label; instruments never promote a clip on their own.
+  Disagreement between text and acoustics is itself signal (flat narrator vs
+  instrument miss).
+- **Full-cast dramatic readings** (12 owner-pinned titles, 2026-07-22: Oliver Twist v5,
+  The Story Girl, plus stage plays — Earnest, The Rivals, She Stoops to Conquer, Six
+  Characters…) upgrade the lane: real acted dialogue per role (identity/portrayal
+  split trivially clean) and ideal calibration material for the measured casting
+  norms. **Complication: alignment must be role-aware** — per-section reader metadata
+  from the LibriVox API and/or light diarization before clipping; plays align
+  text-side via speaker headings.
+- **Publication boundary (owner rule 2026-07-22):** LibriVox-derived clips TRAIN
+  Sonora but are **never published** in the expressive-registers dataset — that
+  artifact stays own-synthesis-only by policy, not license.
+- Logged candidate fourth vote: Kimi-Audio-7B-Instruct (MIT) as an SER cross-check
+  instrument — frozen-annotator rules; never an actor candidate.
 
 ## Operational guard — no inference during training
 
@@ -240,23 +267,9 @@ The **`books_ledger` preserves whole-book optionality**: even taking only pieces
 whole book + source, so we can return for more, fetch the full text/audio when the whole-book phase
 arrives, and never reprocess.
 
-## Minimal spike to run first (validates before any campaign)
-
-1. One **SE title (CC0)** + one **Gutenberg title (stripped)**; prove the fetch/clean +
-   PD-translation filter on real files.
-2. Run the **router** on both (LibriVox/LibriTTS-R/MLS/ledger checks) — confirm the SKIP/REAL-AUDIO/
-   SYNTHESIZE verdicts and the ambiguity-confirm path.
-3. `book_ingest` prototype on ~30 chunks: ~15 contiguous-narration + ~15 dialogue-with-attribution.
-4. **Director validation**: run stage-3 tagging with **Gemma 4 26B-A4B QAT** (via the ollama
-   endpoint), score on the four criteria above — validating the chosen model, not comparing sizes.
-5. Render across VibeVoice/Qwen/MOSS-VoiceGenerator/Dia → unchanged `qc_gate`. Read out hard-pass rate on longer chunks;
-   whether attribution-derived register survives instrument verification; whether contiguous
-   passages hold prosody across sentences; LongCat transfer on a couple of passing anchors.
-6. **Owner blind-audit** the keeps → the release gate.
-
-Decisions the spike answers: (a) does book prose earn a standing lane; (b) does **Gemma 4 26B-A4B**
-tag/attribute reliably enough at bulk; (c) is the value the continuity + self-labeled-dialogue
-reframe as argued.
+*(The validation spike that opened the lane ran in July and the lane has been live since
+2026-07-22 — 21 ingested books; the spike checklists were cut 2026-08-02, git history has
+them.)*
 
 Cross-refs: **§ Part 2 — Rationale** (below) (rationale) ·
 [synthesis-pipeline.md](synthesis-pipeline.md) (renderers, control interface, QC) ·
@@ -393,26 +406,6 @@ discipline, so a mis-tagged book chunk fails the same gate.
   the expressive slices; sample dialogue/attribution-tagged chunks preferentially.
 - **Voice identity is scrambled on ingest** (as today) — book-prose renders inherit the same
   identity-free posture; no real person, synthetic voices only.
-
-## Minimal spike to actually run (validate before any campaign)
-
-Small, decisive, uses only the existing renderers + one throwaway `book_ingest` prototype:
-
-1. Pull **one SE title (CC0)** + **one Gutenberg title (stripped)**; confirm the strip + PD-
-   translation filter on real files.
-2. `book_ingest` prototype on ~30 chunks: ~15 **contiguous narration** spans (continuity test) +
-   ~15 **dialogue-with-attribution** spans (self-labeled-register test). Emit the bank schema.
-3. Render across the ratified four (VibeVoice / Qwen / MOSS-VoiceGenerator / Dia), run the
-   **unchanged** `qc_gate.py`.
-4. Read out: (a) hard-pass rate on longer book chunks vs authored one-liners; (b) does
-   **attribution-derived register survive instrument verification** (the core bet of slice #2);
-   (c) does contiguous-passage rendering hold prosody across sentences; (d) LongCat transfer on a
-   couple of passing narration anchors.
-5. **Owner blind-audit** the keeps against the standing bar ("affect obvious without the keyword")
-   — the release gate, unchanged.
-
-Decision the spike answers: *does book prose earn a standing lane in the synthesis pipeline, and is
-its value the continuity+dialogue reframe (as argued) or something else the ears find?*
 
 ## Settled questions (owner, 2026-07-18)
 

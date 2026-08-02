@@ -10,11 +10,11 @@
 teacher-synthesis lane. The T axis was rescoped **LAX ↔ TIGHT** on 2026-07-20; "breathy" and
 "strained" vocabulary is reserved for data with genuine aspiration.
 
-**Open issue (2026-07-25):** for own-synthesis rows the normalisation unit must be the
-engine/voice, not "speaker" — loudness currently correlates with **engine** across a ~5 dB RMS
-spread (Dia -20.2, Qwen -21.2, MOSS-VG -24.1, VibeVoice -25.2 dBFS), which would inject a
-spurious arousal signal. Loudness-normalise before any synth rows enter the A channel. Nothing
-is clipping (verified: zero flat-topping).
+**Resolved (2026-07-28):** for own-synthesis rows the normalisation unit is the
+engine/voice, not "speaker" — loudness correlated with **engine** across a ~5 dB RMS
+spread, which would have injected a spurious arousal signal. `normalize_loudness.py`
+(−23 LUFS) is wired into `synth_bank.sh` before QC and registration, and its failure is
+fatal; the teacher-ab-v1 keeps were retro-normalised 2026-08-02. Nothing was clipping.
 
 ---
 
@@ -75,7 +75,8 @@ Linked from: [next-steps §B](../../../Prosodia/notes/next-steps.md) (VAT-condit
 
 ## §2 Label sourcing and the corpus decision
 
-_The §7 de-risk verdict ([derisk-energy-verdict.md](archive/derisk-energy-verdict.md)) closed the
+_The §7 de-risk verdict (PASS 2026-07-16 — ρ≈1.000, leakage ≤0.091, WER Δ ≤0.042; full
+record in git history under `archive/derisk-energy-verdict.md`) closed the
 architecture question; the blocker for full 3-channel VAT training is **labels**: valence and
 tension need per-utterance values the current corpus doesn't have, and every input must stay
 CC-BY-4.0-or-freer (open-decision tightening #3 — no NC anywhere in the lineage, which excludes
@@ -164,8 +165,7 @@ Caveat recorded: d'≈0.9 = noisy-but-directionally-right labels, the regime the
 already proved workable; Emilia tails remain the depth fix.
 
 Linked from: [dataset-landscape.md](dataset-landscape.md) (the thesis this executes) ·
-[derisk-energy-verdict.md](archive/derisk-energy-verdict.md) · [vat-channels.md](vat-channels.md) ·
-[STATE.md](STATE.md) §3.
+[STATE.md](STATE.md).
 
 
 ---
@@ -274,5 +274,4 @@ speech fixes the +T tail at the data level, which no label formula can. Dominanc
 retired unless Emilia-enriched +T also fails audit.
 
 Linked from: [vat-channels.md](vat-channels.md) ·
-[vat-channels.md](vat-channels.md) · [derisk-energy-verdict.md](archive/derisk-energy-verdict.md) ·
-[STATE.md](STATE.md) §3.
+[STATE.md](STATE.md).

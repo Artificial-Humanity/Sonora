@@ -194,7 +194,6 @@ spin-down rule. Spike first: ~100 clips (50 certified + 50 LibriTTS-R), owner-au
   `derive_vat_corpus.py`?
 
 Cross-refs: [vat-channels.md](vat-channels.md) ·
-[vat-channels.md](vat-channels.md) ·
 [book-prose-lane.md § Part 1 — Operations](book-prose-lane.md) (director-pass) ·
 [high-ambition-1-matcha-actor.md](high-ambition-1-matcha-actor.md) (contract-lock) ·
 [high-ambition-6-audience-conveyance-stt.md](high-ambition-6-audience-conveyance-stt.md) ·

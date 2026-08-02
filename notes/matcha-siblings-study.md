@@ -166,8 +166,8 @@ states the gap without hedging:
 > (Gemma) and the Actor exist; the **ear** does not.
 
 That is the Solo Book Club layer — barge in by voice, ask or discuss, resume — a
-first-class long-intended goal and the subject of the pending
-[patent disclosure](../../../Prosodia/notes/patent-disclosure-expressive-control.md).
+first-class long-intended goal. (An earlier draft called it the subject of a "pending
+patent disclosure" — stale: there is no patent track, per the § below.)
 Baichuan-Audio is an end-to-end **speech interaction** system: Whisper Large encoder →
 8-layer RVQ tokenizer at 12.5 Hz → Qwen2.5-7B emitting interleaved text/audio tokens →
 flow-matching decoder → HiFi-GAN (from CosyVoice 2.0). Bilingual ZH/EN, real-time,

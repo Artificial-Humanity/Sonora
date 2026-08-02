@@ -132,7 +132,7 @@ teachers, and explicitly out of scope here:
   re-platform** candidate (High-Ambition 5, "reference only for now").
 - `semidark/kikiri-tts` — StyleTTS2/Kokoro side reference, same bucket.
 - `SWivid/F5-TTS` — appears only in the **architecture licence survey** in
-  actor-model-and-training.md (MIT ✅), alongside VITS/HiFi-GAN/PL-BERT. Student-side.
+  model-decisions.md §5 (MIT ✅), alongside VITS/HiFi-GAN/PL-BERT. Student-side.
 - `laion/Empathic-Insight-Voice-Large`, `laion/BUD-E-Whisper`,
   `mkrausio/EmoWhisper-AnS-Small-v0.1` — **instruments**, not TTS. EIV is the
   independent verifier the whole label pipeline leans on.
@@ -421,8 +421,9 @@ sample. Count runs of >=3 consecutive full-scale samples before calling anything
 clipped — we briefly and wrongly reported 14 clipped clips when the true count across
 all 80 was zero.
 
-**`qc_gate.py` needs Python 3.11.** On 3.12, librosa resolves a numba that refuses to
-build. Run it with `uv run --python 3.11`.
+**`qc_gate.py` needs Python ≤3.12.** On newer hosts, librosa resolves a numba that
+refuses to build. The repo `.venv` is 3.11 — run it as
+`.venv/bin/python scripts/synthesis/qc_gate.py` (never `uv run` on the host — AGENTS §3).
 
 **An ad-hoc render script must live where `ai-mgr` can read it.** Renders drop privileges
 to uid 105, and the session scratchpad under `/tmp/claude-*` is owned by the human user with
