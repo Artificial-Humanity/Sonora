@@ -255,9 +255,11 @@ ENGINE_MIX = {
 # nothing about how many lines of that kind exist. Lane SIZE comes from the ratified
 # delivery mix (Dialogue 50 / Neutral 30 / Documentary 8 / Newscaster 6 / Speech 6) and
 # from the source text, which for a novel is overwhelmingly narration and quoted speech.
-# Measured 2026-08-01: Dialogue 579 of 919 keeps is ON SHAPE, not oversupplied — held as
-# the 50% anchor the corpus completes at 1158, needing +80 Neutral, +35 Documentary,
-# +61 Newscaster, +61 Speech and no further dialogue at all.
+# Measured 2026-08-02: Dialogue 578 of 1,071 fold-eligible keeps is ON SHAPE, not
+# oversupplied — held as the 50% anchor the corpus completes at 1,156, needing
+# +81 Neutral, +35 Documentary and no further dialogue at all. Newscaster (84/69)
+# and Speech (69/69) CLOSED when newscaster-v1 landed, so the two remaining gaps are
+# both narration. Live table: notes/delivery-mix-campaign.md.
 ENGINE_MIX_DIALOGUE = {
     "qwen":       0.450,   # richest instruct slot by a distance (12 references in its
                            # skill file vs 1-2 for most), and the measured gold standard.

@@ -1,5 +1,12 @@
 # Dataset Landscape — Training Options for Sonora
 
+> **This file evaluates CANDIDATES. For what is on disk and what a training run
+> actually consumes, see [training-sources.md](training-sources.md) — that is the
+> SSOT for a source's STATE, this one is the SSOT for its LICENSE and its role.**
+> They were the same file in spirit and neither answered "what are we training on
+> today", which is how we reached 2026-08-02 with ~60 GB of cleared, downloaded,
+> unused audio and every checkpoint tracing to a tenth of LibriTTS-R.
+
 _Surveyed 2026-07-13 (HF Hub, licenses verified per-repo unless marked unverified). The governing
 rule comes from [open-decision-licensing.md](../../../Prosodia/notes/open-decision-licensing.md) tightening #3:
 Sonora is Apache-2.0 "for everyone," so **every training input must be permissive (CC-BY-4.0 or
@@ -46,7 +53,7 @@ synthesis is reserved for text with no real audio).
 
 | Dataset | Why excluded |
 |---|---|
-| [Expresso](https://hf.co/datasets/ylacombe/expresso) | **CC-BY-NC-4.0 — status changed 2026-07-19.** Bare NC (no click-through agreement executed) is **risk-accepted for training use** under the two-fence ruling below; tainted-lineage bookkeeping applies and the ship/don't-ship call defers to promotion time. Agreement-walled NC (EmoV-DB) stays fully excluded. Still the best *design reference* for expressive style taxonomies (8 read + 26 improvised styles, 4 speakers, 48 kHz). Gray-area tiers + quality-weighted deliberation: [dataset-landscape.md](dataset-landscape.md) |
+| [Expresso](https://hf.co/datasets/ylacombe/expresso) | ⚠ **THIS RULING IS CONTESTED — see [training-sources.md § The Expresso conflict](training-sources.md). The 2026-08-01 no-patent / fully-Apache-2.0 posture sets the corpus bar at *unrestricted open redistribution* and says explicitly it is STRICTER than the old commercial test, which CC-BY-NC does not clear. Unresolved; owner's call. Nothing has trained on it.** — **CC-BY-NC-4.0 — status changed 2026-07-19.** Bare NC (no click-through agreement executed) is **risk-accepted for training use** under the two-fence ruling below; tainted-lineage bookkeeping applies and the ship/don't-ship call defers to promotion time. Agreement-walled NC (EmoV-DB) stays fully excluded. Still the best *design reference* for expressive style taxonomies (8 read + 26 improvised styles, 4 speakers, 48 kHz). Gray-area tiers + quality-weighted deliberation: [dataset-landscape.md](dataset-landscape.md) |
 | [EmoV-DB](https://github.com/numediart/EmoV-DB) | **NC** (LICENSE.md: "Non-commercial Purposes" only — resolved 2026-07-19). Rare acted classes (amused-with-laughter, sleepy) make it reference-only alongside Expresso |
 | Emilia — original 101k-h subset | CC-BY-NC-4.0 (only the YODAS portion is CC-BY; the repo's license tag reflects the newer subset — easy to misread, verified 2026-07-13) |
 | AniSpeech / Hailuo-derived sets, etc. | Carry MIT labels but are scraped/synthetic from copyrighted or closed-model sources — **provenance risk**; the "for everyone" promise needs clean lineage, and synthetic-from-closed-APIs additionally raises ToS questions (the Kokoro data caveat) |

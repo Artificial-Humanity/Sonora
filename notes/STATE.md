@@ -1,12 +1,28 @@
 # Project State — Project Sonora
 
 
-## VAT corpus v3 — derived, gates passed (2026-08-01)
+## VAT corpus — v3 derived 2026-08-01, **superseded by v3c 2026-08-02**
+
+> **Train on `data/libritts_r_vat_v3c`.** Same 31,445 clips as v3, twice corrected:
+> v3b fixed the phonemes (v1–v3 all carry contraction-poisoned IPA on ~6.4% of rows —
+> `I'll` phonemized as *ill*), and v3c replaced the shuffled train/val split with a
+> per-clip hash so growing the corpus stops re-rolling membership. **30,485 train /
+> 960 val.** Nothing has trained on v3, v3b or v3c; the existing `vat3_finetune`
+> ep099 checkpoint trained on **v2**, poisoned phonemes included.
+>
+> Still open before a run: no experiment config points at v3c, and
+> `data_statistics` in the v2 config were measured on the 29,441-clip split — the
+> v3 lineage is 31,445 rows, so re-run `generate_data_statistics.py` **inside the
+> training container** rather than inheriting them. Full lineage table and every
+> other source: **`notes/training-sources.md`** (SSOT). Remediation detail:
+> `notes/cleanup-20260802.md`.
 
 `data/libritts_r_vat_v3`: **31,445 clips / 51.3 h / 247 speakers** (v2: 30,351 / 45.7 h /
 247), at the raised `MAX_SECONDS=22`. Independence gate **PASS** — corr(T,A) = −0.059,
 corr(T,V) = −0.066, corr(V,A) = +0.027. G2P resolved every word: dict 95.39%, neural
-fallback 25,629, **unresolved 0**, 0 vocab violations.
+fallback 25,629, **unresolved 0**, 0 vocab violations — but "resolved" was the wrong
+word: the neural fallback silently dropped apostrophes, so the misses were counted as
+wins. That is what v3b fixed.
 
 **The version bump is much softer than the cap-change note predicted.** Against v2 on the
 30,351 shared clips the labels barely move: corr **0.9993 / 0.9994 / 0.9997** for V/A/T,

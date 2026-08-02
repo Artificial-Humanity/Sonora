@@ -3,7 +3,75 @@
 _Owner ratified 2026-07-30: the **book-actor mix** — Dialogue 50% / Neutral 30% /
 Documentary 8% / Newscaster 6% / Speech 6%. This note is the SSOT for the push._
 
-## Baseline (measured 2026-07-30, after cleanup)
+## Where it stands — measured 2026-08-02 (supersedes the 2026-07-30 baseline below)
+
+**Fold-eligible = every keep except the three instrument campaigns**
+(`audit-tension-v2`, `audit-valence-v1`, `audit-emilia-keeps-v1` — the set
+`seed_delivery.SKIP_CAMPAIGNS` already excludes). **`audit-markup-v0` DOES fold**
+(owner, 2026-08-02): it is authored expressive material with curated registers, and
+`seed_delivery.py` has always treated it as corpus. The blanket "audit-* campaigns
+excluded" phrasing in the 2026-07-30 baseline below was wrong, and it mattered — the
+89 keeps it excluded are 79 Dialogue, and Dialogue is the anchor the whole table
+scales from.
+
+**1,071 fold-eligible keeps.** Dialogue 578 held as the 50% anchor → the corpus
+completes at **1,156**.
+
+| lane | have | want | gap |
+|---|---|---|---|
+| Dialogue | **578** | 578 | anchor — no further dialogue needed |
+| Neutral | 266 | 347 | **+81** |
+| Documentary | 57 | 92 | **+35** |
+| Newscaster | 84 | 69 | **−15 — DONE** |
+| Speech | 69 | 69 | **DONE** |
+
+**Remaining: +116, both lanes narration.** Newscaster and Speech closed when
+newscaster-v1 landed (78 clips, qwen 27/27 · zonos 29/31 · moss_vg 20/20).
+
+### The text shelf was empty, and that was the real blocker
+
+The "~440 unrendered narration lines" below is **stale — it was 20**. Of 503 minted
+narration lines across 21 books, delivery-v1 consumed all but 20. Ingesting is now
+the rate limiter for the last two lanes, not rendering.
+
+Refilled 2026-08-02. `conan-stories` had been routed SYNTHESIZE on 2026-08-01 and
+never ingested; four more titles were owner-approved, chosen against the lane guide:
+
+| book | lane | narration lines |
+|---|---|---|
+| conan-stories | Neutral | 40 |
+| voyage-of-the-beagle (Darwin) | Documentary | 45 |
+| up-from-slavery (Washington) | Neutral | 45 |
+| franklin-autobiography | Neutral | 45 |
+| walden (Thoreau) | Neutral | 45 |
+
+⚠ The router flagged **Voyage of the Beagle** and **Franklin's Autobiography** as
+already present in LibriTTS-R train-clean-100 (matched on title, different PG
+edition). It annotates rather than skips, which is right — we are taking the text,
+not the audio. But if the expressive corpus is ever merged into the VAT filelists,
+those sentences would sit on both sides of the merge. Check before that merge, not
+before the render.
+
+### Open: the director picks engines per line, and ENGINE_MIX does not
+
+`book_ingest`'s pass 1 has the director choose an engine per line. On conan-stories
+that produced **40 zonos / 36 qwen / 4 moss_vg** — chatterbox and orpheus never
+chosen at all — against the ratified `ENGINE_MIX` of 27.5 / 27.5 / 20 / 15 / 10.
+
+Both behaviours are deliberate and they contradict. `ENGINE_MIX`'s own comment says
+bank builders must read it "rather than hand-rolling a split", and the owner
+ratified allocation as a per-engine decision on 2026-07-31. Per-line choice is the
+older design, from before that table existed.
+
+It has not caused harm yet, because delivery campaigns build their own banks from
+the book banks and re-allocate there (delivery-v1 inherited pass-1 labels and redid
+pass 2). But a book bank rendered directly would follow the director's split.
+**Unresolved — owner's call**: keep per-line choice, allocate by `ENGINE_MIX`, or
+let the director choose and rebalance afterwards.
+
+---
+
+## Baseline (measured 2026-07-30, after cleanup) — HISTORICAL
 
 Fold-eligible certified keeps (audit-* campaigns excluded — they are agreement-rate
 instruments, never folded): **642**, after retiring **52 fragment keeps** via the app's
@@ -181,11 +249,19 @@ the ear still calls it, once per (reader, title).
 
 ## Sequence
 
-1. **delivery-v1-narration** — Neutral (+194→~230 renders) + Documentary (+73→~90):
-   select unrendered `_nar_` lines, Gemma re-direction with current skill files, render,
-   QC, audition.
-2. **delivery-v1-speech** — source PG oratory, mint (completeness + ≥92 chars), direct,
-   render (+53→~65).
-3. **delivery-v1-news** — author bulletin lines, direct, render (+52→~65).
-4. Fold, then recompute this table; publish tier per [[expressive-registers-dataset]]
+1. ~~**delivery-v1-narration** — Neutral + Documentary~~ — round 1 done (342 renders);
+   **reopened**, see step 5. The lanes did not close.
+2. ~~**delivery-v1-speech**~~ — **DONE.** Speech 69/69, sourced from PG oratory +
+   the Dickens *Speeches* force-align lane.
+3. ~~**delivery-v1-news**~~ — **DONE.** Newscaster 84/69, closed by newscaster-v1
+   (78 clips: qwen 27/27 · zonos 29/31 · moss_vg 20/20).
+4. **delivery-v1-narration round 2** — the remaining **+116** (Neutral +81,
+   Documentary +35), on the five books ingested 2026-08-02. This round also carries
+   the **zonos tier test**: every prior zonos narration bank had `emotion: null`
+   hand-patched, so the director path has never run end to end in production.
+   Verified on conan-stories that it now does — 40/40 narration lines directed to
+   zonos, 39/40 with emotion truly off, rate 14 and pitch 25–42, all inside the
+   skill file's Neutral band. One director-driven bank is the last thing standing
+   between the evidence and re-tiering zonos scrutinized → normal.
+5. Fold, then recompute this table; publish tier per [[expressive-registers-dataset]]
    conventions (higgs3-NC keeps stay out of the CC-BY publish set).
