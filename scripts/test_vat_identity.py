@@ -14,6 +14,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 import torch
 
+_FAILURES = []
+
+
+def check(name, ok, detail="", note=""):
+    """Record a gate result and print it. Exit code comes from these."""
+    if not ok:
+        _FAILURES.append(name)
+    suffix = f" ({note})" if note and ok else ""
+    print(f"{name}: {detail}  {'PASS' if ok else 'FAIL'}{suffix}")
+    return ok
+
+
 # Any plain (non-VAT) trained checkpoint works as the warm-start reference.
 CKPT = os.environ.get(
     "SONORA_PHASE0_CKPT",
@@ -65,9 +77,10 @@ out_hot = vat_model.synthesise(ids, lengths, n_timesteps=4, temperature=0.667,
 d_zero = (out_base["decoder_outputs"] - out_zero["decoder_outputs"]).abs().max().item()
 d_none = (out_base["decoder_outputs"] - out_none["decoder_outputs"]).abs().max().item()
 d_hot = (out_base["decoder_outputs"] - out_hot["decoder_outputs"]).abs().max().item()
-print(f"identity (vat=0):    max|diff| = {d_zero:.3e}  {'PASS' if d_zero == 0 else 'FAIL'}")
-print(f"identity (vat=None): max|diff| = {d_none:.3e}  {'PASS' if d_none == 0 else 'FAIL'}")
-print(f"identity (vat hot):  max|diff| = {d_hot:.3e}  {'PASS (zero-init: hot vat inert at init)' if d_hot == 0 else 'FAIL'}")
+check("identity (vat=0)", d_zero == 0, f"max|diff| = {d_zero:.3e}")
+check("identity (vat=None)", d_none == 0, f"max|diff| = {d_none:.3e}")
+check("identity (vat hot)", d_hot == 0, f"max|diff| = {d_hot:.3e}",
+      note="zero-init: hot vat inert at init")
 
 # Plumbing: nudge one decoder FiLM head — hot vat must now change the output.
 with torch.no_grad():
@@ -76,7 +89,7 @@ torch.manual_seed(42)
 out_nudge = vat_model.synthesise(ids, lengths, n_timesteps=4, temperature=0.667,
                                  vat=torch.tensor([[0.8, -0.5, 0.9]]))
 d_nudge = (out_base["decoder_outputs"] - out_nudge["decoder_outputs"]).abs().max().item()
-print(f"plumbing (nudged head, vat hot): max|diff| = {d_nudge:.3e}  {'PASS' if d_nudge > 0 else 'FAIL'}")
+check("plumbing (nudged head, vat hot)", d_nudge > 0, f"max|diff| = {d_nudge:.3e}")
 with torch.no_grad():
     vat_model.decoder.estimator.mid_films[0].head.weight.sub_(0.01)
 
@@ -99,12 +112,18 @@ vat_b = torch.tensor([[0.5, -0.2, 0.1], [-0.3, 0.6, -0.8]])
 dur_loss, prior_loss, diff_loss, _ = vat_model(
     x2, x2_lengths, y, y_lengths, out_size=100, vat=vat_b)
 ok = all(torch.isfinite(loss).item() for loss in (dur_loss, prior_loss, diff_loss))
-print(f"training forward (out_size cut + dropout): dur={dur_loss:.3f} prior={prior_loss:.3f} "
-      f"diff={diff_loss:.3f}  {'PASS' if ok else 'FAIL'}")
+check("training forward (out_size cut + dropout)", ok,
+      f"dur={dur_loss:.3f} prior={prior_loss:.3f} diff={diff_loss:.3f}")
 
 # Gradient reaches the FiLM heads (after a backward, heads must have grads).
 (dur_loss + prior_loss + diff_loss).backward()
 head_grads = [p.grad.abs().sum().item() for n, p in vat_model.named_parameters()
               if "film" in n and p.grad is not None]
-print(f"FiLM heads with grads: {len(head_grads)}, nonzero grad sum: "
-      f"{sum(1 for g in head_grads if g > 0)}")
+n_nonzero = sum(1 for g in head_grads if g > 0)
+check("FiLM heads receive gradient", bool(head_grads) and n_nonzero > 0,
+      f"{len(head_grads)} heads, {n_nonzero} with nonzero grad")
+
+if _FAILURES:
+    print(f"\nFAILED: {', '.join(_FAILURES)}")
+    sys.exit(1)
+print("\nall VAT identity gates PASS")

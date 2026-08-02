@@ -47,6 +47,7 @@ from zonos.conditioning import make_cond_dict
 from zonos.speaker_cloning import SpeakerEmbeddingLDA
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from synth_common import write_wav_atomic  # noqa: E402
 from ref_select import (select_reference, pinned_reference, design_age_band,  # noqa: E402
                         REF_BLACKLIST)
 
@@ -198,7 +199,7 @@ def main():
                                   unconditional_keys=uncond, **kw)
             codes = model.generate(model.prepare_conditioning(cond))
             wav = model.autoencoder.decode(codes).squeeze().float().cpu().numpy()
-            sf.write(os.path.join(args.out, f"{job['id']}.wav"), wav, sr_out)
+            write_wav_atomic(os.path.join(args.out, f"{job['id']}.wav"), wav, sr_out)
 
             row = dict(job)
             row.update({

@@ -15,6 +15,10 @@ import os
 import torch
 from transformers import AutoProcessor, DiaForConditionalGeneration
 
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from synth_common import save_via_atomic  # noqa: E402
+
 MODEL_DIR = "/data/models/nari-labs/Dia-1.6B-0626"
 # Pilot owner-audit 2026-07-17: 2/5 collapses at temp 1.3-1.4 (white noise /
 # wordless output). The audition's good renders used 1.8. 1.3 is the cliff,
@@ -81,7 +85,8 @@ def main():
                 temperature=temp, top_p=0.90, top_k=45)
             decoded = processor.batch_decode(audio_tokens)
             name = f"{job['id']}.wav"
-            processor.save_audio(decoded, os.path.join(args.out, name))
+            save_via_atomic(processor.save_audio,
+                            os.path.join(args.out, name), decoded)
             mf.write(json.dumps({
                 "id": job["id"], "engine": "dia", "wav": name,
                 "register": job["register"], "intended": job["intended"],

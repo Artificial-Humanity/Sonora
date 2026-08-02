@@ -55,6 +55,55 @@ PROFILES = DATASETS / "reader_profiles.json"
 ATTRS = ("gender", "age", "accent")     # reader properties. NOT delivery.
 MIN_AGREE = 0.80                        # modal value must hold this share to be trusted
 
+# Provenance marker written into the note column by --apply, naming exactly which
+# cells this script filled. Without it, learn() re-read its own propagations as
+# fresh agreeing votes: four propagated copies out-voted one genuine later ear
+# disagreement at MIN_AGREE=0.80, so _CONFLICT never fired and the profile
+# echoed itself past the very signal the (reader, title) design exists to surface.
+AUTO_PREFIX = "auto-attrs:"
+# Written by stage_pool for machine-folded rows; those were never heard either.
+FOLD_MARKER = "folded: staged unheard"
+
+
+def _auto_attrs(row):
+    """Attributes in this row that a machine wrote, not the ear."""
+    note = row.get("note") or ""
+    if FOLD_MARKER in note:
+        return set(ATTRS)
+    for part in note.split(";"):
+        part = part.strip()
+        if part.startswith(AUTO_PREFIX):
+            return {a for a in part[len(AUTO_PREFIX):].split("+") if a}
+    return set()
+
+
+def _merge_auto_note(note, attrs):
+    """Add/extend the auto-attrs marker in a note, preserving anything else."""
+    kept, existing = [], set()
+    for part in note.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        if part.startswith(AUTO_PREFIX):
+            existing |= {a for a in part[len(AUTO_PREFIX):].split("+") if a}
+        else:
+            kept.append(part)
+    merged = sorted(existing | set(attrs))
+    kept.append(AUTO_PREFIX + "+".join(merged))
+    return "; ".join(kept)
+
+
+def _ear_set(row):
+    """True when a human actually audited this row.
+
+    An ear pass is evidenced by a score. `status != unaudited` was too weak: it
+    admitted deferred and dropped rows, and every row --apply had already
+    written.
+    """
+    if (row.get("status") or "") == "unaudited":
+        return False
+    return bool((row.get("score") or "").strip())
+
 
 def clip_meta() -> dict[str, tuple[str, str]]:
     """clip id -> (reader, title), from every librivox manifest on disk."""
@@ -82,10 +131,11 @@ def learn(rows: list[dict], meta: dict[str, tuple[str, str]]) -> dict:
         lambda: collections.defaultdict(lambda: collections.defaultdict(collections.Counter)))
     for r in rows:
         reader, title = meta.get(r["id"], (None, None))
-        if not reader or r.get("status") == "unaudited":
+        if not reader or not _ear_set(r):
             continue
+        auto = _auto_attrs(r)
         for a in ATTRS:
-            if r.get(a):
+            if r.get(a) and a not in auto:
                 per[reader][title][a][r[a]] += 1
     profiles: dict[str, dict] = {}
     for reader, titles in per.items():
@@ -176,6 +226,7 @@ def main() -> int:
             reader, title = meta.get(r["id"], ("", ""))
             entry = profiles.get(reader) or {}
             confirmed = ((entry.get("titles") or {}).get(title)) or {}
+            wrote = []
             for a in ATTRS:
                 if a not in hdr or r.get(a):
                     continue
@@ -183,12 +234,18 @@ def main() -> int:
                     # Same title, ear-confirmed: propagate freely.
                     r[a] = confirmed[a]
                     filled[a] += 1
+                    wrote.append(a)
                 elif (entry.get("hint") or {}).get(a) and confirmed:
                     # Cross-title hint, but only once THIS title has an ear pass —
                     # otherwise a name collision or an age shift would propagate
                     # unchecked into a title nobody has heard.
                     r[a] = entry["hint"][a]
                     hinted[a] += 1
+                    wrote.append(a)
+            if wrote and "note" in hdr:
+                # Record WHICH cells were machine-written, so a later learn()
+                # pass does not read them back as independent ear agreement.
+                r["note"] = _merge_auto_note(r.get("note") or "", wrote)
         if not (filled or hinted):
             print("  nothing to fill")
             return 0

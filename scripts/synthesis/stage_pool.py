@@ -81,6 +81,11 @@ RATINGS = DATASETS / "sonora-expressive-registers/ratings.csv"
 PROFILES = DATASETS / "reader_profiles.json"
 LEDGER = DATASETS / "books_ledger.json"
 ATTRS = ("gender", "age", "accent")
+# Written into the note column of every machine-folded row. It is the ONLY
+# marker that separates a folded keep from an ear-scored one, so consumers that
+# count ear evidence match on it (see reader_profile.learn, gate_calibration,
+# stage_pool.--mark-delivery).
+FOLD_NOTE = "folded: staged unheard under group certification"
 LANES = ("Newscaster", "Documentary", "Neutral", "Dialogue", "Speech")
 
 
@@ -215,10 +220,17 @@ def main() -> int:
         # one. So it is checked against every audited clip from the title, and a single
         # disagreement refuses the whole mark — disagreement is the evidence that the
         # title is not homogeneous, which is exactly the thing being claimed.
+        # "Heard" means a human actually listened: an ear score is present and
+        # the row is not a machine-written fold. Accepting any status other
+        # than unaudited let deferred, dropped, reroll and — worst — the rows
+        # this same command had previously folded all vote, so a staged run
+        # could re-certify the very mark that produced it.
         with RATINGS.open(newline="", encoding="utf-8") as fh:
             heard = {r["id"]: (r.get("delivery") or "").strip()
                      for r in csv.DictReader(fh)
-                     if (r.get("status") or "") not in ("unaudited", "")}
+                     if (r.get("score") or "").strip()
+                     and FOLD_NOTE not in (r.get("note") or "")
+                     and (r.get("status") or "") in ("keep", "relabeled")}
         by_title: dict[str, dict] = {}
         for r in pool:
             by_title.setdefault(r.get("book") or "?", r)
@@ -338,11 +350,20 @@ def main() -> int:
             continue
         row = {k: "" for k in hdr}
         unaudited = args.seed_ear or rec["id"] in flagged
+        # A folded clip is a keep — that is the point of folding — but NOBODY
+        # HEARD IT, so it must not carry an ear score. It used to be written
+        # `score=5`, which is a fabricated ear verdict under the v4 rule that
+        # score is vocals/prosody by ear only, and three consumers then trusted
+        # it: gate_calibration counted it as an ear keep, audit_sampler counted
+        # it as scored history (retiring novelty sampling early), and
+        # --mark-delivery accepted it as "the ear said". Blank score + a note
+        # keeps the clip in the dataset while making its provenance legible.
         row.update({
             "campaign": f"book-{args.campaign}", "id": rec["id"],
             "engine": rec.get("engine", "librivox"),
             "status": "unaudited" if unaudited else "keep",
-            "score": "" if unaudited else "5",
+            "score": "",
+            "note": "" if unaudited else FOLD_NOTE,
             "link": f"../{args.campaign}/audio/{rec['wav']}",
         })
         if not args.seed_ear:

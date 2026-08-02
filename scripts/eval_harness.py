@@ -333,10 +333,16 @@ def main():
             if len(pts) >= 3:
                 rho = spearman([p[0] for p in pts], [p[1] for p in pts])
                 produced = [p[1] for p in pts]
+                # Signed, not abs(). Every channel->measure mapping is
+                # positively directed, so a negative rho means the channel is
+                # inverted — exactly what a channel-order swap or a
+                # composite-sign bug produces. abs() passed those at
+                # rho=-0.95, which is the one failure this gate exists to
+                # catch before a checkpoint is promoted as directable.
                 g["controllability"][ch] = {
                     "spearman_rho": rho,
                     "produced_range": [min(produced), max(produced)],
-                    "pass": bool(abs(rho) >= args.rho_min),
+                    "pass": bool(rho >= args.rho_min),
                 }
                 if not g["controllability"][ch]["pass"]:
                     failed.append(f"{name}:{ch} rho={rho:.3f}")

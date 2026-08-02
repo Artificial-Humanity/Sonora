@@ -343,9 +343,22 @@ def main():
         print(f"QC triage: {len(qc_map)} clips carry a QC finding — all queued for the "
               f"ear regardless of engine tier")
         if advisory and not args.dry_run:
+            # Append-dedup, not clobber. qc_engine_defects.py --append-flags
+            # writes the same file for the scrutinized engines, so whichever
+            # ran second used to erase the other's ids — and pick_audit_subset
+            # --flags then never saw them, quietly breaking "every QC failure
+            # is auditioned" for exactly the engines that need it most.
             flags = qc_path.parent / "qc_flags.txt"
-            flags.write_text("\n".join(advisory) + "\n", encoding="utf-8")
-            print(f"wrote {flags} ({len(advisory)} ids)")
+            have = set()
+            if flags.is_file():
+                have = {ln.strip() for ln in flags.read_text(encoding="utf-8").splitlines()
+                        if ln.strip()}
+            new = [i for i in advisory if i not in have]
+            with open(flags, "a", encoding="utf-8") as f:
+                for i in new:
+                    f.write(i + "\n")
+            print(f"wrote {flags} ({len(new)} new ids, "
+                  f"{len(advisory) - len(new)} already present)")
 
     # Build the list of (audio_dir, slug) targets from whichever flags were given.
     targets = []
@@ -380,11 +393,15 @@ def main():
         print(f"[dry-run] {len(all_new)} rows would be appended to ratings.csv")
         return
 
-    _append_guarded(all_new, fields)
+    append_guarded(all_new, fields)
 
 
-def _append_guarded(all_new, fields, attempts=5):
+def append_guarded(all_new, fields, attempts=5):
     """Append rows, verifying they survived a concurrent app write.
+
+    Public on purpose: this is the ONE guarded writer for ratings.csv, and every
+    script that appends to it must come through here. audit_sampler used to
+    hand-roll a bare append and silently lost rows.
 
     ⚠ The audition app is a LIVE WRITER and saves via read-all -> modify -> write
     tmp -> os.replace (audition/app/main.py `_write_rows`). The replace is atomic, so a

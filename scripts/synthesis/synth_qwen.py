@@ -14,6 +14,10 @@ import soundfile as sf
 import torch
 from qwen_tts import Qwen3TTSModel
 
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from synth_common import write_wav_atomic  # noqa: E402
+
 MODEL_DIR = "/data/models/Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
 
 
@@ -46,7 +50,7 @@ def main():
             wavs, sr = gen(text=job["text"], language="English",
                            instruct=job["direction"]["instruct"])
             name = f"{job['id']}.wav"
-            sf.write(os.path.join(args.out, name), wavs[0], sr)
+            write_wav_atomic(os.path.join(args.out, name), wavs[0], sr)
             # dict(job) first: passthrough fields (pair_key, probe, and now
             # intended_delivery/book for the delivery-mix campaigns) must reach
             # the manifest — register_audition prefill and the fold read them

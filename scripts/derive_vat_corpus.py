@@ -313,6 +313,15 @@ def main():
                     help="existing derivation dir: reuse its kept clips, "
                          "phonemes (filelists) and measures.jsonl — relabel "
                          "only, no audio measuring or G2P.")
+    ap.add_argument("--allow-uncovered", action="store_true",
+                    help="proceed when the valence/soft JSONs do not cover "
+                         "every kept clip. Uncovered clips get V=0.0, which "
+                         "is indistinguishable from a genuine at-speaker-mean "
+                         "label — this is how 1,094 mislabeled clips shipped "
+                         "in an earlier pass. Off by default.")
+    ap.add_argument("--allow-gate-fail", action="store_true",
+                    help="write filelists even when the independence gate "
+                         "fails. Off by default.")
     args = ap.parse_args()
 
     ipa_cache = None
@@ -350,12 +359,16 @@ def main():
     # provided. All clamped at 2 sigma.
     import numpy as np
 
+    uncovered = {}
+
     valence_raw = {}
     if args.valence_json:
         with open(args.valence_json, encoding="utf-8") as f:
             valence_raw = json.load(f)
         missing = sum(1 for p, _, _ in kept if p not in valence_raw)
         print(f"valence-json: {len(valence_raw)} scores, {missing} kept clips uncovered")
+        if missing:
+            uncovered["valence"] = missing
 
     speakers = sorted({s for _, _, s in kept}, key=int)
     spk_index = {s: i for i, s in enumerate(speakers)}
@@ -376,6 +389,18 @@ def main():
             soft_raw = json.load(f)
         missing = sum(1 for p, _, _ in kept if p not in soft_raw)
         print(f"soft-json: {len(soft_raw)} scores, {missing} kept clips uncovered")
+        if missing:
+            uncovered["soft"] = missing
+
+    if uncovered and not args.allow_uncovered:
+        detail = ", ".join(f"{k}: {n} clips" for k, n in sorted(uncovered.items()))
+        sys.exit(
+            f"ABORT: label sources do not cover every kept clip ({detail}).\n"
+            "  Uncovered clips would be written V=0.0, which reads as a real "
+            "at-speaker-mean label and is invisible to every downstream gate.\n"
+            "  Re-run the EIV pass over the missing clips, or pass "
+            "--allow-uncovered if the zeros are genuinely intended."
+        )
 
     lufs_z = per_spk_z({p: measured[p]["lufs"] for p, _, _ in kept})
     t_raw = {}
@@ -393,6 +418,27 @@ def main():
     def clamp2(z):
         return max(-1.0, min(1.0, z / 2.0))
 
+    # A single NaN anywhere in a raw score poisons its speaker's mean/std, and
+    # clamp2 turns the resulting NaN into a clean-looking 1.0 (min(1.0, nan)
+    # returns 1.0 in Python, because the comparison is False). The whole
+    # channel for that speaker would saturate at the extreme and format as
+    # "1.0000". LUFS is isfinite-guarded upstream; the EIV JSONs are not.
+    nonfinite = {
+        name: sorted(p for p, v in table.items() if not np.isfinite(v))
+        for name, table in (("A (lufs)", lufs_z), ("T (tension)", tension_z),
+                            ("V (valence)", valence_z))
+        if table
+    }
+    nonfinite = {k: v for k, v in nonfinite.items() if v}
+    if nonfinite:
+        lines = "\n".join(
+            f"  {ch}: {len(paths)} non-finite z-scores, e.g. {paths[:3]}"
+            for ch, paths in sorted(nonfinite.items())
+        )
+        sys.exit("ABORT: non-finite label values before clamping:\n" + lines
+                 + "\n  These would clamp to a clean 1.0 and saturate the "
+                   "channel. Fix the raw scores.")
+
     # Pre-registered independence gate: pooled per-speaker-z correlations.
     def corr(a, b):
         common = [p for p, _, _ in kept if p in a and p in b]
@@ -404,9 +450,22 @@ def main():
     corr_tv = corr(tension_z, valence_z) if valence_z else None
     corr_va = corr(valence_z, lufs_z) if valence_z else None
     gate_ok = all(c is None or abs(c) < 0.3 for c in (corr_ta, corr_tv, corr_va))
-    print(f"independence gate: corr(T,A)={corr_ta:+.3f}"
-          + (f" corr(T,V)={corr_tv:+.3f} corr(V,A)={corr_va:+.3f}" if valence_z else "")
+
+    def _fmt(c):
+        # corr() returns None on small populations; the old +.3f crashed there.
+        return "n/a" if c is None else f"{c:+.3f}"
+
+    print(f"independence gate: corr(T,A)={_fmt(corr_ta)}"
+          + (f" corr(T,V)={_fmt(corr_tv)} corr(V,A)={_fmt(corr_va)}" if valence_z else "")
           + f" -> {'PASS (|r|<0.3)' if gate_ok else 'FAIL — residualize before training'}")
+    if not gate_ok and not args.allow_gate_fail:
+        sys.exit(
+            "ABORT: independence gate failed. The channels are entangled, so "
+            "a model trained on these labels cannot be steered on one axis "
+            "without moving another.\n"
+            "  Residualize before training, or pass --allow-gate-fail to write "
+            "the filelists anyway."
+        )
 
     # Phonemize (espeak-free lane) and assemble rows.
     from matcha.text.op_g2p import OpenPhonemizerG2P
@@ -432,10 +491,28 @@ def main():
                 print(f"  phonemized {i + 1}/{len(kept)}")
         print(f"phonemized {len(rows)} rows ({bad_vocab} dropped for vocab violations)")
         s_ = g2p.stats
-        total = s_["dict_hits"] + s_["neural_hits"] + s_["oov_misses"]
+        total = sum(s_.values())
         print(f"G2P: dict {100 * s_['dict_hits'] / max(total, 1):.2f}% | "
-              f"neural {s_['neural_hits']} | unresolved {s_['oov_misses']}")
+              f"contractions {s_['contraction_hits']} | "
+              f"neural {s_['neural_hits']} | "
+              f"apostrophe fallback {s_['apostrophe_fallbacks']} | "
+              f"unresolved {s_['oov_misses']}")
+        if s_["oov_misses"]:
+            # Unresolved words are written as bare letters, which validate()
+            # cannot catch (a-z are in the vocab), so they do NOT show up in
+            # the bad_vocab drop count above.
+            sys.exit(
+                f"ABORT: {s_['oov_misses']} words were unresolved and would "
+                f"ship as literal letters, e.g. {sorted(g2p.oov_words)[:10]}"
+            )
 
+    # Canonical order before shuffling, so the train/val split depends only on
+    # SEED and the clip set — not on how the rows happened to be assembled.
+    # --reuse-from builds them train-then-val while a fresh run uses
+    # find_clips() order, so the same seed used to produce two different
+    # permutations and any val-loss comparison across label versions (the
+    # whole point of a relabel) was contaminated.
+    rows.sort()
     random.seed(SEED)
     random.shuffle(rows)
     n_val = max(int(len(rows) * VAL_FRACTION), 1)

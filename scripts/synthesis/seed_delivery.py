@@ -89,7 +89,13 @@ def classify(row):
         return None
     if register in NARRATION_REGISTERS:
         return "Neutral"
-    return "Dialogue"
+    # An unrecognized register is NOT evidence of Dialogue. Falling through to
+    # it mass-mislabeled anything outside the curated vocabulary — and the
+    # librivox real-audio campaigns are exactly that shape (blank register, no
+    # _nar_/_dia_ id, not in SKIP_CAMPAIGNS), so the documented "safe to
+    # repeat" re-run would have stamped audiobook narration and Dickens's
+    # Speeches as Dialogue. Unknown means unknown; leave it for the ear.
+    return None
 
 
 def main():

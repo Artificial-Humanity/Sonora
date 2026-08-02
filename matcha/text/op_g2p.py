@@ -62,6 +62,80 @@ _COMBINING_TILDE = "̃"
 
 _VOCAB = set(symbols)
 
+# --- Apostrophe handling ------------------------------------------------
+#
+# The dictionary holds no apostrophe keys at all (measured 2026-08-02: 0 of
+# 274,927 entries) and the neural fallback's charset has no "'" — chars absent
+# from c2i are silently skipped in _neural_word. So before this table existed,
+# an apostrophe word was phonemized from its apostrophe-stripped letters, and
+# the failure was invisible because the result counted as a neural "hit":
+#   don't -> dont -> dˈɔnt   (should be dˈoʊnt)
+#   we'll -> well -> wˈɛl    (identical to the word *well*)
+#   won't -> wont -> wˈɔnt   (the adjective, wrong vowel)
+# Measured at 0.37% of v3 tokens, concentrated in dialogue.
+#
+# Two mechanisms replace that. _CONTRACTIONS is the closed irregular class,
+# where splitting at the apostrophe gives the wrong answer (don't is /doʊnt/,
+# not do + n't; we're is /wɪɹ/, not we + ɚ). _CLITICS is the productive class,
+# which attaches to any base — possessives on arbitrary nouns and names work
+# without enumerating them.
+#
+# Every IPA string below follows this dictionary's own espeak conventions,
+# cross-checked against rime-mates that are in the dictionary:
+#   dote dˈoʊt · own ˈoʊn · cant kˈænt · heel hˈiːl · their ðɛɹ · your jʊɹ
+#   its ɪts · hes hiːz · lets lˈɛts · student stˈuːdənt (syllabic n = ənt)
+_CONTRACTIONS = {
+    # negation
+    "don't": "dˈoʊnt", "won't": "wˈoʊnt", "can't": "kˈænt",
+    "shan't": "ʃˈænt", "ain't": "ˈeɪnt", "didn't": "dˈɪdənt",
+    "doesn't": "dˈʌzənt", "isn't": "ˈɪzənt", "wasn't": "wˈɑːzənt",
+    "aren't": "ˈɑːɹənt", "weren't": "wˈɜːnt", "hasn't": "hˈæzənt",
+    "haven't": "hˈævənt", "hadn't": "hˈædənt", "wouldn't": "wˈʊdənt",
+    "shouldn't": "ʃˈʊdənt", "couldn't": "kˈʊdənt", "mustn't": "mˈʌsənt",
+    "needn't": "nˈiːdənt", "mightn't": "mˈaɪtənt", "oughtn't": "ˈɔːtənt",
+    "daren't": "dˈɛɹənt",
+    # pronoun + auxiliary
+    "i'm": "ˈaɪm", "i'll": "ˈaɪl", "i'd": "ˈaɪd", "i've": "ˈaɪv",
+    "you're": "jʊɹ", "you'll": "jˈuːl", "you'd": "jˈuːd", "you've": "jˈuːv",
+    "he's": "hiːz", "he'll": "hiːl", "he'd": "hiːd",
+    "she's": "ʃiːz", "she'll": "ʃiːl", "she'd": "ʃiːd",
+    "it's": "ɪts", "it'll": "ˈɪtəl", "it'd": "ˈɪtəd",
+    "we're": "wɪɹ", "we'll": "wiːl", "we'd": "wiːd", "we've": "wiːv",
+    "they're": "ðɛɹ", "they'll": "ðeɪl", "they'd": "ðeɪd", "they've": "ðeɪv",
+    # demonstrative / interrogative + auxiliary
+    "that's": "ðæts", "that'll": "ðˈætəl", "there's": "ðɛɹz",
+    "there'll": "ðˈɛɹəl", "here's": "hˈɪɹz", "what's": "wˌʌts",
+    "what'll": "wˈʌtəl", "who's": "hˈuːz", "who'd": "hˈuːd",
+    "who'll": "hˈuːl", "who've": "hˈuːv", "let's": "lˈɛts",
+    # archaic and fixed forms — common in the book lane (Dickens, LibriVox)
+    "'tis": "tˈɪz", "'twas": "twˈʌz", "'twould": "twˈʊd", "'em": "əm",
+    "o'clock": "əklˈɑːk", "ma'am": "mˈæm", "y'all": "jˈɔːl",
+    "e'er": "ˈɛɹ", "ne'er": "nˈɛɹ", "o'er": "ˈoʊɹ",
+}
+
+# Productive suffixes: base is phonemized normally, these are appended.
+# "'s" is not here — it takes the allomorph rule in _possessive_suffix.
+_CLITICS = {
+    "n't": "nt", "'ll": "l", "'ve": "v", "'re": "ɚ", "'d": "d", "'m": "m",
+}
+
+# Allomorph classes for "'s", in this dictionary's spelling. Verified against
+# the corpus: horses hˈɔːɹsᵻz, churches tʃˈɜːtʃᵻz (14,026 entries end "ᵻz",
+# so the sibilant form is ᵻz, not ɪz); cats kˈæts; dogs dˈɑːɡz.
+_SIBILANT_ENDINGS = ("tʃ", "dʒ", "s", "z", "ʃ", "ʒ")
+_VOICELESS_ENDINGS = ("p", "t", "k", "f", "θ")
+_STRESS_MARKS = "ˈˌː"
+
+
+def _possessive_suffix(base_ipa):
+    """The 's allomorph for a base's final phoneme: ᵻz / s / z."""
+    tail = base_ipa.rstrip(_STRESS_MARKS)
+    if tail.endswith(_SIBILANT_ENDINGS):
+        return "ᵻz"
+    if tail.endswith(_VOICELESS_ENDINGS):
+        return "s"
+    return "z"
+
 
 class OpenPhonemizerG2P:
     """Dictionary-primary, neural-fallback espeak-IPA phonemizer."""
@@ -80,8 +154,19 @@ class OpenPhonemizerG2P:
         self._neural = None
         self._neural_meta = None
         self.use_neural_oov = use_neural_oov
-        self.stats = {"dict_hits": 0, "neural_hits": 0, "oov_misses": 0}
+        self.stats = {
+            "dict_hits": 0,
+            "neural_hits": 0,
+            "oov_misses": 0,
+            "contraction_hits": 0,
+            "apostrophe_fallbacks": 0,
+        }
         self.oov_words = set()
+        # Apostrophe words that neither table nor decomposition resolved and
+        # that fell through to the bare-letters path (mostly names: O'Brien).
+        # Tracked separately so the residue is visible in the report instead
+        # of counting as a clean neural hit, which is how D-C1 stayed hidden.
+        self.apostrophe_fallback_words = set()
 
     def _neural_init(self):
         import numpy as np  # noqa: F401  (hard dep of the tflite path only)
@@ -144,17 +229,82 @@ class OpenPhonemizerG2P:
             pieces.append("".join(ch for ch in phoneme if ch != "-"))
         return "".join(pieces).replace(_COMBINING_TILDE, "")
 
-    def phonemize_word(self, word):
-        """Lower-case word -> espeak-style IPA, or None when unresolvable."""
+    def _apostrophe_word(self, word):
+        """Contraction/clitic resolution, or None if neither applies.
+
+        Order matters: the irregular table wins over decomposition, because
+        the whole point of the table is the forms decomposition gets wrong.
+        """
+        fixed = _CONTRACTIONS.get(word)
+        if fixed is not None:
+            return fixed
+
+        # Trailing apostrophe = plural possessive (cats'), which adds nothing.
+        if word.endswith("'"):
+            return self._plain_word(word[:-1])
+
+        for clitic, suffix_ipa in _CLITICS.items():
+            if word.endswith(clitic) and len(word) > len(clitic):
+                base = self._plain_word(word[: -len(clitic)])
+                if base:
+                    return base + suffix_ipa
+                return None
+
+        if word.endswith("'s") and len(word) > 2:
+            base = self._plain_word(word[:-2])
+            if base:
+                return base + _possessive_suffix(base)
+        return None
+
+    def _plain_word(self, word):
+        """Dictionary-then-neural lookup for a word with no apostrophes.
+
+        Returns None rather than counting a miss — the caller decides whether
+        an unresolved base is fatal (contraction decomposition) or just the
+        normal OOV path.
+        """
         ipa = self.dict.get(word)
         if ipa is not None:
-            self.stats["dict_hits"] += 1
             return ipa
         if self.use_neural_oov:
             ipa = self._neural_word(word)
             if ipa:
+                return ipa
+        return None
+
+    def phonemize_word(self, word):
+        """Lower-case word -> espeak-style IPA, or None when unresolvable.
+
+        The word may carry apostrophes; see the _CONTRACTIONS comment for why
+        they cannot be stripped before lookup.
+        """
+        ipa = self.dict.get(word)
+        if ipa is not None:
+            self.stats["dict_hits"] += 1
+            return ipa
+
+        if "'" in word:
+            ipa = self._apostrophe_word(word)
+            if ipa:
+                self.stats["contraction_hits"] += 1
+                return ipa
+            # Not a contraction we know (usually a name: O'Brien, d'Artagnan).
+            # The bare-letters guess is still the best available, but it is
+            # counted apart so it cannot hide inside the neural hit rate.
+            bare = word.replace("'", "")
+            if bare:
+                ipa = self._plain_word(bare)
+                if ipa:
+                    self.stats["apostrophe_fallbacks"] += 1
+                    self.apostrophe_fallback_words.add(word)
+                    return ipa
+
+        if self.use_neural_oov and "'" not in word:
+            ipa = self._neural_word(word)
+            if ipa:
                 self.stats["neural_hits"] += 1
                 return ipa
+
         self.stats["oov_misses"] += 1
         self.oov_words.add(word)
         return None
@@ -178,12 +328,23 @@ class OpenPhonemizerG2P:
         for match in _TOKEN_RE.finditer(text):
             token = match.group(0)
             if _WORD_RE.fullmatch(token):
-                word = token.strip("'")
-                if not word:
+                # A leading apostrophe is usually an opening quote, so it is
+                # dropped — except on the archaic forms where it is part of
+                # the word ('tis, 'em). A trailing one needs no special case:
+                # plural possessive and closing quote both resolve to the
+                # bare base.
+                word = token if token in _CONTRACTIONS else token.lstrip("'")
+                if not word or word == "'":
                     continue
                 ipa = self.phonemize_word(word)
                 if ipa is None:
-                    ipa = word  # surfaces as a vocab violation in validate()
+                    # Letters passed through verbatim. NOTE: this does *not*
+                    # surface in validate() — a-z and ' are all inside the
+                    # 178-symbol vocab, since espeak IPA reuses ASCII letters
+                    # (validate("zyzzyqx") == []). The only signal is
+                    # stats["oov_misses"] / oov_words, which every caller
+                    # must check; phonemize_filelist treats it as fatal.
+                    ipa = word
                 if not first:
                     out.append(" ")
                 out.append(ipa)

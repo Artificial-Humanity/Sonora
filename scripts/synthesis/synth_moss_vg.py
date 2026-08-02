@@ -27,6 +27,10 @@ import soundfile as sf
 import torch
 from transformers import AutoModel, AutoProcessor
 
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from synth_common import write_wav_atomic  # noqa: E402
+
 MODEL_DIR = "/data/models/OpenMOSS-Team/MOSS-VoiceGenerator"
 
 # Model-card defaults for THIS checkpoint (README §1.3). The flagship's defaults
@@ -123,7 +127,7 @@ def main():
                 continue
             for message in decoded:
                 audio = message.audio_codes_list[0].float().cpu().numpy()
-                sf.write(os.path.join(args.out, name), audio, sr)
+                write_wav_atomic(os.path.join(args.out, name), audio, sr)
                 # dict(job) first: passthrough fields (intended_delivery, book,
                 # ref_id …) must reach the manifest — register_audition prefill
                 # and the fold read them from here (2026-07-30).

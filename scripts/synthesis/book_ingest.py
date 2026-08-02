@@ -502,6 +502,17 @@ ORPHEUS_VOICES = ("tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe")
 ORPHEUS_TAGS = ("<laugh>", "<chuckle>", "<sigh>", "<cough>",
                 "<sniffle>", "<groan>", "<yawn>", "<gasp>")
 
+# Voices that measured defective and must never be cast. `tara` drew room tone
+# plus white-noise hiss on 5 of 5 clips (2026-07-28) and orpheus.md says "Never
+# cast" — but that ban lived only in markdown, while this module's fallback was
+# literally `tara`, so every director hiccup cast the worst-measured voice into
+# a 15%-of-mix engine. A rule a renderer cannot read is not a rule.
+ORPHEUS_BANNED = ("tara",)
+ORPHEUS_CASTABLE = tuple(v for v in ORPHEUS_VOICES if v not in ORPHEUS_BANNED)
+# jess is the measured-reliable female voice (0/14 defects in the probe,
+# ~3% pooled) — the right place to land when casting is unusable.
+ORPHEUS_FALLBACK = "jess"
+
 # Every engine build_direction knows how to assemble a payload for. dia and moss85
 # take no casting pass, so they are here but not in CASTING_SCHEMA. Anything absent
 # is a hard error rather than a silent rewrite — see build_direction().
@@ -538,10 +549,12 @@ CASTING_SCHEMA = {
                    "cfg_weight": "number 0.2-0.6"},
     "zonos":      {"voice_design": "string",
                    "emotion": "array of EXACTLY 8 numbers, proportions not magnitudes, "
-                              "order [happiness,sadness,disgust,fear,surprise,anger,other,neutral]",
+                              "order [happiness,sadness,disgust,fear,surprise,anger,other,neutral]"
+                              " — or null to turn emotion conditioning OFF, "
+                              "which is what plain narration wants",
                    "pitch_std": "number 20-150",
                    "speaking_rate": "number 5-30"},
-    "orpheus":    {"voice": "EXACTLY one of: " + "|".join(ORPHEUS_VOICES),
+    "orpheus":    {"voice": "EXACTLY one of: " + "|".join(ORPHEUS_CASTABLE),
                    "render_text": "string — the line verbatim, optionally with at most "
                                   "2 tags from " + " ".join(ORPHEUS_TAGS)},
     "longcat":    {"voice_design": "string"},
@@ -567,11 +580,14 @@ CASTING_JSON_SCHEMA = {
     "moss_vg":    {"instruct": _STR},
     "vibevoice":  {"voice_design": _STR, "instruct": _STR},
     "chatterbox": {"voice_design": _STR, "exaggeration": _NUM, "cfg_weight": _NUM},
+    # emotion is nullable on purpose: null is the only way to say "emotion off",
+    # which is what narration wants. A required 8-float array made the director
+    # physically unable to emit the state the renderer implements.
     "zonos":      {"voice_design": _STR,
-                   "emotion": {"type": "array", "items": _NUM,
+                   "emotion": {"type": ["array", "null"], "items": _NUM,
                                "minItems": 8, "maxItems": 8},
                    "pitch_std": _NUM, "speaking_rate": _NUM},
-    "orpheus":    {"voice": {"type": "string", "enum": list(ORPHEUS_VOICES)},
+    "orpheus":    {"voice": {"type": "string", "enum": list(ORPHEUS_CASTABLE)},
                    "render_text": _STR},
     "longcat":    {"voice_design": _STR},
 }
@@ -593,16 +609,18 @@ def _validate_casting(engine, d):
     emitted without its cfg_weight reads rushed. Cheap to check, expensive to audit.
     """
     if engine == "orpheus":
-        if d.get("voice") not in ORPHEUS_VOICES:
+        if d.get("voice") not in ORPHEUS_CASTABLE:
             return False
         bad = set(re.findall(r"<[a-z]+>", d.get("render_text", ""))) - set(ORPHEUS_TAGS)
         return not bad
     if engine == "zonos":
         e = d.get("emotion")
-        if not isinstance(e, list) or len(e) != 8:
-            return False
-        if not all(isinstance(x, (int, float)) and x >= 0 for x in e) or sum(e) <= 0:
-            return False
+        # None is valid and load-bearing: it means emotion conditioning off.
+        if e is not None:
+            if not isinstance(e, list) or len(e) != 8:
+                return False
+            if not all(isinstance(x, (int, float)) and x >= 0 for x in e) or sum(e) <= 0:
+                return False
         return _in_range(d.get("pitch_std"), 20, 150) and _in_range(d.get("speaking_rate"), 5, 30)
     if engine == "chatterbox":
         return (_in_range(d.get("exaggeration"), 0.25, 1.0)
@@ -622,15 +640,22 @@ def _l1(vec):
     """Normalise Zonos's 8-float emotion vector to the shape the model receives.
 
     Zonos L1-normalises internally, so magnitudes never arrive; doing it here makes
-    the manifest record what was actually conditioned on. A missing or malformed
-    vector falls back to neutral-dominant rather than to an arbitrary draw.
+    the manifest record what was actually conditioned on.
+
+    Returns None when there is no usable vector, and None means "emotion truly
+    off" — synth_zonos adds `emotion` to unconditional_keys for it. This used to
+    fall back to the neutral-dominant vector [.05,…,.77], which is NOT off: it is
+    the exact conditioning measured destabilizing 5 of 9 zonos narration groups
+    on 2026-07-30 (clause-boundary pauses, rushed resumption, skipped words). The
+    renderer's fix and the skill file's "omit emotion for narration" were both
+    unreachable through the director because this function could not express it.
     """
     if not isinstance(vec, list) or len(vec) != 8:
-        return [0.05, 0.05, 0.02, 0.02, 0.02, 0.02, 0.05, 0.77]
+        return None
     vals = [max(float(x), 0.0) if isinstance(x, (int, float)) else 0.0 for x in vec]
     total = sum(vals)
     if total <= 0:
-        return [0.05, 0.05, 0.02, 0.02, 0.02, 0.02, 0.05, 0.77]
+        return None
     return [round(v / total, 4) for v in vals]
 
 
@@ -804,7 +829,8 @@ def build_direction(tag, text, dia_guidance=3.0):
         # The only string that reaches the model is f"{voice}: {text}", assembled in
         # the renderer. An unlisted voice would be spoken aloud, so fall back to the
         # maintainers' default rather than trusting the emission.
-        voice = tag.get("voice") if tag.get("voice") in ORPHEUS_VOICES else "tara"
+        voice = (tag.get("voice") if tag.get("voice") in ORPHEUS_CASTABLE
+                 else ORPHEUS_FALLBACK)
         rt = tag.get("render_text") or text
         if set(re.findall(r"<[a-z]+>", rt)) - set(ORPHEUS_TAGS):
             rt = text     # an invented tag is pronounced; drop the whole emission

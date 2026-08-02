@@ -61,12 +61,28 @@ def main():
     verdicts = {r["id"]: r for r in
                 (json.loads(l) for l in open(vpath, encoding="utf-8") if l.strip())}
 
-    ear = {}
+    # Only genuine ear verdicts calibrate the gate. Two kinds of row used to
+    # slip in: machine-folded rows carrying a fabricated score, and rows the
+    # owner DROPPED that still hold the score they were given before the drop
+    # (38 of them in delivery-v1-narration). Both were counted as ear keeps, so
+    # the false-negative rate that gates pipeline 1.0 was computed over
+    # polluted cells.
+    ear, skipped = {}, {"folded": 0, "dropped": 0}
     with open(args.ratings, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             s = parse_score(row.get("score"))
-            if s is not None and row["id"] in verdicts:
-                ear[row["id"]] = s
+            if s is None or row["id"] not in verdicts:
+                continue
+            if "folded: staged unheard" in (row.get("note") or ""):
+                skipped["folded"] += 1
+                continue
+            if (row.get("status") or "") in ("dropped", "reroll"):
+                skipped["dropped"] += 1
+                continue
+            ear[row["id"]] = s
+    if any(skipped.values()):
+        print(f"excluded from ear evidence: {skipped['folded']} machine-folded, "
+              f"{skipped['dropped']} dropped/reroll rows still carrying a score")
 
     rated = [i for i in verdicts if i in ear]
     print(f"campaign : {args.campaign_dir}")

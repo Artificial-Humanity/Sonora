@@ -29,8 +29,10 @@ addopts = [
   "--color=yes",
   "--durations=0",
   "--strict-markers",
-  "--doctest-modules",
 ]
+# --doctest-modules was dropped: it imports every module under testpaths, which
+# for this repo means dragging torch, a GPU and the litert harness into a plain
+# `make test`. The gate scripts are run as subprocesses instead (tests/).
 filterwarnings = [
   "ignore::DeprecationWarning",
   "ignore::UserWarning",

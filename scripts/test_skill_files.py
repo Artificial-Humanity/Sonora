@@ -127,6 +127,58 @@ def test_orpheus_closed_sets():
     check("-ft" in text and "-pretrained" in text,
           "orpheus.md must state that control lives in -ft, not -pretrained")
 
+    # The ban must be executable, not just written down. It was markdown-only
+    # until 2026-08-02 while the code's fallback voice was literally `tara`.
+    from book_ingest import ORPHEUS_BANNED, ORPHEUS_CASTABLE, ORPHEUS_FALLBACK
+
+    check("Never cast" in text or "never cast" in text,
+          "orpheus.md no longer states a never-cast voice")
+    for voice in ORPHEUS_BANNED:
+        check(voice not in ORPHEUS_CASTABLE,
+              f"{voice} is banned but still castable")
+        check(re.search(rf"`{voice}`[^\n]*[Nn]ever cast", text) is not None
+              or re.search(rf"[Nn]ever cast[^\n]*`{voice}`", text) is not None,
+              f"orpheus.md must say `{voice}` is never cast")
+    check(ORPHEUS_FALLBACK in ORPHEUS_CASTABLE,
+          f"orpheus fallback {ORPHEUS_FALLBACK} is not castable")
+    check(ORPHEUS_FALLBACK not in ORPHEUS_BANNED,
+          f"orpheus fallback {ORPHEUS_FALLBACK} is a banned voice")
+
+
+# --- zonos.md: "omit emotion" must be reachable through the director --------------
+def test_zonos_emotion_off_is_representable():
+    """The skill file tells the director to emit `emotion: null` for narration.
+
+    That instruction was unreachable until 2026-08-02: _l1() turned None into the
+    neutral-dominant vector — the exact conditioning measured destabilizing 5 of 9
+    zonos narration groups — and the JSON schema required an 8-float array, so the
+    director could not emit null even when told to. The renderer implemented the
+    fix correctly the whole time; nothing could reach it.
+    """
+    from book_ingest import CASTING_JSON_SCHEMA, _l1, build_direction
+
+    text = skill("zonos")
+    check("null" in text or "omit" in text,
+          "zonos.md no longer documents turning emotion off")
+
+    # None must survive normalisation as None — not become a vector.
+    check(_l1(None) is None, "_l1(None) must stay None (emotion off)")
+    check(_l1("nonsense") is None, "_l1 of a malformed vector must be None")
+    check(_l1([1, 1, 0, 0, 0, 0, 0, 0]) == [0.5, 0.5, 0, 0, 0, 0, 0, 0],
+          "_l1 must still L1-normalise a real vector")
+
+    # and the schema must permit it
+    emo = CASTING_JSON_SCHEMA["zonos"]["emotion"]["type"]
+    check("null" in emo if isinstance(emo, list) else False,
+          f"zonos emotion schema must allow null, got {emo!r}")
+
+    # end to end: a director emission with emotion null reaches the renderer as None
+    _eng, d = build_direction({"engine": "zonos", "voice_design": "a calm narrator",
+                               "emotion": None, "pitch_std": 45.0,
+                               "speaking_rate": 15.0}, "some text")
+    check(d["emotion"] is None,
+          f"build_direction must pass emotion=None through, got {d['emotion']!r}")
+
 
 # --- the relay matrix must exist in BOTH places it is meant to live ---------------
 def test_relay_matrix_agrees():
@@ -212,7 +264,8 @@ def test_casting_schema_shapes():
     silently-loosened validator would not fail loudly — it would just start letting
     poisoned emissions through, which is precisely how the last four verdicts died.
     """
-    from book_ingest import (CASTING_SCHEMA, KNOWN_ENGINES, build_direction,
+    from book_ingest import (CASTING_SCHEMA, KNOWN_ENGINES, ORPHEUS_BANNED,
+                             ORPHEUS_FALLBACK, build_direction,
                              _validate_casting)
 
     for engine in CASTING_SCHEMA:
@@ -224,8 +277,13 @@ def test_casting_schema_shapes():
           "an unlisted Orpheus voice must be rejected — it gets spoken aloud")
     _, d = build_direction({"engine": "orpheus", "voice": "julia",
                             "render_text": "hi <whisper> there"}, "The line.")
-    check(d["voice"] == "tara" and "<whisper>" not in d["render_text"],
+    # The fallback must be the measured-reliable voice. This used to assert
+    # "tara" — encoding the very defect orpheus.md bans, so the test agreed
+    # with the bug instead of catching it.
+    check(d["voice"] == ORPHEUS_FALLBACK and "<whisper>" not in d["render_text"],
           "build_direction must scrub an invented Orpheus voice/tag, not pass it through")
+    check(d["voice"] not in ORPHEUS_BANNED,
+          "build_direction must never fall back to a banned voice")
 
     # Zonos: 8 floats or nothing; a short vector silently reshapes the conditioning
     check(not _validate_casting("zonos", {"emotion": [1, 2, 3], "pitch_std": 50,
@@ -250,7 +308,8 @@ def test_casting_schema_shapes():
 
 def main():
     for fn in (test_casting_words, test_dia_tag_vocabulary,
-               test_orpheus_closed_sets, test_relay_matrix_agrees,
+               test_orpheus_closed_sets, test_zonos_emotion_off_is_representable,
+               test_relay_matrix_agrees,
                test_wip_guard, test_register_lexicon, test_casting_schema_shapes):
         try:
             fn()

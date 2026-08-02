@@ -104,7 +104,14 @@ ENGINE_TIER = {
     "qwen": "trusted", "chatterbox": "trusted",
     "moss_vg": "scrutinized", "zonos": "scrutinized",
 }
-DEFAULT_TIER = "normal"
+# Unknown engines fall to the CONSERVATIVE tier, not the folding one. A brand-new
+# engine has no measured drift rate, so "normal" handed it ride-along folding
+# privileges by default — the opposite of the onboarding rule, which says an engine
+# earns trust with evidence. This also catches the id-join failure below, where the
+# engine reads "?": a scrutinized "?" group folds nothing, so a ratings row whose id
+# does not match the bank can no longer demote a real scrutinized clip into a tier
+# that folds its siblings unheard.
+DEFAULT_TIER = "scrutinized"
 # orpheus keeps a third certification clip on top of its tier: its 1-in-20 emphasis-peak
 # voice split (stress-v1/v2) is a real defect the 2-clip default was never sized for.
 CERT_BONUS = {"orpheus": 1}
@@ -113,6 +120,25 @@ SEED = 42
 
 def tier_of(engine):
     return TIERS[ENGINE_TIER.get(engine, DEFAULT_TIER)]
+
+
+def _warn_unmatched(unmatched, campaign):
+    """Say so, loudly, when ratings ids do not join to the bank/manifest.
+
+    The join fails for real reasons — an MF/FM rename propagated to ratings but
+    not the bank, a manifest line that failed json.loads and was skipped — and
+    the ids land in a synthetic ("?", "?") group. They are scrutinized now so
+    nothing folds, but a silent "?" group is still a sign the campaign's
+    bookkeeping has drifted, and it used to print nothing at all.
+    """
+    if not unmatched:
+        return
+    print(f"  !! {len(unmatched)} ratings id(s) in {campaign} do not match any "
+          f"bank/manifest record: {sorted(unmatched)[:5]}"
+          + (" ..." if len(unmatched) > 5 else ""), file=sys.stderr)
+    print("     They are grouped as ('?','?') and treated as SCRUTINIZED "
+          "(nothing folds). Fix the join before trusting this campaign's "
+          "certification.", file=sys.stderr)
 
 
 def cert_count(engine):
@@ -251,9 +277,13 @@ def cmd_select(args):
     camp = [r for r in rows if r["campaign"] == args.campaign
             and r["status"] == "unaudited"]
     by_group = defaultdict(list)
+    unmatched = []
     for r in camp:
+        if r["id"] not in groups_of:
+            unmatched.append(r["id"])
         grp, eng = groups_of.get(r["id"], ("?", "?"))
         by_group[(grp, eng)].append(r["id"])
+    _warn_unmatched(unmatched, args.campaign)
 
     keep_ids = set(i for i in flagged if any(i in ids for ids in by_group.values()))
 
@@ -347,6 +377,7 @@ def cmd_certify(args):
     camp = [r for r in rows if r["campaign"] == args.campaign]
     by_group = defaultdict(lambda: {"keep": [], "drop": [], "todo": [], "deferred": [],
                                     "reroll": []})
+    _warn_unmatched([r["id"] for r in camp if r["id"] not in groups_of], args.campaign)
     for r in camp:
         grp, eng = groups_of.get(r["id"], ("?", "?"))
         g = by_group[(grp, eng)]
@@ -381,6 +412,13 @@ def cmd_certify(args):
             certified[grp] = []
             state = (f"VOICE OK ({len(g['keep'])} heard) — {len(g['deferred'])} deferred "
                      f"NOT folded [scrutinized]")
+        elif not g["keep"]:
+            # Every heard clip was a reroll, so the group certifies on zero
+            # positive evidence and folds its deferred siblings on the strength
+            # of nothing. Certification needs at least one actual keep.
+            failed.append(grp)
+            state = (f"NO EVIDENCE (0 keeps heard, {len(g['reroll'])} reroll) "
+                     f"-> promote its {len(g['deferred'])} deferred")
         else:
             certified[grp] = g["deferred"]
             state = f"CERTIFIED ({len(g['keep'])} keeps heard, {len(g['deferred'])} ride along)"

@@ -47,10 +47,14 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import os
 import pathlib
 import re
 import sys
 import unicodedata
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from synth_common import write_wav_atomic  # noqa: E402
 
 SAMPLE_RATE = 16000          # the aligner's rate; clips are written at OUT_SR
 OUT_SR = 24000               # the corpus interchange rate (model-decisions.md)
@@ -60,6 +64,7 @@ MIN_SPEECH_SECONDS = 4.0     # [[min-clip-length-4s]] — the owner floor is SPE
                              # 1.5 s of room tone does not clear it.
 MAX_SECONDS = 22.0           # matches derive_vat_corpus.MAX_SECONDS
 PAD_SECONDS = 0.12           # breath room around a cut
+EDGE_GUARD = 0.02            # gap held against the neighbouring sentence
 ANCHOR_WINDOW_S = 30.0       # max audio per CTC call
 
 _FA_CACHE = None             # (model, labels, device) — see refine()
@@ -174,6 +179,48 @@ def anchor(canon: list[str],
         if not clean or (idx > clean[-1][0] and t0 >= clean[-1][1]):
             clean.append((idx, t0, t1))
     return clean
+
+
+def dedup_manifest(path):
+    """Collapse the manifest to one record per id, last write wins.
+
+    The manifest is opened in append mode and flushed per clip so a mid-book
+    crash cannot orphan wavs. The cost is that a re-run after such a crash
+    appends a second record for every clip it redoes — with possibly different
+    t0/t1/text if the args changed, while only the last one matches the wav on
+    disk. qc_gate already had to grow last-record-wins dedup to survive this
+    (416 records over 301 wavs); every other jsonl consumer was still exposed.
+    Collapsing here, at the one place that writes the file, fixes it for all of
+    them. Runs on clean exit only, so the crash-safety of the append is intact.
+    """
+    path = pathlib.Path(path)
+    if not path.exists():
+        return 0
+    records = {}
+    dupes = 0
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue          # torn last line from an earlier crash
+            key = rec.get("id")
+            if key is None:
+                continue
+            if key in records:
+                dupes += 1
+            records[key] = rec
+    if dupes:
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        with tmp.open("w", encoding="utf-8") as f:
+            for key in sorted(records):
+                f.write(json.dumps(records[key], ensure_ascii=False) + "\n")
+        os.replace(tmp, path)
+        print(f"   manifest: collapsed {dupes} duplicate record(s) -> "
+              f"{len(records)} unique clips", flush=True)
+    return dupes
 
 
 def interp_time(anchors: list[tuple[int, float, float]], idx: int, which: int = 1) -> float | None:
@@ -409,13 +456,28 @@ def main() -> int:
             # perfectly still scored WER 0.38 because it ran on into "He was generally
             # to be found at the pen and ink cl...". Over-run reads as a transcript
             # error even when the alignment is good.
+            # Pad FIRST, clamp LAST. The other order is self-defeating: clamping
+            # to nxt_start - 0.02 and then adding PAD_SECONDS back put the end
+            # 0.10 s *inside* the next sentence on every clip with a neighbour,
+            # so essentially the whole book lane carried audio its transcript
+            # lacked — at both edges, and invisible to WER because the extra
+            # words are real speech the reference text simply does not contain.
+            t0 = max(0.0, t0 - PAD_SECONDS)
+            t1 = min(dur, t1 + PAD_SECONDS)
+
             nxt = bounds.get(si + 1)
             if nxt:
                 nxt_start = interp_time(anchors, nxt[0], which=1)
                 if nxt_start is not None and nxt_start > t0:
-                    t1 = min(t1, nxt_start - 0.02)
-            t0 = max(0.0, t0 - PAD_SECONDS)
-            t1 = min(dur, t1 + PAD_SECONDS)
+                    t1 = min(t1, nxt_start - EDGE_GUARD)
+            # The start edge had no clamp at all, so the pad (and the
+            # min(t0, real[0][0]) anchor pull above) reached back into the
+            # previous sentence unchecked.
+            prv = bounds.get(si - 1)
+            if prv:
+                prv_end = interp_time(anchors, prv[1], which=2)
+                if prv_end is not None and prv_end < t1:
+                    t0 = max(t0, prv_end + EDGE_GUARD)
             secs = t1 - t0
             if secs < MIN_SECONDS or secs > MAX_SECONDS or score < args.min_score:
                 continue
@@ -436,7 +498,7 @@ def main() -> int:
             import librosa
             clip24 = librosa.resample(clip, orig_sr=SAMPLE_RATE, target_sr=OUT_SR)
             cid = f"{slug}_lv{idx:03d}_{si:04d}"
-            sf.write(str(out / "audio" / f"{cid}.wav"), clip24, OUT_SR)
+            write_wav_atomic(str(out / "audio" / f"{cid}.wav"), clip24, OUT_SR)
             man.write(json.dumps({
                 "id": cid, "wav": f"{cid}.wav", "engine": "librivox",
                 "text": sent, "source": "real-audio/force-align",
@@ -457,9 +519,17 @@ def main() -> int:
             if args.limit and n_written >= args.limit:
                 print(f"\n   --limit {args.limit} reached", flush=True)
                 man.close()
+                dedup_manifest(out / "audio" / "librivox_manifest.jsonl")
                 print(f"\n{n_written} clips -> {out}")
                 return 0
     man.close()
+    dedup_manifest(out / "audio" / "librivox_manifest.jsonl")
+    if n_written == 0:
+        # Exiting 0 here made a book whose every section was gate-skipped
+        # indistinguishable from a successful run without reading the log.
+        print(f"\nNO CLIPS WRITTEN from {bdir} — every section was skipped "
+              f"(coverage gate, score floor, or duration filters).")
+        return 1
     print(f"\n{n_written} clips -> {out}")
     return 0
 

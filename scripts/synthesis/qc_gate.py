@@ -194,7 +194,8 @@ def main():
     # records over 301 wavs on delivery-v1-narration, 2026-07-31). Last record wins:
     # it is the take that actually exists.
     jobs = {}
-    for mpath in sorted(glob.glob(os.path.join(args.campaign_dir, "*", "*_manifest.jsonl"))):
+    manifests = sorted(glob.glob(os.path.join(args.campaign_dir, "*", "*_manifest.jsonl")))
+    for mpath in manifests:
         eng_dir = os.path.dirname(mpath)
         for line in open(mpath, encoding="utf-8"):
             if line.strip():
@@ -203,9 +204,23 @@ def main():
     print(f"{len(jobs)} unique clips across "
           f"{len(set(k[0] for k in jobs))} manifest dir(s)", flush=True)
 
+    # An empty glob used to print "0/0 hard-pass", write an empty measures
+    # file, print QC-GATE-DONE and exit 0 — so a caller that passed a slightly
+    # wrong campaign dir (one trailing slash was enough) got a *passing*
+    # mandatory gate over nothing, and the batch went to the ear ungated.
+    # A gate with nothing to measure has not passed; it has not run.
+    if not manifests:
+        sys.exit(f"QC-GATE-FAIL: no *_manifest.jsonl under "
+                 f"{args.campaign_dir}/*/ — nothing to gate. Check the "
+                 f"campaign dir (a trailing slash breaks the glob).")
+    if not jobs:
+        sys.exit(f"QC-GATE-FAIL: {len(manifests)} manifest(s) found but no "
+                 f"records in them — nothing to gate.")
+
     rows = []
     for (eng_dir, _cid), row in sorted(jobs.items(), key=lambda kv: (kv[0][0], str(kv[0][1]))):
         wav_path = os.path.join(eng_dir, row["wav"])
+        quarantined = False
         if not os.path.isfile(wav_path):
             # Quarantined (_dropped/_superseded) or hand-moved clips still have a
             # manifest record. Skipping keeps a whole campaign's gate run from dying
@@ -214,12 +229,25 @@ def main():
                                     for d in ("_dropped", "_superseded"))
                         if os.path.isfile(p)), None)
             if alt:
+                # Measured for the record, but it must never re-enter keeps:
+                # these were deliberately quarantined, and qc_filelist.txt is
+                # a downstream consumer that would have taken them back.
                 wav_path = alt
+                quarantined = True
             else:
                 print(f"{row.get('id','?'):26s} SKIP (wav not found)", flush=True)
                 continue
         wav, _ = librosa.load(wav_path, sr=TARGET_SR, mono=True)
         dur = len(wav) / TARGET_SR
+        if len(wav) == 0:
+            # A zero-length wav used to divide by zero inside DNSMOS and kill
+            # the whole campaign run.
+            print(f"{row.get('id','?'):26s} FAIL (empty wav)", flush=True)
+            row.update({"wav_abs": wav_path, "duration": 0.0, "speech_dur": 0.0,
+                        "quarantined": quarantined, "empty_wav": True,
+                        "gates": {"nonempty_ok": False}, "hard_pass": False})
+            rows.append(row)
+            continue
         n_chars = len(row["text"])
 
         # effective speech duration (pilot: a 12 s file held 4 s of speech)
@@ -252,7 +280,8 @@ def main():
                     "tail_lost_frac": tl_frac, "tail_words_lost": tl_words,
                     "asr_hyp": hyp.strip(), **scores,
                     "lufs": lufs, "phonation": phon, "gates": gates,
-                    "hard_pass": all(gates.values())})
+                    "quarantined": quarantined,
+                    "hard_pass": all(gates.values()) and not quarantined})
         rows.append(row)
         print(f"{row['id']:26s} {dur:5.1f}s speech={speech_dur:4.1f}s "
               f"wer={asr_wer:.2f} ovr={scores['dnsmos_ovr']:.2f} "
@@ -267,7 +296,18 @@ def main():
             if r["hard_pass"]:
                 f.write(r["wav_abs"] + "\n")
     n_pass = sum(r["hard_pass"] for r in rows)
-    print(f"{n_pass}/{len(rows)} hard-pass -> {out}")
+    n_quar = sum(1 for r in rows if r.get("quarantined"))
+    print(f"{n_pass}/{len(rows)} hard-pass -> {out}"
+          + (f" ({n_quar} quarantined, excluded from keeps)" if n_quar else ""))
+    if not rows:
+        sys.exit("QC-GATE-FAIL: every manifest record was skipped (no wav "
+                 "found for any of them) — nothing was measured.")
+    if n_pass == 0:
+        # Not a verdict on the clips: a batch where nothing passes is far more
+        # often a broken run (wrong refs, a dead engine, a bad threshold) than
+        # a genuinely worthless bank, and it must not register silently.
+        sys.exit(f"QC-GATE-FAIL: 0 of {len(rows)} clips passed. Inspect "
+                 f"{out} before registering anything for audition.")
     print("QC-GATE-DONE")
 
 

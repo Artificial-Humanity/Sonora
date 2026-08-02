@@ -61,4 +61,8 @@ corr = float(np.corrcoef(ref.reshape(-1), out.reshape(-1))[0, 1])
 maxdiff = float(np.abs(ref - out).max())
 print(f"GPU-clean: {clean}")
 print(f"parity: corr={corr:.6f} max|diff|={maxdiff:.3e}")
-print("EXPORT GATE:", "PASS" if clean and corr > 0.9999 else "FAIL")
+ok = bool(clean and corr > 0.9999)
+print("EXPORT GATE:", "PASS" if ok else "FAIL")
+# Exit code, so this is usable as a pipeline gate. Printing FAIL and exiting
+# 0 made the parity check decorative in any scripted lane.
+sys.exit(0 if ok else 1)

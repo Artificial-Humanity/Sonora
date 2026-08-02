@@ -13,7 +13,9 @@ Usage:
     python scripts/phonemize_filelist.py data/LJSpeech-1.1/train.txt \
         data/LJSpeech-1.1/val.txt [--assets DIR] [--no-neural-oov]
 
-Exit code 1 if any line failed vocab validation (report printed either way).
+Exit code 1 if any line failed vocab validation or contained an unresolved
+word; the `_op` output is not written in that case, so a poisoned filelist
+cannot outlive the FAIL message.
 """
 
 import argparse
@@ -49,6 +51,7 @@ def main():
     for filelist in args.filelists:
         bad_lines = 0
         digit_lines = 0
+        unresolved_lines = 0
         violations = set()
         out_lines = []
         with open(filelist, encoding="utf-8") as f:
@@ -58,28 +61,51 @@ def main():
             text = parts[-1]
             if _DIGIT_RE.search(text):
                 digit_lines += 1  # op_g2p does not expand digits
+            before_oov = g2p.stats["oov_misses"]
             ipa = g2p.phonemize(text)
             bad = g2p.validate(ipa)
             if bad:
                 bad_lines += 1
                 violations.update(bad)
+            if g2p.stats["oov_misses"] > before_oov:
+                unresolved_lines += 1
             out_lines.append("|".join(parts[:-1] + [ipa]))
         dest = out_path(filelist)
-        with open(dest, "w", encoding="utf-8") as f:
-            f.write("\n".join(out_lines) + "\n")
-        print(f"{filelist}: {len(rows)} lines -> {dest}")
+        print(f"{filelist}: {len(rows)} lines")
         if digit_lines:
             print(f"  WARNING: {digit_lines} lines contain digits — feed "
                   "normalized text; digits are not expanded")
         if bad_lines:
-            any_bad = True
             print(f"  FAIL: {bad_lines} lines have out-of-vocab characters: "
                   f"{violations}")
+        if unresolved_lines:
+            # Unresolved words are passed through as bare letters, which
+            # validate() cannot see (a-z are in the vocab). Without this
+            # check the poisoned filelist would look clean.
+            print(f"  FAIL: {unresolved_lines} lines contain unresolved "
+                  "words (passed through as letters — invisible to validate)")
+        if bad_lines or unresolved_lines:
+            # Do not write a poisoned filelist. It used to be written anyway,
+            # leaving a file someone could train on long after the FAIL
+            # scrolled off the terminal.
+            any_bad = True
+            print(f"  {dest} NOT written")
+        else:
+            with open(dest, "w", encoding="utf-8") as f:
+                f.write("\n".join(out_lines) + "\n")
+            print(f"  -> {dest}")
     s = g2p.stats
-    total = s["dict_hits"] + s["neural_hits"] + s["oov_misses"]
+    total = (s["dict_hits"] + s["neural_hits"] + s["oov_misses"]
+             + s["contraction_hits"] + s["apostrophe_fallbacks"])
     print(f"\nG2P: {total} words | dict {s['dict_hits']} "
           f"({100 * s['dict_hits'] / max(total, 1):.3f}%) | "
-          f"neural OOV {s['neural_hits']} | unresolved {s['oov_misses']}")
+          f"contractions {s['contraction_hits']} | "
+          f"neural OOV {s['neural_hits']} | "
+          f"apostrophe fallback {s['apostrophe_fallbacks']} | "
+          f"unresolved {s['oov_misses']}")
+    if g2p.apostrophe_fallback_words:
+        sample = sorted(g2p.apostrophe_fallback_words)[:20]
+        print(f"apostrophe words guessed from bare letters (first 20): {sample}")
     if g2p.oov_words:
         sample = sorted(g2p.oov_words)[:20]
         print(f"unresolved words (first 20): {sample}")

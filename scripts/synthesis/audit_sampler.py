@@ -253,13 +253,14 @@ def main():
     if args.dry_run:
         print(f"[dry-run] {len(all_rows)} audit rows would be appended")
         return
-    new_file = not reg.RATINGS_CSV.is_file()
-    with open(reg.RATINGS_CSV, "a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fields)
-        if new_file:
-            w.writeheader()
-        w.writerows(all_rows)
-    print(f"appended {len(all_rows)} audit-sample rows to ratings.csv")
+    # Use register_audition's guarded append, not a bare one. The audition app
+    # saves by read-all -> modify -> write tmp -> os.replace, so rows appended
+    # inside that window vanish when the swap lands — silently, after this
+    # script has already printed success and written audit_sample.jsonl. The
+    # clips at risk are exactly the ones chosen because the instruments
+    # distrust them (disagreement, near-miss, novelty), and the race window
+    # spans the whole slow F0-measurement run that precedes this point.
+    reg.append_guarded(all_rows, fields)   # prints its own confirmation
     print("AUDIT-SAMPLER-DONE")
 
 

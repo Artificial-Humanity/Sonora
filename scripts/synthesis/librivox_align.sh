@@ -35,8 +35,11 @@ docker run --rm $GPU $HF_ENV -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c 
 # is not exempt: a bad alignment produces a clip whose canonical text does not match what
 # is spoken, which is exactly what the ASR/WER gate catches.
 echo "== qc gate =="
-if command -v uv >/dev/null 2>&1; then
-  uv run "$SONORA/scripts/synthesis/qc_gate.py" --campaign-dir "$OUT" || {
+# Host-side: the repo venv directly, not `uv run` (which binds to pyproject.toml
+# and ignores the script's inline PEP 723 block) — owner run-mode rule 2026-08-01.
+PY="$SONORA/.venv/bin/python"
+if [ -x "$PY" ]; then
+  "$PY" "$SONORA/scripts/synthesis/qc_gate.py" --campaign-dir "$OUT" || {
     echo "  !! qc_gate FAILED — clips are in $OUT but will NOT be queued"; exit 1; }
   # DELIBERATELY NOT REGISTERING. The aligner fills the POOL; the pool is not the
   # audition queue. Owner design 2026-08-01: segment everything, then stage a linear
@@ -50,6 +53,7 @@ if command -v uv >/dev/null 2>&1; then
   echo "  pool filled — NOT queued. Stage it with:"
   echo "    .venv/bin/python scripts/synthesis/stage_pool.py --campaign $(basename "$OUT") --stage N --apply"
 else
-  echo "  !! uv not found — NOT registering. Run qc_gate.py then register_audition.py."
+  echo "  !! $PY not found — the mandatory QC gate cannot run."
+  echo "  !! Clips are in $OUT but are NOT gated and must not be staged."
   exit 1
 fi

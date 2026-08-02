@@ -27,6 +27,21 @@ set -uo pipefail
 BANK="${1:?usage: synth_bank.sh <bank.json> <out_dir> [engine ...]}"
 OUT="${2:?usage: synth_bank.sh <bank.json> <out_dir> [engine ...]}"
 shift 2
+
+# Strip trailing slashes before anything derives a path from $OUT. The QC gate's
+# campaign dir is `dirname "$OUT"`, so a single trailing slash used to make it
+# the campaign dir itself, the manifest glob match nothing, and the mandatory
+# gate "pass" over zero clips.
+OUT="${OUT%/}"
+while [ "$OUT" != "${OUT%/}" ]; do OUT="${OUT%/}"; done
+
+# Both paths cross two quoting layers (docker bash -c, then runuser bash -c),
+# so a space or a quote in either breaks the render in a way that surfaces as a
+# confusing engine error. They must also live under /data, which is the only
+# tree mounted into the containers.
+case "$BANK" in /data/*) ;; *) echo "!! BANK must be an absolute /data path: $BANK" >&2; exit 2;; esac
+case "$OUT"  in /data/*) ;; *) echo "!! OUT must be an absolute /data path: $OUT"  >&2; exit 2;; esac
+case "$BANK$OUT" in *[\ \'\"]*) echo "!! BANK/OUT must not contain spaces or quotes" >&2; exit 2;; esac
 ENGINES=("$@")
 [ ${#ENGINES[@]} -eq 0 ] && ENGINES=(chatterbox moss_vg orpheus qwen zonos)
 
@@ -39,8 +54,14 @@ mkdir -p "$OUT"
 # (MOSS pulls MOSS-Audio-Tokenizer). Without a token those are rate-limited
 # anonymous fetches, which is slow and flaky across a multi-engine run. HF_TOKEN
 # lives in the owner's .zshenv, so forward it when present.
+# Value-less -e forwards from this shell's environment instead of writing the
+# token into the docker argv, where `ps` and `docker inspect` would show it.
 HF_ENV=""
-[ -n "${HF_TOKEN:-}" ] && HF_ENV="-e HF_TOKEN=$HF_TOKEN -e HUGGING_FACE_HUB_TOKEN=$HF_TOKEN"
+if [ -n "${HF_TOKEN:-}" ]; then
+  export HF_TOKEN
+  export HUGGING_FACE_HUB_TOKEN="$HF_TOKEN"
+  HF_ENV="-e HF_TOKEN -e HUGGING_FACE_HUB_TOKEN"
+fi
 
 # $1 = pip/apt setup, $2 = the python command to run as ai-mgr
 run(){
@@ -52,25 +73,42 @@ run(){
 
 has(){ for e in "${ENGINES[@]}"; do [ "$e" = "$1" ] && return 0; done; return 1; }
 
+# Engine failures are non-fatal per engine (one dead engine should not throw
+# away the others' renders) but they are counted, so a run where every engine
+# died at clip 1 can no longer end in a cheerful exit 0.
+FAILED_ENGINES=0
+FAILED_ENGINE_NAMES=""
+failed(){
+  FAILED_ENGINES=$((FAILED_ENGINES + 1))
+  FAILED_ENGINE_NAMES="${FAILED_ENGINE_NAMES:+$FAILED_ENGINE_NAMES }$1"
+  echo "  ($1 failed — continuing)"
+}
+
+# Host-side steps run the repo venv directly. `uv run` binds to pyproject.toml
+# and ignores each script's inline PEP 723 block, which is why the owner moved
+# host scripts to .venv/bin/python on 2026-08-01. uv still manages the venv:
+#   uv pip install --python .venv/bin/python <pkg>
+PY="$SONORA/.venv/bin/python"
+
 if has dia; then
   echo "== DIA =="
   run "pip install -q transformers soundfile >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_dia.py --bank $BANK --out $OUT" \
-      || echo "  (dia failed — continuing)"
+      || failed dia
 fi
 
 if has moss_vg; then
   echo "== MOSS-VoiceGenerator =="
   run "pip install -q transformers soundfile >/dev/null 2>&1; pip install -q --no-deps accelerate >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_moss_vg.py --bank $BANK --out $OUT" \
-      || echo "  (moss_vg failed — continuing)"
+      || failed moss_vg
 fi
 
 if has moss85; then
   echo "== MOSS-8.5B flagship (base model — un-directed work only) =="
   run "pip install -q transformers soundfile >/dev/null 2>&1; pip install -q --no-deps accelerate >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_moss85.py --bank $BANK --out $OUT" \
-      || echo "  (moss85 failed — continuing)"
+      || failed moss85
 fi
 
 if has qwen; then
@@ -80,7 +118,7 @@ if has qwen; then
        pip install -q transformers==4.57.3 soundfile sox onnxruntime einops librosa >/dev/null 2>&1;
        pip install -q --no-deps accelerate==1.12.0 >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_qwen.py --bank $BANK --out $OUT" \
-      || echo "  (qwen failed — continuing)"
+      || failed qwen
 fi
 
 # --- revisit engines (2026-07-28) -------------------------------------------------
@@ -97,7 +135,7 @@ if has chatterbox; then
   run "pip install -q --no-deps chatterbox-tts >/dev/null 2>&1;
        pip install -q librosa s3tokenizer diffusers resemble-perth conformer transformers safetensors soundfile omegaconf >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_chatterbox.py --bank $BANK --out $OUT" \
-      || echo "  (chatterbox failed — continuing)"
+      || failed chatterbox
 fi
 
 if has zonos; then
@@ -115,7 +153,7 @@ if has zonos; then
   run "apt-get -qq update >/dev/null 2>&1; apt-get -qq install -y espeak-ng >/dev/null 2>&1;
        pip install -q phonemizer inflect kanjize soundfile transformers huggingface-hub sudachipy sudachidict-full >/dev/null 2>&1;" \
       "PYTHONPATH=/data/toolchain/Zonos python /sonora/scripts/synthesis/synth_zonos.py --bank $BANK --out $OUT" \
-      || echo "  (zonos failed — continuing)"
+      || failed zonos
 fi
 
 if has orpheus; then
@@ -123,7 +161,7 @@ if has orpheus; then
   echo "== ORPHEUS (-ft checkpoint) =="
   run "pip install -q transformers soundfile snac >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_orpheus.py --bank $BANK --out $OUT" \
-      || echo "  (orpheus failed — continuing)"
+      || failed orpheus
 fi
 
 if has vibevoice; then
@@ -136,7 +174,7 @@ if has vibevoice; then
   echo "== VIBEVOICE =="
   run "pip install -q 'git+https://github.com/vibevoice-community/VibeVoice.git' soundfile bitsandbytes accelerate >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_vibevoice.py --bank $BANK --out $OUT" \
-      || echo "  (vibevoice failed — continuing)"
+      || failed vibevoice
 fi
 
 echo "== done: $(ls -1 "$OUT"/*.wav 2>/dev/null | wc -l) wav(s) in $OUT =="
@@ -152,11 +190,21 @@ echo "== done: $(ls -1 "$OUT"/*.wav 2>/dev/null | wc -l) wav(s) in $OUT =="
 # Must run before register_audition (audit) and before qc_gate (measurement).
 # Originals are kept in $OUT/_pre_loudnorm.
 echo "== normalize loudness =="
-if command -v uv >/dev/null 2>&1; then
-  uv run "$SONORA/scripts/synthesis/normalize_loudness.py" --dir "$OUT" \
-    || echo "  (normalize_loudness failed — clips are at raw engine level; DO NOT audition until fixed)"
-else
-  echo "  (uv not found — skipped; run normalize_loudness.py --dir $OUT before auditioning)"
+if [ ! -x "$PY" ]; then
+  echo "  !! $PY not found — cannot normalize loudness."
+  echo "  !! NOT registering: clips are rendered in $OUT but stay out of the queue."
+  echo "  !! Recover with: $PY $SONORA/scripts/synthesis/normalize_loudness.py --dir $OUT"
+  exit 1
+fi
+# A failure here used to print "DO NOT audition until fixed" and then carry on
+# to register the batch for audition — the message and the control flow said
+# opposite things. Unnormalized clips bias the ear (louder reads as more
+# present) and spread the conditioning signal, so this stops like the QC gate.
+if ! "$PY" "$SONORA/scripts/synthesis/normalize_loudness.py" --dir "$OUT"; then
+  echo "  !! normalize_loudness FAILED — clips are at raw engine level."
+  echo "  !! NOT registering: they stay out of the queue until this is fixed."
+  echo "  !! Recover with: $PY $SONORA/scripts/synthesis/normalize_loudness.py --dir $OUT"
+  exit 1
 fi
 
 # Objective QC BEFORE the ear ever sees a clip. This step used to be manual, and
@@ -173,20 +221,19 @@ fi
 CAMPAIGN_DIR="$(dirname "$OUT")"
 echo "== qc gate =="
 QC_MEASURES=""
-if ! command -v uv >/dev/null 2>&1; then
-  echo "  !! uv not found — cannot run the QC gate."
-  echo "  !! NOT registering: clips are rendered in $OUT but stay out of the queue."
-  echo "  !! Recover with: qc_gate.py --campaign-dir $CAMPAIGN_DIR"
-  echo "  !!         then: register_audition.py --audio-dir $OUT --qc $CAMPAIGN_DIR/qc_measures.jsonl"
-  exit 1
-fi
-if uv run "$SONORA/scripts/synthesis/qc_gate.py" --campaign-dir "$CAMPAIGN_DIR"; then
-  QC_MEASURES="$CAMPAIGN_DIR/qc_measures.jsonl"
-else
+if ! "$PY" "$SONORA/scripts/synthesis/qc_gate.py" --campaign-dir "$CAMPAIGN_DIR"; then
   echo "  !! qc_gate FAILED — clips are rendered in $OUT but will NOT be queued."
   echo "  !! Fix the gate, then:"
-  echo "  !!   qc_gate.py --campaign-dir $CAMPAIGN_DIR"
-  echo "  !!   register_audition.py --audio-dir $OUT --qc $CAMPAIGN_DIR/qc_measures.jsonl"
+  echo "  !!   $PY $SONORA/scripts/synthesis/qc_gate.py --campaign-dir $CAMPAIGN_DIR"
+  echo "  !!   $PY $SONORA/scripts/synthesis/register_audition.py --audio-dir $OUT --qc $CAMPAIGN_DIR/qc_measures.jsonl"
+  exit 1
+fi
+QC_MEASURES="$CAMPAIGN_DIR/qc_measures.jsonl"
+# The gate exiting 0 is not sufficient on its own: it must also have produced
+# measurements. An empty measures file means it gated nothing.
+if [ ! -s "$QC_MEASURES" ]; then
+  echo "  !! qc_gate exited 0 but $QC_MEASURES is empty — nothing was measured."
+  echo "  !! NOT registering. Check that $CAMPAIGN_DIR is the campaign dir."
   exit 1
 fi
 
@@ -197,10 +244,12 @@ fi
 # spending an audition slot; advisory flags are still queued AND written to
 # qc_flags.txt for pick_audit_subset --flags, because the QC-flag path never relaxes.
 echo "== register audition =="
-if command -v uv >/dev/null 2>&1; then
-  uv run "$SONORA/scripts/synthesis/register_audition.py" --audio-dir "$OUT" \
-      ${QC_MEASURES:+--qc "$QC_MEASURES"} \
-    || echo "  (register_audition failed — clips rendered but not queued; run it manually)"
-else
-  echo "  (uv not found — skipped; run register_audition.py --audio-dir $OUT to queue)"
+"$PY" "$SONORA/scripts/synthesis/register_audition.py" --audio-dir "$OUT" \
+    ${QC_MEASURES:+--qc "$QC_MEASURES"} \
+  || echo "  (register_audition failed — clips rendered but not queued; run it manually)"
+
+if [ "$FAILED_ENGINES" -gt 0 ]; then
+  echo "!! $FAILED_ENGINES of ${#ENGINES[@]} engine(s) failed: $FAILED_ENGINE_NAMES"
+  echo "!! The bank is INCOMPLETE. Clips that did render were gated and queued."
+  exit 1
 fi

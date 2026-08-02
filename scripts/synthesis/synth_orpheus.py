@@ -37,8 +37,20 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from snac import SNAC
 
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from synth_common import write_wav_atomic  # noqa: E402
+
 MODEL_DIR = "/data/models/canopylabs/orpheus-3b-0.1-ft"
 SNAC_DIR = "hubertsiuzdak/snac_24khz"
+
+# Voice sets, duplicated from book_ingest deliberately: this renderer must be
+# safe when run standalone against a hand-authored bank, which is exactly the
+# path that bypasses the director's validation. See director_skills/orpheus.md
+# for the measurements behind the ban.
+FEMALE_VOICES = {"tara", "leah", "jess", "mia", "zoe"}
+MALE_VOICES = {"leo", "dan", "zac"}
+BANNED_VOICES = {"tara"}     # room tone + white-noise hiss, 5/5 clips 2026-07-28
 
 SOH, EOT, EOH = 128259, 128009, 128260   # start-of-human, end-of-text, end-of-human
 SOAI, SOA, EOA = 128261, 128257, 128258  # start-of-AI, start-of-speech, end-of-audio
@@ -111,6 +123,19 @@ def main():
                 print(job["id"], "exists, skip", flush=True)
                 continue
             d = job["direction"]
+            # Renderer-side guard. The "never cast tara" rule was measured on
+            # 2026-07-28 (room tone + hiss, 5/5 clips) but lived only in
+            # director_skills/orpheus.md, which nothing executes — so a bank
+            # authored by hand, or by an older director, could still put her on
+            # disk. Refuse the clip rather than render a known-defective voice.
+            if d["voice"] in BANNED_VOICES:
+                print(job["id"], f"SKIP (voice {d['voice']} is banned: "
+                                 f"measured room tone/hiss)", flush=True)
+                continue
+            if d["voice"] not in FEMALE_VOICES | MALE_VOICES:
+                print(job["id"], f"SKIP (unknown voice {d['voice']!r} would be "
+                                 f"spoken aloud as text)", flush=True)
+                continue
             prompt = f"{d['voice']}: {d['render_text']}"
             ids = tok(prompt, return_tensors="pt").input_ids
             # The trained form CONTINUES past end-of-human into start-of-AI +
@@ -128,7 +153,7 @@ def main():
                 print(job["id"], f"FAILED ({n_codes} codes < {MIN_CODES}: decoder "
                                  f"returns silence)", flush=True)
                 continue
-            sf.write(os.path.join(args.out, f"{job['id']}.wav"), wav, SR)
+            write_wav_atomic(os.path.join(args.out, f"{job['id']}.wav"), wav, SR)
 
             row = dict(job)
             row.update({
@@ -137,8 +162,10 @@ def main():
                 "weights_source": "canopylabs/orpheus-3b-0.1-ft (NOT -pretrained)",
                 "campaign": bank["campaign"], "bank_version": bank["version"],
                 # community-derived gender mapping — the audition confirms it by ear
-                # and it feeds the casting-attribute norms
-                "intended_gender": "F" if d["voice"] in ("tara", "leah", "jess", "mia", "zoe") else "M",
+                # and it feeds the casting-attribute norms. Spelled out: the
+                # audition prefill contract keys on "Female"/"Male", so the old
+                # "F"/"M" was silently dropped and hand-entered every time.
+                "intended_gender": "Female" if d["voice"] in FEMALE_VOICES else "Male",
                 "prompt": prompt,
             })
             mf.write(json.dumps(row) + "\n")

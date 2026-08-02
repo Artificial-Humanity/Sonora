@@ -14,6 +14,10 @@ import soundfile as sf
 import torch
 from transformers import AutoModel, AutoProcessor
 
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from synth_common import write_wav_atomic  # noqa: E402
+
 MODEL_DIR = "/data/models/OpenMOSS-Team/MOSS-TTS"
 
 
@@ -52,7 +56,7 @@ def main():
             for message in processor.decode(outputs):
                 audio = message.audio_codes_list[0].float().cpu().numpy()
                 name = f"{job['id']}.wav"
-                sf.write(os.path.join(args.out, name), audio, sr)
+                write_wav_atomic(os.path.join(args.out, name), audio, sr)
                 mf.write(json.dumps({
                     "id": job["id"], "engine": "moss85", "wav": name,
                     "register": job["register"], "intended": job["intended"],

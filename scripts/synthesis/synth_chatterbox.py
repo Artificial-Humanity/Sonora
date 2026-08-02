@@ -54,6 +54,7 @@ perth.PerthImplicitWatermarker = _NoopWatermarker
 from chatterbox.tts import ChatterboxTTS  # noqa: E402  (must follow the perth patch)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from synth_common import write_wav_atomic  # noqa: E402
 from ref_select import (select_reference, pinned_reference, design_age_band,  # noqa: E402
                         REF_BLACKLIST)
 
@@ -225,7 +226,7 @@ def main():
                                  exaggeration=exag,
                                  cfg_weight=d["cfg_weight"])
             wav = wav.squeeze(0).cpu().numpy()
-            sf.write(os.path.join(args.out, f"{job['id']}.wav"), wav, model.sr)
+            write_wav_atomic(os.path.join(args.out, f"{job['id']}.wav"), wav, model.sr)
 
             row = dict(job)
             row.update({
