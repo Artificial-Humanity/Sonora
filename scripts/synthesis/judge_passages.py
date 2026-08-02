@@ -161,7 +161,14 @@ def summarise(res, model):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bank", required=True)
-    ap.add_argument("--model", default="gemma-4-26b-a4b-qat")
+    # e4b, not the MoE. THIS SCRIPT IS THE INSTRUMENT that measured the difference
+    # on 2026-07-29 — 100 identical calls per variant — and it kept defaulting to
+    # the model its own measurement disqualified: `gemma-4-26b-a4b-qat` emitted
+    # 13/100 malformed JSON (```json fences, blank keys, `speak-able`) against
+    # 0/100 for both plain dense variants. e4b over 31b here because passage
+    # judging is the volume job and e4b is ~3x faster at 91% pass; `-spec` is
+    # speculative decoding, lossless and 1.29x on this size.
+    ap.add_argument("--model", default="gemma-4-e4b-qat-spec")
     ap.add_argument("--compare", help="comma-separated models to run head-to-head")
     ap.add_argument("--limit", type=int, default=100)
     ap.add_argument("--out", help="write judgements jsonl")

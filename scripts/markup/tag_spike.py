@@ -146,7 +146,13 @@ def ask(model, prompt):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="gemma-4-26b-a4b-qat")
+    # e4b: this is the LABELER half of the span-markup plan (e4b labels, 31b
+    # judges), and it is scored on schema-valid rate — which makes a default of
+    # the one variant measured at 13/100 malformed JSON indefensible.
+    # ⚠ The recorded audit-markup-v0 spike results were produced with
+    # `gemma-4-26b-a4b-qat`. Re-running with this default will not reproduce them;
+    # pass --model explicitly to compare against the old numbers.
+    ap.add_argument("--model", default="gemma-4-e4b-qat-spec")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--no-register-audit", action="store_true",
                     help="skip appending the audit-markup-v0 campaign rows")

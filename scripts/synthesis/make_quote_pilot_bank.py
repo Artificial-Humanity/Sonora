@@ -123,7 +123,12 @@ def main():
     ap.add_argument("--exclude-banks", nargs="*", default=[],
                     help="prior bank JSONs whose quotes must not be re-picked")
     ap.add_argument("--ollama", default="http://localhost:11434/api/chat")
-    ap.add_argument("--model", default="gemma-4-26b-a4b-qat")
+    # 31b, not the MoE: this is a director pass (V/A/T + casting written into a
+    # bank), so it is the judgement job, not the volume job. Measured 2026-08-02 on
+    # book_ingest's identical two-pass prompts — the MoE obeyed the engine skill
+    # file on 8 of 24 narration lines against 24 of 24 for this model. See
+    # book_ingest.MODEL for the full table.
+    ap.add_argument("--model", default="gemma-4-31b-qat-spec")
     args = ap.parse_args()
 
     from book_ingest import parse_epub, is_complete_utterance

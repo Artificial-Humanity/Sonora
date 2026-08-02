@@ -119,9 +119,52 @@ books instead of a hand-authored `bulk_spec.json`. Four steps:
    schema. Dialogue attribution seeds the read cheaply; narration defaults neutral unless cued.
 4. **Emit bank** → unchanged renderers.
 
-### Director model — DECIDED: Gemma 4 26B-A4B (QAT)
+### Director model — NOW `gemma-4-31b-qat-spec` (superseded 2026-08-02)
 
-**Owner call 2026-07-18: Gemma 4 26B-A4B QAT.** MoE — 26B total, ~4B active — so throughput +
+> **The 2026-07-18 owner call below picked the MoE on architecture. Two
+> measurements have since overturned it, and the live value is
+> `book_ingest.MODEL` — read it there, not here.**
+>
+> **2026-07-29, structured output** (`judge_passages.py`, 100 identical calls per
+> variant): the MoE emitted **13/100 malformed JSON** — ```json fences, blank
+> keys, `speak-able` — against **0/100** for both plain dense Gemma 4 variants.
+> Reliability tracks plain dense `gemma4`, not size and not quantization; the
+> dense 12B `gemma4_unified` also failed at 8/100, so sparsity alone did not
+> explain it.
+>
+> **2026-08-02, skill-file obedience** (24 real narration passages, casting for
+> zonos with the live skill file and labels supplied as `casting_pass` supplies
+> them). Parse rate did *not* discriminate here — pass 2 is grammar-constrained
+> by ollama's `format`, so all three parsed 24/24. Obedience did:
+>
+> | model | emotion omitted | rate 14-16 | pitch 20-45 | distinct castings |
+> |---|---|---|---|---|
+> | `gemma-4-26b-a4b-qat` | 8/24 | 14/24 | 12/24 | 4/24 |
+> | **`gemma-4-31b-qat-spec`** | **24/24** | **24/24** | **24/24** | **16/24** |
+> | `gemma-4-e4b-qat-spec` | 5/24 | 24/24 | 24/24 | 5/24 |
+>
+> On 16 of 24 narration lines the MoE emitted an emotion vector — 15 of them
+> neutral-dominant, several the literal `[0,…,0,1.0]` — against a skill file
+> that says `emotion` is omitted on every narration lane *without exception*,
+> because that conditioning was measured destabilizing 5 of 9 zonos narration
+> groups on 2026-07-30. It also reused 4 casting calls across 24 lines, which
+> `zonos.md` names as a failure.
+>
+> **E4B was tested and is NOT the director.** It parses cleanly and is ~4x
+> faster, but it disobeys the skill file nearly as often as the MoE. Its real
+> role is the volume job: `judge_passages.py` and the markup labeler default to
+> `gemma-4-e4b-qat-spec`. The rule is **e4b for volume, 31b for judgement**, and
+> a director pass is judgement.
+>
+> `-spec` = the same weights with a speculative-decoding drafter attached:
+> lossless at temperature 0, 1.76x on the 31B. It cannot fix a bad model —
+> `26b-a4b-spec` emits the same 13% malformed JSON, just faster.
+>
+> What still holds from the original call: the serving stack (ollama on `:11434`,
+> ROCm), the reasoning-mode resolution, and the dogfooding rationale — 31B is
+> the same Gemma 4 family as the shipped on-device Directors.
+
+**Superseded — owner call 2026-07-18: Gemma 4 26B-A4B QAT.** MoE — 26B total, ~4B active — so throughput +
 energy stay near a 4B dense model while the 26B total gives literary/register breadth; QAT (≈4-bit,
 quality near bf16 at much lower memory) makes it cheap on the box. Same family as the shipped
 Gemma 4 E2B Director → the big offline sibling, maximal dogfooding. **Served via the ollama (ROCm)
