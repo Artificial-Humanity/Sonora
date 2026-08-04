@@ -7,7 +7,7 @@ architecture canon is [ARCHITECTURE.md](ARCHITECTURE.md); open work is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
-_Last updated: 2026-08-02._
+_Last updated: 2026-08-04._
 
 ---
 
@@ -59,10 +59,13 @@ verdicts, and the shortlist record: [teacher-tts-audition-shortlist.md](teacher-
 onboarding pattern + gotchas: [tts-engine-onboarding.md](tts-engine-onboarding.md).
 
 **Delivery campaign (SSOT: [delivery-mix-campaign.md](delivery-mix-campaign.md)):**
-1,071 fold-eligible keeps; Dialogue 578 is the 50% anchor, corpus completes at 1,156.
-Newscaster and Speech are CLOSED; remaining **+116 = Neutral +81 / Documentary +35**,
-riding on five books ingested 2026-08-02. Text shelf refilled (it had silently emptied
-to 20 lines).
+**1,159 fold-eligible keeps against the 1,156 it was sized for — the campaign is
+done.** Dialogue 578 is the 50% anchor; Newscaster 84, Speech 69, Documentary 87 and
+Neutral 324 all CLOSED or inside a rounding error. Documentary stays at 87/92 by owner
+call 2026-08-04: no documentary real audio is segmented anywhere, and −5 does not pay
+for a fresh ingest. The last Neutral −23 is staged from `librivox-v2` and pending the
+ear (30 clips, 2026-08-04) — real audio, per-clip delivery, since *Uneasy Money* is a
+novel and heterogeneous.
 
 **Engine allocation is now three-layer** (`ref_select.py`, 2026-08-02): capability veto
 (`ENGINE_CHANNELS` — the relay audit made executable), measured per-lane weights

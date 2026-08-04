@@ -58,9 +58,18 @@ finding still enters as `unaudited` and reaches the ear, per the standing rule t
 QC failure is auditioned regardless of source or tier ([[qc-gate-mandatory]]). A book is
 a known quantity; a flagged clip inside it is not.
 
+Delivery is the exception to "known quantity", because it is not a property of the
+recording the way gender and accent are — it is how a given passage was read, and in a
+novel it varies from paragraph to paragraph. So a title that is attribute-confirmed but
+not delivery-marked stages under `--delivery-ear`, which takes the same linear range and
+enters it unaudited for the lane call. Without it those clips fold as keeps with delivery
+blank: real speech in the corpus, invisible to the lane table.
+
 Usage:
     .venv/bin/python scripts/synthesis/stage_pool.py --campaign librivox-v1 --status
     .venv/bin/python scripts/synthesis/stage_pool.py --campaign librivox-v1 --stage 250 --apply
+    .venv/bin/python scripts/synthesis/stage_pool.py --campaign librivox-v2 --stage 30 \
+        --delivery-ear --apply
 """
 from __future__ import annotations
 
@@ -195,6 +204,10 @@ def main() -> int:
     ap.add_argument("--seed-ear", action="store_true",
                     help="register the minimum needed to unlock a new (reader, title): "
                          "one mid clip per unconfirmed pair, plus every QC-flagged clip")
+    ap.add_argument("--delivery-ear", action="store_true",
+                    help="stage as usual, but enter every clip unaudited so the ear "
+                         "supplies the delivery lane. For a title whose attributes are "
+                         "confirmed but whose delivery is not, and is not homogeneous.")
     ap.add_argument("--apply", action="store_true", help="write; otherwise dry-run")
     args = ap.parse_args()
 
@@ -269,8 +282,14 @@ def main() -> int:
 
     if args.status or (not args.stage and not args.seed_ear):
         for run in log["runs"]:
+            # `range` is None for a run that was not a contiguous take — seed-ear cherry-
+            # picks, so it records None on purpose (see the write below). The printer has
+            # to handle that. It did not, and --status crashed outright on any campaign
+            # that had ever been seeded.
+            rng_txt = (f"reading-order range {run['range'][0]}..{run['range'][1]}"
+                       if run.get("range") else "no contiguous range")
             print(f"  run {run['run']}: {run['count']} clips, "
-                  f"reading-order range {run['range'][0]}..{run['range'][1]} ({run['date']})")
+                  f"{rng_txt} [{run.get('kind', 'stage')}] ({run['date']})")
         return 0
 
     if args.seed_ear:
@@ -326,7 +345,34 @@ def main() -> int:
         print(f"\nstaging {len(take)} clips, reading-order {rng[0]}..{rng[1]}")
         shown = {k: v for k, v in list(tags_of.values())[0].items()} if tags_of else {}
         print(f"  tags from the ear-confirmed profile: {shown or '(NONE — refusing)'}")
-        print(f"  {len(take)-n_flag} enter as keep; {n_flag} carry a QC finding -> unaudited")
+        if args.delivery_ear:
+            # WHY THIS MODE EXISTS
+            # --------------------
+            # Confirmation is not one axis. `confirmed_tags` answers gender/age/accent;
+            # delivery is answered either per clip by the ear or, for a title the owner
+            # has marked, by `homogeneous_delivery`. A (reader, title) can be fully
+            # confirmed on the first and silent on the second — which is precisely what
+            # a re-cut produces, since the ear's verdicts are keyed on clip id and the
+            # ids do not survive re-segmentation, while the profile is keyed on the pair
+            # and does.
+            #
+            # Staging such a title normally folds every clip as a keep with delivery
+            # BLANK, which is a keep the lane table cannot count. This mode stages the
+            # same linear range but hands it to the ear instead, so the delivery call
+            # gets made. Attributes are still pre-filled from the confirmed profile —
+            # the ear is being asked one question, not four.
+            marked = {t for t in {r.get("book") or "?" for r in take}
+                      if homogeneous_delivery(next(r for r in take
+                                                   if (r.get("book") or "?") == t),
+                                              led_cache)}
+            if marked:
+                print(f"  !! already delivery-homogeneous, nothing to ask: "
+                      f"{sorted(marked)}")
+                print("     stage without --delivery-ear and the mark propagates")
+                return 1
+            print(f"  all {len(take)} enter as UNAUDITED — the ear supplies delivery")
+        else:
+            print(f"  {len(take)-n_flag} enter as keep; {n_flag} carry a QC finding -> unaudited")
         if untagged:
             pairs = sorted({(r.get('reader') or '?', r.get('book') or '?')
                             for r in untagged})
@@ -349,7 +395,7 @@ def main() -> int:
         if rec["id"] in have:
             continue
         row = {k: "" for k in hdr}
-        unaudited = args.seed_ear or rec["id"] in flagged
+        unaudited = args.seed_ear or args.delivery_ear or rec["id"] in flagged
         # A folded clip is a keep — that is the point of folding — but NOBODY
         # HEARD IT, so it must not carry an ear score. It used to be written
         # `score=5`, which is a fabricated ear verdict under the v4 rule that
@@ -393,7 +439,11 @@ def main() -> int:
         # A seed is NOT a contiguous reading-order range — it is one clip per pair plus
         # the QC-flagged. Recording a range for it would misrepresent what was taken and
         # break the "resume from where staging stopped" contract.
-        "kind": "seed-ear" if args.seed_ear else "stage",
+        # delivery-ear IS a contiguous take — it stages the same linear range a normal
+        # run would, and only changes who answers the delivery question. So it keeps its
+        # range and stays resumable; only seed-ear, which cherry-picks, records None.
+        "kind": "seed-ear" if args.seed_ear
+                else "delivery-ear" if args.delivery_ear else "stage",
         "range": None if args.seed_ear else rng,
         "qc_flagged": n_flag,
         "tags": None if args.seed_ear else {i: t for i, t in tags_of.items() if t},
@@ -405,6 +455,10 @@ def main() -> int:
         print(f"\nseeded {added} clips into ratings.csv as unaudited; {left} still pooled")
         print("  audition them, then:  reader_profile.py --learn --apply")
         print("  then stage the rest:  stage_pool.py --campaign <c> --stage N --apply")
+    elif args.delivery_ear:
+        print(f"\nstaged {added} new rows into ratings.csv as unaudited; "
+              f"{left} left in the pool")
+        print("  audition them for the delivery lane; attributes are already filled in")
     else:
         print(f"\nstaged {added} new rows into ratings.csv; {left} left in the pool")
     print(f"  recorded in {log_path}")

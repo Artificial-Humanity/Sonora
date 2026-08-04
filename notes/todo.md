@@ -119,6 +119,12 @@ delete sections when empty.
 - [ ] **A-M7/M8:** dialogue extraction matches only curly double quotes (straight/single
       quoted editions → zero utterances, dialogue enters narration windows); PG epub
       boilerplate parses as prose and becomes render text.
+      **CONFIRMED LIVE 2026-08-04, not latent:** the *Uneasy Money* edition (`pg:6684`)
+      quotes with single quotes — 818 against 26 doubles — so a double-quote test reads
+      1,355 of its 1,366 clips as narration when the true figure is 1,201. It was caught
+      only because the miscount would have justified a delivery-homogeneous mark on a
+      novel. Anything deciding a lane, a window or a mark from quote characters is
+      unsafe until this is fixed.
 - [ ] **A-M9/M10:** the `lv:`/`pg:` ledger-key split — SKIP detection checks only `pg:`,
       re-routes and duplicates `lv:` entries, regresses status; fetch updates status only
       under exact `--key`; two on-disk naming schemes by invocation style.

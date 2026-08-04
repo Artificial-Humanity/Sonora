@@ -71,6 +71,52 @@ it renders, so the text defect should not recur; the **attribution gap will**, t
 time a clip is dropped for its content rather than its audio. Read the drop's note
 before believing a trust alarm.
 
+### The last −23/−5, taken from the real-audio lane (2026-08-04)
+
+The close-out above said to take the residual from the real-audio lane, "where clips
+are already cleared and unused." Checked, and the two lanes came apart.
+
+**Documentary stays at 87/92 — CLOSED at 95% of target.** There is no documentary
+real audio segmented anywhere. The pool holds exactly two books: *Uneasy Money*
+(fiction) and *Speeches: Literary and Social* (17 clips left, a lane already closed).
+`book-prose` is an empty pool. The `lv:the-voyage-of-the-beagle` ledger entry is still
+`pending book_ingest` — Darwin reached delivery-v1 as *text* for synthesis, never as a
+LibriVox reading. Closing −5 would mean a fresh fetch + force-align + new-reader ear
+pass for five clips, which is more than the gap is worth. Owner call: leave it, record
+why. If Documentary reopens, the guide's other candidates (White *Selborne* `pg:1408`,
+Muir, Kingsley) are the place to start; *Origin of Species* was considered and has
+never been used in any lane.
+
+**Neutral −23 comes from `librivox-v2`, through the ear.** Three things had to be
+established first:
+
+1. **The ear evidence does not survive a re-cut.** `librivox-v2` is the canonical
+   *Uneasy Money* pool (1,366 clips / 25 sections against v1's 664 / 15), but **none
+   of the 12 audited v1 ids exist in it** — ids encode section and sentence index and
+   the duration-split fix moved both. Attributes still transfer, because
+   `reader_profiles.json` is keyed on (reader, title) and `confirmed_tags` reads it
+   that way; delivery does not, because `--mark-delivery` matches the heard set by id.
+2. **A homogeneity mark would have been wrong.** This edition quotes dialogue with
+   **single** quotes — 818 of them against 26 doubles — so the double-quote test reads
+   a Wodehouse novel as pure narration. Corrected, **165 of 1,366 clips carry
+   dialogue**. The title is heterogeneous, the per-clip rule for novels holds, and a
+   title-level mark would have tagged those 165 Neutral. See A-M7 in
+   [todo.md](todo.md) — this is that finding firing on real data, not a latent risk.
+3. **`--seed-ear` could not reach them.** It tests confirmation with `confirmed_tags`,
+   which covers gender/age/accent only, so the pair reads as confirmed and it seeds
+   nothing — while no v2 clip can reach the ear to establish delivery. The deadlock it
+   was written to break, reappearing in a dimension it does not look at.
+
+So `stage_pool --delivery-ear` was added: the same linear take a normal staging run
+makes, entered **unaudited** with attributes pre-filled, so the ear answers one
+question instead of four. Linear rather than narration-filtered on purpose — at 12%
+dialogue density a contiguous run costs almost no Neutral yield, and it keeps the
+continuous-reading bet the pool/staging split was built on.
+
+**Staged 2026-08-04: 30 clips, reading-order 0..29, 27 of them narration.** Pending
+the ear. Expected ~25 Neutral, which clears −23; whatever lands as Dialogue is surplus
+against an anchored lane and harmless. 1,336 still pooled.
+
 ### The text shelf was empty, and that was the real blocker
 
 The "~440 unrendered narration lines" below is **stale — it was 20**. Of 503 minted
