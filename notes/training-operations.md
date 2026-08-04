@@ -15,6 +15,31 @@ de-risk phase start; keep the "Current runs" table honest._
 | §7 de-risk energy fine-tune | `sonora_training` | **STOPPED 2026-07-16 @ checkpoint_epoch=099** — convergence watcher fired CONVERGED (all 4 sweep groups, real margin: energy ρ≈1.000, WER Δ≤0.042, leakage≤0.091), sweep renders human-audited (energy/loudness discernible, natural). Training had continued to epoch 106 before being stopped; epoch 099 is the promoted checkpoint. Watcher timer disabled. | One trained FiLM channel (energy) |
 | vat3 full 3-channel fine-tune | `sonora_training` | **STOPPED 2026-07-21 @ checkpoint_epoch=099** (owner call after the corrected audition; run had reached ~epoch 101 on a val-loss curve flat since epoch ~5). Verdict: energy PASS (ρ=1.0 ×4), tension near-pass (ρ=1.0 ×2, 0.90 ×2), **valence FAIL** (ρ scattered — labels, not steps, are the binding constraint). Eval-harness valence measure was found degenerate (raw EIV head, 81% dead zone) and switched to the valence_combo_v1 9-head combo mid-audit; both reports kept. Staged to `Sonora/huggingface/vat3-24k/`; full resumable ckpt retained on host as the **v1.1 Emilia-continuation warm start**. MLflow run `wistful-dolphin-948` marked FINISHED. | First full-VAT (V/A/T) checkpoint; seed for v1.1 |
 
+| **vat3c fine-tune** | `sonora_training` | **LAUNCHED 2026-08-04 13:19** — same three FiLM channels on the corrected corpus (`libritts_r_vat_v3c`, 30,485 train clips: apostrophe-clean phonemes, per-clip hash split, `data_statistics` **measured** on this split — mel_mean −5.525067 / mel_std 2.388571 vs v2's −5.504811 / 2.386137). Warm-started **338/338, 0 fresh** from vat3-24k ep099 (identical architecture). Repo at `25a0f68`; seam test 13/13 in-container before launch. | The v3c baseline, and the last 3-wide run before the delivery channel |
+
+### Two things bit on the vat3c launch — read before the next one
+
+1. **The compose `command` IS the queued run.** `compose up -d sonora_training` starts
+   training immediately, and `restart: unless-stopped` relaunches it. Bringing the
+   container up to inspect it launched the stale `vat3_finetune`/v2 run; it was caught
+   during `apt-get` and stopped before a step ran. **Edit the command line before
+   starting the container, not after.**
+2. **The corpus was never bound into the container.** Data configs name filelists
+   relative to the repo root (`data/<corpus>/train_op.txt`), which resolves in the dev
+   tree through a `data ->` symlink. The deploy clone has no symlink — it is untracked,
+   so it does not survive a clone — and nothing bound the directory in its place. First
+   launch died at datamodule setup with `FileNotFoundError`. Fixed by binding
+   `/data/model-training/sonora/data:/workspace/data`, the same treatment `logs` already
+   had for the same reason (`AI-Lab-AMD` `5209a20`).
+
+Related: the **deploy clone had been stranded since 2026-07-22**. `/data/repos/Sonora`
+sat at `3893885` — pre-flat-repo-migration history, 57 commits "ahead" (all
+patch-equivalent to upstream, `git cherry` confirms) and 152 behind — so
+`deploy.sh training-code` had been failing its fast-forward for two weeks and silently
+deploying nothing. Reset to `origin/main` 2026-08-04; the old head is tagged
+`pre-reset-20260804` in that clone. **A clone that cannot fast-forward is a clone that
+is not deploying** — check `deploy.sh` output rather than assuming it ran.
+
 **No run queued behind this one.** Unlike vocoder→derisk_energy, there's no preset "next
 container to launch." Both promoted checkpoints (`Sonora/huggingface/vocoder-24k-hifigan/`,
 `Sonora/huggingface/derisk-energy-24k/`) are staged locally, not pushed to the public HF repo — same

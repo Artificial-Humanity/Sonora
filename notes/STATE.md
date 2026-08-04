@@ -26,7 +26,12 @@ _Last updated: 2026-08-04._
 > moved between v2 and v3 (corr ≥ 0.9993 per channel on shared clips), so **vat3 is a
 > viable fine-tune base**; a from-scratch retrain is not forced.
 >
-> **Ready to run as of 2026-08-04.** `configs/experiment/vat3c_finetune.yaml` points at
+> **RUNNING since 2026-08-04 13:19** — `vat3c_finetune` in `sonora_training`, warm-started
+> 338/338 (0 fresh) from vat3-24k ep099, inference engines spun down, seam test 13/13
+> in-container beforehand. Launch notes and the two traps it exposed:
+> [training-operations.md](training-operations.md).
+>
+> `configs/experiment/vat3c_finetune.yaml` points at
 > it, `data_statistics` are **measured** on the 30,485-clip train split
 > (`mel_mean −5.525067 / mel_std 2.388571`, vs v2's −5.504811 / 2.386137), and the v3
 > line is finally declared in the license wall — it never had been, so `enforce()` would
