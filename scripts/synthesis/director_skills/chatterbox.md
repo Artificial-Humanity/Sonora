@@ -112,13 +112,41 @@ All risk, no upside.
 With VibeVoice and Dia set aside (2026-07-29), narration renders on this portfolio.
 Chatterbox's audited Neutral record is 7/7 — it has simply almost never been asked.
 Remember the dial is a RATE PROFILE (see above): for narration you are choosing a pace,
-not an emotion. Starting points — **provisional, not yet auditioned as narration**:
+not an emotion. Starting points — **now auditioned once** (delivery-v1-narration-r2):
 
 | lane | `exaggeration` | `cfg_weight` | why |
 |---|---|---|---|
-| Neutral | 0.5 | 0.5 | the documented neutral — do NOT drift lower; low exag reads subdued/ironic, not neutral |
+| Neutral | 0.5 → **under test at 0.35** | 0.5 | the documented neutral, but the first narration audition called it *too fast* three times — see below |
 | Documentary | 0.4 | 0.5 | measured, slightly slower — the 0.25 end is sarcasm territory, stay off it |
 | Newscaster | 0.6 | 0.4 | brisk and projected via the rate profile |
+
+### The narration audition contradicted the "do NOT drift lower" warning
+
+That warning is real but it was established on **dialogue**, where low exaggeration reads
+subdued or ironic. The first *narration* audition (2026-08-03) says the documented neutral
+is too fast for prose: 3 of chatterbox's 4 non-keeps were pace complaints and nothing else
+— *"too rapid of a rate… like a human reading in a hurry"*, *"a bit too hurried of a
+pace"*, *"a bit too rapid"*. The clips were otherwise well spoken.
+
+Rerolling those three at 0.35 gives a clean dose-response, measured on silence-stripped
+speech duration for the same text and voice:
+
+| clip | exaggeration | words/sec | change |
+|---|---|---|---|
+| franklin `_0071` | 0.5 → 0.35 | 4.44 → 3.95 | **−11.0%** |
+| walden `_0072` | 0.5 → 0.35 | 4.76 → 4.21 | **−11.7%** |
+| franklin `_0075` | 0.4 → 0.35 | 4.17 → 4.16 | −0.1% |
+
+The two 0.15 steps both moved ~11%; the one 0.05 step moved nothing. So the dial is a rate
+control in the direction the docs claim, and roughly proportional — this is the first
+numeric confirmation of the "RATE PROFILE" reading above, which until now rested on ear
+alone.
+
+**The open question is not the rate — it is whether 0.35 reads *subdued*.** That is
+exactly what the dialogue-era warning predicts and it is the one thing QC cannot measure;
+WER, DNSMOS and duration all passed on all three. The ear has not ruled yet. **Do not
+adopt 0.35 as the Neutral default until it does** — if those clips come back flat, the
+floor is real and sits somewhere between 0.35 and 0.5.
 
 - **No tag channel, no prose** — unchanged; narration gives you nothing new to emit.
 - **Cast a steady, LOW-EXCURSION reference and pin it per narrator/book.** Narration is

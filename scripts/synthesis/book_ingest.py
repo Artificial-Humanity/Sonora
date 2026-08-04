@@ -266,6 +266,81 @@ _CLOSERS = "”\"')]’"
 _TERMINALS = ".!?…"
 
 
+# Abbreviations a TTS engine will not expand for you. ARCHITECTURE §1 is explicit
+# that "digits/abbreviations are the CALLER's job (op_g2p does not expand them)" —
+# there is an `_abbreviations` table in matcha/text/cleaners.py, but it is the
+# LJSpeech list (mr/mrs/dr/st/co/jr/rev) and it runs on TRAINING text only, never
+# on what we hand a teacher engine.
+#
+# Found by ear, 2026-08-03: "…a literary society in Madison, Wis." was spoken as
+# the letters. No model would have fixed that; every engine read exactly what it
+# was given. The common titles are omitted on purpose — Mr./Mrs./Dr. are read
+# correctly by every engine in the portfolio precisely because they are ubiquitous,
+# and expanding them would change 67 lines of existing text for no gain. What
+# fails is the RARE abbreviation.
+_SPEAKABLE = [
+    # US state abbreviations as they appear in 19th-c prose
+    ("Ala", "Alabama"), ("Ariz", "Arizona"), ("Ark", "Arkansas"),
+    ("Cal", "California"), ("Calif", "California"), ("Col", "Colorado"),
+    ("Conn", "Connecticut"), ("Del", "Delaware"), ("Fla", "Florida"),
+    ("Ga", "Georgia"), ("Ill", "Illinois"), ("Ind", "Indiana"),
+    ("Kan", "Kansas"), ("Kans", "Kansas"), ("Ky", "Kentucky"),
+    ("La", "Louisiana"), ("Md", "Maryland"), ("Mass", "Massachusetts"),
+    ("Mich", "Michigan"), ("Minn", "Minnesota"), ("Miss", "Mississippi"),
+    ("Mo", "Missouri"), ("Mont", "Montana"), ("Neb", "Nebraska"),
+    ("Nebr", "Nebraska"), ("Nev", "Nevada"), ("Okla", "Oklahoma"),
+    ("Ore", "Oregon"), ("Oreg", "Oregon"), ("Pa", "Pennsylvania"),
+    ("Penn", "Pennsylvania"), ("Tenn", "Tennessee"), ("Tex", "Texas"),
+    ("Vt", "Vermont"), ("Va", "Virginia"), ("Wash", "Washington"),
+    ("Wis", "Wisconsin"), ("Wisc", "Wisconsin"), ("Wyo", "Wyoming"),
+    # reference-style abbreviations that read as letters
+    ("Fig", "Figure"), ("Figs", "Figures"), ("No", "Number"),
+    ("Vol", "Volume"), ("Chap", "Chapter"), ("pp", "pages"),
+]
+# The trailing period does DOUBLE DUTY and must not be swallowed. "…in Madison,
+# Wis. An hour before…" is two sentences; a naive `Wis\.` -> `Wisconsin` produces
+# "Madison, Wisconsin An hour", welding them together and deleting the pause the
+# reader needs. Sentence-final is detected by what follows — whitespace then a
+# capital — and keeps its period; every other position drops it, because the dot
+# was only marking the abbreviation.
+_SPEAKABLE_FINAL = [(re.compile(rf"\b{a}\.(?=\s+[A-Z])"), f"{b}.") for a, b in _SPEAKABLE]
+_SPEAKABLE_MID = [(re.compile(rf"\b{a}\."), b) for a, b in _SPEAKABLE]
+
+
+def normalize_speakable(text):
+    """Expand abbreviations an engine would otherwise spell out.
+
+    Applied at MINT time so the expansion lands in the canonical text as well as
+    the render text — otherwise ASR/WER would score the render against a
+    transcript that still says "Wis." and the mismatch would read as an engine
+    defect. The same text feeds the training corpus, so fixing it here fixes both.
+
+    Case-sensitive on purpose: `\\bLa\\.` lowercased would rewrite "la." inside
+    ordinary prose, and `No.` -> `Number` must not fire on the word "no."
+    """
+    for pat, full in _SPEAKABLE_FINAL:
+        text = pat.sub(full, text)
+    for pat, full in _SPEAKABLE_MID:
+        text = pat.sub(full, text)
+    return text
+
+
+# Passages whose sense depends on something the listener cannot see. Found by ear
+# 2026-08-03 on a Darwin passage: "This passage is making references to
+# illustrations not visible here. Mentions of 'Fig #' come out robotic, giving away
+# that it's a TTS speaking." Expanding `Fig.` to `Figure` makes
+# it pronounceable but not sensible — a narrator reading "as shown in Figure 12"
+# with no figure is reading a defect aloud. These are dropped at mint, not fixed.
+_UNSPEAKABLE_CONTEXT = re.compile(
+    r"\b(fig|figs|figure|figures|plate|plates|table|tables)\b\.?\s*\d",
+    re.IGNORECASE)
+
+
+def references_the_invisible(text):
+    """True when the passage points at an illustration, plate or table."""
+    return bool(_UNSPEAKABLE_CONTEXT.search(text))
+
+
 def is_complete_utterance(text):
     """Is this text a whole utterance a listener could judge a performance of?
 
@@ -616,6 +691,11 @@ KNOWN_ENGINES = ("vibevoice", "dia", "qwen", "moss_vg", "moss85",
 # lane vocabulary (ARCHITECTURE §1), which is contract, not of the render mix.
 NARRATION_LANES = ("Neutral", "Documentary", "Newscaster")
 
+# Chatterbox reads narration too fast at the skill file's provisional 0.5. See the
+# chatterbox branch of build_direction for the measurement and why this is a
+# ceiling rather than a new default.
+NARRATION_MAX_EXAGGERATION = 0.4
+
 CASTING_SYSTEM = (
     "You are the Casting and Delivery Director for an audiobook TTS pipeline. You "
     "write direction for ONE NAMED TTS ENGINE. A skill file for that engine follows; "
@@ -916,8 +996,25 @@ def build_direction(tag, text, dia_guidance=3.0, lane=None):
         # Two numbers and a casting call. `exaggeration` is a RATE PROFILE, not an
         # emotion selector, and raising it alone reads rushed — cfg_weight is the
         # other half of one control, so it is defaulted rather than left absent.
+        #
+        # NARRATION CEILING, measured 2026-08-03 — and it contradicts the skill
+        # file, which is why it is a ceiling rather than a new default. chatterbox.md
+        # says Neutral = 0.5 and "do NOT drift lower; low exag reads subdued/ironic",
+        # but that guidance was marked "provisional, not yet auditioned as narration"
+        # and rested on a 7/7 dialogue record. The first narration audition says the
+        # opposite: 3 of 19 heard clips came back "too rapid of a rate", "a bit too
+        # hurried of a pace", "a bit too rapid" — two of them at 0.5.
+        #
+        # The warning it overrides was established on DIALOGUE. "Subdued" may well
+        # be the target in a narration lane rather than a defect, which is exactly
+        # what the reroll at 0.35 is meant to settle. Until it does, cap rather than
+        # move the default, so a director asking for 0.5 on narration gets the slowest
+        # value the evidence supports instead of the fastest.
+        exag = _clamp(tag.get("exaggeration"), 0.25, 1.0, 0.5)
+        if lane in NARRATION_LANES:
+            exag = min(exag, NARRATION_MAX_EXAGGERATION)
         return engine, {"design": vd,
-                        "exaggeration": _clamp(tag.get("exaggeration"), 0.25, 1.0, 0.5),
+                        "exaggeration": exag,
                         "cfg_weight": _clamp(tag.get("cfg_weight"), 0.2, 0.6, 0.5)}
     if engine == "zonos":
         # The emotion vector is silently L1-normalised downstream, so we normalise
