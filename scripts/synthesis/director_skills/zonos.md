@@ -70,6 +70,37 @@ arousal — do not raise the rate past 18 to get there.
 Keep `phonemes ÷ speaking_rate` under **30 seconds** — that is a hard cap and a training
 limit. The docs are explicit that cutting the text is better than slowing the rate to fit.
 
+## Channel 3a — text LENGTH, which the 30 s cap does not protect
+
+Cap input text at **225 characters** on this engine. That cap is ours, it is measured,
+and it is not implied by anything above: a 300-character line at rate 16 computes to
+roughly 18 seconds, so the 30 s guard never fires on any of the text that actually failed.
+
+delivery-v1-narration-r2, 2026-08-03 — QC hard-pass by text length:
+
+| chars | zonos | the other four engines |
+|---|---|---|
+| < 150 | 6/6 · 100% | 13/13 · 100% |
+| 150–225 | 11/12 · 92% | 34/35 · 97% |
+| 225+ | **15/20 · 75%** | 54/55 · 98% |
+
+Length is a zonos-specific axis, not a corpus-wide one — the same 310-character Darwin
+sentence failed here (WER 0.67) and passed on qwen (WER 0.04). Three confounds were
+checked and cleared: every one of the 38 zonos lines carried `emotion: null`, so this is
+not the 2026-07-30 conditioning defect returning; mean text length was near-identical
+across engines (232 vs 223), so allocation is not producing it; and within the 225+
+bucket every pinned reference degrades, so it is not a bad-reference story.
+
+**Confirmed by remediation.** Re-windowing the five failures to the longest
+complete-sentence prefix ≤ 225 chars — same engine, same pinned voice, same book
+position, new seed — returned 5/5. The sixth had no cut point (one long sentence) and was
+re-cast to qwen. All six then scored 5 by ear. Cutting the text is the remedy the engine's
+own docs prescribe for the 30 s cap; it turns out to be the remedy here too.
+
+The boundary is soft, not a cliff — the longest passing clip was 352 chars and the
+shortest failure 184 — so treat 225 as a risk budget. Cut on a **sentence** boundary:
+a short whole utterance is ratable, a fragment is not (owner 2026-07-28).
+
 ## Narration (Neutral / Newscaster / Documentary delivery)
 
 With VibeVoice and Dia set aside (2026-07-29), the narration lanes render on this
