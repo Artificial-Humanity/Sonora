@@ -65,6 +65,11 @@ def write_rows(hdr, rows, before):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bank", help="bank json whose lines were re-rendered")
+    # A bank outlives the round that produced it. When one line in it is
+    # re-rendered again, requeueing the whole bank would reopen clips the ear has
+    # since KEPT and throw away those verdicts. Narrow to the ids actually redone.
+    ap.add_argument("--only", action="append", default=[],
+                    help="requeue only these ids from --bank (repeatable)")
     ap.add_argument("--retire", action="append", default=[],
                     help="id whose clip no longer exists under that id")
     ap.add_argument("--superseded-by", action="append", default=[],
@@ -85,6 +90,8 @@ def main():
         audio = pathlib.Path(args.bank).parent / "audio"
         for line in bank["lines"]:
             cid = line["id"]
+            if args.only and cid not in args.only:
+                continue
             row = by_id.get(cid)
             if row is None:
                 blocked.append((cid, "no ratings row — register_audition never saw it"))

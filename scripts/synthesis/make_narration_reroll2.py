@@ -88,6 +88,16 @@ def main():
         text = bi.normalize_speakable(src["text"])
         if text != src["text"]:
             line["text"] = text
+            # `text` is NOT what orpheus and dia are handed — they render from
+            # `direction.render_text`. Rewriting only `text` is what made the first
+            # attempt at this fix fail silently: the bank, the manifest and the WER
+            # reference all said "Wisconsin" while the model was still given "Wis."
+            # and duly said it. Same transformation, both copies; the abbreviation
+            # patterns are word-anchored so engine markup passes through untouched.
+            d = dict(line["direction"])
+            if d.get("render_text"):
+                d["render_text"] = bi.normalize_speakable(d["render_text"])
+                line["direction"] = d
             why.append("expanded abbreviations")
 
         if engine == "chatterbox":

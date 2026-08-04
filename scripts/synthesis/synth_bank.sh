@@ -50,6 +50,18 @@ GPU="--device /dev/kfd --device /dev/dri --security-opt seccomp=unconfined --gro
 IMG=rocm/pytorch:latest
 mkdir -p "$OUT"
 
+# Pre-flight the bank before any GPU time is spent. orpheus and dia render from
+# `direction.render_text` while the WER gate, the manifest and the corpus all read
+# `line["text"]`; when those two drift apart the clip says one thing and every
+# record around it claims another. QC is structurally blind to it — it scores the
+# audio against `text`, so it is comparing to the wrong reference — and one wrong
+# word in a 35-word line is WER 0.03 regardless. Hard stop: rendering a bank we
+# know is inconsistent only manufactures clips that must be thrown away.
+if ! "$SONORA/.venv/bin/python" "$SONORA/scripts/synthesis/check_bank.py" "$BANK"; then
+  echo "!! refusing to render an inconsistent bank" >&2
+  exit 2
+fi
+
 # Some renderers still reach the Hub at load time for trust_remote_code modules
 # (MOSS pulls MOSS-Audio-Tokenizer). Without a token those are rate-limited
 # anonymous fetches, which is slow and flaky across a multi-engine run. HF_TOKEN

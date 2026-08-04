@@ -116,9 +116,12 @@ not an emotion. Starting points — **now auditioned once** (delivery-v1-narrati
 
 | lane | `exaggeration` | `cfg_weight` | why |
 |---|---|---|---|
-| Neutral | 0.5 → **under test at 0.35** | 0.5 | the documented neutral, but the first narration audition called it *too fast* three times — see below |
+| Neutral | **0.4** (0.5 retired) | 0.5 | 0.5 drew pace complaints on 25% of heard clips; 0.4 keeps at 100% — see below |
 | Documentary | 0.4 | 0.5 | measured, slightly slower — the 0.25 end is sarcasm territory, stay off it |
 | Newscaster | 0.6 | 0.4 | brisk and projected via the rate profile |
+
+Narration lanes are capped at 0.4 in code (`book_ingest.NARRATION_MAX_EXAGGERATION`),
+so a director asking for 0.5 on prose gets 0.4. Dialogue is untouched.
 
 ### The narration audition contradicted the "do NOT drift lower" warning
 
@@ -142,11 +145,29 @@ control in the direction the docs claim, and roughly proportional — this is th
 numeric confirmation of the "RATE PROFILE" reading above, which until now rested on ear
 alone.
 
-**The open question is not the rate — it is whether 0.35 reads *subdued*.** That is
-exactly what the dialogue-era warning predicts and it is the one thing QC cannot measure;
-WER, DNSMOS and duration all passed on all three. The ear has not ruled yet. **Do not
-adopt 0.35 as the Neutral default until it does** — if those clips come back flat, the
-floor is real and sits somewhere between 0.35 and 0.5.
+### The verdict: no floor above 0.35 in narration
+
+All three rerolls came back **keep at score 5**, with no comment on flatness. The
+dialogue-era warning does not transfer: at 0.35 chatterbox narrates without reading
+subdued or ironic. QC could not have told us this — WER, DNSMOS and duration all passed
+on all three *before* the ear heard them, exactly as they had passed on the too-fast
+originals.
+
+Keep-rate by setting, ear only, counting the rerolls at their new value:
+
+| `exaggeration` | heard | keeps | pace complaints |
+|---|---|---|---|
+| 0.35 | 3 | **100%** | 0 |
+| 0.40 | 9 | **100%** | 1 of the 10 originally heard here |
+| 0.50 | 6 | 83% | 2 of the 8 originally heard here |
+
+The defect is concentrated at 0.5, and the 0.4 ceiling is what fixes it. **0.4 is the
+Neutral default, not 0.35** — three clips is not enough to move a default, and 0.4 already
+scores 100%. What the reroll bought is the knowledge that the floor, wherever it sits, is
+*below* 0.35, so the cap can be lowered later without fear if prose ever needs it.
+
+The dialogue guidance above stands unchanged. What was wrong was its scope, not its
+content: it was measured on dialogue and silently assumed to hold everywhere.
 
 - **No tag channel, no prose** — unchanged; narration gives you nothing new to emit.
 - **Cast a steady, LOW-EXCURSION reference and pin it per narrator/book.** Narration is
