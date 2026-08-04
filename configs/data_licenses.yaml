@@ -25,7 +25,13 @@ datasets:
     license: LJ Speech (LibriVox public domain recordings, public domain texts)
     class: permissive
   libritts_r:
-    dirs: [LibriTTS-R, libritts_r, libritts-r, libritts_r_vat, libritts_r_vat_v1, libritts_r_vat_v2]
+    # The v3 line (v3, v3b phoneme fix, v3c hash split) is the same LibriTTS-R audio
+    # under the same CC-BY-4.0 as v1/v2 — only labels and the split differ. It was
+    # undeclared until 2026-08-04, which is why no run could ever have reached it: the
+    # wall refuses what it cannot classify, so "nothing has trained on v3c" was
+    # structurally guaranteed rather than merely true.
+    dirs: [LibriTTS-R, libritts_r, libritts-r, libritts_r_vat, libritts_r_vat_v1,
+           libritts_r_vat_v2, libritts_r_vat_v3, libritts_r_vat_v3b, libritts_r_vat_v3c]
     license: CC-BY-4.0
     class: permissive
   parler_libritts_r_annotated:

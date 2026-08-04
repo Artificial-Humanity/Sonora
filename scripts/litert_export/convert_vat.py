@@ -107,11 +107,43 @@ IN_CH = 160 + SPK_DIM
 
 
 # ---------------------------------------------------------------- builders
+def detect_vat_dim(sd):
+    """The checkpoint's own VAT width, read off the trunk's first conv.
+
+    Weight shape is [cond_dim, vat_dim, 1], so the channel count is not a guess.
+    Returns None for a checkpoint with no trunk (an unconditioned baseline).
+    """
+    for k in ("encoder.vat_trunk.net.0.weight",
+              "decoder.estimator.vat_trunk.net.0.weight"):
+        if k in sd:
+            return int(sd[k].shape[1])
+    return None
+
+
 def load_ckpt():
     ck = torch.load(CKPT, map_location="cpu", weights_only=False)
     hp = ck["hyper_parameters"]
     stats = hp["data_statistics"]
-    return ck["state_dict"], float(stats["mel_mean"]), float(stats["mel_std"])
+    sd = ck["state_dict"]
+    # THE EXPORT WIDTH SEAM. VAT_DIM is a hardcoded 3 above, and every exported shape
+    # is built from it — the [1, VAT_DIM, T] graph inputs, the per-channel probes, and
+    # the vat_dim written into config.json for the mobile host to read.
+    #
+    # `load_state_dict(strict=True)` does catch a mismatch, but only as an unnamed
+    # tensor-shape error from inside a builder, after the constant has already sized
+    # graph inputs. And the config.json this writes is what the host trusts: exporting a
+    # 4-channel checkpoint under a 3-channel constant would ship a manifest that lies
+    # about the model's control surface. Refuse early and name the edit.
+    found = detect_vat_dim(sd)
+    if found is not None and found != VAT_DIM:
+        raise SystemExit(
+            f"{CKPT}\n  checkpoint has vat_dim={found}, this converter is pinned to "
+            f"VAT_DIM={VAT_DIM}.\n  The delivery migration needs more than this "
+            "constant — there is no delivery export story yet and nothing enforces the "
+            "2-sigma clamp contract for mobile hosts (notes/todo.md §2, F-H2). Do not "
+            "simply bump the number."
+        )
+    return sd, float(stats["mel_mean"]), float(stats["mel_std"])
 
 
 def build_text_encoder_vat(sd):

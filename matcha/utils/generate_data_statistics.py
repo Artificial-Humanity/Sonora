@@ -90,6 +90,11 @@ def main():
         del cfg["hydra"]
         del cfg["_target_"]
         cfg["data_statistics"] = None
+        # The data configs interpolate `vat_dim: ${model.vat_dim}` so a filelist and a
+        # model can never disagree silently. This script composes configs/data ALONE —
+        # there is no model group to resolve against — and it does not need the check:
+        # it measures mel statistics and never builds a network. None disables it.
+        cfg["vat_dim"] = None
         cfg["seed"] = 1234
         cfg["batch_size"] = args.batch_size
         cfg["train_filelist_path"] = str(os.path.join(root_path, cfg["train_filelist_path"]))

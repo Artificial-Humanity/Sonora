@@ -26,11 +26,36 @@ _Last updated: 2026-08-04._
 > moved between v2 and v3 (corr ≥ 0.9993 per channel on shared clips), so **vat3 is a
 > viable fine-tune base**; a from-scratch retrain is not forced.
 >
-> Still open before a run: no experiment config points at v3c, and `data_statistics`
-> in the v2 config were measured on the 29,441-clip split — re-run
-> `generate_data_statistics.py` inside the training container. Lineage table and every
-> source: **[training-sources.md](training-sources.md)** (SSOT). Residual review debt
-> that touches training: [todo.md §1](todo.md).
+> **Ready to run as of 2026-08-04.** `configs/experiment/vat3c_finetune.yaml` points at
+> it, `data_statistics` are **measured** on the 30,485-clip train split
+> (`mel_mean −5.525067 / mel_std 2.388571`, vs v2's −5.504811 / 2.386137), and the v3
+> line is finally declared in the license wall — it never had been, so `enforce()` would
+> have refused any run that reached for it. Composition, a real batch, and a conditioned
+> `synthesise` are all verified in-container. Lineage and every source:
+> **[training-sources.md](training-sources.md)** (SSOT). Residual review debt that
+> touches training: [todo.md §1](todo.md).
+>
+> Pre-flight for the run itself is unchanged and non-negotiable: stop **all** inference
+> engines first ([spin-down rule](training-operations.md)), and run
+> `scripts/test_vat_dim_seams.py`.
+
+## The delivery channel — seams guarded, migration not started
+
+`vat_dim` is still **3** everywhere; nothing about the 4th channel has been built. What
+changed 2026-08-04 is that the four places which silently assumed 3 now refuse to: the
+FiLM trunk, the filelist parse, the collate, and the export converter. Each is driven
+with the wrong width and proven to fail in `scripts/test_vat_dim_seams.py` (13 checks) —
+a guard nobody has watched fail is a guess. The data configs interpolate
+`vat_dim: ${model.vat_dim}`, so the model config is the single source of truth and
+bumping it to 4 now fails loudly at the filelist instead of quietly at the trunk.
+
+The collate was the one worth the trouble. It was all-or-none: a single item without a
+VAT dropped conditioning for the **whole batch**, silently, because `vat=None` is
+legitimate everywhere downstream (it means neutral, and the encoder substitutes zeros).
+A partially-labelled filelist would not have crashed or warned — it would have trained a
+conditioned model on unconditioned batches, and the only symptom would be a channel that
+never learned. Delivery is exactly the channel to hit it: unknown ≡ zero is a real,
+intended value, and 17 clips are delivery-blank by design.
 
 Independence gate (v3): corr(T,A) = −0.059 · corr(T,V) = −0.066 · corr(V,A) = +0.027 —
 all PASS. Channel standing (vat3-24k, 2026-07-22): energy **PASS**, tension

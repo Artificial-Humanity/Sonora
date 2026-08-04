@@ -13,15 +13,37 @@ delete sections when empty.
 
 ## 1 · Before the next training run
 
-- [ ] **Point an experiment config at `data/libritts_r_vat_v3c`** and re-run
-      `matcha/utils/generate_data_statistics.py` **inside the training container** — the
-      v2 config's `data_statistics` were measured on the 29,441-clip split; v3 lineage is
-      31,445 rows. Do not inherit v2's numbers silently. (SSOT: `training-sources.md`.)
-- [ ] **Delivery-channel seams (E-M1/F-H2/T8):** the 4th FiLM channel exists in bank
-      builders and notes but nowhere in the model core — `vat_dim=3` everywhere, the
-      datamodule parses exactly `v,a,t`, the export lane hardcodes `VAT_DIM=3`, and the
-      collate's all-or-none `torch.stack(vats)` silently drops conditioning for a whole
-      mixed batch. Pre-place assertions at these seams before the migration.
+- [x] **Point an experiment config at `data/libritts_r_vat_v3c`** — **DONE 2026-08-04.**
+      `configs/data/libritts_r_vat_v3c.yaml` + `configs/experiment/vat3c_finetune.yaml`.
+      `data_statistics` **measured** in-container on the 30,485-clip train split:
+      `mel_mean −5.525067 / mel_std 2.388571`, against v2's −5.504811 / 2.386137 — a
+      delta of 0.0203 / 0.0024, small but a constant shift on every normalised mel.
+      ⚠ **The license wall had no v3 entry.** `configs/data_licenses.yaml` declared only
+      up to `libritts_r_vat_v2`, so v3/v3b/v3c were unclassifiable and `enforce()` would
+      have refused any run touching them. "Nothing has trained on v3c" was therefore
+      structurally guaranteed, not merely true. All three are now declared (same
+      LibriTTS-R CC-BY-4.0 audio; labels and split are what differ).
+- [x] **Delivery-channel seams (E-M1/F-H2/T8): assertions pre-placed** — **DONE
+      2026-08-04**, and each one driven with the wrong width and proven to fire:
+      `scripts/test_vat_dim_seams.py` (13 checks, run it before any migration step).
+      * **model core** — `VATTrunk.forward` names both widths. One check covers the
+        encoder and the decoder because both conditioning paths funnel through a trunk;
+        static shapes mean it costs nothing in an exported graph.
+      * **filelist** — the `v,a,t` parse counts fields against `vat_dim` and names the
+        file. Wired via `vat_dim: ${model.vat_dim}` in the data configs, so the model
+        config is the single source of truth and the two cannot drift.
+      * **collate** — mixed VAT presence now raises instead of silently returning
+        `vat=None` for the whole batch. This was the dangerous one: `None` is legitimate
+        downstream (it means neutral), so a partially-labelled filelist trained a
+        conditioned model on unconditioned batches with no error and no warning.
+      * **export** — `convert_vat.detect_vat_dim` reads the checkpoint's true width off
+        the trunk conv and refuses a mismatch, naming F-H2. It must refuse rather than
+        follow: the `config.json` it writes is the mobile host's description of the
+        control surface, and there is still no delivery export story.
+      Two consumers needed adjusting for the interpolation — `generate_data_statistics`
+      and `get_durations_from_trained_model` compose `configs/data` **alone**, with no
+      model group to resolve against, and neither builds a network; both set
+      `vat_dim = None` to disable the check.
 - [ ] **E-M5:** logged `diff_loss` carries a padding-fraction floor (the loss tensor is
       unmasked; gradients are fine). The 2026-08-01 bucketing change lowered logged loss
       independent of model quality — do not compare curves across that boundary.
@@ -29,8 +51,10 @@ delete sections when empty.
       crash the next training step ("Inference tensors cannot be saved for backward")
       when the next batch's text is ≤ the cached length. Rebuild outside inference mode
       or drop the cache on train re-entry.
-- [ ] **E-M3:** the documented bucketing off-switch is unreachable — `bucket_multiplier`
-      isn't an `__init__` param, so yaml can't set it and the getattr always returns 20.
+- [x] **E-M3:** the documented bucketing off-switch is unreachable — **FIXED 2026-08-04**,
+      `bucket_multiplier` is now a `TextMelDataModule.__init__` param, so yaml can set it.
+      It matters because of E-M5 above: bisecting a loss curve across the bucketing
+      boundary requires being able to turn bucketing off.
 
 ## 2 · Export lane (before any vat3/delivery export)
 

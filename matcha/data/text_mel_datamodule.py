@@ -92,6 +92,13 @@ class TextMelDataModule(LightningDataModule):
         seed,
         load_durations,
         load_vat=False,
+        vat_dim=None,
+        # E-M3: train_dataloader documents this as the bucketing off-switch and reads it
+        # with getattr, but it was never an __init__ param — so yaml could not set it and
+        # the getattr always returned its default. Declaring it makes the documented
+        # switch actually reachable, which matters because E-M5 means logged diff_loss is
+        # not comparable across the bucketing boundary: bisecting a curve needs the off.
+        bucket_multiplier=20,
     ):
         super().__init__()
 
@@ -129,6 +136,7 @@ class TextMelDataModule(LightningDataModule):
             self.hparams.seed,
             self.hparams.load_durations,
             load_vat=self.hparams.load_vat,
+            vat_dim=self.hparams.vat_dim,
         )
         self.validset = TextMelDataset(  # pylint: disable=attribute-defined-outside-init
             self.hparams.valid_filelist_path,
@@ -146,6 +154,7 @@ class TextMelDataModule(LightningDataModule):
             self.hparams.seed,
             self.hparams.load_durations,
             load_vat=self.hparams.load_vat,
+            vat_dim=self.hparams.vat_dim,
         )
 
     def _loader_mp_kwargs(self):
@@ -227,8 +236,11 @@ class TextMelDataset(torch.utils.data.Dataset):
         seed=None,
         load_durations=False,
         load_vat=False,
+        vat_dim=None,
     ):
         self.filepaths_and_text = parse_filelist(filelist_path)
+        self.filelist_path = filelist_path
+        self.vat_dim = vat_dim
         self.n_spks = n_spks
         self.cleaners = cleaners
         self.add_blank = add_blank
@@ -255,6 +267,19 @@ class TextMelDataset(torch.utils.data.Dataset):
         vat = None
         if self.load_vat:
             vat = torch.tensor([float(v) for v in filepath_and_text[-1].split(",")], dtype=torch.float32)
+            # THE FILELIST WIDTH SEAM. Nothing here ever counted the fields, so a
+            # filelist whose width disagrees with the model's vat_dim loads happily and
+            # fails much later, deep in the trunk's Conv1d. Under the delivery migration
+            # (vat_dim 3 -> 4) both mistakes are one edit away: pointing a 4-channel run
+            # at a v3c filelist, or a 3-channel run at a delivery-bearing one. Check it
+            # where the number is first read, and name the file.
+            if self.vat_dim is not None and vat.numel() != self.vat_dim:
+                raise ValueError(
+                    f"{self.filelist_path}: VAT field has {vat.numel()} value(s) "
+                    f"({filepath_and_text[-1]!r}) but the model expects "
+                    f"vat_dim={self.vat_dim}. Filelist and model config disagree — see "
+                    "notes/todo.md §1 (delivery-channel seams)."
+                )
             filepath_and_text = filepath_and_text[:-1]
         if self.n_spks > 1:
             filepath, spk, text = (
@@ -370,7 +395,28 @@ class TextMelBatchCollate:
         y_lengths = torch.tensor(y_lengths, dtype=torch.long)
         x_lengths = torch.tensor(x_lengths, dtype=torch.long)
         spks = torch.tensor(spks, dtype=torch.long) if self.n_spks > 1 else None
-        vat = torch.stack(vats) if all(v is not None for v in vats) else None
+        # THE SILENT SEAM — the dangerous one of the three.
+        #
+        # This was all-or-none: one item missing a VAT dropped conditioning for the
+        # ENTIRE batch, silently, because `vat=None` is a legitimate value everywhere
+        # downstream (it means "neutral", and the encoder/decoder helpfully substitute
+        # zeros). So a partially-labelled filelist does not crash and does not warn; it
+        # trains a conditioned model on unconditioned batches and the only symptom is a
+        # channel that never learns. That is precisely the failure mode the delivery
+        # channel is most likely to hit, since delivery is blank for 17 clips by design
+        # and unknown ≡ zero is a real, intended value.
+        #
+        # Mixed presence is never legitimate. Make it loud.
+        present = sum(v is not None for v in vats)
+        if present and present != len(vats):
+            missing = [fp for fp, v in zip(filepaths, vats) if v is None]
+            raise ValueError(
+                f"VAT present for {present}/{len(vats)} items in this batch. Mixed "
+                "presence would silently drop conditioning for the whole batch. "
+                f"First without: {missing[0]} ({len(missing)} total). A clip with no "
+                "label must carry an explicit neutral row, not a missing field."
+            )
+        vat = torch.stack(vats) if present else None
 
         return {
             "x": x,

@@ -1,0 +1,49 @@
+# LibriTTS-R train-clean-100 @ native 24 kHz, FULL 3-channel V/A/T labels.
+#
+# v3c is the corpus to train on. Same 31,445 clips / 51.3 h / 247 speakers as v3
+# (MAX_SECONDS=22), corrected twice:
+#   v3b — phonemes. v1..v3 all carry contraction-poisoned IPA on ~6.4% of rows
+#         ("I'll" phonemized as *ill*): the espeak-free G2P had no apostrophe
+#         representation. NOTE the existing vat3_finetune ep099 checkpoint trained
+#         on v2, poisoned phonemes included.
+#   v3c — split. The shuffled train/val split was replaced by a per-clip blake2b
+#         hash of the wav basename, so growing the corpus stops re-rolling
+#         membership. Verified: adding 2,000 synthetic rows moves 0 of 960 val clips.
+#
+# 30,485 train / 960 val, 210 of 247 speakers represented in val.
+# Lineage and every source: notes/training-sources.md (SSOT).
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_vat_v3c
+train_filelist_path: data/libritts_r_vat_v3c/train_op.txt
+valid_filelist_path: data/libritts_r_vat_v3c/val_op.txt
+batch_size: 32
+# 8, not 20: workers are spawned (own torch import + RSS each, no COW sharing
+# with the trainer) — 8 saturates wav+mel loading on 16 cores.
+num_workers: 8
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 247
+n_fft: 1024
+n_feats: 80
+sample_rate: 24000
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 12000
+# MEASURED ON THIS SPLIT — do not inherit v2's numbers. v2's were computed on the
+# 29,441-clip split (2026-07-14) while v3 lineage is 31,445 rows; carrying them over
+# silently would normalise every mel against statistics from a different corpus.
+# v2 carried mel_mean -5.504811 / mel_std 2.386137; the measured v3c values differ by
+# 0.0203 and 0.0024. Small, but they shift every normalised mel in the corpus by a
+# constant, and the whole point of measuring was not to guess whether that matters.
+data_statistics:  # matcha/utils/generate_data_statistics.py, in-container, 2026-08-04, 30,485-clip train split
+  mel_mean: -5.525067
+  mel_std: 2.388571
+seed: ${seed}
+load_durations: false
+load_vat: true
+# Single source of truth is the model config: a filelist whose VAT width disagrees
+# with the model now fails at load with both numbers named, instead of deep in the
+# FiLM trunk. Interpolated, never duplicated, so the two cannot drift.
+vat_dim: ${model.vat_dim}

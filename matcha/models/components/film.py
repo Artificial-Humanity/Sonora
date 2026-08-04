@@ -32,6 +32,31 @@ class VATTrunk(nn.Module):
         )
 
     def forward(self, vat):
+        # THE MODEL-CORE WIDTH SEAM.
+        # Both conditioning paths (text_encoder and decoder) funnel through a trunk, so
+        # this is the one place that sees every VAT tensor entering the network — which
+        # is why the check lives here rather than at each caller.
+        #
+        # It matters for the delivery migration (vat_dim 3 -> 4, direction-contract-v2).
+        # Without it a width mismatch surfaces as a Conv1d channel error from inside
+        # nn.Sequential, naming neither the expected width nor where the wrong one came
+        # from; and a filelist and a checkpoint that disagree by one channel is exactly
+        # the mistake the migration invites. The failure must name both numbers.
+        #
+        # Shapes are static under torch.export, so this is evaluated at trace time and
+        # leaves nothing in the exported graph.
+        if vat.dim() != 3:
+            raise ValueError(
+                f"VATTrunk expects [B, vat_dim, T]; got {tuple(vat.shape)}. "
+                "Per-utterance (B, vat_dim) tensors must be expanded by the caller."
+            )
+        if vat.shape[1] != self.vat_dim:
+            raise ValueError(
+                f"VAT width mismatch: this trunk was built for vat_dim={self.vat_dim} "
+                f"but received {vat.shape[1]} channels (shape {tuple(vat.shape)}). "
+                "The checkpoint, the model config and the filelist must agree — see "
+                "notes/todo.md §1 (delivery-channel seams)."
+            )
         return self.net(vat)
 
 

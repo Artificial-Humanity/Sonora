@@ -1,0 +1,42 @@
+# @package _global_
+
+# The v3c round: same three channels (V = EIV valence combo, A = LUFS, T = phonation
+# + harshness) as vat3_finetune, on the CORRECTED corpus. What changed from that run:
+#
+#   * phonemes  — v2 (what the existing ep099 checkpoint trained on) carries
+#     contraction-poisoned IPA on ~6.4% of rows. v3b fixed it.
+#   * split     — per-clip blake2b hash of the wav basename instead of a shuffle, so
+#     growing the corpus no longer re-rolls val membership.
+#   * mel stats — MEASURED on this split, not inherited. v2's were computed on a
+#     29,441-clip split; v3 lineage is 31,445 rows.
+#
+# Warm start from vat3-24k ep099 is legitimate despite its poisoned-phoneme training:
+# labels moved almost not at all between v2 and v3 (corr >= 0.9993 per channel on
+# shared clips), so a from-scratch retrain is not forced. Architecture is identical,
+# so every tensor warms.
+#
+#   python scripts/make_warmstart.py --experiment vat3c_finetune \
+#       --donor <vat3-24k checkpoint_epoch=099.ckpt> \
+#       --out /data/model-training/sonora/warmstart/vat3c_init.ckpt
+#   python -m matcha.train experiment=vat3c_finetune \
+#       ckpt_path=/data/model-training/sonora/warmstart/vat3c_init.ckpt
+#
+# Pre-flight, both mandatory:
+#   * AI-Lab-0/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
+#     engines (Gemma director, synth_* renderers, Vocalizer), not just the trainer's.
+#   * .venv/bin/python scripts/test_vat_dim_seams.py — the vat_dim guards. This run is
+#     still 3-wide; the test is what keeps it honest when delivery makes it 4.
+#
+# Reading the loss curve: logged diff_loss carries a padding-fraction floor (E-M5) and
+# the 2026-08-01 bucketing change lowered it independent of model quality. Do NOT
+# compare this run's curve against anything from before that boundary.
+
+defaults:
+  - override /data: libritts_r_vat_v3c.yaml
+
+tags: ["libritts_r", "vat", "vat3c", "valence", "tension", "energy"]
+
+run_name: vat3c_finetune
+
+model:
+  use_vat: true

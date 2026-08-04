@@ -25,3 +25,7 @@ data_statistics:  # computed by matcha/utils/generate_data_statistics.py (2026-0
 seed: ${seed}
 load_durations: false
 load_vat: true
+# Single source of truth is the model config: a filelist whose VAT width disagrees
+# with the model now fails at load with both numbers named, instead of deep in the
+# FiLM trunk. Interpolated, never duplicated, so the two cannot drift.
+vat_dim: ${model.vat_dim}

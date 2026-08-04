@@ -136,6 +136,10 @@ def main():
     with open_dict(cfg):
         del cfg["hydra"]
         del cfg["_target_"]
+        # Same reason as generate_data_statistics: configs/data is composed alone here,
+        # with no model group for `vat_dim: ${model.vat_dim}` to resolve against, and
+        # duration extraction never builds the FiLM trunk. None disables the check.
+        cfg["vat_dim"] = None
         cfg["seed"] = 1234
         cfg["batch_size"] = args.batch_size
         cfg["train_filelist_path"] = str(os.path.join(root_path, cfg["train_filelist_path"]))
