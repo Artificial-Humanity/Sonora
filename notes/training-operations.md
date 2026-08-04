@@ -17,6 +17,29 @@ de-risk phase start; keep the "Current runs" table honest._
 
 | **vat3c fine-tune** | `sonora_training` | **LAUNCHED 2026-08-04 13:19** — same three FiLM channels on the corrected corpus (`libritts_r_vat_v3c`, 30,485 train clips: apostrophe-clean phonemes, per-clip hash split, `data_statistics` **measured** on this split — mel_mean −5.525067 / mel_std 2.388571 vs v2's −5.504811 / 2.386137). Warm-started **338/338, 0 fresh** from vat3-24k ep099 (identical architecture). Repo at `25a0f68`; seam test 13/13 in-container before launch. | The v3c baseline, and the last 3-wide run before the delivery channel |
 
+### Reading the vat3c curve
+
+**Settled at ~0.62 s/step** (measured steps 2099–2349), against the vat3 baseline's 2.11
+s/step whole-run average — roughly 3.4× faster, on ~950 steps/epoch. Early steps look
+catastrophic and are not: the MIOpen conv-tuning ramp took the baseline 37 → 22 → 16 →
+11 → 3.4 s/step over its first ~450 steps. **Never compare an early window against a
+whole-run average** — doing that produced a false alarm on this launch. Compare the same
+step window on the previous run via MLflow `metrics/get-history`.
+
+**The val curve sits far above train, and that is expected.** Epoch 1: train 2.012, val
+3.425. It is E-M5, not overfitting — see [todo.md §1](todo.md). `diff_loss` is 0.646
+train vs 2.069 val while `dur_loss` and `prior_loss` match to three decimals, because
+the logged diff tensor is unmasked and only train batches are length-bucketed.
+
+**Progress never reaches stdout** — Lightning's rich progress bar writes `\r`, so
+`docker logs` shows startup then silence. Read MLflow: `mlflow-local` on :5000, and the
+API needs `-H 'Host: mlflow.ai-lab-0.mcfarlin.family'` or it refuses as DNS rebinding.
+
+⚠ **`every_n_epochs: 100`** in the ModelCheckpoint callback — **nothing lands on disk
+until epoch 99**, `save_last` included, so a crash at epoch 80 loses the run. Long
+standing and unchanged (the vat3 run had it too); left alone mid-flight, but it should
+be a deliberate choice next time rather than an inherited one.
+
 ### Two things bit on the vat3c launch — read before the next one
 
 1. **The compose `command` IS the queued run.** `compose up -d sonora_training` starts

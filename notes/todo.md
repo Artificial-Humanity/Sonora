@@ -47,6 +47,15 @@ delete sections when empty.
 - [ ] **E-M5:** logged `diff_loss` carries a padding-fraction floor (the loss tensor is
       unmasked; gradients are fine). The 2026-08-01 bucketing change lowered logged loss
       independent of model quality — do not compare curves across that boundary.
+      **It also inflates the TRAIN/VAL GAP, and that is the form it will be misread in.**
+      `train_dataloader` uses the bucket sampler; `val_dataloader` does not (plain
+      `shuffle=False`), so val batches pad to their longest member while train batches
+      are length-grouped. Measured on vat3c epoch 1: `diff_loss` train 0.646 vs val
+      **2.069** (3.2×), while `dur_loss` (0.388 / 0.380) and `prior_loss` (0.978 / 0.975)
+      are indistinguishable. Only the padding-sensitive term diverges — real overfitting
+      would move all three. A val curve sitting far above train from step one is expected
+      here and is not evidence of anything. Fixing it means masking the logged loss, or
+      bucketing val too (which changes nothing about gradients either way).
 - [ ] **E-M6:** RoPE cache built under `inference_mode` during `on_validation_end` can
       crash the next training step ("Inference tensors cannot be saved for backward")
       when the next batch's text is ≤ the cached length. Rebuild outside inference mode
