@@ -1,0 +1,110 @@
+"""Quarantine a campaign's dropped clips into `audio/_dropped/`, rewriting their links.
+
+Standing convention (owner 2026-07-31): a dropped clip is MOVED aside, not deleted,
+and its ratings.csv link is rewritten to follow it. Keeping the row and the audio
+preserves why something was rejected — a delete leaves a verdict pointing at nothing
+and the next campaign relearns the same lesson.
+
+Three guards, each for a way this can go wrong:
+
+  * SHARED WAVS. One wav can be referenced by rows in more than one campaign. Moving
+    it because campaign A dropped it breaks campaign B's link, where the clip may be
+    a keep. Any wav referenced outside the target campaign is refused.
+  * PROTECTED CORPORA. `audit-*` campaigns and licensed source audio are never swept;
+    those trees are inputs we do not own the layout of.
+  * ALREADY-MOVED CLIPS. A row can be `dropped` while its wav has gone elsewhere —
+    `_superseded/`, most often, when a clip was re-cast under a new id and retired
+    rather than judged. There is nothing to quarantine and its link is already dead;
+    it is reported, not moved, because rewriting it would point at a file that this
+    script never put there.
+
+    .venv/bin/python scripts/synthesis/sweep_dropped.py --campaign <name>
+    .venv/bin/python scripts/synthesis/sweep_dropped.py --campaign <name> --apply
+"""
+import argparse
+import csv
+import os
+import pathlib
+import shutil
+import tempfile
+
+DATASETS = pathlib.Path("/data/model-training/datasets")
+RATINGS = DATASETS / "sonora-expressive-registers" / "ratings.csv"
+PROTECTED_PREFIXES = ("audit-",)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--campaign", required=True)
+    ap.add_argument("--apply", action="store_true")
+    args = ap.parse_args()
+
+    if args.campaign.startswith(PROTECTED_PREFIXES):
+        print(f"refusing: {args.campaign} is a protected corpus")
+        return 2
+
+    campaign_dir = DATASETS / args.campaign
+    audio = campaign_dir / "audio"
+    dropped_dir = audio / "_dropped"
+
+    before = RATINGS.stat().st_mtime_ns
+    with RATINGS.open(newline="", encoding="utf-8") as fh:
+        rd = csv.DictReader(fh)
+        hdr, rows = rd.fieldnames or [], list(rd)
+
+    # Which wavs are spoken for by some OTHER campaign?
+    elsewhere = {os.path.basename(r["link"]) for r in rows
+                 if r["campaign"] != args.campaign and r["link"]}
+
+    move, blocked = [], []
+    for r in rows:
+        if r["campaign"] != args.campaign or r["status"] != "dropped":
+            continue
+        name = os.path.basename(r["link"]) or f"{r['id']}.wav"
+        src = audio / name
+        if name in elsewhere:
+            blocked.append((r["id"], "wav is also referenced by another campaign"))
+        elif not src.is_file():
+            blocked.append((r["id"], "wav is not in audio/ (already moved elsewhere)"))
+        else:
+            move.append((r, name, src))
+
+    print(f"{len(move)} to quarantine, {len(blocked)} skipped\n")
+    for r, name, _src in move:
+        print(f"  MOVE  {r['id'][:44]:46s} {name}")
+        print(f"        why: {(r['note'] or '')[:88]}")
+    for cid, why in blocked:
+        print(f"  SKIP  {cid[:44]:46s} {why}")
+
+    if not args.apply:
+        print("\nreport only — pass --apply")
+        return 0
+    if not move:
+        return 0
+
+    dropped_dir.mkdir(parents=True, exist_ok=True)
+    for r, name, src in move:
+        shutil.move(str(src), str(dropped_dir / name))
+        r["link"] = f"../{args.campaign}/audio/_dropped/{name}"
+
+    if RATINGS.stat().st_mtime_ns != before:
+        print("ABORT: ratings.csv changed under us (live writer) — wavs were moved, "
+              "re-run to rewrite the links")
+        return 1
+    fd, tmp = tempfile.mkstemp(dir=str(RATINGS.parent), suffix=".tmp")
+    with os.fdopen(fd, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=hdr)
+        w.writeheader()
+        w.writerows(rows)
+    if RATINGS.stat().st_mtime_ns != before:
+        os.unlink(tmp)
+        print("ABORT: ratings.csv changed during write")
+        return 1
+    shutil.copymode(str(RATINGS), tmp)
+    os.replace(tmp, str(RATINGS))
+    print(f"\nquarantined {len(move)} clip(s) -> {dropped_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -209,16 +209,26 @@ def _bank_groups(campaign):
     when resolving the directory.
     """
     import glob
-    direct = f"{DATASETS}/{campaign}/bank.json"
     stripped = campaign[len("book-"):] if campaign.startswith("book-") else campaign
-    for path in (direct, f"{DATASETS}/{stripped}/bank.json"):
-        if os.path.exists(path):
-            bank = json.load(open(path, encoding="utf-8"))
-            out = {}
-            for l in bank["lines"]:
+    for base in (campaign, stripped):
+        # Every bank in the campaign, not just bank.json. A REROLL keeps the clip's
+        # id, so reading bank.json alone still finds it — but a RE-CAST does not:
+        # the id carries the engine, so moving a line to another engine mints a NEW
+        # id that exists only in the reroll bank. Reading bank.json alone left those
+        # clips grouped ('?','?') and treated as scrutinized, so a legitimate keep
+        # was silently excluded from its group's evidence. bank.json is applied
+        # first and the reroll rounds override it, so a line reflects its LAST cast.
+        banks = ([f"{DATASETS}/{base}/bank.json"]
+                 + sorted(glob.glob(f"{DATASETS}/{base}/bank-*.json")))
+        banks = [b for b in banks if os.path.exists(b)]
+        if not banks:
+            continue
+        out = {}
+        for path in banks:
+            for l in json.load(open(path, encoding="utf-8"))["lines"]:
                 grp = f'{l.get("book", "?")}|{l.get("intended_delivery", "?")}'
                 out[l["id"]] = (grp, l["engine"])
-            return out
+        return out
 
     out = {}
     for man in glob.glob(f"{DATASETS}/{stripped}/**/librivox_manifest.jsonl",
