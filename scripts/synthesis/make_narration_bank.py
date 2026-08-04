@@ -127,65 +127,92 @@ def main():
     for q in queues.values():
         q.reverse()
 
-    # --- freeze one voice per (book, engine) ---------------------------------
-    # "A book's narration is one voice across hundreds of clips." For the
-    # reference-cloned engines that means a pinned ref; for the instruct engines the
-    # instruct IS the voice, so the persona is frozen from the book's first casting.
+    # --- pass 1: cast every line ------------------------------------------
+    # Casting runs BEFORE any voice is pinned, because pinning needs to see the
+    # whole group's intent. First-line-wins was the r2 defect: up-from-slavery's
+    # opening zonos line asked for "middle-aged woman" and pinned a female
+    # reference, then five consecutive lines asking for a man were overridden by
+    # the freeze — a male first-person autobiography narrated by a woman, against
+    # the standing discipline to bias narrator casting male-ward. The ear kept all
+    # five, because the audio was fine; only the design/reference disagreement
+    # exposed it.
     off_register = {k["id"] for k in ref_select._load_pool()
                     if k.get("register") not in REF_REGISTERS}
-    pinned, personas, taken = {}, {}, set()
-
-    lines_out, skipped = [], collections.Counter()
+    cast_rows, skipped = [], collections.Counter()
     for i, (lane, slug, src) in enumerate(selected):
         engine = queues[lane].pop() if queues[lane] else None
         if engine is None:
             skipped["no engine left in lane"] += 1
             continue
-
         labels = {"V": src["intended"]["V"], "A": src["intended"]["A"],
                   "T": src["intended"]["T"], "register": src.get("register", "")}
         cast = bi.casting_pass(src["text"], engine, labels=labels)
         if cast is None:
             skipped[f"{engine}: casting_pass failed"] += 1
             continue
+        cast_rows.append({"i": i, "lane": lane, "slug": slug, "src": src,
+                          "engine": engine, "labels": labels, "cast": cast})
 
-        # Freeze identity. The per-line casting still supplies everything else —
-        # numbers for zonos, exaggeration for chatterbox — so the line is still
-        # directed; only WHO is speaking is held constant.
-        key = (slug, engine)
+    # --- pass 2: freeze one voice per (book, engine) -------------------------
+    # The frozen design is chosen from the group's MAJORITY gender intent, and then
+    # every line in the group carries that one design. For zonos and chatterbox the
+    # design's only reader is ref_select, so once a reference is pinned a per-line
+    # design is not direction at all — it is a casting call that was never honoured,
+    # and leaving it in place is what let the manifest claim a woman while a man
+    # spoke. One voice per book means one casting call per book.
+    groups = collections.defaultdict(list)
+    for r in cast_rows:
+        groups[(r["slug"], r["engine"])].append(r)
+
+    pinned, frozen_design, personas, taken = {}, {}, {}, set()
+    for key, rows in groups.items():
+        slug, engine = key
+        designs = [r["cast"].get("voice_design", "") for r in rows]
         if engine in ("qwen", "moss_vg"):
-            personas.setdefault(key, cast.get("instruct", ""))
-            cast["instruct"] = personas[key]
-        elif engine in ("zonos", "chatterbox"):
-            if key not in pinned:
-                # Distinctness WITHIN a book is the requirement — a book's zonos
-                # narrator should not be its chatterbox narrator, or the two engines
-                # are being compared on the same voice. Distinctness ACROSS books is
-                # only a preference, and hard-excluding every pin globally made it a
-                # requirement: the narration-register pool is 16 clips (10 M / 6 F)
-                # before select_reference applies its own excursion and blacklist
-                # filters, and this round pins 10 voices. It ran out and raised
-                # LookupError mid-build. `used` still biases toward variety; running
-                # out now costs a repeated voice across two books, not the round.
-                same_book = {v for (b, _e), v in pinned.items() if b == slug}
-                try:
-                    _wav, _text, meta = ref_select.select_reference(
-                        cast.get("voice_design", ""), labels, used=taken,
-                        exclude=off_register | same_book)
-                    rid = meta.get("id") if isinstance(meta, dict) else None
-                except LookupError:
-                    rid = None
-                if not rid:
-                    reused = next((v for (b, e2), v in pinned.items() if e2 == engine), None)
-                    if not reused:
-                        skipped[f"{engine}: no narration reference available at all"] += 1
-                        continue
-                    rid = reused
-                    skipped[f"{engine}: reused a pinned ref (pool exhausted)"] += 1
-                pinned[key] = rid
-                taken.add(rid)
+            personas[key] = rows[0]["cast"].get("instruct", "")
+            continue
+        if engine not in ("zonos", "chatterbox"):
+            continue
+        votes = collections.Counter(ref_select.design_gender(d) for d in designs)
+        want = votes.most_common(1)[0][0]
+        design = next(d for d in designs if ref_select.design_gender(d) == want)
+        frozen_design[key] = design
+        same_book = {v for (b, _e), v in pinned.items() if b == slug}
+        try:
+            _wav, _text, meta = ref_select.select_reference(
+                design, rows[0]["labels"], used=taken,
+                exclude=off_register | same_book)
+            rid = meta.get("id") if isinstance(meta, dict) else None
+        except LookupError:
+            rid = None
+        if not rid:
+            # Distinctness ACROSS books is a preference, not a requirement — making
+            # it a requirement is what exhausted the 16-clip pool mid-build before
+            # the real-speech pool landed. Reusing costs a repeated voice, not the round.
+            rid = next((v for (b, e2), v in pinned.items() if e2 == engine), None)
+            if not rid:
+                skipped[f"{engine}: no narration reference available at all"] += 1
+                continue
+            skipped[f"{engine}: reused a pinned ref (pool exhausted)"] += 1
+        pinned[key] = rid
+        taken.add(rid)
+        if len(votes) > 1:
+            print(f"  {slug}|{engine}: intent split {dict(votes)} -> pinned {want}")
 
-        tag = {"engine": engine, **labels, **cast}
+    # --- pass 3: emit -------------------------------------------------------
+    lines_out = []
+    for r in cast_rows:
+        key, engine, lane, src = (r["slug"], r["engine"]), r["engine"], r["lane"], r["src"]
+        cast = dict(r["cast"])
+        if engine in ("qwen", "moss_vg"):
+            cast["instruct"] = personas.get(key, cast.get("instruct", ""))
+        elif key in frozen_design:
+            cast["voice_design"] = frozen_design[key]
+        elif engine in ("zonos", "chatterbox"):
+            skipped[f"{engine}: group lost its reference"] += 1
+            continue
+
+        tag = {"engine": engine, **r["labels"], **cast}
         eng, direction = bi.build_direction(tag, src["text"], lane=lane)
 
         kept, dropped = ref_select.route_engines(
@@ -195,17 +222,17 @@ def main():
             continue
 
         lines_out.append({
-            "id": f"{slug}_r2_{i:04d}_{eng[:3].upper()}",
+            "id": f"{r['slug']}_r2_{r['i']:04d}_{eng[:3].upper()}",
             "engine": eng,
             "register": src.get("register", "neutral_narration"),
             "chunk_type": "narration",
             "intended": src["intended"],
-            "seed": SEED_BASE + i,
+            "seed": SEED_BASE + r["i"],
             "text": src["text"],
             "direction": direction,
             "intended_delivery": lane,
-            "book": slug,
-            "ref_id": pinned.get((slug, eng)),
+            "book": r["slug"],
+            "ref_id": pinned.get(key),
             "source_ref": src.get("source_ref", {}),
         })
 
