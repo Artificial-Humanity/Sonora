@@ -169,6 +169,15 @@ delete sections when empty.
       **head_ok** is also unbuilt — no gate sees head truncation; `tail_lost()` already
       computes `blocks[0].a` (head-loss word count) and discards it. Both thresholds
       need ear calibration like tail_ok.
+- [ ] **C-M10 (found 2026-08-04):** `stage_pool --mark-delivery` has **no coverage
+      requirement**. It accepts unanimity from any sample — any size, any distribution —
+      so one clip, or 30 contiguous clips from section 1 of a 25-section novel, certifies
+      a title-level delivery that then propagates to every clip in the book. Both real
+      samples to date are exactly that shape: librivox-v1's 12 audited clips are one
+      contiguous run in section 2, and librivox-v2's 30 are one run in section 1. Safe so
+      far only because the one title actually marked (`pg:824`, *Speeches*) is homogeneous
+      by construction. Needs a floor on section spread and clip count before the mark is
+      offered on anything that is not a collection.
 - [ ] **C-M5:** remaining non-atomic writes — `stage_pool` (ledger + staging_log),
       `reader_profile`, `publish_tier` (`.bak` only taken on the first run ever).
       tmp + `os.replace` everywhere.

@@ -113,9 +113,32 @@ question instead of four. Linear rather than narration-filtered on purpose — a
 dialogue density a contiguous run costs almost no Neutral yield, and it keeps the
 continuous-reading bet the pool/staging split was built on.
 
-**Staged 2026-08-04: 30 clips, reading-order 0..29, 27 of them narration.** Pending
-the ear. Expected ~25 Neutral, which clears −23; whatever lands as Dialogue is surplus
-against an anchored lane and harmless. 1,336 still pooled.
+**Staged and heard 2026-08-04: 30 clips, reading-order 0..29 — 30/30 keeps, 30/30
+Neutral, every one scored 5.** 1,336 still pooled. **Neutral closes at 354/347.**
+
+### delivery-v1 is COMPLETE (2026-08-04)
+
+| lane | have | want | | share |
+|---|---|---|---|---|
+| Dialogue | 578 | 578 | anchor | 49.3% |
+| Neutral | **354** | 347 | **+7** | 30.2% |
+| Documentary | 87 | 92 | −5, closed by owner call | 7.4% |
+| Newscaster | 84 | 69 | +15 | 7.2% |
+| Speech | 69 | 69 | +0 | 5.9% |
+| (delivery blank) | 17 | — | the embodiment span-FiLM pilot | — |
+
+**1,189 fold-eligible keeps.** Measured mix 49.3 / 30.2 / 7.4 / 7.2 / 5.9 against the
+ratified 50 / 30 / 8 / 6 / 6. Every lane is at or above target except Documentary,
+which is closed deliberately at 95%.
+
+**One result cuts against the reasoning that produced it, and is worth recording.**
+All three dialogue-quoting clips in the take were called **Neutral** — this reader
+does not shift manner for quoted speech. That is mild evidence *Uneasy Money* may be
+delivery-homogeneous after all, i.e. that a mark would have been safe and 22 auditions
+cheaper. It is **not** grounds to mark it now: the sample is 30 *contiguous* clips from
+section 1 of 25, which is precisely the coverage weakness that makes the mark risky
+(see todo §7). If Neutral ever needs growing from this book again, settle it properly
+first — a spread sample across sections is cheap and would answer it.
 
 ### The text shelf was empty, and that was the real blocker
 

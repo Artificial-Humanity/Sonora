@@ -58,14 +58,16 @@ on dialogue, and the survivors already narrate at 94%. Engine standing, license
 verdicts, and the shortlist record: [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md);
 onboarding pattern + gotchas: [tts-engine-onboarding.md](tts-engine-onboarding.md).
 
-**Delivery campaign (SSOT: [delivery-mix-campaign.md](delivery-mix-campaign.md)):**
-**1,159 fold-eligible keeps against the 1,156 it was sized for — the campaign is
-done.** Dialogue 578 is the 50% anchor; Newscaster 84, Speech 69, Documentary 87 and
-Neutral 324 all CLOSED or inside a rounding error. Documentary stays at 87/92 by owner
-call 2026-08-04: no documentary real audio is segmented anywhere, and −5 does not pay
-for a fresh ingest. The last Neutral −23 is staged from `librivox-v2` and pending the
-ear (30 clips, 2026-08-04) — real audio, per-clip delivery, since *Uneasy Money* is a
-novel and heterogeneous.
+**Delivery campaign — COMPLETE 2026-08-04 (SSOT:
+[delivery-mix-campaign.md](delivery-mix-campaign.md)).** **1,189 fold-eligible keeps**
+against the 1,156 it was sized for, at a measured 49.3 / 30.2 / 7.4 / 7.2 / 5.9 versus
+the ratified book-actor mix of 50 / 30 / 8 / 6 / 6. Dialogue 578 is the anchor; Neutral
+closed at 354/347 when 30 real-audio clips from `librivox-v2` came back 30/30 Neutral;
+Newscaster 84, Speech 69. Documentary stays at 87/92 by owner call — no documentary
+real audio is segmented anywhere and −5 does not pay for a fresh ingest.
+
+The corpus is no longer the constraint. **The 4th FiLM channel it was built for still
+does not exist in the model core** — see [todo.md §1](todo.md).
 
 **Engine allocation is now three-layer** (`ref_select.py`, 2026-08-02): capability veto
 (`ENGINE_CHANNELS` — the relay audit made executable), measured per-lane weights
