@@ -240,10 +240,11 @@ ENGINE_MIX = {
     "chatterbox": 0.275,   # trusted, but PROVISIONAL — the whole claim is 38 clips in
                            # one campaign, and its SPLIT reverb is ear-only (four
                            # detectors failed). Watch its 3% tail for two batches.
-    "zonos":      0.200,   # scrutinized, but the ONLY engine with numeric prosody
-                           # dials (pitch_std / speaking_rate) — a capability the
-                           # delivery-as-FiLM-channel work needs, so it keeps the
-                           # larger scrutinized share despite a 31% failure rate.
+    "zonos":      0.200,   # NORMAL tier since 2026-08-04, and the ONLY engine with
+                           # numeric prosody dials (pitch_std / speaking_rate) — a
+                           # capability the delivery-as-FiLM-channel work needs. The
+                           # old 31% failure rate averaged two populations; conditioned
+                           # correctly it measured 93.7%, then 37/38 by ear on r2.
     "orpheus":    0.150,   # standard. A step up from 8.8%, NOT the 30% a tier-based
                            # split implied: 5% rests on n=19, and its probe record is
                            # 29%. It earns more by surviving one round at this share.

@@ -24,17 +24,19 @@ THREE TIERS (owner 2026-07-31), set by measured failure rate:
 
   tier          engines              per group   tail   unheard clips fold?
   trusted       qwen, chatterbox         1        3%    yes
-  normal        orpheus (+1), others     2       10%    yes
-  scrutinized   moss_vg, zonos           4       25%    NO
+  normal        orpheus (+1), zonos, …   2       10%    yes
+  scrutinized   moss_vg                  4       25%    NO
 
 The third tier differs in KIND. Group certification assumes defects are SYSTEMATIC:
 one voice per (book, lane) means a casting or lane error is perfectly correlated
-within the group, so a few clips speak for the rest. Zonos and MOSS violate that
-assumption — their defects are stochastic per clip (pause-and-rush, radio timbre,
-early EOS) at roughly one in three, and no amount of sampling certifies a neighbour
-that carries an independent 1-in-3 risk. So for those engines the unheard clips are
-simply not folded. On delivery-v1-narration they were 13% of ride-along volume and
-91% of expected contamination; refusing to fold them costs 17 auditions.
+within the group, so a few clips speak for the rest. MOSS violates that assumption —
+its defects are stochastic per clip (radio timbre, early EOS), and no amount of
+sampling certifies a neighbour that carries an independent risk of its own. So for
+that engine the unheard clips are simply not folded.
+
+Zonos sat here too until 2026-08-04. It was moved to `normal` once its instability
+was traced to the emotion vector rather than the engine — a conditioning bug is
+systematic, which is exactly the kind of defect group certification DOES cover.
 
 What does NOT relax at any tier is criterion 1: every QC-flagged clip goes to the
 ear. The flags are what caught the real failures in round 1, so the instrument path
@@ -80,12 +82,15 @@ DATASETS = "/data/model-training/datasets"
 # Why scrutinized engines get `ride_along: False` rather than simply a bigger sample:
 # group certification rests on defects being SYSTEMATIC — one voice per (book, lane)
 # means a casting or lane error is perfectly correlated within the group, so hearing a
-# few clips speaks for the rest. Zonos and MOSS do not fail that way. Their defects are
-# stochastic per clip (pause-and-rush, radio timbre, early EOS) at roughly one in three,
-# and an independent 1-in-3 risk on each unheard clip is not certified by hearing its
-# neighbours. Measured on this campaign: moss_vg + zonos are 13% of ride-along volume
-# but 91% of expected contamination (5.7 of 6.2 bad clips). Refusing to fold their
-# unheard clips removes nearly all of that risk for 17 auditions.
+# few clips speaks for the rest. MOSS does not fail that way: its defects are stochastic
+# per clip (radio timbre, early EOS), and an independent per-clip risk is not certified
+# by hearing a neighbour.
+#
+# Zonos's 31% above is a SUPERSEDED figure — it averaged two populations, and with the
+# emotion vector off it measured 93.7%, then 37/38 by ear on delivery-v1-narration-r2.
+# That is a conditioning bug, which IS systematic, so it was promoted to `normal` on
+# 2026-08-04. The 13%-of-volume / 91%-of-contamination arithmetic below was computed
+# when both engines sat in this tier; moss_vg alone now carries far less of it.
 # Detectors that catch those specific defects objectively are what could earn these
 # engines a ride-along back — coverage traded for instrumentation, same bargain qwen made.
 TIERS = {
@@ -102,7 +107,24 @@ TIERS = {
 }
 ENGINE_TIER = {
     "qwen": "trusted", "chatterbox": "trusted",
-    "moss_vg": "scrutinized", "zonos": "scrutinized",
+    # zonos PROMOTED scrutinized -> normal, 2026-08-04, on the bank the promotion
+    # had been waiting for. Its instability was never the engine: it tracked the
+    # neutral-dominant emotion vector (93.5% keep with emotion truly off vs 27% with
+    # the vector). What was missing was proof the DIRECTOR path could produce
+    # true-unconditional zonos in production — every earlier narration bank had
+    # `emotion: null` hand-patched in, so the evidence and the pipeline had never
+    # been the same thing.
+    #
+    # delivery-v1-narration-r2 closed that gap: 44/44 zonos lines directed with
+    # emotion off, no hand-patching, 38 heard -> 37 keeps (97%). The one non-keep is
+    # a bookkeeping retirement, not an ear verdict — on clips the ear actually judged
+    # it is 37/37, above chatterbox, which is already trusted.
+    "zonos": "normal",
+    # moss_vg HELD at scrutinized. 12/12 here is clean but thin, and the prior 20/20
+    # was judged confounded — Newscaster flatters its radio-timbre failure mode, and
+    # its 24% rate was measured on expressive material. One narration lane does not
+    # overturn that. Re-test on dialogue or an expressive register first.
+    "moss_vg": "scrutinized",
     # Everything below was riding on DEFAULT_TIER when that default was
     # "normal". Naming them keeps their measured tier explicit now that the
     # default is conservative — otherwise tightening the default would have

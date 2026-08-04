@@ -204,8 +204,8 @@ LongCat: excluded until the affect-transfer experiment passes (standing rule).
   `pick_audit_subset.TIERS` says how much gets AUDITIONED. Tiers as of 2026-08-02:
   trusted (qwen; chatterbox **provisional** — 38 clips, one campaign, SPLIT is
   ear-only) · normal (orpheus — explicit; its record was dragged by the now-banned
-  `tara` fallback: non-tara 80.0% keep / mean 4.49 vs tara 9.5%) · scrutinized (zonos,
-  moss_vg — **100% heard**; zonos promotion pending one audited director-driven bank).
+  `tara` fallback: non-tara 80.0% keep / mean 4.49 vs tara 9.5%; **zonos** joined
+  2026-08-04 on r2's 37/38) · scrutinized (moss_vg — **100% heard**).
   Unknown engines default to scrutinized. Shares derive from measured PRODUCTION
   failure rates with probe/stress campaigns excluded — those are adversarial by
   construction and libel every engine (chatterbox reads 0% production but 35% probe).
@@ -294,13 +294,12 @@ the ear still calls it, once per (reader, title).
    the Dickens *Speeches* force-align lane.
 3. ~~**delivery-v1-news**~~ — **DONE.** Newscaster 84/69, closed by newscaster-v1
    (78 clips: qwen 27/27 · zonos 29/31 · moss_vg 20/20).
-4. **delivery-v1-narration round 2** — the remaining **+116** (Neutral +81,
-   Documentary +35), on the five books ingested 2026-08-02. This round also carries
-   the **zonos tier test**: every prior zonos narration bank had `emotion: null`
-   hand-patched, so the director path has never run end to end in production.
-   Verified on conan-stories that it now does — 40/40 narration lines directed to
-   zonos, 39/40 with emotion truly off, rate 14 and pitch 25–42, all inside the
-   skill file's Neutral band. One director-driven bank is the last thing standing
-   between the evidence and re-tiering zonos scrutinized → normal.
-5. Fold, then recompute this table; publish tier per [[expressive-registers-dataset]]
-   conventions (higgs3-NC keeps stay out of the CC-BY publish set).
+4. ~~**delivery-v1-narration round 2**~~ — **DONE 2026-08-04**, see "CLOSED" above.
+   88 heard keeps + 13 certified riders; Neutral 324/347, Documentary 87/92.
+   It also settled the **zonos tier test** it was carrying: every prior zonos
+   narration bank had `emotion: null` hand-patched, so the director path had never
+   run end to end in production. This one did — **44/44 lines directed with emotion
+   off**, 37 keeps from 38 heard. **Zonos promoted scrutinized → normal.**
+5. ~~Fold, recompute the table~~ — **DONE.** Publish tier per
+   [[expressive-registers-dataset]] conventions still open (higgs3-NC keeps stay out
+   of the CC-BY publish set).

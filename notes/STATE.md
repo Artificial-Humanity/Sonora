@@ -74,15 +74,21 @@ roster now derives from `ENGINE_MIX − SET_ASIDE`.
 
 **Audit tiers** (tag on an engine, separate from render share): trusted (qwen,
 chatterbox-provisional) · normal (orpheus — explicit, its record was dragged by the
-now-banned `tara` fallback) · scrutinized (zonos, moss_vg — 100% heard). Unknown
-engines now default to **scrutinized**, not normal.
+now-banned `tara` fallback; **zonos** as of 2026-08-04) · scrutinized (moss_vg —
+100% heard). Unknown engines now default to **scrutinized**, not normal.
 
-**Zonos tier decision is one bank away.** newscaster-v1 (78 clips): qwen 27/27 · zonos
-29/31 · moss_vg 20/20. Three campaigns agree zonos's instability tracked the
-neutral-dominant emotion conditioning, not the engine (93.5% keep with emotion truly
-off vs 27% with the vector). The director path now produces true-unconditional zonos
-narration end to end (verified on conan-stories, 39/40) — one audited director-driven
-bank flips scrutinized → normal. Full ears queue: [todo.md §4](todo.md).
+**Zonos promoted scrutinized → normal (2026-08-04).** The instability was never the
+engine — it tracked the neutral-dominant emotion vector (93.5% keep with emotion truly
+off vs 27% with it). What was missing was proof the DIRECTOR path could produce
+true-unconditional zonos in production, since every earlier narration bank had
+`emotion: null` hand-patched in. delivery-v1-narration-r2 closed that: 44/44 lines
+directed with emotion off, 37 keeps from 38 heard, and the one non-keep is a
+bookkeeping retirement rather than an ear verdict.
+
+**moss_vg held at scrutinized.** 12/12 on narration is clean but thin, and the prior
+20/20 was confounded — Newscaster flatters its radio-timbre failure mode, and its 24%
+rate was measured on expressive material. Re-test on dialogue or an expressive
+register before moving it. Full ears queue: [todo.md §4](todo.md).
 
 **Director models:** `gemma-4-31b-qat-spec` directs (skill-file obedience 24/24 where
 the MoE managed 8/24 and e4b 5/24); `gemma-4-e4b-qat-spec` handles volume jobs

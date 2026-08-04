@@ -29,7 +29,7 @@ onboarding pattern + interface gotchas: [tts-engine-onboarding.md](tts-engine-on
 | **Qwen3-TTS-12Hz-1.7B-VoiceDesign** | 1.9B | Apache-2.0. **Trusted tier** — the portfolio's gold standard (measured 2026-07-27) |
 | **MOSS-VoiceGenerator** (`moss_vg`) | 2.1B | Apache-2.0. THE MOSS for directed work; scrutinized tier |
 | **MOSS-TTS 8.5B** (`moss85`) | 8.5B | Apache-2.0 — but an **un-SFT'd BASE model**: no instruction input; reads prompts aloud on short lines. Cloning-only candidate via its unused `reference` slot; NOT a directed generator |
-| **Zonos-v0.1-transformer** | 1.6B | Apache-2.0. Numeric prosody dials (the closest native V/A/T interface); scrutinized → normal pending one audited director-driven bank |
+| **Zonos-v0.1-transformer** | 1.6B | Apache-2.0. Numeric prosody dials (the closest native V/A/T interface); **normal** tier 2026-08-04 (r2: 44/44 directed emotion-off, 37/38 keeps) |
 | **Orpheus-3B `-ft`** | 3B | Apache-2.0. Normal tier; `tara` banned in code (room reverb) |
 | **Chatterbox** (classic, NOT Turbo) | 0.5B | MIT. Trusted-provisional; exaggeration dial is real (Turbo's `generate()` accepts and then discards it — verified in shipped code 2026-07-28) |
 | **LongCat-AudioDiT-3.5B** | 3.5B | MIT. **Affect-transfer multiplier only** — clone from OUR labeled synthetic anchors onto new text, labels inherited, blind QC per output; standard (promptless) mode unused. Excluded from campaigns until the affect-transfer experiment passes |

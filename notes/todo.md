@@ -80,10 +80,13 @@ delete sections when empty.
        loudness confound (5.99 dB spread, Qwen +3.81 dB over VV) could have produced.
        The 56 keeps are normalized; a keep-*rate* re-test additionally needs the 24
        quarantined drops normalized (un-quarantine is an owner call).
-2. [ ] **Zonos scrutinized → normal** — evidence is in (93.5% with emotion truly off;
-       three campaigns agree the instability tracked the conditioning). The last gap, a
-       director-driven narration bank, is verified working (conan-stories 40/40 directed,
-       39/40 emotion-null); the tier flips after one such bank is auditioned.
+2. [x] **Zonos scrutinized → normal** — **DONE 2026-08-04.** The bank arrived:
+       delivery-v1-narration-r2 directed 44/44 zonos lines with emotion off, no
+       hand-patching, and the ear returned 37 keeps from 38 heard (97%). The single
+       non-keep is a bookkeeping retirement, so on judged clips it is 37/37 — above
+       chatterbox, which is already trusted. Promoting changed nothing retroactively
+       (every zonos group in that campaign had 0 deferred); it takes effect on the
+       next `select`, where zonos drops from 100%-heard to 2/group + 10%.
 3. [ ] **Orpheus tier** — `normal` is explicit in `ENGINE_TIER` now; `trusted` is
        arguable on 105 non-`tara` renders at 80.0% keep / mean 4.49. Policy, not
        measurement.
