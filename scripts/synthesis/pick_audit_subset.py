@@ -451,6 +451,15 @@ def cmd_certify(args):
     # A drop inside a TRUSTED engine's spot check is a protocol event, not just a
     # failed group: that engine bought thin coverage with its track record, and the
     # record just broke. Say so loudly — the fix is to revoke the tier, then re-select.
+    #
+    # BUT READ THE DROP'S NOTE FIRST. Drops are not typed here, so a clip rejected
+    # for its TEXT counts against the ENGINE that rendered it faithfully. This alarm
+    # fired on delivery-v1-narration-r2 for a passage narrating figures that do not
+    # exist in audio — a text-selection defect no engine could have rendered usably —
+    # and was overridden (owner 2026-08-04); chatterbox stayed trusted. Typing drops
+    # by cause was considered and declined as premature. Until it exists, treat this
+    # as a prompt to go read the verdict, not as a verdict itself.
+    # See notes/delivery-mix-campaign.md, "EXCEPTION".
     revoke = sorted({eng for (grp, eng), g in by_group.items()
                      if eng in TRUSTED_ENGINES and g["drop"]})
     for eng in revoke:

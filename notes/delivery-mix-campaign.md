@@ -28,6 +28,49 @@ completes at **1,156**.
 **Remaining: +116, both lanes narration.** Newscaster and Speech closed when
 newscaster-v1 landed (78 clips, qwen 27/27 · zonos 29/31 · moss_vg 20/20).
 
+### CLOSED 2026-08-04 — delivery-v1-narration-r2 landed
+
+| lane | have | want | gap |
+|---|---|---|---|
+| Dialogue | 578 | 578 | anchor |
+| **Neutral** | **324** | 347 | −23 |
+| **Documentary** | **87** | 92 | −5 |
+| Newscaster | 84 | 69 | done |
+| Speech | 69 | 69 | done |
+| (delivery blank) | 108 | — | 91 are the three instrument campaigns, which do not fold |
+
+Corpus total **1,250** heard-or-folded, past the 1,156 the campaign was sized for.
+r2 contributed 88 heard keeps (58 Neutral, 30 Documentary) plus 13 group-certified
+riders across 5 groups; 2 dropped. Both lanes are inside a rounding error of target
+and the remaining −23/−5 does not justify another round on its own — take it from
+the real-audio lane, where clips are already cleared and unused.
+
+#### EXCEPTION: chatterbox's `TRUST BROKEN` alarm on this campaign was overridden
+
+`certify` raised **`TRUST BROKEN: chatterbox`** and it was **not acted on** (owner,
+2026-08-04). Chatterbox stays in the trusted tier.
+
+The alarm fired on `voyage-of-the-beagle_r2_0034_CHA`, dropped because *"this passage
+is making references to illustrations not visible here."* That is a **text-selection**
+defect: the passage narrates figures that do not exist in audio, and no engine or
+setting renders it usably. Chatterbox read it faithfully. Acting on the alarm would
+have moved the engine to standard coverage — 2 per group + 10% instead of 1 + 3% —
+roughly tripling its audit load on evidence that says nothing about the engine.
+
+The same gap makes `voyage-of-the-beagle_r2_0018_ZON` count as a drop against zonos,
+when that row is a bookkeeping retirement (re-cast to qwen in round 1, wav superseded
+before the ear heard it) rather than a verdict. Neither group held deferred clips, so
+neither false failure blocked anything.
+
+**Root cause, deliberately left in place:** `certify` treats every drop as evidence
+against the engine, but drops have causes — engine-attributable (mangled audio,
+artifacts, truncation) versus source-attributable (bad text, invisible references,
+bookkeeping). Typing them was considered and declined as not worth the machinery yet.
+The mint-time `references_the_invisible` gate now catches this particular class before
+it renders, so the text defect should not recur; the **attribution gap will**, the next
+time a clip is dropped for its content rather than its audio. Read the drop's note
+before believing a trust alarm.
+
 ### The text shelf was empty, and that was the real blocker
 
 The "~440 unrendered narration lines" below is **stale — it was 20**. Of 503 minted
