@@ -12,7 +12,9 @@ Deliberately NOT here: license deliberation (→ `dataset-landscape.md`), the
 multilingual survey (→ same, § Multilingual), teacher-engine selection (→
 `teacher-tts-audition-shortlist.md`), audit policy (→ `delivery-mix-campaign.md`).
 
-Last verified against disk and configs: **2026-08-02**.
+Last verified against disk and configs: **2026-08-06**. The *order* in which the READY /
+NOT PULLED / RAW rows below get taken up is not decided here — it is
+[quality-gap-plan.md](quality-gap-plan.md).
 
 ---
 
@@ -31,8 +33,9 @@ had been blurring into each other:
 | Source | Origin | Status in our training | Next action |
 |---|---|---|---|
 | **LJSpeech-1.1** | keithito, public domain. 13,100 clips / 24 h / 1 speaker / 22.05 kHz | **TRAINED** — Phase 0, `ljspeech` runs 2026-07-10 and 07-11 (ep199). The current v1 voice | None. Carries the contraction-poisoned IPA at ~1.2% of rows and was NOT rebuilt — it feeds the Phase-0 warm start, not the VAT lane. Rebuild only if Phase 0 is re-run |
-| **LibriTTS-R `train-clean-100`** | Google, CC-BY-4.0, quality-restored LibriTTS. 257 speaker dirs, 9.0 GB on disk → 31,445 rows / **51.3 h** | **TRAINED** — the only VAT source. `derisk_energy` (v1) and `vat3_finetune` ep099 (v2) | Recompute `data_statistics` in the training container for the v3 lineage, then point an experiment config at **v3c**. See § The VAT corpus lineage |
-| **LibriTTS-R (the other 90%)** | Same, CC-BY-4.0. Full set ≈ 585 h / ~2,400 speakers | **NOT PULLED** — we hold `train-clean-100` only | Decide whether the 10× is wanted. This was never a decision; it is what got pulled first |
+| **LibriTTS-R `train-clean-100`** | Google, CC-BY-4.0, quality-restored LibriTTS. 257 speaker dirs, 9.0 GB on disk → 31,445 rows / **51.3 h** | **TRAINED** — the only VAT source. `derisk_energy` (v1), `vat3_finetune` ep099 (v2), `vat3c_finetune` ep099 (v3c) | None outstanding. See § The VAT corpus lineage |
+| **LibriTTS-R `dev-clean`** | Same, CC-BY-4.0. ~5.4 h / 40 speakers | **NOT PULLED** — and **no checkpoint has ever seen a frame of it** | Pull it as the **never-trained holdout**. Scoring-only, ~1 GB, no training: it is the instrument that makes every retained checkpoint comparable for the first time. Needs a `data_licenses.yaml` entry and the fixed `op_g2p`; normalise with the *training* corpus's `data_statistics`, do not re-measure. [quality-gap-plan.md § Phase 0](quality-gap-plan.md) |
+| **LibriTTS-R (the other 90%)** | Same, CC-BY-4.0. Full set ≈ 585 h / ~2,400 speakers | **NOT PULLED** — we hold `train-clean-100` only | The 10×. Gated on whether Emilia's +43% moves the holdout — [quality-gap-plan.md § Phase 1](quality-gap-plan.md) |
 | **`parler-tts/libritts-r-filtered-speaker-descriptions`** | CC-BY-4.0. LibriTTS-R + per-utterance natural-language annotations (pace, pitch, expressivity, quality) | **NOT PULLED** | Evaluate against our derived V/A/T. Cleared as the "labeling shortcut" and we hand-built that substrate instead |
 | **`cdminix/libritts-r-aligned`** | CC-BY-4.0. LibriTTS-R + forced alignments and per-token pitch/energy/duration | **NOT PULLED** | Same evaluation. Its prosody measures overlap what `derive_vat_corpus.py` computes; worth knowing whether it is better |
 | **Hi-Fi TTS (v1)** | NVIDIA, CC-BY-4.0, LibriVox-sourced. ~292 h / 10 speakers / 44.1 kHz. **40 GB of parquet WITH audio** | **RAW** — largest corpus on disk, never touched | Convert parquet → wav + filelist. Role: casting anchors and speaker-consistent long-form prosody (few voices, deep hours) |
@@ -67,10 +70,10 @@ filelist yet.
 
 ## What a training run actually consumes today
 
-One corpus. `configs/experiment/vat3_finetune.yaml` overrides to
-`libritts_r_vat_v2.yaml`, whose filelists are **100 % LibriTTS-R** — verified
-2026-08-02, zero non-LibriTTS rows. Every expressive clip we have rendered and
-auditioned sits outside the training path.
+One corpus. `configs/experiment/vat3c_finetune.yaml` points at
+`libritts_r_vat_v3c.yaml`, whose filelists are **100 % LibriTTS-R** — as were v2's
+before it (verified 2026-08-02, zero non-LibriTTS rows). Every expressive clip we have
+rendered and auditioned sits outside the training path.
 
 That gap is the single most important fact in this file. The corpus we spend ear
 time on and the corpus we train on have never been joined.
@@ -86,13 +89,18 @@ labels, phonemes and split.
 | `_v2` | 30,351 | soft-json harshness repair; independence gate PASS | **yes — `vat3_finetune` ep099** |
 | `_v3` | 31,445 | `MAX_SECONDS` 16 → 22 (owner 2026-08-01) | no |
 | `_v3b` | 31,445 | apostrophe-clean IPA (v1–v3 carry ~6.4 % poisoned rows) | no |
-| **`_v3c`** | 31,445 | **per-clip hash split** — 30,485 train / 960 val | no — **this is the one to train on** |
+| **`_v3c`** | 31,445 | **per-clip hash split** — 30,485 train / 960 val | **yes — `vat3c_finetune` ep099, 2026-08-06.** Still the one to train on |
 
-Two things stand between v3c and a run: no experiment config points at it, and
-`data_statistics` (mel mean/std) in the v2 config were measured on the
-29,441-clip split. The v3 lineage is 31,445 rows, so those numbers are stale and
-`matcha/utils/generate_data_statistics.py` must be re-run **inside the training
-container**. Do not inherit v2's values silently.
+Both blockers are cleared: `configs/experiment/vat3c_finetune.yaml` points at it, and
+`data_statistics` were re-measured **inside the training container** on the 30,485-clip
+split (`mel_mean −5.525067 / mel_std 2.388571`). The v2 values were measured on the
+29,441-clip split and must never be inherited silently — the delta is a constant shift on
+every normalised mel.
+
+**What the v3c run proved** (2026-08-06): the phoneme fix was worth **−1.411% dur** vs
+matched controls and **nothing audible** — the `op_g2p` repair alone closed it, and the
+run was not needed. Full measurements and the plan that follows from them:
+[quality-gap-plan.md](quality-gap-plan.md).
 
 ## The Expresso conflict — needs the owner
 

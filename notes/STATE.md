@@ -7,7 +7,7 @@ architecture canon is [ARCHITECTURE.md](ARCHITECTURE.md); open work is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
-_Last updated: 2026-08-04._
+_Last updated: 2026-08-06._
 
 ---
 
@@ -21,14 +21,16 @@ _Last updated: 2026-08-04._
 > re-rolling membership. **30,485 train / 960 val** (210 of 247 speakers in val).
 > Verified: adding 2,000 synthetic rows moves 0 of 960 val clips.
 >
-> **Nothing has trained on v3, v3b or v3c.** The existing `vat3_finetune` ep099
-> checkpoint trained on **v2** — poisoned phonemes included — but the labels barely
-> moved between v2 and v3 (corr ≥ 0.9993 per channel on shared clips), so **vat3 is a
-> viable fine-tune base**; a from-scratch retrain is not forced.
+> The `vat3_finetune` ep099 checkpoint trained on **v2** — poisoned phonemes included —
+> but the labels barely moved between v2 and v3 (corr ≥ 0.9993 per channel on shared
+> clips), so **vat3 is a viable fine-tune base**; a from-scratch retrain is not forced.
 >
-> **RUNNING since 2026-08-04 13:19** — `vat3c_finetune` in `sonora_training`, warm-started
-> 338/338 (0 fresh) from vat3-24k ep099, inference engines spun down, seam test 13/13
-> in-container beforehand. Launch notes and the two traps it exposed:
+> **COMPLETE 2026-08-06** — `vat3c_finetune` ran 100 epochs (run `2026-08-05_15-02-57`,
+> exit 0), warm-started 338/338 (0 fresh) from vat3-24k ep099, after the 08-04 launch was
+> killed by the E610 NIC fault. **Its verdict: the fine-tune bought nothing audible — the
+> `op_g2p` fix was the whole fix, and retraining was never needed.** Paired per-clip
+> scoring, blind A/B and copy-synthesis, and what they mean for what comes next:
+> **[quality-gap-plan.md](quality-gap-plan.md)**. Launch traps:
 > [training-operations.md](training-operations.md).
 >
 > `configs/experiment/vat3c_finetune.yaml` points at

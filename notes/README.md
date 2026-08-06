@@ -44,6 +44,7 @@ directory and several closed records were removed 2026-08-02).
 
 | file | SSOT for |
 |---|---|
+| [quality-gap-plan.md](quality-gap-plan.md) | **what comes next** — the ordered plan to close the synthetic-vs-real gap (measurement repair → data sequencing → DiT spike) + the 2026-08-06 diagnostics that scoped it |
 | [model-decisions.md](model-decisions.md) | model shape: size ladder, 150M target, 24 kHz, DiT spike, base-model choice |
 | [matcha-siblings-study.md](matcha-siblings-study.md) | the standing comparison bench (StableTTS, RapFlow, CosyVoice, Baichuan…) |
 | [training-operations.md](training-operations.md) | the runbook — launch/stop/resume, watchers, gates, footguns, registry conventions |
