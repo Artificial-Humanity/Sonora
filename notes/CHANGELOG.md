@@ -51,6 +51,19 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
   produce that. Owner's call to ratify. Recorded in `quality-gap-plan.md` § 0a,
   `STATE.md` and `training-sources.md`.
 
+- **`03fed75` — `vat3c_finetune` retired at every place it could be picked up.** A
+  `RETIRED` banner on the experiment config (kept, not deleted — Phase 1 derives from it
+  and the measurement must stay reproducible), `RETIRED.md` in the experiment and both
+  checkpoint-bearing run dirs, `warmstart/vat3_ep099.ckpt` naming the correct base, and
+  `resume.ckpt` re-pointed off the retired checkpoint it had been left aimed at. The
+  launcher rewrite is **AI-Lab-AMD `a155eb6`**: it carried *two* independent hardcodings
+  of vat3c — the experiment name and the resume glob — so queueing a successor run by
+  editing the obvious one would silently have warm-started it from the retired ep099.
+  `SONORA_EXPERIMENT` is now required (unset ⇒ the container idles with a message rather
+  than exiting, since `restart: unless-stopped` turns a fast exit into a crash loop),
+  auto-resume is scoped to that experiment's own run dirs, and `vat3c_finetune` is
+  refused by name. New launch contract: `notes/training-operations.md`.
+
 ### Fixed
 
 - **`e5e5ed1` — E-M5: the logged diffusion loss is masked.** `BASECFM.compute_loss` summed
