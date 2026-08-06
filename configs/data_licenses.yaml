@@ -32,8 +32,15 @@ datasets:
     # undeclared until 2026-08-04, which is why no run could ever have reached it: the
     # wall refuses what it cannot classify, so "nothing has trained on v3c" was
     # structurally guaranteed rather than merely true.
+    # `libritts_r_holdout_devclean` is the Phase 0a instrument (2026-08-06): LibriTTS-R
+    # dev-clean, 40 speakers disjoint from the corpus's 247, derived for SCORING ONLY.
+    # It is declared here for the same reason a training corpus is — the wall gates on
+    # the filelist path, not on intent, so an undeclared holdout simply refuses to load.
+    # Declaring it is NOT permission to train on it: doing so would destroy the one
+    # never-trained measurement the lineage has.
     dirs: [LibriTTS-R, libritts_r, libritts-r, libritts_r_vat, libritts_r_vat_v1,
-           libritts_r_vat_v2, libritts_r_vat_v3, libritts_r_vat_v3b, libritts_r_vat_v3c]
+           libritts_r_vat_v2, libritts_r_vat_v3, libritts_r_vat_v3b, libritts_r_vat_v3c,
+           libritts_r_holdout_devclean]
     license: CC-BY-4.0
     class: permissive
   parler_libritts_r_annotated:

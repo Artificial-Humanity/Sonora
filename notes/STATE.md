@@ -25,13 +25,16 @@ _Last updated: 2026-08-06._
 > but the labels barely moved between v2 and v3 (corr ≥ 0.9993 per channel on shared
 > clips), so **vat3 is a viable fine-tune base**; a from-scratch retrain is not forced.
 >
-> **COMPLETE 2026-08-06** — `vat3c_finetune` ran 100 epochs (run `2026-08-05_15-02-57`,
-> exit 0), warm-started 338/338 (0 fresh) from vat3-24k ep099, after the 08-04 launch was
-> killed by the E610 NIC fault. **Its verdict: the fine-tune bought nothing audible — the
-> `op_g2p` fix was the whole fix, and retraining was never needed.** Paired per-clip
-> scoring, blind A/B and copy-synthesis, and what they mean for what comes next:
-> **[quality-gap-plan.md](quality-gap-plan.md)**. Launch traps:
-> [training-operations.md](training-operations.md).
+> **COMPLETE 2026-08-06, AND THE RUN IS RETIRED** — `vat3c_finetune` ran 100 epochs (run
+> `2026-08-05_15-02-57`, exit 0), warm-started 338/338 (0 fresh) from vat3-24k ep099,
+> after the 08-04 launch was killed by the E610 NIC fault. The ear said it bought nothing
+> audible; the never-trained holdout, scored the same day, says it was **slightly worse**
+> — +0.0164 against its own warm start, every loss term worse, and worse on v3c's own val
+> split too. **The `op_g2p` fix was the whole fix; the fine-tune was a regression.** Use
+> **vat3-24k ep099** as the base. Note this is a verdict on the *run*, not the corpus —
+> v3c is still the corpus to build Phase 1 on. Paired per-clip scoring, blind A/B,
+> copy-synthesis and the holdout table: **[quality-gap-plan.md](quality-gap-plan.md)**.
+> Launch traps: [training-operations.md](training-operations.md).
 >
 > `configs/experiment/vat3c_finetune.yaml` points at
 > it, `data_statistics` are **measured** on the 30,485-clip train split
@@ -76,17 +79,23 @@ is what opened the directed teacher-synthesis lane
 |---|---|---|
 | Phase 0 `ep199` (baseline-ljspeech-22k) | LJSpeech @ 22.05 kHz | shipped to HF; the v1 voice; both export lanes verified on it |
 | `derisk-energy-24k` ep099 | libritts_r_vat v1 (energy channel only) | §7 verdict PASS (ρ≈1.000, leakage ≤0.091, WER Δ ≤0.042); staged in `Sonora/huggingface/`, not pushed |
-| `vat3-24k` ep099 | libritts_r_vat **v2** | energy PASS / tension near-pass / valence FAIL; staged; the warm start for `vat3c` |
-| `vat3c` ep099 | libritts_r_vat **v3c** | 2026-08-06, warm from vat3-24k 338/338. **No audible change** — the `op_g2p` fix was the whole fix. Not staged; nothing here supersedes vat3-24k by ear |
+| `vat3-24k` ep099 | libritts_r_vat **v2** | energy PASS / tension near-pass / valence FAIL; staged; the warm start for `vat3c`. **Best checkpoint in the lineage on never-trained audio (1.8512)** — beats its own warm start by −0.0111, the gain concentrated in `diff` (−0.0241, 78.7% of clips). This is the Phase 1 base |
+| `vat3c` ep099 | libritts_r_vat **v3c** | 2026-08-06, warm from vat3-24k 338/338 (verified bit-identical by scoring, not just by the log line). **RETIRED — a regression, not a no-op.** +0.0164 worse than its own init on the holdout, all three loss terms worse, better on 39.1% of clips; +0.0443 worse on v3c's own val too. Do not stage or export |
 | 24 kHz HiFi-GAN vocoder `g_02510000` | LibriTTS-R, warm from UNIVERSAL_V1 | copy-synthesis converged, human-audited; staged. **Confirmed perceptually transparent 2026-08-06** — mel L1 = 10.2% of mel_std |
 
 Publishing staged checkpoints to the public HF repo remains a deliberate owner call —
 they are validated components, not the shippable directable actor.
 
-⚠ **No checkpoint in this table has ever been scored on audio it was not trained on.** Splits
-were re-drawn per corpus version while runs warm-started from the previous one, so 93–97% of
-v3c's val clips were trained on earlier. Cross-run val comparisons are invalid until the
-never-trained holdout lands — [quality-gap-plan.md § Phase 0](quality-gap-plan.md).
+**Every VAT checkpoint in this table now has a never-trained score (2026-08-06).**
+`data/libritts_r_holdout_devclean` — LibriTTS-R dev-clean, 5,463 clips / 8.7 h / 40
+speakers disjoint from the corpus's 247 — is the standing instrument; score new
+checkpoints on it with `scripts/score_holdout.sh` (~100 min for eight on an idle card).
+Full results and what they closed: [quality-gap-plan.md § 0a](quality-gap-plan.md).
+
+⚠ `loss/val_epoch` remains unusable for cross-run comparison and always will be — splits
+were re-drawn per corpus version while runs warm-started from the previous one, so 93–97%
+of v3c's val clips were trained on earlier. That contamination is historical and does not
+heal. **The holdout is the number; MLflow val is not.**
 
 ## Teacher synthesis & the expressive dataset
 
@@ -199,14 +208,17 @@ the delivery export story is the blocking work before any vat3/delivery export
 
 The ordered plan, with the gate between each phase, is
 **[quality-gap-plan.md](quality-gap-plan.md)** — it is the SSOT for sequencing and this list
-is only its headline. Nothing below has started.
+is only its headline.
 
-1. **Phase 0a — the never-trained holdout.** Pull LibriTTS-R `dev-clean` as a scoring-only
-   set and re-score every retained checkpoint. No training; it is what makes six weeks of
-   runs comparable for the first time.
-2. **Phase 1 — data, cheapest first.** Emilia-YODAS keeps (+43%) → expressive-registers
-   (+116) → LibriTTS-R 10× → Hi-Fi TTS v1. #1 is the fastest test of whether volume moves
-   quality at all, and the 10× is gated on its answer.
+1. ~~**Phase 0a — the never-trained holdout.**~~ **DONE 2026-08-06.** Its gate passed
+   (checkpoints do separate on unseen audio), it retired `vat3c` ep099 as a regression,
+   and it closed **0b** — the clean-lineage retrain from `matcha_vctk` is **not
+   indicated**, because the lineage demonstrably generalizes. Owner's call to ratify.
+2. **Phase 1 — data, cheapest first**, warm-starting from `vat3-24k` ep099.
+   Emilia-YODAS keeps (+43%) → expressive-registers (+116) → LibriTTS-R 10× → Hi-Fi TTS
+   v1. #1 is the fastest test of whether volume moves quality at all, and the 10× is
+   gated on its answer. 0a supplies the evidence this phase was assuming: 100 epochs
+   against the same ~30k clips made the model *worse*, so the lever is corpus, not epochs.
 3. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
    baseline frozen as the last act of Phase 1.
 4. Ears queue in priority order — [todo.md §4](todo.md).

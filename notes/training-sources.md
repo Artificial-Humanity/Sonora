@@ -34,7 +34,7 @@ had been blurring into each other:
 |---|---|---|---|
 | **LJSpeech-1.1** | keithito, public domain. 13,100 clips / 24 h / 1 speaker / 22.05 kHz | **TRAINED** — Phase 0, `ljspeech` runs 2026-07-10 and 07-11 (ep199). The current v1 voice | None. Carries the contraction-poisoned IPA at ~1.2% of rows and was NOT rebuilt — it feeds the Phase-0 warm start, not the VAT lane. Rebuild only if Phase 0 is re-run |
 | **LibriTTS-R `train-clean-100`** | Google, CC-BY-4.0, quality-restored LibriTTS. 257 speaker dirs, 9.0 GB on disk → 31,445 rows / **51.3 h** | **TRAINED** — the only VAT source. `derisk_energy` (v1), `vat3_finetune` ep099 (v2), `vat3c_finetune` ep099 (v3c) | None outstanding. See § The VAT corpus lineage |
-| **LibriTTS-R `dev-clean`** | Same, CC-BY-4.0. ~5.4 h / 40 speakers | **NOT PULLED** — and **no checkpoint has ever seen a frame of it** | Pull it as the **never-trained holdout**. Scoring-only, ~1 GB, no training: it is the instrument that makes every retained checkpoint comparable for the first time. Needs a `data_licenses.yaml` entry and the fixed `op_g2p`; normalise with the *training* corpus's `data_statistics`, do not re-measure. [quality-gap-plan.md § Phase 0](quality-gap-plan.md) |
+| **LibriTTS-R `dev-clean`** | Same, CC-BY-4.0. 5,463 clips / **8.7 h** / 40 speakers | **NEVER TRAINED ON, DELIBERATELY, AND IT MUST STAY THAT WAY.** Pulled 2026-08-06 and derived scoring-only as `data/libritts_r_holdout_devclean`; its 40 speakers are disjoint from the corpus's 247 | Nothing. It is the standing instrument — score every new checkpoint with `scripts/score_holdout.sh` and normalise with the *training* corpus's `data_statistics`, never a re-measure. **Training on it destroys it permanently; there is no second dev-clean.** The wall declares it (so `enforce()` loads it) and therefore will *not* stop such a run — the deleted `train_op.txt`/`val_op.txt` and the directory README are the guard. Results: [quality-gap-plan.md § 0a](quality-gap-plan.md) |
 | **LibriTTS-R (the other 90%)** | Same, CC-BY-4.0. Full set ≈ 585 h / ~2,400 speakers | **NOT PULLED** — we hold `train-clean-100` only | The 10×. Gated on whether Emilia's +43% moves the holdout — [quality-gap-plan.md § Phase 1](quality-gap-plan.md) |
 | **`parler-tts/libritts-r-filtered-speaker-descriptions`** | CC-BY-4.0. LibriTTS-R + per-utterance natural-language annotations (pace, pitch, expressivity, quality) | **NOT PULLED** | Evaluate against our derived V/A/T. Cleared as the "labeling shortcut" and we hand-built that substrate instead |
 | **`cdminix/libritts-r-aligned`** | CC-BY-4.0. LibriTTS-R + forced alignments and per-token pitch/energy/duration | **NOT PULLED** | Same evaluation. Its prosody measures overlap what `derive_vat_corpus.py` computes; worth knowing whether it is better |
@@ -99,8 +99,15 @@ every normalised mel.
 
 **What the v3c run proved** (2026-08-06): the phoneme fix was worth **−1.411% dur** vs
 matched controls and **nothing audible** — the `op_g2p` repair alone closed it, and the
-run was not needed. Full measurements and the plan that follows from them:
-[quality-gap-plan.md](quality-gap-plan.md).
+run was not needed. Scored the same day against the never-trained holdout it turned out
+to be **worse than not running it at all**: +0.0164 against its own warm start, every
+loss term worse, better on only 39.1% of 5,463 unseen clips, and +0.0443 worse on v3c's
+own val split too. **`vat3_finetune` ep099 is the base going forward, not `vat3c`.**
+
+Read that as a verdict on the *run*, not on `_v3c`: the corpus is correct and is what
+Phase 1 builds on. What it says is that ~30k clips a model is already fit to has no
+100-epoch's worth of signal left in it. Full measurements and the plan that follows:
+[quality-gap-plan.md § 0a](quality-gap-plan.md).
 
 ## The Expresso conflict — needs the owner
 

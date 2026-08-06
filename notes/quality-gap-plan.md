@@ -66,44 +66,111 @@ Harness kept at `/data/model-training/sonora/eval_phoneme_fix/` —
 
 ## Phase 0 — make it measurable
 
-Everything downstream is wasted if we cannot tell whether it worked. Today we cannot:
-`loss/val_epoch` has never been a generalization measure, because splits were re-drawn
-per corpus version while runs warm-started from the previous version. **93–97% of v3c's
-val clips were trained on under an earlier corpus.** Cross-run val comparisons — the
-3.18 (07-20) vs 3.48 (08-05) pairing in particular — are invalid.
+Everything downstream is wasted if we cannot tell whether it worked. Until 2026-08-06 we
+could not: `loss/val_epoch` has never been a generalization measure, because splits were
+re-drawn per corpus version while runs warm-started from the previous version. **93–97%
+of v3c's val clips were trained on under an earlier corpus.** Cross-run val comparisons —
+the 3.18 (07-20) vs 3.48 (08-05) pairing in particular — are invalid.
+
+**0a closed that.** There is now a never-trained holdout and every retained checkpoint
+has a number on it; read 0a below before reading any MLflow curve. The rest of this
+section is kept because the defect it describes is permanent — the historical
+contamination does not heal, so `loss/val_epoch` stays unusable for cross-run
+comparison even now.
 
 Going forward the split itself is fine: `derive_vat_corpus._in_val` hashes the wav
 basename (blake2b, `SPLIT_SALT="sonora-vat-split-20260802"`) as of 2026-08-02, and adding
 2,000 rows moved 0 of 960 val clips. **The contamination is historical**, inherited
 through the warm-start chain. It does not fix itself.
 
-### 0a — the never-trained holdout (do this; it is the instrument)
+### 0a — the never-trained holdout — **DONE, and it reported. 2026-08-06**
 
-Pull **LibriTTS-R `dev-clean`** (~5.4 h / 40 speakers, ~1 GB — we hold only
-`train-clean-100`), derive it as a scoring-only set, and score every retained checkpoint
-against it. Same corpus family, same recording conditions, same license entry, and *no
-checkpoint in the lineage has ever seen a frame of it.*
+**LibriTTS-R `dev-clean`**, derived scoring-only as
+`data/libritts_r_holdout_devclean`: 5,463 clips / 8.7 h / **40 speakers, zero overlap**
+with the corpus's 247. Every retained VAT checkpoint scored teacher-forced with four
+paired noise draws per clip — 43,704 per-clip rows, `scripts/score_holdout.{py,sh}`,
+raw at `/data/model-training/sonora/holdout_eval/lineage.csv`. No training was done.
 
-- **Cost: one small download and a derive pass. No training.**
-- Retroactive: it re-measures checkpoints we already have, so the last six weeks of runs
-  become comparable for the first time.
-- Gates as a corpus even though it never trains: it needs a `data_licenses.yaml` entry
-  or `enforce()` refuses the run (this is exactly the v3 trap), and phonemes must come
-  from the **fixed** `op_g2p`.
-- Scoring-only means **no** `data_statistics` re-measure — normalise it with the
-  training corpus's constants, or the numbers are not comparable to anything.
+| checkpoint | dur | prior | diff | **total** |
+|---|---|---|---|---|
+| `vat3_init` (warm start of the v2 run) | 0.5369 | 1.0351 | 0.2903 | 1.8623 |
+| **`vat3_ep099`** (v2 corpus) | 0.5466 | 1.0384 | 0.2662 | **1.8512** |
+| `vat3c_init` | 0.5466 | 1.0384 | 0.2662 | 1.8512 |
+| **`vat3c_ep009`** | 0.5463 | 1.0380 | 0.2663 | **1.8506** |
+| `vat3c_ep029` | 0.5533 | 1.0393 | 0.2679 | 1.8604 |
+| `vat3c_ep049` | 0.5468 | 1.0393 | 0.2693 | 1.8554 |
+| `vat3c_ep069` | 0.5540 | 1.0389 | 0.2678 | 1.8607 |
+| `vat3c_ep099` (shipped as the v3c result) | 0.5562 | 1.0400 | 0.2714 | 1.8676 |
 
-### 0b — clean-lineage restart (decide after 0a, not before)
+**1. The gate passes: checkpoints separate on never-trained audio.** `vat3_ep099` beats
+its own warm start by **−0.0111** [−0.0131, −0.0091]. The instrument resolves the
+lineage, so the speaker-conditioning floor (dev-clean's 40 speakers land on arbitrary
+trained embeddings — see `score_holdout.py`) did **not** swamp the signal, and the ECAPA
+nearest-voice mapping held in reserve for that case is **not needed**.
 
-If 0a shows the fine-tune lineage is genuinely compromised rather than merely
-unmeasured, the clean restart is warm-starting from `matcha_vctk.ckpt` — VCTK-trained,
-never saw LibriTTS-R, so v3c's frozen split is honest against it from the first step.
+**2. The v2 fine-tune genuinely generalized.** Its gain is concentrated exactly where it
+should be: `diff` — the flow-matching objective that actually generates the mel —
+improved **−0.0241, on 78.7% of clips**, while `dur`/`prior` gave back a little.
 
-**Be honest about the cost: this is a retrain, not a fine-tune.** `matcha_vctk` is
-22.05 kHz, VCTK speaker set, no VAT trunk — the decoder is effectively starting over at
-24 kHz with our conditioning. It buys a clean measurement, not a free one. *(An earlier
-verbal framing of this as "near-zero cost" was about abandoning the fine-tune lineage,
-which is cheap; the retrain is not.)* Defer it until 0a says whether it is needed.
+**3. The v3c fine-tune was a regression, not a no-op.** `vat3c_init → ep099` is
+**+0.0164** [+0.0148, +0.0180], better on only **39.1%** of clips, and **all three
+terms worsened** — there is no component it bought. It is monotone-ish from `ep009`
+onward, and `ep009` is statistically tied with the init it started from (−0.0006,
+CI spans zero). *The best checkpoint in the entire lineage is `vat3_ep099`.*
+
+**4. Same verdict on v3c's own val split**, which it trained on: `vat3c_ep099` loses to
+`vat3_ep099` by **+0.0443**, better on just **14.5%** of 960 clips. So this is not
+holdout-specific and not a distribution artifact — the run is worse everywhere under
+teacher-forced loss.
+
+**5. It is not a normalisation artifact.** Re-scored under the **v2** constants the
+checkpoint was trained with, the gap is +0.0172 against +0.0164 under v3c's. The
+asymmetry also ran *against* the conclusion — `vat3_ep099` won while being scored under
+constants it never saw.
+
+**6. `vat3c_init` is bit-identical to `vat3_ep099`** across all 5,463 clips (Δ = 0.0000,
+every clip). The warm start is now verified by measurement rather than by a 338/338 log
+line, which also means a checkpoint's per-clip numbers are reproducible within a run.
+
+This is consistent with the ear ("no audible change") and sharpens it: the ear could not
+resolve a 0.9% move, and the direction is *down*. It also lines up with the two findings
+that bracket it — the vocoder is transparent, so the gap is the acoustic model's; and
+the v2→v3c label change was tiny (corr ≥ 0.9993, a phoneme fix on 6.4% of rows). **100
+more epochs against ~30k clips a model was already fit to had almost no new signal to
+learn, so it sharpened to the training set instead.** That is the evidence Phase 1 was
+assuming: more epochs on this corpus is not the lever; more corpus is.
+
+**Actions.** Retire `vat3c_ep099` — do not stage or export it. `vat3_ep099`
+(= `vat3c_init`) stays the base and the warm start for Phase 1. Score every future
+checkpoint on the holdout as a matter of course; it costs ~100 min for eight checkpoints
+on an idle card and it is now the only honest number we have.
+
+### 0b — clean-lineage restart — **NOT INDICATED. Owner's call to ratify.**
+
+0b was conditional: *"if 0a shows the fine-tune lineage is genuinely compromised rather
+than merely unmeasured."* It does not. The lineage **generalizes** — finding 2 is a real
+gain on audio no checkpoint had seen, which is precisely what a compromised lineage
+could not produce. What 0a found is narrower and cheaper to fix: **one wasted run**, not
+a poisoned ancestry. Dropping `vat3c_ep099` recovers everything the restart would have.
+
+That matters because 0b is **a retrain, not a fine-tune**: `matcha_vctk` is 22.05 kHz,
+VCTK speaker set, no VAT trunk, so the decoder starts over at 24 kHz with our
+conditioning. *(An earlier verbal framing of this as "near-zero cost" was about
+abandoning the fine-tune lineage, which is cheap; the retrain is not.)* On this evidence
+that cost buys nothing the holdout does not already give us. **Recommendation: close 0b
+and go straight to Phase 1** from `vat3_ep099`. Reopen it only if a Phase 1 run with
+materially more data also fails to move the holdout, which would point at the ancestry
+rather than the corpus.
+
+### What the holdout is, and the one way to destroy it
+
+`data/libritts_r_holdout_devclean` is worth exactly one thing: no checkpoint has trained
+on it. One epoch ends that permanently, and there is no second dev-clean. The directory
+therefore ships with a `README.md` saying so, and `derive_vat_corpus.py`'s `train_op.txt`
+/ `val_op.txt` were **deleted** after concatenation into `holdout.txt`, so no file in it
+carries a name a training config would accept. Note that `configs/data_licenses.yaml`
+*does* declare it — the wall gates on provenance, not intent, and would happily let a run
+train on it. The naming is the guard.
 
 ---
 
@@ -183,7 +250,7 @@ This remains a spike, not a pivot: the decoder is ~7.6% of the codebase.
 
 | gate | question | consequence of the answer |
 |---|---|---|
-| after **0a** | do retained checkpoints separate at all on never-trained audio? | if not, the instrument is wrong before the model is — fix it before spending anything |
+| ~~after **0a**~~ **PASSED 2026-08-06** | do retained checkpoints separate at all on never-trained audio? | **yes** — `vat3_ep099` − `vat3_init` = −0.0111, CI excludes zero. Instrument is sound; 0b closed, Phase 1 proceeds from `vat3_ep099` |
 | after **1.1** | does +43% move the clean holdout? | no movement ⇒ likely capacity-limited, not data-limited ⇒ **promote Phase 2 ahead of the 10×** |
 | after **Phase 1** | is the vocoder still transparent? | re-run `copy_synth.py`; a better acoustic model can walk into the vocoder's ceiling unnoticed |
 | before **Phase 2** | is there a same-corpus U-Net baseline? | if not, the parity gate is unreadable — do not start |
