@@ -144,12 +144,16 @@ independent of #3 and can slot in whenever the parquet conversion is worth doing
 - **QC gate** after every generation pass, and **spin down all inference engines**
   before any run.
 
-### Still open, and it belongs to this phase
+### Closed 2026-08-06, before the phase started
 
-`train_diff_loss` 0.643 vs `val_diff_loss` 2.085 — a **3.2× gap** with no explanation.
-Ruled out: `out_size` (null on both paths) and clip-length distribution (near-identical).
-Whatever it is, it sits between us and reading any future curve, so it should be resolved
-alongside 0a rather than carried forward.
+`train_diff_loss` 0.643 vs `val_diff_loss` 2.085 — the **3.2× gap** — was E-M5. The
+diffusion loss summed its residual unmasked while the decoder masks its output, so every
+batch paid a floor proportional to its padding; train batches are length-bucketed and val
+batches are not, which is the whole of the "gap". `out_size` and clip-length distribution
+had already been ruled out and were right to be. `compute_loss` masks now, gradients
+unchanged, and `tests/test_training_seams.py` holds the curve honest. **Cost:** a second
+scale break in logged loss (after 2026-08-01's bucketing change) — nothing before this commit compares to anything after it,
+which is one more reason Phase 0a's holdout scoring is the real measurement.
 
 ---
 

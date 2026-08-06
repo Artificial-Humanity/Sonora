@@ -96,8 +96,9 @@ class TextMelDataModule(LightningDataModule):
         # E-M3: train_dataloader documents this as the bucketing off-switch and reads it
         # with getattr, but it was never an __init__ param — so yaml could not set it and
         # the getattr always returned its default. Declaring it makes the documented
-        # switch actually reachable, which matters because E-M5 means logged diff_loss is
-        # not comparable across the bucketing boundary: bisecting a curve needs the off.
+        # switch actually reachable. (It was declared to let a curve be bisected across
+        # the bucketing boundary; since the E-M5 masking fix, bucketing no longer moves
+        # the logged loss at all, so this is a throughput knob again and nothing more.)
         bucket_multiplier=20,
     ):
         super().__init__()

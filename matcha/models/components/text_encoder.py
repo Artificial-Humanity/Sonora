@@ -130,22 +130,31 @@ class RotaryPositionalEmbeddings(nn.Module):
         # Get sequence length
         seq_len = x.shape[0]
 
-        # $\Theta = {\theta_i = 10000^{-\frac{2(i-1)}{d}}, i \in [1, 2, ..., \frac{d}{2}]}$
-        theta = 1.0 / (self.base ** (torch.arange(0, self.d, 2).float() / self.d)).to(x.device)
+        # E-M6: build outside inference mode. `on_validation_end` synthesises under
+        # `@torch.inference_mode()`, and a cache first built (or grown) there is made of
+        # INFERENCE tensors. The next training step whose text is <= the cached length
+        # reuses them and autograd aborts the run with "Inference tensors cannot be saved
+        # for backward". `inference_mode(False)` nests legally inside an active inference
+        # region, so the cache is always an ordinary detached tensor no matter which mode
+        # first demanded it; `no_grad` keeps it out of the graph as before. Both are
+        # constants of position, so neither mode changes their value.
+        with torch.inference_mode(False), torch.no_grad():
+            # $\Theta = {\theta_i = 10000^{-\frac{2(i-1)}{d}}, i \in [1, 2, ..., \frac{d}{2}]}$
+            theta = 1.0 / (self.base ** (torch.arange(0, self.d, 2).float() / self.d)).to(x.device)
 
-        # Create position indexes `[0, 1, ..., seq_len - 1]`
-        seq_idx = torch.arange(seq_len, device=x.device).float().to(x.device)
+            # Create position indexes `[0, 1, ..., seq_len - 1]`
+            seq_idx = torch.arange(seq_len, device=x.device).float().to(x.device)
 
-        # Calculate the product of position index and $\theta_i$
-        idx_theta = torch.einsum("n,d->nd", seq_idx, theta)
+            # Calculate the product of position index and $\theta_i$
+            idx_theta = torch.einsum("n,d->nd", seq_idx, theta)
 
-        # Concatenate so that for row $m$ we have
-        # $[m \theta_0, m \theta_1, ..., m \theta_{\frac{d}{2}}, m \theta_0, m \theta_1, ..., m \theta_{\frac{d}{2}}]$
-        idx_theta2 = torch.cat([idx_theta, idx_theta], dim=1)
+            # Concatenate so that for row $m$ we have
+            # $[m \theta_0, m \theta_1, ..., m \theta_{\frac{d}{2}}, m \theta_0, m \theta_1, ..., m \theta_{\frac{d}{2}}]$
+            idx_theta2 = torch.cat([idx_theta, idx_theta], dim=1)
 
-        # Cache them
-        self.cos_cached = idx_theta2.cos()[:, None, None, :]
-        self.sin_cached = idx_theta2.sin()[:, None, None, :]
+            # Cache them
+            self.cos_cached = idx_theta2.cos()[:, None, None, :]
+            self.sin_cached = idx_theta2.sin()[:, None, None, :]
 
     def _neg_half(self, x: torch.Tensor):
         # $\frac{d}{2}$

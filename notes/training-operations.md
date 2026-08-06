@@ -35,10 +35,16 @@ catastrophic and are not: the MIOpen conv-tuning ramp took the baseline 37 → 2
 whole-run average** — doing that produced a false alarm on this launch. Compare the same
 step window on the previous run via MLflow `metrics/get-history`.
 
-**The val curve sits far above train, and that is expected.** Epoch 1: train 2.012, val
-3.425. It is E-M5, not overfitting — see [todo.md §1](todo.md). `diff_loss` is 0.646
-train vs 2.069 val while `dur_loss` and `prior_loss` match to three decimals, because
-the logged diff tensor is unmasked and only train batches are length-bucketed.
+**The vat3c val curve sits far above train, and that was an artefact — fixed 2026-08-06.**
+Epoch 1: train 2.012, val 3.425, with `diff_loss` 0.646 train vs 2.069 val while
+`dur_loss` and `prior_loss` matched to three decimals. That was E-M5, not overfitting:
+the logged diff tensor was summed unmasked, so it carried a floor proportional to each
+batch's padding, and only train batches are length-bucketed. `compute_loss` masks now
+(`matcha/models/components/flow_matching.py`, regression test
+`tests/test_training_seams.py`), which removes the floor from both curves and the gap
+with it. **Gradients never changed — but the logged numbers did, so no curve from before
+that commit can be compared against one after it.** Read vat3c's recorded values as
+history, not as a baseline.
 
 **Progress never reaches stdout** — Lightning's rich progress bar writes `\r`, so
 `docker logs` shows startup then silence. Read MLflow: `mlflow-local` on :5000, and the

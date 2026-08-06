@@ -27,9 +27,11 @@
 #   * .venv/bin/python scripts/test_vat_dim_seams.py — the vat_dim guards. This run is
 #     still 3-wide; the test is what keeps it honest when delivery makes it 4.
 #
-# Reading the loss curve: logged diff_loss carries a padding-fraction floor (E-M5) and
-# the 2026-08-01 bucketing change lowered it independent of model quality. Do NOT
-# compare this run's curve against anything from before that boundary.
+# Reading the loss curve: TWO discontinuities sit in logged diff_loss, neither of them a
+# model change — the 2026-08-01 bucketing change, and the 2026-08-06 E-M5 masking fix that
+# removed the padding-fraction floor (and with it the apparent 3.2x train/val gap). Do NOT
+# compare across either boundary. Anything logged by this run before 2026-08-06 is on the
+# old, inflated scale.
 
 defaults:
   - override /data: libritts_r_vat_v3c.yaml

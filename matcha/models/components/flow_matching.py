@@ -122,9 +122,19 @@ class BASECFM(torch.nn.Module, ABC):
         y = (1 - (1 - self.sigma_min) * t) * z + t * x1
         u = x1 - (1 - self.sigma_min) * z
 
-        loss = F.mse_loss(self.estimator(y, mask, mu, t.squeeze(), spks, cond), u, reduction="sum") / (
-            torch.sum(mask) * u.shape[1]
-        )
+        # E-M5: mask the residual before summing. `x1` is zero where the batch is padded
+        # but `z` is not, so `u` is pure noise there, while the estimator's output is
+        # masked to zero (Decoder returns `output * mask`). Summing unmasked therefore
+        # added `padded_frames / valid_frames` worth of noise energy to the number while
+        # contributing no gradient — a padding-fraction floor. It inflated val far more
+        # than train (train batches are length-bucketed since 2026-08-01, val is not), and
+        # so read as a train/val gap: vat3c epoch 1 logged diff 0.646 vs 2.069 while the
+        # masked terms `dur_loss` and `prior_loss` were indistinguishable. Multiplying by
+        # `mask` leaves gradients bit-identical (the pad positions were already zeroed on
+        # the backward path) and changes only what is logged — but it DOES lower the
+        # logged value, so diff/total curves are not comparable across this commit.
+        pred = self.estimator(y, mask, mu, t.squeeze(), spks, cond)
+        loss = F.mse_loss(pred * mask, u * mask, reduction="sum") / (torch.sum(mask) * u.shape[1])
         return loss, y
 
 

@@ -11,7 +11,11 @@ struck** (git history is the archive, per [README.md](README.md)); delete sectio
 empty. _Last pruned 2026-08-06 — the v3c config, the license-wall v3 entry, the
 delivery-channel seam assertions (E-M3, E-M1/F-H2/T8) and the zonos tier bank all landed
 and their records now live in [STATE.md](STATE.md) and
-[training-operations.md](training-operations.md)._
+[training-operations.md](training-operations.md). Later that day the two §1 blockers
+landed too: **E-M5** (the logged `diff_loss` is masked now, so the 3.2× train/val gap is
+gone and curves are again readable — but not across the fix) and **E-M6** (the RoPE cache
+is built outside inference mode). Both carry regression tests in
+[tests/test_training_seams.py](../tests/test_training_seams.py)._
 
 This file is **residue, not the plan.** What to do next, and in what order, is
 [quality-gap-plan.md](quality-gap-plan.md).
@@ -30,26 +34,13 @@ This file is **residue, not the plan.** What to do next, and in what order, is
       and re-run `scripts/test_vat_dim_seams.py` (13 checks) at every step — it is
       pre-placed precisely so a wrong width fails loudly at the filelist instead of
       quietly at the trunk. There is still **no delivery export story** (F-H2, §2).
-- [ ] **E-M5:** logged `diff_loss` carries a padding-fraction floor (the loss tensor is
-      unmasked; gradients are fine). The 2026-08-01 bucketing change lowered logged loss
-      independent of model quality — do not compare curves across that boundary.
-      **It also inflates the TRAIN/VAL GAP, and that is the form it will be misread in.**
-      `train_dataloader` uses the bucket sampler; `val_dataloader` does not (plain
-      `shuffle=False`), so val batches pad to their longest member while train batches
-      are length-grouped. Measured on vat3c epoch 1: `diff_loss` train 0.646 vs val
-      **2.069** (3.2×), while `dur_loss` (0.388 / 0.380) and `prior_loss` (0.978 / 0.975)
-      are indistinguishable. Only the padding-sensitive term diverges — real overfitting
-      would move all three. A val curve sitting far above train from step one is expected
-      here and is not evidence of anything. Fixing it means masking the logged loss, or
-      bucketing val too (which changes nothing about gradients either way).
-      **This is now blocking, not merely noted** — it sits between us and reading any
-      future curve, so [quality-gap-plan.md § Phase 1](quality-gap-plan.md) assigns it
-      alongside the Phase 0 holdout. The off-switch it needs (`bucket_multiplier`) is
-      settable from yaml as of 2026-08-04.
-- [ ] **E-M6:** RoPE cache built under `inference_mode` during `on_validation_end` can
-      crash the next training step ("Inference tensors cannot be saved for backward")
-      when the next batch's text is ≤ the cached length. Rebuild outside inference mode
-      or drop the cache on train re-entry.
+- [ ] **The loss curves before 2026-08-06 are a different measurement.** E-M5 landed:
+      `compute_loss` masks the residual, so `diff_loss` no longer carries the
+      padding-fraction floor that made val read 3.2× train. Both terms drop, train more
+      than val, and **nothing logged before the fix is comparable to anything after it** —
+      the 2026-08-01 bucketing boundary is now the second-oldest of two discontinuities in
+      the same metric. Listed here, not in the changelog only, because the next person to
+      open MLflow will otherwise read the step change as a training effect.
 - [ ] **Split contamination is historical and does not fix itself.** The hash split
       (`derive_vat_corpus._in_val`, 2026-08-02) is sound going forward, but every
       retained checkpoint warm-started through corpora whose splits were re-drawn, so
