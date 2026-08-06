@@ -4,13 +4,19 @@ Scripts that produce the four `.tflite` graphs used by the Android sample, from 
 
 ## Environment
 
+`uv` is this organization's Python standard ([AGENTS.md](../../AGENTS.md) §3) — no bare `pip`:
+
 ```bash
-pip install --no-deps matcha-tts diffusers einops conformer deep-phonemizer
-pip install litert-torch ai-edge-litert ai-edge-quantizer
+uv venv && uv pip install --python .venv/bin/python \
+    --no-deps matcha-tts diffusers einops conformer deep-phonemizer
+uv pip install --python .venv/bin/python litert-torch ai-edge-litert ai-edge-quantizer
 # checkpoints (auto-downloaded by the matcha-tts CLI, or):
 #   matcha_ljspeech.ckpt + generator_v1   (github.com/shivammehta25/Matcha-TTS-checkpoints v1.0)
 #   openphonemizer_best_model.pt           (hf://openphonemizer/ckpt/best_model.pt)
 ```
+
+Run host scripts as `.venv/bin/python …`, never `uv run` — `uv run` resolves against the repo
+`pyproject.toml` and ignores the inline PEP 723 blocks these scripts carry.
 
 ## Run
 
@@ -35,6 +41,12 @@ Outputs `artifacts/`: `matcha_textenc_fp16.tflite`, `matcha_decoder_fp16.tflite`
 ## Re-authoring → GPU-clean
 
 Every graph converts GPU-clean (per-graph tflite-vs-torch corr **1.000000**; end-to-end waveform corr ≥0.99). Fixed shapes (256 phonemes, 512 mel frames) with a runtime float mask let one compiled graph handle any length. See `build_matcha.py` for the op-by-op recipe.
+
+⚠ **This is the 22.05 kHz Phase-0 lane.** The 24 kHz / multi-speaker / VAT converter is
+`convert_vat.py`, which lives in the working directory at `/data/toolchain/litert-conversion/`
+rather than here. Before trusting either, read [notes/todo.md](../../notes/todo.md) §2: the gate
+suite prints PASS/FAIL and **exits 0 regardless**, and valence/tension have never been driven
+nonzero through a converted graph.
 
 ## Provenance
 

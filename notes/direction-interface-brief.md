@@ -129,69 +129,25 @@ spin-down rule. Spike first: ~100 clips (50 certified + 50 LibriTTS-R), owner-au
 3. **Span-level FiLM extension** — per-token (or per-span) conditioning in Matcha; architecture
    work with its own de-risk (the §7 playbook applies).
 
-## 7 · Open questions for the planning session
+## 7 · What was open here, and where it landed
 
-- ~~Labeler model?~~ **Weighed 2026-07-19 (owner asked: on-disk 26B-A4B vs
-  [DiffusionGemma-26B-A4B-it](https://hf.co/google/diffusiongemma-26B-A4B-it) vs dense
-  [Gemma 4 31B-it](https://hf.co/google/gemma-4-31B-it); primary lens = the markup task,
-  secondary = post-check/judge).** All three Apache-2.0. Facts from the cards 2026-07-19:
-  DiffusionGemma = block-diffusion (256-token canvas, ≤48 denoise steps, ~15–20 tok/**forward
-  pass** → >1100 tok/s on H100 FP8), 256K ctx, GGUF/ollama quantizations exist, but benchmarks
-  trail the AR line (MMLU-Pro 77.6 vs 82.6; reasoning much weaker, AIME 69.1 vs 88.3) and the
-  card documents **no constrained-decoding / JSON-schema story**. 31B dense = best quality,
-  ~10–15 tok/s on this box (q4 ≈ 17 GB, bandwidth-bound).
+All five questions this section carried are now answered elsewhere. Kept as a
+one-line-each index rather than the original deliberation, which ran to five pages of
+DiffusionGemma serving analysis for a model that never became servable.
 
-  | | AR 26B-A4B (on disk) | DiffusionGemma 26B-A4B | Dense 31B |
-  |---|---|---|---|
-  | Bulk markup throughput (this box) | ~58 tok/s, proven | potentially **several-fold faster** (multi-token/pass; same ~4B-active bandwidth cost) — the one lever that matters at Emilia scale | ~4–6× slower than MoE |
-  | Schema discipline | proven (director-pass, clean JSON w/ template) | **unproven**; no documented constrained decoding — malformed-rate is the make-or-break metric | proven family behavior |
-  | Task quality (bounded fusion, verifier-backed) | sufficient (spike-validated) | likely sufficient — reasoning gap matters little here; verifier bounds the risk | best, likely unneeded margin |
-  | Serving | live today (ollama ROCm) | GGUF/ollama exists upstream; needs ROCm/gfx1151 validation (mmap-gotcha territory) + ollama version check | same stack as 26B, just slower |
-  | Judge/post-check fit | fallback | **worst fit** (weakest reasoning; judging is the one reasoning-ish step) | **best fit** — quality per short output, throughput irrelevant |
+| question | answer | lives in |
+|---|---|---|
+| Labeler model? | **e4b for volume, 31b for judgement.** Measured twice — the MoE emits 13/100 malformed JSON where dense emits 0/100 (2026-07-29), and on skill-file *obedience* the 31b scored 24/24 where the MoE managed 8/24 and e4b 5/24 (2026-08-02). **e4b was tested and is NOT the director.** DiffusionGemma was never servable (`diffusion_gemma` unsupported by ollama; upstream lives in an unmerged llama.cpp PR as a CLI) and is not pursued. | [book-prose-lane.md § Director model](book-prose-lane.md) |
+| Inline tags vs sidecar JSON? | **Sidecar is canonical; inline is a rendered projection**, never authored, never parsed back. Ratified v0.1. | [markup-schema-brief.md §1](markup-schema-brief.md) |
+| Which corpus first? | The certified synthetic set — smaller, intended direction known, closes the loop fastest. Ran as the 100-clip spike: **PASS at 93%**, 89/96 kept. | [markup-schema-brief.md §5](markup-schema-brief.md) |
+| Does the Audience listener train from the same pairs now or later? | **Later.** Goal 6 is a parked vision note; nothing is scheduled. | [high-ambition-6](high-ambition-6-audience-conveyance-stt.md) |
+| Where does reverse-conveyance run? | `scripts/derive_markup_measures.py` is the notation half and exists (30,541 rows). ⚠ It is **frozen at v2 paths** and mis-keys the contiguous v2 index under `"speaker"` — a trap for the span-markup spike (D-L5). | [todo.md §8](todo.md) |
 
-  **Recommendation:** spike all three on the ~100-clip calibration bed (cheap). Bulk pass:
-  AR 26B-A4B stays default; **DiffusionGemma replaces it only if** its malformed-JSON rate ≤
-  the AR model's and label agreement is within noise — in which case it meaningfully cuts the
-  bulk/Emilia-scale cost. **Judge/hard-case escalation: dense 31B** regardless (note: the
-  instrument verifier remains the only truly independent check — an all-Gemma
-  generator+judge pair shares family blind spots). Infilling-style inline markup (frozen text,
-  denoised tags) is a tantalizing DiffusionGemma fit but undocumented — treat as a stretch
-  experiment, not a plan. Production-Director dogfooding: all three are Gemma-family; the E2B
-  sibling ships AR, which mildly favors AR labelers for behavioral transfer.
-  **Owner concurrence (2026-07-19): stay all-Gemma** — valuable for the Gemma end-state
-  (dogfooding/behavioral transfer), *explicitly not* valuable as "peer review." Family
-  self-review is not independent review; the instrument round-trip verifier is the only
-  independent check in the loop, and the design should keep treating it as load-bearing.
-  All three candidates now in the reference library (`/data/models/{Google,unsloth}/…`,
-  pulled 2026-07-19).
-
-  **Serving status (2026-07-19):**
-  - `gemma-4-26b-a4b-qat` — live in ollama (~58 tok/s, proven).
-  - `gemma-4-31b-qat` — **registered + smoke-tested: 11.6 tok/s measured** (predicted 10–15).
-    Source GGUF at `/data/models/Google/gemma-4-31B-it-qat-q4_0-gguf/` (same Modelfile template, num_ctx 8192; the ollama staging hardlink dir was pruned 2026-07-23).
-  - `diffusiongemma-26b-a4b` — **GGUF on disk but NOT servable by ollama**: the
-    `diffusion_gemma` arch is an open ollama feature request (ollama/ollama#16664, no support
-    as of 0.32.1 — not fixable by a version bump). Serving landscape (checked 2026-07-19):
-    DiffusionGemma lives in **llama.cpp PR #24423** as a dedicated `llama-diffusion-cli`
-    binary — NOT merged into mainline `llama-server`. That single fact rules out every
-    llama.cpp-wrapping server at once: ollama (#16664 open) **and Lemonade** (installed on
-    the box as the `lemonade-server` container; its LLM path is stock `llama-server` on
-    Vulkan/ROCm — no mainline support, nothing to wrap; a CLI is not a server either way).
-    Actual options when the spike needs it:
-    (a) **build PR #24423 with ROCm and drive `llama-diffusion-cli` as a batch tool** —
-    cheapest path and a good fit: the reverse-conveyance pass is a batch job (like the
-    `synth_*.py` renderers), it does not need an OpenAI endpoint;
-    (b) **vLLM-ROCm with the original safetensors** (~52 GB pull) — the only true *server*
-    support today (natively integrated; community ~800 tok/s on NVIDIA), at the cost of a
-    gfx1151 vLLM bring-up;
-    (c) wait for the PR to merge → ollama/Lemonade inherit it. Re-create the Modelfile from
-    `/data/models/unsloth/diffusiongemma-26B-A4B-it-GGUF/` alongside the source GGUF for that day (staging dir pruned 2026-07-23).
-- Schema shape: inline tags vs sidecar JSON? (Compiler prefers sidecar; humans prefer inline.)
-- Which corpus first — LibriTTS-R expressive subset, or the certified synthetic set (smaller,
-  intended-direction known, closes the loop fastest)?
-- Does the Audience listener train from the same pairs immediately (dual-use now) or later?
-- Where does reverse-conveyance run in the pipeline — a `derive_markup_corpus.py` sibling of
-  `derive_vat_corpus.py`?
+**Still genuinely open**, and it is the one thing this brief did not solve: the **span
+decode layer**. Per-token pitch/energy/duration and pause structure do not exist in the
+notation store, so every span-typed field in SCM v0.1 is `checked: []` — present in the
+schema, unverifiable in practice. That is §6 item 3, and Contract v2 puts the span-markup
+spike ahead of span-FiLM.
 
 Cross-refs: [vat-channels.md](vat-channels.md) ·
 [book-prose-lane.md § Part 1 — Operations](book-prose-lane.md) (director-pass) ·

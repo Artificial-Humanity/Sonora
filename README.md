@@ -59,19 +59,33 @@ Training is structured in sequential phases to isolate complexity:
 * **Process:** Configure data configs, execute the training loop via `python matcha/train.py`, and inspect Tensorboard outputs under `outputs/`.
 
 ### Phase 2: Export & On-Device Validation
-* **Goal:** Confirm the split-graph `litert-torch` export (Plan A since 2026-07-12) produces GPU-clean `.tflite` graphs; `torch → ONNX` + `onnx2tf` is the fallback. See [`scripts/litert_export/`](scripts/litert_export/).
+* **Goal:** Confirm the split-graph `litert-torch` export (Plan A since 2026-07-12) produces GPU-clean `.tflite` graphs — three graphs (text encoder / decoder / vocoder) at fixed shapes with the ODE loop host-side. `torch → ONNX` + `onnx2tf` is the Plan B monolith. See [`scripts/litert_export/`](scripts/litert_export/).
 * **Process:**
-  1. Export checkpoint to ONNX: `python -m matcha.onnx.export`
-  2. Validate that the exported model loads and synthesizes speech accurately inside your target runtime.
+  1. Convert with the split-graph recipe (`convert_final.py` for the 22.05 kHz baseline, `convert_vat.py` for 24 kHz/multi-speaker/VAT). `python -m matcha.onnx.export` is the Plan B path, not the default.
+  2. Validate per-graph parity (corr ≈ 1.0) and end-to-end waveform parity against torch, then that the graphs load and synthesize in the target runtime.
+* **Status:** verified at parity on Phase 0 and on the de-risk checkpoint. ⚠ The gate suite currently *reports* rather than *refuses*, and valence/tension have never been driven nonzero through a converted graph — see [`notes/todo.md`](notes/todo.md) §2 before trusting it.
 
 ### Phase 3: Directability (VAT Conditioning)
 * **Goal:** condition on `(valence, energy, tension)` — energy occupies the arousal slot — via zero-init FiLM in the text encoder and flow decoder.
-* **Status: shipped.** The de-risk run validated the architecture on energy (rho ~ 1.000, 2026-07-16); the full 3-channel run (`vat3-24k`, 2026-07-22) landed energy PASS, tension near-pass, **valence FAIL** — a corpus-label limit, not an architectural one.
+* **Status: shipped.** The de-risk run validated the architecture on energy (rho ~ 1.000, 2026-07-16); the full 3-channel run (`vat3-24k`, 2026-07-22) landed energy PASS, tension near-pass, **valence FAIL** — a corpus-label limit, not an architectural one. `vat3c` (2026-08-06) re-ran the three channels on a phoneme-corrected corpus and changed nothing audible.
 * **Process:** Implement FiLM/AdaLN modulation on the text encoder + flow decoder, preprocess training data with VAT labels, and retrain.
 
-### Phase 4: Casting & Speaker Embedding Blends
+### Phase 4: Delivery — the 4th conditioning channel
+* **Goal:** one of `{Dialogue, Neutral, Documentary, Newscaster, Speech}` + `unknown`, embedded host-side onto the same zero-init FiLM path (Director↔Actor contract v2).
+* **Status:** corpus complete (1,189 labelled keeps), **model core not started** — `vat_dim` is still 3. Seam assertions are pre-placed and proven to fire (`scripts/test_vat_dim_seams.py`).
+
+### Phase 5: Casting & Speaker Embedding Blends
 * **Goal:** Re-derive continuous voice casting spaces (e.g., age, masculinity, strain) in speaker-embedding space.
 * **Process:** Train speaker-embedding Look-Up Tables (LUTs) for anchor voices and map the casting grid to this space.
+
+---
+
+## 🧭 Where the engineering notes live
+
+This README is the setup guide. The internal record — architecture canon, current state,
+what runs next — is in [`notes/`](notes/), mapped one line per file in
+[`notes/README.md`](notes/README.md). Start at [`notes/STATE.md`](notes/STATE.md).
+Agent/developer entry point: [`AGENTS.md`](AGENTS.md).
 
 ---
 

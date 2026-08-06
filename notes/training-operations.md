@@ -3,21 +3,30 @@
 _The operational "how" of model training: what runs where, how to launch/observe/stop/resume,
 and the standing verification gates. Model **selection** rationale lives in
 [model-decisions.md §5](model-decisions.md); machine provisioning in
-[../Ai-Lab-0/machine-setup.md](../../../AI-Lab-AMD/notes/machine-setup.md); stack config is
-[AI-Lab-AMD/docker-compose.yml](../../../AI-Lab-AMD/docker-compose.yml). Created 2026-07-14 during the
-de-risk phase start; keep the "Current runs" table honest._
+[AI-Lab-AMD/notes/machine-setup.md](../../../AI-Lab-AMD/notes/machine-setup.md); stack config is
+[AI-Lab-AMD/docker-compose.yml](../../../AI-Lab-AMD/docker-compose.yml). What to run **next** and
+why is [quality-gap-plan.md](quality-gap-plan.md). Created 2026-07-14 during the de-risk phase
+start; keep the "Runs to date" table honest._
 
-## Current runs (update when this changes)
+_Last updated: 2026-08-06._
 
-| Run | Container | State (2026-07-21) | Purpose |
+## Runs to date
+
+**Nothing is training right now.** Every row below is stopped or complete; no run is queued.
+
+| Run | Container | State | Purpose |
 |---|---|---|---|
-| HiFi-GAN 24 kHz/80-band fine-tune | `vocoder_training` | **STOPPED 2026-07-15 @ g_02510000** — convergence watcher fired CONVERGED, A/B pairs human-audited (indistinguishable), checkpoint promoted (see below). Watcher timer disabled. | The 24 kHz vocoder ([decision](model-decisions.md)) |
-| §7 de-risk energy fine-tune | `sonora_training` | **STOPPED 2026-07-16 @ checkpoint_epoch=099** — convergence watcher fired CONVERGED (all 4 sweep groups, real margin: energy ρ≈1.000, WER Δ≤0.042, leakage≤0.091), sweep renders human-audited (energy/loudness discernible, natural). Training had continued to epoch 106 before being stopped; epoch 099 is the promoted checkpoint. Watcher timer disabled. | One trained FiLM channel (energy) |
-| vat3 full 3-channel fine-tune | `sonora_training` | **STOPPED 2026-07-21 @ checkpoint_epoch=099** (owner call after the corrected audition; run had reached ~epoch 101 on a val-loss curve flat since epoch ~5). Verdict: energy PASS (ρ=1.0 ×4), tension near-pass (ρ=1.0 ×2, 0.90 ×2), **valence FAIL** (ρ scattered — labels, not steps, are the binding constraint). Eval-harness valence measure was found degenerate (raw EIV head, 81% dead zone) and switched to the valence_combo_v1 9-head combo mid-audit; both reports kept. Staged to `Sonora/huggingface/vat3-24k/`; full resumable ckpt retained on host as the **v1.1 Emilia-continuation warm start**. MLflow run `wistful-dolphin-948` marked FINISHED. | First full-VAT (V/A/T) checkpoint; seed for v1.1 |
+| HiFi-GAN 24 kHz/80-band fine-tune | `vocoder_training` | **STOPPED 2026-07-15 @ g_02510000** — convergence watcher fired CONVERGED, A/B pairs human-audited (indistinguishable), checkpoint promoted. Watcher timer disabled. Confirmed 2026-08-06 by copy-synthesis to be **perceptually transparent** — the vocoder is not the quality bottleneck ([quality-gap-plan.md](quality-gap-plan.md)). | The 24 kHz vocoder ([decision](model-decisions.md)) |
+| §7 de-risk energy fine-tune | `sonora_training` | **STOPPED 2026-07-16 @ checkpoint_epoch=099** — watcher fired CONVERGED (all 4 sweep groups, real margin: energy ρ≈1.000, WER Δ≤0.042, leakage≤0.091), sweep renders human-audited (energy/loudness discernible, natural). Training had continued to epoch 106; epoch 099 is the promoted checkpoint. Watcher timer disabled. | One trained FiLM channel (energy) |
+| vat3 full 3-channel fine-tune | `sonora_training` | **STOPPED 2026-07-21 @ checkpoint_epoch=099** (owner call after the corrected audition; run had reached ~epoch 101 on a val-loss curve flat since epoch ~5). Verdict: energy PASS (ρ=1.0 ×4), tension near-pass (ρ=1.0 ×2, 0.90 ×2), **valence FAIL** (ρ scattered — labels, not steps, are the binding constraint). Eval-harness valence measure was found degenerate (raw EIV head, 81% dead zone) and switched to the valence_combo_v1 9-head combo mid-audit; both reports kept. Staged to `Sonora/huggingface/vat3-24k/`. MLflow run `wistful-dolphin-948` FINISHED. | First full-VAT (V/A/T) checkpoint |
+| **vat3c fine-tune** | `sonora_training` | **COMPLETE 2026-08-06 @ epoch=099** — 100 epochs, run `2026-08-05_15-02-57`, exit 0. Same three FiLM channels on the corrected corpus (`libritts_r_vat_v3c`, 30,485 train clips: apostrophe-clean phonemes, per-clip hash split, `data_statistics` measured on this split — mel_mean −5.525067 / mel_std 2.388571 vs v2's −5.504811 / 2.386137). Warm-started **338/338, 0 fresh** from vat3-24k ep099. Repo at `25a0f68`; seam test 13/13 in-container before launch. **Verdict: the fine-tune bought nothing audible** — the `op_g2p` fix was the whole fix and the retrain was never needed ([quality-gap-plan.md](quality-gap-plan.md)). | The v3c baseline, and the last 3-wide run before the delivery channel |
 
-| **vat3c fine-tune** | `sonora_training` | **LAUNCHED 2026-08-04 13:19** — same three FiLM channels on the corrected corpus (`libritts_r_vat_v3c`, 30,485 train clips: apostrophe-clean phonemes, per-clip hash split, `data_statistics` **measured** on this split — mel_mean −5.525067 / mel_std 2.388571 vs v2's −5.504811 / 2.386137). Warm-started **338/338, 0 fresh** from vat3-24k ep099 (identical architecture). Repo at `25a0f68`; seam test 13/13 in-container before launch. | The v3c baseline, and the last 3-wide run before the delivery channel |
+> The 2026-08-04 13:19 launch of this same run is not a separate row: the E610 NIC fault killed it
+> at ~4.5 h and then crash-looped it 2,077 times. That is a host fault, and it is written up in
+> [AI-Lab-AMD/notes/host-networking.md](../../../AI-Lab-AMD/notes/host-networking.md); the
+> `&&`-in-the-prep-chain half of it is fixed in compose (see § Checkpoint and resume settings).
 
-### Reading the vat3c curve
+### Reading a Matcha training curve (learned on vat3c)
 
 **Settled at ~0.62 s/step** (measured steps 2099–2349), against the vat3 baseline's 2.11
 s/step whole-run average — roughly 3.4× faster, on ~950 steps/epoch. Early steps look
@@ -35,10 +44,28 @@ the logged diff tensor is unmasked and only train batches are length-bucketed.
 `docker logs` shows startup then silence. Read MLflow: `mlflow-local` on :5000, and the
 API needs `-H 'Host: mlflow.ai-lab-0.mcfarlin.family'` or it refuses as DNS rebinding.
 
-⚠ **`every_n_epochs: 100`** in the ModelCheckpoint callback — **nothing lands on disk
-until epoch 99**, `save_last` included, so a crash at epoch 80 loses the run. Long
-standing and unchanged (the vat3 run had it too); left alone mid-flight, but it should
-be a deliberate choice next time rather than an inherited one.
+### Checkpoint and resume settings — CHANGED 2026-08-06, read before quoting an old note
+
+The `configs/callbacks/default.yaml` shipping default is still `every_n_epochs: 100`, which
+means **nothing lands on disk until epoch 99**, `save_last` included — a crash at epoch 80
+loses the run. That is what the vat3 and the first vat3c launches inherited, and it is what
+made the NIC fault cost 4.5 h instead of 40 minutes.
+
+The compose command now **overrides it on the CLI**, so a run launched through
+`docker compose --profile training up -d sonora_training` gets:
+
+| override | value | why |
+|---|---|---|
+| `callbacks.model_checkpoint.every_n_epochs` | **10** | ~635 s/epoch, so worst-case loss is ~1.8 h, not the whole run |
+| `callbacks.model_checkpoint.save_top_k` | **-1** | keep every checkpoint; the default 10 evicts by epoch, and we select by ear, not by `monitor` |
+| `ckpt_path` | `/data/model-training/sonora/resume.ckpt` | a symlink the command re-points at the newest `checkpoint_epoch=*.ckpt`, falling back to the warm-start init — so a restart resumes instead of starting over |
+
+Two consequences worth holding on to. **A run launched any other way still gets 100** — the
+override lives in the compose `command:`, not in the repo config. And **the prep chain is now
+non-fatal**: it was `apt-get update && … && python3 -m matcha.train`, so an unreachable network
+aborted the chain before training started while `restart: unless-stopped` retried forever. It is
+braced and `|| echo`'d now. *A hardware fault is the event that finds every `&&` in a container
+command.*
 
 ### Two things bit on the vat3c launch — read before the next one
 
@@ -63,29 +90,27 @@ deploying nothing. Reset to `origin/main` 2026-08-04; the old head is tagged
 `pre-reset-20260804` in that clone. **A clone that cannot fast-forward is a clone that
 is not deploying** — check `deploy.sh` output rather than assuming it ran.
 
-**No run queued behind this one.** Unlike vocoder→derisk_energy, there's no preset "next
-container to launch." Both promoted checkpoints (`Sonora/huggingface/vocoder-24k-hifigan/`,
-`Sonora/huggingface/derisk-energy-24k/`) are staged locally, not pushed to the public HF repo — same
-open question for both: they're validated *components* (a standalone vocoder; one VAT channel of
-three), not the shippable directable-actor deliverable, so publishing them sets a registry
-precedent worth a deliberate call rather than a default push. The real next steps are scope
-decisions, not mechanical continuations:
+**No run is queued.** There is no preset "next container to launch," and what *should* run next
+is a sequencing question rather than a mechanical one — it is decided in
+[quality-gap-plan.md](quality-gap-plan.md), not here. Two things this runbook still owes:
 
-1. ~~Export gate does not apply yet.~~ **Adapted 2026-07-16:**
-   `/data/toolchain/litert-conversion/convert_vat.py` converts the derisk checkpoint + 24k
-   vocoder to the split-graph lane (new graph inputs: `spk(1,64)` host-lookup vector +
-   `vat(1,3,T)`; decoder `t_emb` is 224-dim, not 160 — multi-speaker widens the U-Net). All
-   gates pass: per-graph corr 1.000000, e2e waveform corr ≥ 0.9993, energy monotonic through
-   the TFLite pipeline, all graphs GPU-clean. Artifacts staged in
-   `Sonora/huggingface/derisk-energy-24k/litert-split/`. Shapes stay 256/512 pending the
-   [model-decisions.md § The size target](model-decisions.md) ceiling options.
-2. **Full 3-channel VAT is gated on a corpus decision**, not just more training: valence/tension
-   need labeled data the current corpus doesn't have, and Expresso (the expressive dataset on
-   hand) is NC-tainted and can't ship. de-risk validated the FiLM/VAT *plumbing* on one clean
-   channel — it didn't create a path to the other two.
-3. **Formal §7 write-up** of the de-risk verdict is still open (numbers are in
-   `Sonora/huggingface/derisk-energy-24k/eval_report.json`; this table + the promotion commit are the
-   only record so far).
+1. **Promotion is an open owner call, not a backlog item.** All promoted checkpoints
+   (`Sonora/huggingface/vocoder-24k-hifigan/`, `derisk-energy-24k/`, `vat3-24k/`) are staged
+   locally and not pushed to the public HF repo. Same question for each: they are validated
+   *components* (a standalone vocoder; one VAT channel of three), not the shippable directable
+   actor, so publishing sets a registry precedent worth a deliberate call.
+2. **The formal §7 write-up of the de-risk verdict is still open.** Numbers are in
+   `Sonora/huggingface/derisk-energy-24k/eval_report.json`; the table above plus the promotion
+   commit are the only record.
+
+The export lane is adapted but **not re-run against vat3c**: `convert_vat.py` converts the
+derisk checkpoint + 24k vocoder to the split-graph lane (graph inputs `spk(1,64)` host-lookup
+vector + `vat(1,3,T)`; decoder `t_emb` is 224-dim, not 160 — multi-speaker widens the U-Net) at
+per-graph corr 1.000000, e2e waveform corr ≥ 0.9993, energy monotonic through TFLite, all graphs
+GPU-clean. Shapes stay 256/512 pending the
+[model-decisions.md § The size target](model-decisions.md) ceiling options. **Re-run it after any
+fine-tune**, and note the lane's gates currently *report* rather than *refuse*
+([todo.md §2](todo.md)).
 
 **Build note (2026-07-15, kept for future watchers):** the derisk_energy watcher
 (`render_vat_sweep.py` + `derisk_gate_watch.sh` + postprocess + timer) was built and armed before
@@ -108,18 +133,21 @@ pushes deploy nothing; deploys are explicit via `AI-Lab-AMD/scripts/deploy.sh`.)
 | `sonora_vocalizer` (inference/dev, CPU) | — (auto) | part of the normal stack |
 
 All use `rocm/pytorch:latest`, `/dev/kfd` + `/dev/dri`, and bootstrap deps via `uv pip install
---python /opt/venv/bin/python` in the container command (AGENTS §7). **Stop** a run with
+--python /opt/venv/bin/python` in the container command ([AGENTS.md](../AGENTS.md) §3 — uv, and
+`--python`, never `--system`). **Stop** a run with
 `docker stop <container>` (or `compose stop`); both trainers checkpoint and resume cleanly.
 
 ## Locations
 
 | What | Where |
 |---|---|
-| Datasets (license classes: `Sonora/configs/data_licenses.yaml`) | `/data/model-training/datasets/` (`LJSpeech-1.1`, `LibriTTS_R/train-clean-100`, `expresso` — NC, de-risk only) |
+| Datasets (license classes: `Sonora/configs/data_licenses.yaml`) | `/data/model-training/datasets/` (`LJSpeech-1.1`, `LibriTTS_R/train-clean-100`, `expresso` — NC, de-risk only). Full inventory + state: [training-sources.md](training-sources.md) |
 | Matcha training logs/checkpoints | `/data/model-training/sonora/logs/train/<experiment>/runs/<stamp>/checkpoints/` (bound over `Sonora/logs`) |
-| Warm-start checkpoints | `/data/model-training/sonora/warmstart/` (`matcha_vctk.ckpt` donor, `derisk_energy_init.ckpt` built by `scripts/make_warmstart.py`) |
+| Warm-start checkpoints | `/data/model-training/sonora/warmstart/` (`matcha_vctk.ckpt` donor — 22.05 kHz VCTK, so warm-starting from it is a **retrain**, not a fine-tune; `derisk_energy_init.ckpt` / `vat3c_init.ckpt` built by `scripts/make_warmstart.py`) |
+| Auto-resume symlink | `/data/model-training/sonora/resume.ckpt` — re-pointed by the compose command at every start |
 | Vocoder workspace | `/data/model-training/vocoder/` (`hifi-gan/` clone with local patches, `filelist_{train,val}.txt`, `cp_hifigan_24k/` checkpoints, `copysynth*/` gate reports, `pretrained/` originals) |
-| Derived VAT filelists | `Sonora/data/libritts_r_vat/` (`{train,val}_op.txt`, `speakers.json`, `derivation_report.json`, `mel_statistics.json`) |
+| Derived VAT filelists | `Sonora/data/libritts_r_vat_v3c/` (`{train,val}_op.txt`, `speakers.json`, `derivation_report.json`, `mel_statistics.json`) — and the `_v1`/`_v2`/`_v3`/`_v3b` siblings. ⚠ `Sonora/data` is an untracked symlink; a deploy clone needs the directory bound explicitly |
+| Measurement harnesses | `/data/model-training/sonora/eval_phoneme_fix/` (paired per-clip scoring, blind A/B, copy-synthesis — the 2026-08-06 diagnostics) |
 
 ## Observability
 
@@ -266,11 +294,12 @@ rw mount for the matcha install).
 
 ## Cross-references
 
+[quality-gap-plan.md](quality-gap-plan.md) (what to run next) ·
+[training-sources.md](training-sources.md) (what it trains on) ·
 [model-decisions.md § Sample rate](model-decisions.md) ·
-[vat-channels.md](vat-channels.md) ·
-[dataset-landscape.md](dataset-landscape.md) · [STATE.md](STATE.md) ·
+[vat-channels.md](vat-channels.md) · [STATE.md](STATE.md) ·
 [next-steps §B](../../../Prosodia/notes/next-steps.md) ·
-[../Ai-Lab-0/machine-setup.md](../../../AI-Lab-AMD/notes/machine-setup.md)
+[AI-Lab-AMD/notes/machine-setup.md](../../../AI-Lab-AMD/notes/machine-setup.md)
 
 ## Registry promotion conventions
 

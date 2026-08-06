@@ -7,9 +7,12 @@ commit that changes architectural behavior (corpus rules, contract, gates, promo
 this file in the same commit. Detail lives in the linked docs; what is written HERE is what's
 pinned._
 
-_Established by the Phase 0 (baseline-ljspeech-22k) and §7 de-risk (derisk-energy-24k) lineages; every
-pinned item below has shipped at least once except the v2 Delivery row (first implementation:
-the next training run). Last updated: 2026-08-02._
+_Established by the Phase 0 (baseline-ljspeech-22k) and §7 de-risk (derisk-energy-24k) lineages;
+every pinned item below has shipped at least once **except the v2 Delivery row, which is still
+unimplemented** — `vat_dim` is 3 in every checkpoint to date, `vat3c` (2026-08-06) included. The
+seam assertions that make the migration safe are pre-placed and proven to fire
+(`scripts/test_vat_dim_seams.py`); the migration itself is [todo.md §1](todo.md).
+Last updated: 2026-08-06._
 
 ---
 
@@ -69,8 +72,8 @@ Contract changes bump the version and require an owner call.
 * **Label recipe (validated by the energy channel, ρ ≈ 1.000):** weak labels suffice. Continuous
   measures per utterance → **per-speaker z-score** → clamp/scale to [−1, 1]. Energy = LUFS.
   Valence = EIV pseudo-labels; tension = phonation composite (pressed↔breathy)
-  ([vat-channels.md](vat-channels.md),
-  [vat-channels.md](vat-channels.md) — both approved 2026-07-16).
+  ([vat-channels.md](vat-channels.md) §2 and §3 — both approved 2026-07-16; T rescoped
+  LAX ↔ TIGHT 2026-07-20).
 * **Channel independence gate:** per-speaker |corr| < 0.3 between any two channels' labels,
   else residualize and re-check.
 * **Calibration before training:** anchor new labels against a known-ground-truth set
@@ -98,8 +101,12 @@ Contract changes bump the version and require an owner call.
 
 Full runbook: [training-operations.md](training-operations.md). Pinned:
 
-* One trainer on the GPU at a time; profile-gated compose services; deploy = push to main.
+* One trainer on the GPU at a time; profile-gated compose services. **Deploy is explicit** —
+  GitOps was retired 2026-07-22, so a push to main deploys nothing; use
+  `AI-Lab-AMD/scripts/deploy.sh`.
 * MLflow logging, unbuffered stdout.
+* **Spin down every inference engine first** — the Gemma director, every `synth_*` renderer,
+  the Vocalizer. Standing rule, not a courtesy: they share the one GPU.
 * **Convergence watcher wired BEFORE launch** (systemd timer → CPU-only throwaway container →
   postprocess → `history.jsonl` + CONVERGED marker). The watcher never auto-stops the trainer;
   stopping is a human act after audit. The first flip to CONVERGED also fires a **one-shot

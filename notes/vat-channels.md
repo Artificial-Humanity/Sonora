@@ -1,9 +1,14 @@
 # VAT channels — mechanism, labels, semantics, outcomes
 
-> **Consolidated 2026-07-26** from `vat-channels.md` + `vat-channels.md`
-> + `vat-channels.md`. Three closed decision briefs about ONE object — the three
-> conditioning channels — that cross-referenced each other in every footer. A reader chasing
-> "what does T mean and where do its labels come from" needed all three open.
+> **Consolidated 2026-07-26** from `vat-conditioning-design.md` (§1) +
+> `vat-corpus-and-labels.md` (§2) + `tension-semantics.md` (§3) — git history has them under
+> those names. Three closed decision briefs about ONE object, the three conditioning channels,
+> that cross-referenced each other in every footer: a reader chasing "what does T mean and
+> where do its labels come from" needed all three open.
+>
+> **The sections below are §1/§2/§3 of this file.** Where the original briefs pointed at each
+> other by filename, they now point at the section. (A rename pass in July rewrote those
+> cross-references into links to this file itself; fixed 2026-08-06.)
 
 **Current standing (2026-07-22, `vat3-24k`):** energy **PASS**, tension **near-pass**, valence
 **FAIL** — attributable to corpus labels, not training. That failure is what opened the directed
@@ -130,8 +135,8 @@ suffice. Keep human ears for the small calibration set and the final audition ga
 **B**, phased:
 1. **Tension semantics first** (small design task): pin down what T means acoustically before
    deriving it — the design docs define the plumbing but not the perceptual target. Done as its
-   own brief: [vat-channels.md](vat-channels.md) (recommends phonation
-   tension, pressed↔breathy — awaiting the same owner call as this brief).
+   own brief, now **§3 below** (recommends phonation tension, pressed↔breathy — awaiting the
+   same owner call as this brief).
 2. **Label LibriTTS-R with EIV-Large** (CPU/GPU batch job, same class as the derive_vat_corpus
    run) → `derive_vat_corpus.py v1`: V from EIV, A = LUFS z-score (validated) optionally blended
    with EIV-A, T per (1).
@@ -147,8 +152,8 @@ suffice. Keep human ears for the small calibration set and the final audition ga
 
 **DECIDED (owner, 2026-07-16): Option B approved**, including the EIV dependency with its
 caveats. All questions in this brief are now settled: step 5 (Emilia mining) in-scope; tension =
-phonation tension per [vat-channels.md](vat-channels.md) (approved same
-day). Execution begins with `derive_vat_corpus.py v1`.
+phonation tension per **§3 below** (approved same day). Execution begins with
+`derive_vat_corpus.py v1`.
 
 **Calibration results (2026-07-17, JL-Corpus, 2,400 acted clips, leave-one-speaker-out):** the
 pre-registered calibration step earned its keep. EIV's dedicated **Valence head FAILED** (d'=0.23
@@ -172,10 +177,10 @@ Linked from: [dataset-landscape.md](dataset-landscape.md) (the thesis this execu
 
 ## §3 Tension semantics (LAX ↔ TIGHT)
 
-_Step 1 of the corpus plan ([vat-channels.md](vat-channels.md)
-Recommendation B) is "tension semantics first": pin down what T **means** before deriving labels
-for it. This brief proposes definitions and a recommendation. V and A are settled (V = affect
-polarity from EIV; A = energy/arousal, validated at ρ ≈ 1.000 from per-speaker LUFS z-scores)._
+_Step 1 of the corpus plan (**§2 above**, Recommendation B) is "tension semantics first": pin
+down what T **means** before deriving labels for it. This brief proposes definitions and a
+recommendation. V and A are settled (V = affect polarity from EIV; A = energy/arousal, validated
+at ρ ≈ 1.000 from per-speaker LUFS z-scores)._
 
 ## Requirements — what any T definition must satisfy
 
@@ -273,5 +278,9 @@ nasal-adjacent brightness — the corpus lacks genuine strain to find. Owner cal
 speech fixes the +T tail at the data level, which no label formula can. Dominance fallback
 retired unless Emilia-enriched +T also fails audit.
 
-Linked from: [vat-channels.md](vat-channels.md) ·
-[STATE.md](STATE.md).
+⚠ **The Emilia mining ran and its 13,141 keeps are still not in a training filelist** — the
+data-level fix this section calls for has never actually reached the model. It is item #1 of
+[quality-gap-plan.md § Phase 1](quality-gap-plan.md); state in
+[training-sources.md](training-sources.md).
+
+Linked from: **§2 above** · [STATE.md](STATE.md).

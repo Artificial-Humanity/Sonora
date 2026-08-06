@@ -9,7 +9,7 @@ PROTOTYPE NOTES
 - Parsing/segmentation are done in Python here to validate the LANE fast. Production
   should converge onto Prosodia's `folioparser` (EPUB->text) + `stage::segmenter`
   (sentence split + Paragraph{target_characters}) for on-device dogfooding — see
-  notes/book-prose-operations.md.
+  notes/book-prose-lane.md (Part 1 — Operations; was book-prose-operations.md).
 - Director = the `MODEL` constant below, served by ollama on :11434 (read `content`,
   give generous num_predict). Named once, there — a second copy in prose is a second
   thing to forget, which is how this line spent a day naming the wrong model.

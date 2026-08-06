@@ -3,47 +3,57 @@
 _Owner ratified 2026-07-30: the **book-actor mix** — Dialogue 50% / Neutral 30% /
 Documentary 8% / Newscaster 6% / Speech 6%. This note is the SSOT for the push._
 
-## Where it stands — measured 2026-08-02 (supersedes the 2026-07-30 baseline below)
+## ✅ COMPLETE — 2026-08-04
+
+| lane | have | want | | share | ratified |
+|---|---|---|---|---|---|
+| Dialogue | 578 | 578 | anchor | 49.3% | 50% |
+| Neutral | **354** | 347 | **+7** | 30.2% | 30% |
+| Documentary | 87 | 92 | −5, closed by owner call | 7.4% | 8% |
+| Newscaster | 84 | 69 | +15 | 7.2% | 6% |
+| Speech | 69 | 69 | +0 | 5.9% | 6% |
+| (delivery blank) | 17 | — | the embodiment span-FiLM pilot | — | — |
+
+**1,189 fold-eligible keeps**, against the 1,156 the campaign was sized for. Every lane
+is at or above target except Documentary, closed deliberately at 95% — there is no
+documentary real audio segmented anywhere, and −5 does not pay for a fresh ingest.
+
+**The corpus is no longer the constraint. The 4th FiLM channel it was built for still
+does not exist in the model core** — [todo.md §1](todo.md).
 
 **Fold-eligible = every keep except the three instrument campaigns**
 (`audit-tension-v2`, `audit-valence-v1`, `audit-emilia-keeps-v1` — the set
 `seed_delivery.SKIP_CAMPAIGNS` already excludes). **`audit-markup-v0` DOES fold**
 (owner, 2026-08-02): it is authored expressive material with curated registers, and
 `seed_delivery.py` has always treated it as corpus. The blanket "audit-* campaigns
-excluded" phrasing in the 2026-07-30 baseline below was wrong, and it mattered — the
-89 keeps it excluded are 79 Dialogue, and Dialogue is the anchor the whole table
-scales from.
+excluded" phrasing in the 2026-07-30 baseline at the foot of this file was wrong, and it
+mattered — the 89 keeps it excluded are 79 Dialogue, and Dialogue is the anchor the whole
+table scales from.
 
-**1,071 fold-eligible keeps.** Dialogue 578 held as the 50% anchor → the corpus
-completes at **1,156**.
+_The rest of this file is **how it closed and what it taught** — the findings are the
+durable part, and several of them (the re-cut trap, the single-quote trap, the trust-alarm
+attribution gap) are live hazards for the next campaign. The intermediate 08-02 and 08-04
+progress tables were deleted 2026-08-06; git history has them._
 
-| lane | have | want | gap |
-|---|---|---|---|
-| Dialogue | **578** | 578 | anchor — no further dialogue needed |
-| Neutral | 266 | 347 | **+81** |
-| Documentary | 57 | 92 | **+35** |
-| Newscaster | 84 | 69 | **−15 — DONE** |
-| Speech | 69 | 69 | **DONE** |
+---
 
-**Remaining: +116, both lanes narration.** Newscaster and Speech closed when
-newscaster-v1 landed (78 clips, qwen 27/27 · zonos 29/31 · moss_vg 20/20).
+### How the last two lanes closed
 
-### CLOSED 2026-08-04 — delivery-v1-narration-r2 landed
+**Newscaster and Speech** closed when `newscaster-v1` landed — 78 clips, qwen 27/27 ·
+zonos 29/31 · moss_vg 20/20 (that moss_vg figure is confounded; the register flatters its
+radio-timbre failure mode).
 
-| lane | have | want | gap |
-|---|---|---|---|
-| Dialogue | 578 | 578 | anchor |
-| **Neutral** | **324** | 347 | −23 |
-| **Documentary** | **87** | 92 | −5 |
-| Newscaster | 84 | 69 | done |
-| Speech | 69 | 69 | done |
-| (delivery blank) | 108 | — | 91 are the three instrument campaigns, which do not fold |
+**Neutral and Documentary** ran to `delivery-v1-narration-r2`, which contributed 88 heard
+keeps (58 Neutral, 30 Documentary) plus 13 group-certified riders across 5 groups, 2
+dropped. That left −23 Neutral / −5 Documentary — inside a rounding error, and not worth
+another synthesis round. The plan was to take the residual from the real-audio lane,
+"where clips are already cleared and unused." **The two lanes then came apart**, and how
+they came apart is the rest of this section.
 
-Corpus total **1,250** heard-or-folded, past the 1,156 the campaign was sized for.
-r2 contributed 88 heard keeps (58 Neutral, 30 Documentary) plus 13 group-certified
-riders across 5 groups; 2 dropped. Both lanes are inside a rounding error of target
-and the remaining −23/−5 does not justify another round on its own — take it from
-the real-audio lane, where clips are already cleared and unused.
+r2 also settled the **zonos tier test** it was carrying: every prior zonos narration bank
+had `emotion: null` hand-patched, so the director path had never run end to end in
+production. This one did — 44/44 lines directed with emotion off, 37 keeps from 38 heard.
+**Zonos promoted scrutinized → normal.**
 
 #### EXCEPTION: chatterbox's `TRUST BROKEN` alarm on this campaign was overridden
 
@@ -114,22 +124,8 @@ dialogue density a contiguous run costs almost no Neutral yield, and it keeps th
 continuous-reading bet the pool/staging split was built on.
 
 **Staged and heard 2026-08-04: 30 clips, reading-order 0..29 — 30/30 keeps, 30/30
-Neutral, every one scored 5.** 1,336 still pooled. **Neutral closes at 354/347.**
-
-### delivery-v1 is COMPLETE (2026-08-04)
-
-| lane | have | want | | share |
-|---|---|---|---|---|
-| Dialogue | 578 | 578 | anchor | 49.3% |
-| Neutral | **354** | 347 | **+7** | 30.2% |
-| Documentary | 87 | 92 | −5, closed by owner call | 7.4% |
-| Newscaster | 84 | 69 | +15 | 7.2% |
-| Speech | 69 | 69 | +0 | 5.9% |
-| (delivery blank) | 17 | — | the embodiment span-FiLM pilot | — |
-
-**1,189 fold-eligible keeps.** Measured mix 49.3 / 30.2 / 7.4 / 7.2 / 5.9 against the
-ratified 50 / 30 / 8 / 6 / 6. Every lane is at or above target except Documentary,
-which is closed deliberately at 95%.
+Neutral, every one scored 5.** 1,336 still pooled. **Neutral closes at 354/347**, and
+with it the campaign (final table at the top of this file).
 
 **One result cuts against the reasoning that produced it, and is worth recording.**
 All three dialogue-quoting clips in the take were called **Neutral** — this reader
@@ -190,7 +186,13 @@ keeps the ratified mix near-unchanged — that lane is at target.
 
 ---
 
-## Baseline (measured 2026-07-30, after cleanup) — HISTORICAL
+## Baseline (measured 2026-07-30, after cleanup) — HISTORICAL, and partly WRONG
+
+⚠ **Do not quote the figures below.** They are the campaign's opening position, kept only
+so the sizing argument is legible. Two things in them are known bad: the "audit-* campaigns
+excluded" rule wrongly dropped `audit-markup-v0`'s 89 keeps (79 of them Dialogue, the
+anchor), and the "~440 unrendered narration lines" was really 20. Live numbers are the
+table at the top of this file.
 
 Fold-eligible certified keeps (audit-* campaigns excluded — they are agreement-rate
 instruments, never folded): **642**, after retiring **52 fragment keeps** via the app's

@@ -49,7 +49,7 @@ vocabulary — it is *not* a conditioning input, and must not be invented.
 engine we tested, including the ones that accept prose. Emit a casting *selection* —
 a character key resolving to a 64-dim vector, or typed attributes (gender, age band)
 that the casting layer resolves against measured norms. See
-[casting-attribute-norms-brief.md](../../notes/casting-attribute-norms-brief.md).
+[casting-attribute-norms-brief.md](../../../notes/casting-attribute-norms-brief.md).
 
 **3. Accent is casting, never direction.** No engine we run represents accent at any
 level, and Sonora will not either. It is a property of the speaker vector, realised by
@@ -57,7 +57,8 @@ selection against measurable norms — never a fourth channel.
 
 **4. Do not ask the model for what is free at inference.** Pace is host-side
 `length_scale`; per-frame loudness is a host-side dB bias. Both were measured free and
-dB-exact (2026-07-14, `exploit-before-train-measurement.md`) — WER 0 at -12 dB. Asking
+dB-exact (2026-07-14; the measurement note was folded away, git history has it, and the
+resulting rule is pinned in `notes/ARCHITECTURE.md` §1) — WER 0 at -12 dB. Asking
 the model to learn them wastes capacity that valence needs.
 
 **5. Span markup, when the span layer lands, uses CLOSED vocabularies only** — SCM's

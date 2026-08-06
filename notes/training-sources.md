@@ -60,7 +60,7 @@ filelist yet.
 | Source | Origin | Status in our training | Next action |
 |---|---|---|---|
 | **sonora-expressive-registers** | Teacher renders (qwen · chatterbox · zonos · orpheus · moss_vg) + real keeps. **1,071 fold-eligible keeps** | **DERIVED** — the expressive corpus, ear-certified via `ratings.csv` | Close the last **+116** (Neutral +81, Documentary +35), then merge. Target 1,156 |
-| **book-prose** | Standard Ebooks CC0 text → director-labelled banks. 21 books, 856 rendered wavs | **DERIVED** — the text shelf that feeds synthesis | Ingest of 4 owner-approved titles running 2026-08-02 |
+| **book-prose** | Standard Ebooks CC0 text → director-labelled banks. 21 books, 856 rendered wavs | **DERIVED** — the text shelf that feeds synthesis | None outstanding. The 4 owner-approved titles queued 2026-08-02 (+`conan-stories`) are ingested; delivery-v1 closed on them. ⚠ `book_ingest` hardcodes provenance "Standard Ebooks CC0" even for PG sources — false licence metadata in every derived clip's paper trail (A-M6, [todo.md §5](todo.md)) |
 | **librivox-v2** | Force-aligned LibriVox audio (Uneasy Money). 1,366 clips / 3.13 h | **DERIVED** — better cut than v1, nothing staged from it | Stage when re-earning v1's 12 ear verdicts is worth it |
 | **librivox-v1** | Same book, pre-fix cut. 664 clips | **DERIVED** — kept for its 12 valid ear verdicts | Retire once v2 is staged |
 | **librivox-speech-v1** | Dickens *Speeches*, re-cut 2026-08-02. 79 clips | **DERIVED** — Speech lane | None; lane is at target |

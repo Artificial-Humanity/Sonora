@@ -7,6 +7,21 @@ $6 is obviously worth it; 48 h → 14 h is worth considering; 48 h → 40 h is n
 Next training session runs **local**. The instrumentation below rides along so
 the decision after it is made on data instead of spec sheets.
 
+> **STATUS 2026-08-06 — the run happened, the data is there, the projection has not been
+> run.** `vat3c` (run `2026-08-05_15-02-57`, 100 epochs, exit 0) carried the probe and left
+> **51 epochs** in `throughput_probe.jsonl`. Headline from it: **stall_fraction ≈ 0.005** —
+> the loader is supplying batches with the GPU waiting on it about half a percent of the
+> time, i.e. this run was firmly **GPU-bound** locally, `steps_per_s` 1.26 → 1.48 and
+> `gpu_mem_peak` 18.9 GB.
+>
+> ⚠ **Two things block the projection as documented below.** (1) `throughput_summary.json`
+> was **never written** — not for the clean exit-0 run and not for any of the four crashed
+> ones — so `project_pod_speedup.py --summary` has no input. Either the end-of-train hook
+> does not fire under this launch path, or it fails silently; fix that before trusting
+> "a killed run still leaves data." (2) The loader-ceiling sweep (step 2) has not been run,
+> and it is the term the whole decision turns on. **GPU-bound locally is exactly the case
+> the worked trap below is about**: local headroom does not survive the pod's vCPU cut.
+
 ## The one equation
 
 With prefetching, a step costs about
@@ -40,7 +55,7 @@ loader go if the GPU were infinite?"
 
 ```
 AI-Lab-AMD/scripts/inference-engines.sh stop     # or you time contended cores
-python scripts/bench_loader.py --experiment vat3_finetune \
+.venv/bin/python scripts/bench_loader.py --experiment vat3c_finetune \
     --workers 0,1,2,4,8,16 --batches 60 --out loader_bench.json
 ```
 
@@ -51,11 +66,13 @@ which is the extrapolation the projection leans on hardest.
 **3. After — the projection.**
 
 ```
-python scripts/project_pod_speedup.py \
-    --summary logs/train/vat3_finetune/runs/<ts>/throughput_summary.json \
+.venv/bin/python scripts/project_pod_speedup.py \
+    --summary logs/train/vat3c_finetune/runs/<ts>/throughput_summary.json \
     --loader-bench loader_bench.json \
     --epochs 100 --pod-workers 4 --speedups 2,3,5 --price 0.99
 ```
+
+(Host scripts run as `.venv/bin/python`, never `uv run` — [AGENTS.md](../AGENTS.md) §3.)
 
 ## How to read it
 

@@ -1,5 +1,11 @@
 # Target: Dia-1.6B-0626
 
+> **SET ASIDE 2026-07-29 — reversible** (`ref_select.SET_ASIDE`). Dia is not in the live
+> portfolio: no instruct slot, and the weakest measured quality of the audition set (12/20 QC
+> pass, median DNSMOS 2.53). This file is kept because what it documents — the interface —
+> stays true whether or not the engine is in use. Before any revival also clear the
+> `synth_dia.py` / `make_bulk_bank.py` traps in [todo.md §6](../../../notes/todo.md) (B-M6/M7).
+
 ## What this engine actually accepts
 Text only. `generate()` takes the transcript, an optional audio prompt, and
 sampling knobs. There is **no instruction, style, emotion or accent parameter of

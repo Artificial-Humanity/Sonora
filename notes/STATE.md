@@ -76,11 +76,17 @@ is what opened the directed teacher-synthesis lane
 |---|---|---|
 | Phase 0 `ep199` (baseline-ljspeech-22k) | LJSpeech @ 22.05 kHz | shipped to HF; the v1 voice; both export lanes verified on it |
 | `derisk-energy-24k` ep099 | libritts_r_vat v1 (energy channel only) | §7 verdict PASS (ρ≈1.000, leakage ≤0.091, WER Δ ≤0.042); staged in `Sonora/huggingface/`, not pushed |
-| `vat3-24k` ep099 | libritts_r_vat **v2** | energy PASS / tension near-pass / valence FAIL; staged; **the warm start for the next run** |
-| 24 kHz HiFi-GAN vocoder `g_02510000` | LibriTTS-R, warm from UNIVERSAL_V1 | copy-synthesis converged, human-audited; staged |
+| `vat3-24k` ep099 | libritts_r_vat **v2** | energy PASS / tension near-pass / valence FAIL; staged; the warm start for `vat3c` |
+| `vat3c` ep099 | libritts_r_vat **v3c** | 2026-08-06, warm from vat3-24k 338/338. **No audible change** — the `op_g2p` fix was the whole fix. Not staged; nothing here supersedes vat3-24k by ear |
+| 24 kHz HiFi-GAN vocoder `g_02510000` | LibriTTS-R, warm from UNIVERSAL_V1 | copy-synthesis converged, human-audited; staged. **Confirmed perceptually transparent 2026-08-06** — mel L1 = 10.2% of mel_std |
 
 Publishing staged checkpoints to the public HF repo remains a deliberate owner call —
 they are validated components, not the shippable directable actor.
+
+⚠ **No checkpoint in this table has ever been scored on audio it was not trained on.** Splits
+were re-drawn per corpus version while runs warm-started from the previous one, so 93–97% of
+v3c's val clips were trained on earlier. Cross-run val comparisons are invalid until the
+never-trained holdout lands — [quality-gap-plan.md § Phase 0](quality-gap-plan.md).
 
 ## Teacher synthesis & the expressive dataset
 
@@ -191,8 +197,17 @@ the delivery export story is the blocking work before any vat3/delivery export
 
 ## Next actions (short list)
 
-1. delivery-v1-narration round 2 (+116 keeps; carries the zonos tier bank).
-2. Ears queue in priority order — [todo.md §4](todo.md).
-3. v3c experiment config + container `data_statistics` → next training run (delivery
-   channel decisions ride it).
-4. Export-lane gate hardening before that run's export.
+The ordered plan, with the gate between each phase, is
+**[quality-gap-plan.md](quality-gap-plan.md)** — it is the SSOT for sequencing and this list
+is only its headline. Nothing below has started.
+
+1. **Phase 0a — the never-trained holdout.** Pull LibriTTS-R `dev-clean` as a scoring-only
+   set and re-score every retained checkpoint. No training; it is what makes six weeks of
+   runs comparable for the first time.
+2. **Phase 1 — data, cheapest first.** Emilia-YODAS keeps (+43%) → expressive-registers
+   (+116) → LibriTTS-R 10× → Hi-Fi TTS v1. #1 is the fastest test of whether volume moves
+   quality at all, and the 10× is gated on its answer.
+3. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
+   baseline frozen as the last act of Phase 1.
+4. Ears queue in priority order — [todo.md §4](todo.md).
+5. Export-lane gate hardening before any vat3c/delivery export — [todo.md §2](todo.md).

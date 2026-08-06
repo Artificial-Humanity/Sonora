@@ -43,7 +43,8 @@ NOT SEEDED, deliberately:
     genuinely both modes in one clip, so a guess would be noise in a balance axis.
   * audit-tension-v2 / audit-valence-v1 — instrument-calibration sweeps over
     LibriTTS speakers, not expressive-corpus material.
-  * audit-emilia-keeps-v1 — real mined audio, and per notes/emilia-mining-and-verdict.md
+  * audit-emilia-keeps-v1 — real mined audio, and per the mining verdict (folded into
+    notes/training-sources.md; the standalone emilia-mining-and-verdict.md is in git history)
     its keeps are "news broadcasts, technical webinars, and similar", so this is
     likely where the real Newscaster/Documentary mass lives. Ear-only by nature.
 

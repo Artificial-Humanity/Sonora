@@ -3,9 +3,10 @@
 > **Consolidated 2026-07-31** from `book-prose-synthesis-spike.md` (the rationale) +
 > `book-prose-operations.md` (the runnable design). They were split spike-then-plan while
 > the lane was still a proposal; it has been live since 2026-07-22 (`books_ledger.json`,
-> `book_ingest.py`, 17 ingested books), so the split had become two hops to one answer.
-> Operations lead, because that is what a reader needs now. The rationale follows as the
-> record of why the lane is shaped this way.
+> `book_ingest.py`, **21 ingested books / 856 rendered wavs** as of 2026-08-06 —
+> [training-sources.md](training-sources.md) is the SSOT for that count), so the split had
+> become two hops to one answer. Operations lead, because that is what a reader needs now.
+> The rationale follows as the record of why the lane is shaped this way.
 
 ---
 
@@ -271,7 +272,7 @@ arrives, and never reprocess.
 2026-07-22 — 21 ingested books; the spike checklists were cut 2026-08-02, git history has
 them.)*
 
-Cross-refs: **§ Part 2 — Rationale** (below) (rationale) ·
+Cross-refs: **§ Part 2 — Rationale** below (why the lane is shaped this way) ·
 [synthesis-pipeline.md](synthesis-pipeline.md) (renderers, control interface, QC) ·
 [dataset-landscape.md](dataset-landscape.md) (force-align rule, sources, division of labor) ·
 [high-ambition-2-dramatic-reader.md](high-ambition-2-dramatic-reader.md) (the Director's
@@ -290,7 +291,9 @@ that keeps the lane pointed in the right direction._
 
 **This is not a new pipeline — it is a new *text front-end* on the already-built teacher-synthesis
 pipeline** ([synthesis-pipeline.md](synthesis-pipeline.md)). Every downstream stage exists:
-`synth_{vibevoice,qwen,moss_vg,dia,longcat}.py` renderers, `qc_gate.py` (ASR-fidelity + DNSMOS-tier +
+the `synth_<engine>.py` renderers *(as written in July that read
+`synth_{vibevoice,qwen,moss_vg,dia,longcat}.py`; the live five are chatterbox · qwen · zonos ·
+orpheus · moss_vg)*, `qc_gate.py` (ASR-fidelity + DNSMOS-tier +
 duration sanity), instrument label verification (EIV + phonation/LUFS), the bounded-minority
 corpus rule, the CC-BY-4.0 publication plan. The **only new component** is a `book_ingest` stage
 that emits the existing `script_bank.json` schema (`id, engine, register, intended V/A/T, text,
@@ -433,15 +436,21 @@ discipline, so a mis-tagged book chunk fails the same gate.
      LibriVox covers, the steer-away is not applied automatically — the router asks whether to
      **synthesize instead of using LibriVox** (the owner may have judged that LibriVox recording
      below the quality bar). An owner-provided **librivox.org link** pins that book/recording for
-     the force-align lane. See book-prose-operations.md Stage A (OWNER-CHOICE verdict).
+     the force-align lane.
+   * ⚠ **SUPERSEDED 2026-07-22 — the router no longer asks.** The OWNER-CHOICE verdict was
+     retired: an SE/PG URL submitted through the book-submission page routes **straight to
+     SYNTHESIZE, with no overlap check and no ask**, because the owner pre-checks LibriVox
+     before submitting and a submission is itself the lane decision. LibriVox URLs still
+     route REAL-AUDIO. See **§ Stage A** in Part 1 above — that table is current, this
+     paragraph is the reasoning it replaced.
 
 _Sources = Standard Ebooks + Project Gutenberg only (arXiv + Books3 dropped, 2026-07-18);
 librivox.org links accepted in the queue for the force-align lane (2026-07-19)._
 
-Cross-refs: ****§ Part 1 — Operations** (below) (the runnable operations plan —
-router, book_ingest, director bake-off, spike steps)** ·
-[synthesis-pipeline.md](synthesis-pipeline.md) (the pipeline this front-ends) ·
+Cross-refs: **§ Part 1 — Operations** above (the runnable plan — router, `book_ingest`,
+director model, stages) · [synthesis-pipeline.md](synthesis-pipeline.md) (the pipeline this
+front-ends, and the standing directive on the living CC-BY-4.0 dataset) ·
 [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md) (ratified portfolio +
 license wall) · [dataset-landscape.md](dataset-landscape.md) (continuity-vs-range framing;
-LibriVox/MLS lineage) · [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (public-vs-private
-lineage) · [expressive-registers-dataset] standing directive (living dataset, CC-BY-4.0 publish).
+LibriVox/MLS lineage) · [audiobook-corpus-policy.md](audiobook-corpus-policy.md)
+(public-vs-private lineage).

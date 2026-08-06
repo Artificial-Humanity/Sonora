@@ -212,9 +212,20 @@ a longer-clip tier to have actually taught the model that regime.
 
 ## Status
 
-Ballpark, not yet wired into any config or eval-harness threshold. Revisit when the derisk_energy
-§7 verdict lands and export-harness adaptation begins — that's the natural point to pick an actual
-target vocoder config and speaker-conditioning approach against this budget.
+Ballpark, not yet wired into any config or eval-harness threshold — still true as of 2026-08-06.
+
+The revisit trigger this section named (the derisk_energy §7 verdict + export-harness adaptation)
+**both landed on 2026-07-16**, and the budget was not re-opened then. Two later measurements
+change what the revisit should conclude:
+
+- **Vocoder fidelity is no longer the top place to spend headroom.** This section ranks it #1 on
+  the reasoning that perceived quality is disproportionately vocoder-driven. Copy-synthesis on
+  2026-08-06 measured the current 24 kHz HiFi-GAN as **perceptually transparent** (mel L1 = 10.2%
+  of mel_std; owner: "similar to ref, if not identical"), so a wider vocoder buys nothing audible
+  today. The gap is entirely the acoustic model's predicted mel.
+- **Which leaves data and decoder**, which is exactly the order
+  [quality-gap-plan.md](quality-gap-plan.md) sequences. Revisit the parameter budget when the
+  DiT spike picks a block shape — that is the decision this ceiling actually binds.
 
 Linked from: **§ Sample rate** (below) (vocoder size
 precedent), **§5** (Kokoro license/architecture table; the `high-ambition-5-styletts2-lite.md:N`
@@ -344,10 +355,18 @@ it gets its OWN de-risk cycle later, not a ride on this one.
 
 ## Sequencing
 
-Runs parallel to delivery-v1 corpus assembly (architecture work is CPU-side until the
-de-risk training run; that run obeys [[spin-down-inference-before-training]] and waits
-for a render-idle window). The certified-corpus direction-taking run starts on whichever
-decoder holds the gate when the corpus is folded.
+> **Superseded 2026-08-06 — the *when* now lives in
+> [quality-gap-plan.md § Phase 2](quality-gap-plan.md).** delivery-v1 is complete, so
+> "runs parallel to corpus assembly" no longer describes anything. Two amendments from
+> that plan bind this design: the spike runs **after** the Phase 1 data work lands, and
+> **its parity gate must run against a U-Net baseline trained on the same expanded
+> corpus** — otherwise data and architecture confound each other and the run teaches
+> nothing about either. Freeze that baseline as the last act of Phase 1.
+
+Architecture work is CPU-side until the de-risk training run; that run obeys
+[[spin-down-inference-before-training]] and waits for a render-idle window. The
+direction-taking run starts on whichever decoder holds the gate when the corpus is folded —
+**stall → the stock decoder runs the corpus** and the schedule never waits on the swap.
 
 ---
 

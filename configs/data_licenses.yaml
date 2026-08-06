@@ -2,11 +2,13 @@
 #
 # Every dataset that can appear in a training filelist MUST be declared here;
 # matcha/data/license_wall.py refuses to train on paths it cannot classify.
-# Verified license survey: Notes/Sonora/dataset-landscape.md (umbrella repo).
+# Verified license survey: notes/dataset-landscape.md (this repo — the path above was
+# the pre-2026-07-22 umbrella layout). What is on disk and what a run consumes:
+# notes/training-sources.md.
 #
 # class: permissive — allowed in the production corpus
 #        nc         — bare CC-BY-NC (no agreement executed). Owner ruling 2026-07-19
-#                     (Notes/Sonora/nc-gray-area-and-candidate-quality.md §2):
+#                     (notes/dataset-landscape.md, "NC licensing — the two-fence ruling"):
 #                     risk-accepted for training use; SONORA_LICENSE_WALL=derisk +
 #                     run-taint are retained as LINEAGE AUDIT (so any release can
 #                     disclose exactly what's in the weights), not as prohibition.
@@ -51,6 +53,11 @@ datasets:
     license: CC0
     class: permissive
   expresso:
+    # UNRESOLVED, owner's call. The 2026-07-19 ruling that made this `nc` (risk-accepted)
+    # is arguably superseded by the 2026-08-01 no-patent / fully-Apache-2.0 posture, which
+    # sets the corpus bar at UNRESTRICTED OPEN REDISTRIBUTION and says explicitly that it
+    # is stricter than the old commercial test. CC-BY-NC does not clear that bar. Nothing
+    # has trained on it either way. See notes/training-sources.md, "The Expresso conflict".
     dirs: [expresso]
     license: CC-BY-NC-4.0
     class: nc

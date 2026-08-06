@@ -1,5 +1,11 @@
 # Target: VibeVoice (Large-Q8)
 
+> **SET ASIDE 2026-07-29 — reversible** (`ref_select.SET_ASIDE`). VibeVoice is not in the live
+> portfolio: it stages scenes on dialogue, and the five survivors already narrate at 94%. This
+> file is kept because what it documents — the interface — stays true whether or not the engine
+> is in use, and reinstating it means reading this first. Before any revival also clear the
+> `synth_vibevoice.py` traps in [todo.md §6](../../../notes/todo.md) (B-M6/M7, B-L4).
+
 ## What this engine actually accepts
 The model receives **only** the text plus a reference wav. Its processor takes
 `text` and `voice_samples` and nothing else — there is no instruction, style or

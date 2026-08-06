@@ -147,9 +147,10 @@ this is just the cheapest forcing function to settle the decisions below.
 > the 22.05→24 kHz runtime resample, the `[V,A,T]` payload representation, and the TFLite/`onnx2tf`
 > runtime — are already locked and checked in [next-steps.md](../../../Prosodia/notes/next-steps.md). They are *not* the same
 > items: the spike proves the **stock** model runs through the actor; the rows below are what must be
-> fixed **before training**. Three of the four rows below are now resolved (vocab + sample rate via
-> commit `7143617`, 2026-06-18; export/runtime via the `onnx2tf` spike) — only **data + label format**
-> remains genuinely open.
+> fixed **before training**. **All four rows are now closed** — vocab + sample rate via commit
+> `7143617` (2026-06-18), export/runtime via the export spikes, and data + label format by the
+> filelist schema the vat3 run actually trained against. *(An earlier revision of this note said
+> only data + label format remained open; it did, until that run.)*
 
 - [x] **G2P / phoneme contract.** ✅ **Locked (Gate 1, commit `7143617`, 2026-06-18):** a
   Matcha-specific vocab is defined — `config.json` + `symbols.py` deduped to exactly **178 unique
@@ -164,9 +165,12 @@ this is just the cheapest forcing function to settle the decisions below.
 - [x] **Data + label format.** ✅ **Locked** — filelist schema `path|spk|phonemes|v,a,t`,
   pre-phonemized, labels as per-speaker z clamped @2σ (ARCHITECTURE §2); the vat3 run
   trained against it.
-- [x] **Export/runtime decision.** ✅ **Resolved (2026-06-17):** keep **TFLite via `onnx2tf`**. The
-  custom conversion was validated on `model_e2e.onnx` and the FFI contract locked — ONNX Runtime is not
-  needed (see [STATE.md](../../../Prosodia/notes/STATE.md) and [next-steps.md](../../../Prosodia/notes/next-steps.md)).
+- [x] **Export/runtime decision.** ✅ **Resolved (2026-06-17):** keep **TFLite**, not ONNX Runtime.
+  The custom conversion was validated on `model_e2e.onnx` and the FFI contract locked (see
+  [STATE.md](../../../Prosodia/notes/STATE.md) and [next-steps.md](../../../Prosodia/notes/next-steps.md)).
+  ⚠ **The route inside TFLite reversed 2026-07-12:** Plan A is the `litert-torch` fixed-shape
+  **split-graph** export (textenc / decoder / vocoder + host-side ODE), and the `onnx2tf` monolith
+  this row originally named is Plan B. The decision — TFLite over ONNX Runtime — is unchanged.
 
 ---
 
@@ -176,8 +180,10 @@ Mirror the de-risking order in [model-decisions.md §5](model-decisions.md) — 
 the *first* success boring, then add novelty. (Phase 0 above runs first.)
 
 1. **Plain fine-tune** a pretrained Matcha checkpoint on a small clean single-speaker set (LibriTTS
-   speaker or LJSpeech) on a RunPod 4090 — purely to learn the loop and confirm quality clears your
-   bar by ear. (~hours, a few dollars.)
+   speaker or LJSpeech) — purely to learn the loop and confirm quality clears your bar by ear.
+   *(Done as Phase 0 on LJSpeech. Ran **local on ai-lab-0**, not the RunPod 4090 this originally
+   assumed; every run since has too, and whether renting ever pays is measured rather than guessed —
+   [local-vs-runpod-decision.md](local-vs-runpod-decision.md).)*
 2. **Export spike** — official ONNX export → `onnx2tf` → a real on-device `.tflite`; confirm the Rust
    actor speaks it. This decides keep-TFLite vs ONNX-Runtime before more model work.
 3. **Add VAT conditioning** (FiLM/AdaLN) and retrain with VAT labels; verify directability in the Tuner.
@@ -204,7 +210,8 @@ the *first* success boring, then add novelty. (Phase 0 above runs first.)
   [model-decisions.md § The size ladder](model-decisions.md)) — same OT-CFM family, same contract, so
   the transfer story below is *stronger* than it was to StyleTTS2. Rationale (teacher-corpus
   learnings: interface ownership, reference-style failure modes, adversarial-training misfit)
-  is recorded in the banner of high-ambition-5 itself.
+  is recorded in [model-decisions.md §5](model-decisions.md) — the high-ambition-5 note that
+  carried it was deleted 2026-08-02 and is in git history.
 
 **What transfers vs what's Matcha-specific** *(table kept for the historical StyleTTS2 comparison;
 every ✅ row transfers at least as cleanly to a scaled flow-matching tier)*

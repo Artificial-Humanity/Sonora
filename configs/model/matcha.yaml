@@ -15,7 +15,7 @@ out_size: null # Must be divisible by 4
 prior_loss: true
 use_precomputed_durations: ${data.load_durations}
 
-# VAT conditioning (Notes/Sonora/vat-conditioning-design.md). Off by default;
+# VAT conditioning (notes/vat-channels.md §1; was vat-conditioning-design.md). Off by default;
 # the milestone-3 directability experiment enables it. When on: FiLM
 # (zero-init scale+shift) per encoder/decoder block, per-token [B,3,T] input,
 # conditioning dropout keeps VAT=0 a trained neutral.

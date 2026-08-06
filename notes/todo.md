@@ -6,44 +6,30 @@ is in git history. **Every Critical and High finding was fixed** (`b9c7a7e`..`1f
 verified in source) — this file is only what remains open, letter-coded as the review
 coded it so the git-history record stays joinable.
 
-Items are grouped by when they bite, not by subsystem. Strike items here as they land;
-delete sections when empty.
+Items are grouped by when they bite, not by subsystem. **Landed items are deleted, not
+struck** (git history is the archive, per [README.md](README.md)); delete sections when
+empty. _Last pruned 2026-08-06 — the v3c config, the license-wall v3 entry, the
+delivery-channel seam assertions (E-M3, E-M1/F-H2/T8) and the zonos tier bank all landed
+and their records now live in [STATE.md](STATE.md) and
+[training-operations.md](training-operations.md)._
+
+This file is **residue, not the plan.** What to do next, and in what order, is
+[quality-gap-plan.md](quality-gap-plan.md).
 
 ---
 
 ## 1 · Before the next training run
 
-- [x] **Point an experiment config at `data/libritts_r_vat_v3c`** — **DONE 2026-08-04.**
-      `configs/data/libritts_r_vat_v3c.yaml` + `configs/experiment/vat3c_finetune.yaml`.
-      `data_statistics` **measured** in-container on the 30,485-clip train split:
-      `mel_mean −5.525067 / mel_std 2.388571`, against v2's −5.504811 / 2.386137 — a
-      delta of 0.0203 / 0.0024, small but a constant shift on every normalised mel.
-      ⚠ **The license wall had no v3 entry.** `configs/data_licenses.yaml` declared only
-      up to `libritts_r_vat_v2`, so v3/v3b/v3c were unclassifiable and `enforce()` would
-      have refused any run touching them. "Nothing has trained on v3c" was therefore
-      structurally guaranteed, not merely true. All three are now declared (same
-      LibriTTS-R CC-BY-4.0 audio; labels and split are what differ).
-- [x] **Delivery-channel seams (E-M1/F-H2/T8): assertions pre-placed** — **DONE
-      2026-08-04**, and each one driven with the wrong width and proven to fire:
-      `scripts/test_vat_dim_seams.py` (13 checks, run it before any migration step).
-      * **model core** — `VATTrunk.forward` names both widths. One check covers the
-        encoder and the decoder because both conditioning paths funnel through a trunk;
-        static shapes mean it costs nothing in an exported graph.
-      * **filelist** — the `v,a,t` parse counts fields against `vat_dim` and names the
-        file. Wired via `vat_dim: ${model.vat_dim}` in the data configs, so the model
-        config is the single source of truth and the two cannot drift.
-      * **collate** — mixed VAT presence now raises instead of silently returning
-        `vat=None` for the whole batch. This was the dangerous one: `None` is legitimate
-        downstream (it means neutral), so a partially-labelled filelist trained a
-        conditioned model on unconditioned batches with no error and no warning.
-      * **export** — `convert_vat.detect_vat_dim` reads the checkpoint's true width off
-        the trunk conv and refuses a mismatch, naming F-H2. It must refuse rather than
-        follow: the `config.json` it writes is the mobile host's description of the
-        control surface, and there is still no delivery export story.
-      Two consumers needed adjusting for the interpolation — `generate_data_statistics`
-      and `get_durations_from_trained_model` compose `configs/data` **alone**, with no
-      model group to resolve against, and neither builds a network; both set
-      `vat_dim = None` to disable the check.
+- [ ] **The delivery channel is designed, corpus-complete, and unbuilt.** `vat_dim` is
+      still **3** everywhere; Contract v2 ([ARCHITECTURE.md](ARCHITECTURE.md) §1) makes
+      delivery the 4th FiLM channel and delivery-v1 closed at 1,189 labelled keeps, but
+      no model code implements it. The pre-work is done and this is the migration
+      itself: bump `model.vat_dim` to 4 (the data configs interpolate
+      `vat_dim: ${model.vat_dim}`, so the model config is the single source of truth),
+      embed the 5 lanes + `unknown ≡ zero` host-side onto the same zero-init FiLM path,
+      and re-run `scripts/test_vat_dim_seams.py` (13 checks) at every step — it is
+      pre-placed precisely so a wrong width fails loudly at the filelist instead of
+      quietly at the trunk. There is still **no delivery export story** (F-H2, §2).
 - [ ] **E-M5:** logged `diff_loss` carries a padding-fraction floor (the loss tensor is
       unmasked; gradients are fine). The 2026-08-01 bucketing change lowered logged loss
       independent of model quality — do not compare curves across that boundary.
@@ -56,14 +42,21 @@ delete sections when empty.
       would move all three. A val curve sitting far above train from step one is expected
       here and is not evidence of anything. Fixing it means masking the logged loss, or
       bucketing val too (which changes nothing about gradients either way).
+      **This is now blocking, not merely noted** — it sits between us and reading any
+      future curve, so [quality-gap-plan.md § Phase 1](quality-gap-plan.md) assigns it
+      alongside the Phase 0 holdout. The off-switch it needs (`bucket_multiplier`) is
+      settable from yaml as of 2026-08-04.
 - [ ] **E-M6:** RoPE cache built under `inference_mode` during `on_validation_end` can
       crash the next training step ("Inference tensors cannot be saved for backward")
       when the next batch's text is ≤ the cached length. Rebuild outside inference mode
       or drop the cache on train re-entry.
-- [x] **E-M3:** the documented bucketing off-switch is unreachable — **FIXED 2026-08-04**,
-      `bucket_multiplier` is now a `TextMelDataModule.__init__` param, so yaml can set it.
-      It matters because of E-M5 above: bisecting a loss curve across the bucketing
-      boundary requires being able to turn bucketing off.
+- [ ] **Split contamination is historical and does not fix itself.** The hash split
+      (`derive_vat_corpus._in_val`, 2026-08-02) is sound going forward, but every
+      retained checkpoint warm-started through corpora whose splits were re-drawn, so
+      93–97% of v3c's val clips were trained on earlier. `loss/val_epoch` is not a
+      generalization measure for any of them. Fix = the never-trained LibriTTS-R
+      `dev-clean` holdout, no training required —
+      [quality-gap-plan.md § Phase 0a](quality-gap-plan.md).
 
 ## 2 · Export lane (before any vat3/delivery export)
 
@@ -113,20 +106,13 @@ delete sections when empty.
        loudness confound (5.99 dB spread, Qwen +3.81 dB over VV) could have produced.
        The 56 keeps are normalized; a keep-*rate* re-test additionally needs the 24
        quarantined drops normalized (un-quarantine is an owner call).
-2. [x] **Zonos scrutinized → normal** — **DONE 2026-08-04.** The bank arrived:
-       delivery-v1-narration-r2 directed 44/44 zonos lines with emotion off, no
-       hand-patching, and the ear returned 37 keeps from 38 heard (97%). The single
-       non-keep is a bookkeeping retirement, so on judged clips it is 37/37 — above
-       chatterbox, which is already trusted. Promoting changed nothing retroactively
-       (every zonos group in that campaign had 0 deferred); it takes effect on the
-       next `select`, where zonos drops from 100%-heard to 2/group + 10%.
-3. [ ] **Orpheus tier** — `normal` is explicit in `ENGINE_TIER` now; `trusted` is
+2. [ ] **Orpheus tier** — `normal` is explicit in `ENGINE_TIER` now; `trusted` is
        arguable on 105 non-`tara` renders at 80.0% keep / mean 4.49. Policy, not
        measurement.
-4. [ ] **moss_vg** — newscaster 20/20 is confounded (the register flatters its
+3. [ ] **moss_vg** — newscaster 20/20 is confounded (the register flatters its
        radio-timbre/IVR failure mode; its 24% rate was measured on expressive material).
        Re-test on dialogue or an expressive register before any tier movement.
-5. [ ] **Ear-calibrate `tail_ok`** (threshold never calibrated; several catches could be
+4. [ ] **Ear-calibrate `tail_ok`** (threshold never calibrated; several catches could be
        ASR dropping a quiet final phrase) **and the 1.4 s pause advisory band**.
 
 ## 5 · Acquisition / alignment lane

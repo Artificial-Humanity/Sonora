@@ -84,10 +84,18 @@ record is only worth what its provenance is worth.
 
 ## Revisit list — engines graded before we knew what reached them
 
+> **OUTCOME (2026-07-28 → 08-04): the revisit worked, and it is closed for the three
+> engines it was written for.** Chatterbox, Zonos and Orpheus were all re-auditioned
+> through `revisit-v1` and all three are now in the live portfolio — chatterbox
+> trusted-provisional, zonos and orpheus normal tier. The void verdicts were void.
+> **The list below is kept as the method and the evidence**, not as open work; live
+> standing is [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md)
+> and the remaining tier questions are [todo.md §4](todo.md).
+
 Source of record: [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md)
 (owner ears, 2026-07-17—) plus the `engine` column of ratings.csv. Every verdict
 below was formed while direction was not reaching the engines as intended, so none
-of them is safe as-is.
+of them was safe as-is.
 
 **The headline reversal — MOSS-VG.** The shortlist retired "MOSS-VG 2.1B" as
 *"superseded by flagship on owner's ear"*. We now know the flagship (MOSS-TTS 8.5B)
@@ -128,8 +136,10 @@ teachers, and explicitly out of scope here:
 
 - `shivammehta25/Matcha-TTS`, `litert-community/Matcha-TTS` — **Sonora's parent
   architecture** (High-Ambition 1). The student, not a teacher.
-- `semidark/StyleTTS2`, `IIEleven11/StyleTTS2FineTune` — the optional **student
-  re-platform** candidate (High-Ambition 5, "reference only for now").
+- `semidark/StyleTTS2`, `IIEleven11/StyleTTS2FineTune` — the former **student
+  re-platform** candidate. **RETIRED 2026-07-29**; the quality-ceiling escape hatch is
+  a scaled flow-matching backbone ([model-decisions.md §5](model-decisions.md)). On
+  disk as reference only.
 - `semidark/kikiri-tts` — StyleTTS2/Kokoro side reference, same bucket.
 - `SWivid/F5-TTS` — appears only in the **architecture licence survey** in
   model-decisions.md §5 (MIT ✅), alongside VITS/HiFi-GAN/PL-BERT. Student-side.
@@ -150,9 +160,10 @@ already governs these, and the reasoning is sound. Do not pull them forward:
   **12 Jan 2026** — over six months of no movement, so treat this watch as long-dated
   rather than imminent. When it lands, the pre/post-RL delta is itself useful evidence
   for a future Sonora expressiveness-RL lane.
-  *Doc drift to fix:* that README says "weights deliberately not kept on disk", but
-  8.3 GB of the pre-RL base was pulled to `/data/models/zai-org/GLM-TTS` on
-  2026-07-23, the day after the note was migrated. One of the two is out of date.
+  *(Doc drift, **RESOLVED 2026-08-06**: that README claimed "weights deliberately not
+  kept on disk" while 8.3 GB of the pre-RL base sat in `/data/models/zai-org/GLM-TTS`,
+  pulled 2026-07-23. Disk verified, README corrected — the trigger is the RL
+  checkpoint, not the download.)*
 - **`moonshotai/Kimi-Audio-7B-Instruct`** (MIT) — **not an actor at all**: no casting
   interface, it is an audio-LM. Shelved as a candidate SER/valence **instrument** for
   the LibriVox lane, so it does not belong in a teacher audition under any trigger.
@@ -217,6 +228,11 @@ repetition, no dropped words, no collapse. Durations: chatterbox 4.3–7.3 s
 whether they belong in the portfolio, is the owner's ear on those 60 cards — a WER
 of 0.000 is exactly as true of a flat, lifeless read as of a good one.
 
+> **The ear answered, and it answered yes for all three.** Chatterbox, Zonos and
+> Orpheus are live portfolio engines as of the delivery-v1 campaigns; zonos was
+> promoted scrutinized → normal on 2026-08-04 (44/44 lines directed with emotion off,
+> 37 keeps from 38 heard). Step 7 is done for these three.
+
 **Open defect found by the render: cap Zonos's `speaking_rate`.** Two clips landed
 below the 4 s owner floor (`rev_00_victory_ZON` 3.5 s, `rev_09_goodnews_ZON` 3.4 s)
 and they are precisely the only two the director wrote at `speaking_rate` 24.0. The
@@ -224,9 +240,10 @@ schema permits 5–30 and the skill file quotes the docs' "~15 normal, 30 very f
 but on ~95-character lines anything above ~20 undershoots the floor. Cap the band
 before the next campaign rather than letting `qc_gate` silently drop the clips.
 
-**Not yet done: step 7 itself.** Nothing has been auditioned. The smoke output that
-preceded this was deliberately written outside `DATA_ROOT` so `register_audition`
-refused to queue it; only the campaign clips reached `ratings.csv`.
+*(At the time this was written, step 7 was still outstanding — the smoke output that
+preceded it was deliberately written outside `DATA_ROOT` so `register_audition` refused
+to queue it, and only the campaign clips reached `ratings.csv`. It has since been
+auditioned; see the callout above.)*
 
 LongCat is deliberately still at step 3: its skill file says there is nothing to
 direct, and its 45% gender-flip standing is unsettled, so it is a reference-casting

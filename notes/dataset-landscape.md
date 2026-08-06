@@ -6,6 +6,13 @@
 > They were the same file in spirit and neither answered "what are we training on
 > today", which is how we reached 2026-08-02 with ~60 GB of cleared, downloaded,
 > unused audio and every checkpoint tracing to a tenth of LibriTTS-R.
+>
+> **Three documents live here, folded in and kept as parts:** the English survey
+> (below), **§ NC licensing — the two-fence ruling** (was
+> `nc-gray-area-and-candidate-quality.md`), and **§ Multilingual sources** (was
+> `multilingual-dataset-sources.md`). Where those two used to point at this file by
+> name they now point at the part; a July rename pass had turned those references
+> into links to this file itself (fixed 2026-08-06).
 
 _Surveyed 2026-07-13 (HF Hub, licenses verified per-repo unless marked unverified). The governing
 rule comes from [open-decision-licensing.md](../../../Prosodia/notes/open-decision-licensing.md) tightening #3:
@@ -53,7 +60,7 @@ synthesis is reserved for text with no real audio).
 
 | Dataset | Why excluded |
 |---|---|
-| [Expresso](https://hf.co/datasets/ylacombe/expresso) | ⚠ **THIS RULING IS CONTESTED — see [training-sources.md § The Expresso conflict](training-sources.md). The 2026-08-01 no-patent / fully-Apache-2.0 posture sets the corpus bar at *unrestricted open redistribution* and says explicitly it is STRICTER than the old commercial test, which CC-BY-NC does not clear. Unresolved; owner's call. Nothing has trained on it.** — **CC-BY-NC-4.0 — status changed 2026-07-19.** Bare NC (no click-through agreement executed) is **risk-accepted for training use** under the two-fence ruling below; tainted-lineage bookkeeping applies and the ship/don't-ship call defers to promotion time. Agreement-walled NC (EmoV-DB) stays fully excluded. Still the best *design reference* for expressive style taxonomies (8 read + 26 improvised styles, 4 speakers, 48 kHz). Gray-area tiers + quality-weighted deliberation: [dataset-landscape.md](dataset-landscape.md) |
+| [Expresso](https://hf.co/datasets/ylacombe/expresso) | ⚠ **THIS RULING IS CONTESTED — see [training-sources.md § The Expresso conflict](training-sources.md). The 2026-08-01 no-patent / fully-Apache-2.0 posture sets the corpus bar at *unrestricted open redistribution* and says explicitly it is STRICTER than the old commercial test, which CC-BY-NC does not clear. Unresolved; owner's call. Nothing has trained on it.** — **CC-BY-NC-4.0 — status changed 2026-07-19.** Bare NC (no click-through agreement executed) is **risk-accepted for training use** under the two-fence ruling below; tainted-lineage bookkeeping applies and the ship/don't-ship call defers to promotion time. Agreement-walled NC (EmoV-DB) stays fully excluded. Still the best *design reference* for expressive style taxonomies (8 read + 26 improvised styles, 4 speakers, 48 kHz). Gray-area tiers + quality-weighted deliberation: **§ NC licensing** below |
 | [EmoV-DB](https://github.com/numediart/EmoV-DB) | **NC** (LICENSE.md: "Non-commercial Purposes" only — resolved 2026-07-19). Rare acted classes (amused-with-laughter, sleepy) make it reference-only alongside Expresso |
 | Emilia — original 101k-h subset | CC-BY-NC-4.0 (only the YODAS portion is CC-BY; the repo's license tag reflects the newer subset — easy to misread, verified 2026-07-13) |
 | AniSpeech / Hailuo-derived sets, etc. | Carry MIT labels but are scraped/synthetic from copyrighted or closed-model sources — **provenance risk**; the "for everyone" promise needs clean lineage, and synthetic-from-closed-APIs additionally raises ToS questions (the Kokoro data caveat) |
@@ -159,16 +166,16 @@ Cross-refs: [STATE roadmap §3 (VAT)](STATE.md) · [high-ambition-1 §Contract-l
 
 # NC licensing — the two-fence ruling (folded in 2026-07-26)
 
-*(From the retired `dataset-landscape.md`. That doc described itself as "the
-deliberation surface, this one is the verdict table"; the 2026-07-19 ruling closed the
+*(From the retired `nc-gray-area-and-candidate-quality.md`. That doc called itself "the
+deliberation surface" and the survey above "the verdict table"; the 2026-07-19 ruling closed the
 deliberation, and keeping a second place to look for licence facts had already produced a
-disagreement about Expresso.)*
+disagreement about Expresso. **The verdict table is the survey above; this part is why it says
+what it says.**)*
 
 _Owner request 2026-07-19: a write-up of (a) the CC-BY-NC on-disk options and the gray-area
 decisions around them, and (b) the surveyed-but-unverified candidates — **quality-weighted**,
 because the quality of the permissive options bears directly on whether the NC gray area is ever
-worth entering. Companion to [dataset-landscape.md](dataset-landscape.md) (the license SSOT);
-this doc is the deliberation surface, that one is the verdict table._
+worth entering._
 
 ## 0 · Corrections to the record (2026-07-19)
 
@@ -190,7 +197,7 @@ this doc is the deliberation surface, that one is the verdict table._
 |---|---|---|---|
 | `datasets/expresso` | **CC-BY-NC-4.0** | 1.8 GB — 11,615 read-speech clips (the read portion of the 40 h set) | Reference-only today; the subject of §2 |
 | `datasets/JL-Corpus` | **CC0** | 459 MB, 2,400 utts | Calibration anchor (in use, clean) |
-| Owner's DRM-free audiobooks | Copyrighted performances | — | Hard line + three sanctioned private uses, already settled — see [dataset-landscape.md §owner's-audiobooks](dataset-landscape.md) |
+| Owner's DRM-free audiobooks | Copyrighted performances | — | Hard line + three sanctioned private uses, already settled — see **§ The owner's DRM-free audiobooks** above and [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (the policy SSOT) |
 | Emilia original 101k-h subset | CC-BY-NC-4.0 | not on disk (only the CC-BY YODAS keeps were mined: 13,141 clips in `emilia_kept`) | Nothing to ponder — we never pulled the NC portion |
 
 So the on-disk NC question is **really only about Expresso**.
@@ -294,7 +301,9 @@ NC-touching run, and the ship/don't-ship-NC-lineage call is deferred to promotio
 audit trail in hand. Emilia-original (bare NC, ~101k h) is now *eligible* for tail-mining if
 YODAS runs dry — same bookkeeping.
 
-Cross-refs: [dataset-landscape.md](dataset-landscape.md) ·
+Cross-refs: **§ Cleared for training** above (the verdict table) ·
+[training-sources.md](training-sources.md) (what is actually on disk, and the live Expresso
+conflict) ·
 [open-decision-licensing tightening #3](../../../Prosodia/notes/open-decision-licensing.md) ·
 `Sonora/configs/data_licenses.yaml` (the wall) ·
 [vat-channels.md](vat-channels.md) (JL-Corpus calibration) ·
@@ -311,8 +320,8 @@ Cross-refs: [dataset-landscape.md](dataset-landscape.md) ·
 
 _Drafted 2026-07-18. **This is an UNVERIFIED survey**, not a cleared list. Every entry below still
 owes a per-repo license check and a per-split sample-rate/quality check before a single file enters
-any pipeline — exactly the discipline [dataset-landscape.md](dataset-landscape.md) applies to
-English. Do not trust the parentheticals here as clearance; they are leads to verify._
+any pipeline — exactly the discipline the English survey at the top of this file applies. Do not
+trust the parentheticals here as clearance; they are leads to verify._
 
 ## Governing constraints (unchanged, cross-lingual)
 
@@ -363,8 +372,8 @@ Two distinct things wear the MLCommons name; keep them separate.
 2. **MLCommons People's Speech** — ~30k h, **English**, **mixed CC-BY-4.0 + CC-BY-SA-4.0**. The
    **SA portion trips the share-alike edge above** and must be split out, not ingested wholesale.
    ASR-grade audio; sample rate/quality need per-clip checking before any TTS use. (Listed as an
-   English vetting-pass candidate in [dataset-landscape.md](dataset-landscape.md); repeated here
-   because it arrives via the MLCommons question.)
+   English vetting-pass candidate in **§ Candidates for a later vetting pass** above; repeated
+   here because it arrives via the MLCommons question.)
 
 ## 🔭 Other multilingual candidates to survey later (NOT yet checked)
 
@@ -388,7 +397,7 @@ Two distinct things wear the MLCommons name; keep them separate.
 4. **Record source + license + sample rate per split in the registry model card**, same promotion
    convention as English, so the Apache "for everyone" claim stays auditable across languages.
 
-Cross-refs: [dataset-landscape.md](dataset-landscape.md) (English SSOT) ·
+Cross-refs: **§ Cleared for training** at the top of this file (the English licence SSOT) ·
 [open-decision-licensing.md tightening #3](../../../Prosodia/notes/open-decision-licensing.md) ·
 [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (the private-lineage boundary, unchanged
 cross-lingually) · [STATE.md](STATE.md).
