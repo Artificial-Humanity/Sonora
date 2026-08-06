@@ -1,5 +1,28 @@
 # @package _global_
 
+# ============================================================================
+# RETIRED 2026-08-06 — DO NOT RUN, RESUME, STAGE OR EXPORT THIS EXPERIMENT.
+#
+# It ran, and the never-trained holdout says it made the model WORSE. ep099 is
+# +0.0164 against its own warm start over 5,463 unseen clips, with all three loss
+# terms worse and better on only 39.1% of them; it is also +0.0443 worse on v3c's
+# OWN val split, and it is not a normalisation artifact (+0.0172 under the v2
+# constants it trained with). The ear had already reported "no audible change" —
+# it simply could not resolve a 0.9% move, and the direction is down.
+#
+# Use vat3_finetune ep099 (== the stripped warmstart/vat3_ep099.ckpt) as the base
+# for anything downstream. The compose launcher refuses this experiment by name.
+#
+# This is a verdict on the RUN, not on libritts_r_vat_v3c. The corpus below is
+# correct and is what Phase 1 builds on — what the measurement actually says is
+# that ~30k clips a model is already fit to has no 100 epochs' worth of signal
+# left in it, so the lever is corpus size, not epochs.
+#
+# Full result: notes/quality-gap-plan.md § 0a. Reproduce: scripts/score_holdout.sh.
+# Kept (not deleted) because Phase 1's config will be derived from it, and because
+# the measurement must stay reproducible.
+# ============================================================================
+
 # The v3c round: same three channels (V = EIV valence combo, A = LUFS, T = phonation
 # + harshness) as vat3_finetune, on the CORRECTED corpus. What changed from that run:
 #

@@ -64,7 +64,7 @@ The compose command now **overrides it on the CLI**, so a run launched through
 |---|---|---|
 | `callbacks.model_checkpoint.every_n_epochs` | **10** | ~635 s/epoch, so worst-case loss is ~1.8 h, not the whole run |
 | `callbacks.model_checkpoint.save_top_k` | **-1** | keep every checkpoint; the default 10 evicts by epoch, and we select by ear, not by `monitor` |
-| `ckpt_path` | `/data/model-training/sonora/resume.ckpt` | a symlink the command re-points at the newest `checkpoint_epoch=*.ckpt`, falling back to the warm-start init — so a restart resumes instead of starting over |
+| `ckpt_path` | `/data/model-training/sonora/resume.ckpt` | a symlink the command re-points at the newest `checkpoint_epoch=*.ckpt` **of `$SONORA_EXPERIMENT`**, falling back to `$SONORA_WARMSTART` — so a restart resumes instead of starting over, and no run inherits another's weights |
 
 Two consequences worth holding on to. **A run launched any other way still gets 100** — the
 override lives in the compose `command:`, not in the repo config. And **the prep chain is now
@@ -73,13 +73,36 @@ aborted the chain before training started while `restart: unless-stopped` retrie
 braced and `|| echo`'d now. *A hardware fault is the event that finds every `&&` in a container
 command.*
 
-### Two things bit on the vat3c launch — read before the next one
+### How to launch a run (changed 2026-08-06 — there is no longer a queued run)
 
-1. **The compose `command` IS the queued run.** `compose up -d sonora_training` starts
-   training immediately, and `restart: unless-stopped` relaunches it. Bringing the
-   container up to inspect it launched the stale `vat3_finetune`/v2 run; it was caught
-   during `apt-get` and stopped before a step ran. **Edit the command line before
-   starting the container, not after.**
+```
+SONORA_EXPERIMENT=<name> docker compose -f AI-Lab-AMD/docker-compose.yml \
+    --profile training up -d sonora_training
+```
+
+`SONORA_EXPERIMENT` has **no default**, and unset the container prints why and idles
+rather than training. `SONORA_WARMSTART` picks the base for a genuinely fresh run and
+defaults to `warmstart/vat3_ep099.ckpt` — the best checkpoint in the lineage on
+never-trained audio. Auto-resume is now **scoped to the named experiment's own run
+dirs**, so a run can only ever resume itself.
+
+This replaced a `command:` that hardcoded `experiment=vat3c_finetune` *and*, separately,
+globbed that experiment's checkpoints for a resume target. Both halves were traps the
+moment vat3c was retired: starting the container resumed a checkpoint we had just decided
+to throw away, and — the quiet one — because the glob and the experiment name were
+independent literals, launching **any successor run would silently have warm-started it
+from the retired ep099**. The container also refuses `SONORA_EXPERIMENT=vat3c_finetune`
+by name. Retirement rationale: [quality-gap-plan.md § 0a](quality-gap-plan.md).
+
+The idle-instead-of-exit is deliberate: `restart: unless-stopped` turns a fast exit into
+the 2,077-restart crash loop of 2026-08-04.
+
+### One more thing bit on the vat3c launch
+
+1. **The compose `command` was the queued run** — and `compose up -d sonora_training`
+   started training immediately. Bringing the container up to inspect it launched the
+   stale `vat3_finetune`/v2 run; it was caught during `apt-get` and stopped before a step
+   ran. *Closed by the change above:* there is nothing queued to start by accident now.
 2. **The corpus was never bound into the container.** Data configs name filelists
    relative to the repo root (`data/<corpus>/train_op.txt`), which resolves in the dev
    tree through a `data ->` symlink. The deploy clone has no symlink — it is untracked,
@@ -134,7 +157,7 @@ pushes deploy nothing; deploys are explicit via `AI-Lab-AMD/scripts/deploy.sh`.)
 
 | Service | Profile | Launch |
 |---|---|---|
-| `sonora_training` (Matcha acoustic) | `training` | `docker compose -f AI-Lab-AMD/docker-compose.yml --profile training up -d sonora_training` |
+| `sonora_training` (Matcha acoustic) | `training` | `SONORA_EXPERIMENT=<name> docker compose -f AI-Lab-AMD/docker-compose.yml --profile training up -d sonora_training` — idles with a message if the variable is unset |
 | `vocoder_training` (HiFi-GAN) | `vocoder-training` | `... --profile vocoder-training up -d vocoder_training` |
 | `sonora_vocalizer` (inference/dev, CPU) | — (auto) | part of the normal stack |
 
