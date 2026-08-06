@@ -106,3 +106,20 @@ case-insensitive macOS/Windows.
   crash-looped two services). Use `--system` only in images whose Python truly is the system one.
   uv's resolver speed materially shortens the recreate-reinstall cycle documented in this
   project's STATE ops notes.
+
+### 4. Changelog Maintenance Requirement
+
+* The project changelog lives at [notes/CHANGELOG.md](notes/CHANGELOG.md). Append a detailed chronological entry describing all technical modifications, refactoring milestones, and build-system changes **after committing** the corresponding work.
+* **Scope: code work only.** Changelog entries are required for source, config, and dependency-manifest changes (`matcha/`, `scripts/`, `configs/`, `tests/`, `sky/`, `vocalizer.py`, `Makefile`, `pyproject.toml`/`requirements.txt`/`uv.lock`/`setup.py`). They are **not** required for docs-only commits (`notes/`, `notebooks/`, `*.md`, comments-only changes).
+* Every entry must be accompanied by the short 7-character commit SHA associated with the work.
+* **The changelog is append-only across a release cycle.** Do not prune, rewrite, or remove historical entries. Entries are pruned/rolled over **only** when we tag and release a new version of the overall project — at which point the released entries are collected under that version's heading and the working section is reset for the next cycle.
+* New entries go at the top under the current date, following the existing `Added` / `Changed` / `Fixed` / `Removed` structure.
+
+### 5. Code Review Execution Standards
+
+* **Scope: code work only.** Code reviews cover the same code changes that warrant changelog entries (see §4) — source, configs, and dependency manifests. Docs-only commits are out of scope and need no review.
+* When performing a code review, cross-reference the changelog and corresponding commits.
+* Create a review document matching the format `notes/code-review-[year][month][day]-[hhmmss].md`. Begin the document with the first evaluated short commit SHA, and end with the last evaluated commit SHA.
+* Determine the range of commits to review by starting with the commit immediately following the end SHA of the *previous* code review. If no prior review exists, use all commits from the previous and current day.
+* Once the new code review document has been written, delete the previous one to keep only the latest review active.
+* Repoint the **Latest code review** pointer in [notes/STATE.md](notes/STATE.md) to the new document (only the link target changes; the surrounding line is phrased generically) so a session can find the current review without globbing the folder.

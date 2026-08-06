@@ -211,3 +211,9 @@ is only its headline. Nothing below has started.
    baseline frozen as the last act of Phase 1.
 4. Ears queue in priority order — [todo.md §4](todo.md).
 5. Export-lane gate hardening before any vat3c/delivery export — [todo.md §2](todo.md).
+
+## Pointers
+
+- Change history — [CHANGELOG.md](CHANGELOG.md) (maintained per AGENTS.md §4 since 2026-08-06)
+- Latest code review — none yet (the first review follows AGENTS.md §5: with no prior review,
+  it covers the previous and current day's commits)
