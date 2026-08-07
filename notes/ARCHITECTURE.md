@@ -57,6 +57,20 @@ makes book prose the cheapest span-labelled data available, and is the same sign
 quote-mining lane already harvests. Current evidence is 28 rows / 17 keeps at mean 3.71 —
 **untested rather than weak**, since only qwen of those engines is still in the portfolio.
 
+**A categorical EMOTION block is an open question, deliberately unanswered** (raised
+2026-08-07). The dimensional-plus-categorical hybrid — 3 continuous VAD plus 8 Plutchik
+primaries or 6 Ekman — is a standard shape in emotional TTS, and this contract does not
+have one: affect is carried entirely by the continuous Control row, and the 47-label
+register lexicon that could supply categories is Director-side by the pin above. That
+compile-down is lossy in a documented way ([vat-channels.md](vat-channels.md) § Options:
+*"Valence is the one dimension acoustics-only genuinely can't reach — a sob and a laugh
+have similar energy"*), and valence is precisely the channel that failed its standing
+test. But that failure is currently diagnosed as a **corpus-label limit rather than an
+architectural one**, so the question is gated on Phase 1: if volume moves valence, it is
+answered; if not, the representation becomes the suspect. Shape if it is ever taken:
+append as channels 8+ on the same zero-init FiLM path, never reorder. Reasoning and the
+gate: [todo.md § 4](todo.md).
+
 Contract changes bump the version and require an owner call.
 
 ## 2. Corpus & labels

@@ -136,7 +136,7 @@ from the real LibriTTS `speaker`, verified against the wav paths._
       G2P — deliberately not attempted, since a partial heuristic would silently change
       pronunciations across the whole corpus.
 
-## 4 · Embodiment — approved; the clip-level channel it waits on has SHIPPED
+## 4 · Conditioning axes — one approved, one OPEN
 
 Owner approved the position 2026-08-02; the reasoning is canon in
 [ARCHITECTURE.md § 1](ARCHITECTURE.md) and is not repeated here.
@@ -158,6 +158,53 @@ Owner approved the position 2026-08-02; the reasoning is canon in
       is now sequenced behind evidence (the bank above) rather than behind plumbing.
       A-M2's fix is the other half of the groundwork: per-word CTC spans were garbage
       until 2026-08-07, and span supervision would have inherited them.
+
+### The categorical emotion block — OPEN DECISION, not scheduled (raised 2026-08-07)
+
+Owner question while the delivery width landed: *isn't 3 + 8 the standard?* It is — the
+dimensional-plus-categorical hybrid (3 continuous VAD + 8 Plutchik primaries, or 6 Ekman)
+is a common shape in emotional TTS. We do not have one, and whether we should is genuinely
+undecided. Recorded here so the answer is a decision rather than an omission.
+
+**Why we do not have one today.** Affect is carried entirely by the three continuous
+channels. The categorical vocabulary that exists — the 47-label register lexicon, 554
+certified keeps, 138 distinct labels seen in the wild — is **Director-side by contract**
+(v2, ARCHITECTURE §1: "the Actor never sees a register id") and compiles down to V/A/T +
+delivery + text before the model sees anything. Delivery's five lanes are *modes of
+address*, not emotions, and are orthogonal to affect.
+
+**The case for it, and it is not weak.** That compile-down is lossy in a specific,
+documented way. `vat-channels.md` § Options A: *"Valence is the one dimension
+acoustics-only genuinely can't reach — a sob and a laugh have similar energy."* Categorical
+affects can occupy nearly the same point in a low-dimensional continuous space; anger and
+fear sit close in V/A, and the discrete label is the only thing that separates them. And
+valence is exactly the channel that **FAILED its standing test** on vat3-24k (energy PASS /
+tension near-pass / valence FAIL).
+
+**Why it is NOT scheduled, and what would change that.** That failure is currently
+diagnosed as *a corpus-label limit, not architectural* — which is what opened the directed
+teacher-synthesis lane in the first place. Adding channels would be an architectural answer
+to a problem we believe is a data problem, and we are about to run the experiment that
+tells us which: **Phase 1 is the data lever.** So:
+
+- [ ] **Gate on Phase 1.** If valence is still failing after the corpus grows, the
+      representation is the suspect and this becomes a real spike. If volume moves it, the
+      question is answered and this stays closed. Do not spike it before that read — a
+      categorical block trained on a corpus that cannot support the continuous channel
+      would confound the two.
+- [ ] **If it is spiked, the shape is settled in advance** and cheap: it APPENDS as
+      channels 8+ on the same zero-init FiLM path, so `unknown` stays all-zero and every
+      existing checkpoint and filelist keeps its meaning. Reordering is the one edit that
+      must never happen — position is the wire format now. Vocabulary and width are a
+      **contract change requiring an owner call** (ARCHITECTURE §1); `matcha/delivery.py`
+      is where it would live and refuses anything outside the closed set, so it cannot
+      arrive by accident.
+- [ ] **The labels do not exist yet in that form.** Delivery shipped with 1,189 labelled
+      keeps; an 8-way emotion block starts at zero. The register lexicon is the obvious
+      source (a 47 → 8 fold), but it is Director-authored intent rather than an ear
+      verdict on the render, and the instrument-vs-intent distinction is the one this
+      corpus keeps having to relearn. Costing that fold is part of the spike, not a
+      preliminary.
 
 ## 5 · Ears queue (priority order)
 

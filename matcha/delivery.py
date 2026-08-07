@@ -58,6 +58,14 @@ Vocabulary changes are contract changes and require an owner call.
 # Order is the wire format. Appending is a contract change; REORDERING silently
 # reinterprets every checkpoint and every filelist ever written, so it is worse than
 # appending and there is no situation in which it is the right edit.
+#
+# THIS IS NOT AN EMOTION TAXONOMY, and if you came here to add one, read todo.md § 4
+# first. A categorical emotion block (the standard 3-continuous + 8-Plutchik hybrid) is an
+# OPEN question, gated on whether Phase 1's corpus growth fixes the valence channel — the
+# current diagnosis is a data limit, not a representation limit, and adding channels
+# before that read would confound the two. If it is ever taken it APPENDS as channels 8+,
+# a separate group with its own name, not extra entries here: these five are modes of
+# ADDRESS (who is being spoken to), which is orthogonal to affect.
 DELIVERY_LANES = ("Dialogue", "Neutral", "Documentary", "Newscaster", "Speech")
 
 # The label `unknown` carries in ratings.csv and the corpus filelists: a blank cell.

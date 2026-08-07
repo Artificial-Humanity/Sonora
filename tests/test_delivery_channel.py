@@ -225,3 +225,33 @@ def test_the_width_is_not_the_vad_octants():
     assert "NOT THE EIGHT VAD OCTANTS" in src
     # And the third axis is tension, not dominance — rescoped LAX/TIGHT 2026-07-20.
     assert "tension" in src and "not dominance" in src
+
+
+def test_the_open_emotion_block_decision_is_recorded_where_it_would_be_made():
+    """An open decision that lives only in a conversation is an omission with a good
+    story. The 3-continuous + 8-categorical hybrid is standard in emotional TTS and we
+    deliberately do not have one; the reasoning and its gate belong in the three places
+    someone would actually look — the contract canon, the open-work list, and the module
+    they would edit to add channels."""
+    arch = (REPO / "notes" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert "categorical EMOTION block is an open question" in arch
+    assert "gated on Phase 1" in arch
+
+    todo = (REPO / "notes" / "todo.md").read_text(encoding="utf-8")
+    assert "The categorical emotion block — OPEN DECISION" in todo
+    assert "Gate on Phase 1" in todo
+
+    src = (REPO / "matcha" / "delivery.py").read_text(encoding="utf-8")
+    assert "THIS IS NOT AN EMOTION TAXONOMY" in src
+    assert "APPENDS as channels 8+" in src
+
+
+def test_the_recorded_gate_names_the_evidence_it_waits_on():
+    """The decision is not "maybe later" — it is gated on a specific measurement. Valence
+    FAILED its standing test, and that failure is currently diagnosed as a corpus-label
+    limit rather than an architectural one; Phase 1 is the experiment that separates them.
+    Spiking before that read would confound a data problem with a representation one."""
+    todo = " ".join((REPO / "notes" / "todo.md").read_text(encoding="utf-8").split())
+    assert "corpus-label limit, not architectural" in todo
+    assert "sob and a laugh have similar energy" in todo
+    assert "1,189 labelled keeps; an 8-way emotion block starts at zero" in todo
