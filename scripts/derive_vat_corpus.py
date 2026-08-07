@@ -126,6 +126,7 @@ the manifest as `libritts_r` (permissive). Run from the Sonora repo root:
 """
 
 import argparse
+import collections
 import hashlib
 import json
 import multiprocessing as mp
@@ -338,6 +339,7 @@ def _load_delivery(path):
     from matcha.delivery import delivery_index
 
     out, counts = {}, {}
+    by_base = {}
     with open(path, newline="", encoding="utf-8") as fh:
         for row in _csv.DictReader(fh):
             lane = (row.get("delivery") or "").strip()
@@ -348,10 +350,26 @@ def _load_delivery(path):
             if not link:
                 continue
             out[os.path.normpath(link)] = lane
-            out[os.path.basename(link)] = lane
+            by_base.setdefault(os.path.basename(link), set()).add(lane)
             counts[lane] = counts.get(lane, 0) + 1
+
+    # The basename fallback exists because `link` is recorded RELATIVE to the ratings
+    # directory (`../LibriTTS_R/...`) while the corpus carries absolute paths, so the
+    # normpath key can never match and the exact-path lookup alone joins nothing.
+    #
+    # It is a fallback and not the primary key because a basename is not unique across
+    # campaigns. An ambiguous one is DROPPED rather than resolved last-write-wins: two
+    # campaigns disagreeing about a name is not evidence for either lane, and quietly
+    # picking one would write a delivery label the ear never gave this clip.
+    ambiguous = {b for b, lanes in by_base.items() if len(lanes) > 1}
+    for base, lanes in by_base.items():
+        if base not in ambiguous and base not in out:
+            out[base] = next(iter(lanes))
     print(f"delivery: {sum(counts.values())} labelled clip(s) from {path} — "
           + ", ".join(f"{n} {k}" for k, n in sorted(counts.items())))
+    if ambiguous:
+        print(f"  {len(ambiguous)} basename(s) map to more than one lane and are ignored: "
+              + ", ".join(sorted(ambiguous)[:4]))
     return out
 
 
@@ -607,12 +625,31 @@ def main():
 
     def label(p):
         v = clamp2(valence_z[p]) if p in valence_z else 0.0
-        vec = vat_vector(v, clamp2(lufs_z[p]), clamp2(tension_z[p]),
-                         delivery_of.get(p, ""))
+        # Exact path first, basename second. Looking up ONLY the exact path is what made
+        # `--delivery-from` a silent no-op on the first v4 run: it reported "1635 labelled
+        # clips" and applied zero of them, because ratings.csv records `link` relative to
+        # the ratings directory and the corpus carries absolute paths. The failure looked
+        # exactly like success — the run printed the label count, the width was right, and
+        # every delivery block was all-zero.
+        lane = delivery_of.get(p) or delivery_of.get(os.path.basename(p), "")
+        vec = vat_vector(v, clamp2(lufs_z[p]), clamp2(tension_z[p]), lane)
         # V/A/T keep 4 decimals; the delivery block is categorical, so it is written as
         # 0/1 rather than 0.0000/1.0000 — a fractional value there is meaningless and
         # `lane_of_vector` refuses one, so the format should not suggest it is possible.
         return ",".join([f"{x:.4f}" for x in vec[:3]] + [f"{int(x)}" for x in vec[3:]])
+
+    # Report what was APPLIED, not what was loaded. `_load_delivery` printing its 1,635
+    # labels is a statement about ratings.csv; this is a statement about the corpus, and
+    # the first v4 run showed they can differ by all of it. Zero applied is legitimate
+    # here — LibriTTS predates the axis — so this is a line to read, not a gate.
+    applied = collections.Counter(
+        delivery_of.get(p) or delivery_of.get(os.path.basename(p), "") or "unknown"
+        for p, _, _ in kept)
+    n_lane = sum(n for k, n in applied.items() if k != "unknown")
+    print(f"delivery applied: {n_lane}/{len(kept)} clip(s) carry a lane"
+          + (" — " + ", ".join(f"{n} {k}" for k, n in sorted(applied.items())
+                               if k != "unknown") if n_lane else
+             " (every clip `unknown` = all-zero, which is contract-v1 conditioning)"))
 
     if ipa_cache is not None:
         rows = [f"{p}|{spk_index[s]}|{ipa_cache[p]}|{label(p)}" for p, _, s in kept]
