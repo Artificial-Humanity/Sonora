@@ -28,36 +28,28 @@ This file is **residue, not the plan.** What to do next, and in what order, is
 
 ---
 
-## 1 · Export lane (before any vat3/delivery export)
+## 1 · Before the next training run
 
-_**F-C1 and F-H1 closed 2026-08-06.** The gate suite is a ledger and `gates_or_die()`
-refuses to write artifacts unless every gate passes; **G5 drives valence / energy / tension
-independently and requires each to move the waveform** (measured 7.0e-2 / 9.2e-2 / 8.6e-2
-mean |delta| vs neutral — the first time V and T have been nonzero through a converted
-graph). Also fixed: G4's monotonicity used `all()` over a possibly empty sequence, and
-**F-M4**'s `config.json` wrote `time_embed_dim=1024` where the graphs consume
-`in_channels` (224). 10/10 gates pass._
+_**The export lane closed 2026-08-07** (`905e91b`..`e18877a`). It had been "the blocker it
+was always going to be" for one day. What landed: **F-H2** — `config.json` carries a
+machine-readable `control` block (continuous range + reject-don't-clamp, the one-hot
+delivery vocabulary with its explicit unknown vector, and CFG's method and >=25-step
+floor), so a host can validate BEFORE it renders instead of after someone listens; three
+of five demonstrated bad vectors were previously accepted silently. **F-M1** — the referee
+bound inputs by a dtype heuristic that fed the TOKEN COUNT into `spks` (same dtype, same
+shape, no error), so it could not score the conditioned lane and quietly compared the
+wrong render when it tried; bound by name now. **F-M5** — cosine and Pearson are
+scale-invariant, so `0.5 * reference` scored **1.000000**; gain and normalised-RMSE gates
+added to both the referee and the converter (G3b/G3c). **F-M2** — outputs were renamed by
+emission order, so a swapped pair would have labelled the LENGTHS tensor `wav`; checked
+against shape and dtype, and `renamed 0 tensors` is a failure rather than a success.
+**F-M3/M6** — `kotlin_replica` could not run (three of its seven prerequisites are vendored
+assets it never looked for) and validated the unconditioned Phase 0 graphs; it runs on
+both lanes now and drives spk/vat/delivery through the same manifest the host reads.
+**F-M7** folded into F-H2. New gate **G6**: the delivery lanes must be mutually
+distinguishable, since five inputs on one summing junction pass the per-channel probe five
+times._
 
-**This section is now the blocker it was always going to be.** The training side of the
-delivery channel landed 2026-08-07 (`vat_dim` 3 → 8, one-hot; see
-[ARCHITECTURE.md](ARCHITECTURE.md) §1 and `matcha/delivery.py`), and `convert_vat.py`
-correctly refuses a wider checkpoint. Its refusal message names what is missing.
-
-- [ ] **F-H2:** no delivery export story. Two halves now, and the second is new:
-      nothing records or enforces the 2σ clamp contract for mobile hosts; and nothing
-      tells the host that the last five channels are **categorical**. A host that
-      interpolates them — as it reasonably would, having been handed eight floats and told
-      three of them are continuous — produces a vector `delivery.lane_of_vector` refuses.
-      `config.json` needs the lane vocabulary and the channel semantics, not just a width.
-- [ ] **F-M1..M3, M5..M7:** referee binds inputs by dtype heuristic and can't score conditioned
-      graphs; `rename_tflite_tensors` maps outputs by emission order with no shape check
-      ("renamed 0 tensors" is success); `kotlin_replica` is unrunnable (depends on
-      artifacts nothing produces) and has no conditioning coverage; waveform
-      parity is Pearson-only (a systematic fp16 gain error scores 1.0 — no RMSE check
-      anywhere, for a model whose flagship axis is energy); CFG guidance is inexportable
-      and undocumented for mobile.
-
-## 2 · Before the next training run
 
 - [ ] **Score it on the holdout, not on `loss/val_epoch`.** Standing rule now that
       Phase 0a has landed, listed here because it is the step most easily skipped:
@@ -71,12 +63,12 @@ correctly refuses a wider checkpoint. Its refusal message names what is missing.
       than quietly at the trunk, exactly as designed. `derive_vat_corpus.py --delivery-from
       <ratings.csv>` joins the 1,189 delivery labels; without it every clip is `unknown`,
       which is all-zero and reproduces v1 conditioning byte for byte. **The zero-init FiLM
-      path means a warm start from `vat3-24k` ep099 is still valid** — the four new
+      path means a warm start from `vat3-24k` ep099 is still valid** — the five new
       channels contribute nothing until they are trained — but the trunk's input conv
       changes shape, so the warm start needs the same treatment `make_warmstart.py`
       already applies to a widened tensor. Not yet done.
 
-## 3 · QC / audit / staging
+## 2 · QC / audit / staging
 
 _**Closed 2026-08-07** (`cc4f1a5`, `9f53095`): **C-M6** — all six remaining writers are on
 `synth_common.ratings_transaction`, which gained a `dry_run` mode because every one of them
@@ -98,7 +90,7 @@ flipped one way. **C-M9** — both halves. **C-L5**, **C-L6**. Guards in
       count) and discards it. **Both thresholds need ear calibration like `tail_ok`**,
       which is why this was not closed in the 2026-08-07 sweep: shipping a gate on a
       guessed threshold either passes truncated clips or rejects good ones, and neither
-      failure announces itself. Sequenced behind § 6's ears queue.
+      failure announces itself. Sequenced behind § 5's ears queue.
 - [ ] **C-M5:** remaining non-atomic writes — `stage_pool`'s ledger + staging_log,
       `publish_tier` (`.bak` only taken on the first run ever). tmp + `os.replace`
       everywhere. *(`reader_profile`'s ratings write went onto the transaction with C-M6;
@@ -108,7 +100,7 @@ flipped one way. **C-M9** — both halves. **C-L5**, **C-L6**. Guards in
 - [ ] **C-L4:** loudnorm sidecar keyed on path, so a rerolled-in-place wav ships
       unnormalized. *(C-L5 and C-L6, filed with it, are closed.)*
 
-## 4 · Label derivation
+## 3 · Label derivation
 
 _Mostly closed 2026-08-06 (`tests/test_label_derivation.py`, 12 cases). **D-M1** refuses a
 short EIV head set instead of imputing `0.0` (which z-scores ~3σ NONZERO); only WEIGHTED
@@ -144,7 +136,7 @@ from the real LibriTTS `speaker`, verified against the wav paths._
       G2P — deliberately not attempted, since a partial heuristic would silently change
       pronunciations across the whole corpus.
 
-## 5 · Embodiment — approved; the clip-level channel it waits on has SHIPPED
+## 4 · Embodiment — approved; the clip-level channel it waits on has SHIPPED
 
 Owner approved the position 2026-08-02; the reasoning is canon in
 [ARCHITECTURE.md § 1](ARCHITECTURE.md) and is not repeated here.
@@ -167,7 +159,7 @@ Owner approved the position 2026-08-02; the reasoning is canon in
       A-M2's fix is the other half of the groundwork: per-word CTC spans were garbage
       until 2026-08-07, and span supervision would have inherited them.
 
-## 6 · Ears queue (priority order)
+## 5 · Ears queue (priority order)
 
 1. [ ] **Qwen vs VibeVoice at equal loudness** — the one teacher-portfolio ranking the
        loudness confound (5.99 dB spread, Qwen +3.81 dB over VV) could have produced.
@@ -179,9 +171,9 @@ Owner approved the position 2026-08-02; the reasoning is canon in
        radio-timbre/IVR failure mode; its 24% rate was measured on expressive material).
        Re-test on dialogue or an expressive register before any tier movement.
 4. [ ] **Ear-calibrate `tail_ok`, `speech_ok` and `head_ok`** (thresholds never
-       calibrated) **and the 1.4 s pause advisory band**. § 3's C-M4 is blocked on this.
+       calibrated) **and the 1.4 s pause advisory band**. § 2's C-M4 is blocked on this.
 
-## 7 · Parked dataset decisions
+## 6 · Parked dataset decisions
 
 SSOT is `training-sources.md` — not duplicated here. Headlines: the Expresso two-ruling
 conflict (owner call), the other 90% of LibriTTS-R, Hi-Fi TTS parquet→wav conversion,

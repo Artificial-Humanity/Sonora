@@ -48,6 +48,46 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
   names why (F-H2, § 2). Verified in the pinned container: **22/22 seam checks** (13
   existing + 9 new) plus an end-to-end filelist round-trip.
 
+### Fixed — the export lane, closed (§1)
+
+- **`905e91b` — F-H2 + F-M7: the control contract.** `config.json` is the ONLY thing a
+  mobile host can read, and it carried `vat_dim` plus a name-to-slot map — where each
+  control is, and nothing about what may be sent there. **No bound was ever recorded, at
+  any width** (verified against the shipped artifacts: no `control`, no min/max, no clamp
+  key), so a request for valence 5 moved the FiLM activation off the manifold and still
+  produced fluent speech. And **nothing said which channels are categorical**, so a host
+  handed eight floats and three continuous names would reasonably crossfade all eight and
+  blend Newscaster into Dialogue. `control` now carries both, plus CFG's method and its
+  >=25-ODE-step floor (F-M7 — guidance is host orchestration and exports NOTHING, so a
+  host cannot discover it from the artifacts). Demonstrated on five vectors; three were
+  previously accepted silently. **G5** now probes a lane ONE-HOT rather than at ±1 (−1 on
+  a lane is a vector the host is forbidden to send), and new **G6** requires the lanes to
+  be mutually distinguishable — five inputs on one summing junction pass the per-channel
+  probe five times and give the host five names for one behaviour.
+- **`28756b4` — F-M1 + F-M5: the referee.** It bound graph inputs by a dtype heuristic, and
+  on a conditioned graph `spks` is int64 shape (1,) — IDENTICAL to `x_lengths` — so it
+  received the TOKEN COUNT as a speaker id. No error: it compared a render of the wrong
+  speaker and reported a fidelity number for it. Bound by name now, with a shape fallback
+  and a refusal on ambiguity, plus `--spk/--vat/--delivery`. Separately it gated on a
+  scale-INVARIANT metric: `0.5 * reference` scores **cosine 1.000000** and passed a 0.99
+  threshold, while the RMSE that would have caught it was computed, printed and thrown
+  away. Worst possible blind spot for a model whose flagship axis is a loudness dial.
+  Gain (dB) and normalised-RMSE gates added here and in the converter (**G3b**, **G3c**).
+- **`1c8dc25` — F-M2: `rename_tflite_tensors`.** Outputs were mapped by EMISSION ORDER, so
+  a swapped pair would rename the LENGTHS tensor `wav` — and Prosodia matches by name, so
+  it would read a one-element int tensor as audio. Checked against shape and dtype now.
+  `renamed 0 tensors` exited 0, so a graph whose names the table did not recognise was
+  copied through untouched and called a success; it is a hard failure now. Also: the table
+  predated contract v2, so a conditioned export's `spks`/`vat` kept their mangled names.
+- **`e18877a` — F-M3 + F-M6: `kotlin_replica`.** It could not run: three of its seven
+  prerequisites are VENDORED assets, not conversion outputs, and it only ever looked in
+  `artifacts/` — dying at module scope on a bare FileNotFoundError naming one file and no
+  directory. A preflight resolves both roots and lists every missing one with its
+  producer. It also validated the unconditioned Phase 0 graphs, so the Kotlin port — which
+  exists for the conditioned actor — was checked against a pipeline whose conditioning it
+  does not have. Both lanes run now, driving spk/vat/delivery through the same manifest
+  the host reads, with the mel stats taken from that manifest rather than hardcoded.
+
 ### Fixed — lanes, environments, acquisition, campaigns, QC
 
 - **`87c65f8` — `matcha/app.py` deleted, and the two espeak leaks the item did not know

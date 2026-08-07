@@ -43,7 +43,7 @@ _Last updated: 2026-08-07._
 > have refused any run that reached for it. Composition, a real batch, and a conditioned
 > `synthesise` are all verified in-container. Lineage and every source:
 > **[training-sources.md](training-sources.md)** (SSOT). Residual review debt that
-> touches training: [todo.md §2](todo.md).
+> touches training: [todo.md §1](todo.md).
 >
 > Pre-flight for the run itself is unchanged and non-negotiable: stop **all** inference
 > engines first ([spin-down rule](training-operations.md)), and run
@@ -218,12 +218,19 @@ ODE), verified at parity on Phase 0 and adapted to the derisk checkpoint (`spk` 
 inputs, all graphs GPU-clean, e2e corr ≥ 0.9993). The `torch → ONNX → onnx2tf`
 monolith is Plan B. Harness: `/data/toolchain/litert-conversion/`.
 
-⚠ The gate suite *refuses* now and G5 has driven V/E/T nonzero through a converted graph
-(both closed 2026-08-06, F-C1). What remains blocking is the **delivery export story**
-(F-H2), which grew a second half when the training side shipped: nothing records the 2σ
-clamp contract, and nothing tells the host that the last five channels are CATEGORICAL —
-a host handed eight floats and told three are continuous will interpolate all eight
-([todo.md §1](todo.md)).
+**The export lane closed 2026-08-07.** The gate suite refuses rather than reports (F-C1,
+08-06) and `config.json` now carries a machine-readable **control contract**: the
+continuous range with a reject-don't-clamp rule, the one-hot delivery vocabulary with its
+explicit unknown vector, and CFG's method plus its ≥25-ODE-step floor. A host can validate
+BEFORE it renders — three of five demonstrated bad vectors were previously accepted
+silently. Gates gained G3b/G3c (gain and normalised-RMSE: correlation is scale-invariant,
+so `0.5 × reference` scored **1.000000**) and G6 (the delivery lanes must be mutually
+distinguishable). The referee, the tensor renamer and `kotlin_replica` are all fixed —
+see [CHANGELOG.md](CHANGELOG.md).
+
+⚠ What remains is a **re-export**: the artifacts on `/data` are the 3-channel era, and
+`convert_vat.py` refuses a mismatched checkpoint by design. Re-derive the corpus at
+`vat_dim` 8, retrain, then convert.
 
 ## Next actions (short list)
 
@@ -242,7 +249,7 @@ is only its headline.
    `derive_vat_corpus.py --delivery-from <ratings.csv>` to join the 1,189 delivery labels;
    without it every clip is `unknown`, which is all-zero and reproduces v1 conditioning
    exactly. The zero-init FiLM path keeps a warm start from `vat3-24k` ep099 valid, but the
-   trunk's input conv changes shape — see [todo.md §2](todo.md).
+   trunk's input conv changes shape — see [todo.md §1](todo.md).
 3. **Phase 1 — data, cheapest first**, warm-starting from `vat3-24k` ep099.
    Emilia-YODAS keeps (+43%) → expressive-registers (+116) → LibriTTS-R 10× → Hi-Fi TTS
    v1. #1 is the fastest test of whether volume moves quality at all, and the 10× is
@@ -250,23 +257,21 @@ is only its headline.
    against the same ~30k clips made the model *worse*, so the lever is corpus, not epochs.
 4. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
    baseline frozen as the last act of Phase 1.
-5. Ears queue in priority order — [todo.md §6](todo.md). `speech_ok` / `head_ok` (§3's
+5. Ears queue in priority order — [todo.md §5](todo.md). `speech_ok` / `head_ok` (§2's
    C-M4) are blocked on it: shipping a gate on a guessed threshold either passes truncated
    clips or rejects good ones, and neither failure announces itself.
-6. Export-lane hardening before any vat3c/delivery export — [todo.md §1](todo.md). F-H2
-   grew a second half with the migration: nothing tells a mobile host that the last five
-   channels are **categorical**, and a host that interpolates them — as it reasonably
-   would, handed eight floats and told three are continuous — produces a vector the
-   encoding refuses.
+6. ~~Export-lane hardening~~ **DONE 2026-08-07** — the whole of §1 closed, including the
+   control contract a mobile host reads. What is left there is a re-export, which is
+   downstream of steps 2 and 3.
 
 ## Pointers
 
 - Change history — [CHANGELOG.md](CHANGELOG.md) (maintained per AGENTS.md §4 since 2026-08-06)
-- Review sweep — 47 open items down to **17**. The 2026-08-06 round closed both §1
+- Review sweep — 47 open items down to **15**. The 2026-08-06 round closed both §1
   blockers (E-M5/E-M6), §5's Highs, §3's packaging and GPL/cli lane, §8's label-derivation
   bugs, **F-C1** (the only Critical) and F-H1/F-M4, plus C-M10 and D-M5. The **2026-08-07**
   round (`87c65f8`..`72786ac`, twelve commits) closed the whole of §1, §3, §5 and §6 and
-  most of §7 — the host suite went 119 → **264** tests, the vat_dim seam checks 13 → **22**.
+  most of §7 — the host suite went 119 → **264** tests, the vat_dim seam checks 13 → **22**. The export lane (§1) closed the next day, `905e91b`..`e18877a`.
   Every fix carries a regression test; the running tally is [todo.md](todo.md).
   Six findings turned out to be **live or wider than filed**: the export harness ran three
   weeks stale on `/data`; `eiv_merge_corpus` fabricated a full-scale valence contribution
