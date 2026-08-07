@@ -537,6 +537,18 @@ def route_engines(design: str, engines, delivery: str = None, requires=None):
 # better than any threshold on its pitch statistics. rev_05_whimsy_CBX2 rendered clean
 # at score 5 from a 301 Hz reference while these failed repeatedly from 242-266 Hz.
 # Shared by synth_chatterbox and synth_zonos — the failures cross engines.
+
+# B-L5: ONE definition. This was written out separately in synth_chatterbox and
+# synth_zonos (240.0 both) and again in build_reference_pool as MAX_EXCURSION, with
+# qc_artifacts and the comment above pointing at "synth_chatterbox.MAX_REF_EXCURSION" as
+# though it were canonical. Three copies of a number that encodes a measured finding — the
+# chatterbox voice-split tracks pitch EXCURSION, not median (blind 16-clip audition,
+# 2026-07-29) — is three chances to re-tune one and not the others, and the symptom would
+# be an engine quietly casting references another engine refuses. It belongs beside
+# REF_BLACKLIST because it is the same kind of thing: a casting-granularity guard learned
+# from heard failures.
+MAX_REF_EXCURSION = 240.0
+
 REF_BLACKLIST = {
     # 6 failures across chatterbox AND zonos, revisit-v1 + retake-v1 (2026-07-28/29).
     "tr_victory_whimsical_01_brightF_s1234",

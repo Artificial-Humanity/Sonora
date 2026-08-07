@@ -39,7 +39,7 @@ from snac import SNAC
 
 import sys as _sys
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from synth_common import write_wav_atomic  # noqa: E402
+from synth_common import attempt_seed, write_wav_atomic  # noqa: E402
 
 MODEL_DIR = "/data/models/canopylabs/orpheus-3b-0.1-ft"
 SNAC_DIR = "hubertsiuzdak/snac_24khz"
@@ -142,7 +142,15 @@ def main():
             # start-of-speech. Omitting these two is what voided the last verdict.
             ids = torch.cat([torch.tensor([[SOH]]), ids,
                              torch.tensor([[EOT, EOH, SOAI, SOA]])], dim=1).to("cuda")
-            torch.manual_seed(job["seed"])
+            # B-M5: a re-run under skip-if-exists is the retry, and it used to re-seed
+            # identically — so a DETERMINISTIC failure (MOSS's split_with_sizes off-by-one,
+            # a decoder that returns silence) reproduced forever and burned the same GPU
+            # time to fail the same way. Perturbed per attempt, and the seed actually used
+            # is recorded below so the render stays reproducible from the manifest.
+            seed_used, attempt = attempt_seed(args.out, job["id"], job["seed"])
+            if attempt:
+                print(job["id"], f"attempt {attempt + 1} (seed {seed_used})", flush=True)
+            torch.manual_seed(seed_used)
             with torch.no_grad():
                 out = model.generate(ids, max_new_tokens=token_budget(d["render_text"]),
                                      do_sample=True, temperature=0.6, top_p=0.95,
@@ -158,6 +166,10 @@ def main():
             row = dict(job)
             row.update({
                 "wav": f"{job['id']}.wav", "sr": SR,
+                # B-M5: the seed ACTUALLY used, which differs from the bank's on a retry.
+                # `row = dict(job)` would otherwise copy the bank value and the manifest
+                # would describe a render that never happened.
+                "seed": seed_used, "attempt": attempt,
                 "engine_license": "Apache-2.0 (canopylabs/orpheus-3b-0.1-ft)",
                 "weights_source": "canopylabs/orpheus-3b-0.1-ft (NOT -pretrained)",
                 "campaign": bank["campaign"], "bank_version": bank["version"],

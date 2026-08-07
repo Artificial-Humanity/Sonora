@@ -35,6 +35,15 @@ Gates (all must pass):
   G3 e2e: tflite host pipeline vs torch host pipeline, waveform corr
   G4 energy monotonicity through the full tflite pipeline (RMS dB at
      vat -1/0/+1) + sample wavs for listening
+  G5 per-channel differential: drive valence / energy / tension INDEPENDENTLY
+     and require each to move the waveform. Until 2026-08-06 nothing did:
+     G2 ran vat = zeros and G3/G4 drove [0, a, 0], so valence and tension had
+     never once been nonzero through a converted graph, and a dropped or
+     mis-sliced input would have passed every gate and shipped.
+
+Every gate is RECORDED, not printed: `gates_or_die()` refuses to write artifacts
+unless all pass. Before 2026-08-06 they printed PASS/FAIL and the script exited 0
+either way, leaving a complete, shippable artifact set behind a failed export.
 
 Run: scripts/litert_export/run.sh convert_vat.py [MAX_MEL]
      (code from the repo, data on /data — AGENTS.md §6)
@@ -120,6 +129,9 @@ N_TIMESTEPS = 10
 LENGTH_SCALE = 1.0  # the derisk gate's setting (not LJSpeech's 0.95)
 SR = 24000
 N_SPKS, SPK_DIM, VAT_DIM, VAT_COND = 247, 64, 3, 256
+# Channel order, in one place: the G5 probe and config.json must agree, and a
+# manifest that disagrees with the graph mislabels the whole control surface.
+CHANNELS = {0: "valence", 1: "energy", 2: "tension"}
 # Multi-speaker widens the U-Net input (x+mu+spk), and matcha sizes the
 # sinusoidal time embedding to in_channels — 224 here, not LJSpeech's 160.
 IN_CH = 160 + SPK_DIM
@@ -467,6 +479,36 @@ def host_pipeline_vat(text_enc, decoder, vocoder, t_embed, emb_w, spk_vec,
     return wav[:int(y_lengths.item()) * 256], int(y_lengths.item()), z
 
 
+# F-C1. Every gate in this file printed PASS/FAIL and NOTHING acted on it: main() ran to
+# completion, wrote artifacts/ and config.json, and exited 0 whether the graphs matched the
+# model or not. A failed export was indistinguishable from a good one at the shell, and it
+# left a complete, shippable artifact set behind — which is worse than not exporting.
+#
+# GATES is the ledger. Nothing writes an artifact until every entry has passed.
+GATES = []
+
+
+def gate(name, ok, detail):
+    """Record a gate result and print it. Returns `ok` so callers can branch."""
+    GATES.append((name, bool(ok), detail))
+    print(f"  {'PASS' if ok else 'FAIL'}  {name}: {detail}", flush=True)
+    return bool(ok)
+
+
+def gates_or_die():
+    """Refuse to emit artifacts unless every gate passed."""
+    failed = [(n, d) for n, ok, d in GATES if not ok]
+    print(f"\n=== gates: {len(GATES) - len(failed)}/{len(GATES)} passed ===")
+    if failed:
+        for n, d in failed:
+            print(f"  FAIL  {n}: {d}", file=sys.stderr)
+        raise SystemExit(
+            f"\n{len(failed)} gate(s) failed — refusing to write artifacts.\n"
+            "  A converted graph that fails parity still RUNS and still produces audio;\n"
+            "  shipping one is how a wrong export reaches a device looking healthy."
+        )
+
+
 def corr(a, b):
     n = min(len(a), len(b))
     return float(np.corrcoef(a[:n], b[:n])[0, 1])
@@ -506,8 +548,8 @@ def main():
         vat_tok = vat.reshape(1, VAT_DIM, 1).repeat(1, 1, ids.shape[-1])
         mu_w, logw_w = te_wrap_pure(emb_w[ids], tmask_full, spk_vec, vat_tok)
     g1_te = float((mu_ref - mu_w).abs().max())
-    print(f"\nG1 textenc wrapper-vs-model max|diff| = {g1_te:.3e} "
-          f"{'PASS' if g1_te < 1e-4 else 'FAIL'}")
+    print()
+    gate("G1 textenc wrapper-vs-model", g1_te < 1e-4, f"max|diff| = {g1_te:.3e} (< 1e-4)")
 
     dec_orig = build_decoder_vat(sd)
     T = 128
@@ -526,8 +568,7 @@ def main():
         t_emb0 = B.sin_pos_emb(torch.tensor([0.5]), IN_CH)
         v_host = dec_host(x0, m_full, mu0, t_emb0, spk_vec, vat_y0)
     g1_dec = float((v_ref - v_host).abs().max())
-    print(f"G1 decoder wrapper-vs-model max|diff| = {g1_dec:.3e} "
-          f"{'PASS' if g1_dec < 1e-3 else 'FAIL'}")
+    gate("G1 decoder wrapper-vs-model", g1_dec < 1e-3, f"max|diff| = {g1_dec:.3e} (< 1e-3)")
 
     # --- torch reference pipeline modules (masked, full precision) ---
     te_true_m = reauth_text_encoder_masked_vat(build_text_encoder_vat(sd))
@@ -617,12 +658,17 @@ def main():
         w_t = gen_true(mel0)
         w_f = tfl_gen(mel0)
         c_gen = corr(np.ravel(w_t), np.ravel(w_f))
-    print(f"  textenc mu corr={c_te:.6f}  decoder v corr={c_dec:.6f}  "
-          f"vocoder wav corr={c_gen:.6f}")
+    # Thresholds are the values this lane has actually held: build_matcha reports per-graph
+    # corr 1.000000 and e2e >= 0.99. 0.9995 leaves room for fp16 noise without admitting a
+    # graph that is merely correlated.
+    gate("G2 textenc fp16 parity", c_te >= 0.9995, f"mu corr = {c_te:.6f}")
+    gate("G2 decoder fp16 parity", c_dec >= 0.9995, f"v corr = {c_dec:.6f}")
+    gate("G2 vocoder fp16 parity", c_gen >= 0.9995, f"wav corr = {c_gen:.6f}")
 
     # --- G3 + G4: e2e parity + energy monotonicity ---
     print("\n=== G3 e2e parity / G4 energy monotonicity ===")
     sweep_db = {}
+    e2e_corrs = []
     try:
         import soundfile as sf
     except Exception:
@@ -645,15 +691,69 @@ def main():
                 tfl_te, tfl_dec, tfl_gen, t_embed, emb_w, spk_i, ids_i,
                 vat_i, mel_mean, mel_std, z=z)
             c = corr(wav_t, wav_f)
+            e2e_corrs.append(c)
             sweep_db.setdefault(i, {})[a] = rms_db(wav_f)
             print(f"  row {i} spk {row['spk']} energy {a:+.0f}: "
                   f"corr={c:.5f} frames={ylen} rms={rms_db(wav_f):.1f}dB")
             if sf and i == 0:
                 sf.write(os.path.join(ART, f"sample_e{a:+.0f}.wav"), wav_f, SR)
-    mono = all(d[-1.0] < d[0.0] < d[1.0]
-               for d in sweep_db.values() if len(d) == 3)
-    print(f"  energy monotonic (rms dB, all rows): "
-          f"{'PASS' if mono else 'FAIL'}")
+    complete = [d for d in sweep_db.values() if len(d) == 3]
+    mono = bool(complete) and all(d[-1.0] < d[0.0] < d[1.0] for d in complete)
+    # `all()` over an EMPTY sequence is True, so a run where every row was skipped for
+    # length used to report PASS on zero evidence. Requiring at least one complete sweep is
+    # the difference between "monotonic" and "never checked".
+    gate("G4 energy monotonic", mono, f"{len(complete)} row(s) swept, rms dB strictly rising")
+    e2e_min = min(e2e_corrs) if e2e_corrs else float("nan")
+    gate("G3 e2e waveform parity", bool(e2e_corrs) and e2e_min >= 0.99,
+         f"min corr over {len(e2e_corrs)} render(s) = {e2e_min:.5f} (>= 0.99)")
+
+    # --- G5: PER-CHANNEL DIFFERENTIAL PROBE ---------------------------------------
+    #
+    # The other half of F-C1, and the part no existing gate covered: **valence and tension
+    # had never once been driven nonzero through a converted graph.** G2 runs vat = zeros;
+    # G3/G4 drive [0, a, 0], which is energy alone. So a graph that dropped the valence
+    # input, wired tension to the wrong slice, or fed both into a dead branch would have
+    # passed every gate in this file and shipped — and on a device it would simply be a
+    # model whose valence dial does nothing, which reads as a training failure rather than
+    # an export bug.
+    #
+    # Drive each channel INDEPENDENTLY and require the output to move. The assertion is
+    # deliberately weak — "this input changes the audio" — because direction and magnitude
+    # are the model's business, not the converter's. What must be true is that the wire is
+    # connected, and that is exactly what was never checked.
+    print("\n=== G5 per-channel differential probe ===")
+    probe = next((r for r in rows
+                  if phonemes_to_ids(r["phonemes"], sym_to_id).shape[-1] <= MAX_TEXT), None)
+    if probe is None:
+        gate("G5 per-channel differential", False, "no row short enough to probe")
+    else:
+        ids_p = phonemes_to_ids(probe["phonemes"], sym_to_id)
+        spk_p = spk_w[torch.tensor([probe["spk"]])]
+
+        def render(vat_vec):
+            torch.manual_seed(1234)
+            wav, ylen, z = host_pipeline_vat(
+                te_true, dec_true_fn, gen_true, t_embed, emb_w, spk_p, ids_p,
+                torch.tensor(vat_vec), mel_mean, mel_std)
+            wav_f, *_ = host_pipeline_vat(
+                tfl_te, tfl_dec, tfl_gen, t_embed, emb_w, spk_p, ids_p,
+                torch.tensor(vat_vec), mel_mean, mel_std, z=z)
+            return wav_f
+
+        base = render([0.0, 0.0, 0.0])
+        for idx, name in sorted(CHANNELS.items(), key=lambda kv: kv[0]):
+            hi = render([1.0 if k == idx else 0.0 for k in range(VAT_DIM)])
+            lo = render([-1.0 if k == idx else 0.0 for k in range(VAT_DIM)])
+            n = min(len(base), len(hi), len(lo))
+            d_hi = float(np.abs(hi[:n] - base[:n]).mean())
+            d_lo = float(np.abs(lo[:n] - base[:n]).mean())
+            moved = min(d_hi, d_lo)
+            # 1e-5 mean absolute sample delta on a [-1, 1] waveform: far above fp16 noise,
+            # far below "audibly different". A disconnected input gives exactly 0.
+            gate(f"G5 {name} channel is connected", moved > 1e-5,
+                 f"mean |delta| vs neutral: +1 -> {d_hi:.2e}, -1 -> {d_lo:.2e}")
+
+    gates_or_die()
 
     # --- host tables + config ---
     np.save(os.path.join(ART, "emb.npy"), emb_w.numpy().astype(np.float32))
@@ -664,10 +764,16 @@ def main():
                MAX_TEXT=MAX_TEXT, MAX_MEL=MAX_MEL, mel_mean=mel_mean,
                mel_std=mel_std, hop=256, sample_rate=SR,
                length_scale=LENGTH_SCALE, sigma_min=1e-4,
-               n_timesteps_default=N_TIMESTEPS, time_embed_dim=1024,
+               n_timesteps_default=N_TIMESTEPS,
+               # F-M4: this said 1024 while the masked graphs consume
+               # `in_channels` — matcha sizes the sinusoidal time embedding
+               # to in_channels, 224 here (see IN_CH). The mobile host trusts
+               # this manifest to size its t_emb buffer, so 1024 was a lie it
+               # had no way to detect except by the graph rejecting the shape.
+               time_embed_dim=IN_CH,
                in_channels=IN_CH, n_spks=N_SPKS, spk_emb_dim=SPK_DIM,
                vat_dim=VAT_DIM,
-               vat_channels={"valence": 0, "energy": 1, "tension": 2},
+               vat_channels={v: k for k, v in CHANNELS.items()},
                checkpoint=os.path.basename(CKPT),
                vocoder=os.path.basename(VOC_CKPT))
     with open(os.path.join(ART, "config.json"), "w") as f:

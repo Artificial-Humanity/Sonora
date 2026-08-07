@@ -23,7 +23,7 @@ from vibevoice.modular.modeling_vibevoice_inference import VibeVoiceForCondition
 from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from synth_common import write_wav_atomic  # noqa: E402
+from synth_common import rebuild_used_set, write_wav_atomic  # noqa: E402
 from ref_select import select_reference, design_age_band  # noqa: E402
 
 MODEL_DIR = "/data/models/FabioSarracino/VibeVoice-Large-Q8"
@@ -58,8 +58,16 @@ def main():
 
 
 def render_bank(jobs, out, processor, model, bank):
-    used = set()
     manifest_path = os.path.join(out, "vibevoice_manifest.jsonl")
+    # B-M3: the variety-bias `used` set started EMPTY on every resume, because a job whose
+    # wav already exists skips before select_reference() runs. A rerolled clip therefore
+    # cast as if the reference pool were untouched — so a resumed campaign quietly loses the
+    # diversity guarantee, and the casting is not reproducible from the bank either.
+    # Rebuilt from the manifest rows that already exist (synth_common, shared with the
+    # renderers that already did this).
+    used = rebuild_used_set(manifest_path)
+    if used:
+        print(f"resume: {len(used)} reference(s) already spent", flush=True)
     with open(manifest_path, "a", encoding="utf-8") as mf:
         for job in jobs:
             if os.path.exists(os.path.join(out, f"{job['id']}.wav")):

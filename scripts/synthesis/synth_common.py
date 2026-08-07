@@ -24,6 +24,11 @@ the other started, and the later one silently erased the earlier one's entries
 truncated JSON file that nothing could parse. This does the read-modify-write
 INSIDE an exclusive lock, immediately before the write, and renames into place.
 
+`attempt_seed` — a re-run under skip-if-exists is the retry mechanism, and it
+re-seeded identically every time, so a DETERMINISTIC failure could never
+converge: the same seed reproduces the same malformed generation forever. The
+count has to persist because a failure leaves nothing behind to count.
+
 `rebuild_used_set` — the variety-bias `used` set starts empty on a resume,
 because already-rendered jobs skip before select_reference() ever runs. A
 rerolled clip then casts as if the reference pool were untouched, and the
@@ -219,6 +224,36 @@ def save_via_atomic(save_fn, path, *args, **kwargs):
                 pass
         raise
     return path
+
+
+def attempt_seed(out_dir, job_id, base_seed):
+    """-> (seed, attempt). Perturbs the seed once per attempt at this clip (B-M5).
+
+    The renderers seed with `torch.manual_seed(job["seed"])` and treat "run the script
+    again under skip-if-exists" as the retry mechanism. That works for a STOCHASTIC failure
+    and is useless against a deterministic one: the same seed reproduces the same malformed
+    audio-code stream forever, so a clip that hit MOSS's `split_with_sizes` off-by-one is
+    stuck, and every re-run burns the same GPU time to fail identically.
+
+    The attempt count has to persist, because the failure leaves nothing behind — no wav,
+    no manifest row — so a fresh process cannot tell a first try from a fiftieth. It lives
+    in `<out>/.attempts.json`, written through `update_json` so two renderers sharing an
+    output directory cannot lose each other's counts.
+
+    The seed is RETURNED rather than applied so the caller can record it in the manifest:
+    a clip rendered on attempt 3 was rendered with a different seed than the bank says, and
+    that has to be recoverable.
+    """
+    path = os.path.join(out_dir, ".attempts.json")
+    attempts = {}
+
+    def bump(current):
+        current[job_id] = int(current.get(job_id, 0)) + 1
+        attempts.update(current)
+
+    update_json(path, bump)
+    attempt = attempts[job_id] - 1          # 0 on the first try
+    return base_seed + attempt, attempt
 
 
 def rebuild_used_set(manifest_path, key="ref_id"):

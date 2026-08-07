@@ -47,8 +47,10 @@ from zonos.conditioning import make_cond_dict
 from zonos.speaker_cloning import SpeakerEmbeddingLDA
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from synth_common import write_wav_atomic  # noqa: E402
-from ref_select import (select_reference, pinned_reference, design_age_band,  # noqa: E402
+from synth_common import rebuild_used_set, write_wav_atomic  # noqa: E402
+from ref_select import (  # noqa: E402
+    MAX_REF_EXCURSION as _REF_EXCURSION,
+    select_reference, pinned_reference, design_age_band,  # noqa: E402
                         REF_BLACKLIST)
 
 MODEL_DIR = "/data/models/Zyphra/Zonos-v0.1-transformer"
@@ -91,7 +93,8 @@ MAX_SPEAKING_RATE = 16.0
 # 3 of 3 at score 5. So: emotion instability is real and the documented remedy works;
 # rate is a pacing control, not a layering guard. Both failures used the same reference
 # that also breaks Chatterbox, which is why REF_BLACKLIST is now shared.
-MAX_REF_EXCURSION = 240.0
+# B-L5: one definition, in ref_select (beside REF_BLACKLIST).
+MAX_REF_EXCURSION = _REF_EXCURSION
 
 
 _cloner = None
@@ -140,8 +143,16 @@ def main():
     sr_out = model.autoencoder.sampling_rate
     print(f"loaded ({len(jobs)} jobs)", flush=True)
 
-    used = set()
     manifest_path = os.path.join(args.out, "zonos_manifest.jsonl")
+    # B-M3: the variety-bias `used` set started EMPTY on every resume, because a job whose
+    # wav already exists skips before select_reference() runs. A rerolled clip therefore
+    # cast as if the reference pool were untouched — so a resumed campaign quietly loses the
+    # diversity guarantee, and the casting is not reproducible from the bank either.
+    # Rebuilt from the manifest rows that already exist (synth_common, shared with the
+    # renderers that already did this).
+    used = rebuild_used_set(manifest_path)
+    if used:
+        print(f"resume: {len(used)} reference(s) already spent", flush=True)
     with open(manifest_path, "a", encoding="utf-8") as mf:
         for job in jobs:
             if os.path.exists(os.path.join(args.out, f"{job['id']}.wav")):

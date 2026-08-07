@@ -42,6 +42,9 @@ import os
 import pathlib
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from ref_select import MAX_REF_EXCURSION as _REF_EXCURSION  # noqa: E402
+
 CORPUS = pathlib.Path("data/libritts_r_vat_v3c")
 LIBRITTS = pathlib.Path("/data/model-training/datasets/LibriTTS_R/train-clean-100")
 V1_POOL = pathlib.Path(
@@ -49,7 +52,7 @@ V1_POOL = pathlib.Path(
 OUT = pathlib.Path("/data/model-training/datasets/reference-pool-v2")
 
 MIN_S, MAX_S = 4.0, 10.0          # select_reference's hard window
-MAX_EXCURSION = 240.0             # synth_chatterbox.MAX_REF_EXCURSION
+MAX_EXCURSION = _REF_EXCURSION                 # B-L5: one definition
 CANDIDATES_PER_SPEAKER = 6        # F0 is the expensive step; rank cheaply first
 
 

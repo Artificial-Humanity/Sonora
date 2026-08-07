@@ -29,7 +29,7 @@ from transformers import AutoModel, AutoProcessor
 
 import sys as _sys
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from synth_common import write_wav_atomic  # noqa: E402
+from synth_common import attempt_seed, write_wav_atomic  # noqa: E402
 
 MODEL_DIR = "/data/models/OpenMOSS-Team/MOSS-VoiceGenerator"
 
@@ -100,7 +100,15 @@ def main():
             if os.path.exists(os.path.join(args.out, name)):
                 print(job["id"], "exists, skip", flush=True)
                 continue
-            torch.manual_seed(job["seed"])
+            # B-M5: a re-run under skip-if-exists is the retry, and it used to re-seed
+            # identically — so a DETERMINISTIC failure (MOSS's split_with_sizes off-by-one,
+            # a decoder that returns silence) reproduced forever and burned the same GPU
+            # time to fail the same way. Perturbed per attempt, and the seed actually used
+            # is recorded below so the render stays reproducible from the manifest.
+            seed_used, attempt = attempt_seed(args.out, job["id"], job["seed"])
+            if attempt:
+                print(job["id"], f"attempt {attempt + 1} (seed {seed_used})", flush=True)
+            torch.manual_seed(seed_used)
             # One bad generation must not kill the bank (2026-07-30: clip
             # windfairies_nar_0040 hit a split_with_sizes off-by-one inside
             # MOSS's own _parse_audio_codes — a malformed audio-code stream —
@@ -134,6 +142,10 @@ def main():
                 row = dict(job)
                 row.update({
                     "engine": "moss_vg", "wav": name, "sr": sr,
+                    # B-M5: the seed ACTUALLY used, which differs from the bank's on a
+                    # retry. `row = dict(job)` would otherwise copy the bank value and the
+                    # manifest would describe a render that never happened.
+                    "seed": seed_used, "attempt": attempt,
                     "engine_license": "Apache-2.0 (MOSS-VoiceGenerator)",
                     "decoding": {"audio_temperature": AUDIO_TEMPERATURE,
                                  "audio_top_p": AUDIO_TOP_P,
