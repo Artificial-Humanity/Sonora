@@ -461,3 +461,123 @@ def test_a_word_with_no_tokens_yields_no_span(align_mod):
     spans = align_mod.group_token_spans(MEASURED_TOKEN_SPANS, [[1, 2], [3, 4], []],
                                         t0=0.0, ratio=1.0)
     assert spans[-1] is None
+
+
+# --- A-M8: Project Gutenberg boilerplate in the EPUB lane -----------------------------
+#
+# The plaintext lane cut PG's wrapper on the `*** START/END ***` markers. The epub lane
+# had no PG handling at all — its only filter was a filename SKIP list, and that list is
+# Standard Ebooks' vocabulary (titlepage/imprint/colophon/uncopyright). PG names its
+# documents nothing of the sort and routinely puts the whole book, wrapper included, in one
+# document, so no filename rule could have worked. ~4,000 words of licence prose therefore
+# parsed as prose, split into sentences, got directed by Gemma and rendered as the novel —
+# and `is_complete_utterance` passes every one of them, because they are real sentences.
+#
+# It also made a licence claim false: `text_provenance` stamps every PG bank with
+# "PG header/footer stripped, so the Project Gutenberg License does not attach". Same
+# family as A-M6 — metadata asserting a step no code performed.
+
+PG_HEADER = [
+    "The Project Gutenberg eBook of Uneasy Money, by P. G. Wodehouse",
+    "This ebook is for the use of anyone anywhere in the United States and most other "
+    "parts of the world at no cost and with almost no restrictions whatsoever.",
+    "Title: Uneasy Money",
+    "Release date: March 1, 2004 [eBook #6684]",
+    "*** START OF THE PROJECT GUTENBERG EBOOK UNEASY MONEY ***",
+]
+PG_BODY = [
+    "In a bedroom on the fourth floor of the Hotel Belvoir a man was lying.",
+    "He was generally to be found at the pen and ink counter.",
+]
+PG_FOOTER = [
+    "*** END OF THE PROJECT GUTENBERG EBOOK UNEASY MONEY ***",
+    "Section 1. General Terms of Use and Redistributing Project Gutenberg-tm "
+    "electronic works",
+    "1.A. By reading or using any part of this Project Gutenberg-tm electronic work, "
+    "you indicate that you have read the license.",
+    "Please visit www.gutenberg.org for more information.",
+]
+
+
+@pytest.fixture()
+def ingest_mod():
+    return pytest.importorskip("book_ingest")
+
+
+def test_pg_wrapper_is_cut_when_it_spans_several_documents(ingest_mod):
+    """The real shape: PG's header, the book and the licence are separate epub documents,
+    so a per-section cut would leave every section BETWEEN the markers untouched — which
+    is the whole book plus both halves of the wrapper."""
+    sections = [("front", "prose", list(PG_HEADER)),
+                ("Chapter I", "prose", list(PG_BODY)),
+                ("back", "prose", list(PG_FOOTER))]
+    out = ingest_mod._strip_pg_sections(sections)
+    assert [t for t, _k, _p in out] == ["Chapter I"]
+    assert [p for _t, _k, ps in out for p in ps] == PG_BODY
+
+
+def test_pg_wrapper_is_cut_when_the_whole_book_is_one_document(ingest_mod):
+    """PG commonly ships exactly this, and it is why no filename SKIP rule could work."""
+    sections = [("book", "prose", PG_HEADER + PG_BODY + PG_FOOTER)]
+    out = ingest_mod._strip_pg_sections(sections)
+    assert [p for _t, _k, ps in out for p in ps] == PG_BODY
+
+
+def test_an_inline_start_marker_does_not_eat_the_first_sentence(ingest_mod):
+    """Some editions run the marker straight into the opening line. Dropping the marker's
+    paragraph whole would silently lose the first sentence of the book — a truncation
+    nothing downstream can see, since what remains is still a valid utterance."""
+    opener = ("*** START OF THE PROJECT GUTENBERG EBOOK UNEASY MONEY *** "
+              "In a bedroom on the fourth floor a man was lying.")
+    out = ingest_mod._strip_pg_sections([("book", "prose", [opener, PG_BODY[1]])])
+    assert [p for _t, _k, ps in out for p in ps] == [
+        "In a bedroom on the fourth floor a man was lying.", PG_BODY[1]]
+
+
+def test_an_inline_end_marker_keeps_the_prose_before_it(ingest_mod):
+    closer = (PG_BODY[1] + " *** END OF THE PROJECT GUTENBERG EBOOK UNEASY MONEY ***")
+    out = ingest_mod._strip_pg_sections(
+        [("book", "prose", PG_HEADER + [PG_BODY[0], closer] + PG_FOOTER[1:])])
+    assert [p for _t, _k, ps in out for p in ps] == PG_BODY
+
+
+def test_a_standard_ebooks_epub_is_untouched(ingest_mod):
+    """The cut is driven by the MARKERS, not by the source URL — so it is a no-op on SE,
+    and a PG file supplied as a local `--epub` (where the URL says nothing) is still
+    stripped rather than refused."""
+    sections = [("Chapter I", "prose", list(PG_BODY))]
+    assert ingest_mod._strip_pg_sections(sections) == sections
+
+
+def test_repeated_paragraphs_do_not_confuse_the_rebuild(ingest_mod):
+    """Rebuilt by index, not by matching text back. Counting occurrences would mis-handle
+    a book with two identical paragraphs, and the cut can rewrite the marker's own
+    paragraph so the survivor need not equal any input string."""
+    dup = "He said nothing."
+    sections = [("front", "prose", list(PG_HEADER)),
+                ("Chapter I", "prose", [dup, "Then he spoke.", dup]),
+                ("back", "prose", list(PG_FOOTER))]
+    out = ingest_mod._strip_pg_sections(sections)
+    assert [p for _t, _k, ps in out for p in ps] == [dup, "Then he spoke.", dup]
+
+
+def test_surviving_boilerplate_is_refused_not_filtered(ingest_mod):
+    """Pre-2006 editions predate the markers, so the cut cannot be assumed to have
+    worked and its failure is silent. Refusing keeps `text_provenance`'s licence claim
+    true; filtering would risk deleting paragraphs of the book instead."""
+    assert synth_common.pg_boilerplate_residue(PG_FOOTER) == PG_FOOTER
+    assert synth_common.pg_boilerplate_residue(PG_HEADER) == [PG_HEADER[-1]]
+
+
+def test_the_prose_of_a_novel_is_not_mistaken_for_boilerplate():
+    assert synth_common.pg_boilerplate_residue(PG_BODY) == []
+    assert synth_common.pg_boilerplate_residue(
+        ["He had once visited a project in Gutenberg, the printer's quarter."]) == []
+
+
+def test_both_lanes_share_one_definition():
+    """The plaintext lane had its own PG_START/PG_END. Two copies of one rule is how B-L5
+    and D-L2 happened; the epub lane's gap is what happens when only one copy is fixed."""
+    fetch_mod = pytest.importorskip("librivox_fetch")
+    assert fetch_mod.PG_START is synth_common.PG_START_RE
+    assert fetch_mod.PG_END is synth_common.PG_END_RE

@@ -48,6 +48,7 @@ import datetime as _dt
 import fcntl
 import json
 import os
+import re
 import shutil
 
 
@@ -174,6 +175,108 @@ def split_sentences(text):
 
     seg = pysbd.Segmenter(language="en", clean=False)
     return [s.strip() for s in seg.segment(text) if s.strip()]
+
+
+# ------------------------------------------------------------- Gutenberg boilerplate
+#
+# A-M8. Project Gutenberg wraps every edition in a header (title/author/release date/
+# "Produced by …") and a footer that is the FULL Project Gutenberg License — some four
+# thousand words of terms of use. The plaintext lane in `librivox_fetch` cut it on the
+# `*** START/END OF …` markers; the **epub** lane in `book_ingest` did not cut it at all.
+# Its only filter was a filename SKIP list, and that list is Standard Ebooks' vocabulary
+# (`titlepage`, `imprint`, `colophon`, `uncopyright`) — PG names its documents nothing of
+# the sort, and often puts the entire book INCLUDING the boilerplate in one document, so
+# no filename rule could have worked.
+#
+# The result is licence prose parsed as prose: paragraphs of terms of use split into
+# sentences, directed by Gemma, and rendered by a teacher engine as though they were the
+# novel. `is_complete_utterance` passes them — they are grammatical sentences.
+#
+# And it makes a claim in the record false. `book_ingest.text_provenance` stamps every PG
+# bank with "PG header/footer stripped, so the Project Gutenberg License does not attach",
+# which is the same class of defect as A-M6 (SE CC0 claimed for PG text): metadata
+# asserting a step that no code performed, propagating into every derived clip's paper
+# trail where a later audit reads it as fact.
+#
+# ONE implementation, here, for both lanes.
+
+PG_START_RE = re.compile(
+    r"\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*", re.I | re.S)
+PG_END_RE = re.compile(
+    r"\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*", re.I | re.S)
+
+# Phrases that occur in PG boilerplate and effectively never in the prose of a novel.
+# Used only to DETECT residue after the markers have been applied — never to filter, so a
+# false positive costs a loud refusal rather than a silently deleted paragraph of the book.
+_PG_RESIDUE = (
+    "project gutenberg literary archive foundation",
+    "project gutenberg-tm",
+    "project gutenberg™",
+    "www.gutenberg.org",
+    "gutenberg.org/license",
+    "terms of the project gutenberg",
+    "full project gutenberg license",
+    "redistributing project gutenberg",
+    "start of the project gutenberg ebook",
+    "end of the project gutenberg ebook",
+)
+
+
+def strip_pg_boilerplate_text(text):
+    """Cut PG header/footer from a plaintext edition, on the `*** START/END ***` markers."""
+    m = PG_START_RE.search(text)
+    if m:
+        text = text[m.end():]
+    m = PG_END_RE.search(text)
+    if m:
+        text = text[: m.start()]
+    return text
+
+
+def strip_pg_boilerplate_paragraphs(paras):
+    """Cut PG header/footer from an epub's flat paragraph list.
+
+    The markers can sit anywhere: their own paragraph, or inline at the head of the first
+    real one. So the marker's paragraph is cut AT the marker rather than dropped whole —
+    dropping it whole would lose the opening sentence of the book on the editions that
+    inline it, which is a silent one-sentence truncation nothing downstream could see.
+    """
+    out, started = [], None
+    for i, p in enumerate(paras):
+        m = PG_START_RE.search(p)
+        if m:
+            started = i
+            tail = p[m.end():].strip()
+            out = [tail] if tail else []
+            continue
+        m = PG_END_RE.search(p)
+        if m:
+            head = p[: m.start()].strip()
+            if head:
+                out.append(head)
+            return out
+        out.append(p)
+    # No START marker anywhere means this is not a PG-wrapped document (a Standard Ebooks
+    # epub, a hand-supplied file); returning the input unchanged is correct, not a miss.
+    return out if started is not None else list(paras)
+
+
+def pg_boilerplate_residue(paras):
+    """-> the paragraphs that still look like PG boilerplate after stripping.
+
+    Detection, deliberately separate from removal. PG has changed its wrapper format
+    several times and older editions predate the `***` markers entirely, so the cut above
+    cannot be assumed to have worked — and the failure it would otherwise have is silent.
+    The caller refuses; it does not filter. A paragraph of a novel that genuinely says
+    "www.gutenberg.org" does not exist, but if one did, deleting it quietly would be the
+    worse outcome.
+    """
+    hits = []
+    for p in paras:
+        low = (p or "").lower()
+        if any(marker in low for marker in _PG_RESIDUE):
+            hits.append(p)
+    return hits
 
 
 def _tmp_path(directory, basename):

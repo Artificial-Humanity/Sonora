@@ -227,8 +227,18 @@ def se_epub_url(page_url):
     return url + ("&" if "?" in url else "?") + "source=download"
 
 
-def parse_epub(epub_bytes):
-    """Return [(chapter_title, [paragraph_text, ...]), ...] for chapter documents only."""
+def parse_epub(epub_bytes, source_url=None):
+    """Return [(chapter_title, [paragraph_text, ...]), ...] for chapter documents only.
+
+    `source_url` selects the boilerplate rule (A-M8). The filename `SKIP` list below is
+    **Standard Ebooks' vocabulary** — `titlepage`, `imprint`, `colophon`, `uncopyright` —
+    and Project Gutenberg names its documents nothing of the sort. PG also routinely puts
+    an entire book, header and licence footer included, in ONE document, so no filename
+    rule could have removed them. Every PG epub therefore parsed its wrapper as prose:
+    ~4,000 words of terms of use split into sentences, directed by Gemma, and rendered by
+    a teacher engine as though it were the novel. `is_complete_utterance` passes them
+    happily — they are grammatical sentences.
+    """
     import io
     from bs4 import BeautifulSoup
     import ebooklib
@@ -283,7 +293,83 @@ def parse_epub(epub_bytes):
             paras = [p for p in paras if p]
             if paras:
                 sections.append((title, "prose", paras))
+
+    # A-M8. Applied ACROSS sections, not within one: PG's START marker and its END marker
+    # routinely land in different documents, so a per-section cut would leave every
+    # section between them untouched — which is the whole book plus both halves of the
+    # wrapper. Flatten, cut, redistribute.
+    #
+    # Driven by the MARKERS, not by `source_url`. A Standard Ebooks epub carries none, so
+    # this is a no-op there; a PG file handed over as a local `--epub` (where the URL says
+    # nothing) is still stripped rather than refused. `source_url` only sharpens the
+    # message below.
+    sections = _strip_pg_sections(sections)
+
+    # Refuse rather than filter. PG has changed its wrapper several times and pre-2006
+    # editions predate the `***` markers entirely, so the cut above cannot be assumed to
+    # have worked, and its failure mode is silent. `text_provenance` stamps every PG bank
+    # with "PG header/footer stripped, so the Project Gutenberg License does not attach"
+    # — a claim about licensing that propagates into every derived clip's paper trail,
+    # and until this landed no code made it true. It has to be true or it has to stop.
+    residue = synth_common.pg_boilerplate_residue(
+        [p for _t, _k, ps in sections for p in ps])
+    if residue:
+        where = f" ({source_url})" if source_url else ""
+        raise SystemExit(
+            f"Project Gutenberg boilerplate survived stripping{where} — refusing to build "
+            f"a bank from it ({len(residue)} paragraph(s)). First:\n\n"
+            f"  {residue[0][:300]}\n\n"
+            "This edition's wrapper does not carry the standard `*** START/END OF THE "
+            "PROJECT GUTENBERG EBOOK ***` markers (pre-2006 editions predate them). Pick "
+            "another PG edition, or supply the text by hand. NOT filtered automatically "
+            "on purpose: silently deleting paragraphs of the book is the worse failure."
+        )
     return sections
+
+
+def _strip_pg_sections(sections):
+    """Apply the PG header/footer cut across a flattened section list, then rebuild it.
+
+    By INDEX, not by matching text back: the cut can rewrite the marker's own paragraph
+    (keeping the prose on the far side of the marker), so the surviving string need not
+    equal any input string. Counting occurrences would also mis-handle a book with two
+    identical paragraphs, which is exactly the kind of edition that turns up once.
+    """
+    flat = [(si, pi, p)
+            for si, (_t, _k, paras) in enumerate(sections)
+            for pi, p in enumerate(paras)]
+
+    start = end = None
+    head_text = tail_text = None
+    for n, (_si, _pi, p) in enumerate(flat):
+        if start is None:
+            m = synth_common.PG_START_RE.search(p)
+            if m:
+                start, tail_text = n, p[m.end():].strip()
+                continue
+        m = synth_common.PG_END_RE.search(p)
+        if m:
+            end, head_text = n, p[: m.start()].strip()
+            break
+
+    if start is None and end is None:
+        return sections            # not a PG-wrapped document; leave it alone
+
+    lo = 0 if start is None else start
+    hi = len(flat) - 1 if end is None else end
+
+    kept = {}                      # (section_index) -> [paragraph, ...]
+    for n in range(lo, hi + 1):
+        si, _pi, p = flat[n]
+        if n == start:
+            p = tail_text          # prose after an inline START marker, if any
+        elif n == end:
+            p = head_text          # prose before an inline END marker, if any
+        if p:
+            kept.setdefault(si, []).append(p)
+
+    # Sections that lose every paragraph — the wrapper's own documents — drop out.
+    return [(sections[si][0], sections[si][1], kept[si]) for si in sorted(kept)]
 
 
 # One definition each, in synth_common — re-exported here because three modules and the
@@ -291,6 +377,7 @@ def parse_epub(epub_bytes):
 # The path insert is explicit rather than relying on the one inside `_castable_engines`,
 # which happens to run first today; that is an ordering accident, not an import.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import synth_common  # noqa: E402  (module handle: parse_epub uses the A-M8 PG helpers)
 from synth_common import (  # noqa: E402,F401
     _CLOSERS,
     _OPENERS,
@@ -1199,7 +1286,12 @@ def main():
     epub_url = None if args.epub else (
         se_epub_url(args.url) if "standardebooks.org" in args.url else args.url)
     print("  epub:", epub_url, flush=True)
-    sections = parse_epub(open(args.epub, "rb").read() if args.epub else fetch(epub_url))
+    # `args.url` and not `epub_url`: for Standard Ebooks the two differ (the epub link is
+    # resolved off the page), and it is the SOURCE that decides whether PG's wrapper needs
+    # cutting. A locally supplied --epub passes None, so the residue check still runs and
+    # a PG file handed over by hand is refused rather than silently rendered.
+    sections = parse_epub(open(args.epub, "rb").read() if args.epub else fetch(epub_url),
+                          source_url=args.url)
     n_drama = sum(1 for _, k, _ in sections if k == "drama")
     total_items = sum(len(items) for _, _, items in sections)
     print(f"  sections: {len(sections)} ({n_drama} drama / {len(sections) - n_drama} prose)  units: {total_items}", flush=True)

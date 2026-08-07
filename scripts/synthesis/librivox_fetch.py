@@ -176,10 +176,12 @@ def api_book(url_or_title: str) -> dict | None:
 
 
 # --------------------------------------------------------------- Gutenberg text
-PG_START = re.compile(r"\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*",
-                      re.I | re.S)
-PG_END = re.compile(r"\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*",
-                    re.I | re.S)
+# The markers and the cut moved to synth_common (A-M8) so the epub lane in book_ingest
+# uses the SAME one — it had no PG stripping at all, only a Standard Ebooks filename SKIP
+# list, so PG licence prose was reaching the renderers as though it were the novel.
+# Re-exported under the old names: this module's own tests and callers already use them.
+PG_START = synth_common.PG_START_RE
+PG_END = synth_common.PG_END_RE
 
 
 REPLACEMENT = "�"
@@ -249,12 +251,7 @@ def gutenberg_plaintext(url_text_source: str) -> tuple[str, str] | None:
             continue
         if len(raw) < 2000:
             continue
-        s = PG_START.search(raw)
-        if s:
-            raw = raw[s.end():]
-        e = PG_END.search(raw)
-        if e:
-            raw = raw[: e.start()]
+        raw = synth_common.strip_pg_boilerplate_text(raw)
         return raw.strip(), cand
     return None
 
