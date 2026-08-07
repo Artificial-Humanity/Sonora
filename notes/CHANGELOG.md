@@ -50,6 +50,19 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
     `UNKNOWN` rather than assumed.
   - **A-M12** — "complete download" meant `size > 1024`, which a 404 page clears; it was
     saved as `.mp3` and every resume skipped it. Magic-byte check on both paths.
+- **`33dfb33` — A-H1: `chapter_slice` → `chapter_slices`, ordered candidates.** The
+  heading fast path matched three non-headings, and there was no second attempt when it
+  was wrong, so a misled slicer lost **every** clip in a book while each decision looked
+  defensible in the log. Reproduced against the original: a ToC yields 6 headings for a
+  3-chapter book and slice 1 is literally `'\nCHAPTER I\n'`; Gutenberg's ~70-column wrap
+  makes "…in the last\nchapter I was quite unwilling…" match mid-paragraph; and 40 chapters
+  in 3 audio files satisfies `len(heads) >= n_sections`, handing section 1 **2.5%** of what
+  it reads. Filters now require a short line and a substantial body, and headings are used
+  only when they map ~1:1 onto sections. The caller walks candidates (headings → duration →
+  duration-wide → whole text) until coverage clears 60%, and names the winner — **nearly
+  free, because ASR depends only on the audio**, so a retry is one `difflib` pass and no
+  GPU. Recall deliberately not widened: *Uneasy Money* heads chapters with a bare numeral,
+  unmatchable without also matching page numbers.
 - **`cf6429d` — two duplications collapsed**, both the kind the review keeps finding:
   `qc_passages` carried its own `is_complete_utterance` marked "kept in sync" (already
   drifted — it accepted guillemets and trailing spaces `book_ingest` rejected), and
