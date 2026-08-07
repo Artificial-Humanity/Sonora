@@ -359,3 +359,105 @@ def test_duration_split_beats_an_even_split_for_a_collection(align):
     start_idx = text.index(by_index) / len(text)
     assert start_dur > 0.5, start_dur      # section 3 really is late in the text
     assert start_idx < 0.5, start_idx      # the even split puts it in the middle
+
+
+# --- A-M2: per-word spans from CTC forced alignment -----------------------------------
+#
+# `forced_align` returns one entry PER FRAME, so a target token occupies a RUN of frames.
+# `refine()` walked that output counting non-blank FRAMES against the number of CHARACTERS
+# in each word, which is only correct if every character happens to occupy exactly one
+# frame. It never does, and the error compounds: each word eats the frames of the word
+# before it, and the sentence is exhausted after `len(flat)` non-blank frames out of the
+# many more really present.
+#
+# Ground truth below is the real alignment measured in the pinned ROCm container
+# (torchaudio 2.10.0), driving `forced_align` on a hand-built emission:
+#
+#   frames  [0, 1, 1, 1, 0, 2, 3, 3, 0, 0, 4, 4, 4, 0]     words "ab" = [1,2], "cd" = [3,4]
+#   merge_tokens -> token 1 @[1,4)  token 2 @[5,6)  token 3 @[6,8)  token 4 @[10,13)
+#   so word "ab" spans frames [1,6) and word "cd" spans [6,13).
+
+
+class _Span:
+    """Stand-in for torchaudio's TokenSpan — `.start` / `.end` are all we consume."""
+
+    def __init__(self, start, end):
+        self.start, self.end = start, end
+
+
+MEASURED_FRAMES = [0, 1, 1, 1, 0, 2, 3, 3, 0, 0, 4, 4, 4, 0]
+MEASURED_TOKEN_SPANS = [_Span(1, 4), _Span(5, 6), _Span(6, 8), _Span(10, 13)]
+MEASURED_WORD_TOKENS = [[1, 2], [3, 4]]
+
+
+@pytest.fixture()
+def align_mod():
+    return pytest.importorskip("librivox_align")
+
+
+def _old_walk(frames, word_tokens):
+    """The shipped implementation, verbatim in behaviour, for the comparison below."""
+    out, pos = [], 0
+    for tok in word_tokens:
+        start_f = end_f = None
+        got = 0
+        while pos < len(frames) and got < len(tok):
+            if frames[pos] != 0:
+                if start_f is None:
+                    start_f = pos
+                end_f = pos
+                got += 1
+            pos += 1
+        out.append(None if start_f is None else (float(start_f), float(end_f + 1)))
+    return out
+
+
+def test_word_spans_follow_token_runs_not_frame_counts(align_mod):
+    """The fix, against the measured alignment. ratio=1, t0=0 keeps it in frame units."""
+    spans = align_mod.group_token_spans(
+        MEASURED_TOKEN_SPANS, MEASURED_WORD_TOKENS, t0=0.0, ratio=1.0)
+    assert spans == [(1.0, 6.0), (6.0, 13.0)]
+
+
+def test_the_old_walk_is_what_truncated_the_tail(align_mod):
+    """Not a style point — this is the measured defect, reproduced.
+
+    The caller carries a comment blaming "CTC may fail to align the LAST words of a
+    sentence" and an example that lost three words and tripped `tail_ok`. The arithmetic
+    is the explanation: the old walk ends the sentence at frame 6 where it truly ends at
+    13, dropping 54% of its duration.
+    """
+    old = _old_walk(MEASURED_FRAMES, MEASURED_WORD_TOKENS)
+    new = align_mod.group_token_spans(
+        MEASURED_TOKEN_SPANS, MEASURED_WORD_TOKENS, t0=0.0, ratio=1.0)
+    assert old == [(1.0, 3.0), (3.0, 6.0)]           # what shipped
+    assert new[-1][1] == 13.0 and old[-1][1] == 6.0  # the tail truncation, exactly
+
+
+def test_the_old_middle_spans_pointed_at_the_wrong_words(align_mod):
+    """Worse than imprecise, which is why span-FiLM could not have inherited them: the
+    old span for word 2 is (3,6) and its true span is (6,13) — they do not overlap at
+    all, so the "span" would have supervised the audio of the word before it."""
+    old = _old_walk(MEASURED_FRAMES, MEASURED_WORD_TOKENS)[1]
+    new = align_mod.group_token_spans(
+        MEASURED_TOKEN_SPANS, MEASURED_WORD_TOKENS, t0=0.0, ratio=1.0)[1]
+    overlap = min(old[1], new[1]) - max(old[0], new[0])
+    assert overlap <= 0, f"expected disjoint, got overlap {overlap}"
+
+
+def test_spans_are_offset_and_scaled_into_seconds(align_mod):
+    """`t0` is the window start in the source audio and `ratio` frames->seconds; getting
+    either wrong shifts every clip in the book by a constant, which reads as sloppy
+    cutting rather than as a bug."""
+    spans = align_mod.group_token_spans(
+        MEASURED_TOKEN_SPANS, MEASURED_WORD_TOKENS, t0=10.0, ratio=0.02)
+    assert spans == [(pytest.approx(10.02), pytest.approx(10.12)),
+                     (pytest.approx(10.12), pytest.approx(10.26))]
+
+
+def test_a_word_with_no_tokens_yields_no_span(align_mod):
+    """`refine` drops empty token lists before grouping, but the boundary is worth
+    holding: a None span must not become a (0,0) span the caller would treat as real."""
+    spans = align_mod.group_token_spans(MEASURED_TOKEN_SPANS, [[1, 2], [3, 4], []],
+                                        t0=0.0, ratio=1.0)
+    assert spans[-1] is None

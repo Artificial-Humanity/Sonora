@@ -333,6 +333,29 @@ def interp_time(anchors: list[tuple[int, float, float]], idx: int, which: int = 
 
 
 # ------------------------------------------------------------------ CTC refine
+def group_token_spans(token_spans, tokens, t0: float, ratio: float):
+    """Per-token CTC spans -> one (start, end) time span per WORD.
+
+    Split out of `refine()` so it can be tested without torch, torchaudio, a GPU or the
+    1.18 GB MMS_FA bundle — none of which the host venv has, and the host venv is where
+    `make test` runs. `token_spans` needs only `.start` / `.end` in frames.
+
+    `tokens` is the per-word list of token ids, so `len(tokens[i])` says how many of the
+    flat token spans belong to word `i`. That mapping is the entire fix for A-M2: the
+    previous code inferred it by counting non-blank FRAMES, and a token occupies a run of
+    frames, not one.
+    """
+    spans, pos = [], 0
+    for tok in tokens:
+        group = token_spans[pos:pos + len(tok)]
+        pos += len(tok)
+        if not group:
+            spans.append(None)
+            continue
+        spans.append((t0 + group[0].start * ratio, t0 + group[-1].end * ratio))
+    return spans
+
+
 def refine(wav, sr, words: list[str], t0: float, t1: float):
     """Precise word spans for `words` inside [t0,t1] via CTC forced alignment.
 
@@ -372,25 +395,39 @@ def refine(wav, sr, words: list[str], t0: float, t1: float):
         except Exception:  # noqa: BLE001 - text longer than the emission, etc.
             return None, 0.0
     ratio = (b - a) / emission.size(1) / sr
-    spans, cur, k = [], 0, 0
-    frames = aligned[0].tolist()
-    # walk token runs back to per-word time spans
-    pos = 0
-    for tok in tokens:
-        need = len(tok)
-        start_f = end_f = None
-        got = 0
-        while pos < len(frames) and got < need:
-            if frames[pos] != 0:
-                if start_f is None:
-                    start_f = pos
-                end_f = pos
-                got += 1
-            pos += 1
-        if start_f is None:
-            spans.append(None)
-        else:
-            spans.append((t0 + start_f * ratio, t0 + (end_f + 1) * ratio))
+
+    # A-M2. `forced_align` returns ONE ENTRY PER FRAME, so a single target token occupies
+    # a RUN of frames — `[0,0,t1,t1,t1,0,t2,0,0,t3,t3]` for three tokens. The previous
+    # walk counted non-blank FRAMES against `len(tok)` CHARACTERS and stopped there, which
+    # is only correct if every character happens to occupy exactly one frame. It never
+    # does. The error compounds along the sentence: each word consumes the frames of the
+    # word before it, and the whole sentence is exhausted after `len(flat)` non-blank
+    # frames out of the many more that are really there.
+    #
+    # THIS IS THE TAIL TRUNCATION, not a CTC failure. The caller carries a comment
+    # blaming "CTC may fail to align the LAST words of a sentence" and a measured example
+    # ("...a chill wind blew [through the world.]", 3 words lost, tripped tail_ok). The
+    # arithmetic explains it exactly: the last word's end lands on the `len(flat)`-th
+    # non-blank frame, which is systematically early. The anchor-time `max()` there masks
+    # the symptom and stays as a guard, but it was compensating for this.
+    #
+    # `merge_tokens` is the API for exactly this: it collapses the frame-level alignment
+    # into one span per TARGET TOKEN, with frame boundaries and a per-token score.
+    merge = getattr(torchaudio.functional, "merge_tokens", None)
+    if merge is None:
+        # Refinement is optional by contract, and a wrong span is worse than none:
+        # anchors alone still produce a correct (if looser) cut.
+        return None, 0.0
+    try:
+        token_spans = merge(aligned[0], scores[0])
+    except Exception:  # noqa: BLE001 - stay on the anchor path rather than guess
+        return None, 0.0
+    if len(token_spans) != len(flat):
+        # One span per target token is the contract. If that ever stops holding, the
+        # grouping below would silently mis-attribute every word from that point on.
+        return None, 0.0
+
+    spans = group_token_spans(token_spans, tokens, t0, ratio)
     score = float(scores.exp().mean()) if scores is not None and scores.numel() else 0.0
     return spans, score
 
@@ -540,13 +577,18 @@ def main() -> int:
                 if spans:
                     real = [s for s in spans if s]
                     if real:
-                        # CTC may fail to align the LAST words of a sentence, and
-                        # real[-1][1] is then the end of the last word it DID align —
-                        # silently truncating the tail. Measured: "...a chill wind blew
-                        # [through the world.]" lost 3 words and tripped tail_ok.
-                        # The interpolated anchor time is the floor for the end boundary
-                        # (and the ceiling for the start), so unaligned edge words are
-                        # still inside the clip.
+                        # This was diagnosed as "CTC fails to align the LAST words of a
+                        # sentence", measured as "...a chill wind blew [through the
+                        # world.]" losing 3 words and tripping tail_ok. The real cause
+                        # was A-M2 inside `refine` — the per-word grouping counted frames
+                        # against characters, so the sentence ran out after `len(flat)`
+                        # non-blank frames and every span landed early. Reproduced on a
+                        # real alignment: the end came out at frame 6 of 13, losing 54%.
+                        #
+                        # Fixed at the source (2026-08-07, `merge_tokens`). These two
+                        # bounds STAY: CTC genuinely can drop an edge word, and holding
+                        # the interpolated anchor time as a floor for the end (and a
+                        # ceiling for the start) costs nothing when the spans are right.
                         t0 = min(t0, real[0][0])
                         t1 = max(t1, real[-1][1])
                         score = sc if sc > 0 else local
