@@ -158,6 +158,36 @@ def edge_loss(ref, hyp):
             "tail_frac": tail / len(r), "tail_words": tail}
 
 
+# The head-loss count that owes a clip an ear pass. Deliberately the same number
+# `register_audition` writes its "starts late" note at: one instrument, one threshold, so
+# the note an auditor reads and the queue they read it in cannot disagree.
+HEAD_WORDS_FLAG = 3
+
+
+def head_flagged(row):
+    """Does this qc_measures row start late enough to owe the ear a listen?
+
+    C-M4's blind spot, found 2026-08-07 while queueing the eight clips: `head_ok` is an
+    ADVISORY, and `stage_pool.qc_flagged` tests `all(gates.values())` — so a head-truncated
+    clip is not flagged, keeps the "known quantity" relaxation, and folds into a bank as a
+    silent `keep` with no ratings row at all. Four of the eight found that way are pooled
+    LibriVox clips that would have entered exactly like that.
+
+    "Measured but not gated" must not mean "not queued". A threshold is what `head_ok`
+    lacks, and a threshold is only needed to REJECT a clip — pointing an auditor at one
+    costs a listen and is how the threshold gets calibrated in the first place
+    ([[qc-gate-mandatory]]: every QC finding is auditioned regardless of tier).
+
+    Recomputes from `text`/`asr_hyp` when the row predates the head measure, which every
+    qc_measures.jsonl written before 2026-08-07 does — the same fallback
+    `gate_calibration.py` uses, so old campaigns are covered without a re-run.
+    """
+    lost = row.get("head_words_lost")
+    if lost is None and row.get("text") and row.get("asr_hyp"):
+        lost = edge_loss(row["text"], row["asr_hyp"])["head_words"]
+    return (lost or 0) >= HEAD_WORDS_FLAG
+
+
 def append_jsonl(path, records):
     """Append to a `.jsonl` sidecar without the two ways an append can lose a record.
 

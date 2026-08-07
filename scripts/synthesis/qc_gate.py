@@ -165,40 +165,15 @@ PAUSE_MIN_GAP = 0.30        # silences shorter than this are ordinary phrasing
 
 # ------------------------------------------------------ UNCALIBRATED (C-M4, 2026-08-07)
 #
-# `head_ok` and `speech_ok` are MEASURED here and gate nothing. That is the whole point:
-# a gate on a guessed threshold either passes truncated clips or rejects good ones, and
-# neither failure announces itself. `tail_ok` and the two pause bands were each calibrated
-# against a few hundred already-audited clips before they gated anything, and these get
-# the same treatment — `gate_calibration.py --sweep` produces the same table.
+# `head_ok` is MEASURED here and gates nothing. That is the whole point: a gate on a
+# guessed threshold either passes truncated clips or rejects good ones, and neither
+# failure announces itself. `tail_ok` and the two pause bands were each calibrated against
+# a few hundred already-audited clips before they gated anything, and this gets the same
+# treatment — `gate_calibration.py --sweep` produces the same table.
 #
-# Until then both live in `advisories`, NOT in `gates`. `hard_pass` is `all(gates.values())`
+# Until then it lives in `advisories`, NOT in `gates`. `hard_pass` is `all(gates.values())`
 # and `stage_pool.qc_flagged` reads `gates` too, so putting an uncalibrated measure there
 # would silently make it a hard gate at whatever number happened to be typed.
-#
-# WHAT IS ACTUALLY MISSING IS DIFFERENT FOR THE TWO:
-#
-#   speech_ok — NEITHER is missing any more; what is left is one policy decision.
-#     The number is the owner's: 4 s of speech ([[min-clip-length-4s]], 2026-07-25, the
-#     keep-rate cliff is exactly there). The instrument was the open question, because
-#     `librivox_align` enforces the same floor with `librosa.effects.split` and says in as
-#     many words that it does so to match qc_gate, "because two different measures of one
-#     owner rule is one measure too many" — so a unilateral switch here would re-open the
-#     divergence that comment closed, by an unmeasured amount.
-#
-#     MEASURED 2026-08-07, 150 clips sampled across delivery-v1-narration, librivox-v2,
-#     newscaster-v1 and revisit-v1: the two instruments agree far more closely than the
-#     argument for Silero assumed. Mean VAD/energy ratio 1.008 — the energy gate slightly
-#     UNDER-counts on this material rather than over-counting, median delta -0.06 s,
-#     p10..p90 -0.34..+0.11 s. At the 4 s floor both reject the same 4.0% of the sample,
-#     and exactly ONE clip in 150 (rev_04_tenderness_ORP: energy 4.93 s, VAD 3.84 s)
-#     changes side. The floor therefore transfers between instruments essentially intact,
-#     and the earlier claim in this comment — that Silero would tighten it by an unknown
-#     amount — was written before the sweep and is wrong.
-#
-#     So the remaining question is not measurement, it is admission policy: should 4 s be
-#     a HARD gate that keeps a clip out of a bank, or stay the audition note it is today
-#     in `register_audition`? Turning it on rejects ~4% of clips that currently pass QC,
-#     which is a corpus decision and the owner's. One line when they answer.
 #
 #   head_ok — genuinely blocked, and harder than filed. Mirroring TAIL_LOST_MAX is the
 #     obvious guess and it is a guess: ASR is worse at the first word than the last, so
@@ -208,7 +183,32 @@ PAUSE_MIN_GAP = 0.30        # silences shorter than this are ordinary phrasing
 #     it. `register_audition` now says so on any clip missing >= 3 opening words; those
 #     notes are the evidence a threshold has to come from, and `gate_calibration.py
 #     --sweep head_lost_frac` reads them back.
-SPEECH_MIN_SECONDS = None   # 4.0 s, pending the owner's hard-gate-or-advisory call
+#
+# ------------------------------------------------------ speech_ok: HARD GATE 2026-08-07
+#
+# Owner's call, and it was always a policy question rather than a measurement one — the
+# number has been theirs since 2026-07-25: **4 s of speech**, no clip under it enters a
+# bank, and the keep-rate cliff is exactly there ([[min-clip-length-4s]]).
+#
+# What blocked it was the INSTRUMENT, not the threshold. `librivox_align` enforces the
+# same floor with `librosa.effects.split` and says in as many words that it does so to
+# match qc_gate, "because two different measures of one owner rule is one measure too
+# many", so switching here unilaterally would have re-opened that divergence by an
+# unmeasured amount.
+#
+# MEASURED 2026-08-07, 150 clips across delivery-v1-narration, librivox-v2, newscaster-v1
+# and revisit-v1: mean VAD/energy ratio **1.008** — the energy gate slightly UNDER-counts
+# on this material rather than over-counting — median delta -0.06 s, p10..p90
+# -0.34..+0.11 s. At the 4 s floor both instruments reject the same 4.0% of the sample and
+# exactly ONE clip in 150 changes side (rev_04_tenderness_ORP: energy 4.93 s, VAD 3.84 s).
+# The floor transfers essentially intact, so the divergence that comment protects against
+# is 0.7%, not the unknown it was assumed to be.
+#
+# The gate is on the VAD figure because that is what `speech_ok` has always named and it
+# is the measure that means "speech" rather than "signal". `librivox_align` keeps its
+# energy gate: it is an INGEST pre-filter, and the two now provably agree at the floor.
+# Cost, stated plainly: ~4% of clips that passed QC yesterday do not pass it today.
+SPEECH_MIN_SECONDS = 4.0    # owner 2026-08-07: a hard gate, not an audition note
 HEAD_LOST_MAX = None        # do NOT copy TAIL_LOST_MAX here without the sweep
 HEAD_WORDS_MIN = 3          # ...and one dropped "the" is not a truncation at either end
 
@@ -364,6 +364,12 @@ def main():
         tl_frac, tl_words = edges["tail_frac"], edges["tail_words"]
         gates["tail_ok"] = not (tl_frac > TAIL_LOST_MAX and tl_words >= TAIL_WORDS_MIN)
         gates["length_ok"] = dur <= MAX_CLIP_SECONDS
+        # The owner's 4 s floor, enforced rather than noted (2026-08-07). Guarded so that
+        # a future `None` cannot quietly become a gate that fails every clip: `None` is
+        # falsy, and `all(gates.values())` would read it as a failure rather than as an
+        # absent threshold — which is exactly the trap the advisories dict exists to avoid.
+        if SPEECH_MIN_SECONDS is not None:
+            gates["speech_ok"] = speech_dur_vad >= SPEECH_MIN_SECONDS
 
         # Uncalibrated — recorded, never gated. `None` is not "passed": it is "no
         # threshold has been set", and every consumer has to be able to tell those apart.
@@ -371,8 +377,6 @@ def main():
             "head_ok": None if HEAD_LOST_MAX is None else not (
                 edges["head_frac"] > HEAD_LOST_MAX
                 and edges["head_words"] >= HEAD_WORDS_MIN),
-            "speech_ok": None if SPEECH_MIN_SECONDS is None else (
-                speech_dur_vad >= SPEECH_MIN_SECONDS),
         }
         scores = dnsmos.score(wav)
         # DNSMOS demoted to advisory quality tier (register-biased);
@@ -425,16 +429,20 @@ def main():
     # "nothing is wrong with the head or the length of speech". C-M4 leaves these open on
     # purpose; silence about them is how an uncalibrated gate becomes an assumed one.
     n_head = sum(1 for r in rows if (r.get("head_words_lost") or 0) >= HEAD_WORDS_MIN)
-    n_short = sum(1 for r in rows if r.get("speech_dur_vad") is not None
-                  and r["speech_dur_vad"] < 4.0)
+    n_short = sum(1 for r in rows if not r.get("gates", {}).get("speech_ok", True))
     uncal = [k for k, v in (rows[0].get("advisories") or {}).items() if v is None] \
         if rows else []
     if uncal:
         print(f"  NOT GATED (no calibrated threshold yet): {', '.join(sorted(uncal))}"
-              f" — {n_head} clip(s) drop >= {HEAD_WORDS_MIN} words off the HEAD, "
-              f"{n_short} hold < 4.0 s of speech by the VAD measure.")
+              f" — {n_head} clip(s) drop >= {HEAD_WORDS_MIN} words off the HEAD.")
         print("  Set them with:  gate_calibration.py --sweep head_lost_frac "
-              "--campaign-dir <dir>   (and --sweep speech_dur_vad)")
+              "--campaign-dir <dir>")
+    # Said out loud for the opposite reason: this one DOES reject, it started rejecting on
+    # 2026-08-07, and a bank that suddenly comes up short should not have to be bisected
+    # to find out why.
+    if n_short:
+        print(f"  speech_ok rejected {n_short} clip(s) holding < {SPEECH_MIN_SECONDS} s "
+              "of speech by the VAD measure (owner floor, hard since 2026-08-07).")
     if not rows:
         sys.exit("QC-GATE-FAIL: every manifest record was skipped (no wav "
                  "found for any of them) — nothing was measured.")

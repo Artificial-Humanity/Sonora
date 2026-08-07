@@ -10,11 +10,18 @@ MEASURED 2026-08-07 over every qc_measures.jsonl on disk (3,189 clips, 13 campai
 clips drop three or more opening words and EIGHT of those passed every gate, up to 25% of
 the passage. Head loss runs about half as often as tail loss (0.6% vs 1.1% at >= 3 words).
 
-The other half of this file is about what is deliberately NOT done. `head_ok` and
-`speech_ok` are measured and gate nothing, because a gate on a guessed threshold either
-passes truncated clips or rejects good ones and neither failure announces itself. These
-tests exist to keep that honest — an uncalibrated threshold must not drift into `gates`,
-and `None` must never be read as "passed".
+The other half of this file is about what is deliberately NOT done. `head_ok` is measured
+and gates nothing, because a gate on a guessed threshold either passes truncated clips or
+rejects good ones and neither failure announces itself. These tests exist to keep that
+honest — an uncalibrated threshold must not drift into `gates`, and `None` must never be
+read as "passed".
+
+`speech_ok` left that company on **2026-08-07**: the owner made it a hard gate. It was
+never the same kind of open question — the threshold has been theirs since 2026-07-25 (4 s
+of speech), and what was missing was confidence that switching instruments would not move
+it. The sweep answered that (mean VAD/energy ratio 1.008 over 150 clips, one clip in 150
+changing side at the floor), so what remained was admission policy, and that is a call
+rather than a measurement.
 """
 
 import json
@@ -93,12 +100,11 @@ def test_the_live_case_that_passed_every_gate():
 # --- the thresholds that do not exist -------------------------------------------------
 
 
-def test_the_uncalibrated_thresholds_are_still_none():
-    """A guard, not a preference. The moment one of these is filled in, the sweep numbers
-    that chose it belong beside it — and this test is where someone finds out that is
-    expected of them."""
+def test_the_uncalibrated_threshold_is_still_none():
+    """A guard, not a preference. The moment this is filled in, the sweep numbers that
+    chose it belong beside it — and this test is where someone finds out that is expected
+    of them."""
     src = (SYNTH / "qc_gate.py").read_text(encoding="utf-8")
-    assert "SPEECH_MIN_SECONDS = None" in src
     assert "HEAD_LOST_MAX = None" in src
     assert "UNCALIBRATED" in src
 
@@ -109,18 +115,121 @@ def test_an_uncalibrated_measure_is_not_in_the_gates_dict():
     and `None` is falsy, so it would fail every clip rather than pass them."""
     src = (SYNTH / "qc_gate.py").read_text(encoding="utf-8")
     assert 'gates["head_ok"]' not in src
-    assert 'gates["speech_ok"]' not in src
     assert 'advisories = {' in src
     assert 'all(gates.values())' in src
+
+
+def test_the_speech_floor_is_the_owners_number_and_it_gates():
+    """2026-08-07: hard gate, on the VAD measure, at the owner's 4 s.
+
+    The threshold and the sweep that made switching instruments safe have to travel
+    together — a bare `4.0` with no provenance is how a measured decision decays back into
+    a typed one.
+    """
+    src = (SYNTH / "qc_gate.py").read_text(encoding="utf-8")
+    assert "SPEECH_MIN_SECONDS = 4.0" in src
+    assert 'gates["speech_ok"] = speech_dur_vad >= SPEECH_MIN_SECONDS' in src
+    assert "1.008" in src, "the ratio that made the instrument switch safe"
+    # Still guarded against being switched back OFF into a gate that fails everything,
+    # since None is falsy and `all(gates.values())` cannot tell it from a failure.
+    assert "if SPEECH_MIN_SECONDS is not None:" in src
+
+
+def test_a_head_flagged_clip_is_owed_an_ear_even_though_nothing_gates_it():
+    """C-M4's blind spot, found 2026-08-07 while queueing the eight clips.
+
+    `stage_pool.qc_flagged` tested `all(gates.values())`, and `head_ok` is an ADVISORY —
+    so the one finding that most needs an auditor was the one finding that could not
+    reach one. A head-truncated clip kept the "known quantity" relaxation and folded as a
+    silent `keep` with no ratings row at all. Four of the eight clips that dropped >= 3
+    opening words while passing every gate are pooled LibriVox clips waiting to enter
+    exactly that way.
+
+    A threshold is only needed to REJECT a clip. Queueing one costs a listen, and the
+    listen is where the threshold comes from.
+    """
+    clean = {"id": "a", "gates": {"asr_ok": True}, "head_words_lost": 0}
+    late = {"id": "b", "gates": {"asr_ok": True}, "head_words_lost": 3}
+    assert not synth_common.head_flagged(clean)
+    assert synth_common.head_flagged(late)
+    # One word is not a truncation, at either end.
+    assert not synth_common.head_flagged({"id": "c", "head_words_lost": 1})
+
+
+def test_a_row_written_before_the_head_measure_is_still_flagged():
+    """Every qc_measures.jsonl on disk predates 2026-08-07, so a fallback that needs the
+    field to exist would cover none of the corpus that actually has the problem."""
+    row = {"id": "old", "gates": {"asr_ok": True},
+           "text": PASSAGE,
+           "asr_hyp": "jumps over the lazy dog and then runs away into the deep green wood"}
+    assert row.get("head_words_lost") is None
+    assert synth_common.head_flagged(row)
+
+
+def test_one_threshold_not_two():
+    """The number that QUEUES a clip and the number that tells the auditor what to listen
+    for have to be the same, or the queue fills with clips whose note says nothing."""
+    ra = pytest.importorskip("register_audition")
+    assert ra.HEAD_WORDS_FLAG is synth_common.HEAD_WORDS_FLAG
+
+
+def _queue_module(tmp_path, monkeypatch):
+    """Import queue_head_audit against a synthetic data root (it reads env at import)."""
+    import importlib
+    monkeypatch.setenv("AUDITION_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUDITION_RATINGS_DIR", str(tmp_path))
+    sys.modules.pop("queue_head_audit", None)
+    return importlib.import_module("queue_head_audit")
+
+
+def test_the_queue_takes_the_clips_the_instrument_called_clean(tmp_path, monkeypatch):
+    """The interesting population is the one that PASSED.
+
+    A clip that already failed a gate is going to the ear anyway and its drop note will
+    say why. Queueing it too would bury the eight cases the threshold has to come from in
+    a list of ordinary QC failures.
+    """
+    camp = tmp_path / "campaign-x"
+    camp.mkdir()
+    late_clean = {"id": "late-clean", "hard_pass": True, "gates": {"asr_ok": True},
+                  "head_words_lost": 4, "head_lost_frac": 0.21}
+    late_failed = {"id": "late-failed", "hard_pass": False, "gates": {"asr_ok": False},
+                   "head_words_lost": 4, "head_lost_frac": 0.21}
+    on_time = {"id": "on-time", "hard_pass": True, "gates": {"asr_ok": True},
+               "head_words_lost": 0}
+    camp.joinpath("qc_measures.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in (late_clean, late_failed, on_time)),
+        encoding="utf-8")
+
+    mod = _queue_module(tmp_path, monkeypatch)
+    assert [r["id"] for _, r in mod.candidates()] == ["late-clean"]
+
+
+def test_queueing_never_discards_a_verdict(tmp_path, monkeypatch):
+    """Four of the eight already carry an ear verdict, two of them a `keep` — one scored 5.
+
+    The auditor is being asked a question nobody asked before ("does it start late?"),
+    not told their previous answer was wrong. Status moves so the clip reaches the todo
+    queue; the score and the auditor's own words stay exactly where they were.
+    """
+    mod = _queue_module(tmp_path, monkeypatch)
+    src = pathlib.Path(mod.__file__).read_text(encoding="utf-8")
+    assert 'row["score"]' not in src, "the score column must not be written"
+    assert 'row["status"] = "unaudited"' in src
+    # The auditor's note is kept AHEAD of the generated one.
+    assert 'f"{existing} | {note}"' in src
+    # Report-only unless asked, through the shared transaction's dry_run.
+    assert "dry_run=not args.apply" in src
+    assert 'ap.add_argument("--apply"' in src
 
 
 def test_none_is_not_false():
     """The distinction the advisories dict rests on: 'no threshold set' and 'failed' are
     different answers, and a consumer that cannot tell them apart will report a clean
     campaign as broken or a broken one as clean."""
-    advisories = {"head_ok": None, "speech_ok": None}
-    assert not all(advisories.values())          # ...which is why they are not gates
-    assert [k for k, v in advisories.items() if v is None] == ["head_ok", "speech_ok"]
+    advisories = {"head_ok": None}
+    assert not all(advisories.values())          # ...which is why it is not a gate
+    assert [k for k, v in advisories.items() if v is None] == ["head_ok"]
 
 
 def test_the_gate_says_out_loud_what_it_does_not_cover():

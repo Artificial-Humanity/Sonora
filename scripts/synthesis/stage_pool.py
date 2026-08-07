@@ -183,7 +183,18 @@ def load_pool(campaign_dir: pathlib.Path) -> list[dict]:
 
 
 def qc_flagged(campaign_dir: pathlib.Path) -> set[str]:
-    """Ids with any failing gate — these keep their ear pass."""
+    """Ids owed an ear pass: any failing gate, OR a late start.
+
+    The head clause was added 2026-08-07. Testing `all(gates.values())` alone meant an
+    ADVISORY could never queue a clip, and `head_ok` is an advisory on purpose — it has no
+    calibrated threshold and cannot get one until the ear describes the failure once. So
+    the one finding that most needs an auditor was the one finding that could not reach
+    one, and a head-truncated clip kept the "known quantity" relaxation and folded as a
+    silent `keep`. Four of the eight clips that dropped >= 3 opening words while passing
+    every gate are pooled LibriVox clips waiting to enter exactly that way.
+
+    A threshold is only needed to REJECT. Queueing costs a listen.
+    """
     out: set[str] = set()
     qc = campaign_dir / "qc_measures.jsonl"
     if not qc.is_file():
@@ -195,7 +206,9 @@ def qc_flagged(campaign_dir: pathlib.Path) -> set[str]:
             r = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if r.get("id") and not all((r.get("gates") or {}).values()):
+        if not r.get("id"):
+            continue
+        if not all((r.get("gates") or {}).values()) or synth_common.head_flagged(r):
             out.add(r["id"])
     return out
 

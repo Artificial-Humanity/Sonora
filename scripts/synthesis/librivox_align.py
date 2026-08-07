@@ -684,11 +684,20 @@ def main() -> int:
             if not is_complete_utterance(sent):
                 n_incomplete += 1
                 continue
-            # Speech floor. Measured with EXACTLY the instrument qc_gate uses
-            # (librosa.effects.split at top_db=35) rather than ASR word spans: word
-            # spans absorb the silence around each word and over-estimate, which let a
-            # clip through here at ">=4.0 s" that qc_gate then measured at 3.8 s. Two
-            # different measures of one owner rule is one measure too many.
+            # Speech floor. Measured with the energy gate (librosa.effects.split at
+            # top_db=35) rather than ASR word spans: word spans absorb the silence around
+            # each word and over-estimate, which let a clip through here at ">=4.0 s" that
+            # qc_gate then measured at 3.8 s. Two different measures of one owner rule is
+            # one measure too many.
+            #
+            # qc_gate's `speech_ok` became a HARD gate on the SILERO VAD figure on
+            # 2026-08-07 (owner's call), so this is no longer literally the same
+            # instrument. It stays the energy gate on purpose, and the divergence is
+            # measured rather than assumed: mean VAD/energy ratio 1.008 over 150 clips,
+            # one clip in 150 changing side at the 4 s floor. This is an INGEST
+            # pre-filter — its job is to not cut a clip that admission will reject — and
+            # at 0.7% disagreement it still does that. If that number moves, this is the
+            # line to change.
             seg = wav[int(t0 * SAMPLE_RATE):int(t1 * SAMPLE_RATE)]
             import librosa as _lb
             speech = float(sum(e - st for st, e in

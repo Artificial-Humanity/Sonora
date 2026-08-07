@@ -37,6 +37,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import synth_common  # noqa: E402
+
 # Mirror the audition app's path resolution (same env overrides).
 DATA_ROOT = Path(os.environ.get(
     "AUDITION_DATA_ROOT", "/data/model-training/datasets")).resolve()
@@ -168,7 +171,12 @@ PAUSE_FLAG_SECONDS = 1.4
 # extra line, and the whole reason it exists is to accumulate the ear labels a real
 # threshold has to be chosen from. Three matches TAIL_WORDS_MIN, so one dropped article
 # is not called a truncation at either end.
-HEAD_WORDS_FLAG = 3
+#
+# Imported rather than re-declared since 2026-08-07, when `stage_pool.qc_flagged` gained
+# the same test: the number that decides whether a clip is QUEUED and the number that
+# decides what the auditor is TOLD have to be one number, or the queue fills with clips
+# whose note says nothing is wrong.
+HEAD_WORDS_FLAG = synth_common.HEAD_WORDS_FLAG
 
 
 def _tail_beyond(canonical: str, heard: str) -> str:
