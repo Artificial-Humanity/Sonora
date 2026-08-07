@@ -19,6 +19,47 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-07
 
+### Changed — QC admission and the ear queue (§2)
+
+- **`97c14b4` — `speech_ok` is a HARD GATE at 4.0 s, on the VAD figure.** Owner's call.
+  The threshold was never the open question — it has been theirs since 2026-07-25, and the
+  keep-rate cliff is exactly there. What blocked it was the INSTRUMENT: `librivox_align`
+  enforces the same floor with `librosa.effects.split` and says in as many words that it
+  does so to match qc_gate, "because two different measures of one owner rule is one
+  measure too many". The sweep settled that — mean VAD/energy ratio **1.008** over 150
+  clips, median delta −0.06 s, and exactly **one clip in 150** changing side at the floor.
+  `librivox_align` keeps the energy gate on purpose as an INGEST pre-filter, with the 0.7%
+  disagreement now written down instead of assumed. Cost, stated plainly: **~4% of clips
+  that passed QC the day before do not pass it now.** Guarded so a future `None` cannot
+  silently become a gate that fails every clip, since `None` is falsy and
+  `all(gates.values())` cannot tell it from a failure.
+- **`97c14b4` — an advisory could not queue a clip, which is why the eight were never
+  heard.** Found while acting on the owner's "stage them": `stage_pool.qc_flagged` tested
+  `all(gates.values())`, and `head_ok` is an advisory *precisely because* it has no
+  calibrated threshold — which it cannot get until the ear describes the failure once. So
+  **the one finding that most needed an auditor was the one finding that could not reach
+  one**, and a head-truncated clip kept the "known quantity" relaxation and folded into a
+  bank as a silent `keep`. A threshold is only needed to REJECT a clip; queueing one costs
+  a listen, and the listen is where the threshold comes from.
+  - `synth_common.head_flagged` recomputes from `text`/`asr_hyp` when the row predates the
+    head measure — which every `qc_measures.jsonl` on disk does, so old campaigns are
+    covered without a re-run.
+  - `register_audition` imports `HEAD_WORDS_FLAG` rather than re-declaring it: the number
+    that QUEUES a clip and the number that TELLS the auditor what to listen for have to be
+    one number, or the queue fills with clips whose note says nothing is wrong.
+  - `queue_head_audit.py` — report-only by default, through the shared mtime-guarded
+    `ratings_transaction`. Queues only clips that **passed every gate**, since a clip that
+    already failed one is going to the ear anyway with a note that says why.
+  - **4 of the 8 queued; the other 4 are `uneasy-money` clips still in the POOL** — never
+    staged, so there was nothing to re-audition, and they are exactly the silent fold
+    `qc_flagged` now prevents. **No verdict was discarded**: status moves to `unaudited`,
+    the score and the auditor's own note stay in place, and the generated line goes after
+    theirs. Two of the four had been kept, one at 5.
+  - ⚠ A pattern the finding did not name: **4 of the 8 are one title**, `uneasy-money`,
+    across both librivox v1 and v2. Worth looking at that alignment before a threshold is
+    chosen from a population it supplies half of.
+- Guards in `tests/test_edge_truncation.py` (20 cases, from 9).
+
 ### Fixed — the device text front end (§1)
 
 - **`8a07655` — D-C1 was still live on the device side, five days after the host was

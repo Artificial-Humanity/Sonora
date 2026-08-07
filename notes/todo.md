@@ -96,11 +96,17 @@ front end fails 69 of those 86, and worse than filed: `they've` → `θˈeɪv`, 
       channels contribute nothing until they are trained — but the trunk's input conv
       changes shape, so the warm start needs the same treatment `make_warmstart.py`
       already applies to a widened tensor. Not yet done.
-      **Three findings are waiting on this one pass, and each is a corpus version bump on
-      its own**: the width itself, **D-L2**'s corrected z guard (§ 3 — the code is fixed,
-      the shipped labels are not), and **D-M4**'s homograph resolution (§ 3 — off by
-      default, 281 tokens would move). Doing them separately costs three bumps and three
-      lineages for one re-derivation's worth of work. Decide all three before running it.
+      **Three findings ride this one pass, and each would be a corpus version bump on its
+      own**: the width itself, **D-L2**'s corrected z guard (§ 3 — the code is fixed, the
+      shipped labels are not), and **D-M4**'s homograph resolution (§ 3). Doing them
+      separately costs three bumps and three lineages for one re-derivation's worth of work.
+      **DECIDED 2026-08-07 — the owner took all three.** So the next derivation is: 8-wide,
+      `--delivery-from <ratings.csv>`, the corrected z guard, and `op_g2p(homographs=True)`.
+      That is a new corpus version, not an amendment of v3c, and the checkpoint lineage
+      restarts from `vat3-24k` ep099 via `make_warmstart.py` (zero-init FiLM keeps the warm
+      start valid; the trunk's input conv changes shape and needs the widened-tensor
+      treatment). **Not yet run** — this is the next command, and it is the gate before any
+      training.
 
 ## 2 · QC / audit / staging
 
@@ -126,25 +132,36 @@ the point found **15 clips across two live campaigns already shipped unnormalize
 has already rated is a corpus change and the owner's call. Guards in
 `tests/test_atomic_state_writes.py`, `test_ear_confirmation.py`, `test_loudness_identity.py`._
 
-- [ ] **C-M4 — the measurement shipped (`a4b6ec5`); the two thresholds are yours.**
-      `head_lost_frac`/`head_words_lost` and a Silero `speech_dur_vad` are recorded beside
-      the existing measures, in an `advisories` dict that gates NOTHING, and
-      `gate_calibration.py --sweep` reproduces the procedure that set `PAUSE_HARD_MAX`.
-      Two different asks:
-      - **`speech_ok` is one word from you.** The blocking worry — that Silero would move
-        the owner's 4 s floor by an unmeasured amount, and diverge from `librivox_align`
-        which enforces the same floor with the energy gate on purpose — is measured and
-        does not hold: over 150 clips the mean VAD/energy ratio is **1.008** and exactly
-        **one clip in 150** changes side at 4 s. So the question is not measurement, it is
-        admission policy: **hard gate, or the audition note it is today?** A hard gate
-        rejects ~4% of clips that currently pass QC.
-      - **`head_ok` genuinely needs the ear, and needs it first.** There is nothing to
-        calibrate against: no drop note in `ratings.csv` names a late start, because no
-        auditor has been asked to listen for one. `register_audition` now flags ≥3 missing
-        opening words and says the note is what sets the threshold. The candidates exist —
-        **19 clips drop ≥3 opening words and 8 passed every gate**, e.g.
-        `wuthering-heights_nar_0036_neu_CHA` (4 of 19 words, 21% of the passage, WER 0.211
-        against a 0.35 gate). Those 8 are the first thing to queue. Stays behind § 5.
+_**C-M4's first threshold closed 2026-08-07** (`97c14b4`): **`speech_ok` is a HARD GATE**
+at the owner's 4 s, on the VAD figure. `librivox_align` keeps its energy gate as an ingest
+pre-filter and the 0.7% disagreement is written down rather than assumed. ~4% of clips that
+passed QC the day before do not now. Queueing the head clips then found the reason they
+were never heard: **`qc_flagged` tested `all(gates.values())`, so an ADVISORY could not
+queue a clip** — and `head_ok` is an advisory precisely because it has no threshold, which
+it cannot get until the ear describes the failure once. The one finding that most needed an
+auditor was the one that could not reach one. Fixed: `synth_common.head_flagged` (recomputes
+from `text`/`asr_hyp`, since every `qc_measures.jsonl` on disk predates the measure),
+honoured by `stage_pool.qc_flagged`, with `queue_head_audit.py` for the backlog. **4 of the
+8 are queued; the other 4 are `uneasy-money` clips still in the POOL** — never staged, so
+there was nothing to re-audition, and they are exactly the silent fold `qc_flagged` now
+prevents. No verdict was discarded: status moves, score and the auditor's note stay._
+
+- [ ] **C-M4 — the measurement shipped (`a4b6ec5`); one threshold is still yours.**
+      `head_lost_frac`/`head_words_lost` is recorded beside the existing measures, in an
+      `advisories` dict that gates NOTHING, and `gate_calibration.py --sweep head_lost_frac`
+      reproduces the procedure that set `PAUSE_HARD_MAX`.
+      **`head_ok` needs the ear, and the queue now exists** — that was the missing half.
+      There is still nothing to calibrate against: no drop note in `ratings.csv` names a
+      late start, because no auditor has been asked to listen for one.
+      **4 clips are in the todo queue now** with a note saying the threshold comes from
+      what they write — `wuthering-heights_nar_0036_neu_CHA` (4 of 19 words, 21% of the
+      passage, WER 0.211 against a 0.35 gate), `_0040` (5 words), `castle-of-otranto_nar_
+      0033_neu_ZON` (4 words, previously kept at 5) and `victory_whimsical_00_brightF_s5150`
+      (3 words, previously kept). **This is the whole of what is left: hear them, then run
+      `gate_calibration.py --sweep head_lost_frac`.** Blocked on ears, nothing else.
+      ⚠ One pattern the finding did not name: **4 of the original 8 are `uneasy-money`**,
+      across both librivox v1 and v2. One title supplying half the population is worth a
+      look at that alignment before the threshold is chosen from it.
 
 ## 3 · Label derivation
 
@@ -157,6 +174,10 @@ all 5,736 dev-clean. **D-M6** error rows no longer count as done, so a transient
 clip is retried instead of silently dropped forever. **D-L5** `derive_markup_measures.py`
 follows `--corpus` (default v3c, was pinned to v2) and records `speaker_index` separately
 from the real LibriTTS `speaker`, verified against the wav paths._
+
+- [x] **D-L2 — DECIDED 2026-08-07: the next derivation takes the corrected guard.**
+      Owner's call. Nothing more to settle; it executes as part of § 1's single pass.
+      The finding, kept because the re-derivation has not run yet:
 
 - [ ] **D-L2 — the guard is fixed in code; the LABELS still carry the defect.** This was
       filed as "the two z-implementations disagree", which undersells it: `std or 1.0`
@@ -202,9 +223,11 @@ from the real LibriTTS `speaker`, verified against the wav paths._
       this is a known blocker rather than a future surprise. It is not an argument either
       way — mobile has not started — but a yes means the port carries a resolver.
 
-      **THE CALL: does the next derivation take the homograph pass — yes or no?** That is
-      the whole of it. It is an admission decision, not a measurement one and not an ear
-      one, and the three things below are why.
+      **THE CALL, ANSWERED 2026-08-07: YES.** The next derivation runs with
+      `op_g2p(homographs=True)`, on the same pass as D-L2 and the width. The three notes
+      below are kept because they are why no ear test is owed — the decision was an
+      admission one, not a measurement one, and re-litigating that is how a settled call
+      turns back into an open one.
 
       - **There is nothing to audition, and the audition app is not involved.**
         `measure_homographs.py` writes nothing except the file named by `--json`; it
@@ -315,8 +338,11 @@ tells us which: **Phase 1 is the data lever.** So:
 3. [ ] **moss_vg** — newscaster 20/20 is confounded (the register flatters its
        radio-timbre/IVR failure mode; its 24% rate was measured on expressive material).
        Re-test on dialogue or an expressive register before any tier movement.
-4. [ ] **Ear-calibrate `tail_ok`, `speech_ok` and `head_ok`** (thresholds never
-       calibrated) **and the 1.4 s pause advisory band**. § 2's C-M4 is blocked on this.
+4. [ ] **The 4 head-truncation clips, already in the todo queue** (`97c14b4`) — the only
+       thing `head_ok` is waiting on. Each carries a note saying the threshold comes from
+       what the auditor writes. Then `gate_calibration.py --sweep head_lost_frac`.
+       `speech_ok` left this list on 2026-08-07: it is a hard gate now, by owner's call.
+       Still open alongside: ear-calibrating `tail_ok` and the 1.4 s pause advisory band.
 
 ## 6 · Parked dataset decisions
 

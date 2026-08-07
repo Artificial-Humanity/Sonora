@@ -49,15 +49,20 @@ _Last updated: 2026-08-07._
 > engines first ([spin-down rule](training-operations.md)), and run
 > `scripts/test_vat_dim_seams.py` (22 checks).
 >
-> **The next derivation is one pass carrying three decisions, not three bumps.** v3c is
-> 3-wide and `vat_dim` is 8, so a re-derivation is already forced before the next run —
-> and two label defects are waiting on the same pass, each of which would otherwise be a
-> corpus version of its own: **D-L2**'s z-score guard (fixed in code 2026-08-06, but the
-> shipped `_v2` labels and therefore v3c were built with the broken one) and **D-M4**'s
-> homograph resolution (shipped 2026-08-07, `off` by default, 281 tokens in 277 rows
-> would move — `live` alone is 87 of them, because the dictionary ships the adjective
-> `lˈaɪv`). Both are owner calls. Detail and the measurement commands: [todo.md
-> §1](todo.md).
+> **The next derivation is one pass carrying three decisions, not three bumps — and the
+> owner took all three on 2026-08-07.** v3c is 3-wide and `vat_dim` is 8, so a
+> re-derivation was already forced before the next run; two label defects rode the same
+> pass rather than costing a corpus version each. **D-L2**'s z-score guard (fixed in code
+> 2026-08-06, but the shipped `_v2` labels and therefore v3c were built with the broken
+> one) — **taken**. **D-M4**'s homograph resolution (shipped 2026-08-07, `off` by default,
+> 281 tokens in 277 rows move; `live` alone is 87 of them, because the dictionary ships the
+> adjective `lˈaɪv`) — **taken**.
+>
+> So the next derivation is: **8-wide, `--delivery-from <ratings.csv>`, corrected z guard,
+> `op_g2p(homographs=True)`** — a new corpus version, not an amendment of v3c. The warm
+> start from `vat3-24k` ep099 stays valid (zero-init FiLM), but the trunk's input conv
+> changes shape and needs `make_warmstart.py`'s widened-tensor treatment. **NOT YET RUN**:
+> this is the next command and the gate before any training. Detail: [todo.md §1](todo.md).
 
 ## The delivery channel — SHIPPED on the training side (2026-08-07)
 
@@ -285,14 +290,17 @@ is only its headline.
    against the same ~30k clips made the model *worse*, so the lever is corpus, not epochs.
 4. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
    baseline frozen as the last act of Phase 1.
-5. Ears queue in priority order — [todo.md §5](todo.md). §2's C-M4 is now **measured but
-   not gated**, and the two halves need different things. **`speech_ok` needs one word**:
-   the fear that Silero would move the owner's 4 s floor is disproved (VAD/energy ratio
-   1.008 over 150 clips; one clip in 150 changes side), so the only open question is
-   whether 4 s becomes a hard gate — which would reject ~4% of clips that pass QC today —
-   or stays the audition note it is. **`head_ok` needs the ear first**: nothing in
-   `ratings.csv` describes a late start, because nobody has been asked to listen for one.
-   The 8 clips that dropped ≥3 opening words *and passed every gate* are the queue.
+5. Ears queue in priority order — [todo.md §5](todo.md). §2's C-M4 lost one of its two
+   halves on 2026-08-07: **`speech_ok` is a hard gate** at the owner's 4 s on the VAD
+   figure, which rejects ~4% of clips that passed QC the day before. `librivox_align` keeps
+   the energy gate as an ingest pre-filter and the two provably agree at the floor (ratio
+   1.008; one clip in 150 changes side). **`head_ok` still needs the ear, and now has a
+   queue**: 4 clips are in `todo` carrying a note saying the threshold comes from what the
+   auditor writes. Acting on that surfaced why they had never been heard — `qc_flagged`
+   tested `all(gates.values())`, so an ADVISORY could never queue a clip, and head_ok is an
+   advisory precisely because it lacks the threshold the ear was supposed to supply. The
+   other 4 of the original 8 are `uneasy-money` clips still in the POOL, which is exactly
+   the silent fold that is now closed.
 6. ~~Export-lane hardening~~ **DONE 2026-08-07** — the whole of §1 closed, including the
    control contract a mobile host reads. What is left there is a re-export, which is
    downstream of steps 2 and 3.
@@ -300,11 +308,14 @@ is only its headline.
 ## Pointers
 
 - Change history — [CHANGELOG.md](CHANGELOG.md) (maintained per AGENTS.md §4 since 2026-08-06)
-- Review sweep — 47 open items down to **11**. §2's QC/audit/staging block closed on
-  2026-08-07 (`1ebd14a`, `0a505d3`, `a4b6ec5`): C-M5, C-M8 and C-L4 done, C-M4 reduced to
-  two owner decisions. Two more findings were **live**: 15 clips across two campaigns had
-  already shipped unnormalized (up to 7 dB off, one bank spanning 12.7 dB), and 8 clips
-  passed every gate while missing three or more opening words. The 2026-08-06 round closed both §1
+- Review sweep — 47 open items down to **9**, with **all three §1/§3 corpus decisions
+  taken** on 2026-08-07 and only their execution left. §2's QC/audit/staging block closed
+  on 2026-08-07 (`1ebd14a`, `0a505d3`, `a4b6ec5`, `97c14b4`): C-M5, C-M8 and C-L4 done,
+  C-M4 down to one ear-blocked threshold. Three more findings were **live**: 15 clips
+  across two campaigns had already shipped unnormalized (up to 7 dB off, one bank spanning
+  12.7 dB), 8 clips passed every gate while missing three or more opening words, and the
+  device G2P was still running the front end D-C1 condemned — 69 of 86 probe sentences
+  wrong, five days after the host was fixed. The 2026-08-06 round closed both §1
   blockers (E-M5/E-M6), §5's Highs, §3's packaging and GPL/cli lane, §8's label-derivation
   bugs, **F-C1** (the only Critical) and F-H1/F-M4, plus C-M10 and D-M5. The **2026-08-07**
   round (`87c65f8`..`72786ac`, twelve commits) closed the whole of §1, §3, §5 and §6 and
