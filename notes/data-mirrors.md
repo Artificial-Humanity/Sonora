@@ -46,6 +46,8 @@ data drive, not in git.
 
 ## The rule
 
+Ratified as **[AGENTS.md](../AGENTS.md) §6**. In short:
+
 **The repo is authoritative. `/data` is a working copy, always.**
 
 A `/data` file that is *newer* than its tracked original is not authoritative — it is
@@ -53,10 +55,14 @@ unreviewed. It has no history, no diff, no changelog entry, and no way for anyon
 discover it changed. If an edit made on `/data` is the right one, commit it in the repo
 and redeploy; do not let the copy become the record.
 
-`tests/test_data_mirrors.py` enforces this. It compares every tracked file against its
+`tests/test_data_mirrors.py` enforces it. It compares every tracked file against its
 `/data` counterpart and fails on any difference, skipping cleanly on machines without
 `/data`. It also asserts that it found at least 15 pairs to check, because a layout change
 that emptied the list would otherwise turn the whole gate into a silent pass.
+
+§6 additionally requires that a new `/data`-deployed tool be added to that test's `MIRRORS`
+table **in the same commit that deploys it** — the gate only covers what it is told about,
+so an unlisted tool is exactly as exposed as everything was before this note existed.
 
 ## What is still worth doing
 

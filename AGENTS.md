@@ -34,6 +34,7 @@ in [notes/README.md](notes/README.md). Before starting work, read
 
 ## Integration Dependencies
 
+* **Deployed code is a copy; the repo is the source** — see §6 and [notes/data-mirrors.md](notes/data-mirrors.md).
 * This repo is a standalone PyTorch training repository for building, fine-tuning, and
   exporting voice actor models (Matcha-TTS). It is consumed by Project Prosodia
   (`ProsodiaActor`) via exported artifacts promoted into the sibling **`Sonora/huggingface`**
@@ -123,3 +124,40 @@ case-insensitive macOS/Windows.
 * Determine the range of commits to review by starting with the commit immediately following the end SHA of the *previous* code review. If no prior review exists, use all commits from the previous and current day.
 * Once the new code review document has been written, delete the previous one to keep only the latest review active.
 * Repoint the **Latest code review** pointer in [notes/STATE.md](notes/STATE.md) to the new document (only the link target changes; the surrounding line is phrased generically) so a session can find the current review without globbing the folder.
+
+### 6. Deploy From The Repo Copy — `/data` Is Never The Source
+
+Code of ours that runs on `ai-lab-0` exists twice: tracked in a repo, and as a working copy
+under `/data` that containers bind-mount. **The repo is authoritative in every case.** The
+full mirror table, what is legitimately untracked, and the audit behind this rule are in
+[notes/data-mirrors.md](notes/data-mirrors.md).
+
+* **Never edit code under `/data`.** Change it in the repo, commit, then deploy. An edit made
+  on `/data` has no history, no diff, no review and no changelog entry, and no way for anyone
+  else to discover it happened.
+* **A `/data` file that is *newer* than its tracked original is not authoritative — it is
+  unreviewed.** If that edit is the one you want, commit it in the repo and redeploy; do not
+  let the copy become the record.
+* **Deploy explicitly.** Committing deploys nothing (GitOps retired 2026-07-22). Service
+  stacks go through `AI-Lab-AMD/scripts/deploy.sh`; the training clone at `/data/repos/Sonora`
+  through `deploy.sh training-code`.
+* **Adding a tool that will run from `/data`? Add it to `MIRRORS` in
+  [tests/test_data_mirrors.py](tests/test_data_mirrors.py) in the same commit.** That gate
+  compares every tracked file against its deployed copy and fails on any difference. It is the
+  only thing standing between us and this failure mode, and it only covers what it is told
+  about.
+* **What legitimately lives only on `/data`, and must stay untracked:** venvs, `artifacts*/`,
+  checkpoints, training logs, datasets, vendor checkouts (`toolchain/Zonos`,
+  `services/comfyui`, `services/unsloth`, …) and service runtime state.
+
+**Why this is a mandate and not a preference.** A copy that stops updating looks exactly like
+a copy that is up to date — both directories are healthy, the scripts run, and the only
+symptom is that a fix you believe shipped did not. It has already happened twice:
+
+* `convert_vat.py` on `/data` ran **three weeks stale**, missing the `detect_vat_dim` seam
+  guard that this repo recorded as landed. The guard was written, reviewed, committed and
+  never installed.
+* The training deploy clone went **dead for two weeks** in July, because `deploy.sh
+  training-code`'s fast-forward pull cannot cross a history rewrite and failed silently.
+
+Neither was found by noticing something break. Both were found by going to look.
