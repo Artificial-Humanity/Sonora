@@ -310,3 +310,34 @@ def test_bank_and_out_are_validated_before_they_are_interpolated():
     assert 'case "$BANK$OUT" in *[\\ \\\'\\"]*)' in src
     # and the single-level-OUT refusal, which is the same family
     assert 'DATASETS_ROOT="/data/model-training/datasets"' in src
+
+
+# --- B-L7: the guardless fork of ref_select scoring -----------------------------------
+
+
+def test_the_v3d_builder_shares_the_helpers_it_used_to_copy():
+    """`design_gender` and the VAT accessor were duplicated BYTE FOR BYTE from
+    ref_select — the B-L5 shape again, where a copied rule can be fixed in one place and
+    not the other."""
+    src = _src("make_v3d_bank.py")
+    assert "from ref_select import" in src
+    assert "def design_gender" not in src
+    assert "def keep_vat" not in src
+
+
+def test_the_v3d_builder_applies_the_casting_guards():
+    """It scored references itself — gender, VAT proximity, duration window, variety bias
+    — with none of the guards. It cannot simply CALL `select_reference` (it casts from the
+    campaign's own keeps file, not the certified pool, and that difference is legitimate),
+    but the guards are properties of the reference CLIP and apply either way."""
+    src = _src("make_v3d_bank.py")
+    assert "REF_BLACKLIST" in src and "MAX_REF_EXCURSION" in src
+    assert 'k.get("id") in REF_BLACKLIST' in src
+
+
+def test_an_unfillable_line_does_not_take_the_bank_with_it():
+    """`cands[0]` had no emptiness check. With the guards narrowing the pool that is a
+    reachable state, and one unfillable line must not cost the other nine."""
+    src = _src("make_v3d_bank.py")
+    assert "if not cands:" in src
+    assert "no eligible reference" in src
