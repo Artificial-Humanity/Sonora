@@ -261,3 +261,101 @@ sys.exit(lf.main())
     assert "RESOLVED THE WRONG PROJECT" in proc.stderr
     assert not list(tmp_path.iterdir()), "refused, but it still created the directory"
     assert os.path.exists(script)
+
+
+# --- A-H1: chapter slicing ------------------------------------------------------------
+
+
+@pytest.fixture()
+def align():
+    """librivox_align imports torch/faster-whisper lazily, so importing it is cheap."""
+    return pytest.importorskip("librivox_align")
+
+
+def _body(n, word="filler"):
+    return ("\n\n" + " ".join([word] * n) + "\n\n")
+
+
+def test_toc_entries_are_not_mistaken_for_chapter_headings(align):
+    """A ToC lists every chapter, so the old pattern returned roughly twice as many
+    headings as the book has and the first half were all inside the contents. Slicing on
+    those hands the aligner a few lines of ToC, which holds almost none of the spoken
+    words — the ~10% coverage case."""
+    toc = "CONTENTS\n\nCHAPTER I\nCHAPTER II\nCHAPTER III\n\n"
+    body = "".join(f"CHAPTER {n}\n{_body(400)}" for n in ("I", "II", "III"))
+    heads = align.find_headings(toc + body)
+    assert len(heads) == 3, [h.group(0) for h in heads]
+    # every survivor is in the body, past the contents block
+    assert all(h.start() >= len(toc) - 2 for h in heads)
+
+
+def test_hard_wrapped_prose_is_not_a_heading(align):
+    """Gutenberg plaintext wraps at ~70 columns, so a sentence can put `chapter I` at the
+    start of a line."""
+    text = ("Some real text here.\n"
+            "as I explained at length in the last\n"
+            "chapter I was quite unwilling to concede the point to him at all.\n"
+            + _body(500))
+    assert align.find_headings(text) == []
+
+
+def test_a_genuine_heading_is_still_found(align):
+    text = "CHAPTER IV\n" + _body(500) + "CHAPTER V\n" + _body(500)
+    heads = align.find_headings(text)
+    assert [h.group(2) for h in heads] == ["IV", "V"]
+
+
+def test_single_file_multichapter_book_does_not_slice_on_headings(align):
+    """40 chapters in 3 audio files satisfied the old `len(heads) >= n_sections`, which
+    then handed section 1 the text of chapter 1 alone — about 10% of what is read, so
+    every clip in the section was dropped."""
+    text = "".join(f"CHAPTER {n}\n{_body(400)}" for n in range(1, 41))
+    strategies = [name for name, _ in align.chapter_slices(text, 1, 3, None)]
+    assert "headings" not in strategies
+    assert strategies[0] == "duration"
+
+
+def test_headings_are_used_when_they_map_onto_sections(align):
+    text = "".join(f"CHAPTER {n}\n{_body(400)}" for n in range(1, 4))
+    named = align.chapter_slices(text, 2, 3, None)
+    assert named[0][0] == "headings"
+    assert "CHAPTER 2" in named[0][1] and "CHAPTER 3" not in named[0][1]
+
+
+def test_there_is_always_a_fallback_after_the_first_candidate(align):
+    """A-H1's second half: one slice used to be the only slice, so a misleading heading
+    lost the whole section. Retrying is nearly free — ASR depends only on the audio."""
+    text = "".join(f"CHAPTER {n}\n{_body(400)}" for n in range(1, 4))
+    got = align.chapter_slices(text, 2, 3, None)
+    strategies = [name for name, _ in got]
+    assert strategies[0] == "headings"
+    assert len(got) > 1, "one candidate is what the finding is about"
+    assert "duration" in strategies
+    # The last resort is the whole text. It may arrive named "duration-wide" rather than
+    # "whole-text" — a wide enough proportional window already spans everything, and the
+    # dedup drops the identical second copy rather than paying for it twice.
+    assert got[-1][1] == text, strategies
+
+
+def test_candidates_are_deduplicated(align):
+    """A one-section book's proportional slice IS the whole text; offering it twice would
+    just cost a second difflib pass over the same words."""
+    text = "CHAPTER 1\n" + _body(500)
+    got = align.chapter_slices(text, 1, 1, None)
+    assert len({chunk for _, chunk in got}) == len(got)
+
+
+def test_duration_split_beats_an_even_split_for_a_collection(align):
+    """Dickens's *Speeches*: a 73-minute introduction then 2.6-minute speeches. An even
+    index split put section 3's window at 3.3% of the text when the words were near
+    10.8%, and the anchor pass located 0% of the heard words."""
+    # Distinguishable content: with "w w w ..." every slice is found at index 0 and the
+    # position assertions below would be meaningless.
+    text = " ".join(f"{i:06d}" for i in range(60_000))
+    durations = {1: 2400.0, 2: 1980.0, 3: 156.0, 4: 156.0}
+    by_duration = dict(align.chapter_slices(text, 3, 4, durations))["duration"]
+    by_index = dict(align.chapter_slices(text, 3, 4, None))["duration"]
+    start_dur = text.index(by_duration) / len(text)
+    start_idx = text.index(by_index) / len(text)
+    assert start_dur > 0.5, start_dur      # section 3 really is late in the text
+    assert start_idx < 0.5, start_idx      # the even split puts it in the middle

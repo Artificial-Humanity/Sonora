@@ -97,33 +97,67 @@ def split_sentences(text: str) -> list[str]:
     return _shared_split_sentences(re.sub(r"\s+", " ", text).strip())
 
 
-def chapter_slice(text: str, index: int, n_sections: int,
-                  durations: dict[int, float] | None = None) -> str:
-    """Best-effort chapter extraction.
+HEADING_RE = re.compile(r"(?im)^[ \t]*(chapter|section|book|part)\s+([IVXLC]+|\d+)\b.*$")
+MIN_CHAPTER_CHARS = 1200      # below this, consecutive "headings" are a contents list
+MAX_HEADING_CHARS = 70        # a heading is a short line, not a sentence that starts with one
 
-    LibriVox sections usually map to chapters, but the mapping is not guaranteed and the
-    Gutenberg text's chapter headings vary wildly. We try headings first and fall back to
-    a proportional split, which is good enough because the ASR anchor pass re-finds the
-    true position inside whatever slice we hand it.
 
-    SPLIT BY DURATION, NOT BY SECTION INDEX. An even index split assumes every section is
-    the same length. That holds for a novel — it is why *Uneasy Money* aligned at 94% —
-    and fails completely for a collection. Dickens's *Speeches* opens with a 73-minute
-    editorial introduction (sections 1-2) and then has speeches as short as 2.6 minutes;
-    an even split put section 3's window at 3.3% of the text when the words were near
-    10.8%, so the anchor pass located **0%** of the heard words and every clip was
-    dropped. The 35% padding is not remotely enough to bridge that.
+def find_headings(text: str) -> list[re.Match]:
+    """Chapter headings that are plausibly real (A-H1).
 
-    Cumulative playtime fraction fixes it, and it rests on the assumption the even split
-    was already making implicitly and more weakly: that reading pace is roughly constant
+    The old pattern was `^\\s*(chapter|section)\\s+([IVXLC]+|\\d+)\\b.*$` with no further
+    validation, and it matched three things that are not headings:
+
+      1. **Table-of-contents entries.** A ToC lists every chapter, so `heads` came back
+         with roughly twice as many entries as the book has chapters and the first half
+         were all inside the ToC. Slicing on those returns a few lines of contents —
+         which contains almost none of the words the reader says.
+      2. **Hard-wrapped prose.** Gutenberg plaintext wraps at ~70 columns, so
+         "...as I explained in the last\\nchapter I was unwilling..." puts `chapter I` at
+         the start of a line and matches. The heading then lands in the middle of a
+         paragraph.
+      3. **Front-matter noise** — "BOOK I", "PART II" — interleaved with real chapters.
+
+    Two cheap filters kill all three. A heading occupies a SHORT line (a wrapped prose
+    line is near the wrap width and keeps going), and it is followed by a substantial
+    body (a ToC entry is followed by the next entry a line later). Note `^[ \\t]*` rather
+    than `^\\s*`: `\\s` matches newlines, which let the pattern skip blank lines and start
+    matching mid-paragraph.
+    """
+    out = []
+    for m in HEADING_RE.finditer(text):
+        line = m.group(0).strip()
+        if len(line) > MAX_HEADING_CHARS:
+            continue                       # (2) a prose line that happens to begin "chapter I"
+        tail = line[m.end(2) - m.start():].strip(" .:—-–")
+        if tail[:1].islower():
+            continue                       # (2) "chapter I explained the matter to him"
+        out.append(m)
+    # (1)/(3): drop any heading whose body is too short to be a chapter. Walk from the end
+    # so a ToC entry is measured against the NEXT entry, which is one line away.
+    kept: list[re.Match] = []
+    for i, m in enumerate(out):
+        nxt = out[i + 1].start() if i + 1 < len(out) else len(text)
+        if nxt - m.start() >= MIN_CHAPTER_CHARS:
+            kept.append(m)
+    return kept
+
+
+def _proportional(text: str, index: int, n_sections: int,
+                  durations: dict[int, float] | None, pad_factor: float) -> str:
+    """SPLIT BY DURATION, NOT BY SECTION INDEX.
+
+    An even index split assumes every section is the same length. That holds for a novel —
+    it is why *Uneasy Money* aligned at 94% — and fails completely for a collection.
+    Dickens's *Speeches* opens with a 73-minute editorial introduction (sections 1-2) and
+    then has speeches as short as 2.6 minutes; an even split put section 3's window at
+    3.3% of the text when the words were near 10.8%, so the anchor pass located **0%** of
+    the heard words and every clip was dropped.
+
+    Cumulative playtime fraction fixes it, resting on the assumption the even split was
+    already making implicitly and more weakly: that reading pace is roughly constant
     within one reader. Where durations are missing we fall back to the old even split.
     """
-    heads = list(re.finditer(r"(?im)^\s*(chapter|section)\s+([IVXLC]+|\d+)\b.*$", text))
-    if len(heads) >= n_sections and 0 <= index - 1 < len(heads):
-        a = heads[index - 1].start()
-        b = heads[index].start() if index < len(heads) else len(text)
-        return text[a:b]
-
     total = sum(durations.values()) if durations else 0.0
     if durations and total > 0 and index in durations:
         before = sum(d for i, d in durations.items() if i < index)
@@ -136,10 +170,54 @@ def chapter_slice(text: str, index: int, n_sections: int,
     # Pad relative to this section's own span, with a floor: a 2.6-minute section inside
     # an 11-hour book has a span so small that a purely relative pad cannot absorb any
     # drift in reading pace.
-    pad = max(span * 0.35, 0.01)
+    pad = max(span * pad_factor, 0.01)
     a = max(0, int((f0 - pad) * len(text)))
     b = min(len(text), int((f1 + pad) * len(text)))
     return text[a:b]
+
+
+def chapter_slices(text: str, index: int, n_sections: int,
+                   durations: dict[int, float] | None = None) -> list[tuple[str, str]]:
+    """Ordered candidate slices as (strategy, text) — try them until one anchors.
+
+    A-H1's second half. There used to be ONE slice: headings if they looked usable,
+    otherwise proportional. When that slice was wrong the coverage gate rejected the
+    section and moved on, so a book whose headings misled the slicer lost **every** clip
+    while each individual decision looked defensible in the log.
+
+    Retrying is nearly free, which is what makes this worth doing: the ASR pass depends
+    only on the audio, so a second candidate costs one more `difflib` run over a few
+    thousand words and no GPU work at all.
+
+    Ordering is most-specific-first. Headings, when they are real, beat any proportional
+    guess; a wide proportional window beats a narrow one only if the narrow one failed,
+    because a wider window admits more wrong-chapter text for the matcher to trip on.
+    """
+    out: list[tuple[str, str]] = []
+
+    heads = find_headings(text)
+    # Headings are only usable if they map ~1:1 onto audio sections. `len(heads) >=
+    # n_sections` was the old test, and it is exactly wrong for a single-file
+    # multi-chapter book: 40 chapters in 3 audio files satisfies it, then hands section 1
+    # the text of chapter 1 alone — about 10% of what is actually read, so every clip in
+    # the section is dropped. Off-by-a-couple is tolerated for front matter.
+    if heads and abs(len(heads) - n_sections) <= 2 and 0 <= index - 1 < len(heads):
+        a = heads[index - 1].start()
+        b = heads[index].start() if index < len(heads) else len(text)
+        out.append(("headings", text[a:b]))
+
+    out.append(("duration", _proportional(text, index, n_sections, durations, 0.35)))
+    out.append(("duration-wide", _proportional(text, index, n_sections, durations, 1.50)))
+    # Last resort. For a one-section book this IS the right slice; for a long book it is
+    # slow but correct, and being slow on the final attempt beats dropping the section.
+    out.append(("whole-text", text))
+
+    seen, uniq = set(), []
+    for name, chunk in out:
+        if chunk and chunk not in seen:
+            seen.add(chunk)
+            uniq.append((name, chunk))
+    return uniq
 
 
 # ------------------------------------------------------------------ audio
@@ -361,7 +439,7 @@ def main() -> int:
     # re-enter the same three values a thousand times.
     readers = {int(sec["index"]): sec.get("reader")
                for sec in (book.get("sections") or []) if sec.get("index")}
-    # Per-section playtime drives the text split (see chapter_slice). This must cover
+    # Per-section playtime drives the text split (see chapter_slices). This must cover
     # EVERY section in the book, not just the ones being aligned now — the fraction is
     # cumulative over the whole work, so a --sections 3-5 run still needs to know how
     # long sections 1 and 2 were.
@@ -387,32 +465,47 @@ def main() -> int:
             n_sec = int(book.get("num_sections") or 0) or len(present)
         except (TypeError, ValueError):
             n_sec = len(present)
-        chap = chapter_slice(full_text, idx, n_sec, durations)
-        sents = split_sentences(chap)
-        canon_words, sent_of = [], []
-        for si, s in enumerate(sents):
-            for w in s.split():
-                nw = norm_word(w)
-                if nw:
-                    canon_words.append(nw)
-                    sent_of.append(si)
-        print(f"   canonical slice: {len(sents)} sentences, {len(canon_words)} words",
-              flush=True)
-
+        # ASR depends on the AUDIO only, so it runs once and every candidate slice is
+        # scored against the same heard words. This is what makes the A-H1 fallback cheap:
+        # a retry is one more difflib pass, not another transcription.
         heard = asr_words(wav, SAMPLE_RATE, args.asr_model)
-        anchors = anchor(canon_words, heard)
-        # Coverage is measured against the HEARD words, not the canonical slice.
-        # chapter_slice() deliberately over-covers (an even split plus 35% padding), so
-        # "fraction of canonical words anchored" is low by construction and says nothing
-        # about alignment quality. The question that matters is the reverse: did we
-        # locate what the reader actually said inside the canonical text?
-        cover = len(anchors) / max(len(heard), 1)
-        print(f"   ASR {len(heard)} words -> {len(anchors)} anchors "
-              f"({cover:.0%} of HEARD words located in canonical text)", flush=True)
+
+        # Coverage is measured against the HEARD words, not the canonical slice. The
+        # proportional slices deliberately over-cover, so "fraction of canonical words
+        # anchored" is low by construction and says nothing about alignment quality. The
+        # question that matters is the reverse: did we locate what the reader actually
+        # said inside the canonical text?
+        best = None
+        for strategy, chap in chapter_slices(full_text, idx, n_sec, durations):
+            sents = split_sentences(chap)
+            canon_words, sent_of = [], []
+            for si, s in enumerate(sents):
+                for w in s.split():
+                    nw = norm_word(w)
+                    if nw:
+                        canon_words.append(nw)
+                        sent_of.append(si)
+            anchors = anchor(canon_words, heard)
+            cover = len(anchors) / max(len(heard), 1)
+            print(f"   [{strategy}] {len(sents)} sentences, {len(canon_words)} words "
+                  f"-> {len(anchors)} anchors ({cover:.0%} of {len(heard)} heard words "
+                  f"located)", flush=True)
+            if best is None or cover > best[0]:
+                best = (cover, strategy, sents, canon_words, sent_of, anchors)
+            if cover >= 0.60:
+                break
+
+        cover, strategy, sents, canon_words, sent_of, anchors = best
         if cover < 0.60:
-            print("   !! too little of the audio was found in this text — wrong chapter "
-                  "slice or wrong edition; skipping", file=sys.stderr)
+            # Every strategy failed, so this is the edition or the audio, not the slicer.
+            # Naming the best attempt is what tells those apart in the log.
+            print(f"   !! too little of the audio was found in this text — best was "
+                  f"{strategy} at {cover:.0%}, below the 60% gate. Wrong edition, or a "
+                  f"section whose text is not in this source; skipping",
+                  file=sys.stderr)
             continue
+        if strategy != "headings":
+            print(f"   using the {strategy} slice", flush=True)
         # Trim to the region the audio actually covers; everything outside it is padding
         # from the slice and would otherwise get clamped, nonsense timings.
         lo_idx, hi_idx = anchors[0][0], anchors[-1][0]

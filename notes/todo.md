@@ -119,7 +119,19 @@ compares the resolved LibriVox project against the requested URL and refuses a m
 **A-H5** the real-audio lane now splits with pysbd and gates on `is_complete_utterance`;
 **A-M6** provenance follows the actual source instead of claiming Standard Ebooks CC0 for
 Gutenberg text; **A-M7** the quote convention is detected per edition; **A-M12** a
-non-MP3 response is never written as audio, nor accepted on resume._
+non-MP3 response is never written as audio, nor accepted on resume; **A-H1**
+`chapter_slice` became `chapter_slices`, returning ORDERED CANDIDATES that the caller
+tries until one anchors._
+
+_A-H1 detail worth keeping: the retry is nearly free because ASR depends only on the
+audio, so a second candidate costs one `difflib` pass and no GPU. The heading filters are
+a short-line test and a minimum body length, which between them kill ToC entries,
+hard-wrapped prose ("…the last\nchapter I was unwilling…") and stray front matter;
+headings are used only when they map ~1:1 onto audio sections, since 40 chapters in 3
+files satisfied the old `>=` test and handed section 1 about 2.5% of what it reads.
+**Recall is deliberately not widened**: *Uneasy Money* heads chapters with a bare numeral
+("1"), which no safe pattern can match without also matching page numbers — the
+proportional split already carries that book at 94%._
 
 _Worth knowing from the A-M7 fix: *Uneasy Money* quotes with **straight** single quotes
 (U+0027, the apostrophe character), not the curly singles the review recorded. Under the
@@ -128,9 +140,6 @@ old hardcoded curly-double pattern the whole novel yielded **0** utterances; it 
 provably cannot catch a bad split — fixing the splitter was the only fix, which is why
 pysbd is now a hard dependency of the align container._
 
-- [ ] **A-H1:** `chapter_slice` heading fast path fires on ToC pages, hard-wrapped prose
-      ("…the last\nchapter…"), and single-file multi-chapter books (~10% coverage → every
-      clip dropped, exit 0). No duration-split fallback when the coverage gate fails.
 - [ ] **A-M2:** `refine()` counts non-blank *frames* as tokens — masked today (only
       first/last used), but span-FiLM would inherit garbage per-word spans. Use
       `torchaudio.functional.merge_tokens`.
