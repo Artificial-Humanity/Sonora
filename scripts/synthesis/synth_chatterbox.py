@@ -57,6 +57,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from synth_common import rebuild_used_set, write_wav_atomic  # noqa: E402
 from ref_select import (  # noqa: E402
     MAX_REF_EXCURSION as _REF_EXCURSION,
+    BRIGHT_REF_POLICY,
+    bright_ref_exaggeration,
+    bright_ref_selection_ceiling,
     select_reference, pinned_reference, design_age_band,  # noqa: E402
                         REF_BLACKLIST)
 
@@ -165,9 +168,11 @@ MAX_REF_EXCURSION = _REF_EXCURSION
 #   "damp"             — high-F0 references are allowed but their exaggeration is clamped
 #       to BRIGHT_REF_EXAG. Keeps the whole pool at the price of a residual artifact that
 #       the owner rates as needing nitpicking to find. Choose this only deliberately.
-BRIGHT_REF_POLICY = "exclude"
-BRIGHT_REF_EXAG = 0.3
-
+# B-M9. The bright-reference policy — the constant, its three values, and the two
+# functions that read it — moved to `ref_select` beside MAX_REF_EXCURSION, which B-L5
+# hoisted there for exactly this reason: it is reference-selection policy, it encodes a
+# measured finding, and a copy per renderer is how the duplicated constant happened the
+# first time. Imported at the top of this file.
 
 
 def main():
@@ -212,14 +217,24 @@ def main():
             # consulted at all, and MAX_REF_F0 does not apply — the probes that
             # measure the ceiling have to be able to render above it, and an
             # explicit choice by the bank author outranks a guard aimed at casting.
-            if job.get("ref_id"):
-                ref_wav, ref_text, ref_meta = pinned_reference(job["ref_id"])
-            else:
-                ref_wav, ref_text, ref_meta = select_reference(
-                    d.get("design", ""), job.get("intended", {}), used,
-                    max_excursion=MAX_REF_EXCURSION, exclude=REF_BLACKLIST)
+            # B-L2. Casting can raise: an exhausted or over-filtered pool, a `ref_id` that
+            # is not in it. Uncaught, that killed the ENGINE'S WHOLE REMAINING BANK from
+            # whichever clip hit it — the same shape as the moss_vg split_with_sizes crash
+            # that orphaned 7 clips on 2026-07-30, and the per-clip try/except there is the
+            # pattern. A re-run under skip-if-exists retries only what failed.
+            try:
+                if job.get("ref_id"):
+                    ref_wav, ref_text, ref_meta = pinned_reference(job["ref_id"])
+                else:
+                    ref_wav, ref_text, ref_meta = select_reference(
+                        d.get("design", ""), job.get("intended", {}), used,
+                        max_excursion=bright_ref_selection_ceiling(),
+                        exclude=REF_BLACKLIST)
+            except (LookupError, ValueError) as exc:
+                print(job["id"], f"CASTING FAILED ({type(exc).__name__}: {exc}) "
+                                 "— continuing", flush=True)
+                continue
 
-            exag = d["exaggeration"]
             # Damping applies to CAST references only, never to a pinned one. Pinning
             # exists so a probe can render deliberately outside the guards, and a probe
             # whose parameters are silently rewritten measures nothing — re-running
@@ -227,11 +242,10 @@ def main():
             # bank line that plainly reads 0.5, and skip-if-exists would hide the change
             # until someone cleared the directory.
             ref_exc = None if job.get("ref_id") else ref_meta.get("ref_excursion_hz")
-            if ref_exc is not None and ref_exc >= MAX_REF_EXCURSION * 0.8 \
-                    and exag > BRIGHT_REF_EXAG:
-                print(job["id"], f"DAMP exaggeration {exag} -> {BRIGHT_REF_EXAG} "
+            exag, damped = bright_ref_exaggeration(d["exaggeration"], ref_exc)
+            if damped:
+                print(job["id"], f"DAMP exaggeration {d['exaggeration']} -> {exag} "
                                  f"(ref excursion {ref_exc} Hz)", flush=True)
-                exag = BRIGHT_REF_EXAG
             torch.manual_seed(job["seed"])
             wav = model.generate(text, audio_prompt_path=ref_wav,
                                  exaggeration=exag,
@@ -252,6 +266,10 @@ def main():
                 # `direction` is what the director asked for; this is what ran.
                 "applied_exaggeration": exag,
                 "bright_ref_policy": BRIGHT_REF_POLICY,
+                # Recorded because the policy alone does not say whether it BIT on this
+                # clip, and "was this render damped" is the question an audit of the
+                # split-artifact finding actually asks.
+                "bright_ref_damped": damped,
             })
             mf.write(json.dumps(row) + "\n")
             mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)

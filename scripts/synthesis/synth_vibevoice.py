@@ -24,7 +24,13 @@ from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from synth_common import rebuild_used_set, write_wav_atomic  # noqa: E402
-from ref_select import select_reference, design_age_band  # noqa: E402
+from ref_select import (  # noqa: E402
+    MAX_REF_EXCURSION,
+    REF_BLACKLIST,
+    design_age_band,
+    pinned_reference,
+    select_reference,
+)
 
 MODEL_DIR = "/data/models/FabioSarracino/VibeVoice-Large-Q8"
 
@@ -74,8 +80,24 @@ def render_bank(jobs, out, processor, model, bank):
                 print(job["id"], "exists, skip", flush=True)
                 continue
             torch.manual_seed(job["seed"])
-            ref_wav, ref_text, ref_meta = select_reference(
-                job["direction"].get("design", ""), job.get("intended", {}), used)
+            # B-L4. This called `select_reference(design, intended, used)` and nothing
+            # else — no `max_excursion`, no `exclude=REF_BLACKLIST`, no `ref_id` pinning.
+            # Both guards encode MEASURED findings (the excursion ceiling is the Chatterbox
+            # split-artifact result; the blacklist is per-clip evidence), and this renderer
+            # opted out of both by forking the call. VibeVoice is SET_ASIDE, so nothing is
+            # rendering through here today — which is exactly why it is a reinstatement
+            # trap, the same class as B-M6/M7.
+            try:
+                if job.get("ref_id"):
+                    ref_wav, ref_text, ref_meta = pinned_reference(job["ref_id"])
+                else:
+                    ref_wav, ref_text, ref_meta = select_reference(
+                        job["direction"].get("design", ""), job.get("intended", {}), used,
+                        max_excursion=MAX_REF_EXCURSION, exclude=REF_BLACKLIST)
+            except (LookupError, ValueError) as exc:
+                print(job["id"], f"CASTING FAILED ({type(exc).__name__}: {exc}) "
+                                 "— continuing", flush=True)
+                continue
             inputs = processor(text=[f"Speaker 0: {job['text']}"],
                                voice_samples=[[ref_wav]], padding=True,
                                return_tensors="pt", return_attention_mask=True)

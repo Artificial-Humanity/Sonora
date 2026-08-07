@@ -222,21 +222,26 @@ def main() -> int:
                     if k.get("register") not in REF_REGISTERS}
     print(f"  reference pool: {len(ref_select._load_pool()) - len(off_register)} clips in "
           f"{sorted(REF_REGISTERS)} (excluded {len(off_register)})")
-    refs, used = {}, set()
+    refs = {}
     for a in ANCHORS:
         # Taken refs go into EXCLUDE, not just `used`. `used` only biases toward variety,
         # and against a 17-clip register-filtered pool that bias lost: anchorM1 and
         # anchorM2 were handed the identical reference, which would have made two of the
         # three anchors one voice and defeated the point of having three.
+        #
+        # B-L8: there was also a `used` set here, accumulating the same ids that go into
+        # `exclude`. Since exclude ⊇ used at every iteration, the variety bias could only
+        # ever apply to references already dropped outright — dead code that read as a
+        # second, weaker guard. Removed rather than kept: two mechanisms where one is inert
+        # is how a later reader concludes the bias is doing work it is not.
         wav, text, meta = ref_select.select_reference(
-            a["design"], INTENDED, used=used, exclude=off_register | set(refs.values()))
+            a["design"], INTENDED, exclude=off_register | set(refs.values()))
         rid = meta.get("id") if isinstance(meta, dict) else None
         if not rid:
             print(f"  !! no distinct reference left for {a['key']} in the allowed "
                   f"registers — widen REF_REGISTERS or drop an anchor")
             return 1
         refs[a["key"]] = rid
-        used.add(rid)
         print(f"  {a['key']}: pinned ref {rid} ({meta.get('register')})")
 
     order = [e for e, n in sorted(alloc.items(), key=lambda kv: -kv[1]) for _ in range(n)]

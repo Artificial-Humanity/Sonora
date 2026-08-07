@@ -1162,7 +1162,17 @@ def build_direction(tag, text, dia_guidance=3.0, lane=None):
     if engine in ("qwen", "moss_vg", "moss85"):
         # the casting pass already emitted ONE string for these; _merge only has
         # work to do on legacy tags that still carry a separate voice_design.
-        return engine, {"instruct": _merge(vd, ins)}
+        direction = {"instruct": _merge(vd, ins)}
+        # B-M7. `synth_moss85.py` reads `direction["quality"]` — a real renderer input,
+        # the 2.1B recipe's recording-condition string — and this function had no slot for
+        # it. So a moss85 line built HERE lost it, while `make_bulk_bank.py` kept it by
+        # bypassing this function. That is the bypass explaining itself: the builders
+        # diverged because the SSOT could not express what the renderer accepts. Closing
+        # the gap here is what makes "never bypass build_direction" a rule rather than a
+        # wish. moss_vg and qwen have no such parameter, so it is moss85-only.
+        if engine == "moss85" and tag.get("quality"):
+            direction["quality"] = tag["quality"]
+        return engine, direction
     if engine == "chatterbox":
         # Two numbers and a casting call. `exaggeration` is a RATE PROFILE, not an
         # emotion selector, and raising it alone reads rushed — cfg_weight is the
@@ -1230,7 +1240,16 @@ def build_direction(tag, text, dia_guidance=3.0, lane=None):
     # 1.2-1.8, the same failure the 2026-07-17 audit saw at 1.3-1.4. Over-length
     # was never a temperature problem; it was synth_dia.token_budget(). Do not
     # lower this again without re-reading that experiment.
-    return engine, {"render_text": f"[S1] {text} [S1]",
+    #
+    # B-M7. Inline tags ("(laughs) ") are a real Dia channel and `bulk_spec.json` uses
+    # one, but this function had no slot for them — so `make_bulk_bank.py` built its own
+    # render_text and, in doing so, dropped the TRAILING `[S1]`. That trailing tag is not
+    # decoration: it is the end-of-audio guard nari-labs' guidelines prescribe, and
+    # without it Dia improvises a tail. A bank built by that path renders long and wrong
+    # while looking correctly directed.
+    tags = (tag.get("dia_tags") or "").strip()
+    body = f"{tags} {text}".strip() if tags else text
+    return engine, {"render_text": f"[S1] {body} [S1]",
                     "temperature": 1.8, "guidance": dia_guidance}
 
 

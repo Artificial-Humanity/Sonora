@@ -87,17 +87,22 @@ def main():
             name = f"{job['id']}.wav"
             save_via_atomic(processor.save_audio,
                             os.path.join(args.out, name), decoded)
-            mf.write(json.dumps({
-                "id": job["id"], "engine": "dia", "wav": name,
-                "register": job["register"], "intended": job["intended"],
-                "text": job["text"], "direction": {**job["direction"], "temperature": temp},
-                "seed": job["seed"], "sr": 44100,
+            # B-M6. This named its keys explicitly, so every passthrough field on the bank
+            # line — intended_delivery, book, ref_id, source_ref, chunk_type, pair_key
+            # extras — was DROPPED. `register_audition`'s prefill and the corpus fold read
+            # those from the manifest, so the clip arrives at the audit surface stripped of
+            # the metadata that decides how it is queued and folded. The other six
+            # renderers were moved to `dict(job)` first; dia and moss85 were missed. A
+            # SET_ASIDE-reinstatement trap: nothing renders through here today, which is
+            # precisely why it would come back unnoticed.
+            row = dict(job)
+            row.update({
+                "engine": "dia", "wav": name, "sr": 44100,
+                "direction": {**job["direction"], "temperature": temp},
                 "engine_license": "Apache-2.0 (Dia-1.6B-0626)",
                 "bank_version": bank["version"], "campaign": bank["campaign"],
-                    # carry A/B pairing through to the manifest so campaigns
-                    # can be analysed without re-parsing clip ids
-                    "pair_key": job.get("pair_key"), "probe": job.get("probe"),
-            }) + "\n")
+            })
+            mf.write(json.dumps(row) + "\n")
             mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)
             print(job["id"], "done", flush=True)
     print("SYNTH-DIA-DONE")

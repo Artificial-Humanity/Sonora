@@ -133,7 +133,20 @@ def main():
                 print(job["id"], f"FAILED ({type(e).__name__}: {e}) — continuing",
                       flush=True)
                 continue
-            for message in decoded:
+            # B-L6. This looped over EVERY decoded message writing the same `name`, so a
+            # multi-message decode overwrote the wav once per message and appended one
+            # manifest row per message — all claiming the same id, all describing a file
+            # that by then held only the LAST message's audio. Nothing downstream can see
+            # it: the wav is valid, the rows are well-formed, and the id is the join key
+            # everything else trusts.
+            #
+            # One clip is one utterance. Take the first message and say so when there were
+            # more, rather than silently concatenating (which would change what the clip
+            # IS) or writing several (which is the defect).
+            if len(decoded) > 1:
+                print(job["id"], f"WARN decode returned {len(decoded)} messages; "
+                                 "keeping the first", flush=True)
+            for message in decoded[:1]:
                 audio = message.audio_codes_list[0].float().cpu().numpy()
                 write_wav_atomic(os.path.join(args.out, name), audio, sr)
                 # dict(job) first: passthrough fields (intended_delivery, book,

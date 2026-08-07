@@ -1,11 +1,33 @@
 """Expand bulk_spec.json (registers x line pools x job templates x seeds) into
 a flat bank the synth_* renderers consume. Job ids are deterministic:
-<register>_<lineNN>_<voice>_s<seed>.
+<register>_<lineNN>_<engine>_<voice>_s<seed>.
+
+B-M7, 2026-08-07. This built each engine's `direction` payload itself, which AGENTS.md
+forbids in as many words: `build_direction()` in book_ingest.py "is the single source of
+truth for what each engine actually receives — never bypass it". The bypass had already
+cost something. Its Dia lines were `f"[S1] {dia_tags}{text}"` — no TRAILING `[S1]`, which
+is not decoration but the end-of-audio guard nari-labs' generation guidelines prescribe;
+without it Dia improvises a tail, so the bank renders long and wrong while looking
+correctly directed. The same class of defect as the 2026-07-25 relay audit.
+
+The bypass also explained itself: `build_direction` had no slot for `quality` (which
+`synth_moss85.py` genuinely reads) or for Dia inline tags (which this spec genuinely
+uses), so a builder that wanted them had to fork. Both slots now exist there, and this
+script routes through it.
+
+Ids gained the engine. Two jobs differing only by engine produced the SAME id and would
+have collided in the shared output directory; the current spec escapes that only because
+each engine happens to use a distinct `voice` name, which is a convention, not a guard.
 
 Usage: python make_bulk_bank.py --spec bulk_spec.json --out bulk_bank.json
 """
 import argparse
 import json
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from book_ingest import build_direction  # noqa: E402
 
 
 def main():
@@ -22,25 +44,24 @@ def main():
             extras = line if isinstance(line, dict) else {}
             for job in rdef["jobs"]:
                 for seed in job["seeds"]:
-                    direction = {}
-                    if job["engine"] == "qwen":
-                        direction["design"] = job["design"]
-                        instruct = job["instruct"]
-                        for k, v in extras.items():
-                            if k != "text":
-                                instruct = instruct.replace("{" + k + "}", v)
-                        direction["instruct"] = instruct
-                    elif job["engine"] == "moss85":
-                        direction["instruct"] = job["instruct"]
-                        if job.get("quality"):
-                            direction["quality"] = job["quality"]
-                    elif job["engine"] == "dia":
-                        direction["render_text"] = f"[S1] {job.get('dia_tags', '')}{text}"
-                        direction["temperature"] = job.get("temperature", 1.8)
-                        direction["guidance"] = job.get("guidance", 3.0)
+                    # Per-line placeholder substitution stays here: it is a property of
+                    # THIS spec format ({tone}, {pace} …), not of the engine contract.
+                    instruct = job.get("instruct", "")
+                    for k, v in extras.items():
+                        if k != "text":
+                            instruct = instruct.replace("{" + k + "}", v)
+                    tag = {
+                        "engine": job["engine"],
+                        "voice_design": job.get("design", ""),
+                        "instruct": instruct,
+                        "quality": job.get("quality"),
+                        "dia_tags": job.get("dia_tags"),
+                    }
+                    engine, direction = build_direction(
+                        tag, text, dia_guidance=job.get("guidance", 3.0))
                     lines_out.append({
-                        "id": f"{reg}_{li:02d}_{job['voice']}_s{seed}",
-                        "engine": job["engine"], "register": reg,
+                        "id": f"{reg}_{li:02d}_{engine}_{job['voice']}_s{seed}",
+                        "engine": engine, "register": reg,
                         "intended": rdef["intended"], "seed": seed,
                         "text": text, "direction": direction,
                     })

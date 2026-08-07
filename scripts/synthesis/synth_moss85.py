@@ -53,21 +53,28 @@ def main():
             outputs = model.generate(input_ids=batch["input_ids"].to(device),
                                      attention_mask=batch["attention_mask"].to(device),
                                      max_new_tokens=4096)
-            for message in processor.decode(outputs):
+            # B-L6, the same clobber as moss_vg: this looped over EVERY decoded message
+            # writing the same `name`, so a multi-message decode overwrote the wav once
+            # per message and wrote one manifest row per message, all claiming one id.
+            decoded = list(processor.decode(outputs))
+            if len(decoded) > 1:
+                print(job["id"], f"WARN decode returned {len(decoded)} messages; "
+                                 "keeping the first", flush=True)
+            for message in decoded[:1]:
                 audio = message.audio_codes_list[0].float().cpu().numpy()
                 name = f"{job['id']}.wav"
                 write_wav_atomic(os.path.join(args.out, name), audio, sr)
-                mf.write(json.dumps({
-                    "id": job["id"], "engine": "moss85", "wav": name,
-                    "register": job["register"], "intended": job["intended"],
-                    "text": job["text"], "direction": job["direction"],
-                    "seed": job["seed"], "sr": sr,
+                # B-M6: `dict(job)` first, so passthrough fields (intended_delivery, book,
+                # ref_id, source_ref …) reach the manifest. Naming keys explicitly dropped
+                # them, and register_audition's prefill and the corpus fold read them from
+                # here. The other six renderers were fixed; dia and moss85 were missed.
+                row = dict(job)
+                row.update({
+                    "engine": "moss85", "wav": name, "sr": sr,
                     "engine_license": "Apache-2.0 (MOSS-TTS 8.5B)",
                     "bank_version": bank["version"], "campaign": bank["campaign"],
-                    # carry A/B pairing through to the manifest so campaigns
-                    # can be analysed without re-parsing clip ids
-                    "pair_key": job.get("pair_key"), "probe": job.get("probe"),
-                }) + "\n")
+                })
+                mf.write(json.dumps(row) + "\n")
                 mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)
                 print(job["id"], f"{len(audio)/sr:.1f}s", flush=True)
     print("SYNTH-MOSS85-DONE")

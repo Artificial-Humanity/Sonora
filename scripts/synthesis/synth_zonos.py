@@ -178,12 +178,20 @@ def main():
             # across hundreds of clips (zonos.md narration section: "Pin ONE
             # reference per narrator"); per-clip casting would re-consult the pool
             # every line. Added for delivery-v1-narration (2026-07-30).
-            if job.get("ref_id"):
-                ref_wav, ref_text, ref_meta = pinned_reference(job["ref_id"])
-            else:
-                ref_wav, ref_text, ref_meta = select_reference(
-                    d.get("design", ""), job.get("intended", {}), used,
-                    max_excursion=MAX_REF_EXCURSION, exclude=REF_BLACKLIST)
+            # B-L2. Uncaught, a casting failure killed the engine's whole remaining bank
+            # from that clip on. moss_vg's per-clip try/except is the pattern; a re-run
+            # under skip-if-exists retries only what failed.
+            try:
+                if job.get("ref_id"):
+                    ref_wav, ref_text, ref_meta = pinned_reference(job["ref_id"])
+                else:
+                    ref_wav, ref_text, ref_meta = select_reference(
+                        d.get("design", ""), job.get("intended", {}), used,
+                        max_excursion=MAX_REF_EXCURSION, exclude=REF_BLACKLIST)
+            except (LookupError, ValueError) as exc:
+                print(job["id"], f"CASTING FAILED ({type(exc).__name__}: {exc}) "
+                                 "— continuing", flush=True)
+                continue
             torch.manual_seed(job["seed"])
             # emotion=None means TRULY unconditional — measured distinction that
             # matters (2026-07-30): make_cond_dict's default unconditional_keys is

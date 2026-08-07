@@ -30,6 +30,12 @@ def main():
 
     bank = json.load(open(args.bank, encoding="utf-8"))
     jobs = [l for l in bank["lines"] if l["engine"] == "qwen"]
+    # B-L3. The model was loaded BEFORE this check, so a bank with no qwen lines spent
+    # the full shard load and VRAM to then iterate an empty list. Every other renderer
+    # already returns here; qwen is the one that did not.
+    if not jobs:
+        print("no qwen jobs in bank")
+        return
     model = Qwen3TTSModel.from_pretrained(MODEL_DIR, device_map="cuda:0",
                                           dtype=torch.bfloat16)
     gen = getattr(model, "generate_voice_design", None) or model.generate_custom_voice

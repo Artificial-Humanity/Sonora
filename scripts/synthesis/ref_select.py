@@ -567,6 +567,67 @@ REF_BLACKLIST = {
 }
 
 
+# --- the bright-reference policy (B-M9) ----------------------------------------------
+#
+# `BRIGHT_REF_POLICY` lived in synth_chatterbox, read "exclude", was written into every
+# chatterbox manifest row as provenance — and was never consulted by anything. Worse, the
+# value it recorded did not describe what the code did. What ran was neither documented
+# policy but a hybrid: `select_reference(max_excursion=MAX_REF_EXCURSION)` dropped
+# references above the excursion ceiling (that half IS "exclude") and a separate block
+# then clamped exaggeration for anything at or above 80% of it. So every chatterbox clip
+# ever rendered carries a provenance field asserting a policy that was not applied.
+#
+# All three are named here, beside MAX_REF_EXCURSION for B-L5's reason: it is casting
+# policy learned from heard failures, and a copy per renderer is how the duplicated
+# constant happened the first time.
+#
+#   "exclude"        drop refs above MAX_REF_EXCURSION, never damp. Guaranteed clean;
+#                    costs ~60% of the female pool — no bright or teen female casting.
+#   "damp"           cast the whole pool, clamp exaggeration on bright refs instead.
+#                    Keeps the range at the price of a residual artifact the owner rates
+#                    as needing nitpicking to find.
+#   "exclude+damp"   both. WHAT HAS ACTUALLY BEEN RUNNING, and therefore the default:
+#                    every existing chatterbox clip was rendered under it, and changing
+#                    the rendering silently while fixing a provenance bug would be its
+#                    own defect.
+#
+# Which of the three is right is the owner's call — it trades casting range against a
+# known artifact in TRAINING data, and these clips train Sonora, so a nitpick-level split
+# is still something the student can learn.
+BRIGHT_REF_POLICIES = ("exclude", "damp", "exclude+damp")
+BRIGHT_REF_POLICY = "exclude+damp"
+BRIGHT_REF_EXAG = 0.3
+# Damping engages at 80% of the exclusion ceiling. Named rather than inlined so the
+# hybrid's two thresholds are visibly ONE relationship.
+BRIGHT_REF_DAMP_FRACTION = 0.8
+
+if BRIGHT_REF_POLICY not in BRIGHT_REF_POLICIES:
+    raise ValueError(f"BRIGHT_REF_POLICY must be one of {BRIGHT_REF_POLICIES}")
+
+
+def bright_ref_selection_ceiling(policy=None):
+    """-> the `max_excursion` to hand `select_reference`, or None for no ceiling."""
+    policy = policy or BRIGHT_REF_POLICY
+    return None if policy == "damp" else MAX_REF_EXCURSION
+
+
+def bright_ref_exaggeration(exag, ref_excursion, policy=None):
+    """-> (exaggeration to render at, damped?) under `policy`.
+
+    `ref_excursion` is None for a PINNED reference, which is never damped: pinning exists
+    so a probe can render deliberately outside the guards, and a probe whose parameters
+    are silently rewritten measures nothing. Re-running artifact-probe-chatterbox would
+    otherwise report exaggeration 0.3 for a bank line that plainly reads 0.5, and
+    skip-if-exists would hide the change until someone cleared the directory.
+    """
+    policy = policy or BRIGHT_REF_POLICY
+    if policy == "exclude" or ref_excursion is None:
+        return exag, False
+    if ref_excursion >= MAX_REF_EXCURSION * BRIGHT_REF_DAMP_FRACTION and exag > BRIGHT_REF_EXAG:
+        return BRIGHT_REF_EXAG, True
+    return exag, False
+
+
 def pinned_reference(ref_id: str):
     """Same return shape as select_reference, for a reference chosen BY ID.
 
