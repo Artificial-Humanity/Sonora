@@ -238,6 +238,24 @@ so `0.5 × reference` scored **1.000000**) and G6 (the delivery lanes must be mu
 distinguishable). The referee, the tensor renamer and `kotlin_replica` are all fixed —
 see [CHANGELOG.md](CHANGELOG.md).
 
+**The text front end joined the gates on 2026-08-07 (G7).** Everything above certifies the
+GRAPH; nothing asked whether the text reaching it matches the text the model trained on,
+and that fails the same way — fluent audio, wrong phonemes, nothing to see at the shell.
+`kotlin_replica` had no contraction table, which is **D-C1 still live on the device side**
+five days after the host was fixed, and it diverged from the training front end on **69 of
+86 probe sentences**. The front end now lives in `scripts/litert_export/device_g2p.py`, the
+apostrophe tables ship as `g2p_contractions.json` **exported from `matcha.text.op_g2p`**
+(hand-syncing them is the same defect on a delay), a device that cannot find the asset
+refuses rather than falling back, and `config.json` carries a `g2p` block declaring which
+front end the graphs expect. **There is no mobile app** — front-end development has not
+started in earnest — so the replica is not validating something nobody runs: it is the
+spec, fixed before anyone ports it.
+
+⚠ G7 **refuses a homograph-enabled export**, so if D-M4 is turned on for the next
+derivation, `matcha/text/homographs.py` has to be ported to the device before the model
+can ship. That cost belongs to the D-M4 decision ([todo.md §3](todo.md)) and was invisible
+when it was filed.
+
 ⚠ What remains is a **re-export**: the artifacts on `/data` are the 3-channel era, and
 `convert_vat.py` refuses a mismatched checkpoint by design. Re-derive the corpus at
 `vat_dim` 8, retrain, then convert.

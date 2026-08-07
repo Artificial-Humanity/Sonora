@@ -21,7 +21,7 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ### Fixed — the device text front end (§1)
 
-- **`PENDING` — D-C1 was still live on the device side, five days after the host was
+- **`8a07655` — D-C1 was still live on the device side, five days after the host was
   fixed.** `kotlin_replica.phonemize` was `DICT.get(token) or phon_word(token)`: a flat
   dictionary lookup with a neural fallback and **no apostrophe handling of any kind**. The
   host got the contraction table on 2026-08-02, when D-C1 was found to have poisoned the
@@ -66,13 +66,13 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
     ordinary in the book lane.
   - **`tests/test_device_g2p_parity.py`** (11 cases) — including a guard that the check is
     **not vacuous**: the flat lookup this replaced still fails it.
-- **`PENDING` — D-C1 itself had no regression test, and G7 cannot supply one.** Found
+- **`8a07655` — D-C1 itself had no regression test, and G7 cannot supply one.** Found
   while checking G7 for vacuity: both front ends read one table, so an entry deleted from
   `_CONTRACTIONS` disappears from host and device together and **parity still passes while
   both sides are wrong**. Parity is not correctness. Anchored with absolute phoneme
   assertions (`don't` → `dˈoʊnt`, `we're` → `wɪɹ`, `'tis` → `tˈɪz`) plus table-size and
   clitic-set floors. The 2026-08-02 fix had shipped unguarded for five days.
-- **`PENDING` — a D-M4 cost that was invisible when it was filed.** G7 **refuses a
+- **`8a07655` — a D-M4 cost that was invisible when it was filed.** G7 **refuses a
   homograph-enabled export**: resolution needs the two tokens to the left and one to the
   right with punctuation as a barrier, so there is no table to ship and the device cannot
   reproduce it. Turning D-M4 on therefore adds "port `matcha/text/homographs.py`" to the
