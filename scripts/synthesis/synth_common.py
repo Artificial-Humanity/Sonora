@@ -106,6 +106,30 @@ def write_text_atomic(path, text, *, encoding="utf-8"):
     _atomic_write(path, lambda fh: fh.write(text), encoding=encoding)
 
 
+def append_jsonl(path, records):
+    """Append to a `.jsonl` sidecar without the two ways an append can lose a record.
+
+    `open(path, "a")` can interleave two writers mid-line, and every reader of these
+    sidecars skips a line it cannot parse — so a torn append does not raise, it silently
+    forgets that the clip was ever processed. In `loudnorm.jsonl` that means the clip is
+    gained a second time, which is the failure the sidecar exists to prevent.
+
+    Rewrites the file whole, under the same lock and through the same tmp+rename as the
+    JSON writers, so the sidecar is always a set of complete records.
+    """
+    if not records:
+        return
+    with _exclusive(path):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                kept = [ln for ln in fh.read().splitlines() if ln.strip()]
+        except FileNotFoundError:
+            kept = []
+        kept += [json.dumps(r, ensure_ascii=False) for r in records]
+        _atomic_write(path, lambda fh: fh.write("".join(ln + "\n" for ln in kept)),
+                      encoding="utf-8")
+
+
 def update_json(path, mutate, *, default=dict, indent=1):
     """Re-read, apply `mutate`, and write back — all under one exclusive lock.
 
