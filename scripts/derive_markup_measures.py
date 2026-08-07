@@ -24,11 +24,16 @@ on disk) or a forced-alignment pass — see the brief §6.
 
 Run:  .venv/bin/python scripts/derive_markup_measures.py
 """
+import argparse
 import json
 from pathlib import Path
 
 SON = Path("/data/model-training/sonora")
-V2 = SON / "data" / "libritts_r_vat_v2"
+# D-L5: this was pinned to `libritts_r_vat_v2` while v3c is the corpus to train on, so the
+# span-markup spike would have been prepared against superseded labels — v3b fixed the
+# phonemes and v3c re-drew the split. Defaults to current and is overridable, rather than
+# being a constant somebody has to notice.
+DEFAULT_CORPUS = "libritts_r_vat_v3c"
 EIV = SON / "eiv_scores"
 REG = Path("/data/model-training/datasets/sonora-expressive-registers")
 OUT = SON / "markup_prep" / "utterance_notation.jsonl"
@@ -42,7 +47,28 @@ def jsonl(path):
 
 
 def main():
-    measures = {r["wav"]: r for r in jsonl(V2 / "measures.jsonl")}
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--corpus", default=DEFAULT_CORPUS,
+                    help=f"corpus dir under data/ (default: {DEFAULT_CORPUS})")
+    args = ap.parse_args()
+    global CORPUS
+    CORPUS = SON / "data" / args.corpus
+    if not CORPUS.is_dir():
+        raise SystemExit(f"no such corpus: {CORPUS}")
+
+    # Invert the derive's own map so the LibriTTS speaker id can be recorded beside the
+    # contiguous index. Written by derive_vat_corpus as {libritts_id: index}.
+    global index_to_libritts
+    index_to_libritts = {}
+    spk_file = CORPUS / "speakers.json"
+    if spk_file.is_file():
+        m = json.load(open(spk_file)).get("libritts_id_to_index", {})
+        index_to_libritts = {int(i): lid for lid, i in m.items()}
+    else:
+        print(f"!! no speakers.json in {CORPUS}; 'speaker' will be null")
+
+    print(f"corpus: {CORPUS.name}  ({len(index_to_libritts)} speakers mapped)")
+    measures = {r["wav"]: r for r in jsonl(CORPUS / "measures.jsonl")}
     eiv = {r["wav"]: {k: v for k, v in r.items() if k != "wav"} for r in jsonl(EIV / "corpus_v1.jsonl")}
     for r in jsonl(EIV / "corpus_families.jsonl"):
         eiv.setdefault(r["wav"], {}).update({k: v for k, v in r.items() if k != "wav"})
@@ -57,7 +83,7 @@ def main():
 
     rows, miss_txt, miss_meas = [], 0, 0
     for fl in ("train_op.txt", "val_op.txt"):
-        for line in open(V2 / fl):
+        for line in open(CORPUS / fl):
             wav, spk, _ipa, lab = line.rstrip("\n").split("|")
             v, a, t = (float(x) for x in lab.split(","))
             txt = Path(wav).with_suffix("").with_suffix(".normalized.txt")
@@ -68,8 +94,15 @@ def main():
             if not m:
                 miss_meas += 1
             rows.append({
-                "source": "libritts_r_vat_v2", "wav": wav,
-                "id": Path(wav).stem, "speaker": spk,
+                "source": CORPUS.name, "wav": wav,
+                "id": Path(wav).stem,
+                # D-L5: `spk` is the CONTIGUOUS INDEX the derive assigns (0..n-1), not the
+                # LibriTTS speaker id — and the mapping is re-derived per corpus version,
+                # so v2's index 100 need not be v3c's. Storing it under "speaker" invited a
+                # join against reader_profiles.json or a LibriTTS path that would match the
+                # wrong voice without erroring. Both are recorded, named for what they are.
+                "speaker_index": int(spk),
+                "speaker": index_to_libritts.get(int(spk)),
                 "text": txt.read_text().strip(),
                 "labels": {"V": v, "A": a, "T": t},
                 "measures": {k: m[k] for k in ("seconds", "lufs", "alpha_db", "cpp", "h1h2")} if m else None,

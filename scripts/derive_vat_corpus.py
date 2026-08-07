@@ -338,6 +338,11 @@ def main():
                          "is indistinguishable from a genuine at-speaker-mean "
                          "label — this is how 1,094 mislabeled clips shipped "
                          "in an earlier pass. Off by default.")
+    ap.add_argument("--allow-digits", action="store_true",
+                    help="proceed when transcripts contain digits. The tokenizer DELETES "
+                         "them rather than expanding them, so the clip trains a transcript "
+                         "missing a word the audio speaks — and validate() cannot see it, "
+                         "because nothing illegal is present. Off by default (D-M3).")
     ap.add_argument("--allow-gate-fail", action="store_true",
                     help="write filelists even when the independence gate "
                          "fails. Off by default.")
@@ -392,13 +397,41 @@ def main():
     speakers = sorted({s for _, _, s in kept}, key=int)
     spk_index = {s: i for i, s in enumerate(speakers)}
 
-    def per_spk_z(values_by_path):
+    # D-L2. A per-speaker z needs a population, and some speakers barely have one. Measured
+    # on v3c: 247 speakers, of which 17 have fewer than 10 clips and 5 have two or fewer.
+    # For n = 2 the z-score is EXACTLY ±1 whatever the underlying scores are — arithmetic,
+    # not measurement — and those clips land on the rail at V = ±0.500 after scaling. For
+    # n = 1 it is exactly 0. Neither is a label; both are indistinguishable from one.
+    # 7.25% of train V sits at |V| ≥ 0.99 overall.
+    #
+    # Reported rather than silently repaired: dropping or neutralising those clips changes
+    # labels, and changing labels is a corpus version bump and an owner call (see
+    # notes/todo.md § 8). Printing it is what makes the choice available at all — the
+    # numbers above were not visible anywhere before.
+    MIN_SPK_CLIPS = 10
+
+    def per_spk_z(values_by_path, label=""):
         """{path: raw} -> {path: per-speaker z}, using kept's speaker map."""
         groups = {}
         for p, _, s in kept:
             if p in values_by_path:
                 groups.setdefault(s, []).append(values_by_path[p])
-        stats = {s: (float(np.mean(v)), float(np.std(v) + 1e-6)) for s, v in groups.items()}
+        # `+ 1e-6`, and it is the guard that matters — `std or 1.0` is the broken one.
+        # A head can be CONSTANT across a speaker (the EIV scorer returns one value for all
+        # 106 of speaker 6531's clips on `Amusement`), and then both `v - mean` and `std`
+        # are floating-point dust: ~1e-21. `or 1.0` sees a nonzero std, divides dust by
+        # dust, and yields max|z| = 1.0 — a full-scale label manufactured from rounding
+        # error. `+ 1e-6` divides by the floor instead and gives ~1e-15, i.e. zero, which
+        # is the truth: a constant head carries no information about any clip.
+        stats = {s: (float(np.mean(v)), float(np.std(v)) + 1e-6) for s, v in groups.items()}
+        thin = sorted((s for s, v in groups.items() if len(v) < MIN_SPK_CLIPS),
+                      key=lambda s: len(groups[s]))
+        if thin and label:
+            n_clips = sum(len(groups[s]) for s in thin)
+            degenerate = [s for s in thin if len(groups[s]) <= 2]
+            print(f"  !! {label}: {len(thin)} speaker(s) with <{MIN_SPK_CLIPS} clips "
+                  f"({n_clips} clips); {len(degenerate)} with <=2, whose z is fixed by "
+                  f"arithmetic rather than measured")
         return {p: (values_by_path[p] - stats[s][0]) / stats[s][1]
                 for p, _, s in kept if p in values_by_path}
 
@@ -421,7 +454,7 @@ def main():
             "--allow-uncovered if the zeros are genuinely intended."
         )
 
-    lufs_z = per_spk_z({p: measured[p]["lufs"] for p, _, _ in kept})
+    lufs_z = per_spk_z({p: measured[p]["lufs"] for p, _, _ in kept}, "arousal/LUFS")
     t_raw = {}
     for name, sign in (("alpha_db", 1.0), ("cpp", 1.0), ("h1h2", -1.0)):
         z = per_spk_z({p: measured[p][name] for p, _, _ in kept})
@@ -432,7 +465,7 @@ def main():
         for p, v in z.items():
             t_raw[p] = t_raw.get(p, 0.0) - v
     tension_z = per_spk_z(t_raw)
-    valence_z = per_spk_z(valence_raw) if valence_raw else {}
+    valence_z = per_spk_z(valence_raw, "valence") if valence_raw else {}
 
     def clamp2(z):
         return max(-1.0, min(1.0, z / 2.0))
@@ -499,8 +532,18 @@ def main():
         print(f"relabeled {len(rows)} rows (phonemes reused)")
     else:
         g2p = OpenPhonemizerG2P(use_neural_oov=not args.no_neural_oov)
-        rows, bad_vocab = [], 0
+        rows, bad_vocab, with_digits = [], 0, []
         for i, (p, text, s) in enumerate(kept):
+            # D-M3. The tokenizer DELETES digits rather than expanding them: "I have 3
+            # cats" phonemizes to `aɪ hæv kæts`, and `validate()` cannot see it because
+            # nothing illegal is present — a word is simply gone. The clip then trains a
+            # transcript against audio that says a word the text does not contain.
+            #
+            # Latent for LibriTTS (0 of 5,000 sampled rows carry a digit) and LIVE for
+            # Emilia YODAS captions, which is the corpus Phase 1 merges. Collected rather
+            # than dropped per-clip so the count is visible before it decides anything.
+            if any(c.isdigit() for c in text):
+                with_digits.append((p, text))
             ipa = g2p.phonemize(text)
             if g2p.validate(ipa):
                 bad_vocab += 1
@@ -509,6 +552,19 @@ def main():
             if (i + 1) % 5000 == 0:
                 print(f"  phonemized {i + 1}/{len(kept)}")
         print(f"phonemized {len(rows)} rows ({bad_vocab} dropped for vocab violations)")
+        if with_digits:
+            print(f"!! {len(with_digits)} row(s) contain DIGITS, which this lane deletes "
+                  f"rather than expands ({100 * len(with_digits) / max(len(kept), 1):.2f}% "
+                  "of kept clips). Examples:")
+            for p, text in with_digits[:3]:
+                print(f"     {os.path.basename(p)}: {text[:70]}")
+            if not args.allow_digits:
+                raise SystemExit(
+                    "  Refusing. Every one of those clips would train a transcript that is\n"
+                    "  missing a word the audio speaks, and no gate downstream can detect it.\n"
+                    "  Normalize the numbers to words first, or pass --allow-digits if this\n"
+                    "  corpus genuinely has none that matter."
+                )
         s_ = g2p.stats
         total = sum(s_.values())
         print(f"G2P: dict {100 * s_['dict_hits'] / max(total, 1):.2f}% | "

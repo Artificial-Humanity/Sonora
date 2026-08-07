@@ -89,7 +89,19 @@ def combo(raw: dict[str, dict], weights: dict[str, float]) -> dict[str, float]:
     for wavs in by.values():
         for h in have:
             v = np.array([raw[w][h] for w in wavs])
-            sd = v.std() or 1.0
+            # D-L2. `v.std() or 1.0` only guards a std of EXACTLY zero, and that is not
+            # the case that occurs. A head can be CONSTANT for a speaker — the EIV scorer
+            # returns one identical value for all 106 of speaker 6531's clips on
+            # `Amusement`, and likewise 8095/Valence and 909/Valence — and then `v - mean`
+            # and `std` are both floating-point dust around 1e-21. Dividing dust by dust
+            # gives max|z| = 1.0: a full-scale, weighted contribution to that speaker's
+            # valence, built entirely out of rounding error and indistinguishable from a
+            # measurement. Dividing by a 1e-6 floor gives ~1e-15, i.e. zero, which is what
+            # a constant head actually tells you about any individual clip.
+            #
+            # This is the guard derive_vat_corpus already used; the two implementations
+            # disagreeing was the finding, and this was the wrong half.
+            sd = v.std() + 1e-6
             for w, z in zip(wavs, (v - v.mean()) / sd):
                 out[w] += weights[h] * float(z)
     return dict(out)

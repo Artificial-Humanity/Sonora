@@ -84,6 +84,35 @@ def _process(job):
         return {"file": os.path.basename(src), "error": repr(e)}
 
 
+def scan_resume(asr_path):
+    """-> (done, n_retryable). D-M6.
+
+    This was `{json.loads(l)["file"] for l in f}`: every row counted as done, INCLUDING
+    rows whose only content is an `error` field. A clip that failed transiently — a
+    truncated download, a decoder hiccup, an OOM under load — was therefore skipped by
+    every subsequent run and never retried. Permanent, and silent: the resume line says
+    "N already processed", the job list shrinks, and the corpus is quietly short.
+
+    Error rows stay in the file, because they are the record of what went wrong; they just
+    no longer count as done. A clip that fails deterministically will fail and be reported
+    again, which is right — a persistent failure should stay visible, not vanish after one
+    run.
+    """
+    done, retry = set(), 0
+    if not os.path.exists(asr_path):
+        return done, retry
+    with open(asr_path, encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if "error" in row:
+                retry += 1
+            else:
+                done.add(row["file"])
+    return done, retry
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--keeps", required=True)
@@ -98,11 +127,10 @@ def main():
     os.makedirs(wav_dir, exist_ok=True)
     asr_path = os.path.join(args.out, "asr.jsonl")
 
-    done = set()
+    done, retry = scan_resume(asr_path)
     if os.path.exists(asr_path):
-        with open(asr_path, encoding="utf-8") as f:
-            done = {json.loads(l)["file"] for l in f if l.strip()}
-        print(f"resuming: {len(done)} already processed")
+        print(f"resuming: {len(done)} already processed"
+              + (f", {retry} previous failure(s) will be retried" if retry else ""))
 
     jobs = []
     for k in keeps:

@@ -25,6 +25,11 @@ import shutil
 
 import numpy as np
 
+# v2 ON PURPOSE — do not "update" it to v3c. The mining criteria are pre-registered
+# percentiles against a fixed LibriTTS anchor (emilia-mining-and-verdict.md, 2026-07-17);
+# re-anchoring would silently change what T_full/V_combo mean and invalidate the
+# pre-registration. This is the opposite case to D-L5's stale v2 path in
+# derive_markup_measures.py, which was frozen by accident rather than by design.
 LIB_MEASURES = "data/libritts_r_vat_v2/measures.jsonl"
 LIB_EIV = "/data/model-training/sonora/eiv_scores/corpus_v1.jsonl"
 LIB_FAM = "/data/model-training/sonora/eiv_scores/corpus_families.jsonl"
@@ -33,6 +38,17 @@ COMBO = "/data/model-training/sonora/eiv_scores/valence_combo_v1.json"
 
 def jload(path):
     return [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
+
+
+def missing_weighted_heads(record, heads, weights):
+    """Weighted EIV heads absent from `record`. D-M1.
+
+    Only WEIGHTED heads matter: `Thankfulness_Gratitude`, `Disappointment` and `Distress`
+    carry weight 0.0, so their absence cannot move the dot product — and two of them are
+    legitimately absent from the raw score files. Demanding all twelve would fail on data
+    that is entirely correct, which is how a guard gets disabled.
+    """
+    return sorted(h for h, w in zip(heads, weights) if w and h not in record)
 
 
 def main():
@@ -68,8 +84,36 @@ def main():
               for m in lib_meas if m["wav"] in lib_eiv]
     anchor["soft"] = gs([d["Soft_vs._Harsh"] for d in joined])
     anchor["arousal"] = gs([d["Arousal"] for d in joined])
+
+    # D-M1. These used to be `d.get(h, 0.0)` / `e.get(h, 0.0)`, and a missing head is the
+    # one thing that must NOT default: 0.0 is a raw score, and `z()` maps it to
+    # `(0 - mean) / std` — a systematically nonzero contribution, weighted into every
+    # clip's valence, in the same units as a real measurement. Nothing downstream can tell
+    # the difference between "this clip is unusually flat" and "this head was never
+    # scored".
+    #
+    # It is safe today only because the Emilia and LibriTTS passes happen to carry the same
+    # 12 heads. Run the EIV scorer with its DEFAULT head set (4) and every clip in the
+    # corpus silently acquires a wrong valence. `eiv_merge_corpus` already refuses this
+    # (its `ragged` guard); this is the same rule at the other end of the same pipeline.
+    #
+    # Only WEIGHTED heads are required: `Thankfulness_Gratitude`, `Disappointment` and
+    # `Distress` carry weight 0.0, so their absence cannot move the dot product — and two
+    # of them are legitimately absent from the raw files. Demanding all 12 would fail on
+    # data that is entirely correct.
+    missing = sorted({h for d in joined for h in missing_weighted_heads(d, HEADS, W)})
+    if missing:
+        raise SystemExit(
+            f"LibriTTS anchor is missing weighted EIV head(s): {missing}\n"
+            f"  Anchors come from {LIB_EIV} + {LIB_FAM}. Re-score with the full head set;\n"
+            "  imputing 0.0 would z-score NONZERO and bias every anchor scale."
+        )
     for h in HEADS:
-        anchor[h] = gs([d.get(h, 0.0) for d in joined])
+        present = [d[h] for d in joined if h in d]
+        # An unweighted head may legitimately be absent; its z-score is multiplied by 0.0
+        # either way, so a neutral scale keeps the dot product well-defined without
+        # inventing a measurement.
+        anchor[h] = gs(present) if present else (0.0, 1.0)
 
     def z(key, x):
         m, s = anchor[key]
@@ -84,6 +128,20 @@ def main():
         if not (os.path.exists(mfile) and os.path.exists(efile)):
             continue
         eiv = {d["wav"]: d for d in jload(efile)}
+        # D-M1, the half that reaches the corpus. Checked once per tar rather than per
+        # clip: a head set is a property of the SCORING RUN, so if it is short here it is
+        # short for every row in the file, and reporting it 20,000 times helps nobody.
+        sample = next(iter(eiv.values()), None)
+        if sample is not None:
+            short = missing_weighted_heads(sample, HEADS, W)
+            if short:
+                raise SystemExit(
+                    f"{efile}\n  was scored without weighted EIV head(s): {short}\n"
+                    "  Re-run the EIV pass with the full head set (see eiv_score.sh --heads).\n"
+                    "  Defaulting them to 0.0 would z-score NONZERO, so every clip in this\n"
+                    "  tar would get a plausible, wrong valence that nothing downstream can\n"
+                    "  distinguish from a real measurement."
+                )
         for m in jload(mfile):
             e = eiv.get(m["wav"])
             if not e:

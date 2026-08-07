@@ -225,23 +225,39 @@ pysbd is now a hard dependency of the align container._
 
 ## 8 · Label derivation
 
-- [ ] **D-M1:** `mine_emilia_keeps` imputes missing EIV heads as raw `0.0`, which
-      z-scores *nonzero*. Safe today (verified identical coverage); trips corpus-wide on
-      a default 4-head Emilia pass. `eiv_merge_corpus` (SystemExit) is the pattern.
-- [ ] **D-M3:** digits and symbols are silently deleted by the tokenizer ("I have 3
-      cats" → audio says "three", text drops it). Latent for LibriTTS (0/5,000 sampled),
-      live for Emilia YODAS captions. Needs a digit check or normalization pass.
-- [ ] **D-M4:** homograph flattening — one pronunciation per key (`read`, `wind`,
-      `live`, `dove`, `bass`); past-tense "read" trains against the wrong vowel. A
-      regression vs the espeak lane; same class as the fixed contraction poison but
-      needs context-aware G2P, a larger fix.
-- [ ] **D-M6:** `process_emilia_tail` resume treats error rows as done — transiently
-      failed clips are permanently, silently skipped.
-- [ ] **D-L2:** small-speaker z degeneracy (17 speakers <10 clips; 2-clip speakers
-      pinned at ±0.5; 7% of train V saturated) + the two z-implementations disagree on
-      the guard (`std + 1e-6` vs `std or 1.0`).
-- [ ] **D-L5:** `derive_markup_measures.py` frozen at v2 paths; stores the contiguous v2
-      index under `"speaker"` — mis-keying trap for the span-markup spike.
+_Mostly closed 2026-08-06 (`tests/test_label_derivation.py`, 12 cases). **D-M1** refuses a
+short EIV head set instead of imputing `0.0` (which z-scores ~3σ NONZERO); only WEIGHTED
+heads are required, since three carry weight 0.0 and two are legitimately absent. **D-M3**
+the corpus lane refuses transcripts containing digits (`--allow-digits` to override) —
+verified inert for existing data: 0 digits in 8,000 sampled LibriTTS transcripts and 0 in
+all 5,736 dev-clean. **D-M6** error rows no longer count as done, so a transiently failed
+clip is retried instead of silently dropped forever. **D-L5** `derive_markup_measures.py`
+follows `--corpus` (default v3c, was pinned to v2) and records `speaker_index` separately
+from the real LibriTTS `speaker`, verified against the wav paths._
+
+- [ ] **D-L2 — the guard is fixed in code; the LABELS still carry the defect.** This was
+      filed as "the two z-implementations disagree", which undersells it: `std or 1.0`
+      only guards a std of *exactly* zero, and that is not the case that occurs. A head can
+      be **constant** for a speaker — the EIV scorer returns one identical value for all 106
+      of speaker `6531`'s clips on `Amusement`, likewise `8095`/Valence and `909`/Valence,
+      **224 clips between them** — and then `v - mean` and `std` are both float dust ~1e-21.
+      Dividing dust by dust gives **max|z| = 1.0**: a full-scale weighted contribution to
+      that speaker's valence, manufactured from rounding error and indistinguishable from a
+      measurement. `+ 1e-6` returns ~1e-15, i.e. zero, which is what a constant head
+      actually says. `eiv_merge_corpus` is corrected, but **the shipped `_v2` files and
+      therefore v3c were built with the broken guard**. Re-deriving moves the raw combo by
+      up to **0.228** and changes 31,443 of 31,445 clips (the floor perturbs every std
+      slightly), so this is a corpus version bump — **owner call**, not a silent fix.
+      Separately: 17 speakers have <10 clips and 5 have ≤2, whose z is fixed by arithmetic
+      (±1 exactly, landing on the V rail at ±0.500); 7.25% of train V sits at |V| ≥ 0.99.
+      `derive_vat_corpus` reports both now rather than repairing them.
+- [ ] **D-M4:** homograph flattening — one pronunciation per key (`read`, `wind`, `live`,
+      `dove`, `bass`); past-tense "read" trains against the wrong vowel. **Measured
+      2026-08-06: 3.3% of LibriTTS transcripts contain a known homograph** (most common:
+      present, close, live, wind, read), so roughly half of those carry a wrong vowel on one
+      word. A regression vs the espeak lane, which disambiguated by POS. Needs context-aware
+      G2P — deliberately not attempted, since a partial heuristic would silently change
+      pronunciations across the whole corpus.
 
 ## 9 · Embodiment — approved, sequenced after the clip-level channel
 
