@@ -69,8 +69,9 @@ download = ["gdown", "wget"]
 onnx = ["onnxruntime"]
 # The Sonora Vocalizer (vocalizer.py) — the standing vetting surface.
 vocalizer = ["gradio", "fastapi", "uvicorn", "starlette"]
-# matcha/app.py, the upstream gradio demo. Superseded by vocalizer.py; see its header.
-app = ["gradio==3.43.2"]
+# The `app` extra (`gradio==3.43.2`, for matcha/app.py) was REMOVED 2026-08-07 with the
+# file. It also pinned a second, older gradio against the `vocalizer` extra's unpinned
+# one, so installing both resolved to whichever came last.
 dev = ["pytest", "pre-commit"]
 
 [project.scripts]
@@ -79,7 +80,9 @@ matcha-tts = "matcha.cli:cli"
 matcha-tts-get-durations = "matcha.utils.get_durations_from_trained_model:main"
 # `matcha-tts-app = matcha.app:main` was REMOVED 2026-08-06 (E-L4). app.py called
 # `.launch(share=True)`, so an installed console script one word long stood up a public
-# gradio tunnel to a machine holding unreleased checkpoints and the corpus.
+# gradio tunnel to a machine holding unreleased checkpoints and the corpus. The file
+# itself was deleted 2026-08-07: it phonemized through `english_cleaners2`
+# unconditionally, which is the one thing no Sonora checkpoint may be fed.
 
 [tool.setuptools.dynamic]
 version = { file = "matcha/VERSION" }

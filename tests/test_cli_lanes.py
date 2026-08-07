@@ -153,3 +153,64 @@ def test_waveform_is_written_at_the_lane_sample_rate(tmp_path):
     }
     cli.save_to_folder("clip", output, str(tmp_path), 24000)
     assert sf.info(str(tmp_path / "clip.wav")).samplerate == 24000
+
+
+# --- the ONNX "Plan B" lane -----------------------------------------------------------
+#
+# Auditing the claim that `matcha/app.py` was the last espeak leak turned up two more, both
+# here. The source-level half of this guard lives in `test_lane_containment.py` so it runs
+# on the host venv, where torch is absent and this whole module skips.
+
+
+def test_onnx_infer_requires_an_explicit_lane():
+    """No default is defensible: an ONNX graph does not record its phoneme vocabulary, so
+    either default is silently wrong for half the graphs it will be pointed at."""
+    infer = pytest.importorskip("matcha.onnx.infer")
+    parser = _onnx_infer_parser(infer)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["model.onnx", "--text", "hello"])
+    assert parser.parse_args(["model.onnx", "--text", "hello", "--lane", "vat"]).lane == "vat"
+
+
+def test_onnx_infer_writes_the_lane_sample_rate():
+    infer = pytest.importorskip("matcha.onnx.infer")
+    assert infer.LANE_SAMPLE_RATE == {"vat": 24000, "legacy": 22050}
+
+
+def _onnx_infer_parser(infer):
+    """Build `infer.main`'s parser without running inference."""
+    captured = {}
+    real = argparse.ArgumentParser
+
+    class _Capture(real):
+        def parse_args(self, *a, **kw):  # noqa: D102
+            captured["parser"] = self
+            raise _Stop
+
+    infer.argparse.ArgumentParser = _Capture
+    try:
+        with pytest.raises(_Stop):
+            infer.main()
+    finally:
+        infer.argparse.ArgumentParser = real
+    return captured["parser"]
+
+
+class _Stop(Exception):
+    pass
+
+
+def test_onnx_export_refuses_a_conditioned_checkpoint():
+    """The exporter builds no VAT input node, so a Sonora graph would render neutral
+    forever — real speech, so nothing downstream could tell it had happened."""
+    export = pytest.importorskip("matcha.onnx.export")
+    conditioned = argparse.Namespace(use_vat=True, vat_dim=3)
+    with pytest.raises(SystemExit, match="refusing to export"):
+        export.assert_exportable_here(conditioned)
+
+
+def test_onnx_export_still_accepts_the_legacy_checkpoints_it_is_for():
+    """`vat_dim` defaults to 3 whether or not a trunk was built, so guarding on the width
+    instead of on `use_vat` would refuse every checkpoint this exporter is still for."""
+    export = pytest.importorskip("matcha.onnx.export")
+    export.assert_exportable_here(argparse.Namespace(use_vat=False, vat_dim=3))

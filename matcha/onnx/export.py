@@ -60,6 +60,34 @@ def get_exportable_module(matcha, vocoder, n_timesteps):
     return model, output_names
 
 
+def assert_exportable_here(matcha):
+    """Refuse a conditioned checkpoint. THIS EXPORTER CANNOT CARRY VAT.
+
+    `onnx_forward_func` above calls `matcha.synthesise(x, x_lengths, n_timesteps,
+    temperature, spks, length_scale)` — no `vat`, no `guidance` — and `get_inputs` builds
+    no input node for either. Exporting a Sonora checkpoint through here therefore
+    succeeds and produces a graph that is permanently NEUTRAL: every conditioning axis the
+    model was trained for is silently absent, and the wav that comes out is real speech,
+    so nothing downstream can tell. That is the F-H1 failure mode again — an export whose
+    logs say Sonora and whose graph is not.
+
+    README § "Export" calls this the Plan B path. It stays Plan B for the *unconditioned*
+    22.05 kHz baseline; the conditioned lane is `scripts/litert_export/convert_vat.py`,
+    whose G5 gate drives V/E/T independently and requires the waveform to move.
+    """
+    # `use_vat`, not `vat_dim`: the constructor defaults vat_dim to 3 whether or not a
+    # trunk was built, so testing the width would refuse every legacy LJSpeech checkpoint
+    # — the one thing this exporter is still legitimately for.
+    if getattr(matcha, "use_vat", False):
+        vat_dim = int(getattr(matcha, "vat_dim", 0) or 0)
+        raise SystemExit(
+            f"refusing to export: this checkpoint carries {vat_dim} VAT channels and this "
+            "exporter builds no input node for them — the graph would render neutral "
+            "speech forever and nothing downstream would notice. Use "
+            "scripts/litert_export/convert_vat.py (see notes/STATE.md)."
+        )
+
+
 def get_inputs(is_multi_speaker):
     """
     Create dummy inputs for tracing
@@ -122,6 +150,8 @@ def main():
 
     checkpoint_path = Path(args.checkpoint_path)
     matcha = load_matcha(checkpoint_path.stem, checkpoint_path, "cpu")
+
+    assert_exportable_here(matcha)
 
     if args.vocoder_name or args.vocoder_checkpoint_path:
         assert (

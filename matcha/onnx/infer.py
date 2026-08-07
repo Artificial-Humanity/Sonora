@@ -9,7 +9,7 @@ import onnxruntime as ort
 import soundfile as sf
 import torch
 
-from matcha.cli import plot_spectrogram_to_numpy, process_text
+from matcha.cli import plot_spectrogram_to_numpy, process_text_for_lane
 
 
 def validate_args(args):
@@ -21,7 +21,15 @@ def validate_args(args):
     return args
 
 
-def write_wavs(model, inputs, output_dir, external_vocoder=None):
+# E-M2 again, in the lane the E-M2 fix did not reach. `sf.write(..., 22050, ...)` tagged
+# every file with upstream's rate; the Sonora vocoder is 24 kHz, so its output played back
+# ~9% slow — which reads as "the model sounds sluggish", not as a header bug. `matcha.cli`
+# reads the rate off the loaded vocoder, but an ONNX graph will not say, so the lane
+# decides: the 24 kHz vocoder IS the vat lane (see `load_vocoder_24k` in cli.py).
+LANE_SAMPLE_RATE = {"vat": 24000, "legacy": 22050}
+
+
+def write_wavs(model, inputs, output_dir, sample_rate, external_vocoder=None):
     if external_vocoder is None:
         print("The provided model has the vocoder embedded in the graph.\nGenerating waveform directly")
         t0 = perf_counter()
@@ -48,9 +56,9 @@ def write_wavs(model, inputs, output_dir, external_vocoder=None):
         output_filename = output_dir.joinpath(f"output_{i + 1}.wav")
         audio = wav[:wav_length]
         print(f"Writing audio to {output_filename}")
-        sf.write(output_filename, audio, 22050, "PCM_24")
+        sf.write(output_filename, audio, sample_rate, "PCM_24")
 
-    wav_secs = wav_lengths.sum() / 22050
+    wav_secs = wav_lengths.sum() / sample_rate
     print(f"Inference seconds: {infer_secs}")
     print(f"Generated wav seconds: {wav_secs}")
     rtf = infer_secs / wav_secs
@@ -63,7 +71,7 @@ def write_wavs(model, inputs, output_dir, external_vocoder=None):
     print(f"Overall RTF: {rtf}")
 
 
-def write_mels(model, inputs, output_dir):
+def write_mels(model, inputs, output_dir, sample_rate):
     t0 = perf_counter()
     mels, mel_lengths = model.run(None, inputs)
     infer_secs = perf_counter() - t0
@@ -75,7 +83,7 @@ def write_mels(model, inputs, output_dir):
         plot_spectrogram_to_numpy(mel.squeeze(), output_stem.with_suffix(".png"))
         np.save(output_stem.with_suffix(".numpy"), mel)
 
-    wav_secs = (mel_lengths * 256).sum() / 22050
+    wav_secs = (mel_lengths * 256).sum() / sample_rate
     print(f"Inference seconds: {infer_secs}")
     print(f"Generated wav seconds: {wav_secs}")
     rtf = infer_secs / wav_secs
@@ -108,6 +116,20 @@ def main():
         help="change the speaking rate, a higher value means slower speaking rate (default: 1.0)",
     )
     parser.add_argument("--gpu", action="store_true", help="Use CPU for inference (default: use GPU if available)")
+    # REQUIRED, and deliberately without a default. An ONNX graph does not carry which
+    # phoneme vocabulary it was trained on — the ids are just integers — so nothing here
+    # can detect the lane the way `matcha.cli.detect_lane` does from a checkpoint. Either
+    # default is silently wrong half the time: espeak ids into an op_g2p graph, or IPA ids
+    # into an upstream demo graph. Both render fluent, confident, wrong speech. Asking is
+    # the only honest option.
+    parser.add_argument(
+        "--lane",
+        choices=["vat", "legacy"],
+        required=True,
+        help="Phoneme lane the graph was trained on: 'vat' = op_g2p IPA (every Sonora "
+        "checkpoint since derisk_energy), 'legacy' = espeak via english_cleaners2 "
+        "(upstream LJSpeech/VCTK demos only; needs the `espeak` extra)",
+    )
     parser.add_argument(
         "--output-dir",
         type=str,
@@ -133,7 +155,7 @@ def main():
         with open(args.file, encoding="utf-8") as file:
             text_lines = file.read().splitlines()
 
-    processed_lines = [process_text(0, line, "cpu") for line in text_lines]
+    processed_lines = [process_text_for_lane(0, line, torch.device("cpu"), args.lane) for line in text_lines]
     x = [line["x"].squeeze() for line in processed_lines]
     # Pad
     x = torch.nn.utils.rnn.pad_sequence(x, batch_first=True)
@@ -152,16 +174,18 @@ def main():
             warnings.warn(warn, UserWarning)
         inputs["spks"] = np.repeat(args.spk, x.shape[0]).astype(np.int64)
 
+    sample_rate = LANE_SAMPLE_RATE[args.lane]
+
     has_vocoder_embedded = model_outputs[0].name == "wav"
     if has_vocoder_embedded:
-        write_wavs(model, inputs, args.output_dir)
+        write_wavs(model, inputs, args.output_dir, sample_rate)
     elif args.vocoder:
         external_vocoder = ort.InferenceSession(args.vocoder, providers=providers)
-        write_wavs(model, inputs, args.output_dir, external_vocoder=external_vocoder)
+        write_wavs(model, inputs, args.output_dir, sample_rate, external_vocoder=external_vocoder)
     else:
         warn = "[!] A vocoder is not embedded in the graph nor an external vocoder is provided. The mel output will be written as numpy arrays to `*.npy` files in the output directory"
         warnings.warn(warn, UserWarning)
-        write_mels(model, inputs, args.output_dir)
+        write_mels(model, inputs, args.output_dir, sample_rate)
 
 
 if __name__ == "__main__":
