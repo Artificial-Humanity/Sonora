@@ -280,7 +280,7 @@ def download(url: str, dest: pathlib.Path) -> tuple[bool, int]:
               "— refetching", file=sys.stderr)
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
-    data = fetch(url, timeout=300)
+    data = fetch_with_retry(url)
     if not looks_like_mp3(data):
         raise ValueError(
             f"{url} returned {len(data):,} bytes that are not MP3 "
@@ -289,6 +289,41 @@ def download(url: str, dest: pathlib.Path) -> tuple[bool, int]:
     tmp.write_bytes(data)
     tmp.replace(dest)
     return True, len(data)
+
+
+# A-M13. One `fetch` and no retry, in a lane that pulls sixty-odd multi-megabyte files
+# from archive.org over a rate-limited connection. The caller catches the exception and
+# prints "!! section N" and moves on, so a single transient 503 or dropped socket left a
+# permanent hole in the book — and because the resume check only looks at files that
+# EXIST, a re-run does re-fetch it, but only if somebody notices the count is short. The
+# 61-section Dickens is the shape that makes this bite.
+RETRY_DELAYS = (2, 8, 30)
+
+
+def fetch_with_retry(url: str, timeout: int = 300) -> bytes:
+    """`fetch` with backoff on the failures that are worth retrying.
+
+    A 404 is NOT retried: the URL is wrong and waiting will not fix it. Rate limits and
+    5xx are, because they are the ones that are about timing rather than about the
+    request — which is the whole reason a bulk transfer needs this and a single call does
+    not.
+    """
+    last = None
+    for attempt, delay in enumerate((0,) + RETRY_DELAYS):
+        if delay:
+            time.sleep(delay)
+        try:
+            return fetch(url, timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            if exc.code in (404, 410):
+                raise
+            last = exc
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
+            last = exc
+        if attempt < len(RETRY_DELAYS):
+            print(f"  .. {type(last).__name__} on {url.rsplit('/', 1)[-1]}; "
+                  f"retrying in {RETRY_DELAYS[attempt]}s", file=sys.stderr)
+    raise last
 
 
 def parse_sections(spec: str | None, n: int) -> list[int]:

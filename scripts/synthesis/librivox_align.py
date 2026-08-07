@@ -54,6 +54,7 @@ import sys
 import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import synth_common  # noqa: E402
 from synth_common import (  # noqa: E402
     is_complete_utterance,
     split_sentences as _shared_split_sentences,
@@ -174,6 +175,65 @@ def _proportional(text: str, index: int, n_sections: int,
     a = max(0, int((f0 - pad) * len(text)))
     b = min(len(text), int((f1 + pad) * len(text)))
     return text[a:b]
+
+
+def section_durations(book: dict) -> dict[int, float]:
+    """Per-section playtime in seconds, COMPLETE or empty. A-M1.
+
+    The old version had two silent failure modes, and they compounded:
+
+    1. `float(sec.get("playtime") or 0)` inside a `try/except: continue`. LibriVox is not
+       consistent about this field — most projects give seconds as a string, some give
+       "hh:mm:ss" — so a colon-formatted section was dropped from the map entirely. The
+       cumulative fraction in `_proportional` was then computed over a SUBSET: surviving
+       sections got windows sized against a smaller total, the dropped ones fell back to
+       the even split, and the windows no longer tiled. Nothing detects that; the coverage
+       gate sees a bad slice as a bad alignment.
+    2. `if not all(durations.values()): durations = {}` — one zero playtime anywhere threw
+       away every duration in the book and reverted ALL sections to the even split. That
+       is precisely the split that located **0%** of the heard words in Dickens's
+       *Speeches* and dropped every clip, and it happened without a word of output.
+
+    So: parse both formats, fill what is missing from the residual of `totaltime` when
+    that is possible, and when it is not, fall back loudly rather than silently. The
+    return is all-or-nothing on purpose — a partial map is the case that produces windows
+    which do not tile, and `_proportional` cannot tell a partial map from a complete one.
+    """
+    sections = book.get("sections") or []
+    parsed: dict[int, float | None] = {}
+    for sec in sections:
+        try:
+            index = int(sec["index"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        parsed[index] = synth_common.parse_playtime(sec.get("playtime"))
+
+    if not parsed:
+        return {}
+    missing = sorted(i for i, d in parsed.items() if not d)
+    if not missing:
+        return {i: d for i, d in parsed.items()}
+
+    # Fill from the residual: `totaltime` is the whole work, so what the known sections do
+    # not account for belongs to the unknown ones. Spread evenly among them — which is the
+    # even split's own assumption, but applied ONLY where we have no better information
+    # instead of thrown over the entire book.
+    total = synth_common.parse_playtime(book.get("totaltime"))
+    known = sum(d for d in parsed.values() if d)
+    residual = (total - known) if total else 0.0
+    if total and residual > 0:
+        share = residual / len(missing)
+        print(f"  !! {len(missing)} section(s) have no usable playtime "
+              f"({', '.join(str(i) for i in missing[:8])}"
+              f"{'…' if len(missing) > 8 else ''}) — imputing {share:.0f}s each from "
+              f"totaltime ({total:.0f}s residual {residual:.0f}s)", file=sys.stderr)
+        return {i: (d if d else share) for i, d in parsed.items()}
+
+    print(f"  !! {len(missing)} of {len(parsed)} section(s) have no usable playtime and "
+          "totaltime cannot fill the gap — falling back to an EVEN split for the whole "
+          "book. That is the split that located 0% of the heard words in Dickens's "
+          "Speeches; check coverage on this run.", file=sys.stderr)
+    return {}
 
 
 def chapter_slices(text: str, index: int, n_sections: int,
@@ -480,14 +540,7 @@ def main() -> int:
     # EVERY section in the book, not just the ones being aligned now — the fraction is
     # cumulative over the whole work, so a --sections 3-5 run still needs to know how
     # long sections 1 and 2 were.
-    durations: dict[int, float] = {}
-    for sec in (book.get("sections") or []):
-        try:
-            durations[int(sec["index"])] = float(sec.get("playtime") or 0)
-        except (TypeError, ValueError, KeyError):
-            continue
-    if durations and not all(durations.values()):
-        durations = {}                     # a zero anywhere makes the cumsum a lie
+    durations = section_durations(book)
     n_written = n_incomplete = 0
 
     for mp3 in present:

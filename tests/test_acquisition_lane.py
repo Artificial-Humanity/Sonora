@@ -703,3 +703,135 @@ def book_router_etext(url):
     mod = pytest.importorskip("book_router")
     assert mod.etext_id_from is synth_common.etext_id_from
     return mod.etext_id_from(url)
+
+
+# --- A-M1: playtime parsing and the duration split ------------------------------------
+
+
+@pytest.mark.parametrize(("raw", "seconds"), [
+    ("2105", 2105.0),      # the form all three books on disk use
+    ("1:23:45", 5025.0),   # hh:mm:ss — what `totaltime` always is, and playtime sometimes
+    ("05:30", 330.0),      # mm:ss
+    (300, 300.0),
+    (0, None), ("0", None), ("0:00", None), ("", None), (None, None), ("junk", None),
+])
+def test_playtime_parses_both_formats(raw, seconds):
+    """`float(...)` raised on the colon form, and the caller's `except: continue` dropped
+    that section from the duration map — silently, so the surviving sections' windows were
+    sized against a smaller total and stopped tiling."""
+    assert synth_common.parse_playtime(raw) == seconds
+
+
+def test_zero_is_unknown_not_a_duration():
+    """Zero is a real value and `or 0` conflated it with absent. The caller has to tell
+    the difference to know whether it may impute."""
+    assert synth_common.parse_playtime(0) is None
+    assert synth_common.parse_playtime(1) == 1.0
+
+
+def test_a_colon_formatted_section_is_no_longer_dropped(align_mod):
+    book = {"totaltime": "1:00:00", "sections": [
+        {"index": 1, "playtime": "600"},
+        {"index": 2, "playtime": "0:10:00"},
+        {"index": 3, "playtime": "2400"}]}
+    assert align_mod.section_durations(book) == {1: 600.0, 2: 600.0, 3: 2400.0}
+
+
+def test_one_zero_playtime_no_longer_wipes_the_whole_book(align_mod):
+    """The headline. `if not all(durations.values()): durations = {}` threw away every
+    duration in the book and reverted ALL sections to the even split — which is the split
+    that located 0% of the heard words in Dickens's *Speeches* and dropped every clip.
+    Now the gap is filled from totaltime's residual and only the unknown section is
+    guessed at."""
+    book = {"totaltime": "1:00:00", "sections": [
+        {"index": 1, "playtime": "600"},
+        {"index": 2, "playtime": "0"},
+        {"index": 3, "playtime": "2400"}]}
+    assert align_mod.section_durations(book) == {1: 600.0, 2: 600.0, 3: 2400.0}
+
+
+def test_the_durations_map_is_all_or_nothing(align_mod):
+    """A PARTIAL map is the case that produces windows which do not tile, and
+    `_proportional` cannot tell a partial map from a complete one. When the residual
+    cannot fill the gap, fall back for the whole book — loudly."""
+    book = {"sections": [{"index": 1, "playtime": "600"},
+                         {"index": 2, "playtime": None}]}      # no totaltime to fill from
+    assert align_mod.section_durations(book) == {}
+
+
+def test_the_silent_fallback_is_now_loud(align_mod, capsys):
+    align_mod.section_durations({"sections": [{"index": 1, "playtime": "600"},
+                                              {"index": 2, "playtime": None}]})
+    assert "EVEN split" in capsys.readouterr().err
+
+
+def test_duration_windows_tile_the_text(align_mod):
+    """What the partial map broke. Consecutive sections' unpadded windows must be
+    contiguous and together cover the whole text, or words fall into a gap no section
+    searches."""
+    durations = {1: 600.0, 2: 600.0, 3: 2400.0}
+    text = "w " * 5000
+    edges = []
+    for i in (1, 2, 3):
+        before = sum(d for k, d in durations.items() if k < i)
+        total = sum(durations.values())
+        edges.append((before / total, (before + durations[i]) / total))
+    assert edges[0][0] == 0.0 and edges[-1][1] == pytest.approx(1.0)
+    for (_a0, a1), (b0, _b1) in zip(edges, edges[1:]):
+        assert a1 == pytest.approx(b0), "a gap between section windows"
+    assert align_mod._proportional(text, 1, 3, durations, 0.0).startswith("w")
+
+
+# --- A-M13: retries in the bulk-transfer lane -----------------------------------------
+
+
+def test_a_transient_failure_is_retried(fetch_mod, monkeypatch, tmp_path):
+    """One `fetch` and no retry, in a lane pulling sixty-odd multi-megabyte files from a
+    rate-limited archive.org. The caller catches, prints "!! section N" and moves on — so
+    one transient 503 left a permanent hole in the book."""
+    import urllib.error
+
+    calls = []
+
+    def flaky(url, timeout=300):
+        calls.append(url)
+        if len(calls) < 3:
+            raise urllib.error.HTTPError(url, 503, "Service Unavailable", {}, None)
+        return b"ID3\x04\x00" + b"\x00" * 4000
+
+    monkeypatch.setattr(fetch_mod, "fetch", flaky)
+    monkeypatch.setattr(fetch_mod.time, "sleep", lambda *_a: None)
+    new, n = fetch_mod.download("test://audio", tmp_path / "003.mp3")
+    assert new and len(calls) == 3
+
+
+def test_a_404_is_not_retried(fetch_mod, monkeypatch):
+    """The URL is wrong; waiting does not fix it, and three backoffs per missing section
+    turns a fast failure into a slow one."""
+    import urllib.error
+
+    calls = []
+
+    def gone(url, timeout=300):
+        calls.append(url)
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(fetch_mod, "fetch", gone)
+    monkeypatch.setattr(fetch_mod.time, "sleep", lambda *_a: None)
+    with pytest.raises(urllib.error.HTTPError):
+        fetch_mod.fetch_with_retry("test://missing")
+    assert len(calls) == 1
+
+
+def test_retries_are_exhausted_then_it_raises(fetch_mod, monkeypatch):
+    calls = []
+
+    def dead(url, timeout=300):
+        calls.append(url)
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(fetch_mod, "fetch", dead)
+    monkeypatch.setattr(fetch_mod.time, "sleep", lambda *_a: None)
+    with pytest.raises(TimeoutError):
+        fetch_mod.fetch_with_retry("test://slow")
+    assert len(calls) == 1 + len(fetch_mod.RETRY_DELAYS)

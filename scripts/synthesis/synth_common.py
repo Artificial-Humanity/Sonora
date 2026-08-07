@@ -315,6 +315,45 @@ def etext_id_from(url_text_source):
     return m.group(1) if m else None
 
 
+def parse_playtime(value):
+    """LibriVox playtime -> seconds, or None when it says nothing usable.
+
+    A-M1. The API is not consistent about this field: most projects give a count of
+    seconds as a string ("2105"), some give "hh:mm:ss" or "mm:ss", and `totaltime` is
+    always the colon form. The aligner did `float(sec.get("playtime") or 0)` inside a
+    try/except that swallowed the failure and moved on, so a colon-formatted section
+    simply VANISHED from the duration map — and the cumulative fraction that drives the
+    text split was then computed over a subset, putting the surviving sections' windows in
+    the wrong place and leaving gaps the missing ones fell into. The windows stopped
+    tiling, quietly.
+
+    Returns None rather than 0.0 for "unknown": zero is a real duration and the caller has
+    to tell the difference. All three books on disk today use the seconds form, so this is
+    the format we would meet on the next project rather than a defect in the current data.
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value) if value > 0 else None
+    text = str(value).strip()
+    if not text:
+        return None
+    if ":" in text:
+        try:
+            parts = [float(p) for p in text.split(":")]
+        except ValueError:
+            return None
+        seconds = 0.0
+        for part in parts:            # h:m:s or m:s, most significant first
+            seconds = seconds * 60 + part
+        return seconds if seconds > 0 else None
+    try:
+        seconds = float(text)
+    except ValueError:
+        return None
+    return seconds if seconds > 0 else None
+
+
 def _url_parts(url):
     """-> (host, [path segments]) lowercased, or ("", []) for nothing usable."""
     if not url:
