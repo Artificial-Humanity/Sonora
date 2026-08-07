@@ -16,12 +16,30 @@
 
 Extends the proven build_matcha.py recipe to the derisk_energy checkpoint:
   sonora_textenc_fp16.tflite  in: emb(1,Tt,192), tmask(1,1,Tt), spk(1,64),
-                                  vat(1,3,Tt)      out: mu(1,80,Tt), logw
+                                  vat(1,V,Tt)      out: mu(1,80,Tt), logw
   sonora_decoder_fp16.tflite  in: x,mu(1,80,Tm), t_emb(1,224), ymask(1,1,Tm),
-                                  spk(1,64), vat_y(1,3,Tm)   out: v(1,80,Tm)
+                                  spk(1,64), vat_y(1,V,Tm)   out: v(1,80,Tm)
   sonora_vocoder24k_fp16.tflite  in: mel(1,80,Tm) -> wav(1,1,Tm*256) @ 24 kHz
 plus host tables: emb.{npy,bin} (178x192), spk_emb.{npy,bin} (247x64),
-config.json (symbols, shapes, mel stats, sr 24000, vat_dim).
+config.json (symbols, shapes, mel stats, sr 24000, and the CONTROL CONTRACT).
+
+V is `matcha.delivery.VAT_DIM` — 8 under contract v2: three continuous V/A/T channels
+plus a five-wide one-hot delivery block. It was a hardcoded 3 here until 2026-08-07, which
+gave this converter its own opinion about the control surface; a graph and its manifest
+disagreeing is the one failure a mobile host cannot detect, because the manifest is all it
+can read.
+
+THE CONTROL CONTRACT (F-H2), which is the manifest's job and did not exist:
+  * V/A/T are continuous on [-1, 1] — per-speaker z-scores clamped at 2 sigma in
+    derivation, so +/-1 is the edge of the TRAINED range, not a display convention. No
+    bound was recorded anywhere, and out-of-range input renders fluent speech off the
+    manifold rather than failing.
+  * The delivery channels are ONE-HOT and must never be interpolated. Handed eight floats
+    and three continuous names, a host will reasonably crossfade all eight and blend
+    Newscaster into Dialogue — a vector the model never saw.
+  * CFG guidance is host orchestration and exports NOTHING (F-M7), so a host cannot
+    discover it from the artifacts; `control.guidance` documents the method and the
+    >= 25 ODE steps that make it safe.
 
 Model code comes from the Sonora fork (FiLM/VATTrunk), NOT the stock
 matcha-tts package. Vocoder is the fine-tuned 24k HiFi-GAN (g_02510000) —
@@ -35,11 +53,18 @@ Gates (all must pass):
   G3 e2e: tflite host pipeline vs torch host pipeline, waveform corr
   G4 energy monotonicity through the full tflite pipeline (RMS dB at
      vat -1/0/+1) + sample wavs for listening
-  G5 per-channel differential: drive valence / energy / tension INDEPENDENTLY
-     and require each to move the waveform. Until 2026-08-06 nothing did:
-     G2 ran vat = zeros and G3/G4 drove [0, a, 0], so valence and tension had
-     never once been nonzero through a converted graph, and a dropped or
-     mis-sliced input would have passed every gate and shipped.
+  G5 per-channel differential: drive every channel INDEPENDENTLY and require each
+     to move the waveform. Until 2026-08-06 nothing did: G2 ran vat = zeros and
+     G3/G4 drove [0, a, 0], so valence and tension had never once been nonzero
+     through a converted graph, and a dropped or mis-sliced input would have
+     passed every gate and shipped. Continuous channels sweep +/-1; delivery
+     lanes are probed ONE-HOT against unknown, because -1 on a lane is a vector
+     the host is forbidden to send and certifying a wire with it would be a
+     green light for a path nobody may take.
+  G6 delivery lanes are distinguishable: every lane being individually connected
+     is not sufficient — five inputs wired to one summing junction pass G5 five
+     times and give the host five names for one behaviour. Reads on-device as
+     "delivery does not do much", which is indistinguishable from a weak channel.
 
 Every gate is RECORDED, not printed: `gates_or_die()` refuses to write artifacts
 unless all pass. Before 2026-08-06 they printed PASS/FAIL and the script exited 0
@@ -109,6 +134,11 @@ if not (pathlib.Path(SONORA) / "matcha" / "models" / "matcha_tts.py").is_file():
     )
 sys.path.insert(0, SONORA)
 
+# Imported AFTER the path insert and the existence check above, on purpose: this is the
+# single definition of the conditioning vector's width and meaning, and taking it from a
+# `matcha` that is not the repo's is the F-H1 failure in a different coat.
+from matcha import delivery  # noqa: E402
+
 # Registry copy replaced by safetensors 2026-07-16 (HF picklescan); the full
 # Lightning checkpoint lives only in the training-run logs now.
 CKPT = os.environ.get(
@@ -128,10 +158,34 @@ MAX_MEL = int(sys.argv[1]) if len(sys.argv) > 1 else 512
 N_TIMESTEPS = 10
 LENGTH_SCALE = 1.0  # the derisk gate's setting (not LJSpeech's 0.95)
 SR = 24000
-N_SPKS, SPK_DIM, VAT_DIM, VAT_COND = 247, 64, 3, 256
+N_SPKS, SPK_DIM, VAT_COND = 247, 64, 256
+
+# F-H2. The conditioning width and the meaning of every channel come from
+# `matcha/delivery.py`, which is the single definition shared with the trunk, the corpus
+# derivation, the CLI and the Vocalizer. This file used to hardcode 3 and a three-name
+# map; a converter with its own opinion about the control surface is how a graph and its
+# manifest come to disagree, and the manifest is the only thing the mobile host can read.
+VAT_DIM = delivery.VAT_DIM
+
 # Channel order, in one place: the G5 probe and config.json must agree, and a
 # manifest that disagrees with the graph mislabels the whole control surface.
-CHANNELS = {0: "valence", 1: "energy", 2: "tension"}
+CHANNELS = dict(enumerate(("valence", "energy", "tension") + delivery.DELIVERY_LANES))
+
+# WHICH CHANNELS ARE CONTINUOUS AND WHICH ARE CATEGORICAL — the half of F-H2 that did not
+# exist before the delivery migration, and the one a host cannot infer.
+#
+# V/A/T are continuous on [-1, 1]: per-speaker z-scores clamped at 2 sigma during
+# derivation, so ±1 IS the edge of the trained range. Values beyond it do not make the
+# channel stronger, they move the FiLM activation off the manifold — and the model still
+# renders speech, which is the trap.
+#
+# The delivery block is ONE-HOT and must never be interpolated. A host handed eight floats
+# and told three are continuous will reasonably treat all eight the same way and crossfade
+# between Newscaster and Dialogue, which has no meaning: `delivery.lane_of_vector` refuses
+# exactly that vector, and the model was never trained on one.
+CONTINUOUS_CHANNELS = tuple(range(delivery.VAT_BASE_DIM))
+CATEGORICAL_CHANNELS = tuple(range(delivery.VAT_BASE_DIM, delivery.VAT_DIM))
+SLOT = {name: idx for idx, name in CHANNELS.items()}
 # Multi-speaker widens the U-Net input (x+mu+spk), and matcha sizes the
 # sinusoidal time embedding to in_channels — 224 here, not LJSpeech's 160.
 IN_CH = 160 + SPK_DIM
@@ -165,21 +219,26 @@ def load_ckpt():
     # graph inputs. And the config.json this writes is what the host trusts: exporting a
     # 4-channel checkpoint under a 3-channel constant would ship a manifest that lies
     # about the model's control surface. Refuse early and name the edit.
+    # THE EXPORT WIDTH SEAM, now driven by the contract rather than by a constant.
+    # `VAT_DIM` is `delivery.VAT_DIM`, so a checkpoint at the contract width exports and
+    # anything else is refused — including, deliberately, a NARROWER pre-v2 checkpoint.
+    # Exporting one of those would produce a graph with no delivery inputs whose
+    # config.json is nonetheless read by a host that now knows about lanes; the host would
+    # send eight floats to a three-channel graph. It is not a downgrade path, it is a
+    # different artifact, and it needs its own manifest rather than this one truncated.
     found = detect_vat_dim(sd)
     if found is not None and found != VAT_DIM:
         raise SystemExit(
-            f"{CKPT}\n  checkpoint has vat_dim={found}, this converter is pinned to "
-            f"VAT_DIM={VAT_DIM}.\n"
-            "  The training side of the delivery migration LANDED 2026-08-07: the\n"
-            "  production width is 8 (3 V/A/T + 5 one-hot lanes, `matcha/delivery.py`),\n"
-            "  and `configs/model/matcha.yaml` is the single source of truth for it.\n"
-            "  The EXPORT side did not. Bumping this constant alone would produce a\n"
-            "  graph whose config.json advertises a control surface the mobile host has\n"
-            "  no vocabulary for, and would still leave F-H2 open: nothing records or\n"
-            "  enforces the 2-sigma clamp contract, and nothing tells the host that the\n"
-            "  last five channels are CATEGORICAL — a host that interpolates them, as it\n"
-            "  reasonably would for V/A/T, gets a vector `lane_of_vector` would refuse.\n"
-            "  See notes/todo.md §2 (F-H2). Do not simply bump the number."
+            f"{CKPT}\n  checkpoint has vat_dim={found}; this converter exports the "
+            f"contract width, VAT_DIM={VAT_DIM}\n"
+            f"  ({delivery.VAT_BASE_DIM} continuous V/A/T + {delivery.DELIVERY_DIM} "
+            "one-hot delivery lanes — matcha/delivery.py).\n"
+            "  A narrower checkpoint predates contract v2. Its graph has no delivery\n"
+            "  inputs, but the config.json written here declares the lane vocabulary, so\n"
+            "  a host reading it would send eight floats to a three-channel graph. That\n"
+            "  is a different artifact, not a truncation of this one.\n"
+            "  Re-derive the corpus at the contract width and retrain, or export the old\n"
+            "  checkpoint with the converter revision that matches it (git history)."
         )
     return sd, float(stats["mel_mean"]), float(stats["mel_std"])
 
@@ -686,7 +745,12 @@ def main():
             continue
         spk_i = spk_w[torch.tensor([row["spk"]])]
         for a in (-1.0, 0.0, 1.0):
-            vat_i = torch.tensor([0.0, a, 0.0])
+            # Energy alone, at the contract width. This was a literal 3-vector, which
+            # would have raised a shape error the moment the width changed — loud, but
+            # from inside a builder rather than here, and the reader would have to work
+            # out that "energy" is slot 1 of however many.
+            vat_i = torch.zeros(VAT_DIM)
+            vat_i[SLOT["energy"]] = a
             torch.manual_seed(1234)
             wav_t, ylen, z = host_pipeline_vat(
                 te_true, dec_true_fn, gen_true, t_embed, emb_w, spk_i, ids_i,
@@ -747,18 +811,58 @@ def main():
                 torch.tensor(vat_vec), mel_mean, mel_std, z=z)
             return wav_f
 
-        base = render([0.0, 0.0, 0.0])
+        base = render([0.0] * VAT_DIM)
         for idx, name in sorted(CHANNELS.items(), key=lambda kv: kv[0]):
+            # F-H2: probe each channel the way the CONTRACT says it is driven.
+            #
+            # The continuous channels sweep ±1, the edge of the trained range. The
+            # delivery channels are ONE-HOT: -1 on a lane is not "the opposite of
+            # Newscaster", it is a vector the model never saw and that
+            # `delivery.lane_of_vector` refuses outright. Driving it here would have the
+            # gate certify the wire using an input the host is forbidden to send — a
+            # green light for a path nobody may take.
+            #
+            # So a lane is probed at 1.0 against neutral only. That is also exactly what
+            # the host will do, which is the point of a gate.
+            categorical = idx in CATEGORICAL_CHANNELS
             hi = render([1.0 if k == idx else 0.0 for k in range(VAT_DIM)])
-            lo = render([-1.0 if k == idx else 0.0 for k in range(VAT_DIM)])
-            n = min(len(base), len(hi), len(lo))
-            d_hi = float(np.abs(hi[:n] - base[:n]).mean())
-            d_lo = float(np.abs(lo[:n] - base[:n]).mean())
-            moved = min(d_hi, d_lo)
+            d_hi = float(np.abs(hi[:min(len(base), len(hi))]
+                                - base[:min(len(base), len(hi))]).mean())
+            if categorical:
+                moved, detail = d_hi, f"mean |delta| vs unknown: one-hot -> {d_hi:.2e}"
+            else:
+                lo = render([-1.0 if k == idx else 0.0 for k in range(VAT_DIM)])
+                n = min(len(base), len(hi), len(lo))
+                d_hi = float(np.abs(hi[:n] - base[:n]).mean())
+                d_lo = float(np.abs(lo[:n] - base[:n]).mean())
+                moved = min(d_hi, d_lo)
+                detail = f"mean |delta| vs neutral: +1 -> {d_hi:.2e}, -1 -> {d_lo:.2e}"
             # 1e-5 mean absolute sample delta on a [-1, 1] waveform: far above fp16 noise,
             # far below "audibly different". A disconnected input gives exactly 0.
-            gate(f"G5 {name} channel is connected", moved > 1e-5,
-                 f"mean |delta| vs neutral: +1 -> {d_hi:.2e}, -1 -> {d_lo:.2e}")
+            kind = "lane" if categorical else "channel"
+            gate(f"G5 {name} {kind} is connected", moved > 1e-5, detail)
+
+        # G6: the delivery block is a GROUP, and the graph must distinguish its members.
+        # Every lane being individually connected is not sufficient — five inputs wired to
+        # the same summing junction would pass G5 five times and give the host five names
+        # for one behaviour. Cheap to check, and the failure it catches is one that reads
+        # on-device as "delivery does nothing much".
+        if CATEGORICAL_CHANNELS:
+            lane_renders = {}
+            for idx in CATEGORICAL_CHANNELS:
+                lane_renders[CHANNELS[idx]] = render(
+                    [1.0 if k == idx else 0.0 for k in range(VAT_DIM)])
+            names = sorted(lane_renders)
+            worst, worst_pair = float("inf"), ("", "")
+            for i, a in enumerate(names):
+                for b in names[i + 1:]:
+                    wa, wb = lane_renders[a], lane_renders[b]
+                    n = min(len(wa), len(wb))
+                    d = float(np.abs(wa[:n] - wb[:n]).mean())
+                    if d < worst:
+                        worst, worst_pair = d, (a, b)
+            gate("G6 delivery lanes are distinguishable", worst > 1e-5,
+                 f"closest pair {worst_pair[0]}/{worst_pair[1]}: mean |delta| = {worst:.2e}")
 
     gates_or_die()
 
@@ -781,6 +885,70 @@ def main():
                in_channels=IN_CH, n_spks=N_SPKS, spk_emb_dim=SPK_DIM,
                vat_dim=VAT_DIM,
                vat_channels={v: k for k, v in CHANNELS.items()},
+               # F-H2. `vat_dim` and a name-to-slot map tell a host WHERE each control is
+               # and nothing about what may be sent there. Both halves of that gap are
+               # real, and both fail silently on-device:
+               #
+               #   * no bound was ever recorded. V/A/T are per-speaker z-scores clamped at
+               #     2 sigma in derivation, so ±1 is the EDGE of the trained range — but
+               #     a host reading this manifest had no way to know, and a request for
+               #     valence 5 does not render "more valence", it moves the FiLM
+               #     activation off the manifold and still produces fluent speech.
+               #   * nothing said which channels are categorical. Handed eight floats and
+               #     three continuous names, a host will reasonably crossfade all eight
+               #     and blend Newscaster into Dialogue — a vector the model never saw and
+               #     that `delivery.lane_of_vector` refuses outright.
+               #
+               # `control` is the contract, machine-readable. A host that reads only
+               # `vat_dim` still works exactly as before; one that reads this can validate
+               # before it renders instead of after someone listens.
+               control=dict(
+                   continuous=dict(
+                       channels=list(CONTINUOUS_CHANNELS),
+                       names=[CHANNELS[i] for i in CONTINUOUS_CHANNELS],
+                       min=-1.0, max=1.0, neutral=0.0,
+                       clamp="reject",
+                       note=("Per-speaker z-scores clamped at 2 sigma during corpus "
+                             "derivation, so +/-1 is the edge of the TRAINED range, not "
+                             "a display convention. Out-of-range input does not "
+                             "strengthen the channel; it leaves the manifold and still "
+                             "renders fluent speech. Reject rather than clamp, so the "
+                             "caller learns its request was wrong."),
+                   ),
+                   categorical=[dict(
+                       group="delivery",
+                       channels=list(CATEGORICAL_CHANNELS),
+                       encoding="one_hot",
+                       values=list(delivery.DELIVERY_LANES),
+                       unknown=dict(vector=[0.0] * delivery.DELIVERY_DIM,
+                                    meaning="no delivery label; equivalent to contract v1"),
+                       note=("EXACTLY ONE of these channels may be 1.0 and the rest 0.0, "
+                             "or all of them 0.0 for unknown. DO NOT INTERPOLATE: there "
+                             "is no vector between Newscaster and Dialogue, the model was "
+                             "never trained on one, and a fractional value is refused by "
+                             "the reference implementation (matcha/delivery.py, "
+                             "lane_of_vector)."),
+                   )],
+                   guidance=dict(
+                       # F-M7: CFG is pure HOST orchestration. The graph is unchanged —
+                       # nothing about it exports — so a host that does not know this
+                       # cannot discover it from the artifacts, and the one number that
+                       # makes it safe (the ODE step count) lives nowhere else.
+                       supported=True, exported=False, default=1.0,
+                       recommended_range=[1.0, 3.0],
+                       min_n_timesteps_above_1=25,
+                       method=("Run the decoder TWICE per ODE step — once with the "
+                               "caller's vat, once with vat = all zeros — and "
+                               "extrapolate: v = v_uncond + s * (v_cond - v_uncond). The "
+                               "graph is identical for both passes; guidance is not an "
+                               "input and there is nothing to export."),
+                       note=("Validated by ear at s = 2-3 with >= 25 ODE steps "
+                             "(2026-07-16); at 10 steps solver artifacts dominate and the "
+                             "result is worse than s = 1. NEVER amplify by scaling the "
+                             "vat input instead — raw out-of-range VAT saturates."),
+                   ),
+               ),
+               contract_version=2,
                checkpoint=os.path.basename(CKPT),
                vocoder=os.path.basename(VOC_CKPT))
     with open(os.path.join(ART, "config.json"), "w") as f:

@@ -32,6 +32,19 @@ buys an encoding that makes no claim the data does not support.
 delivery produces exactly the conditioning it always did. That is the compatibility
 property the contract asks for, and it is worth more than the four channels.
 
+**THE 8 IS NOT THE EIGHT VAD OCTANTS.** It is 3 + 5: three continuous channels plus five
+one-hot lanes. The collision is a coincidence and a trap, because our continuous triple
+genuinely is VAD-adjacent — the affective-computing octants are the sign combinations of
+a 3-axis space (2³ = 8 regions of ±valence/±arousal/±dominance), a partition of ONE
+continuous space. Nothing here is a partition of anything: channels 0-2 are continuous and
+real-valued, channels 3-7 are a categorical block, and no arithmetic relates the two
+groups. Asked and answered on the day the width landed, recorded here because the
+inference is an easy one to make from `vat_dim: 8` alone.
+
+Our third continuous axis is **tension** (pressed ↔ breathy phonation), not dominance —
+see vat-channels.md § T. It was rescoped LAX ↔ TIGHT on 2026-07-20 precisely because the
+VAD reading of it was wrong.
+
 EMBODIMENT IS NOT A LANE (owner, 2026-08-02, ARCHITECTURE §1)
 An embodiment clip is narration in which the narrator voices a character mid-sentence and
 returns. Its delivery does not have a value; it CHANGES partway through. Such clips stay

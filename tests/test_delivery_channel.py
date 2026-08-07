@@ -199,13 +199,29 @@ def test_the_corpus_derivation_joins_a_lane_rather_than_inventing_one():
     assert "def _load_delivery(path):" in src
 
 
-def test_the_export_converter_still_refuses_and_says_what_is_missing():
-    """F-H2 is still open and the converter is the thing that knows it. Bumping its
-    constant alone would ship a config.json advertising a control surface the mobile host
-    has no vocabulary for, and would not tell the host the last five channels are
-    categorical."""
+def test_the_export_converter_takes_the_width_from_here():
+    """F-H2 closed 2026-08-07. The converter no longer has its own opinion about the
+    control surface — a graph and its manifest disagreeing is the one failure a mobile
+    host cannot detect, because the manifest is all it can read. Full contract coverage
+    is in `tests/test_export_contract.py`."""
     src = (REPO / "scripts" / "litert_export" / "convert_vat.py").read_text(encoding="utf-8")
-    assert "VAT_DIM = 247, 64, 3, 256".split("=")[-1]  # sanity: the constant still exists
-    assert "Do not simply bump the number" in src
-    assert "F-H2" in src
-    assert "CATEGORICAL" in src
+    assert "VAT_DIM = delivery.VAT_DIM" in src
+    assert "from matcha import delivery" in src
+    assert "DO NOT INTERPOLATE" in src
+
+
+def test_the_width_is_not_the_vad_octants():
+    """Asked on the day the width landed, which is how we know the inference is easy.
+
+    The 8 VAD octants are the sign combinations of a 3-axis space (2³ = 8 regions of
+    ±valence/±arousal/±dominance) — a partition of ONE continuous space. Ours is 3 + 5:
+    three continuous channels and a categorical block, with no arithmetic relating them.
+    The collision is a coincidence, and a trap, because our continuous triple genuinely is
+    VAD-adjacent. Guarded here so the reasoning survives the next reader of `vat_dim: 8`.
+    """
+    assert delivery.VAT_DIM == delivery.VAT_BASE_DIM + delivery.DELIVERY_DIM
+    assert delivery.VAT_DIM != 2 ** delivery.VAT_BASE_DIM or delivery.DELIVERY_DIM == 5
+    src = (REPO / "matcha" / "delivery.py").read_text(encoding="utf-8")
+    assert "NOT THE EIGHT VAD OCTANTS" in src
+    # And the third axis is tension, not dominance — rescoped LAX/TIGHT 2026-07-20.
+    assert "tension" in src and "not dominance" in src
