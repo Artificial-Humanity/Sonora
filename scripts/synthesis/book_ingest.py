@@ -183,6 +183,37 @@ def fetch(url):
         return r.read()
 
 
+def text_provenance(url, local_epub):
+    """-> (source_name, license_id, note). A-M6.
+
+    Every bank written before 2026-08-06 claimed `Standard Ebooks CC0` and
+    `text_license: CC0` regardless of where the text came from, and the router has been
+    sending Project Gutenberg sources down this path all along. That is false licence
+    metadata, and it is the kind that propagates: it lands in the bank, then in every
+    derived clip's paper trail, and a later audit of "what may we redistribute" reads it
+    as fact. SE and PG both yield freely redistributable text, so nothing shipped is
+    *unlicensed* — but the record has to say which, or it is not a record.
+
+    A locally supplied `--epub` is explicitly UNKNOWN rather than assumed: this script
+    cannot see where such a file came from, and guessing is how the original defect
+    started.
+    """
+    if local_epub and not url:
+        return ("local file", "UNKNOWN",
+                "Text: provenance NOT ESTABLISHED — supplied as a local epub. "
+                "Establish the source and licence before any redistribution.")
+    u = (url or "").lower()
+    if "standardebooks.org" in u:
+        return ("Standard Ebooks", "CC0-1.0", "Text: Standard Ebooks (CC0 1.0).")
+    if "gutenberg.org" in u:
+        return ("Project Gutenberg", "PD-US",
+                "Text: Project Gutenberg (US public domain; PG header/footer stripped, "
+                "so the Project Gutenberg License does not attach).")
+    return (u or "unknown", "UNKNOWN",
+            f"Text: provenance NOT ESTABLISHED for {url!r}. "
+            "Establish the source and licence before any redistribution.")
+
+
 def se_epub_url(page_url):
     """Find the compatible .epub download link on a Standard Ebooks page."""
     html = fetch(page_url).decode("utf-8", "replace")
@@ -255,15 +286,18 @@ def parse_epub(epub_bytes):
     return sections
 
 
-def split_sentences(text):
-    import pysbd
-    seg = pysbd.Segmenter(language="en", clean=False)
-    return [s.strip() for s in seg.segment(text) if s.strip()]
-
-
-_OPENERS = "“\"'([‘"
-_CLOSERS = "”\"')]’"
-_TERMINALS = ".!?…"
+# One definition each, in synth_common — re-exported here because three modules and the
+# test suite already import them from book_ingest. See synth_common for why they moved.
+# The path insert is explicit rather than relying on the one inside `_castable_engines`,
+# which happens to run first today; that is an ordering accident, not an import.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from synth_common import (  # noqa: E402,F401
+    _CLOSERS,
+    _OPENERS,
+    _TERMINALS,
+    is_complete_utterance,
+    split_sentences,
+)
 
 
 # Abbreviations a TTS engine will not expand for you. ARCHITECTURE §1 is explicit
@@ -341,40 +375,87 @@ def references_the_invisible(text):
     return bool(_UNSPEAKABLE_CONTEXT.search(text))
 
 
-def is_complete_utterance(text):
-    """Is this text a whole utterance a listener could judge a performance of?
 
-    THE GATE THAT MATTERS FOR AUDITABILITY (owner, 2026-07-28). A clip that is
-    merely short stays judgeable — the owner has knowingly let short-but-whole
-    clips through, because the sentence is still there. A clip that is INCOMPLETE
-    destroys the judgement itself: prosody lives in the arc of a finished
-    utterance, so a fragment ending on a comma has no terminal contour to assess
-    and no amount of vocal quality rescues it.
 
-    This is why the gate is completeness and NOT a token-count floor.
-    audit-markup-v0 read its ≤6-token failures as a LENGTH problem and prescribed
-    a floor; length was the correlate, not the cause. A floor would reject good
-    short-but-whole clips and pass every long fragment.
+# ---------------------------------------------------------------- quote conventions
+#
+# A-M7/M8, and it was CONFIRMED LIVE rather than latent. Dialogue extraction matched only
+# curly DOUBLE quotes, so an edition that quotes any other way produced zero utterances —
+# and because the caller falls back to `src = para` when there are no utterances, the
+# dialogue did not go missing, it silently entered the NARRATION windows. On *Uneasy
+# Money* (`pg:6684`) that is not hypothetical: the edition quotes with single quotes, 818
+# against 26 doubles, so 1,355 of its 1,366 clips read as narration when the true figure
+# is 1,201. It surfaced only because the miscount would have justified a
+# delivery-homogeneous mark on a novel.
+#
+# Note the two halves used to disagree with each other: `_QUOTED_SPAN` (which strips
+# quotes out of narration) already handled straight quotes while the extractor did not.
+# One resolver now serves both, so they cannot drift.
+CURLY_OPEN, CURLY_CLOSE = "“", "”"
+SQ_OPEN, SQ_CLOSE = "‘", "’"
+DEFAULT_QUOTE_STYLE = "curly-double"
 
-    Note the rating vocabulary cannot see this defect: under v4 the score means
-    vocals and prosody only, so fragments were rated 4-5 for a fine-sounding voice
-    and are statistically invisible in ratings.csv. 79 of them reached the audit
-    surface across two independent lanes. The instrument will not catch this; the
-    gate has to.
+# The four conventions found in the sources this lane actually pulls from. Each entry is
+# (utterance_pattern, span_pattern) — the first captures what was said, the second matches
+# the whole quoted run so it can be stripped out of the narrator's prose.
+#
+# The single-quote forms need boundary rules because their closing mark IS the apostrophe:
+# a bare non-greedy `'(.+?)'` ends at the first contraction, turning "I don't know" into
+# "I don". Requiring a word boundary on both sides solves the common cases —
+#   man's, don't  -> the mark sits between two word characters: neither open nor close
+#   'I don't know' -> opens after a space, skips the contraction, closes before a space
+# A plural possessive (`the boys' hats`) can still close a span early; that produces a
+# fragment, which is exactly what is_complete_utterance() already rejects.
+_STRAIGHT_SINGLE_OPEN = r"(?<![\w'])'(?=[\w“\"])"
+QUOTE_PATTERNS = {
+    "curly-double": (
+        CURLY_OPEN + r"(.+?)" + CURLY_CLOSE,
+        r"[" + CURLY_OPEN + r'"][^' + CURLY_CLOSE + r'"]{2,}[' + CURLY_CLOSE + r'"]',
+    ),
+    "straight-double": (r'"(.+?)"', r'"[^"]{2,}"'),
+    "curly-single": (
+        SQ_OPEN + r"(.+?)" + SQ_CLOSE + r"(?![A-Za-z])",
+        SQ_OPEN + r"[^" + SQ_OPEN + r"]{2,}?" + SQ_CLOSE + r"(?![A-Za-z])",
+    ),
+    "straight-single": (
+        _STRAIGHT_SINGLE_OPEN + r"(.+?)'(?![\w])",
+        _STRAIGHT_SINGLE_OPEN + r"[^']{2,}?'(?![\w])",
+    ),
+}
+
+# How to COUNT each convention when voting. Counting raw characters does not work for the
+# single forms — U+2019 and U+0027 are apostrophes far more often than quotes, so a novel
+# with 4,391 apostrophes would win every vote. Count plausible OPENINGS instead.
+_QUOTE_COUNTERS = {
+    "curly-double": lambda t: min(t.count(CURLY_OPEN), t.count(CURLY_CLOSE)),
+    "straight-double": lambda t: t.count('"') // 2,
+    "curly-single": lambda t: t.count(SQ_OPEN),
+    "straight-single": lambda t: len(re.findall(_STRAIGHT_SINGLE_OPEN, t)),
+}
+
+
+def detect_quote_style(text):
+    """Pick the edition's dominant quote convention from the text itself.
+
+    Per BOOK, not per paragraph: a single paragraph carries too few quotes to vote, and
+    editions are internally consistent about this.
     """
-    t = (text or "").strip()
-    if not t:
-        return False
-    core = t.rstrip(_CLOSERS).rstrip()
-    if not core or core[-1] not in _TERMINALS:
-        return False        # ends on a comma, dash, conjunction — mid-utterance
-    head = t.lstrip(_OPENERS).lstrip()
-    if not head or not (head[0].isupper() or head[0].isdigit()):
-        return False        # starts mid-word or mid-clause ("se it was true—")
-    return True
+    counts = {name: fn(text) for name, fn in _QUOTE_COUNTERS.items()}
+    style, n = max(counts.items(), key=lambda kv: kv[1])
+    return (style if n >= 5 else DEFAULT_QUOTE_STYLE), counts
 
 
-def extract_utterances(paragraph):
+def quote_re(style=None):
+    """Compiled `open(.+?)close` for one convention."""
+    return re.compile(QUOTE_PATTERNS.get(style, QUOTE_PATTERNS[DEFAULT_QUOTE_STYLE])[0])
+
+
+def quote_span_re(style=None):
+    """Compiled matcher for a whole quoted span, used to strip dialogue from narration."""
+    return re.compile(QUOTE_PATTERNS.get(style, QUOTE_PATTERNS[DEFAULT_QUOTE_STYLE])[1])
+
+
+def extract_utterances(paragraph, style=None):
     """Every quoted utterance in the paragraph, as (utterance, attribution).
 
     Replaces extract_dialogue(), which took `re.search(r"“(.+?)”")` — non-greedy,
@@ -394,7 +475,7 @@ def extract_utterances(paragraph):
     else is left to is_complete_utterance(), which rejects (1) and (3) on shape
     without needing to know why they are malformed.
     """
-    spans = list(re.finditer(r"“(.+?)”", paragraph))
+    spans = list(quote_re(style).finditer(paragraph))
     if not spans:
         return []
     verb = re.compile(r"\b(?:" + ATTRIB_VERBS + r")\b")
@@ -436,8 +517,13 @@ def extract_utterances(paragraph):
     return out
 
 
-def build_chunks(sections):
-    """dialogue chunks (play speeches, or quoted prose dialogue) + narration windows."""
+def build_chunks(sections, style=None):
+    """dialogue chunks (play speeches, or quoted prose dialogue) + narration windows.
+
+    `style` is the edition's quote convention (see `detect_quote_style`). Passing None
+    keeps the historical curly-double behaviour, which is wrong for a meaningful share of
+    Project Gutenberg editions — callers should detect it from the text.
+    """
     dialogue, narration = [], []
     for si, (title, kind, items) in enumerate(sections):
         if kind == "drama":                              # play: every speech is dialogue
@@ -453,7 +539,7 @@ def build_chunks(sections):
                 # rather than silently dropping the whole paragraph, which is what
                 # the old `if dlg and dlg[1]` did — a quote with no attribution
                 # produced neither a dialogue chunk nor narration windows.
-                utterances = extract_utterances(para)
+                utterances = extract_utterances(para, style)
                 for quote, attr in utterances:
                     # Through _chunk_speech, not appended raw. Raw appends applied NO
                     # length bound at all, so one-second fragments — "Mr. Heathcliff?",
@@ -476,7 +562,7 @@ def build_chunks(sections):
                 # the 13 books on hand that is ~1,500 good passages discarded.
                 # Quoted spans are removed first so dialogue is not also emitted as
                 # narration; what remains is the narrator's own voice.
-                src = para if not utterances else _strip_quotes(para)
+                src = para if not utterances else _strip_quotes(para, style)
                 for sent_group in _window_sentences(split_sentences(src)):
                     if not is_complete_utterance(sent_group):
                         continue
@@ -524,12 +610,9 @@ def _chunk_speech(text):
 HARD_MAX_CHARS = 400
 
 
-_QUOTED_SPAN = re.compile(r'[\u201c"][^\u201d"]{2,}[\u201d"]')
-
-
-def _strip_quotes(para):
+def _strip_quotes(para, style=None):
     """Paragraph with quoted dialogue removed, leaving the narrator's own prose."""
-    return re.sub(r'\s+', ' ', _QUOTED_SPAN.sub(' ', para)).strip()
+    return re.sub(r'\s+', ' ', quote_span_re(style).sub(' ', para)).strip()
 
 
 def _window_sentences(sentences):
@@ -1121,7 +1204,14 @@ def main():
     total_items = sum(len(items) for _, _, items in sections)
     print(f"  sections: {len(sections)} ({n_drama} drama / {len(sections) - n_drama} prose)  units: {total_items}", flush=True)
 
-    dialogue, narration = build_chunks(sections)
+    # A-M7: read the edition's quote convention off the whole book before chunking.
+    # Printed because it decides whether dialogue is found at all, and a wrong answer is
+    # otherwise invisible — it shows up as a suspiciously narration-heavy novel.
+    style, quote_counts = detect_quote_style(
+        "\n".join(p for _, _, items in sections for p in items))
+    print(f"  quote style: {style}  {quote_counts}", flush=True)
+
+    dialogue, narration = build_chunks(sections, style)
     print(f"== chunks ==  dialogue+attribution: {len(dialogue)}   narration windows: {len(narration)}", flush=True)
 
     # sample spread across the book
@@ -1156,14 +1246,18 @@ def main():
               f"V={line['intended']['V']:+.1f} A={line['intended']['A']:+.1f} T={line['intended']['T']:+.1f} "
               f"{line['register']:22} | {chunk['text'][:55]}", flush=True)
 
+    src_name, src_license, src_note = text_provenance(args.url, args.epub)
+    if src_license == "UNKNOWN":
+        print(f"  !! {src_note}", flush=True)
     bank = {
         "version": f"book-{slug}-1",
         "campaign": f"book-{slug}",
-        "license_note": f"Text: Standard Ebooks CC0 ({args.title or slug}, {args.author}). "
+        "license_note": f"{src_note[:-1]} ({args.title or slug}, {args.author}). "
                         "Synthetic audio from Apache/MIT engines. Director: Gemma 4 (Apache-2.0).",
-        "text_provenance": f"book:{slug} (Standard Ebooks CC0)",
+        "text_provenance": f"book:{slug} ({src_name}, {src_license})",
         "source": {"url": args.url, "epub": epub_url, "title": args.title, "author": args.author,
-                   "text_license": "CC0", "router_librivox": lv},
+                   "text_source": src_name, "text_license": src_license,
+                   "router_librivox": lv},
         "lines": lines,
     }
     out = os.path.join(args.out, f"{slug}_bank.json")

@@ -50,6 +50,9 @@ import shutil
 import sys
 import time
 import urllib.parse
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import synth_common  # noqa: E402
 import urllib.request
 
 DATASETS = pathlib.Path("/data/model-training/datasets")
@@ -322,20 +325,26 @@ def main() -> int:
 
     shutil.copy2(lpath, lpath.with_suffix(".json.bak"))
     shutil.copy2(qpath, qpath.with_suffix(".txt.bak"))
-    for rec in results:
-        key = f"pg:{rec['etext_id']}" if rec.get("etext_id") else "lv:" + urllib.parse.urlparse(
-            rec["url"]).path.strip("/").split("/")[-1]
-        entry = dict(ledger.get(key) or {})
-        entry.update(
-            {k: v for k, v in rec.items() if k != "flags"},
-            status="pending force-align ingest" if rec["lane"] == "force-align"
-            else "pending book_ingest",
-        )
-        if rec["flags"]:
-            entry["router_flags"] = rec["flags"]
-        ledger[key] = entry
-    lpath.write_text(json.dumps(ledger, indent=1, ensure_ascii=False), encoding="utf-8")
-    qpath.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+
+    # A-H3. `ledger` was read before a routing pass that makes one network call per book,
+    # so writing it back whole erased whatever librivox_fetch recorded in the meantime.
+    # Applying the same edits to the CURRENT contents under a lock keeps both.
+    def _apply(led):
+        for rec in results:
+            key = f"pg:{rec['etext_id']}" if rec.get("etext_id") else "lv:" + urllib.parse.urlparse(
+                rec["url"]).path.strip("/").split("/")[-1]
+            entry = dict(led.get(key) or {})
+            entry.update(
+                {k: v for k, v in rec.items() if k != "flags"},
+                status="pending force-align ingest" if rec["lane"] == "force-align"
+                else "pending book_ingest",
+            )
+            if rec["flags"]:
+                entry["router_flags"] = rec["flags"]
+            led[key] = entry
+
+    synth_common.update_json(lpath, _apply)
+    synth_common.write_text_atomic(qpath, "\n".join(out_lines) + "\n")
     print(f"\nwrote {lpath} and marked {qpath} (backups alongside)")
     return 0
 

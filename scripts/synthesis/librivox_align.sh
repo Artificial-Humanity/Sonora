@@ -30,7 +30,7 @@ fi
 
 echo "== librivox align =="
 docker run --rm $GPU $HF_ENV -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c "
-  pip install -q faster-whisper soundfile librosa >/dev/null 2>&1;
+  pip install -q faster-whisper soundfile librosa pysbd >/dev/null 2>&1;  # pysbd: A-H5, the abbreviation-aware sentence splitter
   bash /sonora/scripts/synthesis/container_as_ai_mgr.sh &&
   runuser -u ai-mgr -- bash -c 'umask 002; HF_TOKEN=\${HF_TOKEN:-} \
     python /sonora/scripts/synthesis/librivox_align.py \

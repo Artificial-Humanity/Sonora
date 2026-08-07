@@ -46,6 +46,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import synth_common  # noqa: E402
+
 DATASETS = pathlib.Path("/data/model-training/datasets")
 LEDGER = DATASETS / "books_ledger.json"
 DEFAULT_ROOT = DATASETS / "book-prose/real-audio"
@@ -179,6 +182,49 @@ PG_END = re.compile(r"\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\
                     re.I | re.S)
 
 
+REPLACEMENT = "�"
+
+
+def decode_gutenberg(raw: bytes, url: str) -> str:
+    """Decode a PG plaintext file without baking U+FFFD into the corpus (A-H2).
+
+    This was `raw.decode("utf-8", errors="replace")`. Project Gutenberg still serves a
+    great many pre-2018 editions as **ISO-8859-1**, and `errors="replace"` turns every
+    non-ASCII byte in them into U+FFFD: `café` becomes `caf�`, curly quotes and
+    em-dashes become U+FFFD, and the file still looks fine at a glance because the ASCII
+    is untouched. Nothing downstream detects it — the aligner matches on the ASCII, the
+    clip ships, and the transcript carries a character that is not in any vocabulary.
+    The `-0.txt` candidate in particular is *defined* as the Latin-1 edition.
+
+    So: strict UTF-8 first (correct for modern editions and fails loudly rather than
+    silently corrupting), then the two encodings PG actually used, then a final check
+    that no replacement character survived from any source.
+    """
+    for encoding in ("utf-8", "cp1252", "iso-8859-1"):
+        try:
+            text = raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        if encoding != "utf-8":
+            print(f"  note: {url} is not UTF-8; decoded as {encoding}")
+        break
+    else:  # pragma: no cover - iso-8859-1 maps every byte, so this is unreachable
+        raise ValueError(f"{url}: no candidate encoding decoded the file")
+
+    # A source file can legitimately CONTAIN U+FFFD if whoever produced it made this same
+    # mistake upstream. We cannot repair that, but shipping it silently is what the
+    # finding is about, so say so and let the caller reject the edition.
+    if REPLACEMENT in text:
+        n = text.count(REPLACEMENT)
+        raise ValueError(
+            f"{url}: {n} U+FFFD replacement characters are present in the decoded text. "
+            "The edition is already corrupt at source — pick another PG edition or supply "
+            "text/source.txt by hand. (Decoding here is strict, so these did not come "
+            "from us.)"
+        )
+    return text
+
+
 def gutenberg_plaintext(url_text_source: str) -> tuple[str, str] | None:
     """-> (text, resolved_url). Strips the PG header/footer per book-prose-lane rules."""
     m = re.search(r"(?:ebooks|etext|files)/(\d+)", url_text_source or "")
@@ -193,7 +239,11 @@ def gutenberg_plaintext(url_text_source: str) -> tuple[str, str] | None:
     ]
     for cand in candidates:
         try:
-            raw = fetch(cand).decode("utf-8", errors="replace")
+            raw = decode_gutenberg(fetch(cand), cand)
+        except ValueError as exc:  # a corrupt edition — say which, then try the next
+            print(f"  !! {exc}", file=sys.stderr)
+            time.sleep(SLEEP)
+            continue
         except Exception:  # noqa: BLE001 - try the next mirror shape
             time.sleep(SLEEP)
             continue
@@ -209,13 +259,36 @@ def gutenberg_plaintext(url_text_source: str) -> tuple[str, str] | None:
     return None
 
 
+def looks_like_mp3(data: bytes) -> bool:
+    """Magic-byte check: an ID3 tag, or an MPEG frame sync (0xFF Ex/Fx)."""
+    return data[:3] == b"ID3" or (len(data) > 1 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0)
+
+
 def download(url: str, dest: pathlib.Path) -> tuple[bool, int]:
-    """-> (downloaded_now, bytes). Skips a file that already looks complete."""
+    """-> (downloaded_now, bytes). Skips a file that already looks complete.
+
+    A-M12: "complete" used to mean `size > 1024`, and an HTML error page — LibriVox's 404,
+    an archive.org rate-limit notice, a captcha — clears 1024 bytes comfortably. It got
+    written as `003.mp3`, and because the check is size-only, every RESUME of the batch
+    then skipped it as already done. The bad file is permanent and the failure surfaces
+    much later as an unalignable section. Both the resume check and the fresh download now
+    look at what the bytes actually are.
+    """
     if dest.exists() and dest.stat().st_size > 1024:
-        return False, dest.stat().st_size
+        with dest.open("rb") as fh:
+            head = fh.read(3)
+        if looks_like_mp3(head):
+            return False, dest.stat().st_size
+        print(f"  !! {dest.name} exists but is not MP3 (probably a saved error page) "
+              "— refetching", file=sys.stderr)
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
     data = fetch(url, timeout=300)
+    if not looks_like_mp3(data):
+        raise ValueError(
+            f"{url} returned {len(data):,} bytes that are not MP3 "
+            f"(starts {data[:16]!r}) — not saving it as audio"
+        )
     tmp.write_bytes(data)
     tmp.replace(dest)
     return True, len(data)
@@ -263,6 +336,33 @@ def main() -> int:
     if not meta:
         print("!! LibriVox API returned no match", file=sys.stderr)
         return 1
+
+    # A-H4. `api_book` matches on punctuation-stripped WORDS with a prefix fallback, so a
+    # near-miss resolves to a real, wrong project — and every path below then writes that
+    # project's audio into a directory named for the slug we ASKED for, because `key` is
+    # derived from the request, never from the answer. Nothing downstream can notice: the
+    # audio is valid, the sections are consistent, and the aligner will happily align the
+    # wrong book against the wrong text. The API hands us the project's own URL; compare
+    # it. One check, and it closes the only failure mode in this script that produces a
+    # plausible corpus rather than an error.
+    if url and "librivox.org" in url:
+        want_slug = urllib.parse.urlparse(url).path.strip("/").split("/")[-1].lower()
+        got_url = meta.get("url_librivox") or ""
+        got_slug = urllib.parse.urlparse(got_url).path.strip("/").split("/")[-1].lower()
+        if got_slug and got_slug != want_slug:
+            print(
+                f"!! RESOLVED THE WRONG PROJECT\n"
+                f"   asked for: {want_slug}\n"
+                f"   API gave:  {got_slug}  ({meta.get('title')!r})\n"
+                f"   Refusing — this would have written {got_slug}'s audio into "
+                f"{key}'s directory, and nothing downstream could tell.",
+                file=sys.stderr,
+            )
+            return 1
+        if not got_slug:
+            print("  !! API returned no url_librivox; cannot verify the match",
+                  file=sys.stderr)
+
     sections = meta.get("sections") or []
     print(f"  {meta.get('title')} — {len(sections)} sections, {meta.get('totaltime')}")
     print(f"  text source: {meta.get('url_text_source')}")
@@ -326,9 +426,17 @@ def main() -> int:
     print(f"  wrote {out}/book.json")
 
     if args.key and args.key in ledger:
-        ledger[args.key]["fetched_to"] = str(out)
-        ledger[args.key]["status"] = "fetched; awaiting align"
-        LEDGER.write_text(json.dumps(ledger, indent=1, ensure_ascii=False), encoding="utf-8")
+        # A-H3. This used to write back the `ledger` dict read at the top of main(), which
+        # by now is however many minutes of downloads stale — so a concurrent book_router
+        # or a second fetch had its entries silently erased, and a bare write_text could
+        # leave a torn file. `update_json` re-reads under an exclusive lock and touches
+        # only this key.
+        def _mark(led):
+            entry = led.setdefault(args.key, {})
+            entry["fetched_to"] = str(out)
+            entry["status"] = "fetched; awaiting align"
+
+        synth_common.update_json(LEDGER, _mark)
         print(f"  ledger: {args.key} -> fetched; awaiting align")
     return 0
 

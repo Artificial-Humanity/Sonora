@@ -111,41 +111,39 @@ and the `matcha-tts-app` entry point. E-H2 and E-M2 are fixed with regression co
 
 ## 5 · Acquisition / alignment lane
 
+_Partly closed 2026-08-06 (`tests/test_acquisition_lane.py`, 23 cases). **A-H2** decodes
+Latin-1 PG editions properly and refuses text that already carries U+FFFD; **A-H3** ledger
+and staging-log writes go through `synth_common.update_json` — re-read under an flock,
+renamed into place — so a stale snapshot can no longer erase a concurrent run; **A-H4**
+compares the resolved LibriVox project against the requested URL and refuses a mismatch;
+**A-H5** the real-audio lane now splits with pysbd and gates on `is_complete_utterance`;
+**A-M6** provenance follows the actual source instead of claiming Standard Ebooks CC0 for
+Gutenberg text; **A-M7** the quote convention is detected per edition; **A-M12** a
+non-MP3 response is never written as audio, nor accepted on resume._
+
+_Worth knowing from the A-M7 fix: *Uneasy Money* quotes with **straight** single quotes
+(U+0027, the apostrophe character), not the curly singles the review recorded. Under the
+old hardcoded curly-double pattern the whole novel yielded **0** utterances; it now yields
+1,165. And on A-H5: `is_complete_utterance("Mr.")` is **True** by shape, so the gate
+provably cannot catch a bad split — fixing the splitter was the only fix, which is why
+pysbd is now a hard dependency of the align container._
+
 - [ ] **A-H1:** `chapter_slice` heading fast path fires on ToC pages, hard-wrapped prose
       ("…the last\nchapter…"), and single-file multi-chapter books (~10% coverage → every
       clip dropped, exit 0). No duration-split fallback when the coverage gate fails.
-- [ ] **A-H2:** Gutenberg fallback decodes `errors="replace"` — ISO-8859-1 editions bake
-      U+FFFD into transcripts ("caf�") with no detector.
-- [ ] **A-H3:** `books_ledger.json` read-modify-written across minutes-long network runs
-      by fetch + router (lost updates), bare `write_text` (torn file). Same class:
-      `staging_log.json` (truncation forgets staged ranges → double-staging).
-- [ ] **A-H4:** resolved LibriVox project URL never compared to the requested `--url` —
-      a fuzzy-title near-miss downloads the wrong book/reader undetectably. One-line fix.
-- [ ] **A-H5:** naive regex sentence splitter ships incomplete utterances ("Mr. / Smith
-      went home.") in violation of [[completeness-over-length]]; `book_ingest` has
-      `is_complete_utterance()` (pysbd), the real-audio lane uses neither.
 - [ ] **A-M2:** `refine()` counts non-blank *frames* as tokens — masked today (only
       first/last used), but span-FiLM would inherit garbage per-word spans. Use
       `torchaudio.functional.merge_tokens`.
-- [ ] **A-M6:** `book_ingest` hardcodes provenance "Standard Ebooks CC0" even for PG
-      sources — false license metadata in every derived clip's paper trail.
-- [ ] **A-M7/M8:** dialogue extraction matches only curly double quotes (straight/single
-      quoted editions → zero utterances, dialogue enters narration windows); PG epub
-      boilerplate parses as prose and becomes render text.
-      **CONFIRMED LIVE 2026-08-04, not latent:** the *Uneasy Money* edition (`pg:6684`)
-      quotes with single quotes — 818 against 26 doubles — so a double-quote test reads
-      1,355 of its 1,366 clips as narration when the true figure is 1,201. It was caught
-      only because the miscount would have justified a delivery-homogeneous mark on a
-      novel. Anything deciding a lane, a window or a mark from quote characters is
-      unsafe until this is fixed.
+- [ ] **A-M8:** PG epub boilerplate parses as prose and becomes render text. (The quote
+      half of A-M7/M8 is done; this half is not.)
 - [ ] **A-M9/M10:** the `lv:`/`pg:` ledger-key split — SKIP detection checks only `pg:`,
       re-routes and duplicates `lv:` entries, regresses status; fetch updates status only
       under exact `--key`; two on-disk naming schemes by invocation style.
 - [ ] **A-M11:** no checkpointing across the director pass — a `load_skill` error at
       chunk 90 discards 90 Gemma calls. Write the bank incrementally.
-- [ ] **A-M1/M12/M13:** one zero playtime silently reverts ALL sections to even split
-      (and `hh:mm:ss` playtimes make windows that don't tile); resume enshrines HTML
-      error pages saved as `.mp3` (magic-byte check); no retries in a bulk-transfer lane.
+- [ ] **A-M1/M13:** one zero playtime silently reverts ALL sections to even split
+      (and `hh:mm:ss` playtimes make windows that don't tile); no retries in a bulk-transfer
+      lane. *(The `.mp3`-that-is-really-HTML half, A-M12, landed.)*
 
 ## 6 · Synthesis campaign tooling
 

@@ -43,25 +43,13 @@ MIN_CHARS = 56           # ~4 s — owner floor 2026-07-25
 TARGET_MAX_CHARS = 240   # ~17 s — book_ingest.WINDOW_MAX_CHARS, engine-reliable ceiling
 HARD_MAX_CHARS = 400     # ~29 s — past Zonos's 30 s cap and Chatterbox's 300-char warning
 
-_TERMINALS = ".?!…"
-_CLOSERS = "”\"')]»’ "
-_OPENERS = "“\"'([«‘ "
-
-
-def is_complete_utterance(text: str) -> bool:
-    """Whole-utterance test. Kept in sync with book_ingest.is_complete_utterance.
-
-    Duplicated deliberately: this script must be runnable against a bank without
-    importing the ingest module and its epub/pysbd dependency chain.
-    """
-    t = (text or "").strip()
-    if not t:
-        return False
-    core = t.rstrip(_CLOSERS).rstrip()
-    if not core or core[-1] not in _TERMINALS:
-        return False
-    head = t.lstrip(_OPENERS).lstrip()
-    return bool(head) and (head[0].isupper() or head[0].isdigit())
+# A-H5: one definition, in synth_common. This module kept its own copy with a "kept in
+# sync with book_ingest" comment; they had drifted (this one accepted guillemets and
+# trailing spaces, book_ingest's did not). The reason given for duplicating was avoiding
+# book_ingest's epub/pysbd import chain — synth_common has no such chain, so the copy is
+# gone rather than re-synced.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from synth_common import is_complete_utterance  # noqa: E402
 
 
 def check(text: str, chunk_type: str = "") -> list[tuple[str, str, str]]:

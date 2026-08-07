@@ -81,7 +81,11 @@ import json
 import os
 import pathlib
 import shutil
+import sys
 import tempfile
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import synth_common  # noqa: E402
 
 DATE = datetime.date.today().isoformat()   # was hard-coded "2026-08-01"
 
@@ -272,11 +276,18 @@ def main() -> int:
         if not args.apply:
             print("\nDRY RUN — pass --apply to write the ledger")
             return 0
-        for title, rec in by_title.items():
-            k = ledger_key_for(rec, led)
-            led[k]["delivery_homogeneous"] = args.mark_delivery
-            led[k]["delivery_marked"] = DATE
-        LEDGER.write_text(json.dumps(led, indent=1, ensure_ascii=False), encoding="utf-8")
+        # A-H3/C-M5: re-read under a lock and touch only these keys, rather than writing
+        # back the snapshot read at startup. `ledger_key_for` needs the pre-read `led` to
+        # resolve its key, so resolve first, then apply to the current contents.
+        marks = {ledger_key_for(rec, led): args.mark_delivery for rec in by_title.values()}
+
+        def _mark(current):
+            for k, value in marks.items():
+                entry = current.setdefault(k, {})
+                entry["delivery_homogeneous"] = value
+                entry["delivery_marked"] = DATE
+
+        synth_common.update_json(LEDGER, _mark)
         print(f"\nmarked {len(by_title)} title(s) in {LEDGER}")
         return 0
 
@@ -449,7 +460,8 @@ def main() -> int:
         "tags": None if args.seed_ear else {i: t for i, t in tags_of.items() if t},
         "ids": [r["id"] for r in take],
     })
-    log_path.write_text(json.dumps(log, indent=1, ensure_ascii=False), encoding="utf-8")
+    # A-H3: staging_log truncation forgets staged ranges, which double-stages clips.
+    synth_common.write_json_atomic(log_path, log)
     left = len(pool) - len(staged_ids) - len(take)
     if args.seed_ear:
         print(f"\nseeded {added} clips into ratings.csv as unaudited; {left} still pooled")

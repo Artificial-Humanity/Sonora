@@ -54,7 +54,11 @@ import sys
 import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from synth_common import write_wav_atomic  # noqa: E402
+from synth_common import (  # noqa: E402
+    is_complete_utterance,
+    split_sentences as _shared_split_sentences,
+    write_wav_atomic,
+)
 
 SAMPLE_RATE = 16000          # the aligner's rate; clips are written at OUT_SR
 OUT_SR = 24000               # the corpus interchange rate (model-decisions.md)
@@ -69,7 +73,8 @@ ANCHOR_WINDOW_S = 30.0       # max audio per CTC call
 
 _FA_CACHE = None             # (model, labels, device) — see refine()
 
-SENT_END = re.compile(r'(?<=[.!?])["”’\')\]]*\s')
+# SENT_END is retired -- see split_sentences (A-H5). Kept out of the module rather than
+# left lying around: a naive splitter sitting next to the real one is an invitation.
 
 
 # ------------------------------------------------------------------ text
@@ -79,14 +84,17 @@ def norm_word(w: str) -> str:
 
 
 def split_sentences(text: str) -> list[str]:
-    text = re.sub(r"\s+", " ", text).strip()
-    out, start = [], 0
-    for m in SENT_END.finditer(text):
-        out.append(text[start:m.end()].strip())
-        start = m.end()
-    if start < len(text):
-        out.append(text[start:].strip())
-    return [s for s in out if s]
+    """A-H5: pysbd, shared with book_ingest via synth_common.
+
+    This was `SENT_END`, a regex splitting on any [.!?] followed by whitespace. It has no
+    idea what an abbreviation is, so "Mr. Smith went home." became TWO clips: "Mr." and
+    "Smith went home." — a fragment, and a sentence starting mid-utterance. Both were
+    then aligned, cut and shipped, and the v4 rating vocabulary (vocals and prosody only)
+    cannot see the defect. The book lane has used pysbd since it was written; the
+    real-audio lane, which produces the clips we most want to be whole, used neither that
+    nor is_complete_utterance.
+    """
+    return _shared_split_sentences(re.sub(r"\s+", " ", text).strip())
 
 
 def chapter_slice(text: str, index: int, n_sections: int,
@@ -365,7 +373,7 @@ def main() -> int:
             continue
     if durations and not all(durations.values()):
         durations = {}                     # a zero anywhere makes the cumsum a lie
-    n_written = 0
+    n_written = n_incomplete = 0
 
     for mp3 in present:
         idx = int(mp3.stem)
@@ -481,6 +489,13 @@ def main() -> int:
             secs = t1 - t0
             if secs < MIN_SECONDS or secs > MAX_SECONDS or score < args.min_score:
                 continue
+            # A-H5: completeness, the gate the book lane has and this one did not.
+            # Cheap and before the audio work on purpose. With pysbd above this should
+            # rarely fire, which is the point — it is the check that the splitter is
+            # doing its job, not a substitute for it.
+            if not is_complete_utterance(sent):
+                n_incomplete += 1
+                continue
             # Speech floor. Measured with EXACTLY the instrument qc_gate uses
             # (librosa.effects.split at top_db=35) rather than ASR word spans: word
             # spans absorb the silence around each word and over-estimate, which let a
@@ -524,6 +539,10 @@ def main() -> int:
                 return 0
     man.close()
     dedup_manifest(out / "audio" / "librivox_manifest.jsonl")
+    if n_incomplete:
+        # Reported, not silent: with pysbd upstream this should be near zero, so a
+        # non-trivial count means the splitter is struggling with this edition.
+        print(f"\n   {n_incomplete} sentence(s) rejected as incomplete utterances")
     if n_written == 0:
         # Exiting 0 here made a book whose every section was gate-skipped
         # indistinguishable from a successful run without reading the log.
