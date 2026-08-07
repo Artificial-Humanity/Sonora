@@ -17,6 +17,123 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ---
 
+## 2026-08-07
+
+### Added — the delivery channel (§1)
+
+- **`72786ac` — contract v2's 4th conditioning channel ships. `vat_dim` 3 → 8.**
+  Delivery had been specified since 2026-07-30 and delivery-v1 closed at 1,189 labelled
+  keeps, with no model code implementing it. **The width is 8, not the 4 todo § 1
+  proposed** (owner call): a single ordered channel asserts the five lanes lie on one
+  continuum, and `seed_delivery.py` records that they do not — Dialogue vs Neutral is a
+  property of the TEXT, Newscaster vs Documentary a property of the RENDER. A single
+  channel also cannot carry `unknown`, which the contract pins as the zero vector: on one
+  channel zero is the MIDDLE of the range, so the five lanes would sit asymmetrically
+  around a hole and "no label" would be numerically adjacent to whichever lanes flank it.
+  One-hot makes `unknown` all five channels at zero — the absence of a value rather than
+  a value. Cost: ~1k parameters on a 1×1 conv.
+  `matcha/delivery.py` is the only definition; the corpus derivation, the CLI, the
+  Vocalizer and the export converter all read it. `--delivery LANE` on the CLI and a
+  dropdown (not a slider — interpolating between lanes is meaningless) on the Vocalizer,
+  per the standing rule that a capability ships with its vetting surface. The Vocalizer
+  sizes the vector to the CHECKPOINT so a pre-v2 one still renders, and says
+  "delivery IGNORED" rather than letting a dial silently no-op. An unrecognised lane is
+  refused everywhere rather than read as unknown — it would otherwise be a silently
+  unconditioned clip that still trains and is counted as unlabelled.
+  **A second vocabulary turned up while guarding this**: `stage_pool.LANES` held the same
+  five lanes in a DIFFERENT ORDER, which is harmless for reports and not harmless at all
+  once position is the wire format. `NARRATION_LANES` was duplicated between `book_ingest`
+  and `ref_select`, which import each other, so it now lives with the vocabulary.
+  The EXPORT lane is deliberately not migrated — `convert_vat.py` still refuses, and now
+  names why (F-H2, § 2). Verified in the pinned container: **22/22 seam checks** (13
+  existing + 9 new) plus an end-to-end filelist round-trip.
+
+### Fixed — lanes, environments, acquisition, campaigns, QC
+
+- **`87c65f8` — `matcha/app.py` deleted, and the two espeak leaks the item did not know
+  about.** It phonemized through `english_cleaners2` unconditionally. The item claimed it
+  was the LAST such place; auditing that claim found two more in the ONNX "Plan B" lane
+  the README still documents. `matcha/onnx/infer.py` had no lane switch at all (an ONNX
+  graph does not record its phoneme vocabulary, so `--lane` is now required with no
+  default) and carried E-M2 in the lane the E-M2 fix never reached — hardcoded 22050, so
+  24 kHz output played back ~9% slow. `matcha/onnx/export.py` builds no VAT input node,
+  so exporting a conditioned checkpoint SUCCEEDED and yielded a permanently neutral graph:
+  F-H1's shape again, an export whose logs say Sonora and whose graph is not. It refuses
+  now, keyed on `use_vat` rather than `vat_dim` (which defaults to 3 on unconditioned
+  checkpoints too).
+- **`c48922b` — D-M2: the three container lanes pinned by digest, and what ran recorded.**
+  All three ran `rocm/pytorch:latest` with unversioned `pip install`, so the environment
+  that rendered a campaign — or scored the EIV heads the corpus labels derive from — was
+  not merely unpinned but unrecoverable. Measured by dry-run resolution in the pinned
+  image: an unpinned `pip install transformers` resolves to **5.14.1** today against the
+  4.x the corpus was built on, and qwen was the only engine that pinned it. Also ruled
+  out, because it is the case that matters most: no dependency set pulls a torch or nvidia
+  wheel, so the image's ROCm build survives. One pin table (`scripts/container_env.sh`),
+  installs migrated to `uv` per AGENTS § 3, and every run now freezes itself into
+  `<campaign>/_env/<lane>.txt`. Verified live: a real install + capture produced a
+  65-package freeze carrying `transformers==4.57.3`, owned 105:109.
+- **`e5f27a7` — A-M2 was the tail truncation, not a latent span bug.** `forced_align`
+  returns one entry per FRAME, so a token occupies a RUN of frames; `refine()` counted
+  non-blank FRAMES against the number of CHARACTERS per word. Measured on a real alignment
+  in the pinned container: the sentence ended at frame 6 where it truly ends at 13 —
+  **54% of its duration dropped** — and word 2's span did not overlap its true span at
+  all, so the middle spans pointed at the word before. The caller already carried a
+  comment blaming CTC for exactly this. `torchaudio.functional.merge_tokens` is the fix.
+- **`51231dc` — A-M8: Gutenberg boilerplate in the EPUB lane.** The plaintext lane cut
+  PG's wrapper; the epub lane's only filter was a filename SKIP list in Standard Ebooks'
+  vocabulary. PG names its documents nothing of the sort and often puts the whole book
+  plus wrapper in ONE document, so ~4,000 words of licence prose parsed as prose, split
+  into sentences, got directed and rendered as the novel. It also made a licence claim
+  false: `text_provenance` stamps every PG bank "PG header/footer stripped", which no code
+  performed — the A-M6 family. Residue that survives is REFUSED, not filtered.
+- **`b0825c6` — A-M9/A-M10: one ledger identity per book.** Verified against the live
+  ledger (56 entries: 27 `lv:`, 15 `se:`, 13 `pg:`). The SKIP check built a `pg:` key or
+  None, so a LibriVox book with no etext id was compared against nothing and every
+  re-route reset its status — regressing books already fetched and aligned, silently. The
+  router never produced the `se:` scheme at all, which is why five Standard Ebooks titles
+  sit under `lv:` keys today. `librivox_fetch` wrote `pg_6684` or
+  `lv_uneasy-money-…` for one book depending on invocation style, and updated `status`
+  only under an exact `--key`, so a `--url` fetch left the ledger saying "pending" forever.
+- **`42cbf33` — A-M1/A-M13.** `float(playtime or 0)` inside `except: continue` dropped
+  colon-formatted sections from the duration map, so the cumulative fraction was computed
+  over a subset and the windows stopped tiling; and one zero playtime threw away every
+  duration in the book, reverting to the even split that located **0%** of the heard words
+  in Dickens's *Speeches*. Now all-or-nothing with residual imputation, and loud. Plus
+  retries in a lane pulling sixty-odd files from a rate-limited archive.org.
+- **`421d919` — A-M11: the director pass is checkpointed.** Results reached disk only
+  after the last chunk, so a fault at chunk 90 discarded 90 calls to a 31B model. Keyed on
+  CONTENT, not position — an index-keyed checkpoint would hand chunk 40's direction to
+  chunk 37 after a resume with different arguments, which is worse than none because the
+  bank still looks complete.
+- **`09dac4d`, `98734f9` — § 6.** **B-M9**: `BRIGHT_REF_POLICY` was stamped into every
+  chatterbox manifest and read by nothing, and the value it recorded did not describe what
+  the code did (a third, undocumented hybrid). **B-M7**: `make_bulk_bank.py` bypassed
+  `build_direction()`, which AGENTS.md forbids in as many words, and paid three times —
+  Dia lines lost the trailing `[S1]` end-of-audio guard, all 87 qwen lines wrote the voice
+  design to a `design` key `synth_qwen.py` never reads (verbatim the 2026-07-25 owner
+  finding that `build_direction` exists to prevent), and ids omitted the engine. The
+  bypass explained itself: the SSOT had no slot for `quality` or Dia inline tags, both of
+  which the renderers genuinely take. Plus B-M6, B-L2/L3/L4/L6/L7/L8/L10.
+- **`cc4f1a5` — C-M6/C-M7: one `ratings.csv` transaction.** Six writers, four private
+  mtime flavours. `pick_audit_subset`'s five-attempt retry loop is gone on purpose: with
+  an flock serialising our own scripts the only writer left to race is a human in a
+  browser. **C-M7** came out of the same file — the cross-title hint was gated on the
+  truthiness of the title entry, but a title whose ear pass disagreed with ITSELF still
+  produces one, so a guess was written into the one title we have evidence is inconsistent
+  and then marked machine-written so it looked settled.
+- **`9f53095` — § 7.** **C-L6**: `round(rest * 0.03)` is zero below 17 clips, so the
+  trusted tier's tail sample — the entire mechanism for noticing a trusted engine has
+  begun drifting — silently did not exist on small batches. **C-M1**: deferral only
+  flipped one way, so a clip QC-flagged by a LATER pass stayed deferred forever, breaking
+  the tool's one non-negotiable rule. **C-M9**: the cohort glob swept `_dropped/` and
+  `_superseded/` into statistics scored as a robust z against the cohort's own median, and
+  the manifest glob was non-recursive while the wav glob was — so a standard campaign
+  layout found no manifests and collapsed into one `"?"` cohort. **C-L5**: no publication
+  policy for `librivox`, which would hard-error the day the first staged real-audio clip
+  reached a metadata.jsonl.
+
+---
+
 ## 2026-08-06
 
 ### Fixed — export gates (§2) and campaign tooling (§6)
