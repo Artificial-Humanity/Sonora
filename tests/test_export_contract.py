@@ -299,3 +299,114 @@ def test_the_converter_gained_the_same_scale_sensitive_gates():
     assert "G3b e2e gain parity" in SRC
     assert "G3c e2e sample-wise error" in SRC
     assert "def gain_error_db(" in SRC and "def nrmse(" in SRC
+
+
+# --- F-M2: rename_tflite_tensors -------------------------------------------------------
+
+RENAMER = REPO / "scripts" / "rename_tflite_tensors.py"
+
+
+@pytest.fixture(scope="module")
+def renamer():
+    """Pure planning logic, split out so it is testable without flatbuffers or the
+    onnx2tf-generated schema module — neither of which is on the host venv."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_renamer", RENAMER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+FLOAT32, INT32, INT64 = 0, 2, 4
+
+
+def _t(index, name, shape, typ):
+    return {"index": index, "name": name, "shape": shape, "type": typ}
+
+
+def _healthy():
+    return [
+        _t(0, "serving_default_x:0", [1, 50], INT64),
+        _t(1, "serving_default_x_lengths:0", [1], INT64),
+        _t(2, "serving_default_scales:0", [2], FLOAT32),
+        _t(8, "StatefulPartitionedCall:0", [1, 120000], FLOAT32),
+        _t(9, "StatefulPartitionedCall:1", [1], INT32),
+    ]
+
+
+def test_a_healthy_graph_renames_cleanly(renamer):
+    plan, problems = renamer.plan_renames(_healthy(), {0, 1, 2, 8, 9},
+                                          renamer.DEFAULT_RENAMES)
+    assert problems == []
+    assert plan == {0: "x", 1: "x_lengths", 2: "scales", 8: "wav", 9: "wav_lengths"}
+
+
+def test_swapped_outputs_are_refused_not_renamed(renamer):
+    """THE emission-order bug. `StatefulPartitionedCall:0 -> wav` assumed TF emits the
+    waveform first; nothing guarantees it. Swap them and the old code renamed the LENGTHS
+    tensor `wav` — and Prosodia matches by name, so it would read a one-element int tensor
+    as audio. Checked against shape and dtype now: a waveform is a large float tensor, a
+    length is a tiny integer one, and nothing else in the graph is close."""
+    swapped = _healthy()[:3] + [
+        _t(8, "StatefulPartitionedCall:0", [1], INT32),
+        _t(9, "StatefulPartitionedCall:1", [1, 120000], FLOAT32),
+    ]
+    plan, problems = renamer.plan_renames(swapped, {0, 1, 2, 8, 9},
+                                          renamer.DEFAULT_RENAMES)
+    assert "wav" not in plan.values() and "wav_lengths" not in plan.values()
+    assert len(problems) == 2
+    assert any("EMISSION-ORDER" in p for p in problems)
+
+
+def test_renaming_nothing_is_a_failure_not_a_success(renamer):
+    """`renamed 0 tensors` exited 0, so a graph this table does not recognise — a TF
+    upgrade is enough — was copied through untouched and called a success. The failure
+    then surfaced in Prosodia as a missing input, several steps from the cause."""
+    plan, problems = renamer.plan_renames(
+        [_t(0, "args_0", [1, 50], INT64)], {0}, renamer.DEFAULT_RENAMES)
+    assert plan == {} and problems == []
+    src = RENAMER.read_text(encoding="utf-8")
+    assert "if not renamed:" in src
+    assert "renamed 0 tensors" in src and "raise SystemExit(" in src
+
+
+def test_an_intermediate_tensor_is_not_renamed(renamer):
+    """Only graph I/O carries the contract; renaming an intermediate that happens to share
+    a name is at best noise and at worst a second tensor answering to `x`."""
+    plan, problems = renamer.plan_renames(
+        [_t(5, "serving_default_x:0", [1, 50], INT64)], set(), renamer.DEFAULT_RENAMES)
+    assert plan == {}
+    assert "not a graph input or output" in problems[0]
+
+
+def test_a_waveform_too_small_to_be_one_is_refused(renamer):
+    """The dtype check alone would pass a float tensor of two elements as `wav`."""
+    tiny = _healthy()[:3] + [_t(8, "StatefulPartitionedCall:0", [1, 2], FLOAT32)]
+    _plan, problems = renamer.plan_renames(tiny, {0, 1, 2, 8}, renamer.DEFAULT_RENAMES)
+    assert any("at least" in p for p in problems)
+
+
+def test_two_tensors_cannot_claim_the_same_contract_name(renamer):
+    dup = _healthy() + [_t(10, "serving_default_x:0", [1, 50], INT64)]
+    _plan, problems = renamer.plan_renames(dup, {0, 1, 2, 8, 9, 10},
+                                           renamer.DEFAULT_RENAMES)
+    assert any("claimed twice" in p for p in problems)
+
+
+def test_the_conditioned_inputs_are_in_the_table(renamer):
+    """The table predated contract v2, so a conditioned export's `spks` and `vat` kept
+    their mangled names and Prosodia could not bind them."""
+    assert renamer.DEFAULT_RENAMES["serving_default_spks:0"] == "spks"
+    assert renamer.DEFAULT_RENAMES["serving_default_vat:0"] == "vat"
+
+
+def test_an_absent_optional_rename_needs_an_explicit_flag(renamer):
+    """An unconditioned export legitimately has no spks/vat. That is `--allow-missing`,
+    not a silent pass."""
+    plan, _ = renamer.plan_renames(_healthy(), {0, 1, 2, 8, 9}, renamer.DEFAULT_RENAMES)
+    present = {t["name"] for t in _healthy()}
+    missing, _absent = renamer.check_complete(plan, renamer.DEFAULT_RENAMES, present)
+    assert missing == [], "everything present was renamed"
+    src = RENAMER.read_text(encoding="utf-8")
+    assert "--allow-missing" in src
