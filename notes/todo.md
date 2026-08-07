@@ -21,6 +21,13 @@ blamed on CTC, measured at **54% of a sentence dropped**; an unpinned render lan
 `make_bulk_bank.py`'s bypass of `build_direction()` had been sending all 87 qwen lines to
 the model with the voice design stripped._
 
+_**2026-08-07, third pass** (`33d2a4f`): § 3's **D-M4** shipped its resolver and its
+measurement and is now an owner decision, not engineering — and the measurement corrected
+the finding's own premise, which had the damage spread across 3.3% of transcripts when it
+is concentrated in a handful of words (`live` alone is 87 of 281). Net **11 open items ->
+12**: measuring it surfaced a live one, that the device G2P still carries D-C1, filed in
+§ 1._
+
 _Earlier pruning notes for the 2026-08-06 round are in git history._
 
 This file is **residue, not the plan.** What to do next, and in what order, is
@@ -51,6 +58,23 @@ distinguishable, since five inputs on one summing junction pass the per-channel 
 times._
 
 
+- [ ] **The device front end is not the training front end — found 2026-08-07 while
+      measuring D-M4, and it is live now, not a consequence of turning homographs on.**
+      `kotlin_replica.phonemize` (line 258) is `DICT.get(token) or phon_word(token)`: a
+      flat lookup with no contraction table. The host has had one since 2026-08-02 —
+      that was **D-C1**, the finding that poisoned v1–v3 — and the replica never got it.
+      Verified against the shipped assets rather than inferred: **0 of 274,927 dictionary
+      keys contain an apostrophe, and `'` is absent from the neural charset**
+      (`g2p_meta.json`), so on the device every contraction still takes the exact path
+      D-C1 named — `don't` → `dont` → `dˈɔnt`, `we'll` → `wˈɛl`, identical to the word
+      *well*. The model is trained on `dˈoʊnt` and asked to render `dˈɔnt`.
+      Measured at 0.37% of v3 tokens and **concentrated in dialogue**, which is 64% of the
+      corpus. Two things to settle: whether the shipped Kotlin app has a contraction table
+      the replica lacks (not answerable from this repo — if it does, the replica is
+      validating a front end nobody runs), and either way that G6-style parity between the
+      host and device G2P belongs in the export gates, since neither F-H2's control block
+      nor `kotlin_replica` compares a phoneme string today.
+
 - [ ] **Score it on the holdout, not on `loss/val_epoch`.** Standing rule now that
       Phase 0a has landed, listed here because it is the step most easily skipped:
       `scripts/score_holdout.sh` against `data/libritts_r_holdout_devclean`, ~100 min for
@@ -67,6 +91,11 @@ times._
       channels contribute nothing until they are trained — but the trunk's input conv
       changes shape, so the warm start needs the same treatment `make_warmstart.py`
       already applies to a widened tensor. Not yet done.
+      **Three findings are waiting on this one pass, and each is a corpus version bump on
+      its own**: the width itself, **D-L2**'s corrected z guard (§ 3 — the code is fixed,
+      the shipped labels are not), and **D-M4**'s homograph resolution (§ 3 — off by
+      default, 281 tokens would move). Doing them separately costs three bumps and three
+      lineages for one re-derivation's worth of work. Decide all three before running it.
 
 ## 2 · QC / audit / staging
 
@@ -140,13 +169,34 @@ from the real LibriTTS `speaker`, verified against the wav paths._
       Separately: 17 speakers have <10 clips and 5 have ≤2, whose z is fixed by arithmetic
       (±1 exactly, landing on the V rail at ±0.500); 7.25% of train V sits at |V| ≥ 0.99.
       `derive_vat_corpus` reports both now rather than repairing them.
-- [ ] **D-M4:** homograph flattening — one pronunciation per key (`read`, `wind`, `live`,
-      `dove`, `bass`); past-tense "read" trains against the wrong vowel. **Measured
-      2026-08-06: 3.3% of LibriTTS transcripts contain a known homograph** (most common:
-      present, close, live, wind, read), so roughly half of those carry a wrong vowel on one
-      word. A regression vs the espeak lane, which disambiguated by POS. Needs context-aware
-      G2P — deliberately not attempted, since a partial heuristic would silently change
-      pronunciations across the whole corpus.
+- [ ] **D-M4 — the resolver shipped (`33d2a4f`) and is OFF; turning it on is your call.**
+      Context-aware G2P exists now (`matcha/text/homographs.py`), with
+      `op_g2p(homographs=False)` as the default so nothing has changed yet.
+      **The filed estimate was wrong in shape, not just in size.** "3.3% of transcripts
+      contain a homograph, so roughly half carry a wrong vowel" implied the damage was
+      spread; measured over v3c it is **concentrated**. For `house` (438 occurrences),
+      `does` (227), `number` (116), `wind` (108), `mouth` (81) and `perfect` (67) the
+      dictionary's one pronunciation is right essentially every time — `wind` is not a
+      defect in this corpus at all. **`live` alone is 87 of it**, because the dictionary
+      ships `lˈaɪv`, the *adjective*, and narrative prose is almost all verb. Then `use`
+      37, `read` 19, `content` 16, `suspect` 15, `lives` 9.
+      **281 tokens in 277 rows would change — 0.88% of the corpus.** 85% of homograph
+      tokens abstain. Precision was established by reading **all 288 flips of the first
+      pass by hand**: 6 were wrong, each became a guard, and the re-audit is 281 flips at
+      0 known errors. No IPA is invented anywhere — every alternate is the dictionary's
+      own inflected form minus its suffix, or a rime-mate it already holds.
+      The decision is the same one D-L2 poses, and **it is the same re-derivation**: this
+      is a corpus change, so it wants to ride the § 1 pass rather than force a third bump.
+      Run `scripts/measure_homographs.py --corpus <dir> --apply-sample 20` to hear what
+      moves before deciding.
+      Out of reach and recorded as data in `NOT_RESOLVABLE`, not as an absence: `bow`
+      `row` `bass` `sow` `lead` (two senses, one part of speech — no POS rule can
+      separate "took the lead" from the metal); `polish` and `august` (carried by CASE,
+      and `cleaners.lowercase()` runs before the G2P sees the token — the evidence is
+      destroyed upstream, which is a *cleaner* problem, not a G2P one); `excuse` (the
+      dictionary gives /s/ for every form, so the verb's /z/ would have to be invented).
+      Past-simple `read` and finite `wound` deliberately never fire: both are
+      indistinguishable from the present without tense agreement across the clause.
 
 ## 4 · Conditioning axes — one approved, one OPEN
 

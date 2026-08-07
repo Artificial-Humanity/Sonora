@@ -19,6 +19,46 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-07
 
+### Added — G2P / label derivation (§3)
+
+- **`33d2a4f` — D-M4: the dictionary has one pronunciation per key, and the other sense
+  trains on it.** `matcha/text/homographs.py` resolves a heterophonic homograph from its
+  left context; `op_g2p` takes `homographs=False` by default, so nothing changes until a
+  caller asks. Filed as "3.3% of transcripts contain a known homograph, so roughly half
+  of those carry a wrong vowel" — the half is wrong and so is the shape. Measured over
+  v3c (31,445 rows, 556,454 tokens), the defect is **skewed, not spread**: for `house`
+  (438 occurrences), `does` (227), `number` (116), `wind` (108), `mouth` (81) and
+  `perfect` (67) the single shipped pronunciation is right essentially every time, while
+  `live` alone accounts for 87 wrong tokens because the dictionary ships **lˈaɪv, the
+  adjective**, and narrative prose is almost entirely the verb. Then `use` 37, `read` 19,
+  `content` 16, `suspect` 15, `lives` 9. **281 tokens in 277 rows — 0.88% of the corpus —
+  would change; 85% of homograph tokens abstain.**
+  No IPA is invented: every alternate is the dictionary's own inflected form minus its
+  suffix (`conducted kəndˈʌktᵻd` → `kəndˈʌkt`, exactly the verb the noun entry
+  `kˈɑːndʌkt` is missing) or a rime-mate that is in the dictionary (`red ɹˈɛd`,
+  `unwound ʌnwˈaʊnd`), and each entry carries its source.
+  Nothing fires without positive evidence for a sense the dictionary does not already
+  give, so an unrecognised context is a no-op. **All 288 flips of the first pass were read
+  by hand; 6 were wrong, and each produced a guard** — a reduplication (`from mouth to
+  mouth`, where the `to` is a preposition), a small-clause predicative (`pronounced it
+  perfect`), a prepositional object (`growing on it close to the fence`), and a
+  hyphen-split compound (`dove-like`, which reaches the tokenizer as two words). `wound`
+  then lost its finite readings altogether: `to wound` is the transitive verb meaning
+  injure, which IS `wˈuːnd`, and *"I wound and I heal"* is its present — four correct
+  flips given up to avoid two wrong ones. It joins past-simple `read` as perfect/passive
+  only. Re-audited: **281 flips, 0 known errors.**
+  Eleven words are known and out of reach, recorded in `NOT_RESOLVABLE` as data rather
+  than left as an absence: `bow` `row` `bass` `sow` `lead` have two senses sharing a part
+  of speech; `polish` and `august` are carried by CASE and `cleaners.lowercase()` runs
+  first; `excuse` would need its /z/ invented, since the dictionary gives /s/ for every
+  form including `excused ɛkskjˈuːst`.
+  `scripts/measure_homographs.py` is the dry run — the decision is always computed and
+  counted, only its application is gated — and `--apply-sample` renders affected lines
+  both ways. 43 tests in `tests/test_homograph_disambiguation.py`, including one per
+  guard naming the sentence that produced it and one asserting every table default still
+  matches the shipped dictionary, so a dictionary revision cannot quietly change what a
+  flip means. Host suite 354 → 397.
+
 ### Fixed — QC / audit / staging (§2)
 
 - **`1ebd14a` — C-M5 + C-M8: state that could be lost, and a rule with two answers.**

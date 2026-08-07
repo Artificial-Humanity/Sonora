@@ -48,6 +48,16 @@ _Last updated: 2026-08-07._
 > Pre-flight for the run itself is unchanged and non-negotiable: stop **all** inference
 > engines first ([spin-down rule](training-operations.md)), and run
 > `scripts/test_vat_dim_seams.py` (22 checks).
+>
+> **The next derivation is one pass carrying three decisions, not three bumps.** v3c is
+> 3-wide and `vat_dim` is 8, so a re-derivation is already forced before the next run —
+> and two label defects are waiting on the same pass, each of which would otherwise be a
+> corpus version of its own: **D-L2**'s z-score guard (fixed in code 2026-08-06, but the
+> shipped `_v2` labels and therefore v3c were built with the broken one) and **D-M4**'s
+> homograph resolution (shipped 2026-08-07, `off` by default, 281 tokens in 277 rows
+> would move — `live` alone is 87 of them, because the dictionary ships the adjective
+> `lˈaɪv`). Both are owner calls. Detail and the measurement commands: [todo.md
+> §1](todo.md).
 
 ## The delivery channel — SHIPPED on the training side (2026-08-07)
 
