@@ -83,6 +83,9 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import synth_common  # noqa: E402
+# C-M8: the "is this (reader, title) ear-confirmed?" predicate, imported rather than
+# re-expressed. reader_profile owns it because reader_profile writes the file it reads.
+import reader_profile  # noqa: E402
 
 DATE = datetime.date.today().isoformat()   # was hard-coded "2026-08-01"
 
@@ -98,7 +101,7 @@ DATASETS = pathlib.Path("/data/model-training/datasets")
 RATINGS = DATASETS / "sonora-expressive-registers/ratings.csv"
 PROFILES = DATASETS / "reader_profiles.json"
 LEDGER = DATASETS / "books_ledger.json"
-ATTRS = ("gender", "age", "accent")
+ATTRS = reader_profile.ATTRS          # one tuple, not a second copy of it (C-M8)
 # Written into the note column of every machine-folded row. It is the ONLY
 # marker that separates a folded keep from an ear-scored one, so consumers that
 # count ear evidence match on it (see reader_profile.learn, gate_calibration,
@@ -197,14 +200,38 @@ def qc_flagged(campaign_dir: pathlib.Path) -> set[str]:
     return out
 
 
-def confirmed_tags(rec: dict) -> dict:
-    """Ear-confirmed attributes for this clip's (reader, title), or {}."""
-    if not PROFILES.is_file():
+def confirmed_tags(rec: dict, prof: dict | None = None) -> dict:
+    """Ear-confirmed attributes for this clip's (reader, title) — {} unless ALL of them.
+
+    C-M8: this returned whatever the ear happened to have settled, and both callers then
+    tested it for truthiness. One attribute out of three was therefore enough to fold an
+    entire title into the corpus unheard, while `pick_audit_subset` — which requires all
+    three — went on force-queuing a clip from the same pair. Partial is now empty: the
+    predicate lives in reader_profile, next to the code that writes what it reads.
+
+    `prof` is the profiles dict, read once by the caller. Passing it is not only cheaper
+    than a read per clip — it means a whole staging run answers from ONE snapshot, so the
+    run cannot fold the first half of a title under one profile and the second half under
+    another if `--learn` commits mid-run.
+    """
+    prof = reader_profile.load_profiles(PROFILES) if prof is None else prof
+    reader, title = rec.get("reader") or "", rec.get("book") or ""
+    if not reader_profile.is_confirmed_pair(prof, reader, title):
         return {}
-    prof = json.loads(PROFILES.read_text(encoding="utf-8"))
-    entry = prof.get(rec.get("reader") or "") or {}
-    t = (entry.get("titles") or {}).get(rec.get("book") or "") or {}
-    return {a: t[a] for a in ATTRS if t.get(a)}
+    return reader_profile.confirmed_attrs(prof, reader, title)
+
+
+def unconfirmed_attrs(rec: dict, prof: dict) -> list[str]:
+    """Which attributes this clip's (reader, title) still owes the ear.
+
+    Reported rather than merely counted, because "partially confirmed" is a state the
+    owner will otherwise read as a bug in the tool. It has two innocent causes — an
+    audition that left a cell blank, and `learn()` withholding an attribute whose votes
+    disagreed within the title ({attr}_CONFLICT) — and only the second is interesting.
+    """
+    have = reader_profile.confirmed_attrs(
+        prof, rec.get("reader") or "", rec.get("book") or "")
+    return [a for a in ATTRS if a not in have]
 
 
 def main() -> int:
@@ -238,6 +265,10 @@ def main() -> int:
 
     pool = load_pool(cdir)
     flagged = qc_flagged(cdir)
+    # ONE snapshot of the profiles for the whole run. It was re-read per clip, which is
+    # both wasteful and a way for a `--learn` committed mid-run to split a title across
+    # two different answers to "is this pair confirmed".
+    prof_cache = reader_profile.load_profiles(PROFILES)
     unstaged = [r for r in pool if r["id"] not in staged_ids]
 
     by_book = collections.Counter(r.get("book") or "?" for r in pool)
@@ -375,12 +406,14 @@ def main() -> int:
             pairs[(r.get("reader") or "?", r.get("book") or "?")].append(r)
         seed: list[dict] = []
         for pair, recs in sorted(pairs.items()):
-            if confirmed_tags(recs[0]):
+            owed = unconfirmed_attrs(recs[0], prof_cache)
+            if not owed:
                 print(f"  {pair[0]} / {pair[1]}: already ear-confirmed, no seed needed")
                 continue
             mid = recs[len(recs) // 2]        # mid, not an edge — edges are the ragged ones
             seed.append(mid)
-            print(f"  {pair[0]} / {pair[1]}: {len(recs)} pooled -> seeding 1 ({mid['id']})")
+            print(f"  {pair[0]} / {pair[1]}: {len(recs)} pooled -> seeding 1 ({mid['id']}) "
+                  f"— still owed: {', '.join(owed)}")
         extra = [r for r in unstaged if r["id"] in flagged and r not in seed]
         for r in extra:
             print(f"  + QC-flagged, owed an ear regardless: {r['id']}")
@@ -399,7 +432,7 @@ def main() -> int:
     # Tags are resolved PER CLIP, not once from take[0]. A staging run can span two books
     # (the pool is sorted by book, then reading order), and one book's confirmed profile
     # must never be written onto another's clips.
-    tags_of = {r["id"]: confirmed_tags(r) for r in take}
+    tags_of = {r["id"]: confirmed_tags(r, prof_cache) for r in take}
     led_cache = ledger()
     if args.seed_ear:
         print(f"\nseeding {len(take)} clips for the ear — NO tags, all unaudited")
@@ -438,11 +471,24 @@ def main() -> int:
         else:
             print(f"  {len(take)-n_flag} enter as keep; {n_flag} carry a QC finding -> unaudited")
         if untagged:
-            pairs = sorted({(r.get('reader') or '?', r.get('book') or '?')
-                            for r in untagged})
-            print(f"  !! {len(untagged)} clips have no confirmed (reader, title) profile:")
-            for p in pairs:
-                print(f"       {p[0]} / {p[1]}")
+            owed_by_pair = {}
+            for r in untagged:
+                owed_by_pair.setdefault(
+                    (r.get("reader") or "?", r.get("book") or "?"),
+                    unconfirmed_attrs(r, prof_cache))
+            print(f"  !! {len(untagged)} clips have no FULLY confirmed (reader, title) "
+                  f"profile:")
+            for p, owed in sorted(owed_by_pair.items()):
+                print(f"       {p[0]} / {p[1]} — still owed: {', '.join(owed)}")
+            # A PARTIAL profile is the interesting case and it used to be invisible: a
+            # pair with two of three attributes read as confirmed here and folded, while
+            # pick_audit_subset went on force-queuing it. `learn()` produces exactly that
+            # shape when an attribute disagreed within the title, so the pair being
+            # refused is the one whose ear pass contradicted itself.
+            if any(len(owed) < len(ATTRS) for owed in owed_by_pair.values()):
+                print("     a PARTIAL profile is not a confirmed one — check "
+                      "reader_profiles.json for an {attr}_CONFLICT on these titles "
+                      "(reader_profile.py --learn prints them)")
             print("     seed the ear first:  --seed-ear --apply   ([[new-reader-ear-rule]])")
             return 1
     if not args.apply:
@@ -489,8 +535,8 @@ def main() -> int:
             # byte-identically, which would take a backup and move the mtime.
             raise synth_common.DryRun
 
-    log["runs"].append({
-        "run": len(log["runs"]) + 1, "date": DATE, "count": len(take),
+    entry = {
+        "date": DATE, "count": added,
         # A seed is NOT a contiguous reading-order range — it is one clip per pair plus
         # the QC-flagged. Recording a range for it would misrepresent what was taken and
         # break the "resume from where staging stopped" contract.
@@ -503,9 +549,26 @@ def main() -> int:
         "qc_flagged": n_flag,
         "tags": None if args.seed_ear else {i: t for i, t in tags_of.items() if t},
         "ids": [r["id"] for r in take],
-    })
+    }
+    # `count` is what was WRITTEN, not what was picked. They differ when the ratings
+    # transaction found the ids already present — a lost log, or a concurrent run that
+    # got there first. The entry is still recorded in that case, deliberately: the ids
+    # ARE staged, and omitting them would leave the next run picking the same take
+    # forever. Recording it with a truthful count is the difference between reconciling
+    # and inventing a staging run that never happened.
+    if added != len(take):
+        entry["already_in_ratings"] = len(take) - added
     # A-H3: staging_log truncation forgets staged ranges, which double-stages clips.
-    synth_common.write_json_atomic(log_path, log)
+    # C-M5: and an atomic write is not enough on its own. `log` was read at startup,
+    # minutes before this line; writing that snapshot back drops any run another process
+    # recorded in between, which is the same forgetting by a slower route. Re-read under
+    # the lock and append to the CURRENT contents.
+    def _append(current):
+        current.setdefault("campaign", args.campaign)
+        runs = current.setdefault("runs", [])
+        runs.append(dict(entry, run=len(runs) + 1))
+
+    log = synth_common.update_json(log_path, _append)
     left = len(pool) - len(staged_ids) - len(take)
     if args.seed_ear:
         print(f"\nseeded {added} clips into ratings.csv as unaudited; {left} still pooled")

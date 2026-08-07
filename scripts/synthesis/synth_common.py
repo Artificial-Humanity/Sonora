@@ -70,26 +70,40 @@ def _exclusive(path):
             fcntl.flock(fh, fcntl.LOCK_UN)
 
 
-def write_json_atomic(path, obj, *, indent=1):
-    """Write JSON that is either wholly the new content or wholly the old."""
+def _atomic_write(path, emit, mode="w", **open_kw):
+    """tmp + fsync + rename, and clean the tmp up when any of that fails.
+
+    `write_wav_atomic` and `save_via_atomic` already swept their tmp on failure; these two
+    did not, so an interrupted write left a `.name.tmp.json` beside the real file. That is
+    not merely litter — these files sit in dataset directories that other tools glob, and
+    a half-written twin of the ledger is exactly the kind of thing a later `rglob("*.json")`
+    picks up and reads as real.
+    """
     directory = os.path.dirname(os.path.abspath(path)) or "."
     tmp = _tmp_path(directory, os.path.basename(path))
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(obj, fh, indent=indent, ensure_ascii=False)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, path)
+    try:
+        with open(tmp, mode, **open_kw) as fh:
+            emit(fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def write_json_atomic(path, obj, *, indent=1):
+    """Write JSON that is either wholly the new content or wholly the old."""
+    _atomic_write(path, lambda fh: json.dump(obj, fh, indent=indent, ensure_ascii=False),
+                  encoding="utf-8")
 
 
 def write_text_atomic(path, text, *, encoding="utf-8"):
     """Same guarantee as `write_json_atomic`, for the plain-text siblings."""
-    directory = os.path.dirname(os.path.abspath(path)) or "."
-    tmp = _tmp_path(directory, os.path.basename(path))
-    with open(tmp, "w", encoding=encoding) as fh:
-        fh.write(text)
-        fh.flush()
-        os.fsync(fh.fileno())
-    os.replace(tmp, path)
+    _atomic_write(path, lambda fh: fh.write(text), encoding=encoding)
 
 
 def update_json(path, mutate, *, default=dict, indent=1):

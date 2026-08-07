@@ -37,9 +37,13 @@ Usage:
 """
 import argparse
 import json
+import os
 import pathlib
 import shutil
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import synth_common  # noqa: E402
 
 # engine -> (weights licence, may appear in the published release)
 #
@@ -123,13 +127,32 @@ def main():
         sys.exit(1)
 
     if args.apply and changed:
+        # WHY ONE PRISTINE BACKUP IS THE RIGHT ONE (C-M5)
+        # ----------------------------------------------
+        # The `.bak` is only ever taken on the first run, which reads like a bug and is
+        # not — but the message that went with it was. `--apply` is MONOTONIC: it fills
+        # `engine_license`/`publish` on rows that lack them and never touches a row that
+        # has them (the branch above only records violations). So run two changes only
+        # rows added since run one, there is nothing about run one to undo, and the
+        # valuable artefact is the untouched original rather than a chain of near-copies.
+        #
+        # What was wrong is that every run printed "original kept at …", so a second run
+        # named a file that is NOT its own pre-state as though it were this run's undo
+        # point. Say which it is.
         backup = path.with_suffix(path.suffix + ".pre-publish-tier.bak")
-        if not backup.exists():
+        first = not backup.exists()
+        if first:
             shutil.copy2(path, backup)
-        with path.open("w", encoding="utf-8") as f:
-            for r in rows:
-                f.write(json.dumps(r) + "\n")
-        print(f"backfilled {changed} row(s); original kept at {backup.name}")
+        # metadata.jsonl is the dataset index. A truncated one is not a corrupt backup,
+        # it is a corpus that silently lost its tail — so the new contents land whole or
+        # not at all.
+        synth_common.write_text_atomic(
+            path, "".join(json.dumps(r) + "\n" for r in rows))
+        print(f"backfilled {changed} row(s); "
+              + (f"original kept at {backup.name}" if first else
+                 f"{backup.name} already existed and is the PRE-FIRST-RUN original, "
+                 f"not this run's pre-state (nothing this run changed needs undoing — "
+                 f"it only fills blanks)"))
     elif missing:
         print(f"FAIL: {len(missing)} row(s) lack engine_license/publish. Re-run with --apply.")
         sys.exit(1)

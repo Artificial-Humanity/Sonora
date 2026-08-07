@@ -75,6 +75,7 @@ from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import synth_common  # noqa: E402
+import reader_profile  # noqa: E402
 
 RATINGS = "/data/model-training/datasets/sonora-expressive-registers/ratings.csv"
 DATASETS = "/data/model-training/datasets"
@@ -306,17 +307,16 @@ def _confirmed_reader_titles():
     an identity — two people can share one — and a long-running reader legitimately
     reads as "adult" in early recordings and "middle-aged" in later ones. So a new TITLE
     by a known name still earns one ear pass; only then may that title's clips be filled.
+
+    C-M8: the all-three test used to live here as its own expression, and `stage_pool`
+    carried a looser one — so a pair could be confirmed enough to fold a whole title into
+    the corpus and still be force-queued here. Both now call the same predicate.
     """
-    if not os.path.exists(PROFILES_PATH):
-        return set()
-    with open(PROFILES_PATH, encoding="utf-8") as fh:
-        prof = json.load(fh)
-    out = set()
-    for reader, entry in prof.items():
-        for title, t in (entry.get("titles") or {}).items():
-            if all(t.get(a) for a in ("gender", "age", "accent")):
-                out.add((reader, title))
-    return out
+    prof = reader_profile.load_profiles(PROFILES_PATH)
+    return {(reader, title)
+            for reader, entry in prof.items()
+            for title in (entry.get("titles") or {})
+            if reader_profile.is_confirmed_pair(prof, reader, title)}
 
 
 def cmd_select(args):

@@ -67,6 +67,59 @@ AUTO_PREFIX = "auto-attrs:"
 FOLD_MARKER = "folded: staged unheard"
 
 
+# --------------------------------------------------- "is this pair ear-confirmed?" (C-M8)
+#
+# ONE definition, here, because this file WRITES the structure the answer is read out of —
+# and the two readers had drifted to opposite thresholds:
+#
+#   * `pick_audit_subset` required ALL THREE attributes before it would stop force-queuing
+#     a clip from the pair;
+#   * `stage_pool` tested the truthiness of the returned dict, so ANY ONE attribute was
+#     enough to stage the entire title as machine-folded keeps, unheard.
+#
+# So a title sitting on two of three was simultaneously "confirmed enough to fold three
+# hundred clips into the corpus" and "still owed an ear pass". `learn()` produces exactly
+# that state by design: on disagreement WITHIN a title it writes `{attr}_CONFLICT` INSTEAD
+# of `{attr}`, so the one title we have positive evidence is inconsistent is the one that
+# arrives with a partial profile — and the looser reader folded it. The conflict marker
+# exists to stop propagation (C-M7 fixed the hint path); the fold path went around it.
+#
+# ALL THREE is the right threshold, and it is the conservative one: nothing is folded on
+# partial evidence, and the pair keeps its place in the ear queue until it is answered.
+
+
+def load_profiles(path=None):
+    p = pathlib.Path(path or PROFILES)
+    return json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
+
+
+def title_entry(profiles, reader, title):
+    """The per-title record for a (reader, title), or {}."""
+    return ((profiles.get(reader or "") or {}).get("titles") or {}).get(title or "") or {}
+
+
+def confirmed_attrs(profiles, reader, title):
+    """Ear-confirmed attributes for this (reader, title) — never a conflicted one.
+
+    `learn()` writes `{attr}` or `{attr}_CONFLICT`, never both, so the second clause is
+    belt-and-braces today. It is here because the merge in `main()` replaces titles
+    wholesale; the day it merges per-attribute instead, a stale value sitting beside a
+    fresh conflict marker would propagate as though the ear had agreed.
+    """
+    t = title_entry(profiles, reader, title)
+    return {a: t[a] for a in ATTRS if t.get(a) and f"{a}_CONFLICT" not in t}
+
+
+def is_confirmed_pair(profiles, reader, title):
+    """True when the ear has settled EVERY attribute for this pair.
+
+    The one predicate that gates both propagation (`stage_pool`) and the new-reader
+    force-queue (`pick_audit_subset`). They must agree: one folding while the other
+    queues is how a title with a disagreeing ear pass ends up in the corpus anyway.
+    """
+    return len(confirmed_attrs(profiles, reader, title)) == len(ATTRS)
+
+
 def _auto_attrs(row):
     """Attributes in this row that a machine wrote, not the ear."""
     note = row.get("note") or ""
@@ -259,9 +312,6 @@ def main() -> int:
     if args.learn:
         learned = learn(rows, meta)
         for reader, entry in learned.items():
-            prev = profiles.get(reader, {})
-            merged_titles = {**(prev.get("titles") or {}), **entry["titles"]}
-            profiles[reader] = {**prev, **entry, "titles": merged_titles}
             print(f"  {reader}")
             for title, t in sorted(entry["titles"].items()):
                 bits = ", ".join(f"{a}={t[a]}" for a in ATTRS if a in t) or "(nothing yet)"
@@ -276,8 +326,21 @@ def main() -> int:
                           f"{entry['hint'][f'{a}_varies_by_title']} — expected for a "
                           f"long-running reader (or two people sharing a name); "
                           f"re-verified per title, never merged")
-        PROFILES.write_text(json.dumps(profiles, indent=1, ensure_ascii=False),
-                            encoding="utf-8")
+        # C-M5: merge into the CURRENT file under the lock, not into the snapshot read
+        # at startup. Two things made that snapshot dangerous. A plain `write_text` can
+        # truncate reader_profiles.json — which is the propagation SSOT; losing it does
+        # not just cost a re-run, it un-confirms every (reader, title) and so unblocks
+        # nothing while re-queueing everything. And learning is per-reader and
+        # incremental, so writing back a stale whole-file copy is how one `--learn` run
+        # silently drops another's readers.
+        def _merge(current):
+            for reader, entry in learned.items():
+                prev = current.get(reader, {})
+                current[reader] = {**prev, **entry,
+                                   "titles": {**(prev.get("titles") or {}),
+                                              **entry["titles"]}}
+
+        profiles = synth_common.update_json(PROFILES, _merge)
         print(f"  wrote {PROFILES} ({len(profiles)} readers)")
 
     if args.apply:
