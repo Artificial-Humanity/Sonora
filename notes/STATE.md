@@ -227,6 +227,13 @@ is only its headline.
 ## Pointers
 
 - Change history — [CHANGELOG.md](CHANGELOG.md) (maintained per AGENTS.md §4 since 2026-08-06)
+- Review sweep, 2026-08-06 — 47 open items down to **31**. Closed: both §1 blockers
+  (E-M5/E-M6), all of §5's Highs, §3's packaging and GPL/cli lane, §8's label-derivation
+  bugs, **F-C1** (the only Critical) and F-H1/F-M4 in the export lane, plus C-M10 and
+  D-M5. Every fix carries a regression test; the running tally is [todo.md](todo.md).
+  Two findings turned out to be **live, not latent** — the export harness ran three weeks
+  stale on `/data`, and `eiv_merge_corpus` fabricated a full-scale valence contribution
+  from floating-point dust for 224 clips.
 - Code on `/data` — [data-mirrors.md](data-mirrors.md). Nothing of ours is unbacked; the
   risk is **drift**, and it had already bitten: the running export harness was three weeks
   stale and missing a seam guard the repo recorded as landed. `tests/test_data_mirrors.py`

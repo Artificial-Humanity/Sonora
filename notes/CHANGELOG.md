@@ -19,6 +19,52 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-06
 
+### Fixed — export gates (§2) and campaign tooling (§6)
+
+- **`445d01e` — F-C1, the review's only open Critical, was two defects sharing a line.**
+  The gates **printed** pass/fail and nothing acted on it: `main()` ran to completion, wrote
+  `artifacts/` and `config.json`, and exited 0 whether the graphs matched the model or not —
+  so a failed export was indistinguishable from a good one at the shell *and left a
+  complete, shippable artifact set behind*. There is a ledger now and `gates_or_die()`
+  refuses to write unless every gate passed. The second half is the one no gate covered:
+  **valence and tension had never been driven nonzero through a converted graph** (G2 runs
+  `vat = zeros`, G3/G4 drive `[0, a, 0]`), so a dropped or mis-sliced input would have
+  passed every gate and shipped — reading on-device as a *training* failure. New **G5**
+  drives each channel independently and requires the waveform to move. **Verified by a real
+  conversion: 10/10 gates pass**, with V/E/T mean |delta| vs neutral of 7.0e-2 / 9.2e-2 /
+  8.6e-2 — the first measured proof all three channels survive export. Also: G4's
+  monotonicity used `all()` over a possibly *empty* sequence (PASS on zero evidence), and
+  **F-M4** — `config.json` wrote `time_embed_dim=1024` while the graphs consume
+  `in_channels` (224), a number the mobile host trusts to size its buffer.
+- **`445d01e` — §6.** **B-M3** chatterbox/zonos/vibevoice now call the existing
+  `rebuild_used_set`; the variety-bias `used` set started empty on every resume, so a
+  resumed campaign silently lost its diversity guarantee. **B-M5** `attempt_seed` perturbs
+  the seed per attempt and records the one actually used — "re-run under skip-if-exists" *is*
+  the retry, and re-seeding identically meant a deterministic failure could never converge.
+  **B-L5** `MAX_REF_EXCURSION` hoisted to `ref_select` (it was written out three times, and
+  it encodes a measured finding).
+
+### Fixed — QC / audit / staging (§7)
+
+- **`dc38b21` — C-M10: a coverage floor for title-level delivery, and the evidence recorded.**
+  `--mark-delivery` propagates a delivery to **every clip in a book**, and unanimity was the
+  whole test — any sample, any size, any distribution. Both real samples are degenerate:
+  librivox-v1's 12 clips are one contiguous run in **section 2 of 15**, librivox-v2's 30 one
+  run in **section 1 of 25**. Safe only because the one marked title is homogeneous by
+  construction. Floor is 8 clips / ≥3 sections / ≥25% spread (verified: 7% and 4% refused, an
+  honest spread passes). **The coverage is now written into the ledger beside the mark** —
+  clips heard, sections heard, spread, override flag — which is the first thing an audit of
+  that decision needs and was recorded nowhere. `--thin-coverage` allows a genuine collection
+  and stamps `thin_override`.
+- **`dc38b21` — C-M6/D-M5: one `ratings_transaction`.** Six scripts each grew an mtime stamp
+  after an owner-set accent value was lost on 2026-07-26, in four flavours, and `tag_spike`
+  grew **none** — appending to the live file behind a copy-backup, which is not safe just
+  because it is an append (the app rewrites the whole file to commit an edit). The shared
+  transaction takes **both** guards because they cover different writers: an **flock**
+  serialises our own scripts, which mtime cannot do, and an **mtime re-check inside the
+  lock** catches the app, which takes no lock. `tag_spike` converted (D-M5 closed); the six
+  stampers still carry their own flavour and are listed in todo.
+
 ### Fixed — label derivation (§8)
 
 - **`90f2c1b` — imputed heads, unretried failures, and a z-guard that fabricated labels.**
