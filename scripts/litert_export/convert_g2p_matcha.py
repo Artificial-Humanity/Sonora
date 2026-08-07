@@ -40,8 +40,10 @@ import torch
 import torch.nn as nn
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ART = os.path.join(HERE, "artifacts")
-CKPT = os.path.join(HERE, "openphonemizer_best_model.pt")
+# Data on /data, code in the repo — see build_matcha.WORK.
+WORK = os.environ.get("SONORA_LITERT_WORK", HERE)
+ART = os.path.join(WORK, "artifacts")
+CKPT = os.path.join(WORK, "openphonemizer_best_model.pt")
 OUT = os.path.join(ART, "dp_g2p_matcha.tflite")
 MAXT = 96
 

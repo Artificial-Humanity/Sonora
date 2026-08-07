@@ -34,7 +34,7 @@ import numpy as np
 import build_matcha as B
 from ai_edge_litert.compiled_model import CompiledModel
 
-ART = os.path.join(B.HERE, "artifacts")
+ART = os.path.join(B.WORK, "artifacts")
 MAX_TEXT = 256
 MAX_MEL = 512
 N_FEATS = 80

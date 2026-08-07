@@ -46,7 +46,7 @@ import build_matcha as B
 from e2e_masked import host_pipeline_masked
 from e2e_matcha import g2p_ids
 
-ART = os.path.join(B.HERE, "artifacts")
+ART = os.path.join(B.WORK, "artifacts")
 os.makedirs(ART, exist_ok=True)
 MAX_TEXT = 256
 MAX_MEL = int(sys.argv[1]) if len(sys.argv) > 1 else 512

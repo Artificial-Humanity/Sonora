@@ -28,7 +28,7 @@ Ours, and where the source of truth lives:
 
 | `/data` path | tracked in | status |
 |---|---|---|
-| `toolchain/litert-conversion/*.py`, `README.md` | `Sonora/github/scripts/litert_export/` | **was drifted**, resynced 2026-08-06 |
+| `toolchain/litert-conversion/*.py`, `README.md` | `Sonora/github/scripts/litert_export/` | **copy RETIRED 2026-08-06** — executes from the repo now, see below |
 | `toolchain/teacher-audition/render_*.{py,sh}`, `coach_dia_threat.py` | `Sonora/github/scripts/synthesis/teacher_audition/` | in sync |
 | `services/audition/app/main.py` | `AI-Lab-AMD/audition/app/` | in sync |
 | `services/dashboard/index.html`, `scripts/update_status.sh` | `AI-Lab-AMD/dashboard/` | in sync |
@@ -64,13 +64,47 @@ that emptied the list would otherwise turn the whole gate into a silent pass.
 table **in the same commit that deploys it** — the gate only covers what it is told about,
 so an unlisted tool is exactly as exposed as everything was before this note existed.
 
+## The litert copy is gone, not policed
+
+Owner principle, 2026-08-06: *code executes from the repo; `/data` is used for what its
+name implies.* The harness was the case that made this awkward, and it is worth recording
+why, because the shape will recur.
+
+It does not run in a container at all — it runs on the host against a 6.6 GB venv sitting
+beside its outputs, so "bind-mount the repo" was never even the right mechanism. The copy
+existed for one reason: every script derived its paths from
+`HERE = os.path.dirname(os.path.abspath(__file__))`, so the checkpoints it reads and the
+~400 MB of `.tflite` / `.wav` / `artifacts*/` it writes all landed next to the source.
+Running from the checkout would have dumped every bit of that into the working tree.
+
+Splitting the two retired the copy. `SONORA_LITERT_WORK` (defaulting to `HERE`, so no
+existing invocation changed) names the data root, and
+[`scripts/litert_export/run.sh`](../scripts/litert_export/run.sh) runs a script from the
+repo with the work dir, the model repo and the harness interpreter all wired up. `/data`
+keeps the venv, checkpoints, graphs and artifacts — exactly what it is for.
+
+`tests/test_data_mirrors.py::test_litert_harness_has_no_code_copy` guards this directly,
+and is inverted from the others: the remaining mirrors are checked for *agreement*, this
+one for *absence*.
+
 ## What is still worth doing
 
-The copies exist because containers bind-mount `/data`, not the repo. Eliminating them —
-bind-mounting `scripts/litert_export/` into whatever runs the harness, the way
-`sonora_training` already binds `/data/model-training/sonora/data` — would remove the
-class rather than detect it. That is an infra change to `AI-Lab-AMD/docker-compose.yml`
-and an owner call, so the detector is the interim.
+Three copies remain, each for a reason worth weighing rather than overriding:
+
+- **`audition`** bind-mounts `/data/services/audition/app:/app:ro`, and the compose comment
+  is explicit that this is the deploy copy and not the dev tree — the same reasoning that
+  gives `sonora_training` a deploy clone. Pointing the mount at the repo would satisfy §6
+  and would also serve half-edited working-tree state to a live app.
+- **`dashboard`** is Caddy's `root`, not a mount, and `/etc/caddy/Caddyfile` is itself a
+  copy of the one in `AI-Lab-AMD`.
+- **`/data/repos/Sonora`** is the training deploy clone and the **standing exception**:
+  `restart: unless-stopped` re-reads the mount, so a crash mid-run would resume a long
+  unattended GPU job from whatever the tree happened to hold. Being a real git checkout, it
+  also always knows its own revision — which a byte copy never does.
+
+For those three the honest upgrade is not removal but *provenance*: have `deploy.sh` stamp
+each target with the commit SHA it deployed and whether the tree was clean, so the question
+becomes "which revision is running?" rather than "do these bytes still match?".
 
 Related: the training deploy clone at `/data/repos/Sonora` has its own version of this
 failure — a `deploy.sh training-code` fast-forward pull cannot cross a history rewrite, and

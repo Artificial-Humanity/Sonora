@@ -6,26 +6,33 @@ Scripts that produce the four `.tflite` graphs used by the Android sample, from 
 
 `uv` is this organization's Python standard ([AGENTS.md](../../AGENTS.md) §3) — no bare `pip`:
 
+The venv and the checkpoints live **with the data**, not in the checkout — it is ~6.6 GB:
+
 ```bash
-uv venv && uv pip install --python .venv/bin/python \
+W=/data/toolchain/litert-conversion            # $SONORA_LITERT_WORK
+uv venv "$W/.venv" && uv pip install --python "$W/.venv/bin/python" \
     --no-deps matcha-tts diffusers einops conformer deep-phonemizer
-uv pip install --python .venv/bin/python litert-torch ai-edge-litert ai-edge-quantizer
-# checkpoints (auto-downloaded by the matcha-tts CLI, or):
+uv pip install --python "$W/.venv/bin/python" litert-torch ai-edge-litert ai-edge-quantizer
+# checkpoints, into $W (auto-downloaded by the matcha-tts CLI, or):
 #   matcha_ljspeech.ckpt + generator_v1   (github.com/shivammehta25/Matcha-TTS-checkpoints v1.0)
 #   openphonemizer_best_model.pt           (hf://openphonemizer/ckpt/best_model.pt)
 ```
 
-Run host scripts as `.venv/bin/python …`, never `uv run` — `uv run` resolves against the repo
-`pyproject.toml` and ignores the inline PEP 723 blocks these scripts carry.
+Never `uv run` — it resolves against the repo `pyproject.toml` and ignores the inline
+PEP 723 blocks these scripts carry.
 
 ## Run
 
+`run.sh` executes a script **from here** with its data on `/data`, wiring up
+`SONORA_LITERT_WORK`, `SONORA_REPO` and the harness interpreter:
+
 ```bash
-python convert_final.py 512        # text encoder + CFM decoder + HiFi-GAN vocoder (fp16)
-python convert_g2p_matcha.py       # DeepPhonemizer G2P (fp16)
+scripts/litert_export/run.sh convert_final.py 512   # textenc + CFM decoder + vocoder (fp16)
+scripts/litert_export/run.sh convert_g2p_matcha.py  # DeepPhonemizer G2P (fp16)
+scripts/litert_export/run.sh convert_vat.py         # the 24 kHz / VAT lane
 ```
 
-Outputs `artifacts/`: `matcha_textenc_fp16.tflite`, `matcha_decoder_fp16.tflite`, `matcha_vocoder_fp16.tflite`, `dp_g2p_matcha_fp16.tflite`, plus the host tables (`emb.bin`, `g2p_dict.txt.gz`, `config.json`, `g2p_meta.json`).
+Outputs land in `$SONORA_LITERT_WORK/artifacts/`: `matcha_textenc_fp16.tflite`, `matcha_decoder_fp16.tflite`, `matcha_vocoder_fp16.tflite`, `dp_g2p_matcha_fp16.tflite`, plus the host tables (`emb.bin`, `g2p_dict.txt.gz`, `config.json`, `g2p_meta.json`).
 
 ## Files
 
@@ -56,13 +63,24 @@ remains. These scripts produced the LiteRT/TFLite exports published in
 `artificial-humanity/Sonora` → `baseline-ljspeech-22k/` (end-to-end graphs and the
 `litert-split/` mobile lane) and the VAT-ready split export in `derisk-energy-24k/`.
 
-**This directory is authoritative; `/data` is a working copy.** The migration left the
-scripts on `/data` as well, and by 2026-08-06 two of them had drifted — `convert_vat.py`
-there was three weeks stale and missing the `detect_vat_dim` seam guard that this repo
-recorded as landed, and the README still documented a bare-`pip` install predating the uv
-standard. Nothing detected either; both directories looked healthy and the only symptom
-was that a fix believed to have shipped had not.
+**Run these from here, with `run.sh`:**
 
-`tests/test_data_mirrors.py` now fails if any tracked file diverges from its `/data`
-counterpart. If the `/data` side is the one that is right, commit it **here** — an
-untracked edit on `/data` has no history, no review and no changelog entry.
+```
+scripts/litert_export/run.sh convert_vat.py
+scripts/litert_export/run.sh build_matcha.py parity
+```
+
+`SONORA_LITERT_WORK` (default `/data/toolchain/litert-conversion`) is where the **data**
+lives — the checkpoints read, and the `.tflite`/`.wav`/`artifacts*/` written. It defaults
+to this directory when unset, so an old invocation still behaves as it always did.
+
+That split is what let the `/data` **code** copy be retired rather than merely policed.
+The migration had left the scripts there too, and by 2026-08-06 two had drifted:
+`convert_vat.py` was three weeks stale and missing the `detect_vat_dim` seam guard this
+repo recorded as landed, and the README still documented a bare-`pip` install predating
+the uv standard. Nothing detected either — both directories looked healthy, and the only
+symptom was that a fix believed to have shipped had not.
+
+Owner principle (AGENTS.md §6): code executes from the repo; `/data` holds what its name
+implies. `tests/test_data_mirrors.py::test_litert_harness_has_no_code_copy` fails if a
+`.py` reappears on `/data`.

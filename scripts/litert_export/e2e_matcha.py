@@ -259,11 +259,11 @@ def main():
     mu0 = torch.randn(1, 80, ymax_)
     te0 = t_embed(torch.zeros(1))
     mel0 = torch.randn(1, 80, ymax_)
-    p_te = B.convert(te_r, (ex,), os.path.join(B.HERE, "e2e_textenc.tflite"))
+    p_te = B.convert(te_r, (ex,), os.path.join(B.WORK, "e2e_textenc.tflite"))
     p_dec = B.convert(dec_r, (x0, mu0, te0),
-                      os.path.join(B.HERE, "e2e_decoder.tflite"))
+                      os.path.join(B.WORK, "e2e_decoder.tflite"))
     p_gen = B.convert(gen_r, (mel0,),
-                      os.path.join(B.HERE, "e2e_vocoder.tflite"))
+                      os.path.join(B.WORK, "e2e_vocoder.tflite"))
 
     cm_te = B.tfl_load(p_te)
     cm_dec = B.tfl_load(p_dec)
@@ -301,11 +301,11 @@ def main():
     # Save wavs for listening.
     try:
         import soundfile as sf
-        sf.write(os.path.join(B.HERE, "out_true.wav"), wav_true, 22050)
-        sf.write(os.path.join(B.HERE, "out_tfl.wav"), wav_tfl, 22050)
+        sf.write(os.path.join(B.WORK, "out_true.wav"), wav_true, 22050)
+        sf.write(os.path.join(B.WORK, "out_tfl.wav"), wav_tfl, 22050)
         print("wrote out_true.wav / out_tfl.wav")
     except Exception as e:
-        np.save(os.path.join(B.HERE, "out_tfl.npy"), wav_tfl)
+        np.save(os.path.join(B.WORK, "out_tfl.npy"), wav_tfl)
         print("soundfile missing; saved out_tfl.npy", e)
 
 

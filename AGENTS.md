@@ -125,12 +125,23 @@ case-insensitive macOS/Windows.
 * Once the new code review document has been written, delete the previous one to keep only the latest review active.
 * Repoint the **Latest code review** pointer in [notes/STATE.md](notes/STATE.md) to the new document (only the link target changes; the surrounding line is phrased generically) so a session can find the current review without globbing the folder.
 
-### 6. Deploy From The Repo Copy — `/data` Is Never The Source
+### 6. Execute From The Repo — `/data` Holds Data
 
-Code of ours that runs on `ai-lab-0` exists twice: tracked in a repo, and as a working copy
-under `/data` that containers bind-mount. **The repo is authoritative in every case.** The
-full mirror table, what is legitimately untracked, and the audit behind this rule are in
-[notes/data-mirrors.md](notes/data-mirrors.md).
+**Owner principle (2026-08-06): code executes from the repo checkout; `/data` holds what
+its name implies** — datasets, checkpoints, model artifacts, venvs, training logs, service
+runtime state, vendor checkouts. A byte-copy of our source under `/data` is something to
+*remove*, not to manage. The full inventory, what is legitimately untracked, and the audit
+behind this rule are in [notes/data-mirrors.md](notes/data-mirrors.md).
+
+* **When a tool writes its outputs next to its own source** — the usual reason a `/data`
+  copy exists at all — give it an artifact-root variable defaulting to the script's own
+  directory, point that at `/data`, and delete the copy. That is the shape that satisfies
+  both halves. Worked example: `SONORA_LITERT_WORK` and
+  [scripts/litert_export/run.sh](scripts/litert_export/run.sh).
+* **For containers, bind-mount the repo path**, not a `/data` copy of it.
+
+Where a copy still exists, the rest of this section governs it. **The repo is
+authoritative in every case.**
 
 * **Never edit code under `/data`.** Change it in the repo, commit, then deploy. An edit made
   on `/data` has no history, no diff, no review and no changelog entry, and no way for anyone

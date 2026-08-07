@@ -37,7 +37,7 @@ import torch.nn as nn
 
 import build_matcha as B
 
-ART = os.path.join(B.HERE, "artifacts")
+ART = os.path.join(B.WORK, "artifacts")
 SEQ = 512
 CH = 256
 MAG = float(sys.argv[1]) if len(sys.argv) > 1 else 60.0

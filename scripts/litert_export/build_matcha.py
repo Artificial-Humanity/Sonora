@@ -47,8 +47,23 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CKPT = os.path.join(HERE, "matcha_ljspeech.ckpt")
-HIFI = os.path.join(HERE, "generator_v1")
+
+# WHERE THE DATA LIVES, as distinct from where the code lives.
+#
+# Every path below used to hang off HERE — the script's own directory — so the checkpoints
+# read and the ~400 MB of `.tflite`/`.wav`/`artifacts*/` written all landed next to the
+# source. That is the whole reason a second copy of this harness existed under
+# `/data/toolchain/litert-conversion/`: running it from the repo would have dumped the
+# outputs into the working tree. The copy then drifted, and by 2026-08-06 the one on /data
+# was three weeks stale and missing a seam guard this repo recorded as landed.
+#
+# Owner principle (2026-08-06): code executes from the repo; `/data` holds what its name
+# implies. Splitting the two is what makes that possible here. Defaults to HERE so an
+# existing invocation is unchanged; set SONORA_LITERT_WORK to put inputs and outputs on
+# the data drive, which is what the repo checkout does.
+WORK = os.environ.get("SONORA_LITERT_WORK", HERE)
+CKPT = os.path.join(WORK, "matcha_ljspeech.ckpt")
+HIFI = os.path.join(WORK, "generator_v1")
 
 
 def setup_espeak_library():
@@ -826,11 +841,11 @@ def main():
     if stage in ("opcheck", "parity", "all"):
         print("\n=== convert + op-check (fp32) ===")
         te_path = convert(te_r, (ex,),
-                          os.path.join(HERE, "matcha_textenc.tflite"))
+                          os.path.join(WORK, "matcha_textenc.tflite"))
         dec_path = convert(dec_r, (x, mu, t_emb),
-                           os.path.join(HERE, "matcha_decoder.tflite"))
+                           os.path.join(WORK, "matcha_decoder.tflite"))
         gen_path = convert(gen_r, (mel_in,),
-                           os.path.join(HERE, "matcha_vocoder.tflite"))
+                           os.path.join(WORK, "matcha_vocoder.tflite"))
         clean_te = opcheck(te_path, "textenc")
         clean_dec = opcheck(dec_path, "decoder")
         clean_gen = opcheck(gen_path, "vocoder")

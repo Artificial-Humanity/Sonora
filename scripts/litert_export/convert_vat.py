@@ -36,7 +36,8 @@ Gates (all must pass):
   G4 energy monotonicity through the full tflite pipeline (RMS dB at
      vat -1/0/+1) + sample wavs for listening
 
-Run: .venv/bin/python convert_vat.py [MAX_MEL]
+Run: scripts/litert_export/run.sh convert_vat.py [MAX_MEL]
+     (code from the repo, data on /data — AGENTS.md §6)
 """
 
 import _stub  # noqa: F401  (must be first: scipy / getsourcefile guards)
@@ -112,7 +113,7 @@ VOC_CFG = os.environ.get(
     "/data/model-training/vocoder/hifi-gan/config_24k_80band.json")
 VAL_FILELIST = os.path.join(SONORA, "data/libritts_r_vat/val_op.txt")
 
-ART = os.path.join(B.HERE, "artifacts_vat")
+ART = os.path.join(B.WORK, "artifacts_vat")
 MAX_TEXT = 256
 MAX_MEL = int(sys.argv[1]) if len(sys.argv) > 1 else 512
 N_TIMESTEPS = 10

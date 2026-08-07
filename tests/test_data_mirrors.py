@@ -36,11 +36,12 @@ pytestmark = pytest.mark.skipif(not DATA.is_dir(), reason="/data is not mounted 
 # (repo-relative source dir, /data working dir, glob) — the source of truth is ALWAYS the
 # repo. A /data copy that is newer is not authoritative, it is unreviewed: it has no
 # history, no diff and no changelog entry.
+# NOTE the LiteRT harness is deliberately absent. It no longer has a /data copy at all:
+# `SONORA_LITERT_WORK` split the data from the code on 2026-08-06, so the scripts execute
+# from the repo and only checkpoints, graphs, artifacts and the venv remain on /data. That
+# is the preferred resolution — the copy is gone rather than policed. See
+# `test_litert_harness_has_no_code_copy` below, which guards the property directly.
 MIRRORS = [
-    (REPO / "scripts/litert_export",
-     DATA / "toolchain/litert-conversion", "*.py"),
-    (REPO / "scripts/litert_export",
-     DATA / "toolchain/litert-conversion", "*.md"),
     (REPO / "scripts/synthesis/teacher_audition",
      DATA / "toolchain/teacher-audition", "*.py"),
     (REPO / "scripts/synthesis/teacher_audition",
@@ -65,7 +66,7 @@ def _pairs():
 def test_there_is_something_to_check():
     """A gate that cannot fail is not a gate: if every path went missing (a layout change,
     a rename), the parametrised test below would silently collect nothing and pass."""
-    assert sum(1 for _ in _pairs()) >= 15
+    assert sum(1 for _ in _pairs()) >= 12
 
 
 @pytest.mark.parametrize("src,mirror", list(_pairs()),
@@ -79,4 +80,25 @@ def test_data_copy_matches_the_repo(src, mirror):
         "  /data side is right then COMMIT it there rather than copying it back — an\n"
         "  untracked edit has no history, no review and no changelog entry.\n"
         "  This is exactly how convert_vat.py's detect_vat_dim guard failed to ship."
+    )
+
+
+def test_litert_harness_has_no_code_copy():
+    """The LiteRT harness must EXECUTE from the repo, not from a copy on /data.
+
+    Inverted on purpose: the other mirrors are checked for agreement, this one is checked
+    for absence. The copy existed only because every script read and wrote next to its own
+    source, so running from the checkout would have dumped ~400 MB of graphs into the
+    working tree; `SONORA_LITERT_WORK` split those apart and the copy was retired. If a
+    `.py` reappears here, someone has re-created the exact arrangement that let
+    convert_vat.py run three weeks stale.
+    """
+    work = DATA / "toolchain/litert-conversion"
+    if not work.is_dir():
+        pytest.skip("harness work dir not present on this host")
+    stray = sorted(p.name for p in work.glob("*.py"))
+    assert not stray, (
+        f"code has reappeared in {work}: {stray}\n"
+        "  Run the harness from the repo instead: scripts/litert_export/run.sh <script.py>\n"
+        "  /data holds the venv, checkpoints and artifacts — not our source (AGENTS.md §6)."
     )

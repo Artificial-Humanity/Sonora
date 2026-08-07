@@ -154,10 +154,10 @@ def main():
     te0 = t_embed(torch.zeros(1))
     m0 = torch.ones(1, 1, max_mel)
     mel0 = torch.randn(1, 80, max_mel)
-    p_te = B.convert(te_r, (ex, tm0), os.path.join(B.HERE, "m_textenc.tflite"))
+    p_te = B.convert(te_r, (ex, tm0), os.path.join(B.WORK, "m_textenc.tflite"))
     p_dec = B.convert(dec_r, (x0, mu0, te0, m0),
-                      os.path.join(B.HERE, "m_decoder.tflite"))
-    p_gen = B.convert(gen_r, (mel0,), os.path.join(B.HERE, "m_vocoder.tflite"))
+                      os.path.join(B.WORK, "m_decoder.tflite"))
+    p_gen = B.convert(gen_r, (mel0,), os.path.join(B.WORK, "m_vocoder.tflite"))
     print("\n=== op-check (masked, fp32) ===")
     clean_te = B.opcheck(p_te, "textenc")
     clean_dec = B.opcheck(p_dec, "decoder")
@@ -193,8 +193,8 @@ def main():
     print("GPU-CLEAN ALL:", clean_te and clean_dec and clean_gen)
     try:
         import soundfile as sf
-        sf.write(os.path.join(B.HERE, "m_true.wav"), wav_true, 22050)
-        sf.write(os.path.join(B.HERE, "m_tfl.wav"), wav_tfl, 22050)
+        sf.write(os.path.join(B.WORK, "m_true.wav"), wav_true, 22050)
+        sf.write(os.path.join(B.WORK, "m_tfl.wav"), wav_tfl, 22050)
         print("wrote m_true.wav / m_tfl.wav")
     except Exception as e:
         print("no soundfile", e)

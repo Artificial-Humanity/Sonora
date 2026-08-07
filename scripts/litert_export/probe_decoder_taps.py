@@ -138,7 +138,7 @@ def main():
     mu = torch.randn(1, 80, T)
     t_emb = B.sin_pos_emb(torch.zeros(1), 160)
     mask = torch.ones(1, 1, T)
-    out = os.path.join(B.HERE, "artifacts", "matcha_decoder_dbg.tflite")
+    out = os.path.join(B.WORK, "artifacts", "matcha_decoder_dbg.tflite")
 
     import litert_torch
     litert_torch.convert(wrapped, (x, mu, t_emb, mask)).export(out)
