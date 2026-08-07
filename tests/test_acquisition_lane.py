@@ -835,3 +835,49 @@ def test_retries_are_exhausted_then_it_raises(fetch_mod, monkeypatch):
     with pytest.raises(TimeoutError):
         fetch_mod.fetch_with_retry("test://slow")
     assert len(calls) == 1 + len(fetch_mod.RETRY_DELAYS)
+
+
+# --- A-M11: the director pass is checkpointed -----------------------------------------
+#
+# `lines` accumulated in memory and reached disk only after the LAST chunk, so any
+# interruption — a `load_skill` error at chunk 90, an ollama restart, Ctrl-C — discarded
+# every director call made so far. Each is a 31B inference; a 200-chunk book is an hour.
+
+
+def _chunk(kind, text):
+    return {"chunk_type": kind, "text": text, "source_ref": {}}
+
+
+def test_chunk_key_is_content_not_position(ingest_mod):
+    """An index-keyed checkpoint would hand chunk 40's direction to chunk 37 after a
+    resume with a different --max-per-type — worse than no checkpoint, because the bank
+    still looks complete."""
+    a = _chunk("narration", "In a bedroom on the fourth floor a man was lying.")
+    b = dict(a)
+    assert ingest_mod.chunk_key(a) == ingest_mod.chunk_key(b)
+    assert ingest_mod.chunk_key(a) != ingest_mod.chunk_key(_chunk("dialogue", a["text"]))
+    assert ingest_mod.chunk_key(a) != ingest_mod.chunk_key(_chunk("narration", "Other."))
+
+
+def test_checkpoint_round_trips(ingest_mod, tmp_path):
+    path = tmp_path / "x_bank.partial.jsonl"
+    with path.open("w", encoding="utf-8") as fh:
+        for n in range(3):
+            fh.write(json.dumps({"chunk_key": f"k{n}", "line": {"id": f"line{n}"}}) + "\n")
+    done = ingest_mod.load_director_checkpoint(path)
+    assert set(done) == {"k0", "k1", "k2"}
+    assert done["k1"]["id"] == "line1"
+
+
+def test_a_torn_trailing_record_does_not_lose_the_rest(ingest_mod, tmp_path):
+    """The failure this file exists for is a killed process, and a killed process is
+    exactly what leaves a half-written last line."""
+    path = tmp_path / "x_bank.partial.jsonl"
+    good = json.dumps({"chunk_key": "k0", "line": {"id": "line0"}})
+    path.write_text(good + "\n" + '{"chunk_key": "k1", "li', encoding="utf-8")
+    done = ingest_mod.load_director_checkpoint(path)
+    assert list(done) == ["k0"]
+
+
+def test_a_missing_checkpoint_is_not_an_error(ingest_mod, tmp_path):
+    assert ingest_mod.load_director_checkpoint(tmp_path / "absent.jsonl") == {}

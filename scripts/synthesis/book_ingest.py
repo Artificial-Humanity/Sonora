@@ -18,6 +18,7 @@ Run:
   .venv/bin/python scripts/synthesis/book_ingest.py --url <SE url> --out <dir> [--dry-run] [--max-per-type N]
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -1233,6 +1234,40 @@ def build_direction(tag, text, dia_guidance=3.0, lane=None):
                     "temperature": 1.8, "guidance": dia_guidance}
 
 
+def chunk_key(chunk):
+    """Stable identity for a chunk, for the director pass's checkpoint (A-M11).
+
+    Content, not position. `sample` is deterministic for identical arguments, but a resume
+    with a different `--max-per-type` reshuffles every index — and an index-keyed
+    checkpoint would then hand chunk 40's direction to chunk 37, which is worse than
+    having no checkpoint at all because the bank still looks complete.
+    """
+    blob = f"{chunk['chunk_type']}\x00{chunk['text']}".encode("utf-8")
+    return hashlib.sha1(blob).hexdigest()
+
+
+def load_director_checkpoint(path):
+    """-> {chunk_key: bank_line} from a partial run. Tolerates a torn final line."""
+    done = {}
+    if not os.path.exists(path):
+        return done
+    with open(path, encoding="utf-8") as fh:
+        for raw in fh:
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                rec = json.loads(raw)
+            except json.JSONDecodeError:
+                # The last line of a killed run can be half-written. Everything before it
+                # is still good, and that is the entire point of the file.
+                print("  .. checkpoint: ignoring one torn trailing record", flush=True)
+                continue
+            if rec.get("chunk_key") and rec.get("line"):
+                done[rec["chunk_key"]] = rec["line"]
+    return done
+
+
 def to_bank_line(idx, chunk, tag, slug, seed=1234):
     text = chunk["text"]
     engine, direction = build_direction(tag, text)
@@ -1325,18 +1360,47 @@ def main():
         return
 
     print(f"== director-pass ({MODEL} via ollama) ==", flush=True)
-    lines, failures = [], 0
-    for i, chunk in enumerate(sample):
-        tag = director_tag(chunk)
-        if not tag:
-            failures += 1
-            print(f"  [{i}] FAILED to parse director JSON ({chunk['chunk_type']})", flush=True)
-            continue
-        line = to_bank_line(i, chunk, tag, slug)
-        lines.append(line)
-        print(f"  [{i}] {chunk['chunk_type']:9} eng={line['engine']:6} "
-              f"V={line['intended']['V']:+.1f} A={line['intended']['A']:+.1f} T={line['intended']['T']:+.1f} "
-              f"{line['register']:22} | {chunk['text'][:55]}", flush=True)
+
+    # A-M11. `lines` used to accumulate in memory and reach disk only after the last
+    # chunk, so ANY interruption — a `load_skill` error at chunk 90, an ollama restart,
+    # Ctrl-C — discarded every director call made so far. Each one is a 31B inference; a
+    # 200-chunk book is an hour of them. Now each result is appended as it is produced and
+    # a re-run picks up where it stopped.
+    #
+    # FAILURES ARE NOT CHECKPOINTED, deliberately. Same reasoning as D-M6: a transiently
+    # failed chunk must be retried on the next run rather than recorded as done and
+    # dropped forever. The cost is re-attempting a permanently malformed chunk each time,
+    # which is bounded and visible in the failure count.
+    partial_path = os.path.join(args.out, f"{slug}_bank.partial.jsonl")
+    done = load_director_checkpoint(partial_path)
+    if done:
+        print(f"  resuming: {len(done)} chunk(s) already directed in a previous run",
+              flush=True)
+
+    lines, failures, resumed = [], 0, 0
+    with open(partial_path, "a", encoding="utf-8") as checkpoint:
+        for i, chunk in enumerate(sample):
+            key = chunk_key(chunk)
+            if key in done:
+                lines.append(done[key])
+                resumed += 1
+                continue
+            tag = director_tag(chunk)
+            if not tag:
+                failures += 1
+                print(f"  [{i}] FAILED to parse director JSON ({chunk['chunk_type']})", flush=True)
+                continue
+            line = to_bank_line(i, chunk, tag, slug)
+            lines.append(line)
+            checkpoint.write(json.dumps({"chunk_key": key, "line": line},
+                                        ensure_ascii=False) + "\n")
+            checkpoint.flush()
+            os.fsync(checkpoint.fileno())
+            print(f"  [{i}] {chunk['chunk_type']:9} eng={line['engine']:6} "
+                  f"V={line['intended']['V']:+.1f} A={line['intended']['A']:+.1f} T={line['intended']['T']:+.1f} "
+                  f"{line['register']:22} | {chunk['text'][:55]}", flush=True)
+    if resumed:
+        print(f"  reused {resumed} directed chunk(s) from the checkpoint", flush=True)
 
     src_name, src_license, src_note = text_provenance(args.url, args.epub)
     if src_license == "UNKNOWN":
@@ -1353,8 +1417,13 @@ def main():
         "lines": lines,
     }
     out = os.path.join(args.out, f"{slug}_bank.json")
-    with open(out, "w") as f:
-        json.dump(bank, f, indent=2, ensure_ascii=False)
+    synth_common.write_json_atomic(out, bank, indent=2)
+    # Only once the real bank is safely on disk. Until then the checkpoint is the only
+    # record of an hour of 31B inference.
+    try:
+        os.remove(partial_path)
+    except OSError:
+        pass
     print(f"== DONE ==  wrote {len(lines)} bank lines ({failures} failures) -> {out}", flush=True)
 
 
