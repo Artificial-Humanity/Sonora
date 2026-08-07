@@ -7,7 +7,7 @@ architecture canon is [ARCHITECTURE.md](ARCHITECTURE.md); open work is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
-_Last updated: 2026-08-06._
+_Last updated: 2026-08-07._
 
 ---
 
@@ -43,21 +43,37 @@ _Last updated: 2026-08-06._
 > have refused any run that reached for it. Composition, a real batch, and a conditioned
 > `synthesise` are all verified in-container. Lineage and every source:
 > **[training-sources.md](training-sources.md)** (SSOT). Residual review debt that
-> touches training: [todo.md §1](todo.md).
+> touches training: [todo.md §2](todo.md).
 >
 > Pre-flight for the run itself is unchanged and non-negotiable: stop **all** inference
 > engines first ([spin-down rule](training-operations.md)), and run
-> `scripts/test_vat_dim_seams.py`.
+> `scripts/test_vat_dim_seams.py` (22 checks).
 
-## The delivery channel — seams guarded, migration not started
+## The delivery channel — SHIPPED on the training side (2026-08-07)
 
-`vat_dim` is still **3** everywhere; nothing about the 4th channel has been built. What
-changed 2026-08-04 is that the four places which silently assumed 3 now refuse to: the
-FiLM trunk, the filelist parse, the collate, and the export converter. Each is driven
-with the wrong width and proven to fail in `scripts/test_vat_dim_seams.py` (13 checks) —
-a guard nobody has watched fail is a guess. The data configs interpolate
-`vat_dim: ${model.vat_dim}`, so the model config is the single source of truth and
-bumping it to 4 now fails loudly at the filelist instead of quietly at the trunk.
+`vat_dim` is **8**: three V/A/T channels plus a five-wide one-hot delivery block.
+`matcha/delivery.py` is the only definition of that encoding, and the corpus derivation,
+the CLI, the Vocalizer and the export converter all read it.
+
+**Eight, not the four the review proposed.** A single ordered channel asserts the five
+lanes lie on one continuum, and `seed_delivery.py` records that they do not — Dialogue vs
+Neutral is a property of the TEXT, Newscaster vs Documentary a property of the RENDER. One
+channel also cannot carry `unknown`, which the contract pins as the zero vector: on one
+channel zero is the MIDDLE of the range. One-hot makes `unknown` all five channels at
+zero — the absence of a value rather than a value on the axis — so a corpus with no
+delivery labels reproduces v1 conditioning exactly. Owner call; ~1k extra parameters.
+
+The 2026-08-04 seam work is what made this safe to do: the four places that silently
+assumed 3 — FiLM trunk, filelist parse, collate, export converter — each refuse a
+mismatch, and the data configs interpolate `vat_dim: ${model.vat_dim}` so the model config
+is the single source of width. `scripts/test_vat_dim_seams.py` is now **22 checks** and
+passes; it is the thing that makes a width disagreement fail loudly at the filelist
+instead of quietly at the trunk.
+
+⚠ Two things do NOT follow automatically. **Every existing filelist is 3-wide** and must
+be re-derived (`--delivery-from`), and **the export lane is deliberately not migrated** —
+`convert_vat.py` still refuses a wider checkpoint, because F-H2 is open and a mobile host
+told nothing about the last five channels being categorical will interpolate them.
 
 The collate was the one worth the trouble. It was all-or-none: a single item without a
 VAT dropped conditioning for the **whole batch**, silently, because `vat=None` is
@@ -113,8 +129,10 @@ closed at 354/347 when 30 real-audio clips from `librivox-v2` came back 30/30 Ne
 Newscaster 84, Speech 69. Documentary stays at 87/92 by owner call — no documentary
 real audio is segmented anywhere and −5 does not pay for a fresh ingest.
 
-The corpus is no longer the constraint. **The 4th FiLM channel it was built for still
-does not exist in the model core** — see [todo.md §1](todo.md).
+The corpus is no longer the constraint, and as of 2026-08-07 neither is the model core:
+**the 4th FiLM channel it was built for exists**, as a five-wide one-hot block
+(`vat_dim` 8). What is left is re-deriving the corpus at that width — see
+[todo.md §2](todo.md).
 
 **Engine allocation is now three-layer** (`ref_select.py`, 2026-08-02): capability veto
 (`ENGINE_CHANNELS` — the relay audit made executable), measured per-lane weights
@@ -140,7 +158,7 @@ bookkeeping retirement rather than an ear verdict.
 **moss_vg held at scrutinized.** 12/12 on narration is clean but thin, and the prior
 20/20 was confounded — Newscaster flatters its radio-timbre failure mode, and its 24%
 rate was measured on expressive material. Re-test on dialogue or an expressive
-register before moving it. Full ears queue: [todo.md §4](todo.md).
+register before moving it. Full ears queue: [todo.md §6](todo.md).
 
 **Director models:** `gemma-4-31b-qat-spec` directs (skill-file obedience 24/24 where
 the MoE managed 8/24 and e4b 5/24); `gemma-4-e4b-qat-spec` handles volume jobs
@@ -171,7 +189,7 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
 - **Atomic writes** across all 8 renderers (`synth_common.py`); orpheus voice ban and
   zonos `emotion: null` are code, not markdown; loudnorm failure is fatal.
 - teacher-ab-v1 keeps normalized to −23 LUFS (the 5.99 dB engine spread confounded the
-  Qwen-vs-VV ranking; re-test is now possible — [todo.md §4](todo.md)).
+  Qwen-vs-VV ranking; re-test is now possible — [todo.md §6](todo.md)).
 
 ## Model architecture fronts
 
@@ -187,8 +205,9 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
   bench — check it before designing any component blind.
 - **Contract v2** (2026-07-30): delivery is the 4th FiLM channel (5 lanes + unknown ≡
   zero); register compiles away Director-side; tempo/loudness stay host-side. Pinned in
-  [ARCHITECTURE.md](ARCHITECTURE.md) §1. The model core does not implement it yet —
-  seam assertions are pre-work ([todo.md §1](todo.md)).
+  [ARCHITECTURE.md](ARCHITECTURE.md) §1. **Implemented in the model core 2026-08-07** as a
+  five-wide one-hot block (`vat_dim` 8, `matcha/delivery.py`); the EXPORT half is still
+  open ([todo.md §1](todo.md)).
 - **RapFlow-TTS (consistency-FM, ~2 NFE)** logged as its own later spike — throughput
   lever, separate de-risk cycle.
 
@@ -199,10 +218,12 @@ ODE), verified at parity on Phase 0 and adapted to the derisk checkpoint (`spk` 
 inputs, all graphs GPU-clean, e2e corr ≥ 0.9993). The `torch → ONNX → onnx2tf`
 monolith is Plan B. Harness: `/data/toolchain/litert-conversion/`.
 
-⚠ The lane's gate suite currently *reports* rather than *refuses*, and
-valence/tension have never been driven nonzero through a converted graph — that plus
-the delivery export story is the blocking work before any vat3/delivery export
-([todo.md §2](todo.md)).
+⚠ The gate suite *refuses* now and G5 has driven V/E/T nonzero through a converted graph
+(both closed 2026-08-06, F-C1). What remains blocking is the **delivery export story**
+(F-H2), which grew a second half when the training side shipped: nothing records the 2σ
+clamp contract, and nothing tells the host that the last five channels are CATEGORICAL —
+a host handed eight floats and told three are continuous will interpolate all eight
+([todo.md §1](todo.md)).
 
 ## Next actions (short list)
 
@@ -214,26 +235,47 @@ is only its headline.
    (checkpoints do separate on unseen audio), it retired `vat3c` ep099 as a regression,
    and it closed **0b** — the clean-lineage retrain from `matcha_vctk` is **not
    indicated**, because the lineage demonstrably generalizes. Owner's call to ratify.
-2. **Phase 1 — data, cheapest first**, warm-starting from `vat3-24k` ep099.
+2. **Re-derive the corpus at `vat_dim` 8.** The delivery channel's training side landed
+   2026-08-07 (contract v2's 4th channel, one-hot — see [ARCHITECTURE.md §1](ARCHITECTURE.md)
+   and `matcha/delivery.py`), so every existing filelist is now the wrong width, which the
+   seam guards refuse loudly at the filelist rather than quietly at the trunk. Run
+   `derive_vat_corpus.py --delivery-from <ratings.csv>` to join the 1,189 delivery labels;
+   without it every clip is `unknown`, which is all-zero and reproduces v1 conditioning
+   exactly. The zero-init FiLM path keeps a warm start from `vat3-24k` ep099 valid, but the
+   trunk's input conv changes shape — see [todo.md §2](todo.md).
+3. **Phase 1 — data, cheapest first**, warm-starting from `vat3-24k` ep099.
    Emilia-YODAS keeps (+43%) → expressive-registers (+116) → LibriTTS-R 10× → Hi-Fi TTS
    v1. #1 is the fastest test of whether volume moves quality at all, and the 10× is
    gated on its answer. 0a supplies the evidence this phase was assuming: 100 epochs
    against the same ~30k clips made the model *worse*, so the lever is corpus, not epochs.
-3. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
+4. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
    baseline frozen as the last act of Phase 1.
-4. Ears queue in priority order — [todo.md §4](todo.md).
-5. Export-lane gate hardening before any vat3c/delivery export — [todo.md §2](todo.md).
+5. Ears queue in priority order — [todo.md §6](todo.md). `speech_ok` / `head_ok` (§3's
+   C-M4) are blocked on it: shipping a gate on a guessed threshold either passes truncated
+   clips or rejects good ones, and neither failure announces itself.
+6. Export-lane hardening before any vat3c/delivery export — [todo.md §1](todo.md). F-H2
+   grew a second half with the migration: nothing tells a mobile host that the last five
+   channels are **categorical**, and a host that interpolates them — as it reasonably
+   would, handed eight floats and told three are continuous — produces a vector the
+   encoding refuses.
 
 ## Pointers
 
 - Change history — [CHANGELOG.md](CHANGELOG.md) (maintained per AGENTS.md §4 since 2026-08-06)
-- Review sweep, 2026-08-06 — 47 open items down to **31**. Closed: both §1 blockers
-  (E-M5/E-M6), all of §5's Highs, §3's packaging and GPL/cli lane, §8's label-derivation
-  bugs, **F-C1** (the only Critical) and F-H1/F-M4 in the export lane, plus C-M10 and
-  D-M5. Every fix carries a regression test; the running tally is [todo.md](todo.md).
-  Two findings turned out to be **live, not latent** — the export harness ran three weeks
-  stale on `/data`, and `eiv_merge_corpus` fabricated a full-scale valence contribution
-  from floating-point dust for 224 clips.
+- Review sweep — 47 open items down to **17**. The 2026-08-06 round closed both §1
+  blockers (E-M5/E-M6), §5's Highs, §3's packaging and GPL/cli lane, §8's label-derivation
+  bugs, **F-C1** (the only Critical) and F-H1/F-M4, plus C-M10 and D-M5. The **2026-08-07**
+  round (`87c65f8`..`72786ac`, twelve commits) closed the whole of §1, §3, §5 and §6 and
+  most of §7 — the host suite went 119 → **264** tests, the vat_dim seam checks 13 → **22**.
+  Every fix carries a regression test; the running tally is [todo.md](todo.md).
+  Six findings turned out to be **live or wider than filed**: the export harness ran three
+  weeks stale on `/data`; `eiv_merge_corpus` fabricated a full-scale valence contribution
+  from floating-point dust for 224 clips; the ONNX "Plan B" exporter silently dropped every
+  conditioning channel; A-M2 was the tail truncation the aligner already blamed on CTC
+  (**54% of a sentence dropped**, measured); an unpinned render lane resolves
+  `transformers` **5.14.1** today against the 4.x the corpus was built on; and
+  `make_bulk_bank.py` had been sending all 87 qwen lines to the model with the voice design
+  stripped — verbatim the 2026-07-25 finding `build_direction` exists to prevent.
 - Code on `/data` — [data-mirrors.md](data-mirrors.md). Nothing of ours is unbacked; the
   risk is **drift**, and it had already bitten: the running export harness was three weeks
   stale and missing a seam guard the repo recorded as landed. `tests/test_data_mirrors.py`
