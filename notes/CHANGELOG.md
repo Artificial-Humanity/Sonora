@@ -19,6 +19,38 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-06
 
+### Fixed — label derivation (§8)
+
+- **`90f2c1b` — imputed heads, unretried failures, and a z-guard that fabricated labels.**
+  - **D-M1** — `mine_emilia_keeps` imputed a missing EIV head as raw `0.0`, which z-scores
+    to ~**3σ of pure fiction** weighted into every clip's valence. Safe only because the
+    Emilia and LibriTTS passes happen to share 12 heads; the scorer's *default* set would
+    have poisoned the corpus silently. Refused now, at the anchor and per tar. Only
+    **weighted** heads are required — three carry weight 0.0 and two are legitimately
+    absent, so demanding all twelve would fail on correct data.
+  - **D-M6** — `process_emilia_tail` counted `error` rows as done, so a transiently failed
+    clip was skipped by every later run forever. Error rows stay as the record; they no
+    longer count as complete.
+  - **D-M3** — the corpus lane refuses transcripts containing digits (the tokenizer deletes
+    rather than expands them, and `validate()` can't see it). **Verified inert** for
+    existing data: 0 digits in 8,000 sampled LibriTTS transcripts and 0 in all 5,736
+    dev-clean. Fires on Emilia YODAS captions — the corpus Phase 1 merges.
+  - **D-L5** — `derive_markup_measures` was pinned to v2 and stored the derive's
+    **contiguous index** under `"speaker"`; the index is re-derived per corpus version, so
+    a join against `reader_profiles.json` would match the wrong voice without erroring. Now
+    `--corpus` (default v3c), with `speaker_index` and the real LibriTTS `speaker` recorded
+    separately and spot-checked against wav paths.
+  - **D-L2 — filed as "the two implementations disagree", and that undersells it.**
+    `std or 1.0` guards only a std of *exactly* zero, which is not the case that occurs. A
+    head can be **constant** for a speaker — one identical value across all 106 of speaker
+    `6531`'s clips on `Amusement`, likewise `8095`/Valence and `909`/Valence, **224 clips**
+    — leaving `v − mean` and `std` both float dust ~1e-21. Dust ÷ dust = **max|z| = 1.0**,
+    a full-scale label manufactured from rounding error. `+ 1e-6` gives ~0, the truth.
+    `eiv_merge_corpus` was the broken half and is corrected. **The shipped `_v2` files and
+    therefore v3c were built with the broken guard** — re-deriving moves the raw combo by
+    up to **0.228** across 31,443 of 31,445 clips, so that is a corpus bump and an **owner
+    call**; nothing generated was touched.
+
 ### Changed — execution layout
 
 - **`13b5872` — the LiteRT harness executes from the repo; `/data` holds the data.** Owner
