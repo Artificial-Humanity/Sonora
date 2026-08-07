@@ -1,3 +1,4 @@
+import os
 import tempfile
 from argparse import Namespace
 from pathlib import Path
@@ -350,7 +351,13 @@ def main():
             outputs=[audio, mel_spectrogram],
         )
 
-        demo.queue().launch(share=True)
+        # share=True was upstream's default: it opens a public gradio tunnel from
+        # whatever machine runs it, which here is the one holding unreleased checkpoints
+        # and the corpus. Opt-in now (E-L4). This file is the upstream demo and is
+        # superseded by vocalizer.py, the standing vetting surface — it is kept only so
+        # legacy LJSpeech checkpoints stay auditable, is no longer a console entry point,
+        # and has no `make` target.
+        demo.queue().launch(share=os.environ.get("MATCHA_APP_SHARE") == "1")
 
 
 if __name__ == "__main__":

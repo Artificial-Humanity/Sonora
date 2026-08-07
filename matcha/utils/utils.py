@@ -6,11 +6,9 @@ from math import ceil
 from pathlib import Path
 from typing import Any, Callable, Dict, Tuple
 
-import gdown
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import wget
 from omegaconf import DictConfig
 
 from matcha.utils import pylogger, rich_utils
@@ -213,9 +211,19 @@ def assert_model_downloaded(checkpoint_path, url, use_wget=True):
     log.info(f"[-] Model not found at {checkpoint_path}! Will download it")
     print(f"[-] Model not found at {checkpoint_path}! Will download it")
     checkpoint_path = str(checkpoint_path)
+    # Imported here, not at module scope: this function fetches UPSTREAM demo
+    # checkpoints and nothing in the Sonora lanes ever calls it, but importing
+    # `matcha.utils.utils` is unavoidable — so two network packages were a hard
+    # requirement of every training and eval container to support a code path none of
+    # them take. They are the `download` extra now. Deferring the import is what makes
+    # the extra optional rather than decorative.
     if not use_wget:
+        import gdown
+
         gdown.download(url=url, output=checkpoint_path, quiet=False, fuzzy=True)
     else:
+        import wget
+
         wget.download(url=url, out=checkpoint_path)
 
 

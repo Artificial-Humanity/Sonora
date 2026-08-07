@@ -1,9 +1,19 @@
 #!/usr/bin/env python
-import os
+"""Build shim. Everything declarative lives in pyproject.toml [project].
+
+All this file still does is the one thing pyproject cannot: build the Cython
+`monotonic_align` extension, which needs numpy's headers at build time.
+
+It used to carry the whole package definition, and all of it was upstream's — name
+`matcha-tts`, upstream author and URL, no licence field, and `install_requires` read
+out of a `requirements.txt` that had drifted in both directions (see pyproject for
+what was wrong with it). A wheel built from that metadata would have claimed to be
+someone else's package. `make create-package` would then have pushed it to PyPI.
+"""
 
 import numpy
 from Cython.Build import cythonize
-from setuptools import Extension, find_packages, setup
+from setuptools import Extension, setup
 
 exts = [
     Extension(
@@ -12,42 +22,7 @@ exts = [
     )
 ]
 
-with open("README.md", encoding="utf-8") as readme_file:
-    README = readme_file.read()
-
-cwd = os.path.dirname(os.path.abspath(__file__))
-with open(os.path.join(cwd, "matcha", "VERSION"), encoding="utf-8") as fin:
-    version = fin.read().strip()
-
-
-def get_requires():
-    requirements = os.path.join(os.path.dirname(__file__), "requirements.txt")
-    with open(requirements, encoding="utf-8") as reqfile:
-        return [str(r).strip() for r in reqfile]
-
-
 setup(
-    name="matcha-tts",
-    version=version,
-    description="🍵 Matcha-TTS: A fast TTS architecture with conditional flow matching",
-    long_description=README,
-    long_description_content_type="text/markdown",
-    author="Shivam Mehta",
-    author_email="shivam.mehta25@gmail.com",
-    url="https://shivammehta25.github.io/Matcha-TTS",
-    install_requires=get_requires(),
     include_dirs=[numpy.get_include()],
-    include_package_data=True,
-    packages=find_packages(exclude=["tests", "tests/*", "examples", "examples/*"]),
-    # use this to customize global commands available in the terminal after installing the package
-    entry_points={
-        "console_scripts": [
-            "matcha-data-stats=matcha.utils.generate_data_statistics:main",
-            "matcha-tts=matcha.cli:cli",
-            "matcha-tts-app=matcha.app:main",
-            "matcha-tts-get-durations=matcha.utils.get_durations_from_trained_model:main",
-        ]
-    },
     ext_modules=cythonize(exts, language_level=3),
-    python_requires=">=3.9.0",
 )

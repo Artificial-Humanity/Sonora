@@ -15,7 +15,12 @@ and their records now live in [STATE.md](STATE.md) and
 landed too: **E-M5** (the logged `diff_loss` is masked now, so the 3.2× train/val gap is
 gone and curves are again readable — but not across the fix) and **E-M6** (the RoPE cache
 is built outside inference mode). Both carry regression tests in
-[tests/test_training_seams.py](../tests/test_training_seams.py)._
+[tests/test_training_seams.py](../tests/test_training_seams.py). **Pruned again
+2026-08-06 evening**: the split-contamination item is closed — Phase 0a shipped the
+never-trained holdout, scored the whole lineage on it, and retired `vat3c` ep099 as a
+regression; what survives of that bullet is the standing rule below. The loss-curve
+warning moved to its permanent home in
+[training-operations.md](training-operations.md)._
 
 This file is **residue, not the plan.** What to do next, and in what order, is
 [quality-gap-plan.md](quality-gap-plan.md).
@@ -34,20 +39,13 @@ This file is **residue, not the plan.** What to do next, and in what order, is
       and re-run `scripts/test_vat_dim_seams.py` (13 checks) at every step — it is
       pre-placed precisely so a wrong width fails loudly at the filelist instead of
       quietly at the trunk. There is still **no delivery export story** (F-H2, §2).
-- [ ] **The loss curves before 2026-08-06 are a different measurement.** E-M5 landed:
-      `compute_loss` masks the residual, so `diff_loss` no longer carries the
-      padding-fraction floor that made val read 3.2× train. Both terms drop, train more
-      than val, and **nothing logged before the fix is comparable to anything after it** —
-      the 2026-08-01 bucketing boundary is now the second-oldest of two discontinuities in
-      the same metric. Listed here, not in the changelog only, because the next person to
-      open MLflow will otherwise read the step change as a training effect.
-- [ ] **Split contamination is historical and does not fix itself.** The hash split
-      (`derive_vat_corpus._in_val`, 2026-08-02) is sound going forward, but every
-      retained checkpoint warm-started through corpora whose splits were re-drawn, so
-      93–97% of v3c's val clips were trained on earlier. `loss/val_epoch` is not a
-      generalization measure for any of them. Fix = the never-trained LibriTTS-R
-      `dev-clean` holdout, no training required —
-      [quality-gap-plan.md § Phase 0a](quality-gap-plan.md).
+- [ ] **Score it on the holdout, not on `loss/val_epoch`.** Standing rule now that
+      Phase 0a has landed, listed here because it is the step most easily skipped:
+      `scripts/score_holdout.sh` against `data/libritts_r_holdout_devclean`, ~100 min for
+      eight checkpoints on an idle card. MLflow val is permanently unusable for cross-run
+      comparison (historical split contamination, 93–97% of v3c's val trained on earlier)
+      and there are now **two** scale breaks in logged `diff_loss` — 2026-08-01 bucketing
+      and 2026-08-06 masking. Deciding a run by its curve is deciding it by an artefact.
 
 ## 2 · Export lane (before any vat3/delivery export)
 
@@ -73,23 +71,28 @@ This file is **residue, not the plan.** What to do next, and in what order, is
 
 ## 3 · Environment reproducibility (T4 / G-1)
 
-- [ ] `uv.lock` is a 3-line stub; the venv that produced v3 and every render is recorded
-      nowhere. Commit a real lock/constraints file; prune `requirements.txt` (still the
-      stale upstream list naming GPL `phonemizer`).
+_Mostly closed 2026-08-06. `pyproject.toml` is the single source of dependency truth
+(`requirements.txt` deleted — it declared 7 packages nothing imports and omitted 3 that
+are imported at module scope); GPL `phonemizer` is an opt-in `espeak` extra and is absent
+from the training container; the `uv.lock` stub was replaced by real environment records
+in [`environments/`](../environments/README.md); `create-package` (which would have
+twine-uploaded this fork as `matcha-tts`) is gone, as are the bare `python` invocations
+and the `matcha-tts-app` entry point. E-H2 and E-M2 are fixed with regression coverage in
+[tests/test_cli_lanes.py](../tests/test_cli_lanes.py). What is left:_
+
 - [ ] Pin `rocm/pytorch` image digests + per-engine wheels in `synth_bank.sh`,
       `librivox_align.sh`, `eiv_score.sh` (only qwen pins today); drop a `pip freeze`
       into every campaign dir. Raw scores are "immutable" but their environment isn't
-      recorded — version-stamp EIV scores (D-M2).
-- [ ] **G-3/G-4/E-M7:** Makefile + setup.py are upstream residue (`create-package` would
-      twine-upload as `matcha-tts`; bare `python` invocations; upstream metadata, no
-      license field). `phonemizer` (GPL) is an unconditional requirements dep;
-      `english_cleaners2` is still the default cli/app lane against the README's
-      "espeak banned from the runtime path".
-- [ ] **E-H2:** `matcha/cli.py` is broken for every Sonora checkpoint (espeak cleaners,
-      no `--vat`/`--guidance`, forced download even with `--checkpoint_path`) — teach it
-      the op-G2P lane or retire it in favor of `vocalizer.py`. **E-M2:** the Vocalizer
-      HTTP API accepts unclamped VAT/guidance. **E-L4:** `matcha/app.py` (upstream demo,
-      `share=True` public tunnel) is still a setup.py entry point.
+      recorded — version-stamp EIV scores (D-M2). *(The repo-level half of this landed
+      2026-08-06 — see [`environments/`](../environments/README.md) — but the render lane
+      still pins nothing per campaign, which is where the reproducibility question
+      actually bites.)*
+- [ ] **`matcha/app.py` still phonemizes through `english_cleaners2` unconditionally.**
+      Harmless in practice — it is the upstream demo, no longer an entry point, has no
+      `make` target and needs the `espeak` extra to run at all — but it is the last place
+      a Sonora checkpoint can be fed espeak phonemes. Point it at
+      `cli.process_text_for_lane` or delete the file; deleting is probably right, since
+      `vocalizer.py` supersedes it and the legacy-LJSpeech lane is auditable there.
 
 ## 4 · Ears queue (priority order, from the cleanup round)
 

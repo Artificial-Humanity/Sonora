@@ -30,7 +30,7 @@ GPU="--device /dev/kfd --device /dev/dri --security-opt seccomp=unconfined --gro
 IMG=rocm/pytorch:latest
 
 # Kept to one line so a dependency added here is visibly the same list score_holdout.py
-# imports. NOT in requirements.txt: this is an eval lane, and the training image stays lean.
+# imports. NOT in pyproject's dependencies: this is an eval lane, and the image stays lean.
 # NOTE: no `phonemizer`. matcha.text.cleaners imports it lazily precisely so the
 # espeak-free lane holds, the filelists here are already IPA, and the data config runs
 # `no_cleaners` — so pulling in a GPL dependency to satisfy an import that never fires
@@ -42,7 +42,7 @@ docker run --rm $GPU -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c "
   pip install -q uv >/dev/null 2>&1;
   uv pip install -q --python \"\$(which python)\" $DEPS >/dev/null 2>&1;
   bash /sonora/scripts/synthesis/container_as_ai_mgr.sh &&
-  mkdir -p /tmp/sonora && cp -a /sonora/setup.py /sonora/README.md /sonora/requirements.txt \
+  mkdir -p /tmp/sonora && cp -a /sonora/setup.py /sonora/pyproject.toml /sonora/README.md \
       /sonora/matcha /sonora/scripts /sonora/configs /tmp/sonora/ && chown -R ai-mgr /tmp/sonora &&
   runuser -u ai-mgr -- bash -c 'umask 002; cd /tmp/sonora && \
     python setup.py build_ext --inplace >/dev/null && \

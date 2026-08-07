@@ -10,7 +10,7 @@
 #      matcha.utils.monotonic_align .so is cp312-specific — it MUST rebuild;
 #   2. `uv pip install --no-build-isolation -e .` depends on torch/numpy
 #      already being importable at build time;
-#   3. requirements.txt pins no ROCm wheels, so this is the first proof that
+#   3. pyproject pins no ROCm wheels, so this is the first proof that
 #      plain PyPI actually yields a working CUDA build here.
 #
 # The setup: block below is byte-identical to train-runpod.yaml. That is the
@@ -37,12 +37,12 @@ setup: |
   sudo apt-get update -qq && sudo apt-get install -y -qq libsndfile1
 
   pip install uv
-  # mlflow and Cython are not in requirements.txt; the local container installs
+  # mlflow and Cython are not in pyproject dependencies; the local container installs
   # them separately, so do the same.
   uv pip install --system Cython mlflow
   # Pin the CUDA build to the POD'S DRIVER, and do it BEFORE the editable
   # install below. MEASURED 2026-07-31 on 1x_RTX4090_SECURE: the image ships
-  # driver 570.195.03, i.e. CUDA 12.8. requirements.txt asks only for
+  # driver 570.195.03, i.e. CUDA 12.8. pyproject asks only for
   # torch>=2.0.0, so plain PyPI resolves to 2.13.0+cu130 and every CUDA call
   # dies with "The NVIDIA driver on your system is too old (found version
   # 12080)". Installing cu128 first leaves torch>=2.0.0 already satisfied, so

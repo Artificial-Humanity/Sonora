@@ -1,0 +1,174 @@
+# Sonora training/eval container — the environment that TRAINS. Recorded 2026-08-06.
+#
+# Produced by running the compose prep chain verbatim against the base image and
+# freezing the result, so this is the environment, not a resolution of pyproject.
+# torch is the image's ROCm build and is NOT installable from PyPI — a resolver
+# lockfile would have silently pinned a CUDA wheel here, which is why this repo
+# records environments rather than carrying a uv.lock (see env/README.md).
+#
+# base image: rocm/pytorch:latest
+# digest:     sonora@sha256:4449f856653602317e4101a76fce599c7fcd58ccec2e539951fce5f73083179e
+# torch:      2.10.0+rocm7.2.4.git3d3aa833
+#
+# Prep chain (AI-Lab-AMD/docker-compose.yml, sonora_training):
+#   apt-get install -y libsndfile1
+#   pip install uv
+#   uv pip install --python /opt/venv/bin/python Cython mlflow
+#   uv pip install --python /opt/venv/bin/python --no-build-isolation -e .
+
+Using Python 3.12.3 environment at: /opt/venv
+aiohappyeyeballs==2.7.1
+aiohttp==3.14.3
+aiosignal==1.4.0
+alembic==1.19.0
+annotated-doc==0.0.5
+annotated-types==0.8.0
+antlr4-python3-runtime==4.9.3
+anyio==4.14.2
+apex==1.10.0+rocm7.2.4.git751f5dd5
+attrs==26.1.0
+audioread==3.1.0
+blinker==1.9.0
+build==1.5.0
+cachetools==7.1.7
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.4.9
+click==8.4.2
+cloudpickle==3.1.2
+colorlog==6.12.0
+conformer==0.3.2
+contourpy==1.3.3
+cryptography==49.0.0
+cxxfilt==0.3.0
+cycler==0.12.1
+cython==3.2.9
+databricks-sdk==0.125.0
+decorator==5.3.1
+diffusers==0.39.0
+docker==7.2.0
+einops==0.8.2
+fastapi==0.141.1
+filelock==3.29.0
+flask==3.1.3
+flask-cors==6.0.5
+fonttools==4.63.0
+frozenlist==1.8.0
+fsspec==2026.4.0
+gitdb==4.0.12
+gitpython==3.1.58
+google-auth==2.56.3
+graphene==3.4.3
+graphql-core==3.2.11
+graphql-relay==3.2.0
+greenlet==3.5.4
+gunicorn==26.0.0
+h11==0.16.0
+hf-xet==1.6.0
+httpcore==1.0.9
+httpx==0.28.1
+huey==3.3.4
+huggingface-hub==1.26.1
+hydra-colorlog==1.2.0
+hydra-core==1.3.2
+hypothesis==6.155.0
+idna==3.18
+importlib-metadata==9.0.0
+inflect==7.5.0
+iniconfig==2.3.0
+itsdangerous==2.2.0
+jinja2==3.1.6
+joblib==1.5.3
+kiwisolver==1.5.0
+lazy-loader==0.5
+librosa==0.11.0
+lightning==2.6.5
+lightning-utilities==0.15.3
+llvmlite==0.48.0
+mako==1.4.1
+markdown-it-py==4.2.0
+markupsafe==3.0.3
+matplotlib==3.10.9
+mdurl==0.1.2
+mlflow==3.15.1
+mlflow-skinny==3.15.1
+mlflow-tracing==3.15.1
+more-itertools==11.1.0
+mpmath==1.3.0
+msgpack==1.2.1
+multidict==6.7.1
+narwhals==2.24.0
+networkx==3.6.1
+ninja==1.13.0
+numba==0.66.0
+numpy==2.4.6
+omegaconf==2.3.1
+opentelemetry-api==1.44.0
+opentelemetry-proto==1.44.0
+opentelemetry-sdk==1.44.0
+opentelemetry-semantic-conventions==0.65b0
+packaging==26.2
+pandas==2.3.3
+pillow==12.2.0
+pip==26.1.1
+platformdirs==4.11.0
+pluggy==1.6.0
+pooch==1.9.0
+prettytable==3.18.0
+propcache==0.5.2
+protobuf==6.33.6
+py-cpuinfo==9.0.0
+pyarrow==25.0.0
+pyasn1==0.6.4
+pyasn1-modules==0.4.2
+pycparser==3.0
+pydantic==2.13.4
+pydantic-core==2.46.4
+pygments==2.20.0
+pyparsing==3.3.2
+pyproject-hooks==1.2.0
+pytest==9.0.3
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.2
+pytorch-lightning==2.6.5
+pytz==2026.3.post1
+pyyaml==6.0.3
+regex==2026.7.19
+requests==2.34.2
+rich==15.0.0
+rootutils==1.0.7
+safetensors==0.8.0
+scikit-learn==1.9.0
+scipy==1.17.1
+setuptools==82.0.1
+six==1.17.0
+skops==0.14.0
+smmap==5.0.3
+-e file:///tmp/s
+sortedcontainers==2.4.0
+soundfile==0.14.0
+soxr==1.1.0
+sqlalchemy==2.0.51
+sqlparse==0.5.5
+starlette==1.4.1
+sympy==1.14.0
+threadpoolctl==3.6.0
+torch==2.10.0+rocm7.2.4.lw.git3d3aa833
+torchaudio==2.10.0+rocm7.2.4.git5047768f
+torchmetrics==1.9.0
+torchvision==0.25.0+rocm7.2.4.git82df5f59
+tqdm==4.67.3
+triton==3.6.0+rocm7.2.4.git4ed88892
+typeguard==4.6.0
+typing-extensions==4.15.0
+typing-inspection==0.4.2
+tzdata==2026.3
+unidecode==1.4.0
+urllib3==2.7.0
+uv==0.12.2
+uvicorn==0.52.1
+wcwidth==0.8.2
+werkzeug==3.1.8
+wheel==0.47.0
+yarl==1.24.5
+zipp==4.1.0

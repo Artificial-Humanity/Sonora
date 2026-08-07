@@ -37,28 +37,29 @@ starlette.templating.Jinja2Templates.TemplateResponse = patched_template_respons
 import gradio as gr
 import gradio.networking
 gradio.networking.url_ok = lambda *args, **kwargs: True
-import json
 import soundfile as sf
 import torch
 
+# Lane detection, phonemization and the 24 kHz vocoder loader all live in matcha.cli and
+# are imported, not re-implemented. This module carried its own copy of each until
+# 2026-08-06; `SONORA_VOC24K_CONFIG` in particular defaulted to a different path than the
+# CLI's (`hifi-gan/config_24k_80band.json` vs the copy sitting beside the checkpoint).
+# Those two files are byte-identical — checked, not assumed — so consolidating on the
+# colocated one changes nothing today, which is exactly the kind of near-miss that stops
+# being harmless the moment one of them is edited.
 from matcha.cli import (
+    detect_lane,
     get_device,
     load_matcha,
     load_vocoder,
-    process_text,
+    load_vocoder_24k,
+    process_text_for_lane,
     to_waveform,
 )
-from matcha.text import text_to_sequence
-from matcha.utils.utils import intersperse, plot_tensor
+from matcha.utils.utils import plot_tensor
 
 # We run on CPU to avoid GPU conflicts with the training run
 device = torch.device("cpu")
-
-VOC24K_CKPT = os.environ.get(
-    "SONORA_VOC24K", "/data/model-training/vocoder/cp_hifigan_24k/g_02510000")
-VOC24K_CONFIG = os.environ.get(
-    "SONORA_VOC24K_CONFIG",
-    "/data/model-training/vocoder/hifi-gan/config_24k_80band.json")
 
 # Loaded-state registry (one checkpoint + its lane's vocoder at a time)
 current_checkpoint = None
@@ -68,15 +69,6 @@ denoiser = None
 lane = None          # "vat" | "legacy"
 n_spks = 1
 sample_rate = 22050
-_g2p = None
-
-
-def get_g2p():
-    global _g2p
-    if _g2p is None:
-        from matcha.text.op_g2p import OpenPhonemizerG2P
-        _g2p = OpenPhonemizerG2P()
-    return _g2p
 
 
 def get_checkpoints():
@@ -89,33 +81,19 @@ def get_checkpoints():
     return ckpts
 
 
-def load_vocoder_24k():
-    from matcha.hifigan.env import AttrDict
-    from matcha.hifigan.models import Generator
-
-    h = AttrDict(json.load(open(VOC24K_CONFIG)))
-    g = Generator(h)
-    g.load_state_dict(torch.load(VOC24K_CKPT, map_location="cpu")["generator"])
-    g.eval()
-    g.remove_weight_norm()
-    return g, h.sampling_rate
-
-
 def ensure_model_loaded(checkpoint_path):
     global current_checkpoint, model, vocoder, denoiser, lane, n_spks, sample_rate
     if current_checkpoint == checkpoint_path:
         return
     print(f"Loading checkpoint: {checkpoint_path}")
-    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    hp = dict(ckpt["hyper_parameters"])
-    has_vat = any("vat" in k or "film" in k for k in ckpt["state_dict"])
-    n_spks = int(hp.get("n_spks") or 1)
+    # Lane detection lives in matcha.cli — one implementation, shared with the CLI. This
+    # file used to carry its own copy, which is the drift the review keeps finding.
+    lane, n_spks, _vat_dim = detect_lane(checkpoint_path)
 
     model = load_matcha("custom", checkpoint_path, device)
 
-    if has_vat or n_spks > 1:
-        lane = "vat"
-        vocoder, sample_rate = load_vocoder_24k()
+    if lane == "vat":
+        vocoder, sample_rate = load_vocoder_24k(device)
         denoiser = None
     else:
         lane = "legacy"
@@ -132,20 +110,57 @@ def ensure_model_loaded(checkpoint_path):
 
 
 def encode_text(text):
-    """Text -> padded id tensor for the loaded lane."""
-    if lane == "vat":
-        g2p = get_g2p()
-        ipa = g2p.phonemize(text)
-        bad = g2p.validate(ipa)
-        if bad:
-            raise ValueError(f"out-of-vocab characters after G2P: {bad} "
-                             "(digits are not expanded — write numbers out)")
-        seq, _ = text_to_sequence(ipa, ["no_cleaners"])
-        x = torch.tensor(intersperse(seq, 0), dtype=torch.long, device=device)[None]
-        x_lengths = torch.tensor([x.shape[-1]], dtype=torch.long, device=device)
-        return x, x_lengths
-    out = process_text(1, text, device)
+    """Text -> padded id tensor for the loaded lane.
+
+    The op_g2p encoding used to be written out here as well as in matcha.cli. One copy
+    now, in cli, so the CLI and this bench cannot disagree about what phonemes a
+    checkpoint expects — a disagreement that would not raise, it would just synthesise.
+    """
+    out = process_text_for_lane(1, text, device, lane)
     return out["x"], out["x_lengths"]
+
+
+# The control contract, in ONE place (E-M2). These are exactly the bounds the Gradio
+# sliders enforce; before 2026-08-06 the HTTP API enforced nothing at all and passed
+# whatever a caller sent straight into the model. V/A/T are per-speaker z-scores clamped
+# at 2σ during derivation, so ±1 is already the edge of the trained range — a request for
+# valence=50 does not produce more emotion, it produces a FiLM activation the trunk has
+# never seen, and the failure is silent: plausible-sounding audio off the manifold. The
+# UI could not send that and the API could, which is the whole finding.
+CONTROL_BOUNDS = {
+    "valence": (-1.0, 1.0),
+    "energy": (-1.0, 1.0),
+    "tension": (-1.0, 1.0),
+    "guidance": (1.0, 4.0),
+    "temperature": (0.1, 1.0),
+    "length_scale": (0.5, 2.0),
+    "ode_steps": (1, 100),
+}
+
+
+class ClientError(ValueError):
+    """A bad request, not a server fault — mapped to 400 rather than 500."""
+
+
+def bounded(body, name, default, cast=float):
+    """Read one control off the request body and hold it to the contract.
+
+    Rejects rather than silently clamping: a caller asking for valence=50 has a bug or a
+    wrong mental model, and quietly rendering valence=1 teaches them the request worked.
+    """
+    raw = body.get(name, default)
+    try:
+        value = cast(raw)
+    except (TypeError, ValueError):
+        raise ClientError(f"{name!r} must be a number, got {raw!r}") from None
+    lo, hi = CONTROL_BOUNDS[name]
+    if not lo <= value <= hi:
+        raise ClientError(
+            f"{name}={value:g} is outside the supported range [{lo:g}, {hi:g}]. "
+            "V/A/T are per-speaker z-scores clamped at 2 sigma in derivation, so values "
+            "beyond +/-1 are outside anything the model was trained on."
+        )
+    return value
 
 
 def render(checkpoint_path, text, n_timesteps, temperature, length_scale,
@@ -346,15 +361,16 @@ def main():
             except (TypeError, ValueError):
                 spk_id = 245  # a known-good LibriTTS-R val speaker
 
-            s = float(body.get("guidance", 1.0))
+            s = bounded(body, "guidance", 1.0)
             _, waveform = render(
                 checkpoint_path, input_text,
-                n_timesteps=int(body.get("ode_steps", 25 if s > 1.0 else 10)),
-                temperature=0.667, length_scale=1.0,
+                n_timesteps=bounded(body, "ode_steps", 25 if s > 1.0 else 10, int),
+                temperature=bounded(body, "temperature", 0.667),
+                length_scale=bounded(body, "length_scale", 1.0),
                 spk_id=spk_id,
-                valence=float(body.get("valence", 0.0)),
-                energy=float(body.get("energy", 0.0)),
-                tension=float(body.get("tension", 0.0)),
+                valence=bounded(body, "valence", 0.0),
+                energy=bounded(body, "energy", 0.0),
+                tension=bounded(body, "tension", 0.0),
                 guidance=s,
             )
 
@@ -363,6 +379,10 @@ def main():
                      format="WAV", subtype="PCM_24")
             buffer.seek(0)
             return StreamingResponse(buffer, media_type="audio/wav")
+        except ClientError as e:
+            # 400, not 500: the request was wrong, the server is fine. Returned before
+            # the generic handler so a bad control value cannot be read as an outage.
+            return StreamingResponse(io.BytesIO(f"Error: {e}".encode()), status_code=400)
         except Exception as e:
             import traceback
             print(traceback.format_exc())

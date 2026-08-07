@@ -1,5 +1,91 @@
 [build-system]
-requires = ["setuptools", "wheel", "cython==0.29.35", "numpy==1.24.3", "packaging"]
+# NOTE: the training and eval containers install with `--no-build-isolation`, which
+# ignores this list entirely and builds against whatever is already in the image. These
+# pins therefore describe an isolated build only — they were `cython==0.29.35,
+# numpy==1.24.3` until 2026-08-06, both years stale and both silently inert in the lane
+# that actually builds this package. Kept as floors, not as a claim about our runtime.
+requires = ["setuptools>=64", "wheel", "cython>=3.0", "numpy>=1.24", "packaging"]
+
+[project]
+# `sonora`, not `matcha-tts`. This is a fork with its own conditioning trunk, corpus and
+# licence posture, and the distribution name is what a package index would publish it as
+# — the upstream name was accurate for the code in 2024 and is misattribution now. The
+# IMPORT package is still `matcha`, which is ordinary for a fork and keeps every existing
+# `from matcha...` working. Upstream attribution lives in NOTICE and README-Matcha.md.
+name = "sonora"
+dynamic = ["version"]
+description = "Sonora — a directable TTS acoustic model with V/A/T conditioning, on the Matcha-TTS flow-matching architecture"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Artificial Humanity, LLC" }]
+classifiers = [
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3.11",
+  "Private :: Do Not Upload",
+]
+
+# THE RUNTIME SET, and it is now the single source of truth — `requirements.txt` is gone.
+# That file was the upstream list and had drifted both ways: it declared seven packages
+# nothing in this repo imports (torchvision, torchmetrics, tensorboard, pandas, notebook,
+# ipywidgets, seaborn) and OMITTED three that are imported at module scope (soundfile,
+# tqdm, PyYAML), which have been resolving by transitive luck through librosa. Derived by
+# walking every import in matcha/, tests/ and vocalizer.py, not by editing the old list.
+dependencies = [
+  "torch>=2.0.0",
+  "torchaudio",
+  "lightning>=2.0.0",
+  "hydra-core==1.3.2",
+  "hydra-colorlog==1.2.0",
+  "omegaconf",
+  "rootutils",
+  "rich",
+  "numpy",
+  "scipy",
+  "librosa",
+  "soundfile",
+  "einops",
+  "conformer==0.3.2",
+  "diffusers",
+  "inflect",
+  "Unidecode",
+  "matplotlib",
+  "tqdm",
+  "PyYAML",
+]
+
+[project.optional-dependencies]
+# GPL-3.0, AND IT STAYS OPTIONAL. `phonemizer` shells out to espeak-ng; README § 3 says
+# espeak is banned from the runtime path, and the licence wall enforces that for data
+# while nothing enforced it for dependencies — an unconditional GPL dep in an Apache-2.0
+# project that never imports it on any live path. `matcha/text/cleaners.py` imports it
+# lazily precisely so this works: only the legacy LJSpeech checkpoints need it, through
+# `english_cleaners2`. Everything current phonemizes with op_g2p.
+espeak = ["phonemizer"]
+# `assert_model_downloaded` fetches upstream demo checkpoints. Lazily imported since
+# 2026-08-06 so the training and eval containers stop carrying two network deps to run a
+# code path they never take.
+download = ["gdown", "wget"]
+onnx = ["onnxruntime"]
+# The Sonora Vocalizer (vocalizer.py) — the standing vetting surface.
+vocalizer = ["gradio", "fastapi", "uvicorn", "starlette"]
+# matcha/app.py, the upstream gradio demo. Superseded by vocalizer.py; see its header.
+app = ["gradio==3.43.2"]
+dev = ["pytest", "pre-commit"]
+
+[project.scripts]
+matcha-data-stats = "matcha.utils.generate_data_statistics:main"
+matcha-tts = "matcha.cli:cli"
+matcha-tts-get-durations = "matcha.utils.get_durations_from_trained_model:main"
+# `matcha-tts-app = matcha.app:main` was REMOVED 2026-08-06 (E-L4). app.py called
+# `.launch(share=True)`, so an installed console script one word long stood up a public
+# gradio tunnel to a machine holding unreleased checkpoints and the corpus.
+
+[tool.setuptools.dynamic]
+version = { file = "matcha/VERSION" }
+
+[tool.setuptools.packages.find]
+exclude = ["tests*", "examples*", "notes*", "scripts*", "configs*"]
 
 [tool.black]
 line-length = 120
