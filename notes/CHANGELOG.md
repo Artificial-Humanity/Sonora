@@ -19,7 +19,58 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-06
 
+### Changed
+
+- **`428cb55` — `pyproject.toml` is the single source of dependency truth; `requirements.txt`
+  deleted.** It was the upstream list and had drifted **both ways**: seven declared packages
+  nothing imports (`torchvision`, `torchmetrics`, `tensorboard`, `pandas`, `notebook`,
+  `ipywidgets`, `seaborn`) and three imported at module scope but never declared
+  (`soundfile`, `tqdm`, `PyYAML`), resolving by transitive luck through librosa. The
+  replacement was derived by walking every import, not by editing the old list. Distribution
+  renamed **`matcha-tts` → `sonora`** with an Apache-2.0 licence field; the import package
+  stays `matcha`. `make create-package` deleted — it ran `twine upload` against metadata
+  still claiming `name="matcha-tts"`, so one invocation would have published this fork to
+  PyPI under upstream's name.
+- **`428cb55` — GPL `phonemizer` is opt-in (`[espeak]`), and verified absent from a fresh
+  training container.** README § 3 promises espeak is banned from the runtime path and the
+  licence wall enforces that for *data*; nothing enforced it for *dependencies*.
+  `cleaners.py` already imported it lazily, so only legacy LJSpeech checkpoints ever needed
+  it. `gdown`/`wget` got the same treatment (`[download]`) — two network packages were
+  mandatory in every container for a code path none of them take.
+- **`428cb55` — `matcha/cli.py` works for Sonora checkpoints (E-H2).** It sent every
+  checkpoint through espeak cleaners and wrote every file at 22050 Hz — so a Sonora
+  checkpoint got phonemes it never trained on, in a 24 kHz waveform tagged 22.05 kHz
+  (~9% slow, which sounds like a sluggish model rather than a header bug). The download
+  guard read `not hasattr(args, "checkpoint_path") and args.checkpoint_path is None`, which
+  argparse makes permanently False, so `--checkpoint_path` still fetched the upstream
+  checkpoint over the network before discarding it — a hard failure offline. Lane is now
+  read off the checkpoint; `--vat`/`--guidance` added and bounded; `--spk` range-checked.
+  **Lane detection, op_g2p encoding and the 24 kHz vocoder loader now live once, in
+  `matcha.cli`**, with `vocalizer.py` importing them — it had its own copy of all three, and
+  its `SONORA_VOC24K_CONFIG` default pointed at a different (byte-identical, checked) file.
+- **`428cb55` — the Vocalizer HTTP API enforces the control contract (E-M2).** It passed
+  `valence`/`energy`/`tension`/`guidance` straight into the model unbounded while the UI
+  could not. V/A/T are per-speaker z-scores clamped at 2σ in derivation, so `valence=50`
+  does not make more emotion — it drives the FiLM trunk off the manifold and still renders
+  fluent audio. Now one `CONTROL_BOUNDS` table, and **400 rather than 500**.
+- **`428cb55` — `matcha/app.py` is no longer an entry point and no longer shares publicly
+  (E-L4).** Its `launch(share=True)` opened a public tunnel from the machine holding
+  unreleased checkpoints; now opt-in via `MATCHA_APP_SHARE=1`.
+
 ### Added
+
+- **`428cb55` — `environments/`** replaces the 3-line `uv.lock` stub (T4/G-1): real
+  `uv pip freeze` records of the two lanes that do the work, the container one produced by
+  running the compose prep chain verbatim. A resolver lockfile would have been *actively
+  misleading* — torch ships in the ROCm base image and is not installable from PyPI, so
+  locking `torch>=2.0.0` pins a CUDA wheel and describes an environment we have never
+  trained in. Named `environments/` because `.gitignore` line 41 ignores `env/` as a
+  virtualenv, which would have committed the files in name only.
+- **`428cb55` — `tests/test_cli_lanes.py`** (15 cases) covering every guard above, plus
+  partial **D-M3**: the tokenizer *deletes* digits rather than expanding them ("I have 3
+  cats" → `ˈaɪ hˈæv kˈæts`, verified live) and `g2p.validate()` cannot catch it because
+  nothing illegal is present — a word is simply gone. Refused at synthesis input; D-M3
+  stays open for the corpus lane.
 
 - **`f015c8e` — `scripts/score_holdout.py` + `score_holdout.sh`, the never-trained holdout
   (Phase 0a).** Scores a checkpoint teacher-forced per clip with **paired** noise draws, so
