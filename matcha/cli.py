@@ -29,6 +29,7 @@ if hasattr(torch.serialization, "add_safe_globals"):
     except ImportError:
         pass
 
+from matcha import delivery
 from matcha.hifigan.config import v1
 from matcha.hifigan.denoiser import Denoiser
 from matcha.hifigan.env import AttrDict
@@ -292,24 +293,59 @@ def synthesis_conditioning(args, device):
 
 
 def parse_vat(args):
-    """`--vat V,A,T` -> a validated tensor-ready list, or None on the legacy lane."""
-    if args.vat is None:
+    """`--vat V,A,T` (+ `--delivery LANE`) -> a validated list, or None on the legacy lane.
+
+    Contract v2 made the conditioning vector V/A/T followed by a one-hot delivery block.
+    `--vat` stays THREE numbers and `--delivery` names a lane, because the alternative is
+    asking a human to type five zeros in the right order — and a delivery block typed by
+    hand is a delivery block that will one day be typed wrong, silently, into a channel
+    whose failure mode is a fluent render in the wrong manner.
+
+    Passing the full width is still accepted: the export lane and the seam tests drive
+    raw vectors, and refusing them would mean two ways to describe one tensor.
+    """
+    if args.vat is None and not getattr(args, "delivery", None):
         return None
     if args.lane != "vat":
         raise SystemExit("[!] --vat needs a VAT checkpoint; this one has no conditioning trunk")
-    try:
-        values = [float(v) for v in args.vat.split(",")]
-    except ValueError:
-        raise SystemExit(f"[!] --vat wants comma-separated numbers, got {args.vat!r}") from None
-    width = args.vat_dim or len(values)
+
+    values = [0.0, 0.0, 0.0]
+    if args.vat is not None:
+        try:
+            values = [float(v) for v in args.vat.split(",")]
+        except ValueError:
+            raise SystemExit(f"[!] --vat wants comma-separated numbers, got {args.vat!r}") from None
+
+    width = args.vat_dim or delivery.VAT_DIM
+    lane = (getattr(args, "delivery", None) or "").strip()
+
+    if len(values) == delivery.VAT_BASE_DIM and width > delivery.VAT_BASE_DIM:
+        # The ordinary path: three numbers plus a lane name.
+        try:
+            values = delivery.vat_vector(*values, lane)
+        except ValueError as exc:
+            raise SystemExit(f"[!] {exc}") from None
+    elif lane:
+        raise SystemExit(
+            f"[!] --delivery cannot be combined with a full {len(values)}-channel --vat: "
+            "the vector already carries a delivery block, and there would be two answers "
+            "to which lane this render is in.")
+
     if len(values) != width:
         raise SystemExit(f"[!] this checkpoint takes {width} VAT channels, got {len(values)}")
+
     # Same bound the Vocalizer's sliders and its HTTP API enforce. Out-of-range values do
     # not synthesise "more" of the channel; they drive the FiLM trunk off the manifold and
-    # the result is confident, fluent and wrong.
-    out = [v for v in values if not -1.0 <= v <= 1.0]
+    # the result is confident, fluent and wrong. The delivery block is checked separately
+    # — it is CATEGORICAL, so [-1, 1] is the wrong question and 0.5 is not a half-lane.
+    out = [v for v in values[:delivery.VAT_BASE_DIM] if not -1.0 <= v <= 1.0]
     if out:
         raise SystemExit(f"[!] VAT values must be within [-1, 1]; out of range: {out}")
+    if width > delivery.VAT_BASE_DIM:
+        try:
+            delivery.lane_of_vector(values)
+        except ValueError as exc:
+            raise SystemExit(f"[!] {exc}") from None
     return values
 
 
@@ -462,7 +498,19 @@ def cli():
         metavar="V,A,T",
         help="Conditioning as comma-separated floats in [-1, 1], e.g. --vat 0.4,-0.2,0.0 "
         "(per-speaker z-scores clamped at 2 sigma in derivation, so beyond +/-1 is "
-        "outside the trained range). Default: zeros, i.e. neutral",
+        "outside the trained range). Default: zeros, i.e. neutral. Name the delivery "
+        "lane with --delivery rather than appending its one-hot block by hand.",
+    )
+    parser.add_argument(
+        "--delivery",
+        type=str,
+        default=None,
+        choices=list(delivery.DELIVERY_LANES),
+        metavar="LANE",
+        help="Delivery lane (contract v2): "
+        + " | ".join(delivery.DELIVERY_LANES)
+        + ". Omit for `unknown`, which is the all-zero block and renders exactly as a "
+        "v1 checkpoint did. Embodiment clips are deliberately unknown, not a sixth lane.",
     )
     parser.add_argument(
         "--guidance",

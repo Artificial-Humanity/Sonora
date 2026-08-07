@@ -860,7 +860,8 @@ KNOWN_ENGINES = ("vibevoice", "dia", "qwen", "moss_vg", "moss85",
 # speaking. Kept here rather than imported from ref_select so build_direction has
 # no import-time dependency on the allocation tables — this is a property of the
 # lane vocabulary (ARCHITECTURE §1), which is contract, not of the render mix.
-NARRATION_LANES = ("Neutral", "Documentary", "Newscaster")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+from matcha.delivery import NARRATION_LANES  # noqa: E402,F401
 
 # Chatterbox reads narration too fast at the skill file's provisional 0.5. See the
 # chatterbox branch of build_direction for the measurement and why this is a

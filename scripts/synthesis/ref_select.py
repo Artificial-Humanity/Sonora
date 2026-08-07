@@ -378,7 +378,13 @@ ENGINE_MIX_BY_LANE = {
 # honest thing is to inherit rather than invent weights for it.
 ENGINE_MIX_BY_LANE["Speech"] = ENGINE_MIX_BY_LANE["Dialogue"]
 
-_NARRATION_LANES = ("Neutral", "Documentary", "Newscaster")
+# Which lanes are narration — a SUBSET of the vocabulary, written out here AND in
+# book_ingest. Same B-L5 shape: one gets a new lane, the other does not, and an engine is
+# directed as narration in one file and as dialogue in the next. It lives in
+# matcha.delivery because these two modules import each other, so neither can own it.
+import sys as _sys  # noqa: E402
+_sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from matcha.delivery import NARRATION_LANES as _NARRATION_LANES  # noqa: E402
 
 
 def mix_for_lane(lane):

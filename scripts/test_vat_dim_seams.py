@@ -53,6 +53,22 @@ def _load_from_convert_vat(name):
 
 detect_vat_dim = _load_from_convert_vat("detect_vat_dim")
 
+
+def _config_vat_dim():
+    """`vat_dim` out of configs/model/matcha.yaml, without pulling in hydra.
+
+    Read as text on purpose: the data configs interpolate `${model.vat_dim}`, so this one
+    line decides what the filelist parse, the collate and the trunk all expect. If it and
+    `matcha/delivery.py` ever disagree, every clip is conditioned with a vector of the
+    wrong shape or the wrong meaning, and the seam guards above only catch the shape.
+    """
+    import re
+
+    text = (pathlib.Path(__file__).resolve().parents[1]
+            / "configs/model/matcha.yaml").read_text(encoding="utf-8")
+    m = re.search(r"^vat_dim:\s*(\d+)", text, re.M)
+    return int(m.group(1)) if m else None
+
 PASS, FAIL = [], []
 
 
@@ -145,6 +161,52 @@ check_ok("export: detect_vat_dim reads the trunk conv",
 check_ok("export: unconditioned checkpoint reads as None",
          lambda: None if detect_vat_dim({"encoder.emb.weight": torch.zeros(2, 2)})
          is None else (_ for _ in ()).throw(AssertionError("should be None")))
+
+# --- 5. the delivery channel (contract v2, added with the migration) ---------------
+#
+# The seams above prove a WIDTH disagreement fails loudly. These prove the width is now
+# the one the contract specifies and that the encoding is self-consistent — because the
+# failure mode of a correct-width, wrong-MEANING vector is a fluent render in the wrong
+# manner, which no shape check can see.
+from matcha import delivery  # noqa: E402
+
+check_ok("delivery: production width is 3 V/A/T + 5 one-hot lanes",
+         lambda: None if delivery.VAT_DIM == 8 and delivery.VAT_BASE_DIM == 3
+         else (_ for _ in ()).throw(AssertionError(f"VAT_DIM={delivery.VAT_DIM}")))
+
+check_ok("delivery: the model config agrees with the encoding",
+         lambda: None if _config_vat_dim() == delivery.VAT_DIM
+         else (_ for _ in ()).throw(AssertionError(
+             f"configs/model/matcha.yaml says {_config_vat_dim()}, "
+             f"matcha/delivery.py says {delivery.VAT_DIM}")))
+
+check_ok("delivery: unknown is the v1 vector padded with zeros",
+         lambda: None if delivery.vat_vector(0.4, -0.2, 0.1) == [0.4, -0.2, 0.1] + [0.0] * 5
+         else (_ for _ in ()).throw(AssertionError("unknown is not all-zero")))
+
+check_ok("delivery: every lane round-trips through the vector",
+         lambda: None if all(
+             delivery.lane_of_vector(delivery.vat_vector(0, 0, 0, ln)) == ln
+             for ln in delivery.DELIVERY_LANES)
+         else (_ for _ in ()).throw(AssertionError("a lane did not round-trip")))
+
+check_ok("delivery: a blank label reads back as unknown",
+         lambda: None if delivery.lane_of_vector(delivery.vat_vector(0, 0, 0, "")) == ""
+         else (_ for _ in ()).throw(AssertionError("blank did not round-trip")))
+
+check("delivery: an unrecognised lane is refused, not treated as unknown",
+      lambda: delivery.delivery_index("Newscasterr"), "unknown delivery lane")
+check("delivery: two lanes at once is refused",
+      lambda: delivery.lane_of_vector([0, 0, 0, 1, 1, 0, 0, 0]), "not one-hot")
+check("delivery: a fractional lane is refused",
+      lambda: delivery.lane_of_vector([0, 0, 0, 0.5, 0, 0, 0, 0]), "not one-hot")
+
+# The trunk must accept the production width — the check that would have caught a
+# migration that bumped the config and forgot the model.
+check_ok("delivery: the trunk accepts the production width",
+         lambda: VATTrunk(vat_dim=delivery.VAT_DIM, cond_dim=8)(
+             torch.zeros(2, delivery.VAT_DIM, 16)))
+
 
 # --- report -----------------------------------------------------------------------
 for p in PASS:

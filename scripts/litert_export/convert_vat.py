@@ -169,10 +169,17 @@ def load_ckpt():
     if found is not None and found != VAT_DIM:
         raise SystemExit(
             f"{CKPT}\n  checkpoint has vat_dim={found}, this converter is pinned to "
-            f"VAT_DIM={VAT_DIM}.\n  The delivery migration needs more than this "
-            "constant — there is no delivery export story yet and nothing enforces the "
-            "2-sigma clamp contract for mobile hosts (notes/todo.md §2, F-H2). Do not "
-            "simply bump the number."
+            f"VAT_DIM={VAT_DIM}.\n"
+            "  The training side of the delivery migration LANDED 2026-08-07: the\n"
+            "  production width is 8 (3 V/A/T + 5 one-hot lanes, `matcha/delivery.py`),\n"
+            "  and `configs/model/matcha.yaml` is the single source of truth for it.\n"
+            "  The EXPORT side did not. Bumping this constant alone would produce a\n"
+            "  graph whose config.json advertises a control surface the mobile host has\n"
+            "  no vocabulary for, and would still leave F-H2 open: nothing records or\n"
+            "  enforces the 2-sigma clamp contract, and nothing tells the host that the\n"
+            "  last five channels are CATEGORICAL — a host that interpolates them, as it\n"
+            "  reasonably would for V/A/T, gets a vector `lane_of_vector` would refuse.\n"
+            "  See notes/todo.md §2 (F-H2). Do not simply bump the number."
         )
     return sd, float(stats["mel_mean"]), float(stats["mel_std"])
 

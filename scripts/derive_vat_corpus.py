@@ -316,6 +316,45 @@ def measure_clip(args):
     return wav_path, {"seconds": seconds, "lufs": lufs, **phon}
 
 
+
+def _load_delivery(path):
+    """-> {wav_path: lane} from ratings.csv, or {} when no source is given.
+
+    Contract v2's delivery channel is CORPUS metadata, not a measure: it comes from the
+    ear, through ratings.csv, and there is no signal in the audio we could derive it from.
+    So it is joined here rather than computed, and its absence is a legitimate state —
+    LibriTTS predates the axis entirely and every clip in it is `unknown`.
+
+    Blank cells stay blank. `seed_delivery.py` deliberately leaves the ear's cases blank
+    rather than guessing, and embodiment clips are blank BY RULE (ARCHITECTURE §1) — so
+    treating a blank as anything but unknown would manufacture a label the owner declined
+    to give. `delivery_index` refuses a non-empty value it does not recognise, which is
+    what turns a typo into an error instead of a silently unconditioned clip.
+    """
+    if not path:
+        return {}
+    import csv as _csv
+
+    from matcha.delivery import delivery_index
+
+    out, counts = {}, {}
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in _csv.DictReader(fh):
+            lane = (row.get("delivery") or "").strip()
+            delivery_index(lane)          # raises on an unrecognised non-empty label
+            if not lane:
+                continue
+            link = (row.get("link") or "").strip()
+            if not link:
+                continue
+            out[os.path.normpath(link)] = lane
+            out[os.path.basename(link)] = lane
+            counts[lane] = counts.get(lane, 0) + 1
+    print(f"delivery: {sum(counts.values())} labelled clip(s) from {path} — "
+          + ", ".join(f"{n} {k}" for k, n in sorted(counts.items())))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=DEFAULT_ROOT)
@@ -346,7 +385,17 @@ def main():
     ap.add_argument("--allow-gate-fail", action="store_true",
                     help="write filelists even when the independence gate "
                          "fails. Off by default.")
+    ap.add_argument("--delivery-from", default=None,
+                    help="ratings.csv supplying the per-clip delivery lane (contract v2). "
+                         "Joined on the wav path recorded in the `link` column. Absent, "
+                         "every clip is `unknown` — all-zero delivery channels, which is "
+                         "byte-identical conditioning to v1 and is CORRECT for LibriTTS, "
+                         "a corpus that predates the axis.")
     args = ap.parse_args()
+
+    # Read before anything expensive: a typo'd lane must fail now, not after phonemizing
+    # 31,000 clips.
+    delivery_of = _load_delivery(args.delivery_from)
 
     ipa_cache = None
     if args.reuse_from:
@@ -523,9 +572,23 @@ def main():
     from matcha.text.op_g2p import OpenPhonemizerG2P
     from matcha.data.license_wall import enforce as license_check  # noqa: F401
 
+    # Contract v2: the conditioning vector is V/A/T followed by the one-hot delivery
+    # block. `matcha.delivery` owns the encoding; this only looks a lane up per clip.
+    #
+    # LibriTTS predates the delivery axis entirely, so every clip here is unknown unless
+    # `--delivery-from` supplies a map — and unknown is all-zeros, which reproduces the
+    # v1 conditioning exactly. The width still changes, which is the point: the filelist
+    # and the model config must agree, and the seam guards make a disagreement loud.
+    from matcha.delivery import vat_vector  # noqa: E402
+
     def label(p):
         v = clamp2(valence_z[p]) if p in valence_z else 0.0
-        return f"{v:.4f},{clamp2(lufs_z[p]):.4f},{clamp2(tension_z[p]):.4f}"
+        vec = vat_vector(v, clamp2(lufs_z[p]), clamp2(tension_z[p]),
+                         delivery_of.get(p, ""))
+        # V/A/T keep 4 decimals; the delivery block is categorical, so it is written as
+        # 0/1 rather than 0.0000/1.0000 — a fractional value there is meaningless and
+        # `lane_of_vector` refuses one, so the format should not suggest it is possible.
+        return ",".join([f"{x:.4f}" for x in vec[:3]] + [f"{int(x)}" for x in vec[3:]])
 
     if ipa_cache is not None:
         rows = [f"{p}|{spk_index[s]}|{ipa_cache[p]}|{label(p)}" for p, _, s in kept]

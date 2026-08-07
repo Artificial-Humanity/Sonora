@@ -104,7 +104,13 @@ ATTRS = ("gender", "age", "accent")
 # count ear evidence match on it (see reader_profile.learn, gate_calibration,
 # stage_pool.--mark-delivery).
 FOLD_NOTE = "folded: staged unheard under group certification"
-LANES = ("Newscaster", "Documentary", "Neutral", "Dialogue", "Speech")
+# The delivery vocabulary is CONTRACT (ARCHITECTURE §1), and since 2026-08-07 it is also
+# the wire format of the model's one-hot delivery block. This was a second copy in a
+# DIFFERENT ORDER — harmless while it only drove reports, and not harmless at all once
+# position carries meaning: adding a lane here and not there would silently reinterpret
+# every filelist. One definition, in matcha.delivery.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+from matcha.delivery import DELIVERY_LANES as LANES  # noqa: E402
 
 
 def ledger() -> dict:

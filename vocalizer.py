@@ -47,6 +47,7 @@ import torch
 # Those two files are byte-identical — checked, not assumed — so consolidating on the
 # colocated one changes nothing today, which is exactly the kind of near-miss that stops
 # being harmless the moment one of them is edited.
+from matcha import delivery
 from matcha.cli import (
     detect_lane,
     get_device,
@@ -69,6 +70,10 @@ denoiser = None
 lane = None          # "vat" | "legacy"
 n_spks = 1
 sample_rate = 22050
+# The loaded checkpoint's OWN conditioning width. Contract v2 made the production width 8
+# (3 V/A/T + 5 one-hot delivery lanes), but a pre-v2 checkpoint is 3 and must still render
+# — so the delivery dial is driven by what THIS checkpoint accepts, not by the contract.
+ckpt_vat_dim = 0
 
 
 def get_checkpoints():
@@ -83,12 +88,13 @@ def get_checkpoints():
 
 def ensure_model_loaded(checkpoint_path):
     global current_checkpoint, model, vocoder, denoiser, lane, n_spks, sample_rate
+    global ckpt_vat_dim
     if current_checkpoint == checkpoint_path:
         return
     print(f"Loading checkpoint: {checkpoint_path}")
     # Lane detection lives in matcha.cli — one implementation, shared with the CLI. This
     # file used to carry its own copy, which is the drift the review keeps finding.
-    lane, n_spks, _vat_dim = detect_lane(checkpoint_path)
+    lane, n_spks, ckpt_vat_dim = detect_lane(checkpoint_path)
 
     model = load_matcha("custom", checkpoint_path, device)
 
@@ -164,7 +170,7 @@ def bounded(body, name, default, cast=float):
 
 
 def render(checkpoint_path, text, n_timesteps, temperature, length_scale,
-           spk_id, valence, energy, tension, guidance=1.0):
+           spk_id, valence, energy, tension, guidance=1.0, delivery_lane=""):
     ensure_model_loaded(checkpoint_path)
     with torch.no_grad():
         x, x_lengths = encode_text(text)
@@ -175,8 +181,18 @@ def render(checkpoint_path, text, n_timesteps, temperature, length_scale,
         else:
             kwargs["spks"] = None
         if lane == "vat":
-            kwargs["vat"] = torch.tensor(
-                [[float(valence), float(energy), float(tension)]])
+            # Contract v2. Built by `matcha.delivery`, never spelled out here — the
+            # Vocalizer is the VETTING surface, so a dial that disagreed with the corpus
+            # encoding would produce exactly the wrong evidence about the channel.
+            #
+            # Sized to the CHECKPOINT, not to the current contract: a 3-channel checkpoint
+            # predates delivery and must still render, and the trunk's width guard would
+            # otherwise refuse it with a shape error a listener cannot act on.
+            if ckpt_vat_dim and ckpt_vat_dim <= delivery.VAT_BASE_DIM:
+                vec = [float(valence), float(energy), float(tension)][:ckpt_vat_dim]
+            else:
+                vec = delivery.vat_vector(valence, energy, tension, delivery_lane)
+            kwargs["vat"] = torch.tensor([vec])
             kwargs["guidance"] = float(guidance)
         output = model.synthesise(
             x, x_lengths,
@@ -193,20 +209,30 @@ def render(checkpoint_path, text, n_timesteps, temperature, length_scale,
 
 
 def synthesize(checkpoint_path, text, n_timesteps, temperature, length_scale,
-               spk_id, valence, energy, tension, guidance=1.0):
+               spk_id, valence, energy, tension, guidance=1.0, delivery_lane=""):
     if not checkpoint_path:
         return "No checkpoint selected", None, None, ""
     try:
         output, waveform = render(checkpoint_path, text, n_timesteps,
                                   temperature, length_scale,
-                                  spk_id, valence, energy, tension, guidance)
+                                  spk_id, valence, energy, tension, guidance,
+                                  delivery_lane)
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fp:
             sf.write(fp.name, waveform.cpu().numpy(), sample_rate, "PCM_24")
         mel_plot = plot_tensor(output["mel"].squeeze().cpu().numpy())
-        info = (f"lane={lane} · {sample_rate} Hz · speakers={n_spks}"
-                + (" · V/A/T active (derisk ckpt: only energy is trained) · "
-                   "guidance >1 wants ≥25 ODE steps"
-                   if lane == "vat" else " · V/A/T + speaker + guidance ignored"))
+        # Name the delivery lane that ACTUALLY ran, including when the checkpoint has no
+        # delivery channel. A dial that silently does nothing is how a vetting surface
+        # produces a confident wrong verdict about a capability.
+        if lane != "vat":
+            extra = " · V/A/T + speaker + guidance ignored"
+        elif ckpt_vat_dim and ckpt_vat_dim <= delivery.VAT_BASE_DIM:
+            extra = (f" · V/A/T active · delivery IGNORED (this checkpoint is "
+                     f"{ckpt_vat_dim}-channel, predating contract v2) · "
+                     "guidance >1 wants ≥25 ODE steps")
+        else:
+            extra = (f" · V/A/T active · delivery={delivery_lane or 'unknown'} · "
+                     "guidance >1 wants ≥25 ODE steps")
+        info = f"lane={lane} · {sample_rate} Hz · speakers={n_spks}" + extra
         return None, fp.name, mel_plot, info
     except Exception as e:
         import traceback
@@ -281,6 +307,22 @@ def main():
                         label="Guidance (CFG ×, needs ≥25 ODE steps)",
                         minimum=1.0, maximum=4.0, step=0.25, value=1.0)
 
+                with gr.Row():
+                    # Contract v2's delivery channel gets a dial in the same phase it
+                    # ships — the standing rule ([[vocalizer-vetting-surface]]). A
+                    # capability with no control here cannot be vetted, and an unvetted
+                    # conditioning channel is one whose failure mode we learn about from
+                    # a training run instead of from a listen.
+                    #
+                    # A DROPDOWN, not a slider: delivery is categorical. A slider would
+                    # invite interpolating between Newscaster and Dialogue, which has no
+                    # meaning and which `lane_of_vector` refuses outright.
+                    delivery_lane = gr.Dropdown(
+                        label="Delivery lane (contract v2; blank = unknown ≡ v1)",
+                        choices=[("unknown", "")] + [(ln, ln)
+                                                     for ln in delivery.DELIVERY_LANES],
+                        value="", interactive=True)
+
                 synth_btn = gr.Button("🔊 Synthesize Speech", variant="primary")
                 error_box = gr.Textbox(label="Error Status", visible=False)
                 lane_info = gr.Markdown("")
@@ -291,9 +333,9 @@ def main():
 
         refresh_btn.click(fn=refresh_checkpoints, outputs=checkpoint_dropdown)
 
-        def on_synth(checkpoint, text, steps, temp, length, spk, v, a, t, s):
+        def on_synth(checkpoint, text, steps, temp, length, spk, v, a, t, s, d):
             err, audio, mel, info = synthesize(checkpoint, text, steps, temp,
-                                               length, spk, v, a, t, s)
+                                               length, spk, v, a, t, s, d)
             if err:
                 return gr.update(value=err, visible=True), None, None, info
             return gr.update(visible=False), audio, mel, info
@@ -301,7 +343,8 @@ def main():
         synth_btn.click(
             fn=on_synth,
             inputs=[checkpoint_dropdown, text_input, n_timesteps, temperature,
-                    length_scale, spk_input, valence, energy, tension, guidance],
+                    length_scale, spk_input, valence, energy, tension, guidance,
+                    delivery_lane],
             outputs=[error_box, audio_output, mel_spectrogram_output, lane_info]
         )
 
@@ -333,10 +376,19 @@ def main():
             return {"voices": [str(i) for i in range(n_spks)]}
         return {"voices": ["default"]}
 
+    def _delivery_of(body):
+        lane = (body.get("delivery") or "").strip()
+        try:
+            delivery.delivery_index(lane)
+        except ValueError as exc:
+            raise ClientError(str(exc)) from None
+        return lane
+
     @app.post("/v1/audio/speech")
     async def text_to_speech(request: Request):
         """OpenAI-ish TTS. Extra optional fields beyond input/model/voice:
         valence, energy, tension (floats in [-1, 1]; VAT ckpts only);
+        delivery (contract v2 lane name, or omitted/"" for unknown ≡ v1);
         guidance (CFG scale, default 1 = off); ode_steps (defaults 10, or 25
         when guidance > 1 — amplification needs the finer solve)."""
         try:
@@ -372,6 +424,12 @@ def main():
                 energy=bounded(body, "energy", 0.0),
                 tension=bounded(body, "tension", 0.0),
                 guidance=s,
+                # Validated by `matcha.delivery`, which raises ValueError on an
+                # unrecognised lane. Wrapped as ClientError so a typo'd lane is a 400
+                # like every other bad control value, not a 500 that reads as an outage —
+                # and NOT silently treated as unknown, which would render a neutral clip
+                # while the caller believed it had asked for Newscaster.
+                delivery_lane=_delivery_of(body),
             )
 
             buffer = io.BytesIO()

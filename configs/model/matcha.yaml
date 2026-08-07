@@ -20,6 +20,16 @@ use_precomputed_durations: ${data.load_durations}
 # (zero-init scale+shift) per encoder/decoder block, per-token [B,3,T] input,
 # conditioning dropout keeps VAT=0 a trained neutral.
 use_vat: false
-vat_dim: 3
+# 3 (V/A/T) + 5 one-hot delivery lanes = 8. Contract v2, ARCHITECTURE.md §1; the encoding
+# is `matcha/delivery.py` and nothing may spell it out a second time. THE SINGLE SOURCE OF
+# TRUTH FOR WIDTH: every data config interpolates `${model.vat_dim}`, so this line decides
+# what the filelist parse, the collate and the FiLM trunk all expect, and
+# `scripts/test_vat_dim_seams.py` is what makes a disagreement fail loudly at the filelist
+# instead of quietly at the trunk.
+#
+# `unknown` delivery is all five lanes at zero, so a v1 (3-channel) corpus re-derived at
+# this width produces exactly the conditioning it always did — the four extra channels are
+# inert until a clip carries a label.
+vat_dim: 8
 vat_cond_dim: 256
 vat_cond_dropout: 0.15
