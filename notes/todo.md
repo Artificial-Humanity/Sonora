@@ -111,7 +111,7 @@ and the `matcha-tts-app` entry point. E-H2 and E-M2 are fixed with regression co
 
 ## 5 · Acquisition / alignment lane
 
-_Partly closed 2026-08-06 (`tests/test_acquisition_lane.py`, 23 cases). **A-H2** decodes
+_Partly closed 2026-08-06 (`tests/test_acquisition_lane.py`, 31 cases). **A-H2** decodes
 Latin-1 PG editions properly and refuses text that already carries U+FFFD; **A-H3** ledger
 and staging-log writes go through `synth_common.update_json` — re-read under an flock,
 renamed into place — so a stale snapshot can no longer erase a concurrent run; **A-H4**
