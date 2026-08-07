@@ -19,6 +19,31 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-06
 
+### Fixed — export lane and `/data` drift
+
+- **`fde7a09` — `tests/test_data_mirrors.py`, and the audit behind it.** The premise that
+  the LiteRT toolchain lived only on `/data` was **wrong** — it was migrated into
+  `scripts/litert_export/` on 2026-07-22, and all four bodies of our code on `/data` (export
+  harness, teacher-audition renderers, audition app, dashboard) are in GitHub-backed repos.
+  The real defect is the opposite shape: `/data` holds working **copies**, and two had
+  drifted. `convert_vat.py` there was three weeks stale, **missing the `detect_vat_dim` seam
+  guard the repo recorded as landed**, and the README still documented a bare-`pip` install.
+  Backup was never the risk; divergence was, and nothing detected it — both directories look
+  healthy and the only symptom is that a fix you believe shipped did not. The gate compares
+  every tracked file against its `/data` counterpart, asserts a minimum pair count so a
+  layout change can't turn it into a silent pass, and was proven by introducing a one-line
+  drift. Inventory and the standing rule (**repo authoritative, `/data` a working copy**):
+  `notes/data-mirrors.md`.
+- **`fde7a09` — F-H1: `convert_vat.py` resolved the wrong `matcha`.** `SONORA_REPO`
+  defaulted to `…/Artificial-Humanity/Sonora`, which stopped being a repo when the layout
+  was flattened on 2026-07-22 — verified to contain no `matcha/` today. So `sys.path.insert`
+  added an empty directory, the import fell through to whatever `matcha` the harness venv
+  held (the stock PyPI package, per its own docs), and the converter would export
+  **upstream's architecture while every log line said Sonora** — a wrong export that
+  converts cleanly and whose graphs run. Now derived from `__file__` and **refuses to start**
+  if `matcha/models/matcha_tts.py` is absent. Also repairs `VAL_FILELIST`, which resolved
+  against the same dead path.
+
 ### Fixed — acquisition lane (§5)
 
 - **`cf6429d` — the book/real-audio lane's silent-corruption bugs.** None of these raised;
