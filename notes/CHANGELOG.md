@@ -19,6 +19,25 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-06
 
+### Changed — execution layout
+
+- **`13b5872` — the LiteRT harness executes from the repo; `/data` holds the data.** Owner
+  principle 2026-08-06: *code executes from the repo checkout, `/data` is used for what its
+  name implies.* The harness ran on the **host** (no container — so "bind-mount the repo"
+  was never the mechanism) and every script derived its paths from `HERE = dirname(
+  abspath(__file__))`, so checkpoints read and ~400 MB of `.tflite`/`.wav`/`artifacts*/`
+  written all landed beside the source. That, and only that, is why a second copy existed
+  on `/data` — and why it drifted. **`SONORA_LITERT_WORK`** now names the data root
+  (defaulting to `HERE`, so no existing invocation changes), and
+  `scripts/litert_export/run.sh` runs a script from the repo with the work dir, model repo
+  and harness interpreter wired up. The 11 `.py` copies and README on `/data` are retired to
+  `_retired_code_copies/`; the venv, checkpoints and graphs stay. `test_data_mirrors.py` is
+  **inverted** for this one — checked for *absence*, not agreement — and verified by copying
+  a file back and watching it fail. AGENTS.md §6 restated from "deploy from the repo copy" to
+  the principle, naming the artifact-root pattern as the way to satisfy both halves. The
+  three remaining copies (audition's read-only mount, the dashboard's Caddy root, the
+  training deploy clone) are left deliberately, with reasons, in `notes/data-mirrors.md`.
+
 ### Fixed — export lane and `/data` drift
 
 - **`fde7a09` — `tests/test_data_mirrors.py`, and the audit behind it.** The premise that
