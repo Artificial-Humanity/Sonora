@@ -47,8 +47,17 @@ ENGINES=("$@")
 
 SONORA="$(cd "$(dirname "$0")/../.." && pwd)"   # Sonora repo root (mounted at /sonora)
 GPU="--device /dev/kfd --device /dev/dri --security-opt seccomp=unconfined --group-add video"
-IMG=rocm/pytorch:latest
+# Pinned image digest + pinned wheels + the per-campaign freeze, in one place for all
+# three container lanes. See its header for what unpinned resolution does today.
+# shellcheck source=scripts/container_env.sh
+. "$SONORA/scripts/container_env.sh"
+IMG="$SONORA_ROCM_IMAGE"
 mkdir -p "$OUT"
+# One freeze per ENGINE, not per campaign: the engines install different wheel sets into
+# different throwaway containers, so a single campaign-level record would describe at most
+# one of them and imply the rest.
+ENV_DIR="$OUT/_env"
+mkdir -p "$ENV_DIR"
 
 # Pre-flight the bank before any GPU time is spent. orpheus and dia render from
 # `direction.render_text` while the WER gate, the manifest and the corpus all read
@@ -75,12 +84,16 @@ if [ -n "${HF_TOKEN:-}" ]; then
   HF_ENV="-e HF_TOKEN -e HUGGING_FACE_HUB_TOKEN"
 fi
 
-# $1 = pip/apt setup, $2 = the python command to run as ai-mgr
+# $1 = engine tag (names the environment freeze), $2 = apt/uv setup, $3 = the python
+# command to run as ai-mgr.
 run(){
-  docker run --rm $GPU $HF_ENV -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c "
-    $1
+  docker run --rm $GPU $HF_ENV -e SONORA_ROCM_IMAGE="$IMG" \
+    -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c "
+    $SONORA_UV_BOOTSTRAP;
+    $2
     bash /sonora/scripts/synthesis/container_as_ai_mgr.sh &&
-    runuser -u ai-mgr -- bash -c 'umask 002; HF_TOKEN=\${HF_TOKEN:-} $2'"
+    $(capture_env_cmd "$1" "$ENV_DIR")
+    runuser -u ai-mgr -- bash -c 'umask 002; HF_TOKEN=\${HF_TOKEN:-} $3'"
 }
 
 has(){ for e in "${ENGINES[@]}"; do [ "$e" = "$1" ] && return 0; done; return 1; }
@@ -104,31 +117,31 @@ PY="$SONORA/.venv/bin/python"
 
 if has dia; then
   echo "== DIA =="
-  run "pip install -q transformers soundfile >/dev/null 2>&1;" \
+  run dia "$SONORA_UVPIP $SONORA_PIN_TRANSFORMERS soundfile >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_dia.py --bank $BANK --out $OUT" \
       || failed dia
 fi
 
 if has moss_vg; then
   echo "== MOSS-VoiceGenerator =="
-  run "pip install -q transformers soundfile >/dev/null 2>&1; pip install -q --no-deps accelerate >/dev/null 2>&1;" \
+  run moss_vg "$SONORA_UVPIP $SONORA_PIN_TRANSFORMERS soundfile >/dev/null 2>&1; $SONORA_UVPIP --no-deps accelerate >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_moss_vg.py --bank $BANK --out $OUT" \
       || failed moss_vg
 fi
 
 if has moss85; then
   echo "== MOSS-8.5B flagship (base model — un-directed work only) =="
-  run "pip install -q transformers soundfile >/dev/null 2>&1; pip install -q --no-deps accelerate >/dev/null 2>&1;" \
+  run moss85 "$SONORA_UVPIP $SONORA_PIN_TRANSFORMERS soundfile >/dev/null 2>&1; $SONORA_UVPIP --no-deps accelerate >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_moss85.py --bank $BANK --out $OUT" \
       || failed moss85
 fi
 
 if has qwen; then
   echo "== QWEN =="
-  run "apt-get -qq update >/dev/null 2>&1; apt-get -qq install -y sox >/dev/null 2>&1;
-       pip install -q --no-deps qwen-tts >/dev/null 2>&1;
-       pip install -q transformers==4.57.3 soundfile sox onnxruntime einops librosa >/dev/null 2>&1;
-       pip install -q --no-deps accelerate==1.12.0 >/dev/null 2>&1;" \
+  run qwen "apt-get -qq update >/dev/null 2>&1; apt-get -qq install -y sox >/dev/null 2>&1;
+       $SONORA_UVPIP --no-deps qwen-tts >/dev/null 2>&1;
+       $SONORA_UVPIP $SONORA_PIN_TRANSFORMERS soundfile sox onnxruntime einops librosa >/dev/null 2>&1;
+       $SONORA_UVPIP --no-deps accelerate==1.12.0 >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_qwen.py --bank $BANK --out $OUT" \
       || failed qwen
 fi
@@ -144,8 +157,8 @@ if has chatterbox; then
   # resemble-perth is imported and patched to a no-op by the renderer: the native
   # watermarker is unavailable here, and these clips are TRAIN-ONLY by owner decision.
   echo "== CHATTERBOX (train-only output) =="
-  run "pip install -q --no-deps chatterbox-tts >/dev/null 2>&1;
-       pip install -q librosa s3tokenizer diffusers resemble-perth conformer transformers safetensors soundfile omegaconf >/dev/null 2>&1;" \
+  run chatterbox "$SONORA_UVPIP --no-deps chatterbox-tts >/dev/null 2>&1;
+       $SONORA_UVPIP librosa s3tokenizer diffusers resemble-perth conformer $SONORA_PIN_TRANSFORMERS safetensors soundfile omegaconf >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_chatterbox.py --bank $BANK --out $OUT" \
       || failed chatterbox
 fi
@@ -162,8 +175,8 @@ if has zonos; then
   # tokenizer: conditioning.py imports them at module scope, so an English-only
   # run still fails without them.
   echo "== ZONOS =="
-  run "apt-get -qq update >/dev/null 2>&1; apt-get -qq install -y espeak-ng >/dev/null 2>&1;
-       pip install -q phonemizer inflect kanjize soundfile transformers huggingface-hub sudachipy sudachidict-full >/dev/null 2>&1;" \
+  run zonos "apt-get -qq update >/dev/null 2>&1; apt-get -qq install -y espeak-ng >/dev/null 2>&1;
+       $SONORA_UVPIP phonemizer inflect kanjize soundfile $SONORA_PIN_TRANSFORMERS huggingface-hub sudachipy sudachidict-full >/dev/null 2>&1;" \
       "PYTHONPATH=/data/toolchain/Zonos python /sonora/scripts/synthesis/synth_zonos.py --bank $BANK --out $OUT" \
       || failed zonos
 fi
@@ -171,7 +184,7 @@ fi
 if has orpheus; then
   # snac decodes the audio tokens; the renderer pulls snac_24khz from the Hub.
   echo "== ORPHEUS (-ft checkpoint) =="
-  run "pip install -q transformers soundfile snac >/dev/null 2>&1;" \
+  run orpheus "$SONORA_UVPIP $SONORA_PIN_TRANSFORMERS soundfile snac >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_orpheus.py --bank $BANK --out $OUT" \
       || failed orpheus
 fi
@@ -184,7 +197,7 @@ if has vibevoice; then
   # NB bitsandbytes 8-bit shard load is ~7.5 min on gfx1151 — amortized over the
   # whole bank, which is why vibevoice runs last.
   echo "== VIBEVOICE =="
-  run "pip install -q 'git+https://github.com/vibevoice-community/VibeVoice.git' soundfile bitsandbytes accelerate >/dev/null 2>&1;" \
+  run vibevoice "$SONORA_UVPIP 'git+https://github.com/vibevoice-community/VibeVoice.git' soundfile bitsandbytes accelerate >/dev/null 2>&1;" \
       "python /sonora/scripts/synthesis/synth_vibevoice.py --bank $BANK --out $OUT" \
       || failed vibevoice
 fi

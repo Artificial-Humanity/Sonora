@@ -16,8 +16,12 @@ shift 2
 
 SONORA="$(cd "$(dirname "$0")/../.." && pwd)"
 GPU="--device /dev/kfd --device /dev/dri --security-opt seccomp=unconfined --group-add video"
-IMG=rocm/pytorch:latest
+# shellcheck source=scripts/container_env.sh
+. "$SONORA/scripts/container_env.sh"
+IMG="$SONORA_ROCM_IMAGE"
 mkdir -p "$OUT"
+ENV_DIR="$OUT/_env"
+mkdir -p "$ENV_DIR"
 
 # Value-less -e forwards from this shell's environment instead of writing the
 # token into the docker argv, where `ps` and `docker inspect` expose it.
@@ -29,9 +33,12 @@ if [ -n "${HF_TOKEN:-}" ]; then
 fi
 
 echo "== librivox align =="
-docker run --rm $GPU $HF_ENV -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c "
-  pip install -q faster-whisper soundfile librosa pysbd >/dev/null 2>&1;  # pysbd: A-H5, the abbreviation-aware sentence splitter
+docker run --rm $GPU $HF_ENV -e SONORA_ROCM_IMAGE="$IMG" \
+  -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c "
+  $SONORA_UV_BOOTSTRAP;
+  $SONORA_UVPIP faster-whisper soundfile librosa pysbd >/dev/null 2>&1;  # pysbd: A-H5, the abbreviation-aware sentence splitter
   bash /sonora/scripts/synthesis/container_as_ai_mgr.sh &&
+  $(capture_env_cmd align "$ENV_DIR")
   runuser -u ai-mgr -- bash -c 'umask 002; HF_TOKEN=\${HF_TOKEN:-} \
     python /sonora/scripts/synthesis/librivox_align.py \
       --book-dir \"$BOOK\" --out \"$OUT\" $*'" || {

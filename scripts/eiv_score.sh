@@ -32,16 +32,28 @@ done
 
 SONORA="$(cd "$(dirname "$0")/.." && pwd)"
 GPU="--device /dev/kfd --device /dev/dri --security-opt seccomp=unconfined --group-add video"
-IMG=rocm/pytorch:latest
+# shellcheck source=scripts/container_env.sh
+. "$SONORA/scripts/container_env.sh"
+IMG="$SONORA_ROCM_IMAGE"
 mkdir -p "$(dirname "$OUT")"
 
+# D-M2: the scores are treated as immutable, so the environment that produced them is
+# part of the record. It lands beside the scores rather than in a log, because the log is
+# not what gets read two months later when a head disagrees with itself.
+ENV_DIR="$(dirname "$OUT")/_env"
+mkdir -p "$ENV_DIR"
+
 echo "== eiv score -> $OUT =="
-docker run --rm $GPU -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c "
-  pip install -q transformers librosa soundfile >/dev/null 2>&1;
+docker run --rm $GPU -e SONORA_ROCM_IMAGE="$IMG" \
+  -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c "
+  $SONORA_UV_BOOTSTRAP;
+  $SONORA_UVPIP $SONORA_PIN_TRANSFORMERS librosa soundfile >/dev/null 2>&1;
   bash /sonora/scripts/synthesis/container_as_ai_mgr.sh &&
+  $(capture_env_cmd eiv "$ENV_DIR")
   runuser -u ai-mgr -- bash -c 'umask 002; \
     python /sonora/scripts/eiv_score.py --out \"$OUT\" \
       --inputs ${INPUTS[*]} ${EXTRA[*]}'" || {
   echo "  !! eiv_score failed — $OUT holds whatever completed; re-run to resume"; exit 1; }
 
 echo "  scored rows: $(wc -l < "$OUT")"
+echo "  environment: $ENV_DIR/eiv.txt"

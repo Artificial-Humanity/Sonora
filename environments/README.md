@@ -43,9 +43,32 @@ Refresh both after any dependency change, and note in `notes/CHANGELOG.md` that 
 a stale snapshot asserting the wrong versions is the failure mode these files exist to
 prevent.
 
-## Still open
+## The container lanes (D-M2, closed 2026-08-07)
 
-Per-campaign environment capture (a freeze dropped into each render campaign dir) and
-image-digest pinning for `synth_bank.sh` / `librivox_align.sh` / `eiv_score.sh` — only
-qwen pins its wheels today. EIV raw scores are called immutable but carry no version
-stamp (D-M2). Tracked in [`notes/todo.md`](../notes/todo.md) § 3.
+The three throwaway-container lanes — `scripts/synthesis/synth_bank.sh`,
+`scripts/synthesis/librivox_align.sh`, `scripts/eiv_score.sh` — now source one pin table,
+[`scripts/container_env.sh`](../scripts/container_env.sh):
+
+* **The image is pinned by digest**, `rocm/pytorch@sha256:4449f856…`, the one every
+  existing campaign and every existing EIV score ran under. Override with
+  `SONORA_ROCM_IMAGE` to test a new base; re-pin the default from a run that passed.
+* **`transformers` is held at 4.57.3**, the line the corpus was built on. Measured
+  2026-08-07 by dry-run resolution inside the pinned image: unpinned, it resolves to
+  **5.14.1** today. qwen was the only engine that pinned it. All seven dependency sets
+  were verified to resolve against the held version (7/7 clean) before it was written
+  down — these are checked pins, not hopeful ones.
+* **Installs go through uv**, per AGENTS.md § 3 (`--python /opt/venv/bin/python`, never
+  `--system`). `pip install uv` stays as the bootstrap, matching the training container's
+  own prep chain above.
+* **Every run freezes itself into the campaign** at `<campaign>/_env/<lane>.txt`, via
+  [`scripts/capture_container_env.sh`](../scripts/capture_container_env.sh) — as `ai-mgr`,
+  with the ROCm torch build recorded separately, since it is the one package a `pip
+  freeze` cannot see. Never fatal: a missing record is a gap, but a reproducibility
+  measure that destroys a finished render is worse than no record at all.
+
+Ruled out while measuring, because it is the case that would matter most: **no dependency
+set pulls a torch or nvidia wheel**, so the image's ROCm build survives every install. A
+CUDA torch silently displacing it renders nothing and explains nothing.
+
+That is the mechanism. The evidence it produces is what the *next* refresh of the pins
+should be read from — `tests/test_container_env.py` holds the rules in place.
