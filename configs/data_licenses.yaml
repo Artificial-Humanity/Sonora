@@ -38,9 +38,13 @@ datasets:
     # the filelist path, not on intent, so an undeclared holdout simply refuses to load.
     # Declaring it is NOT permission to train on it: doing so would destroy the one
     # never-trained measurement the lineage has.
+    # `libritts_r_vat_v4` (2026-08-07) is again the same audio: the owner's three-rider
+    # re-derivation — 8-wide conditioning with the delivery block, D-L2's corrected z
+    # guard, and D-M4 homograph resolution. Labels, phonemes and width change; the
+    # recordings and their CC-BY-4.0 do not.
     dirs: [LibriTTS-R, libritts_r, libritts-r, libritts_r_vat, libritts_r_vat_v1,
            libritts_r_vat_v2, libritts_r_vat_v3, libritts_r_vat_v3b, libritts_r_vat_v3c,
-           libritts_r_holdout_devclean]
+           libritts_r_vat_v4, libritts_r_holdout_devclean]
     license: CC-BY-4.0
     class: permissive
   parler_libritts_r_annotated:

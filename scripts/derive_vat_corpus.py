@@ -391,11 +391,35 @@ def main():
                          "every clip is `unknown` — all-zero delivery channels, which is "
                          "byte-identical conditioning to v1 and is CORRECT for LibriTTS, "
                          "a corpus that predates the axis.")
+    ap.add_argument("--homographs", action="store_true",
+                    help="resolve heterophonic homographs from context (D-M4). OFF by "
+                         "default, and that default is the point: it changes the phonemes "
+                         "of words the flat dictionary gets wrong, which is a CORPUS "
+                         "change wherever it is applied and therefore the caller's "
+                         "explicit choice rather than a side effect of upgrading. Measured "
+                         "over v3c: 281 tokens in 277 rows move, 0.88%% of the corpus, and "
+                         "`live` alone is 87 of them because the dictionary ships lˈaɪv, "
+                         "the adjective. Measure first with scripts/measure_homographs.py. "
+                         "⚠ export gate G7 REFUSES a homograph-enabled export until the "
+                         "resolver is ported to the device — it needs context, not a table.")
     args = ap.parse_args()
 
     # Read before anything expensive: a typo'd lane must fail now, not after phonemizing
     # 31,000 clips.
     delivery_of = _load_delivery(args.delivery_from)
+
+    # `--reuse-from` takes the PHONEMES from an existing corpus, so a G2P flag passed
+    # alongside it changes nothing at all and says nothing about it. Refuse rather than
+    # relabel: the run would produce a corpus whose lineage claims homographs are resolved
+    # and whose IPA is the old flat-dictionary output, which is exactly the kind of quiet
+    # mismatch that made v1-v3 look fine while carrying D-C1.
+    if args.homographs and args.reuse_from:
+        sys.exit(
+            "!! --homographs with --reuse-from: the phonemes would come from "
+            f"{args.reuse_from}\n"
+            "   and the flag would silently do nothing. Re-phonemize instead (drop "
+            "--reuse-from),\n"
+            "   or use scripts/rephonemize_corpus.py on the existing corpus.")
 
     ipa_cache = None
     if args.reuse_from:
@@ -594,7 +618,8 @@ def main():
         rows = [f"{p}|{spk_index[s]}|{ipa_cache[p]}|{label(p)}" for p, _, s in kept]
         print(f"relabeled {len(rows)} rows (phonemes reused)")
     else:
-        g2p = OpenPhonemizerG2P(use_neural_oov=not args.no_neural_oov)
+        g2p = OpenPhonemizerG2P(use_neural_oov=not args.no_neural_oov,
+                                homographs=args.homographs)
         rows, bad_vocab, with_digits = [], 0, []
         for i, (p, text, s) in enumerate(kept):
             # D-M3. The tokenizer DELETES digits rather than expanding them: "I have 3
