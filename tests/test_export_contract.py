@@ -158,3 +158,144 @@ def test_the_shipped_manifest_predates_the_contract_and_is_readable():
     assert "control" not in cfg, "no control contract — this is F-H2, as filed"
     assert not any(k in cfg for k in ("vat_min", "vat_max", "clamp")), \
         "the old manifest recorded no bound at all"
+
+
+# --- F-M1 / F-M5: the referee ---------------------------------------------------------
+
+REFEREE = REPO / "scripts" / "export_fidelity_referee.py"
+REF_SRC = REFEREE.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def referee():
+    """Import the referee with onnxruntime / litert stubbed — neither is on the host venv
+    and neither is needed to exercise the binder or the metrics."""
+    import importlib.util
+    import types
+
+    for mod, attrs in [("onnxruntime", {"InferenceSession": object}),
+                       ("ai_edge_litert", {}),
+                       ("ai_edge_litert.interpreter", {"Interpreter": object})]:
+        m = types.ModuleType(mod)
+        for k, v in attrs.items():
+            setattr(m, k, v)
+        sys.modules.setdefault(mod, m)
+    spec = importlib.util.spec_from_file_location("_referee", REFEREE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _conditioned_graph():
+    import numpy as np
+    return [
+        {"name": "serving_default_x:0", "index": 0, "dtype": np.int64, "shape": [1, 50]},
+        {"name": "serving_default_x_lengths:0", "index": 1, "dtype": np.int64, "shape": [1]},
+        {"name": "serving_default_scales:0", "index": 2, "dtype": np.float32, "shape": [2]},
+        {"name": "serving_default_spks:0", "index": 3, "dtype": np.int64, "shape": [1]},
+        {"name": "serving_default_vat:0", "index": 4, "dtype": np.float32, "shape": [1, 8]},
+    ]
+
+
+def test_the_referee_can_bind_a_conditioned_graph(referee):
+    """F-M1's headline: it could not score the conditioned lane AT ALL."""
+    feed = referee.build_inputs(referee.DEFAULT_IDS, 50, 0.0, 1.0, 245,
+                                [0.4, -0.2, 0.1, 0, 0, 0, 1, 0])
+    bound = referee._match(_conditioned_graph(), feed, "tflite")
+    assert bound == {0: "x", 1: "x_lengths", 2: "scales", 3: "spks", 4: "vat"}
+
+
+def test_the_old_dtype_heuristic_bound_the_speaker_silently_wrong():
+    """The reason this was a defect and not an inconvenience.
+
+    The heuristic was "int + 2-D means tokens, int means lengths, anything else means
+    scales". On a conditioned graph `spks` is int64 shape (1,) — IDENTICAL to
+    `x_lengths` — so it received the token count as a speaker id. No shape error, no
+    exception: the referee just compared a render of the wrong speaker and reported a
+    fidelity number for it. (`vat` collided with `scales` too, but those shapes differ,
+    so that half at least raised.)
+    """
+    import numpy as np
+
+    old = {}
+    for d in _conditioned_graph():
+        if d["dtype"] in (np.int64, np.int32) and len(d["shape"]) == 2:
+            old[d["index"]] = "x"
+        elif d["dtype"] in (np.int64, np.int32):
+            old[d["index"]] = "x_lengths"
+        else:
+            old[d["index"]] = "scales"
+    assert old[3] == "x_lengths", "spks would have been bound to the token count"
+    assert old[4] == "scales"
+
+
+def test_an_unrecognised_input_is_refused_not_guessed(referee):
+    """Guessing is what this tool exists to stop."""
+    feed = referee.build_inputs(referee.DEFAULT_IDS, 50, 0.0, 1.0, None, None)
+    import numpy as np
+    details = _conditioned_graph()[:3] + [
+        {"name": "mystery", "index": 9, "dtype": np.float32, "shape": [1, 8]}]
+    with pytest.raises(SystemExit, match="cannot bind"):
+        referee._match(details, feed, "tflite")
+
+
+def test_supplying_conditioning_to_an_unconditioned_graph_is_refused(referee):
+    feed = referee.build_inputs(referee.DEFAULT_IDS, 50, 0.0, 1.0, 245, None)
+    with pytest.raises(SystemExit, match="no such input"):
+        referee._match(_conditioned_graph()[:3], feed, "tflite")
+
+
+def test_a_half_gain_error_passes_cosine_and_fails_the_new_gates(referee):
+    """F-M5, demonstrated rather than asserted.
+
+    `tflite = 0.5 * onnx` — every sample exactly half, which is what a mis-scaled
+    dequantization or a dropped factor of two looks like. On a model whose flagship axis
+    is a LOUDNESS dial this is the worst possible blind spot: on-device it reads as "the
+    energy channel is weak", not as a broken export.
+    """
+    import numpy as np
+
+    ref = np.sin(np.linspace(0, 400, 4000)) * (0.3 + 0.2 * np.sin(np.linspace(0, 9, 4000)))
+    bad = 0.5 * ref
+
+    cos, _n = referee.cosine(ref, bad)
+    assert cos == pytest.approx(1.0, abs=1e-9), "cosine is scale-invariant, as expected"
+    assert referee.gain_error_db(ref, bad) == pytest.approx(-6.02, abs=0.02)
+    assert referee.nrmse(ref, bad) == pytest.approx(0.5, abs=1e-6)
+    # and the defaults catch it
+    assert abs(referee.gain_error_db(ref, bad)) > 0.5
+    assert referee.nrmse(ref, bad) > 0.15
+
+
+def test_an_honest_render_passes_all_three(referee):
+    import numpy as np
+
+    rng = np.random.default_rng(0)
+    ref = np.sin(np.linspace(0, 400, 4000)) * 0.3
+    close = ref + rng.normal(0, 0.002, ref.shape)      # fp16-ish noise
+    cos, _ = referee.cosine(ref, close)
+    assert cos >= 0.99
+    assert abs(referee.gain_error_db(ref, close)) <= 0.5
+    assert referee.nrmse(ref, close) <= 0.15
+
+
+def test_the_referee_gates_on_all_three():
+    """RMSE used to be computed, printed, and thrown away; the exit code read cosine
+    alone."""
+    tail = REF_SRC[REF_SRC.index("if args.temperature == 0.0:"):]
+    assert '("gain", abs(gain) <= args.max_gain_db' in tail
+    assert '("nrmse", err <= args.max_nrmse' in tail
+    assert "ok = all(c[1] for c in checks)" in tail
+
+
+def test_the_referee_shares_the_delivery_encoding():
+    """A referee with its own idea of what a lane means would certify the wrong vector."""
+    assert "from matcha import delivery" in REF_SRC
+    assert "delivery.vat_vector(" in REF_SRC
+
+
+def test_the_converter_gained_the_same_scale_sensitive_gates():
+    """G3 was Pearson-only for the same reason and with the same blind spot."""
+    assert "G3b e2e gain parity" in SRC
+    assert "G3c e2e sample-wise error" in SRC
+    assert "def gain_error_db(" in SRC and "def nrmse(" in SRC

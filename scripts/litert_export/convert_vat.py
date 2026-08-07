@@ -580,6 +580,38 @@ def corr(a, b):
     return float(np.corrcoef(a[:n], b[:n])[0, 1])
 
 
+def gain_error_db(a, b):
+    """F-M5. How much QUIETER or louder `b` is than `a`, in dB. Pearson cannot see this.
+
+    Correlation is scale-invariant by construction, so `b = 0.5 * a` — a systematic fp16
+    gain error, every sample exactly half — scores corr = 1.0000 and passes a 0.99 gate
+    with room to spare. That is not a hypothetical shape of bug: it is what a mis-scaled
+    dequantization, a dropped `* 2`, or a wrong output scale factor looks like, and it is
+    the flagship axis of this model. The ENERGY channel is a loudness dial; an export that
+    halves every render is exactly the failure a correlation gate is blind to, and the
+    symptom on-device would be "the energy channel is weak", not "the export is broken".
+
+    Reported as dB rather than a ratio so the number is comparable to `rms_db` above and
+    to the G4 sweep, where the whole question is also loudness.
+    """
+    n = min(len(a), len(b))
+    ra = float(np.sqrt(np.mean(np.square(a[:n]))))
+    rb = float(np.sqrt(np.mean(np.square(b[:n]))))
+    return 20 * math.log10(max(rb, 1e-9) / max(ra, 1e-9))
+
+
+def nrmse(a, b):
+    """RMS error between the two waveforms, normalised by the reference's RMS.
+
+    The scale-SENSITIVE companion to `corr`. Unlike raw RMSE this is comparable across
+    renders of different loudness, so one threshold means the same thing on a whisper and
+    on a shout.
+    """
+    n = min(len(a), len(b))
+    ra = float(np.sqrt(np.mean(np.square(a[:n]))))
+    return float(np.sqrt(np.mean(np.square(a[:n] - b[:n])))) / max(ra, 1e-9)
+
+
 def rms_db(wav):
     return 20 * math.log10(max(float(np.sqrt(np.mean(wav ** 2))), 1e-9))
 
@@ -735,6 +767,7 @@ def main():
     print("\n=== G3 e2e parity / G4 energy monotonicity ===")
     sweep_db = {}
     e2e_corrs = []
+    e2e_gain, e2e_nrmse = [], []   # F-M5: the scale-SENSITIVE companions to corr
     try:
         import soundfile as sf
     except Exception:
@@ -763,9 +796,14 @@ def main():
                 vat_i, mel_mean, mel_std, z=z)
             c = corr(wav_t, wav_f)
             e2e_corrs.append(c)
+            # F-M5: the scale-SENSITIVE companions. corr alone cannot see a systematic
+            # gain error, which is precisely the shape a mis-scaled dequantization takes.
+            e2e_gain.append(gain_error_db(wav_t, wav_f))
+            e2e_nrmse.append(nrmse(wav_t, wav_f))
             sweep_db.setdefault(i, {})[a] = rms_db(wav_f)
             print(f"  row {i} spk {row['spk']} energy {a:+.0f}: "
-                  f"corr={c:.5f} frames={ylen} rms={rms_db(wav_f):.1f}dB")
+                  f"corr={c:.5f} gain={e2e_gain[-1]:+.2f}dB nrmse={e2e_nrmse[-1]:.4f} "
+                  f"frames={ylen} rms={rms_db(wav_f):.1f}dB")
             if sf and i == 0:
                 sf.write(os.path.join(ART, f"sample_e{a:+.0f}.wav"), wav_f, SR)
     complete = [d for d in sweep_db.values() if len(d) == 3]
@@ -777,6 +815,19 @@ def main():
     e2e_min = min(e2e_corrs) if e2e_corrs else float("nan")
     gate("G3 e2e waveform parity", bool(e2e_corrs) and e2e_min >= 0.99,
          f"min corr over {len(e2e_corrs)} render(s) = {e2e_min:.5f} (>= 0.99)")
+
+    # G3b / G3c — F-M5. `corr` is scale-invariant, so `wav_f = 0.5 * wav_t` scores 1.0000
+    # and sails through the gate above. On a model whose flagship axis is a LOUDNESS dial
+    # that is the worst possible blind spot: on-device it reads as "the energy channel is
+    # weak", not as a broken export. 0.5 dB is well inside fp16 round-trip noise (measured
+    # runs sit near 0.0) and well below the ~6 dB a dropped factor of two would give.
+    worst_gain = max((abs(g) for g in e2e_gain), default=float("nan"))
+    gate("G3b e2e gain parity", bool(e2e_gain) and worst_gain <= 0.5,
+         f"worst |gain error| over {len(e2e_gain)} render(s) = {worst_gain:.3f} dB "
+         "(<= 0.5) — corr cannot see this")
+    worst_nrmse = max(e2e_nrmse, default=float("nan"))
+    gate("G3c e2e sample-wise error", bool(e2e_nrmse) and worst_nrmse <= 0.15,
+         f"worst RMSE/RMS over {len(e2e_nrmse)} render(s) = {worst_nrmse:.4f} (<= 0.15)")
 
     # --- G5: PER-CHANNEL DIFFERENTIAL PROBE ---------------------------------------
     #
