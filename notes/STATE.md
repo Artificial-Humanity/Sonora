@@ -58,11 +58,24 @@ _Last updated: 2026-08-07._
 > 281 tokens in 277 rows move; `live` alone is 87 of them, because the dictionary ships the
 > adjective `lˈaɪv`) — **taken**.
 >
-> So the next derivation is: **8-wide, `--delivery-from <ratings.csv>`, corrected z guard,
-> `op_g2p(homographs=True)`** — a new corpus version, not an amendment of v3c. The warm
-> start from `vat3-24k` ep099 stays valid (zero-init FiLM), but the trunk's input conv
-> changes shape and needs `make_warmstart.py`'s widened-tensor treatment. **NOT YET RUN**:
-> this is the next command and the gate before any training. Detail: [todo.md §1](todo.md).
+> **DONE 2026-08-07 — train on `data/libritts_r_vat_v4`.** 8-wide, `--delivery-from`,
+> corrected z guard, `op_g2p(homographs=True)`. 31,445 clips / 51.3 h / 247 speakers,
+> 30,485 train / 960 val, independence gate PASS, licence wall accepts it, seam guards
+> 22/22 in-container. **The hash split held: 960/960 val clips identical to v3c**, so
+> nothing held out became trainable. Warm start `/data/model-training/sonora/warmstart/
+> vat4_init.ckpt` is **338/338 warm, 0 fresh** — donor V/A/T channels bit-identical, the
+> five delivery channels zero. Launch: `SONORA_EXPERIMENT=vat4_finetune
+> SONORA_WARMSTART=…/vat4_init.ckpt`. Detail: [todo.md §1](todo.md).
+>
+> ⚠ **What v4 buys is the WIDTH, not the delivery signal.** 48 of 31,445 clips carry a
+> lane; LibriTTS predates the axis and the 1,189 delivery keeps live in the corpus Phase 1
+> merges. Expect a result indistinguishable from a 3-wide run — five always-zero channels
+> on a zero-init FiLM path contribute nothing. A surprise here is a bug, not a finding.
+>
+> ⚠ **D-L2 turned out to be nearly a no-op on the LABELS**: V moved on 247 of 30,485 rows
+> by ≤0.0008, A and T bit-identical. The finding measured the intermediate combo file, and
+> `derive_vat_corpus`'s own per-speaker z subtracts away a constant head's offset. The
+> corrected guard stays; it just was not a reason to re-derive. The width was.
 
 ## The delivery channel — SHIPPED on the training side (2026-08-07)
 
@@ -275,14 +288,17 @@ is only its headline.
    (checkpoints do separate on unseen audio), it retired `vat3c` ep099 as a regression,
    and it closed **0b** — the clean-lineage retrain from `matcha_vctk` is **not
    indicated**, because the lineage demonstrably generalizes. Owner's call to ratify.
-2. **Re-derive the corpus at `vat_dim` 8.** The delivery channel's training side landed
-   2026-08-07 (contract v2's 4th channel, one-hot — see [ARCHITECTURE.md §1](ARCHITECTURE.md)
-   and `matcha/delivery.py`), so every existing filelist is now the wrong width, which the
-   seam guards refuse loudly at the filelist rather than quietly at the trunk. Run
-   `derive_vat_corpus.py --delivery-from <ratings.csv>` to join the 1,189 delivery labels;
-   without it every clip is `unknown`, which is all-zero and reproduces v1 conditioning
-   exactly. The zero-init FiLM path keeps a warm start from `vat3-24k` ep099 valid, but the
-   trunk's input conv changes shape — see [todo.md §1](todo.md).
+2. ~~**Re-derive the corpus at `vat_dim` 8.**~~ **DONE 2026-08-07 — `libritts_r_vat_v4`**,
+   with all three owner decisions on one pass. Everything downstream of it is ready:
+   configs, licence declaration, 22/22 seam guards, and a 338/338-warm init checkpoint.
+   **What is left is to LAUNCH it**, which is the owner's call and carries the standing
+   pre-flight — stop ALL inference engines first, and remember that
+   `compose up -d sonora_training` STARTS the run. The deploy clone `/data/repos/Sonora`
+   must be updated (`scripts/deploy.sh training-code`) or it will train the old commit,
+   which has neither the v4 configs nor the widened warm start.
+   Judge the result on the never-trained holdout, not on `loss/val_epoch`. And expect a
+   NULL result: 48 of 31,445 clips carry a delivery lane, so this run trains the width and
+   the delivery behaviour waits for Phase 1 — see [todo.md §1](todo.md).
 3. **Phase 1 — data, cheapest first**, warm-starting from `vat3-24k` ep099.
    Emilia-YODAS keeps (+43%) → expressive-registers (+116) → LibriTTS-R 10× → Hi-Fi TTS
    v1. #1 is the fastest test of whether volume moves quality at all, and the 10× is

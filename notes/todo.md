@@ -96,17 +96,28 @@ front end fails 69 of those 86, and worse than filed: `they've` → `θˈeɪv`, 
       channels contribute nothing until they are trained — but the trunk's input conv
       changes shape, so the warm start needs the same treatment `make_warmstart.py`
       already applies to a widened tensor. Not yet done.
-      **Three findings ride this one pass, and each would be a corpus version bump on its
-      own**: the width itself, **D-L2**'s corrected z guard (§ 3 — the code is fixed, the
-      shipped labels are not), and **D-M4**'s homograph resolution (§ 3). Doing them
-      separately costs three bumps and three lineages for one re-derivation's worth of work.
-      **DECIDED 2026-08-07 — the owner took all three.** So the next derivation is: 8-wide,
-      `--delivery-from <ratings.csv>`, the corrected z guard, and `op_g2p(homographs=True)`.
-      That is a new corpus version, not an amendment of v3c, and the checkpoint lineage
-      restarts from `vat3-24k` ep099 via `make_warmstart.py` (zero-init FiLM keeps the warm
-      start valid; the trunk's input conv changes shape and needs the widened-tensor
-      treatment). **Not yet run** — this is the next command, and it is the gate before any
-      training.
+      **DONE 2026-08-07** — `data/libritts_r_vat_v4`, all three riders on one pass
+      (`be1cce3`). 31,445 clips / 51.3 h / 247 speakers, 30,485 train / 960 val,
+      independence gate PASS (T·A −0.059, T·V −0.066, V·A +0.027), licence wall accepts it,
+      seam guards 22/22 in-container, warm start `vat4_init.ckpt` at **338/338 warm, 0
+      fresh**. Configs: `configs/data/libritts_r_vat_v4.yaml`,
+      `configs/experiment/vat4_finetune.yaml`. **The hash split held: 960/960 val clips are
+      the same as v3c's**, so nothing held out became trainable.
+      Three things the plan got wrong, each measured rather than argued:
+      - **`--delivery-from` was a silent no-op.** The first run reported "1635 labelled
+        clips" and applied **zero** — `label()` looked up only the absolute corpus path
+        while `ratings.csv` records `link` relative to the ratings dir, so the basename
+        key `_load_delivery` builds was dead code. Right width, all-zero delivery, exit 0.
+        Fixed; the run now reports what was APPLIED, not what was loaded.
+      - **Delivery is nearly empty on this corpus, and that is correct.** 48 of 31,445
+        clips carry a lane (39 Dialogue, 9 Neutral) — the `audit-markup-v0` rows. The
+        ~1,590 other labels belong to the synthetic and LibriVox campaigns, a different
+        corpus that merges in Phase 1. v4 buys the WIDTH, not the delivery signal. The
+        earlier wording here ("joins the 1,189 delivery labels") implied otherwise.
+      - **`make_warmstart.py` did NOT "already apply" a widened-tensor treatment.** It
+        dropped shape-mismatched tensors and let random init stand, which discarded the
+        entire learned V/A/T→FiLM pathway. Widening added, allowlisted to the VAT trunk
+        because contract v2 makes channel position the wire format.
 
 ## 2 · QC / audit / staging
 
@@ -175,11 +186,19 @@ clip is retried instead of silently dropped forever. **D-L5** `derive_markup_mea
 follows `--corpus` (default v3c, was pinned to v2) and records `speaker_index` separately
 from the real LibriTTS `speaker`, verified against the wav paths._
 
-- [x] **D-L2 — DECIDED 2026-08-07: the next derivation takes the corrected guard.**
-      Owner's call. Nothing more to settle; it executes as part of § 1's single pass.
-      The finding, kept because the re-derivation has not run yet:
+- [x] **D-L2 — DONE 2026-08-07 (`be1cce3`), and the finding OVERSTATED itself.**
+      The corrected guard is in v4. But measured on the finished corpus rather than on the
+      intermediate file: **V moved on 247 of 30,485 train rows, by at most 0.0008; A and T
+      are bit-identical to v3c.** The headline below — 31,443 clips change, up to 0.228 —
+      is true of `corpus_valence_combo.json` and almost entirely false of the labels,
+      because `derive_vat_corpus` applies its OWN per-speaker z on top and a constant head
+      contributes a per-speaker-CONSTANT offset, which the second z subtracts away.
+      Speaker `909`'s worst clip moves **0.2280 in the combo and 0.000036 in the label.**
+      The fix is right and stays. It was not, on its own, a reason to bump the corpus —
+      the width was. Kept below because the diagnosis of the DEFECT is still correct and
+      the arithmetic is worth not re-deriving:
 
-- [ ] **D-L2 — the guard is fixed in code; the LABELS still carry the defect.** This was
+- [ ] ~~**D-L2 — the guard is fixed in code; the LABELS still carry the defect.**~~ This was
       filed as "the two z-implementations disagree", which undersells it: `std or 1.0`
       only guards a std of *exactly* zero, and that is not the case that occurs. A head can
       be **constant** for a speaker — the EIV scorer returns one identical value for all 106
@@ -223,11 +242,14 @@ from the real LibriTTS `speaker`, verified against the wav paths._
       this is a known blocker rather than a future surprise. It is not an argument either
       way — mobile has not started — but a yes means the port carries a resolver.
 
-      **THE CALL, ANSWERED 2026-08-07: YES.** The next derivation runs with
-      `op_g2p(homographs=True)`, on the same pass as D-L2 and the width. The three notes
-      below are kept because they are why no ear test is owed — the decision was an
-      admission one, not a measurement one, and re-litigating that is how a settled call
-      turns back into an open one.
+      **THE CALL, ANSWERED 2026-08-07: YES — and it SHIPPED in v4** (`be1cce3`).
+      `derive_vat_corpus.py --homographs`, which refuses to combine with `--reuse-from`
+      (the phonemes would come from the old corpus and the flag would do nothing).
+      Verified in the finished corpus: **269 train rows carry different IPA from v3c**,
+      e.g. *"where are you going to live?"* now `lˈɪv` rather than `lˈaɪv`.
+      The three notes below are kept because they are why no ear test is owed — the
+      decision was an admission one, not a measurement one, and re-litigating that is how a
+      settled call turns back into an open one.
 
       - **There is nothing to audition, and the audition app is not involved.**
         `measure_homographs.py` writes nothing except the file named by `--json`; it

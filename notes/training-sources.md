@@ -70,13 +70,20 @@ filelist yet.
 
 ## What a training run actually consumes today
 
-One corpus. `configs/experiment/vat3c_finetune.yaml` points at
-`libritts_r_vat_v3c.yaml`, whose filelists are **100 % LibriTTS-R** — as were v2's
-before it (verified 2026-08-02, zero non-LibriTTS rows). Every expressive clip we have
-rendered and auditioned sits outside the training path.
+One corpus. `configs/experiment/vat4_finetune.yaml` points at
+`libritts_r_vat_v4.yaml`, whose filelists are **100 % LibriTTS-R** — as were v3c's and
+v2's before it (verified 2026-08-02, zero non-LibriTTS rows). Every expressive clip we
+have rendered and auditioned sits outside the training path.
 
 That gap is the single most important fact in this file. The corpus we spend ear
 time on and the corpus we train on have never been joined.
+
+**v4 does not close it, and it is worth being precise about how little it moves.** The
+8-wide derivation joins delivery labels from `ratings.csv`, but only **48 of 31,445 clips**
+match — the `audit-markup-v0` rows, which are LibriTTS clips that happened to be
+auditioned. The 1,189 delivery keeps the campaign produced are in
+`sonora-expressive-registers`, still outside the training path. So v4 widens the wire and
+leaves the gap exactly where it was: **Phase 1 is what closes it.**
 
 ## The VAT corpus lineage
 
@@ -89,7 +96,8 @@ labels, phonemes and split.
 | `_v2` | 30,351 | soft-json harshness repair; independence gate PASS | **yes — `vat3_finetune` ep099** |
 | `_v3` | 31,445 | `MAX_SECONDS` 16 → 22 (owner 2026-08-01) | no |
 | `_v3b` | 31,445 | apostrophe-clean IPA (v1–v3 carry ~6.4 % poisoned rows) | no |
-| **`_v3c`** | 31,445 | **per-clip hash split** — 30,485 train / 960 val | **yes — `vat3c_finetune` ep099, 2026-08-06.** Still the one to train on |
+| `_v3c` | 31,445 | **per-clip hash split** — 30,485 train / 960 val | yes — `vat3c_finetune` ep099, 2026-08-06, **retired as a regression** |
+| **`_v4`** | 31,445 | **8-wide** (V/A/T + one-hot delivery), D-L2's corrected z guard, D-M4 homographs ON | **no — the one to train on.** `vat4_finetune` |
 
 Both blockers are cleared: `configs/experiment/vat3c_finetune.yaml` points at it, and
 `data_statistics` were re-measured **inside the training container** on the 30,485-clip

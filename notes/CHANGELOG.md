@@ -19,6 +19,52 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-07
 
+### Added — the v4 corpus (§1)
+
+- **`c6b33ee`, `b5b1f34`, `be1cce3` — `data/libritts_r_vat_v4`, all three owner decisions
+  on one derivation pass.** 31,445 clips / 51.3 h / 247 speakers, 30,485 train / 960 val,
+  independence gate PASS (T·A −0.059, T·V −0.066, V·A +0.027). The blake2b hash split held
+  exactly as designed: **960/960 val clips identical to v3c**, so nothing held out became
+  trainable. Licence wall accepts it; seam guards 22/22 in-container; warm start
+  `vat4_init.ckpt` at **338/338 warm, 0 fresh**. Configs:
+  `configs/data/libritts_r_vat_v4.yaml`, `configs/experiment/vat4_finetune.yaml`.
+  - **D-M4 shipped** — `--homographs`, which REFUSES to combine with `--reuse-from` (the
+    phonemes would come from the old corpus and the flag would silently do nothing).
+    **269 train rows carry different IPA**: *"where are you going to live?"* is `lˈɪv` now,
+    not the dictionary's adjective `lˈaɪv`.
+  - **D-L2 shipped, and OVERSTATED itself.** Measured on the finished corpus rather than
+    on the intermediate file: **V moved on 247 of 30,485 rows by at most 0.0008; A and T
+    are bit-identical to v3c.** The "31,443 clips change, up to 0.228" headline is true of
+    `corpus_valence_combo.json` and false of the labels, because `derive_vat_corpus`
+    applies its OWN per-speaker z on top and a constant head's per-speaker-CONSTANT offset
+    is exactly what the second z subtracts away — speaker `909`'s worst clip moves 0.2280
+    in the combo and **0.000036** in the label. The corrected guard is right and stays; it
+    was not, on its own, a reason to bump the corpus. The width was.
+- **`b5b1f34` — `--delivery-from` applied nothing and said nothing about it.**
+  `_load_delivery` keys on `normpath(link)` AND `basename(link)`, but `label()` looked up
+  only the absolute corpus path — and `ratings.csv` records `link` relative to the ratings
+  directory, so the normpath key can never match and the basename half was dead code. The
+  first v4 run printed "delivery: 1635 labelled clip(s)" and applied **zero**: correct
+  width, every delivery block all-zero, exit 0. Basename is now a fallback, an **ambiguous**
+  basename (>1 lane across campaigns) is DROPPED rather than resolved last-write-wins, and
+  the run reports what was APPLIED rather than what was loaded — they are different numbers
+  and nothing said so.
+  ⚠ **Delivery is nearly empty on this corpus and that is correct**: 48 of 31,445 clips
+  carry a lane (39 Dialogue, 9 Neutral), the `audit-markup-v0` rows. The other ~1,590
+  labels belong to the synthetic and LibriVox campaigns — a different corpus, merging in
+  Phase 1. v4 buys the WIDTH, not the delivery signal.
+- **`be1cce3` — `make_warmstart.py` discarded the conditioning pathway it was supposed to
+  carry over.** It dropped shape-mismatched tensors and let random init stand, so
+  `vat_trunk.net.0.weight` going (256,3,1) → (256,8,1) threw away everything `vat3-24k`
+  ep099 learned about mapping V/A/T into the FiLM trunk — on a run whose entire purpose is
+  to change the width and nothing else. `todo.md §1` asserted this treatment "already"
+  existed; it did not, and the first `vat4_init.ckpt` was built with 2 fresh tensors.
+  Widening is an explicit **allowlist**, not a rule: correct for the VAT trunk because
+  contract v2 makes channel POSITION the wire format (channels 0–2 mean the same in both
+  widths, the appended block is zero for `unknown`), and wrong for `spk_emb.weight`, which
+  also grows (109 → 247) but whose row *i* is a different person. Verified: channels 0–2
+  bit-identical to the donor, channels 3–7 all zero.
+
 ### Changed — QC admission and the ear queue (§2)
 
 - **`97c14b4` — `speech_ok` is a HARD GATE at 4.0 s, on the VAD figure.** Owner's call.
