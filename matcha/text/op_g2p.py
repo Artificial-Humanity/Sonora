@@ -33,6 +33,7 @@ from matcha.text.cleaners import (
     lowercase,
     remove_brackets,
 )
+from matcha.text.homographs import resolve as resolve_homograph
 from matcha.text.symbols import symbols
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -140,7 +141,13 @@ def _possessive_suffix(base_ipa):
 class OpenPhonemizerG2P:
     """Dictionary-primary, neural-fallback espeak-IPA phonemizer."""
 
-    def __init__(self, assets_dir=None, use_neural_oov=True):
+    def __init__(self, assets_dir=None, use_neural_oov=True, homographs=False):
+        # `homographs` is OFF by default and that is deliberate (review finding D-M4).
+        # Turning it on changes the phonemes of words the dictionary currently gets
+        # wrong, which is a corpus change wherever it is applied — so it is the caller's
+        # explicit choice, never a side effect of upgrading. Measure with
+        # scripts/measure_homographs.py before enabling it on a derivation.
+        self.homographs = homographs
         self.assets_dir = os.path.abspath(
             assets_dir or os.environ.get("SONORA_G2P_ASSETS") or _default_assets()
         )
@@ -160,7 +167,13 @@ class OpenPhonemizerG2P:
             "oov_misses": 0,
             "contraction_hits": 0,
             "apostrophe_fallbacks": 0,
+            "homograph_flips": 0,
         }
+        # (word, sense) -> count, so a report can show WHICH words moved rather than
+        # only how many did. Populated whether or not `homographs` is on: with the
+        # flag off the decisions are counted and discarded, which is what makes a
+        # dry-run measurement possible without touching the output.
+        self.homograph_decisions = {}
         self.oov_words = set()
         # Apostrophe words that neither table nor decomposition resolved and
         # that fell through to the bare-letters path (mostly names: O'Brien).
@@ -272,6 +285,35 @@ class OpenPhonemizerG2P:
                 return ipa
         return None
 
+    def _homograph_ipa(self, word, words, index):
+        """Context-selected IPA for a homograph, or None to fall through to the dict.
+
+        `words` is the sentence's word tokens with None at every punctuation position,
+        so slicing it gives neighbours that already stop at a punctuation barrier.
+
+        The decision is always COMPUTED and recorded; it is only APPLIED when the
+        instance was constructed with homographs=True. That split is what lets
+        measure_homographs.py report exactly what would change without changing it.
+        """
+        decision = resolve_homograph(
+            word,
+            prev=words[index - 1] if index >= 1 else None,
+            prev2=words[index - 2] if index >= 2 else None,
+            nxt=words[index + 1] if index + 1 < len(words) else None,
+        )
+        if decision is None:
+            return None
+        key = (word, decision.sense)
+        self.homograph_decisions[key] = self.homograph_decisions.get(key, 0) + 1
+        if not self.homographs:
+            return None
+        # Counted as a dict hit as well: the pronunciation is the dictionary's own, via
+        # an inflected form, so the hit-rate totals stay reconcilable with the token
+        # count rather than developing a fifth bucket nobody sums.
+        self.stats["dict_hits"] += 1
+        self.stats["homograph_flips"] += 1
+        return decision.ipa
+
     def phonemize_word(self, word):
         """Lower-case word -> espeak-style IPA, or None when unresolvable.
 
@@ -324,9 +366,13 @@ class OpenPhonemizerG2P:
         # Hyphens/dashes between words act as separators, like espeak.
         text = re.sub(r"[-–]+", " ", text)
         text = collapse_whitespace(text)
+        # Materialised rather than streamed: homograph resolution needs the two tokens
+        # to the left and one to the right, and a punctuation mark between them is a
+        # barrier (see homographs._evidence) rather than something to look through.
+        tokens = [m.group(0) for m in _TOKEN_RE.finditer(text)]
+        words = [t if _WORD_RE.fullmatch(t) else None for t in tokens]
         out, first = [], True
-        for match in _TOKEN_RE.finditer(text):
-            token = match.group(0)
+        for index, token in enumerate(tokens):
             if _WORD_RE.fullmatch(token):
                 # A leading apostrophe is usually an opening quote, so it is
                 # dropped — except on the archaic forms where it is part of
@@ -336,7 +382,9 @@ class OpenPhonemizerG2P:
                 word = token if token in _CONTRACTIONS else token.lstrip("'")
                 if not word or word == "'":
                     continue
-                ipa = self.phonemize_word(word)
+                ipa = self._homograph_ipa(word, words, index)
+                if ipa is None:
+                    ipa = self.phonemize_word(word)
                 if ipa is None:
                     # Letters passed through verbatim. NOTE: this does *not*
                     # surface in validate() — a-z and ' are all inside the
