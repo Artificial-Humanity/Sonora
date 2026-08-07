@@ -19,6 +19,42 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-06
 
+### Fixed — acquisition lane (§5)
+
+- **`cf6429d` — the book/real-audio lane's silent-corruption bugs.** None of these raised;
+  each produced a plausible corpus instead of an error.
+  - **A-H4** — the resolved LibriVox project was never compared to the requested URL.
+    Matching is word-based with a prefix fallback, and `key` comes from the *request*, so
+    a near-miss wrote the wrong book's audio into the right-looking directory. Compared
+    and refused now.
+  - **A-H2** — `decode("utf-8", errors="replace")` on Gutenberg text turned every
+    non-ASCII byte of an ISO-8859-1 edition into U+FFFD while the ASCII stayed clean.
+    Strict UTF-8 → cp1252 → latin-1, then a check that no replacement character survived.
+  - **A-H3** — `books_ledger.json` / `staging_log.json` were read at startup and written
+    back whole after minutes of network work, so overlapping runs erased each other. New
+    `synth_common.update_json` re-reads under an flock and renames into place.
+  - **A-H5** — the real-audio lane split on any `[.!?]`+space, shipping "Mr." and "Smith
+    went home." as two clips. pysbd now, shared with `book_ingest`, plus an
+    `is_complete_utterance` gate. **The gate alone could never have fixed this** —
+    `is_complete_utterance("Mr.")` is `True` by shape — and there is a test asserting that
+    so pysbd isn't later dropped as redundant.
+  - **A-M7** — dialogue extraction hardcoded curly double quotes; since the caller falls
+    back to the raw paragraph when no utterances are found, a differently-quoted edition
+    filed its dialogue as **narration**. Convention is detected per edition now.
+    *Correction to the review's record:* *Uneasy Money* uses **straight** singles (U+0027,
+    the apostrophe character), not curly. Measured on the real text: **0 → 1,165**
+    utterances.
+  - **A-M6** — banks claimed `Standard Ebooks CC0` regardless of source while the router
+    has been feeding Gutenberg down this path all along. False licence metadata in every
+    derived clip's paper trail; provenance follows the source now, and a local `--epub` is
+    `UNKNOWN` rather than assumed.
+  - **A-M12** — "complete download" meant `size > 1024`, which a 404 page clears; it was
+    saved as `.mp3` and every resume skipped it. Magic-byte check on both paths.
+- **`cf6429d` — two duplications collapsed**, both the kind the review keeps finding:
+  `qc_passages` carried its own `is_complete_utterance` marked "kept in sync" (already
+  drifted — it accepted guillemets and trailing spaces `book_ingest` rejected), and
+  `_QUOTED_SPAN` handled straight quotes while the extractor beside it did not.
+
 ### Changed
 
 - **`428cb55` — `pyproject.toml` is the single source of dependency truth; `requirements.txt`
