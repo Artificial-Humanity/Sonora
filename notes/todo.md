@@ -49,7 +49,17 @@ This file is **residue, not the plan.** What to do next, and in what order, is
 
 ## 2 · Export lane (before any vat3/delivery export)
 
-_**F-H1 closed 2026-08-06**, and it was live: the default `SONORA_REPO` pointed at
+_**F-C1 and F-H1 closed 2026-08-06.** The gate suite is a ledger now and
+`gates_or_die()` refuses to write artifacts unless every gate passes — it printed PASS/FAIL
+and exited 0 either way, leaving a complete shippable artifact set behind a failed export.
+**G5 drives valence / energy / tension independently and requires each to move the
+waveform**; a real conversion run measured 7.0e-2 / 9.2e-2 / 8.6e-2 mean |delta| vs neutral,
+**the first time V and T have been nonzero through a converted graph**. Also fixed: G4's
+monotonicity check used `all()` over a possibly empty sequence (PASS on zero evidence), and
+**F-M4** — `config.json` wrote `time_embed_dim=1024` while the graphs consume `in_channels`
+(224), a number the mobile host trusts to size its buffer. 10/10 gates pass.
+
+**F-H1**, and it was live: the default `SONORA_REPO` pointed at
 `…/Artificial-Humanity/Sonora`, which stopped being a repo when the layout was flattened
 on 2026-07-22 — verified to contain no `matcha/`, so the import fell through to whatever
 `matcha` the harness venv held and the converter would export UPSTREAM's architecture
@@ -60,18 +70,12 @@ have since 2026-07-22. `/data/toolchain/litert-conversion/` is a working copy, i
 **drifted**, and `tests/test_data_mirrors.py` now fails on any divergence.
 See [data-mirrors.md](data-mirrors.md)._
 
-- [ ] **F-C1 (the big one):** the whole LiteRT gate suite prints PASS/FAIL and exits 0 —
-      and **valence/tension have never once been driven nonzero through a converted
-      graph** (G2 runs `vat = zeros`; G3/G4 drive `[0, a, 0]`). Needs enforced thresholds
-      + exit codes + a per-channel differential probe (drive each channel independently,
-      assert differential output).
 - [ ] **F-H2:** no delivery export story; nothing records or enforces the 2σ clamp
       contract for mobile hosts.
-- [ ] **F-M1..M7:** referee binds inputs by dtype heuristic and can't score conditioned
+- [ ] **F-M1..M3, M5..M7:** referee binds inputs by dtype heuristic and can't score conditioned
       graphs; `rename_tflite_tensors` maps outputs by emission order with no shape check
       ("renamed 0 tensors" is success); `kotlin_replica` is unrunnable (depends on
-      artifacts nothing produces) and has no conditioning coverage; `config.json` writes
-      `time_embed_dim=1024` while the masked graphs consume `in_channels`; waveform
+      artifacts nothing produces) and has no conditioning coverage; waveform
       parity is Pearson-only (a systematic fp16 gain error scores 1.0 — no RMSE check
       anywhere, for a model whose flagship axis is energy); CFG guidance is inexportable
       and undocumented for mobile.
@@ -163,18 +167,20 @@ pysbd is now a hard dependency of the align container._
 
 ## 6 · Synthesis campaign tooling
 
+_Partly closed 2026-08-06. **B-M3** chatterbox/zonos/vibevoice now call
+`synth_common.rebuild_used_set` — the variety-bias `used` set started empty on every resume
+because an already-rendered job skips before `select_reference()` runs, so a resumed
+campaign silently lost its diversity guarantee. **B-M5** `synth_common.attempt_seed`
+perturbs the seed per attempt and records the one actually used; "re-run under
+skip-if-exists" IS the retry, and re-seeding identically meant a deterministic failure could
+never converge. **B-L5** `MAX_REF_EXCURSION` hoisted to `ref_select` beside `REF_BLACKLIST`
+(it was written out three times)._
+
 - [ ] **B-M2:** `$BANK`/`$OUT` interpolated unquoted through two quoting layers; no
       `/data/*`-prefix or no-space guard (the single-level-OUT refusal landed; this is
       the rest).
-- [ ] **B-M3:** the `used` variety-bias set starts empty on every resume
-      (chatterbox/zonos/vibevoice) — rerolled clips cast as if the pool were untouched.
-      Rebuild `used` from manifest rows at startup.
-- [ ] **B-M5:** moss_vg/orpheus retry loops re-seed identically before each attempt —
-      deterministic failures can never converge. Perturb `seed + attempt`, record it.
 - [ ] **B-M9:** chatterbox `BRIGHT_REF_POLICY` is recorded in manifests but never
       consulted — delete the knob or wire it.
-- [ ] **B-L5:** `MAX_REF_EXCURSION = 240.0` still duplicated in chatterbox + zonos;
-      hoist to `ref_select` beside `REF_BLACKLIST` *(verified still open 2026-08-02)*.
 - [ ] **B-M6/M7:** `synth_dia`/`synth_moss85` still use the explicit-keys manifest style
       whose field-dropping was fixed in the other six; `make_bulk_bank.py` emits Dia
       lines with leading tags and engine-less ids. Both are SET_ASIDE-reinstatement
