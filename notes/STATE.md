@@ -227,5 +227,9 @@ is only its headline.
 ## Pointers
 
 - Change history — [CHANGELOG.md](CHANGELOG.md) (maintained per AGENTS.md §4 since 2026-08-06)
+- Code on `/data` — [data-mirrors.md](data-mirrors.md). Nothing of ours is unbacked; the
+  risk is **drift**, and it had already bitten: the running export harness was three weeks
+  stale and missing a seam guard the repo recorded as landed. `tests/test_data_mirrors.py`
+  fails on any divergence. **The repo is authoritative; `/data` is a working copy.**
 - Latest code review — none yet (the first review follows AGENTS.md §5: with no prior review,
   it covers the previous and current day's commits)

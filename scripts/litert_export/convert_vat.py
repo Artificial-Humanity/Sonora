@@ -44,6 +44,7 @@ import _stub  # noqa: F401  (must be first: scipy / getsourcefile guards)
 import json
 import math
 import os
+import pathlib
 import sys
 import types
 from types import SimpleNamespace as NS
@@ -77,8 +78,25 @@ class _LoRACompatibleLinear(nn.Linear):
 _lora.LoRACompatibleLinear = _LoRACompatibleLinear
 sys.modules["diffusers.models.lora"] = _lora
 
-SONORA = os.environ.get(
-    "SONORA_REPO", "/home/lmcfarlin/Projects/Artificial-Humanity/Sonora")
+# F-H1. The default was `…/Artificial-Humanity/Sonora`, which stopped being a repo on
+# 2026-07-22 when the umbrella layout was flattened — it is now a plain container holding
+# `github/` and `huggingface/`. So `sys.path.insert` added a directory with no `matcha`
+# package in it, the import fell through to whatever `matcha` the harness venv happened to
+# hold (documented as the stock PyPI `matcha-tts`), and the converter exported UPSTREAM's
+# architecture while every log line said Sonora. That is the worst possible shape for this
+# script: a wrong export converts cleanly and its graphs run.
+#
+# Derive it from this file's own location instead of hardcoding a path at all — this file
+# lives at <repo>/scripts/litert_export/, so the repo root is two parents up, and the
+# default is correct wherever the checkout sits. The env var still wins for the /data
+# working copy. Verified, not assumed: the import target must actually be there.
+SONORA = os.environ.get("SONORA_REPO") or str(pathlib.Path(__file__).resolve().parents[2])
+if not (pathlib.Path(SONORA) / "matcha" / "models" / "matcha_tts.py").is_file():
+    raise SystemExit(
+        f"SONORA_REPO={SONORA!r} does not contain matcha/models/matcha_tts.py.\n"
+        "  Point it at the Sonora repo root (…/Sonora/github). Without this the import\n"
+        "  falls through to whatever `matcha` is installed and exports the wrong model."
+    )
 sys.path.insert(0, SONORA)
 
 # Registry copy replaced by safetensors 2026-07-16 (HF picklescan); the full

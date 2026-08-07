@@ -49,15 +49,22 @@ This file is **residue, not the plan.** What to do next, and in what order, is
 
 ## 2 · Export lane (before any vat3/delivery export)
 
+_**F-H1 closed 2026-08-06**, and it was live: the default `SONORA_REPO` pointed at
+`…/Artificial-Humanity/Sonora`, which stopped being a repo when the layout was flattened
+on 2026-07-22 — verified to contain no `matcha/`, so the import fell through to whatever
+`matcha` the harness venv held and the converter would export UPSTREAM's architecture
+while every log line said Sonora. It now derives the root from the file's own location and
+**refuses to start** if `matcha/models/matcha_tts.py` is not there. The bundled correction:
+these scripts are NOT outside source control — they live in `scripts/litert_export/` and
+have since 2026-07-22. `/data/toolchain/litert-conversion/` is a working copy, it had
+**drifted**, and `tests/test_data_mirrors.py` now fails on any divergence.
+See [data-mirrors.md](data-mirrors.md)._
+
 - [ ] **F-C1 (the big one):** the whole LiteRT gate suite prints PASS/FAIL and exits 0 —
       and **valence/tension have never once been driven nonzero through a converted
       graph** (G2 runs `vat = zeros`; G3/G4 drive `[0, a, 0]`). Needs enforced thresholds
       + exit codes + a per-channel differential probe (drive each channel independently,
       assert differential output).
-- [ ] **F-H1:** `convert_vat.py` `SONORA_REPO` default is the pre-flat `…/Sonora` — the
-      sys.path insert falls through to whatever `matcha` the harness venv holds
-      (documented as the stock pip package). Default to `…/Sonora/github`. Lives in
-      `/data/toolchain/litert-conversion/`, not this repo.
 - [ ] **F-H2:** no delivery export story; nothing records or enforces the 2σ clamp
       contract for mobile hosts.
 - [ ] **F-M1..M7:** referee binds inputs by dtype heuristic and can't score conditioned
