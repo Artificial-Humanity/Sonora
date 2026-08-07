@@ -162,3 +162,39 @@ def test_digit_detection_matches_what_the_tokenizer_drops():
     assert any(c.isdigit() for c in "in 1984 he wrote")
     assert not any(c.isdigit() for c in "I have three cats")
     assert not any(c.isdigit() for c in "a perfectly ordinary sentence, with punctuation!")
+
+
+# --- C-M10: the delivery coverage floor ----------------------------------------------
+
+
+def _thin(n_voted, secs_heard, secs_total,
+          min_clips=8, min_secs=3, min_spread=0.25):
+    """Mirrors stage_pool's --mark-delivery floor."""
+    spread = len(secs_heard) / max(secs_total, 1)
+    return (n_voted < min_clips
+            or len(secs_heard) < min(min_secs, secs_total)
+            or spread < min_spread)
+
+
+def test_both_real_delivery_samples_are_refused():
+    """A title-level mark propagates to EVERY clip in the book, and unanimity was the whole
+    test — any sample, any size, any distribution. Both real samples are the degenerate
+    shape: librivox-v1's 12 audited clips are one contiguous run in section 2 of 15, and
+    librivox-v2's 30 are one run in section 1 of a 25-section novel. It was safe only
+    because the one title actually marked is homogeneous by construction, which is a
+    property of that book rather than of the check."""
+    assert _thin(12, {2}, 15), "librivox-v1's contiguous run must not certify a novel"
+    assert _thin(30, {1}, 25), "librivox-v2's contiguous run must not certify a novel"
+
+
+def test_an_honest_spread_is_accepted():
+    assert not _thin(12, {1, 4, 6, 9, 11, 14}, 15)
+
+
+def test_a_short_title_is_not_punished_for_being_short():
+    """min(MIN_SECTIONS, total) — a two-section title with both heard is full coverage."""
+    assert not _thin(8, {1, 2}, 2)
+
+
+def test_spread_alone_is_not_enough():
+    assert _thin(4, {1, 5, 9, 13}, 15), "four clips cannot certify a whole book"

@@ -15,9 +15,9 @@ Run:  .venv/bin/python scripts/markup/tag_spike.py [--model gemma-4-26b-a4b-qat]
 """
 import argparse
 import csv
+import os
 import json
 import random
-import shutil
 import sys
 import urllib.request
 from pathlib import Path
@@ -28,6 +28,9 @@ import scm  # noqa: E402
 SON = Path("/data/model-training/sonora")
 NOTATION = SON / "markup_prep" / "utterance_notation.jsonl"
 OUT_DIR = SON / "markup_prep" / "spike_v0"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "synthesis"))
+import synth_common  # noqa: E402
+
 RATINGS = Path("/data/model-training/datasets/sonora-expressive-registers/ratings.csv")
 OLLAMA = "http://localhost:11434/api/chat"
 
@@ -219,28 +222,31 @@ def main():
     if args.no_register_audit:
         return
     # ---- register audit-markup-v0 campaign (clip + inline projection in note) ----
-    ratings_rows = list(csv.DictReader(open(RATINGS)))
-    fields = list(csv.DictReader(open(RATINGS)).fieldnames)
-    existing = {x["id"] for x in ratings_rows}
+    # D-M5: this appended to the LIVE ratings.csv with a copy-backup and no guard at all —
+    # no mtime stamp, no lock — while the Dataset Auditions app writes the same file. An
+    # append is not safe merely because it is an append: the app rewrites the whole file to
+    # commit an edit, so an interleaved write loses either these rows or that edit. Every
+    # other writer grew an mtime stamp after an owner-set accent value was lost on
+    # 2026-07-26; this one never did. It now goes through the shared transaction, which
+    # holds an flock AND re-checks mtime immediately before writing.
     rdir = RATINGS.parent
-    new = []
-    for o in results:
-        if "error" in o or o["provenance"]["schema_errors"]:
-            continue
-        rid = f"mk_{o['id']}"
-        if rid in existing:
-            continue
-        import os
-        link = os.path.relpath(o["wav"], rdir)
-        note = scm.render_inline(o)[:480]
-        new.append({k: "" for k in fields} | {
-            "campaign": "audit-markup-v0", "id": rid, "engine": "scm-spike",
-            "register": (o.get("utterance") or {}).get("register") or "",
-            "status": "unaudited", "note": note, "link": link})
-    shutil.copy2(RATINGS, str(RATINGS) + ".pre-markup-audit.bak")
-    with open(RATINGS, "a", newline="") as f:
-        csv.DictWriter(f, fieldnames=fields).writerows(new)
-    print(f"registered {len(new)} audit-markup-v0 rows in the Auditions app")
+    with synth_common.ratings_transaction(RATINGS, tag="markupaudit") as (fields, rows):
+        existing = {x["id"] for x in rows}
+        added = 0
+        for o in results:
+            if "error" in o or o["provenance"]["schema_errors"]:
+                continue
+            rid = f"mk_{o['id']}"
+            if rid in existing:
+                continue
+            link = os.path.relpath(o["wav"], rdir)
+            note = scm.render_inline(o)[:480]
+            rows.append({k: "" for k in fields} | {
+                "campaign": "audit-markup-v0", "id": rid, "engine": "scm-spike",
+                "register": (o.get("utterance") or {}).get("register") or "",
+                "status": "unaudited", "note": note, "link": link})
+            added += 1
+    print(f"registered {added} audit-markup-v0 rows in the Auditions app")
 
 
 if __name__ == "__main__":

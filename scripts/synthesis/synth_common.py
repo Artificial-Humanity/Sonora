@@ -24,6 +24,12 @@ the other started, and the later one silently erased the earlier one's entries
 truncated JSON file that nothing could parse. This does the read-modify-write
 INSIDE an exclusive lock, immediately before the write, and renames into place.
 
+`ratings_transaction` — ratings.csv is the ear-verdict SSOT and the audition
+app is a live writer. Six scripts each grew their own mtime stamp, in four
+flavours, and one had none. This takes an flock (which serialises our scripts
+against each other, something mtime cannot do) AND re-checks mtime inside it
+(which is the only thing that catches the app, since the app takes no lock).
+
 `attempt_seed` — a re-run under skip-if-exists is the retry mechanism, and it
 re-seeded identically every time, so a DETERMINISTIC failure could never
 converge: the same seed reproduces the same malformed generation forever. The
@@ -37,9 +43,12 @@ that already exist restores it.
 """
 
 import contextlib
+import csv
+import datetime as _dt
 import fcntl
 import json
 import os
+import shutil
 
 
 @contextlib.contextmanager
@@ -224,6 +233,58 @@ def save_via_atomic(save_fn, path, *args, **kwargs):
                 pass
         raise
     return path
+
+
+@contextlib.contextmanager
+def ratings_transaction(path, *, tag="edit", backup=True):
+    """Read ratings.csv, yield (fieldnames, rows), write it back — no window (C-M6/D-M5).
+
+    `ratings.csv` is the ear-verdict SSOT and the Dataset Auditions app is a LIVE WRITER,
+    so a script that reads it, thinks, and writes back can erase an edit committed in
+    between. That happened on 2026-07-26 (an owner-set accent value), which is why six
+    scripts each grew an mtime stamp — in four different flavours, the widest of which
+    (`seed_delivery`) stamps before serializing ~1,500 rows and never re-checks. One had
+    none at all (`tag_spike`, D-M5).
+
+    Two guards, because they cover different writers:
+
+      * an **flock** on a sidecar, which serialises OUR scripts against each other —
+        mtime stamping cannot do this, it can only notice afterwards that it lost;
+      * an **mtime re-check inside the lock**, because the app does not take the lock, so
+        it is the only thing that can catch it. Checked immediately before the write, so
+        the vulnerable window is the write itself rather than the whole run.
+
+    Mutate `rows` in place; the write happens on clean exit. Raise, and nothing is written.
+    """
+    path = os.fspath(path)
+    with _exclusive(path):
+        mtime_at_read = os.stat(path).st_mtime_ns
+        with open(path, encoding="utf-8", newline="") as fh:
+            reader = csv.DictReader(fh)
+            fieldnames, rows = reader.fieldnames, list(reader)
+
+        yield fieldnames, rows
+
+        if os.stat(path).st_mtime_ns != mtime_at_read:
+            raise SystemExit(
+                f"ABORTED: {path} changed while this was running — the audition app\n"
+                "  committed an edit. Writing now would erase it. Nothing was modified;\n"
+                "  re-run once the app is idle."
+            )
+        if backup:
+            stamp = _dt.datetime.now().strftime("%Y%m%d")
+            bak = f"{path}.bak-{stamp}-{tag}"
+            if not os.path.exists(bak):
+                shutil.copy2(path, bak)
+        directory = os.path.dirname(os.path.abspath(path)) or "."
+        tmp = _tmp_path(directory, os.path.basename(path))
+        with open(tmp, "w", encoding="utf-8", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=fieldnames)
+            w.writeheader()
+            w.writerows(rows)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
 
 
 def attempt_seed(out_dir, job_id, base_seed):

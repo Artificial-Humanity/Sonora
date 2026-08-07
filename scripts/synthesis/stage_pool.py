@@ -89,6 +89,14 @@ import synth_common  # noqa: E402
 
 DATE = datetime.date.today().isoformat()   # was hard-coded "2026-08-01"
 
+# C-M10 floor. A title-level delivery mark propagates to EVERY clip in the book, so the
+# sample that certifies it has to look like the book. Chosen to reject both real samples
+# to date (12 contiguous clips in one section; 30 contiguous in one section of 25) while
+# passing an honest spread.
+MIN_DELIVERY_CLIPS = 8
+MIN_DELIVERY_SECTIONS = 3
+MIN_SECTION_SPREAD = 0.25
+
 DATASETS = pathlib.Path("/data/model-training/datasets")
 RATINGS = DATASETS / "sonora-expressive-registers/ratings.csv"
 PROFILES = DATASETS / "reader_profiles.json"
@@ -201,6 +209,10 @@ def main() -> int:
     ap.add_argument("--campaign", required=True, help="dir under datasets/, e.g. librivox-v1")
     ap.add_argument("--stage", type=int, default=0, help="how many clips to stage")
     ap.add_argument("--status", action="store_true")
+    ap.add_argument("--thin-coverage", action="store_true",
+                    help="allow --mark-delivery below the coverage floor, for a title that "
+                         "is homogeneous by construction (a speech collection). Recorded "
+                         "in the ledger as thin_override so the exception is auditable.")
     ap.add_argument("--mark-delivery", metavar="LANE", choices=LANES,
                     help="mark every title in this campaign as delivery-homogeneous in "
                          "LANE, so staging propagates it. Refused unless the ear has "
@@ -253,9 +265,18 @@ def main() -> int:
             by_title.setdefault(r.get("book") or "?", r)
         led = ledger()
         ok = True
+        coverage: dict[str, dict] = {}
         for title, rec in sorted(by_title.items()):
-            said = {heard[r["id"]] for r in pool
-                    if (r.get("book") or "?") == title and heard.get(r["id"])}
+            rows = [r for r in pool if (r.get("book") or "?") == title]
+            voted = [r for r in rows if heard.get(r["id"])]
+            said = {heard[r["id"]] for r in voted}
+            secs_heard = {int(r.get("section") or 0) for r in voted}
+            secs_total = {int(r.get("section") or 0) for r in rows}
+            spread = len(secs_heard) / max(len(secs_total), 1)
+            coverage[title] = {"clips_heard": len(voted), "clips_total": len(rows),
+                               "sections_heard": sorted(secs_heard),
+                               "sections_total": len(secs_total),
+                               "section_spread": round(spread, 3)}
             key = ledger_key_for(rec, led)
             if not said:
                 print(f"  !! {title}: no audited clip yet — audition one first")
@@ -263,6 +284,29 @@ def main() -> int:
             elif said != {args.mark_delivery}:
                 print(f"  !! {title}: the ear said {sorted(said)}, not "
                       f"{{{args.mark_delivery}}} — not homogeneous, refusing")
+                ok = False
+            # C-M10: unanimity was the WHOLE test — any sample, any size, any distribution.
+            # One clip certified a title-level delivery that then propagates to every clip
+            # in the book. Both real samples to date are exactly the degenerate shape:
+            # librivox-v1's 12 audited clips are one contiguous run in section 2, and
+            # librivox-v2's 30 are one run in section 1 of a 25-section novel. It was safe
+            # only because the one title actually marked (`pg:824`, *Speeches*) is
+            # homogeneous by construction — a property of that book, not of this check.
+            #
+            # A contiguous run says nothing about a novel: delivery is the mix-balance
+            # axis and genuinely varies across one. Demand clips, and demand they be spread.
+            elif (len(voted) < MIN_DELIVERY_CLIPS
+                  or len(secs_heard) < min(MIN_DELIVERY_SECTIONS, len(secs_total))
+                  or spread < MIN_SECTION_SPREAD) and not args.thin_coverage:
+                print(f"  !! {title}: coverage too thin to certify a TITLE-level mark — "
+                      f"{len(voted)} clip(s) (need {MIN_DELIVERY_CLIPS}) across "
+                      f"{len(secs_heard)} of {len(secs_total)} section(s) "
+                      f"(need {min(MIN_DELIVERY_SECTIONS, len(secs_total))}, "
+                      f"spread {spread:.0%} < {MIN_SECTION_SPREAD:.0%}).")
+                print(f"     Sections heard: {sorted(secs_heard)}. A contiguous run says "
+                      "nothing about a novel. Audition across the book, or pass "
+                      "--thin-coverage if this title is homogeneous by construction "
+                      "(a speech collection); the reason is recorded either way.")
                 ok = False
             elif not key:
                 print(f"  !! {title}: no ledger entry matches "
@@ -279,13 +323,19 @@ def main() -> int:
         # A-H3/C-M5: re-read under a lock and touch only these keys, rather than writing
         # back the snapshot read at startup. `ledger_key_for` needs the pre-read `led` to
         # resolve its key, so resolve first, then apply to the current contents.
-        marks = {ledger_key_for(rec, led): args.mark_delivery for rec in by_title.values()}
+        marks = {ledger_key_for(rec, led): (args.mark_delivery, coverage[title])
+                 for title, rec in by_title.items()}
 
         def _mark(current):
-            for k, value in marks.items():
+            for k, (value, cov) in marks.items():
                 entry = current.setdefault(k, {})
                 entry["delivery_homogeneous"] = value
                 entry["delivery_marked"] = DATE
+                # C-M10: the evidence travels WITH the mark. A title-level delivery
+                # propagates to every clip in the book, so "how much of the book did the
+                # ear actually hear, and from where" is the first thing anyone auditing
+                # this decision needs, and it was recorded nowhere.
+                entry["delivery_coverage"] = dict(cov, thin_override=bool(args.thin_coverage))
 
         synth_common.update_json(LEDGER, _mark)
         print(f"\nmarked {len(by_title)} title(s) in {LEDGER}")
