@@ -410,3 +410,74 @@ def test_an_absent_optional_rename_needs_an_explicit_flag(renamer):
     assert missing == [], "everything present was renamed"
     src = RENAMER.read_text(encoding="utf-8")
     assert "--allow-missing" in src
+
+
+# --- F-M3 / F-M6: the Kotlin replica --------------------------------------------------
+
+REPLICA = REPO / "scripts" / "litert_export" / "kotlin_replica.py"
+REPLICA_SRC = REPLICA.read_text(encoding="utf-8")
+
+
+def test_the_replica_looks_in_both_places_its_artifacts_live():
+    """F-M3. It read everything out of `artifacts/` and died at MODULE SCOPE on a bare
+    FileNotFoundError for the first missing one. THREE of its seven prerequisites are not
+    conversion outputs at all — the G2P graph, its meta and the 275k dictionary are
+    VENDORED assets under /data/models/litert-community/Matcha-TTS. The script was
+    unrunnable as written and the error named neither the reason nor the real directory.
+    """
+    assert "SONORA_LITERT_ASSETS" in REPLICA_SRC
+    assert "def _preflight()" in REPLICA_SRC
+    assert "def _find(" in REPLICA_SRC
+
+
+def test_the_preflight_names_every_missing_file_and_its_producer():
+    """One FileNotFoundError names one file. A preflight names all of them, and where each
+    comes from — which is the actual question when three come from somewhere else."""
+    block = REPLICA_SRC[REPLICA_SRC.index("def _preflight()"):]
+    block = block[:block.index("_PATHS = _preflight()")]
+    assert "convert_g2p_matcha.py" in block
+    assert "vendored asset" in block
+    assert "is missing" in block and "prerequisites" in block
+
+
+def test_the_dictionary_may_be_gzipped():
+    """The vendored dictionary ships as `g2p_dict.txt.gz`; the original opened the bare
+    name, so even pointed at the right directory it would have failed."""
+    assert "import gzip" in REPLICA_SRC
+    assert 'name + ".gz"' in REPLICA_SRC
+
+
+def test_the_replica_can_drive_the_conditioned_lane():
+    """F-M6. It pointed at the Phase 0 LJSpeech graphs (22.05 kHz, unconditioned) and had
+    no way to supply spk or vat — so it validated the Kotlin port against a model that is
+    not the one shipping. The port exists FOR the conditioned actor."""
+    assert "def conditioning(" in REPLICA_SRC
+    assert '"vat":    dict(art="artifacts_vat"' in REPLICA_SRC
+    assert "spk_vec=None, vat_vec=None" in REPLICA_SRC
+    # and the conditioning must actually reach both graphs
+    assert "te_args += [spk_vec, _tok(vat_vec, MAX_TEXT, tmask)]" in REPLICA_SRC
+    assert "dec_args += [spk_vec, vat_y]" in REPLICA_SRC
+
+
+def test_the_replica_reads_the_control_contract_rather_than_assuming_it():
+    """A replica with its own idea of the bounds proves nothing about the host, which
+    reads config.json. It must consume the same manifest."""
+    assert 'CONTROL = _config.get("control") or {}' in REPLICA_SRC
+    assert 'CONTROL.get("continuous")' in REPLICA_SRC
+    assert 'CONTROL.get("categorical")' in REPLICA_SRC
+
+
+def test_the_replica_hardcodes_no_mel_stats_for_the_conditioned_lane():
+    """MEL_MEAN/MEL_STD were module constants that happened to match Phase 0. They are a
+    property of the corpus, so the conditioned lane's differ — and a wrong denormalization
+    is a quiet, whole-clip loudness and timbre error."""
+    assert 'MEL_MEAN = _L["mel_mean"] if _L["mel_mean"] is not None else _config["mel_mean"]' \
+        in REPLICA_SRC
+
+
+def test_a_delivery_lane_against_pre_v2_artifacts_is_refused():
+    """The artifacts on /data predate contract v2. Silently ignoring `--delivery` there
+    would render neutral audio while the caller believed it had asked for Newscaster —
+    the exact failure the control contract exists to close."""
+    assert "predate contract v2" in REPLICA_SRC
+    assert "Re-export." in REPLICA_SRC or "Re-export" in REPLICA_SRC
