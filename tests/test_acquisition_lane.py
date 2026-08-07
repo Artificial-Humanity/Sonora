@@ -581,3 +581,125 @@ def test_both_lanes_share_one_definition():
     fetch_mod = pytest.importorskip("librivox_fetch")
     assert fetch_mod.PG_START is synth_common.PG_START_RE
     assert fetch_mod.PG_END is synth_common.PG_END_RE
+
+
+# --- A-M9 / A-M10: one book, two possible ledger keys ---------------------------------
+#
+# `pg:<etext_id>` when the Gutenberg edition is known, `lv:<slug>` when it is not — and
+# which one a book got depended on whether the LibriVox API happened to return
+# `url_text_source` on the pass that created it. Nothing reconciled the two.
+
+
+@pytest.fixture()
+def router_mod():
+    return pytest.importorskip("book_router")
+
+
+def test_key_candidates_prefer_the_text_identity():
+    """`pg:` leads because it identifies the TEXT, which survives a re-recording and is
+    what the LibriTTS overlap check matches on."""
+    assert synth_common.ledger_key_candidates(
+        url="https://librivox.org/uneasy-money-by-p-g-wodehouse/",
+        etext_id="6684") == ["pg:6684", "lv:uneasy-money-by-p-g-wodehouse"]
+    assert synth_common.ledger_key_candidates(
+        url="https://librivox.org/uneasy-money-by-p-g-wodehouse/") == [
+        "lv:uneasy-money-by-p-g-wodehouse"]
+    assert synth_common.ledger_key_candidates(etext_id="6684") == ["pg:6684"]
+    assert synth_common.ledger_key_candidates() == []
+
+
+def test_standard_ebooks_gets_the_se_scheme_the_ledger_actually_uses():
+    """Fifteen hand-authored entries use `se:<author>/<title>`; the router never produced
+    it, so its `"lv:" + <last path segment>` fallback filed SE books as LibriVox ones."""
+    assert synth_common.ledger_key_candidates(
+        url="https://standardebooks.org/ebooks/l-frank-baum/the-road-to-oz")[0] == (
+        "se:l-frank-baum/the-road-to-oz")
+
+
+def test_the_legacy_se_miskey_is_still_probed():
+    """FIVE live entries carry it — lv:walden, lv:conan-stories, lv:up-from-slavery,
+    lv:the-voyage-of-the-beagle, lv:the-autobiography-of-benjamin-franklin, all
+    lane=synthesize against standardebooks.org URLs. Probing the old spelling keeps them
+    findable rather than orphaning them behind a corrected key. They are NOT rewritten:
+    re-keying live ledger data is a migration, and that is the owner's call.
+    """
+    ledger = {"lv:walden": {"status": "pending book_ingest", "lane": "synthesize"}}
+    key, entry = synth_common.resolve_ledger_key(
+        ledger, url="https://standardebooks.org/ebooks/henry-david-thoreau/walden")
+    assert key == "lv:walden" and entry["lane"] == "synthesize"
+
+
+def test_a_new_se_book_gets_the_canonical_key_not_the_legacy_one():
+    key, entry = synth_common.resolve_ledger_key(
+        {}, url="https://standardebooks.org/ebooks/jane-austen/emma")
+    assert key == "se:jane-austen/emma" and entry is None
+
+
+def test_an_existing_lv_entry_is_found_once_the_etext_id_is_known():
+    """The duplicate-entry case. A book filed as `lv:` before its Gutenberg source was
+    resolved must not become a SECOND entry under `pg:` the moment it is."""
+    ledger = {"lv:uneasy-money-by-p-g-wodehouse": {"status": "fetched; awaiting align"}}
+    key, entry = synth_common.resolve_ledger_key(
+        ledger, url="https://librivox.org/uneasy-money-by-p-g-wodehouse/",
+        etext_id="6684")
+    assert key == "lv:uneasy-money-by-p-g-wodehouse"
+    assert entry["status"] == "fetched; awaiting align"
+
+
+def test_a_genuinely_new_book_gets_the_canonical_key_and_no_entry():
+    key, entry = synth_common.resolve_ledger_key(
+        {}, url="https://librivox.org/x/", etext_id="99")
+    assert key == "pg:99" and entry is None
+
+
+def test_a_librivox_book_with_no_etext_id_is_still_recognised(router_mod, monkeypatch):
+    """A-M9's headline. The check built a `pg:` key or None, so this book was compared
+    against NOTHING: every re-route re-created it and reset `status` to pending —
+    regressing a book already fetched and aligned, and printing no SKIP to say so."""
+    monkeypatch.setattr(router_mod, "lookup_librivox", lambda url: {
+        "title": "Uneasy Money", "url_text_source": None,
+        "num_sections": 15, "totaltime": "5:12:00"})
+    monkeypatch.setattr(router_mod.time, "sleep", lambda *_a: None)
+    ledger = {"lv:uneasy-money-by-p-g-wodehouse": {"status": "fetched; awaiting align",
+                                                   "verdict": "REAL-AUDIO"}}
+    rec = router_mod.route("https://librivox.org/uneasy-money-by-p-g-wodehouse/",
+                           ledger, {}, {})
+    assert rec["verdict"] == "SKIP"
+    assert "fetched; awaiting align" in rec["flags"][0]
+
+
+def test_the_router_never_regresses_a_books_status(router_mod):
+    """The router decides a LANE. It knows nothing about whether the audio has been
+    fetched or aligned, and stamping "pending" over "fetched; awaiting align" loses work
+    that nothing else records."""
+    led = {"pg:6684": {"status": "fetched; awaiting align", "verdict": "REAL-AUDIO"}}
+    key, entry = synth_common.resolve_ledger_key(
+        led, url="https://librivox.org/uneasy-money/", etext_id="6684")
+    merged = dict(entry)
+    merged["status"] = entry.get("status") or "pending force-align ingest"
+    assert merged["status"] == "fetched; awaiting align"
+    assert key == "pg:6684"
+
+
+def test_both_invocation_styles_resolve_to_one_directory():
+    """A-M10's on-disk half: the output dir is `key.replace(":", "_")`, so `--key pg:6684`
+    wrote `pg_6684` and `--url <the same book>` wrote `lv_uneasy-money-…`. The same book,
+    downloaded twice into two trees, decided by how it was invoked."""
+    ledger = {"pg:6684": {"status": "pending force-align ingest"}}
+    by_url, _ = synth_common.resolve_ledger_key(
+        ledger, url="https://librivox.org/uneasy-money-by-p-g-wodehouse/",
+        etext_id="6684")
+    assert by_url.replace(":", "_") == "pg_6684"
+
+
+def test_etext_id_extraction_has_one_definition():
+    assert book_router_etext("https://www.gutenberg.org/ebooks/6684") == "6684"
+    assert book_router_etext("https://www.gutenberg.org/files/6684/6684-0.txt") == "6684"
+    assert book_router_etext("https://www.gutenberg.org/etext/6684") == "6684"
+    assert book_router_etext(None) is None
+
+
+def book_router_etext(url):
+    mod = pytest.importorskip("book_router")
+    assert mod.etext_id_from is synth_common.etext_id_from
+    return mod.etext_id_from(url)

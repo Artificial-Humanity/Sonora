@@ -279,6 +279,102 @@ def pg_boilerplate_residue(paras):
     return hits
 
 
+# ------------------------------------------------------------- books_ledger identity
+#
+# A-M9 / A-M10. One book has TWO possible ledger keys — `pg:<etext_id>` when the Gutenberg
+# edition is known, `lv:<librivox-slug>` when it is not — and which one it gets depends on
+# whether the LibriVox API happened to return `url_text_source` on the pass that created
+# it. Nothing reconciled them, so:
+#
+#   * `book_router`'s already-in-ledger check only ever built a `pg:` key. A LibriVox book
+#     without an etext id was checked against NOTHING, so every re-route re-created it and
+#     reset `status` to "pending force-align ingest" — regressing a book that was already
+#     fetched and aligned, silently, because the router prints SKIP only for what it found.
+#   * The same book could land under BOTH keys across two passes (API flaky once), giving
+#     two ledger entries and two states for one book.
+#   * `librivox_fetch` derived its on-disk directory from `key.replace(":", "_")`, so
+#     `--key pg:6684` wrote `pg_6684` and `--url <librivox>` wrote
+#     `lv_uneasy-money-by-p-g-wodehouse` — the same book downloaded twice into two trees
+#     by invocation style alone.
+#   * And it updated `status` only under `if args.key and args.key in ledger`, so a fetch
+#     driven by `--url` left the ledger saying "pending force-align ingest" forever.
+#
+# The identity of a book is not one key; it is the SET of keys it could have. These two
+# functions are that rule, in one place, for both scripts.
+
+
+def etext_id_from(url_text_source):
+    """-> the Gutenberg etext id in a text-source URL, or None.
+
+    Moved here from `book_router` when `librivox_fetch` needed it too (A-M10): the fetch
+    lane cannot resolve a book's canonical key without it, and it is the same rule.
+    """
+    if not url_text_source:
+        return None
+    m = re.search(r"(?:ebooks/|etext/|files/)(\d+)", url_text_source)
+    return m.group(1) if m else None
+
+
+def _url_parts(url):
+    """-> (host, [path segments]) lowercased, or ("", []) for nothing usable."""
+    if not url:
+        return "", []
+    import urllib.parse
+
+    p = urllib.parse.urlparse(url)
+    return p.netloc.lower(), [s for s in p.path.strip("/").lower().split("/") if s]
+
+
+def ledger_key_candidates(*, url=None, etext_id=None):
+    """Every key this book could legitimately be filed under, canonical first.
+
+    Three live schemes, all present in the ledger today:
+
+      `pg:<etext_id>`        the Gutenberg text — leads, because it identifies the TEXT,
+                             which survives a re-recording and is what the LibriTTS
+                             overlap check matches on
+      `se:<author>/<title>`  a Standard Ebooks edition (15 hand-authored entries use it)
+      `lv:<project-slug>`    a LibriVox recording whose text source is unresolved
+
+    The last entry in the SE list is a LEGACY form and is deliberately still probed. The
+    router's old fallback was `"lv:" + <last path segment>` applied to whatever URL it
+    held, including Standard Ebooks ones — which is why five SE books sit in the ledger
+    today under `lv:` keys (`lv:walden`, `lv:conan-stories`,
+    `lv:the-voyage-of-the-beagle`, `lv:up-from-slavery`,
+    `lv:the-autobiography-of-benjamin-franklin`, all `lane=synthesize`). Probing the old
+    spelling keeps those findable instead of orphaning them behind a corrected key. They
+    are not rewritten here: re-keying live ledger data is a migration, and a migration is
+    the owner's call.
+    """
+    keys = []
+    if etext_id:
+        keys.append(f"pg:{etext_id}")
+    host, parts = _url_parts(url)
+    if "standardebooks.org" in host:
+        if len(parts) >= 3 and parts[0] == "ebooks":
+            keys.append(f"se:{parts[1]}/{parts[2]}")
+        if parts:
+            keys.append(f"lv:{parts[-1]}")          # legacy mis-key, probe only
+    elif "librivox.org" in host and parts:
+        keys.append(f"lv:{parts[-1]}")
+    return keys
+
+
+def resolve_ledger_key(ledger, *, url=None, etext_id=None):
+    """-> (key, entry) for this book, preferring a key the ledger ALREADY uses.
+
+    Returns `(None, None)` when the book cannot be identified at all. `entry` is None for
+    a book that is genuinely new — the caller distinguishes "new" from "already recorded",
+    which is exactly the distinction the router was unable to make.
+    """
+    candidates = ledger_key_candidates(url=url, etext_id=etext_id)
+    for key in candidates:
+        entry = (ledger or {}).get(key)
+        if isinstance(entry, dict):
+            return key, entry
+    return (candidates[0] if candidates else None), None
+
+
 def _tmp_path(directory, basename):
     """Hidden sibling temp name that keeps the original extension last."""
     stem, ext = os.path.splitext(basename)

@@ -325,9 +325,6 @@ def main() -> int:
             print(f"!! {key} is lane={entry.get('lane')}, not force-align", file=sys.stderr)
             return 1
         url = entry.get("url")
-    if not key:
-        key = "lv:" + urllib.parse.urlparse(url).path.strip("/").split("/")[-1]
-
     print(f"resolving {url}")
     meta = api_book(url)
     if not meta:
@@ -363,6 +360,26 @@ def main() -> int:
     sections = meta.get("sections") or []
     print(f"  {meta.get('title')} — {len(sections)} sections, {meta.get('totaltime')}")
     print(f"  text source: {meta.get('url_text_source')}")
+
+    # A-M10. `key` was `"lv:" + slug` whenever `--key` was not given, and the output
+    # directory is `key.replace(":", "_")` — so `--key pg:6684` wrote `pg_6684` while
+    # `--url <the same book>` wrote `lv_uneasy-money-by-p-g-wodehouse`. The same book,
+    # downloaded twice into two trees, decided by invocation style. Resolving against the
+    # ledger (which now knows both spellings, A-M9) gives one directory either way.
+    #
+    # It has to happen HERE and not at the top: the etext id comes from the API's
+    # `url_text_source`, which is not known until the call above returns.
+    if not key:
+        etext = synth_common.etext_id_from(meta.get("url_text_source"))
+        key, entry = synth_common.resolve_ledger_key(
+            ledger, url=url, etext_id=etext)
+        if key is None:
+            print("!! cannot derive a ledger key from this URL", file=sys.stderr)
+            return 1
+        if entry is not None:
+            print(f"  ledger: existing entry {key} (status: {entry.get('status')})")
+        else:
+            print(f"  ledger: no entry yet; this book is {key}")
 
     out = pathlib.Path(args.root) / key.replace(":", "_")
     (out / "audio").mkdir(parents=True, exist_ok=True)
@@ -422,19 +439,24 @@ def main() -> int:
     }, indent=1, ensure_ascii=False), encoding="utf-8")
     print(f"  wrote {out}/book.json")
 
-    if args.key and args.key in ledger:
-        # A-H3. This used to write back the `ledger` dict read at the top of main(), which
-        # by now is however many minutes of downloads stale — so a concurrent book_router
-        # or a second fetch had its entries silently erased, and a bare write_text could
-        # leave a torn file. `update_json` re-reads under an exclusive lock and touches
-        # only this key.
-        def _mark(led):
-            entry = led.setdefault(args.key, {})
-            entry["fetched_to"] = str(out)
-            entry["status"] = "fetched; awaiting align"
+    # A-M10. This was `if args.key and args.key in ledger`, so a fetch driven by `--url`
+    # updated NOTHING — the audio landed, the text landed, and the ledger went on saying
+    # "pending force-align ingest" indefinitely, which is the one field anyone reads to
+    # find out what still needs doing. It also required the key to pre-exist, so the first
+    # fetch of a book the router had not yet seen recorded nothing either.
+    #
+    # A-H3. `update_json` re-reads under an exclusive lock and touches only this key: the
+    # `ledger` dict read at the top of main() is by now however many minutes of downloads
+    # stale, so writing it back whole silently erased a concurrent router's entries.
+    def _mark(led):
+        entry = led.setdefault(key, {})
+        entry["ledger_key"] = key
+        entry["fetched_to"] = str(out)
+        entry["librivox_url"] = url
+        entry["status"] = "fetched; awaiting align"
 
-        synth_common.update_json(LEDGER, _mark)
-        print(f"  ledger: {args.key} -> fetched; awaiting align")
+    synth_common.update_json(LEDGER, _mark)
+    print(f"  ledger: {key} -> fetched; awaiting align")
     return 0
 
 

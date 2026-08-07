@@ -212,11 +212,10 @@ def lookup_librivox(url: str) -> dict | None:
     return None
 
 
-def etext_id_from(url_text_source: str | None) -> str | None:
-    if not url_text_source:
-        return None
-    m = re.search(r"(?:ebooks/|etext/|files/)(\d+)", url_text_source)
-    return m.group(1) if m else None
+# One definition, in synth_common — `librivox_fetch` needs the same rule to resolve a
+# book's canonical ledger key (A-M10). Re-exported under the old name; callers and tests
+# already import it from here.
+etext_id_from = synth_common.etext_id_from
 
 
 def is_dramatic(url: str, title: str = "") -> bool:
@@ -252,10 +251,18 @@ def route(url: str, ledger: dict, lt_by_id: dict, lt_by_title: dict) -> dict:
         rec["flags"].append("?? unrecognised host — route by hand")
         return rec
 
-    key = f"pg:{rec['etext_id']}" if rec.get("etext_id") else None
-    if key and key in ledger:
+    # A-M9. This built a `pg:` key and nothing else, so a LibriVox book whose Gutenberg
+    # edition we had not resolved was checked against NOTHING — every re-route re-created
+    # it and reset `status` to "pending force-align ingest", regressing a book that was
+    # already fetched and aligned. Silently: the router prints SKIP only for what it found.
+    # `resolve_ledger_key` checks every key the book could be filed under.
+    key, entry = synth_common.resolve_ledger_key(
+        ledger, url=url, etext_id=rec.get("etext_id"))
+    rec["ledger_key"] = key
+    if entry is not None:
         rec["verdict"] = "SKIP"
-        rec["flags"].append(f"already in ledger as {key}")
+        rec["flags"].append(
+            f"already in ledger as {key} (status: {entry.get('status') or 'unrecorded'})")
         return rec
 
     # --- LibriTTS overlap: annotate, never auto-skip -------------------
@@ -331,14 +338,34 @@ def main() -> int:
     # Applying the same edits to the CURRENT contents under a lock keeps both.
     def _apply(led):
         for rec in results:
-            key = f"pg:{rec['etext_id']}" if rec.get("etext_id") else "lv:" + urllib.parse.urlparse(
-                rec["url"]).path.strip("/").split("/")[-1]
-            entry = dict(led.get(key) or {})
+            # A SKIP means "this book is already recorded". Writing it back anyway is how
+            # the regression happened: `rec` for a SKIP is the shallow record `route()`
+            # built before it returned early, so it would stamp `verdict: SKIP` over the
+            # entry's real lane verdict and drop everything learned since.
+            if rec["verdict"] == "SKIP":
+                continue
+            # A-M9 again, on the WRITE side. This derived the key independently of the
+            # SKIP check above, so a book already filed under `lv:` was written a second
+            # time under `pg:` the moment its etext id became known — two entries, two
+            # states, one book. Resolved against the ledger as it is NOW (update_json
+            # re-read it under the lock), so the existing key wins if there is one.
+            key, entry = synth_common.resolve_ledger_key(
+                led, url=rec["url"], etext_id=rec.get("etext_id"))
+            if key is None:
+                continue
+            entry = dict(entry or {})
+            was = entry.get("status")
             entry.update(
-                {k: v for k, v in rec.items() if k != "flags"},
-                status="pending force-align ingest" if rec["lane"] == "force-align"
-                else "pending book_ingest",
+                {k: v for k, v in rec.items() if k not in ("flags", "ledger_key")},
+                ledger_key=key,
             )
+            # Never regress a book that is further along. The router's job is to decide a
+            # LANE; it knows nothing about whether the audio has been fetched or aligned,
+            # and stamping "pending" over "fetched; awaiting align" loses work that
+            # nothing else records.
+            entry["status"] = was or (
+                "pending force-align ingest" if rec["lane"] == "force-align"
+                else "pending book_ingest")
             if rec["flags"]:
                 entry["router_flags"] = rec["flags"]
             led[key] = entry
