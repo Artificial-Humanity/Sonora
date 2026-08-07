@@ -187,8 +187,30 @@ from the real LibriTTS `speaker`, verified against the wav paths._
       own inflected form minus its suffix, or a rime-mate it already holds.
       The decision is the same one D-L2 poses, and **it is the same re-derivation**: this
       is a corpus change, so it wants to ride the § 1 pass rather than force a third bump.
-      Run `scripts/measure_homographs.py --corpus <dir> --apply-sample 20` to hear what
-      moves before deciding.
+
+      **THE CALL: does the next derivation take the homograph pass — yes or no?** That is
+      the whole of it. It is an admission decision, not a measurement one and not an ear
+      one, and the three things below are why.
+
+      - **There is nothing to audition, and the audition app is not involved.**
+        `measure_homographs.py` writes nothing except the file named by `--json`; it
+        imports no synthesis, touches no `ratings.csv`, and stages no clips.
+        `--apply-sample N` prints N rows as three lines of *text* — the sentence, its IPA
+        with the flag off, its IPA with the flag on. It is a phoneme diff on stdout. An
+        earlier note in this file said "to hear what moves", which was wrong.
+      - **Auditioning the affected corpus clips would tell you nothing.** These are
+        LibriTTS *real audio* rows: the reader already says `lˈɪv` in "they live on buds
+        and blossoms". The wrong vowel is in the label we train against, not in the
+        recording, so the clip sounds correct either way and the ear has no purchase on it.
+      - **A meaningful ear test would have to be synthetic, and is not obviously worth
+        running.** Render both phoneme strings through `vat3-24k` ep099 and A/B them —
+        with per-pair randomised assignment, or position gets scored instead of the
+        phonemes ([quality-gap-plan.md](quality-gap-plan.md), "two traps"). Expect
+        confirmation rather than discrimination: all 281 flips are mechanical vowel and
+        stress corrections sourced from the dictionary's own inflected forms, so the
+        question an A/B answers ("is `lˈɪv` right for *live*?") is not the question in
+        doubt. Worth doing only if the yes/no wants an independent check.
+
       Out of reach and recorded as data in `NOT_RESOLVABLE`, not as an absence: `bow`
       `row` `bass` `sow` `lead` (two senses, one part of speech — no POS rule can
       separate "took the lead" from the metal); `polish` and `august` (carried by CASE,
