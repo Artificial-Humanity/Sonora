@@ -82,23 +82,35 @@ inconsistent, and then marked machine-written so it looked settled. **C-M1** —
 flipped one way. **C-M9** — both halves. **C-L5**, **C-L6**. Guards in
 `tests/test_ratings_transaction.py` and `tests/test_audit_sampling.py`._
 
-- [ ] **C-M4 (half-open, and part of it needs the owner's ear):** the dead-air gate
-      shipped and is wired, but `qc_gate`'s speech-duration measure is still
-      `librosa.effects.split(top_db=35)` (Silero was written to replace it) and the 4 s
-      owner floor has no hard `speech_ok` gate. **head_ok** is also unbuilt — no gate sees
-      head truncation, and `tail_lost()` already computes `blocks[0].a` (the head-loss word
-      count) and discards it. **Both thresholds need ear calibration like `tail_ok`**,
-      which is why this was not closed in the 2026-08-07 sweep: shipping a gate on a
-      guessed threshold either passes truncated clips or rejects good ones, and neither
-      failure announces itself. Sequenced behind § 5's ears queue.
-- [ ] **C-M5:** remaining non-atomic writes — `stage_pool`'s ledger + staging_log,
-      `publish_tier` (`.bak` only taken on the first run ever). tmp + `os.replace`
-      everywhere. *(`reader_profile`'s ratings write went onto the transaction with C-M6;
-      what is left here is its profiles.json.)*
-- [ ] **C-M8:** two definitions of "ear-confirmed (reader, title)" — `--seed-ear` skips
-      pairs the auditor still force-queues. *(C-M7, filed with it, is closed.)*
-- [ ] **C-L4:** loudnorm sidecar keyed on path, so a rerolled-in-place wav ships
-      unnormalized. *(C-L5 and C-L6, filed with it, are closed.)*
+_**Closed 2026-08-07, second pass** (`1ebd14a`, `0a505d3`, `a4b6ec5`): **C-M5** — the last
+three read-modify-writes across a gap (`staging_log.json` was atomic but STALE, which loses
+a concurrent run's entry just as thoroughly; `reader_profiles.json`; `metadata.jsonl`), and
+the two atomic writers that leaked their tmp on a failed rename. **C-M8** — one predicate,
+in `reader_profile`. **C-L4** — the sidecar keys on content now, and the sweep that proved
+the point found **15 clips across two live campaigns already shipped unnormalized**, up to
+7 dB off, r2's ten spanning 12.7 dB inside one bank. Not repaired: re-gaining clips the ear
+has already rated is a corpus change and the owner's call. Guards in
+`tests/test_atomic_state_writes.py`, `test_ear_confirmation.py`, `test_loudness_identity.py`._
+
+- [ ] **C-M4 — the measurement shipped (`a4b6ec5`); the two thresholds are yours.**
+      `head_lost_frac`/`head_words_lost` and a Silero `speech_dur_vad` are recorded beside
+      the existing measures, in an `advisories` dict that gates NOTHING, and
+      `gate_calibration.py --sweep` reproduces the procedure that set `PAUSE_HARD_MAX`.
+      Two different asks:
+      - **`speech_ok` is one word from you.** The blocking worry — that Silero would move
+        the owner's 4 s floor by an unmeasured amount, and diverge from `librivox_align`
+        which enforces the same floor with the energy gate on purpose — is measured and
+        does not hold: over 150 clips the mean VAD/energy ratio is **1.008** and exactly
+        **one clip in 150** changes side at 4 s. So the question is not measurement, it is
+        admission policy: **hard gate, or the audition note it is today?** A hard gate
+        rejects ~4% of clips that currently pass QC.
+      - **`head_ok` genuinely needs the ear, and needs it first.** There is nothing to
+        calibrate against: no drop note in `ratings.csv` names a late start, because no
+        auditor has been asked to listen for one. `register_audition` now flags ≥3 missing
+        opening words and says the note is what sets the threshold. The candidates exist —
+        **19 clips drop ≥3 opening words and 8 passed every gate**, e.g.
+        `wuthering-heights_nar_0036_neu_CHA` (4 of 19 words, 21% of the passage, WER 0.211
+        against a 0.35 gate). Those 8 are the first thing to queue. Stays behind § 5.
 
 ## 3 · Label derivation
 

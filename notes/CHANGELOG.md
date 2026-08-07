@@ -19,6 +19,87 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-07
 
+### Fixed — QC / audit / staging (§2)
+
+- **`1ebd14a` — C-M5 + C-M8: state that could be lost, and a rule with two answers.**
+  The three remaining read-modify-writes each take a snapshot at startup, work for
+  minutes, and write the snapshot back; what touched the file in between is gone, and
+  gone silently, because the write itself succeeds. `staging_log.json` was the instructive
+  one: it already went through `write_json_atomic`, so the write was never *torn* — it was
+  *stale*, which loses a concurrent run's entry just as completely and would stage its
+  clips a second time. `reader_profiles.json` was a plain `write_text` of a whole-file
+  snapshot, and learning is per-reader and incremental, so one `--learn` could delete
+  another's readers — losing that file does not cost a re-run, it un-confirms every
+  (reader, title) and re-queues the whole ear backlog. `metadata.jsonl` was rewritten with
+  `open(..., "w")`, which truncates first: an interrupted backfill leaves a *shorter valid*
+  JSONL, a corpus that lost its tail and says nothing. Its `.bak`-on-first-run-only turns
+  out to be correct (`--apply` only fills blanks; there is nothing to undo) — what was
+  wrong is that every run printed "original kept at …", so run two named a file that is
+  not its own pre-state as though it were an undo point. `write_json_atomic` and
+  `write_text_atomic` also leaked their tmp on a failed rename, unlike the wav writers; a
+  half-written twin of the ledger in a dataset directory is what a later `rglob("*.json")`
+  reads as real.
+  **C-M8** — "ear-confirmed (reader, title)" had two definitions at opposite thresholds.
+  `pick_audit_subset` required all three of gender/age/accent before it stopped
+  force-queuing a pair; `stage_pool` tested the *truthiness* of the attribute dict, so ANY
+  ONE was enough to fold a whole title into the corpus as machine-written keeps, unheard.
+  A pair on two of three was therefore both "confirmed enough to fold three hundred clips"
+  and "still owed an ear pass" — and `learn()` produces exactly that shape **on purpose**:
+  on disagreement WITHIN a title it writes `{attr}_CONFLICT` INSTEAD of `{attr}`. So the
+  one title we have positive evidence is internally inconsistent is the one that arrives
+  partial, and the looser reader folded it. C-M7 closed this on the hint path; the fold
+  path went around it. One predicate now, in `reader_profile`, which owns the file it
+  reads out of. **Preventive, not a repair** — both live pairs are fully confirmed, so
+  unlike the four findings that had already fired this one had not.
+- **`0a505d3` — C-L4: the loudnorm sidecar keyed on path, and a path is not a clip.**
+  A reroll re-renders in place, keeping the filename; the stale record matched, the new
+  take was skipped, and it shipped at its engine's native level — into a bank whose whole
+  purpose is one level, and into the reference pool four cloning engines condition on.
+  Counted under `already-done`. **Swept every `loudnorm.jsonl` on disk (1,029 clips, 11
+  banks): 1,014 sit where their record says, worst case 0.185 dB; 15 are 0.90 to 7.09 dB
+  away.** Those 15 are rerolls that shipped: `the-return_nar_0059..0063_doc_QWE` were
+  re-rendered *twenty minutes* after their gain was applied, and ten more in
+  `delivery-v1-narration-r2` now span **−30.1 to −17.4 LUFS — 12.7 dB inside one bank**,
+  against the 5.1 dB per-engine spread that motivated the script. They went to the ear that
+  way, where louder reads as more present. The same path key produced the *opposite*
+  failure once already (the quarantine move, where a clip normalized under its old name
+  was gained twice) — one key, two failures in opposite directions, because the key does
+  not identify the audio. Records carry `sha_in`/`sha_out` now; legacy records fall back to
+  the instrument (a clip still measuring at the level its record recorded IS that take),
+  with the 0.5 dB threshold taken from the gap between the two measured populations rather
+  than chosen. **Not applied to the live banks** — re-gaining clips the ear has already
+  rated is a corpus change and the owner's call.
+
+### Added — head truncation, and two thresholds left to the ear (§2)
+
+- **`a4b6ec5` — C-M4.** `tail_lost()` computed the head-loss word count — `blocks[0].a` is
+  exactly that — and returned only the tail, so nothing in the pipeline has ever seen a
+  clip that *starts* late. Same defect as a truncated tail, invisible for the same reason:
+  a global WER cannot separate "mangled throughout" from "the opening is missing".
+  **Measured over every `qc_measures.jsonl` on disk (3,189 clips, 13 campaigns): 19 clips
+  drop ≥3 opening words and EIGHT passed every gate** —
+  `wuthering-heights_nar_0036_neu_CHA` lost *"There was scarcely time"*, 4 of 19 words and
+  21% of the passage, at WER 0.211 against a 0.35 gate. Head loss runs about half as often
+  as tail (0.6% vs 1.1% at ≥3 words); an earlier draft of the change asserted otherwise,
+  before the sweep, and was wrong. `edge_loss` lives in `synth_common` so calibration can
+  run over measures already on disk — every existing row carries `text` and `asr_hyp`, so
+  eleven campaigns of evidence are available without re-running the gate.
+  **`head_ok` and `speech_ok` gate nothing, deliberately**, and live in an `advisories`
+  dict rather than `gates`: `hard_pass` is `all(gates.values())` and `None` is falsy, so an
+  uncalibrated entry there would fail every clip. The run now names what it does not cover.
+  The two are blocked for different reasons and **one of them turned out not to be**:
+  `speech_ok`'s worry was that Silero counts less than the energy gate the owner's 4 s
+  floor was set against, and that `librivox_align` uses the energy gate *on purpose*
+  ("two different measures of one owner rule is one measure too many") — but over 150
+  clips the mean VAD/energy ratio is **1.008**, the energy gate slightly *under*-counts
+  here, and exactly **one clip in 150** changes side at 4 s. What is left is admission
+  policy, not measurement. `head_ok` is blocked harder than filed: no drop note in
+  `ratings.csv` names a late start, because no auditor has been asked to listen for one.
+  `gate_calibration --sweep` makes the `PAUSE_HARD_MAX` procedure reusable — catch vs
+  false-flag per candidate, defects selected by the owner's own note text, the matched
+  clips printed so the regex can be checked rather than trusted, and a warning when the
+  label count is too thin to conclude from.
+
 ### Added — the delivery channel (§1)
 
 - **`72786ac` — contract v2's 4th conditioning channel ships. `vat_dim` 3 → 8.**

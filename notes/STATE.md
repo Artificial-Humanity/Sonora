@@ -257,9 +257,14 @@ is only its headline.
    against the same ~30k clips made the model *worse*, so the lever is corpus, not epochs.
 4. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
    baseline frozen as the last act of Phase 1.
-5. Ears queue in priority order — [todo.md §5](todo.md). `speech_ok` / `head_ok` (§2's
-   C-M4) are blocked on it: shipping a gate on a guessed threshold either passes truncated
-   clips or rejects good ones, and neither failure announces itself.
+5. Ears queue in priority order — [todo.md §5](todo.md). §2's C-M4 is now **measured but
+   not gated**, and the two halves need different things. **`speech_ok` needs one word**:
+   the fear that Silero would move the owner's 4 s floor is disproved (VAD/energy ratio
+   1.008 over 150 clips; one clip in 150 changes side), so the only open question is
+   whether 4 s becomes a hard gate — which would reject ~4% of clips that pass QC today —
+   or stays the audition note it is. **`head_ok` needs the ear first**: nothing in
+   `ratings.csv` describes a late start, because nobody has been asked to listen for one.
+   The 8 clips that dropped ≥3 opening words *and passed every gate* are the queue.
 6. ~~Export-lane hardening~~ **DONE 2026-08-07** — the whole of §1 closed, including the
    control contract a mobile host reads. What is left there is a re-export, which is
    downstream of steps 2 and 3.
@@ -267,7 +272,11 @@ is only its headline.
 ## Pointers
 
 - Change history — [CHANGELOG.md](CHANGELOG.md) (maintained per AGENTS.md §4 since 2026-08-06)
-- Review sweep — 47 open items down to **15**. The 2026-08-06 round closed both §1
+- Review sweep — 47 open items down to **11**. §2's QC/audit/staging block closed on
+  2026-08-07 (`1ebd14a`, `0a505d3`, `a4b6ec5`): C-M5, C-M8 and C-L4 done, C-M4 reduced to
+  two owner decisions. Two more findings were **live**: 15 clips across two campaigns had
+  already shipped unnormalized (up to 7 dB off, one bank spanning 12.7 dB), and 8 clips
+  passed every gate while missing three or more opening words. The 2026-08-06 round closed both §1
   blockers (E-M5/E-M6), §5's Highs, §3's packaging and GPL/cli lane, §8's label-derivation
   bugs, **F-C1** (the only Critical) and F-H1/F-M4, plus C-M10 and D-M5. The **2026-08-07**
   round (`87c65f8`..`72786ac`, twelve commits) closed the whole of §1, §3, §5 and §6 and
