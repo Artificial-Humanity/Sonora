@@ -138,6 +138,34 @@ def _possessive_suffix(base_ipa):
     return "z"
 
 
+def contraction_tables():
+    """The apostrophe tables as serializable data, for export to the mobile front end.
+
+    These are the SOURCE OF TRUTH and the device gets a copy, rather than the port
+    transcribing them — D-C1 is a defect of omission, and a table that has to be kept in
+    sync by hand is the same defect waiting to happen. `convert_vat.py` writes this to
+    `g2p_contractions.json` beside the graphs, gate G7 certifies that the device front end
+    reproduces this one's phonemes from it, and `scripts/litert_export/device_g2p.py`
+    consumes it.
+
+    The possessive block is the RULE's inputs rather than a per-word list, because "'s"
+    is productive: it attaches to any noun, so enumerating it is what the allomorph
+    classes exist to avoid.
+    """
+    return {
+        "contractions": dict(_CONTRACTIONS),
+        "clitics": dict(_CLITICS),
+        "possessive": {
+            "sibilant": list(_SIBILANT_ENDINGS),
+            "voiceless": list(_VOICELESS_ENDINGS),
+            "after_sibilant": "ᵻz",
+            "after_voiceless": "s",
+            "default": "z",
+            "stress_marks": _STRESS_MARKS,
+        },
+    }
+
+
 class OpenPhonemizerG2P:
     """Dictionary-primary, neural-fallback espeak-IPA phonemizer."""
 

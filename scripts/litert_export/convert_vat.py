@@ -65,6 +65,15 @@ Gates (all must pass):
      is not sufficient — five inputs wired to one summing junction pass G5 five
      times and give the host five names for one behaviour. Reads on-device as
      "delivery does not do much", which is indistinguishable from a weak channel.
+  G7 front-end parity: the DEVICE G2P and the TRAINING G2P must produce identical
+     phoneme strings. Everything above certifies the graph; nothing certified the
+     text that reaches it, and a front end that phonemizes `we'll` as *well* feeds
+     a perfect graph the wrong input. `kotlin_replica` had no contraction table —
+     D-C1, the finding that poisoned corpus v1 through v3, still live on the device
+     side on 2026-08-07 — and it diverged on 69 of 86 probe sentences. The tables
+     ship as `g2p_contractions.json` from `matcha.text.op_g2p`, so the two cannot
+     drift apart by omission, and this gate proves the device reproduces the host
+     FROM that asset rather than from a transcription of it.
 
 Every gate is RECORDED, not printed: `gates_or_die()` refuses to write artifacts
 unless all pass. Before 2026-08-06 they printed PASS/FAIL and the script exited 0
@@ -616,6 +625,51 @@ def rms_db(wav):
     return 20 * math.log10(max(float(np.sqrt(np.mean(wav ** 2))), 1e-9))
 
 
+def g2p_parity_gate():
+    """G7. Certify the device text front end against the training one. -> the asset bytes.
+
+    Every other gate in this file asks whether the converted GRAPH matches the model.
+    None of them ask whether the text that reaches the graph matches the text the model
+    was trained on, and that is a separate failure with the same signature: fluent audio,
+    wrong phonemes, nothing to see at the shell. `kotlin_replica` phonemized with a flat
+    dictionary lookup and no apostrophe handling until 2026-08-07 — D-C1's exact shape,
+    still live on the device side five days after the host was fixed — and the dictionary
+    holds no apostrophe keys, so `we'll` resolved to the letters `well` and arrived as a
+    successful lookup.
+
+    Returns the serialized `g2p_contractions.json` bytes so main() writes the same string
+    this gate certified. The round trip is not decoration: the device reads JSON, so the
+    thing under test has to be what JSON preserves, not the Python dict it came from.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import device_g2p
+
+    from matcha.text import op_g2p
+
+    tables = op_g2p.contraction_tables()
+    serialized = json.dumps(tables, ensure_ascii=False, indent=2, sort_keys=True)
+    shipped = json.loads(serialized)
+
+    host = op_g2p.OpenPhonemizerG2P()
+    # D-M4 is off by default and the exported tables carry no homograph resolver, so a
+    # host that resolves them would be certifying a front end the device cannot run. If a
+    # derivation ever turns them on, this fails here rather than on someone's ear.
+    if not gate("G7 exported front end matches the corpus front end",
+                not host.homographs,
+                f"homographs={host.homographs} (the device has no context resolver)"):
+        return serialized
+
+    device = device_g2p.DeviceG2P(tables=shipped, assets_dir=host.assets_dir)
+    sentences = device_g2p.probe_sentences(shipped)
+    bad = device_g2p.compare(host.phonemize, device.phonemize, sentences)
+    for sentence, want, got in bad[:5]:
+        print(f"    {sentence!r}\n      host: {want!r}\n      dev : {got!r}", flush=True)
+    gate("G7 host/device G2P parity", not bad,
+         f"{len(sentences) - len(bad)}/{len(sentences)} probe sentences identical "
+         f"({len(tables['contractions'])} contractions, {len(tables['clitics'])} clitics)")
+    return serialized
+
+
 # --------------------------------------------------------------------- main
 def main():
     os.makedirs(ART, exist_ok=True)
@@ -915,9 +969,18 @@ def main():
             gate("G6 delivery lanes are distinguishable", worst > 1e-5,
                  f"closest pair {worst_pair[0]}/{worst_pair[1]}: mean |delta| = {worst:.2e}")
 
+    # --- G7: THE TEXT FRONT END ---------------------------------------------------
+    print("\n=== G7 host/device G2P parity ===")
+    g2p_json = g2p_parity_gate()
+
     gates_or_die()
 
     # --- host tables + config ---
+    # The apostrophe tables the device front end cannot work without. Written here rather
+    # than transcribed into the port, because D-C1 is a defect of omission and a table
+    # kept in sync by hand is the same defect on a delay.
+    with open(os.path.join(ART, "g2p_contractions.json"), "w", encoding="utf-8") as f:
+        f.write(g2p_json)
     np.save(os.path.join(ART, "emb.npy"), emb_w.numpy().astype(np.float32))
     emb_w.numpy().astype("<f4").tofile(os.path.join(ART, "emb.bin"))
     np.save(os.path.join(ART, "spk_emb.npy"), spk_w.numpy().astype(np.float32))
@@ -998,6 +1061,31 @@ def main():
                              "result is worse than s = 1. NEVER amplify by scaling the "
                              "vat input instead — raw out-of-range VAT saturates."),
                    ),
+               ),
+               # The text front end, declared for the same reason `control` is: the
+               # manifest is the only thing a host can read, and the front end is as
+               # capable of silently disagreeing with the training corpus as the control
+               # surface is. `homographs` is the D-M4 switch — false here means the
+               # exported tables carry no context resolver, so a device that renders
+               # `live` must render the dictionary's adjective, exactly as the corpus
+               # does. If a derivation ever turns it on, G7 fails until the resolver is
+               # ported, rather than the two front ends drifting quietly apart.
+               g2p=dict(
+                   dictionary="g2p_dict.txt.gz",
+                   neural_oov="dp_g2p_matcha_fp16.tflite",
+                   contractions="g2p_contractions.json",
+                   homographs=False,
+                   normalization=["ascii_fold", "lowercase", "expand_abbreviations",
+                                  "remove_brackets", "hyphen_to_space",
+                                  "collapse_whitespace"],
+                   note=("The dictionary holds NO apostrophe keys and the neural charset "
+                         "has no \"'\", so a front end that looks a contraction up "
+                         "directly gets its apostrophe-stripped letters back and cannot "
+                         "tell that it failed: we'll -> wˈɛl, which is the word *well*. "
+                         "Resolve apostrophe words through g2p_contractions.json first. "
+                         "The reference implementation is "
+                         "scripts/litert_export/device_g2p.py, and gate G7 holds it to "
+                         "phoneme-string parity with the training front end."),
                ),
                contract_version=2,
                checkpoint=os.path.basename(CKPT),

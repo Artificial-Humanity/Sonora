@@ -28,6 +28,13 @@ is concentrated in a handful of words (`live` alone is 87 of 281). Net **11 open
 12**: measuring it surfaced a live one, that the device G2P still carries D-C1, filed in
 § 1._
 
+_**2026-08-07, fourth pass**: § 1's device-front-end item closed the day after it was
+filed (see § 1's note). Net **12 open items -> 11**. It also left one thing for the D-M4
+decision to carry, recorded in § 3: gate G7 **refuses a homograph-enabled export**, because
+resolution needs context evidence rather than a table and there is nothing to ship to a
+device. So turning D-M4 on adds "port `matcha/text/homographs.py`" to the mobile lane —
+not a reason to decide either way, but a cost that was invisible before._
+
 _Earlier pruning notes for the 2026-08-06 round are in git history._
 
 This file is **residue, not the plan.** What to do next, and in what order, is
@@ -57,23 +64,21 @@ both lanes now and drives spk/vat/delivery through the same manifest the host re
 distinguishable, since five inputs on one summing junction pass the per-channel probe five
 times._
 
+_**The device front end closed 2026-08-07**, the day after it was filed. It was **D-C1
+still live on the device side** — `kotlin_replica.phonemize` was a flat dictionary lookup
+with no contraction table, five days after the host got one. Half the finding is answered
+rather than fixed: **there is no shipped Kotlin app**, and mobile front ends have not
+started in earnest, so the replica was not validating a front end nobody runs — it IS the
+front end, as spec, and this was prophylactic. What landed: the text front end moved to
+`scripts/litert_export/device_g2p.py`, the apostrophe tables ship as
+`g2p_contractions.json` **exported from `matcha.text.op_g2p`** rather than transcribed
+(D-C1 is a defect of omission; a hand-synced table is the same defect on a delay), a
+device that cannot find the asset **refuses** instead of falling back, and new gate **G7**
+holds the two front ends to identical phoneme strings over 86 probe sentences. The old
+front end fails 69 of those 86, and worse than filed: `they've` → `θˈeɪv`, `she'd` →
+`ʃˈɛd` (the word *shed*), `james's` → `dʒˈːmˈɛs`. Guards in
+`tests/test_device_g2p_parity.py`._
 
-- [ ] **The device front end is not the training front end — found 2026-08-07 while
-      measuring D-M4, and it is live now, not a consequence of turning homographs on.**
-      `kotlin_replica.phonemize` (line 258) is `DICT.get(token) or phon_word(token)`: a
-      flat lookup with no contraction table. The host has had one since 2026-08-02 —
-      that was **D-C1**, the finding that poisoned v1–v3 — and the replica never got it.
-      Verified against the shipped assets rather than inferred: **0 of 274,927 dictionary
-      keys contain an apostrophe, and `'` is absent from the neural charset**
-      (`g2p_meta.json`), so on the device every contraction still takes the exact path
-      D-C1 named — `don't` → `dont` → `dˈɔnt`, `we'll` → `wˈɛl`, identical to the word
-      *well*. The model is trained on `dˈoʊnt` and asked to render `dˈɔnt`.
-      Measured at 0.37% of v3 tokens and **concentrated in dialogue**, which is 64% of the
-      corpus. Two things to settle: whether the shipped Kotlin app has a contraction table
-      the replica lacks (not answerable from this repo — if it does, the replica is
-      validating a front end nobody runs), and either way that G6-style parity between the
-      host and device G2P belongs in the export gates, since neither F-H2's control block
-      nor `kotlin_replica` compares a phoneme string today.
 
 - [ ] **Score it on the holdout, not on `loss/val_epoch`.** Standing rule now that
       Phase 0a has landed, listed here because it is the step most easily skipped:
@@ -187,6 +192,15 @@ from the real LibriTTS `speaker`, verified against the wav paths._
       own inflected form minus its suffix, or a rime-mate it already holds.
       The decision is the same one D-L2 poses, and **it is the same re-derivation**: this
       is a corpus change, so it wants to ride the § 1 pass rather than force a third bump.
+
+      **One cost surfaced 2026-08-07 that was invisible when this was filed:** the mobile
+      front end would have to resolve homographs too, and it cannot do it from a table —
+      the decision needs the two tokens to the left and one to the right, with punctuation
+      as a barrier. So `matcha/text/homographs.py` has to be ported alongside the
+      dictionary. Gate **G7 refuses a homograph-enabled export** rather than letting the
+      device quietly render `live` as the adjective the corpus was trained away from, so
+      this is a known blocker rather than a future surprise. It is not an argument either
+      way — mobile has not started — but a yes means the port carries a resolver.
 
       **THE CALL: does the next derivation take the homograph pass — yes or no?** That is
       the whole of it. It is an admission decision, not a measurement one and not an ear

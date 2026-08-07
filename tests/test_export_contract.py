@@ -442,8 +442,16 @@ def test_the_preflight_names_every_missing_file_and_its_producer():
 
 def test_the_dictionary_may_be_gzipped():
     """The vendored dictionary ships as `g2p_dict.txt.gz`; the original opened the bare
-    name, so even pointed at the right directory it would have failed."""
-    assert "import gzip" in REPLICA_SRC
+    name, so even pointed at the right directory it would have failed.
+
+    The dictionary moved out of the replica and into `device_g2p.py` on 2026-08-07, when
+    the text front end became a shared module so gate G7 could compare it against the
+    training one. Both halves of the rule moved with it, and the replica keeps its own
+    `.gz`-tolerant preflight for the six artifacts it still resolves itself."""
+    device_src = (REPO / "scripts" / "litert_export" / "device_g2p.py").read_text(
+        encoding="utf-8")
+    assert "import gzip" in device_src
+    assert 'name + ".gz"' in device_src
     assert 'name + ".gz"' in REPLICA_SRC
 
 

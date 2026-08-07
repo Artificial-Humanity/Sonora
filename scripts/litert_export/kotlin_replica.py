@@ -17,22 +17,26 @@
 Replicates MatchaG2P + MatchaSynthesizer — per-word tflite G2P + manual
 assembly + the integer length-regulator + Euler loop — and synthesizes
 through the same fp16 graphs. Confirms the Android pipeline before an
-on-device build.
+on-device build. There is no mobile app yet, so this file is the spec the
+port has to meet rather than a description of one that exists.
+
+The G2P half now lives in `device_g2p.py`, so the same front end can be
+compared against `matcha.text.op_g2p` by gate G7 in convert_vat.py without
+importing this module's graphs (D-C1 on the device).
 
 Run: python kotlin_replica.py
 """
 
 import _stub  # noqa: F401  (must be first: scipy / getsourcefile guards)
 
-import gzip
 import json
 import math
 import os
-import re
 
 import numpy as np
 
 import build_matcha as B
+import device_g2p
 from ai_edge_litert.compiled_model import CompiledModel
 
 # F-M3. This read every artifact out of `artifacts/` and died at MODULE SCOPE on a bare
@@ -99,6 +103,11 @@ def _preflight():
         ("emb.npy", f"convert_{'vat' if _LANE == 'vat' else 'final'}.py"),
         ("g2p_meta.json", "convert_g2p_matcha.py, or the vendored assets"),
         ("g2p_dict.txt", "vendored asset (ships as g2p_dict.txt.gz)"),
+        # D-C1 on the device. Named here so a missing table is a preflight line next to
+        # its producer, rather than a contraction silently resolving to its
+        # apostrophe-stripped letters six frames deeper — which is how it went unseen
+        # through two corpus versions.
+        (device_g2p.CONTRACTIONS_ASSET, "convert_vat.py (from matcha.text.op_g2p)"),
         ("dp_g2p_matcha_fp16.tflite", "convert_g2p_matcha.py (emits the f32 name) "
                                       "or the vendored assets"),
         (f"{_L['prefix']}_textenc_fp16.tflite", f"convert_{'vat' if _LANE == 'vat' else 'final'}.py"),
@@ -143,17 +152,6 @@ MEL_STD = _L["mel_std"] if _L["mel_std"] is not None else _config["mel_std"]
 VAT_DIM = int(_config.get("vat_dim") or 0)
 CONTROL = _config.get("control") or {}
 
-with open(_PATHS["g2p_meta.json"]) as _f:
-    _meta = json.load(_f)
-C2I = {k: v for k, v in _meta["char2idx"].items() if len(k) == 1}
-I2P = {int(k): v for k, v in _meta["idx2ph"].items()}
-REP = _meta["char_repeats"]
-START = _meta["start"]
-END = _meta["end"]
-MAXT = _meta["MAXT"]
-SPECIAL = set(_meta["special"])
-NPH = _meta["n_phonemes"]
-
 emb = np.load(_PATHS["emb.npy"])
 # Multi-speaker lanes carry a speaker table the Phase 0 lane does not have.
 spk_emb = None
@@ -161,24 +159,18 @@ _spk_path = os.path.join(ART, "spk_emb.npy")
 if os.path.isfile(_spk_path):
     spk_emb = np.load(_spk_path)
 
-DICT = {}
-_dict_path = _PATHS["g2p_dict.txt"]
-_opener = gzip.open if _dict_path.endswith(".gz") else open
-with _opener(_dict_path, "rt", encoding="utf-8") as _f:
-    for _line in _f:
-        if "\t" in _line:
-            _word, _ipa = _line.rstrip("\n").split("\t", 1)
-            DICT[_word] = _ipa
+# The text front end lives in device_g2p.py, which is the executable spec for the mobile
+# port and the thing gate G7 checks against the training front end. It used to be inline
+# here as `DICT.get(token) or phon_word(token)` — a flat lookup with no contraction table,
+# so every apostrophe word on the device took the path D-C1 named on the host
+# (`we'll` -> `wˈɛl`, the word *well*). Measured on the probe corpus the day it moved out:
+# 69 of 86 probe sentences phonemized differently from the corpus the model trained on.
+G2P = device_g2p.DeviceG2P(assets_dir=ASSETS, artifacts_dir=ART)
 
-g2p = CompiledModel.from_file(_PATHS["dp_g2p_matcha_fp16.tflite"])
 te = CompiledModel.from_file(_PATHS[f"{_L['prefix']}_textenc_fp16.tflite"])
 dec = CompiledModel.from_file(_PATHS[f"{_L['prefix']}_decoder_fp16.tflite"])
 voc = CompiledModel.from_file(
     _PATHS[f"{_L['prefix']}_vocoder{'24k' if _LANE == 'vat' else ''}_fp16.tflite"])
-
-WORD = re.compile(r"[a-z']+")
-TOKEN = re.compile(r"[a-z']+|[.,!?;:—…\"]")
-
 
 def run(model, *inputs):
     """Runs a LiteRT CompiledModel on numpy inputs.
@@ -210,37 +202,6 @@ def run(model, *inputs):
     return outputs
 
 
-def phon_word(word: str) -> str:
-    """MatchaG2P.phonemizeWord replica: word -> espeak-style IPA (neural).
-
-    Args:
-        word: Lower-case word.
-
-    Returns:
-        The espeak-style IPA string from the neural G2P graph.
-    """
-    ids = [START]
-    for c in word:
-        if c in C2I:
-            ids += [C2I[c]] * REP
-    ids.append(END)
-    length = min(len(ids), MAXT)
-    padded_ids = [ids[i] if i < length else 0 for i in range(MAXT)]
-    inputs = np.array([padded_ids], np.float32)
-    logits = run(g2p, inputs)[0][0]  # [MAXT, NPH]
-    pieces, previous = [], -1
-    for t in range(length):
-        best = int(logits[t].argmax())
-        if best == previous:
-            continue
-        previous = best
-        phoneme = I2P.get(best)
-        if phoneme is None or phoneme in SPECIAL or best == 0:
-            continue
-        pieces.append("".join(ch for ch in phoneme if ch != "-"))
-    return "".join(pieces)
-
-
 def phonemize(text: str):
     """MatchaG2P.phonemize replica: text -> (matcha symbol ids, IPA).
 
@@ -250,20 +211,7 @@ def phonemize(text: str):
     Returns:
         A (matcha symbol id list, IPA string) tuple.
     """
-    ipa, first = [], True
-    for match in TOKEN.finditer(text.lower()):
-        token = match.group(0)
-        if WORD.fullmatch(token):
-            # Dict primary, neural OOV.
-            phonemes = DICT.get(token) or phon_word(token)
-            if phonemes:
-                if not first:
-                    ipa.append(" ")
-                ipa.append(phonemes)
-                first = False
-        else:
-            ipa.append(token)
-    ipa_string = "".join(ipa)
+    ipa_string = G2P.phonemize(text)
     return [SYM2ID[c] for c in ipa_string if c in SYM2ID], ipa_string
 
 
@@ -442,8 +390,12 @@ def main():
     # two different vocabularies — see matcha/cli.py process_text_for_lane.
     espeak_compare = _LANE == "legacy"
 
+    # The third sentence is contraction-dense on purpose: it is the one an ear can check
+    # against D-C1's exemplars, where the defect was audible as the wrong vowel rather
+    # than as anything a gate reported.
     sentences = ["Hello, this is Matcha running on the mobile GPU.",
-                 "The quick brown fox jumps over the lazy dog."]
+                 "The quick brown fox jumps over the lazy dog.",
+                 "Don't worry — we'll know he's right, and it won't be James's fault."]
     print(f"lane={_LANE} sr={SAMPLE_RATE} vat_dim={VAT_DIM} "
           f"spk={args.spk} delivery={args.delivery or 'unknown'}")
     for i, sentence in enumerate(sentences):

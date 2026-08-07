@@ -34,6 +34,8 @@ scripts/litert_export/run.sh convert_vat.py         # the 24 kHz / VAT lane
 
 Outputs land in `$SONORA_LITERT_WORK/artifacts/`: `matcha_textenc_fp16.tflite`, `matcha_decoder_fp16.tflite`, `matcha_vocoder_fp16.tflite`, `dp_g2p_matcha_fp16.tflite`, plus the host tables (`emb.bin`, `g2p_dict.txt.gz`, `config.json`, `g2p_meta.json`).
 
+`convert_vat.py` additionally writes **`g2p_contractions.json`** — the apostrophe tables, exported from `matcha.text.op_g2p` rather than transcribed, because the dictionary holds no apostrophe keys and a front end without them phonemizes `we'll` as the word *well*. A device that cannot find it must refuse to phonemize; falling back to the plain dictionary is the defect, not a degraded mode.
+
 ## Files
 
 | File | What |
@@ -41,6 +43,7 @@ Outputs land in `$SONORA_LITERT_WORK/artifacts/`: `matcha_textenc_fp16.tflite`, 
 | `build_matcha.py` | the re-authoring recipe (GroupNorm→4D, Mish→SELECT-free softplus, ConvTranspose1d→ZeroStuffConvT1d, diffusers Attention→manual additive-masked, SinusoidalPosEmb host-side) + real-weight conversion + per-graph parity (corr 1.0). |
 | `convert_final.py` | converts + fp16-quantizes the three acoustic graphs; end-to-end waveform parity. |
 | `convert_g2p_matcha.py` | converts the DeepPhonemizer (espeak-IPA) G2P to a fixed `[1,96]` graph. |
+| `device_g2p.py` | the **device text front end** — an independent replica of `matcha.text.op_g2p`, and the spec the mobile port has to meet. Gate G7 holds it to phoneme-string parity with the training front end. |
 | `e2e_masked.py`, `e2e_matcha.py` | end-to-end host-orchestration parity (pad-to-max + runtime mask). |
 | `kotlin_replica.py` | replicates the exact Android host logic in Python (validates the Kotlin port). |
 | `probe_tx_standalone.py`, `probe_decoder_taps.py` | the on-device bisection that isolated the Mali ML Drift transformer-fusion bug (decoder → CPU). |

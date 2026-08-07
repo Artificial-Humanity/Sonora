@@ -19,6 +19,66 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-07
 
+### Fixed — the device text front end (§1)
+
+- **`PENDING` — D-C1 was still live on the device side, five days after the host was
+  fixed.** `kotlin_replica.phonemize` was `DICT.get(token) or phon_word(token)`: a flat
+  dictionary lookup with a neural fallback and **no apostrophe handling of any kind**. The
+  host got the contraction table on 2026-08-02, when D-C1 was found to have poisoned the
+  IPA of corpus versions v1 through v3; the replica never got it. Not a near-miss —
+  verified against the shipped assets, **0 of 274,927 dictionary keys contain an
+  apostrophe** and `'` is absent from the neural charset, where unknown characters are
+  silently skipped, so a contraction could only ever resolve to its apostrophe-stripped
+  letters *and came back looking like a successful lookup*.
+  **Measured on the probe corpus: the old front end diverges from the training front end
+  on 69 of 86 probe sentences**, and worse in shape than the finding described —
+  `they've` → `θˈeɪv` (a th-fricative on a pronoun), `she'd` → `ʃˈɛd` (the word *shed*),
+  `i'm` → `ˈɪm`, `james's` → `dʒˈːmˈɛs`. The filed exemplars (`don't` → `dˈɔnt`, `we'll` →
+  `wˈɛl`) were the mild cases.
+  **Half the finding is answered rather than fixed: there is no shipped Kotlin app** and
+  mobile front ends have not started in earnest, so the open question — whether a real app
+  carried a table the replica lacked — has no subject. The replica is not validating a
+  front end nobody runs; it *is* the front end, as spec, which is why this is worth
+  landing before anyone ports it rather than after.
+  - **`scripts/litert_export/device_g2p.py`** — the text front end as its own module, so
+    it can be compared against `matcha.text.op_g2p` without loading the replica's graphs.
+    Deliberately imports nothing from `matcha`: a replica that called the host's
+    phonemizer would prove only that a function equals itself.
+  - **`g2p_contractions.json`** — the tables ship as an asset **exported from
+    `op_g2p.contraction_tables()`**, not transcribed into the port. D-C1 is a defect of
+    omission and a hand-synced table is the same defect on a delay. A device that cannot
+    find the asset **raises**; it does not fall back to the plain dictionary, because a
+    silent fallback is exactly how this survived two corpus versions.
+  - **Gate `G7`** — phoneme-string parity between the two front ends over 86 probe
+    sentences, one per contraction-table entry plus 17 hand-built cases (clitics on
+    arbitrary bases, the three possessive allomorphs, archaic forms, apostrophe names,
+    abbreviation expansion, brackets and dashes, non-ASCII folding, punctuation, OOV).
+    Every other gate certifies the graph; none of them asked whether the text reaching it
+    matches the text the model trained on.
+  - **`config.json` gains a `g2p` block** — the manifest is the only thing a host can
+    read, and the front end is as capable of silently disagreeing with the corpus as the
+    control surface was (F-H2's argument, applied one layer earlier).
+  - **The normalization chain moved with it**: ASCII fold, lowercase, abbreviation
+    expansion, bracket removal, hyphen-to-space, whitespace collapse — in that order,
+    before tokenization. The replica ran `text.lower()` alone, so `Mr.` and `well-known`
+    tokenized differently from the corpus. A Kotlin port needs a `unidecode` equivalent;
+    that is a real porting dependency, since curly quotes and accented borrowings are
+    ordinary in the book lane.
+  - **`tests/test_device_g2p_parity.py`** (11 cases) — including a guard that the check is
+    **not vacuous**: the flat lookup this replaced still fails it.
+- **`PENDING` — D-C1 itself had no regression test, and G7 cannot supply one.** Found
+  while checking G7 for vacuity: both front ends read one table, so an entry deleted from
+  `_CONTRACTIONS` disappears from host and device together and **parity still passes while
+  both sides are wrong**. Parity is not correctness. Anchored with absolute phoneme
+  assertions (`don't` → `dˈoʊnt`, `we're` → `wɪɹ`, `'tis` → `tˈɪz`) plus table-size and
+  clitic-set floors. The 2026-08-02 fix had shipped unguarded for five days.
+- **`PENDING` — a D-M4 cost that was invisible when it was filed.** G7 **refuses a
+  homograph-enabled export**: resolution needs the two tokens to the left and one to the
+  right with punctuation as a barrier, so there is no table to ship and the device cannot
+  reproduce it. Turning D-M4 on therefore adds "port `matcha/text/homographs.py`" to the
+  mobile lane. Recorded in `todo.md §3` against the decision, and enforced at construction
+  so the two front ends cannot drift the moment the flag flips.
+
 ### Added — G2P / label derivation (§3)
 
 - **`33d2a4f` — D-M4: the dictionary has one pronunciation per key, and the other sense
