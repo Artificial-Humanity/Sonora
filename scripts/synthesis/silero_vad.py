@@ -6,6 +6,15 @@ from a pause, it is fooled by room tone, and it has no notion of *speech* — so
 page turn or a breath all read as signal. Silero is a trained speech detector and gets all
 of those right.
 
+⚠ THAT ARGUMENT IS ABOUT CORRECTNESS, NOT MAGNITUDE, and the two are not the same. Where
+it has been measured, the win is decisive for SILENCES — the pause gate found 20 of 21
+ear-confirmed stalls the energy gate never flagged — and small for TOTAL SPEECH DURATION.
+Sampled 2026-08-07 over 150 clips from four campaigns: mean VAD/energy ratio 1.008, median
+delta -0.06 s, and at the owner's 4 s floor exactly one clip in 150 changes side. So do not
+assume swapping the instrument moves a duration threshold; on this material it does not.
+The two questions this module answers have very different sensitivities to which detector
+answers them.
+
 ⚠ SCOPE — owner decision 2026-07-29. This is for BOUNDARIES ONLY: leading/trailing trim,
 effective speech duration, and locating over-long internal silences. It must NEVER be used
 to strip lip-smacks, breaths or mouth noise. Breathiness is a tension marker in the VAT
@@ -100,7 +109,7 @@ def long_silences(wav16k, min_s=1.0, **kw):
     """Internal silences >= min_s, as (start_s, end_s). Leading/trailing excluded.
 
     Catches the Zonos emotion-vector instability directly: dropped words and long gaps
-    mid-utterance. Leading/trailing are excluded because those are a trim问题, not a
+    mid-utterance. Leading/trailing are excluded because those are a trim question, not a
     performance defect — see `trim_bounds`.
     """
     iv = speech_intervals(wav16k, **kw)

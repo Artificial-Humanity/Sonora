@@ -42,6 +42,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from derive_vat_corpus import phonation_measures  # noqa: E402
 import silero_vad  # noqa: E402
+import synth_common  # noqa: E402
+from synth_common import edge_loss  # noqa: E402
 
 DNSMOS_ONNX = "/data/toolchain/dnsmos/sig_bak_ovr.onnx"
 DNSMOS_SR = 16000
@@ -161,20 +163,64 @@ PAUSE_HARD_MAX = 2.5        # longest internal silence a clip may contain
 PAUSE_FLAG_MAX = 1.4        # ...above this it is advisory: queue it for the ear
 PAUSE_MIN_GAP = 0.30        # silences shorter than this are ordinary phrasing
 
+# ------------------------------------------------------ UNCALIBRATED (C-M4, 2026-08-07)
+#
+# `head_ok` and `speech_ok` are MEASURED here and gate nothing. That is the whole point:
+# a gate on a guessed threshold either passes truncated clips or rejects good ones, and
+# neither failure announces itself. `tail_ok` and the two pause bands were each calibrated
+# against a few hundred already-audited clips before they gated anything, and these get
+# the same treatment — `gate_calibration.py --sweep` produces the same table.
+#
+# Until then both live in `advisories`, NOT in `gates`. `hard_pass` is `all(gates.values())`
+# and `stage_pool.qc_flagged` reads `gates` too, so putting an uncalibrated measure there
+# would silently make it a hard gate at whatever number happened to be typed.
+#
+# WHAT IS ACTUALLY MISSING IS DIFFERENT FOR THE TWO:
+#
+#   speech_ok — NEITHER is missing any more; what is left is one policy decision.
+#     The number is the owner's: 4 s of speech ([[min-clip-length-4s]], 2026-07-25, the
+#     keep-rate cliff is exactly there). The instrument was the open question, because
+#     `librivox_align` enforces the same floor with `librosa.effects.split` and says in as
+#     many words that it does so to match qc_gate, "because two different measures of one
+#     owner rule is one measure too many" — so a unilateral switch here would re-open the
+#     divergence that comment closed, by an unmeasured amount.
+#
+#     MEASURED 2026-08-07, 150 clips sampled across delivery-v1-narration, librivox-v2,
+#     newscaster-v1 and revisit-v1: the two instruments agree far more closely than the
+#     argument for Silero assumed. Mean VAD/energy ratio 1.008 — the energy gate slightly
+#     UNDER-counts on this material rather than over-counting, median delta -0.06 s,
+#     p10..p90 -0.34..+0.11 s. At the 4 s floor both reject the same 4.0% of the sample,
+#     and exactly ONE clip in 150 (rev_04_tenderness_ORP: energy 4.93 s, VAD 3.84 s)
+#     changes side. The floor therefore transfers between instruments essentially intact,
+#     and the earlier claim in this comment — that Silero would tighten it by an unknown
+#     amount — was written before the sweep and is wrong.
+#
+#     So the remaining question is not measurement, it is admission policy: should 4 s be
+#     a HARD gate that keeps a clip out of a bank, or stay the audition note it is today
+#     in `register_audition`? Turning it on rejects ~4% of clips that currently pass QC,
+#     which is a corpus decision and the owner's. One line when they answer.
+#
+#   head_ok — genuinely blocked, and harder than filed. Mirroring TAIL_LOST_MAX is the
+#     obvious guess and it is a guess: ASR is worse at the first word than the last, so
+#     the same fraction does not mean the same thing at each end. Worse, there is nothing
+#     to calibrate AGAINST — searching every drop note in ratings.csv for a phrase naming
+#     a late start returns nothing, because no auditor has ever been asked to listen for
+#     it. `register_audition` now says so on any clip missing >= 3 opening words; those
+#     notes are the evidence a threshold has to come from, and `gate_calibration.py
+#     --sweep head_lost_frac` reads them back.
+SPEECH_MIN_SECONDS = None   # 4.0 s, pending the owner's hard-gate-or-advisory call
+HEAD_LOST_MAX = None        # do NOT copy TAIL_LOST_MAX here without the sweep
+HEAD_WORDS_MIN = 3          # ...and one dropped "the" is not a truncation at either end
 
-def tail_lost(ref, hyp):
-    """Fraction of the passage left unspoken after the last word ASR could align."""
-    import difflib
-    import re as _re
-    norm = lambda s: _re.sub(r"[^a-z0-9 ]", "", s.lower().replace("’", "'")).split()
-    r, h = norm(ref), norm(hyp)
-    if not r:
-        return 0.0, 0
-    blocks = [b for b in difflib.SequenceMatcher(a=r, b=h, autojunk=False)
-              .get_matching_blocks() if b.size]
-    last = (blocks[-1].a + blocks[-1].size - 1) if blocks else -1
-    lost = len(r) - 1 - last
-    return lost / len(r), lost
+
+def speech_seconds_energy(wav, sr):
+    """Effective speech by the energy gate — the measure every consumer uses today.
+
+    Kept under its own name because it is about to have a sibling and the two disagree.
+    `librosa.effects.split` has no notion of speech: room tone, a page turn, a breath and
+    a hum all read as signal, so it OVER-counts, and the amount depends on the recording.
+    """
+    return float(sum(e - s for s, e in librosa.effects.split(wav, top_db=35))) / sr
 
 
 class DNSMOS:
@@ -282,15 +328,16 @@ def main():
             # the whole campaign run.
             print(f"{row.get('id','?'):26s} FAIL (empty wav)", flush=True)
             row.update({"wav_abs": wav_path, "duration": 0.0, "speech_dur": 0.0,
+                        "speech_dur_vad": 0.0,
                         "quarantined": quarantined, "empty_wav": True,
-                        "gates": {"nonempty_ok": False}, "hard_pass": False})
+                        "gates": {"nonempty_ok": False}, "advisories": {},
+                        "hard_pass": False})
             rows.append(row)
             continue
         n_chars = len(row["text"])
 
         # effective speech duration (pilot: a 12 s file held 4 s of speech)
-        intervals = librosa.effects.split(wav, top_db=35)
-        speech_dur = float(sum(e - s for s, e in intervals)) / TARGET_SR
+        speech_dur = speech_seconds_energy(wav, TARGET_SR)
 
         # Internal dead air, measured with a trained speech detector rather than the
         # energy gate above — which cannot tell a quiet consonant from a pause.
@@ -299,6 +346,12 @@ def main():
         wav16 = librosa.resample(wav, orig_sr=TARGET_SR, target_sr=16000)
         sils = silero_vad.long_silences(wav16, min_s=PAUSE_MIN_GAP)
         worst_pause = max((b - a for a, b in sils), default=0.0)
+        # The same detector, asked the OTHER question it was written for. Measured beside
+        # the energy figure rather than in place of it: the two disagree, the owner's 4 s
+        # floor was set against the energy one, and `librivox_align` enforces that floor
+        # with the same instrument on purpose. Recording both is what makes the switch a
+        # measurement instead of a guess (C-M4).
+        speech_dur_vad = silero_vad.speech_duration(wav16)
 
         gates = {}
         gates["pause_ok"] = worst_pause <= PAUSE_HARD_MAX
@@ -307,9 +360,20 @@ def main():
         hyp = " ".join(s.text for s in segs)
         asr_wer = wer(row["text"], hyp)
         gates["asr_ok"] = asr_wer <= ASR_MAX_WER
-        tl_frac, tl_words = tail_lost(row["text"], hyp)
+        edges = edge_loss(row["text"], hyp)
+        tl_frac, tl_words = edges["tail_frac"], edges["tail_words"]
         gates["tail_ok"] = not (tl_frac > TAIL_LOST_MAX and tl_words >= TAIL_WORDS_MIN)
         gates["length_ok"] = dur <= MAX_CLIP_SECONDS
+
+        # Uncalibrated — recorded, never gated. `None` is not "passed": it is "no
+        # threshold has been set", and every consumer has to be able to tell those apart.
+        advisories = {
+            "head_ok": None if HEAD_LOST_MAX is None else not (
+                edges["head_frac"] > HEAD_LOST_MAX
+                and edges["head_words"] >= HEAD_WORDS_MIN),
+            "speech_ok": None if SPEECH_MIN_SECONDS is None else (
+                speech_dur_vad >= SPEECH_MIN_SECONDS),
+        }
         scores = dnsmos.score(wav)
         # DNSMOS demoted to advisory quality tier (register-biased);
         # collapse detection now belongs to the ASR gate.
@@ -323,17 +387,24 @@ def main():
         lufs = float(meter.integrated_loudness(wav)) if len(wav) > TARGET_SR // 2 else None
 
         row.update({"wav_abs": wav_path, "duration": dur,
-                    "speech_dur": speech_dur, "asr_wer": asr_wer,
+                    "speech_dur": speech_dur,
+                    "speech_dur_vad": round(speech_dur_vad, 3),
+                    "asr_wer": asr_wer,
                     "worst_pause": round(worst_pause, 3),
                     "pause_count": len(sils),
                     "tail_lost_frac": tl_frac, "tail_words_lost": tl_words,
+                    "head_lost_frac": edges["head_frac"],
+                    "head_words_lost": edges["head_words"],
                     "asr_hyp": hyp.strip(), **scores,
                     "lufs": lufs, "phonation": phon, "gates": gates,
+                    "advisories": advisories,
                     "quarantined": quarantined,
                     "hard_pass": all(gates.values()) and not quarantined})
         rows.append(row)
-        print(f"{row['id']:26s} {dur:5.1f}s speech={speech_dur:4.1f}s "
+        print(f"{row['id']:26s} {dur:5.1f}s speech={speech_dur:4.1f}s"
+              + f"/vad={speech_dur_vad:4.1f}s "
               + (f"pause={worst_pause:4.1f}s " if worst_pause >= PAUSE_FLAG_MAX else "")
+              + (f"head-lost={edges['head_words']}w " if edges["head_words"] else "")
               + f"wer={asr_wer:.2f} ovr={scores['dnsmos_ovr']:.2f} "
               + f"pass={row['hard_pass']}", flush=True)
 
@@ -349,6 +420,21 @@ def main():
     n_quar = sum(1 for r in rows if r.get("quarantined"))
     print(f"{n_pass}/{len(rows)} hard-pass -> {out}"
           + (f" ({n_quar} quarantined, excluded from keeps)" if n_quar else ""))
+
+    # Say out loud what is measured but NOT gated, so "the gate passed" is never read as
+    # "nothing is wrong with the head or the length of speech". C-M4 leaves these open on
+    # purpose; silence about them is how an uncalibrated gate becomes an assumed one.
+    n_head = sum(1 for r in rows if (r.get("head_words_lost") or 0) >= HEAD_WORDS_MIN)
+    n_short = sum(1 for r in rows if r.get("speech_dur_vad") is not None
+                  and r["speech_dur_vad"] < 4.0)
+    uncal = [k for k, v in (rows[0].get("advisories") or {}).items() if v is None] \
+        if rows else []
+    if uncal:
+        print(f"  NOT GATED (no calibrated threshold yet): {', '.join(sorted(uncal))}"
+              f" — {n_head} clip(s) drop >= {HEAD_WORDS_MIN} words off the HEAD, "
+              f"{n_short} hold < 4.0 s of speech by the VAD measure.")
+        print("  Set them with:  gate_calibration.py --sweep head_lost_frac "
+              "--campaign-dir <dir>   (and --sweep speech_dur_vad)")
     if not rows:
         sys.exit("QC-GATE-FAIL: every manifest record was skipped (no wav "
                  "found for any of them) — nothing was measured.")

@@ -45,6 +45,7 @@ that already exist restores it.
 import contextlib
 import csv
 import datetime as _dt
+import difflib
 import fcntl
 import json
 import os
@@ -104,6 +105,57 @@ def write_json_atomic(path, obj, *, indent=1):
 def write_text_atomic(path, text, *, encoding="utf-8"):
     """Same guarantee as `write_json_atomic`, for the plain-text siblings."""
     _atomic_write(path, lambda fh: fh.write(text), encoding=encoding)
+
+
+def edge_loss(ref, hyp):
+    """Words of the passage left unspoken at EACH END of the clip.
+
+    -> {"head_frac", "head_words", "tail_frac", "tail_words"}
+
+    The tail half has gated since 2026-07-31. The head half was already being computed
+    inside `qc_gate.tail_lost` — `blocks[0].a` is exactly the count of reference words
+    before the first one ASR could align — and thrown away, so nothing in the pipeline has
+    ever seen a clip that starts late (C-M4). It is the same defect as a truncated tail,
+    invisible for the same reason: dropping the first six words of a 139-word passage is a
+    4% error rate and an unusable clip, and a global WER cannot tell those apart.
+
+    MEASURED 2026-08-07 over every qc_measures.jsonl on disk — 3,189 clips, 13 campaigns:
+
+        words lost      HEAD            TAIL (gated since 2026-07-31)
+        >= 1            214  (6.7%)     234  (7.3%)
+        >= 3             19  (0.6%)      36  (1.1%)
+        >= 5             12  (0.4%)      26  (0.8%)
+
+    So head loss is real and it is roughly HALF as common as tail loss — an earlier draft
+    of this docstring asserted it was not the rarer case, which was written before the
+    sweep and was wrong. Eight clips passed every gate while dropping three or more
+    opening words, up to 25% of the passage (`wuthering-heights_nar_0036_neu_CHA` lost
+    4 of 19). Those shipped.
+
+    Both ends fail for their own reasons: engines ramp in — a soft or plosive onset, a
+    fade, a leading breath — and the force-align lane cuts on sentence boundaries, so a
+    cut that lands late takes the opening words with it.
+
+    ⚠ head loss and tail loss are NOT interchangeable, which is why they are reported
+    separately rather than summed. ASR is measurably worse at the first word than the last
+    (no left context, and the decoder is still settling), so the same fraction does not
+    mean the same thing at the two ends. Calibrate them independently —
+    `gate_calibration.py --sweep`.
+
+    Lives here rather than in qc_gate so the calibration tool can compute it over measures
+    already on disk without importing librosa, onnxruntime and faster-whisper to do it.
+    """
+    norm = lambda s: re.sub(r"[^a-z0-9 ]", "", s.lower().replace("’", "'")).split()
+    r, h = norm(ref), norm(hyp)
+    if not r:
+        return {"head_frac": 0.0, "head_words": 0, "tail_frac": 0.0, "tail_words": 0}
+    blocks = [b for b in difflib.SequenceMatcher(a=r, b=h, autojunk=False)
+              .get_matching_blocks() if b.size]
+    last = (blocks[-1].a + blocks[-1].size - 1) if blocks else -1
+    tail = len(r) - 1 - last
+    head = blocks[0].a if blocks else len(r)
+    return {"head_frac": head / len(r), "head_words": head,
+            "tail_frac": tail / len(r), "tail_words": tail}
 
 
 def append_jsonl(path, records):

@@ -162,6 +162,13 @@ MIN_SPEECH_SECONDS = 4.0        # owner floor 2026-07-25; keep-rate cliff is exa
 # the clip earns an audition rather than a rejection. Kept in sync by
 # test_skill_files.py so the two cannot drift apart silently.
 PAUSE_FLAG_SECONDS = 1.4
+# Head truncation is measured but NOT gated (C-M4) — see qc_gate's uncalibrated block.
+# This is the advisory count at which the auditor is told to listen to the opening. It is
+# a REPORTING threshold, not a gate: the cost of it being wrong is an auditor reading one
+# extra line, and the whole reason it exists is to accumulate the ear labels a real
+# threshold has to be chosen from. Three matches TAIL_WORDS_MIN, so one dropped article
+# is not called a truncation at either end.
+HEAD_WORDS_FLAG = 3
 
 
 def _tail_beyond(canonical: str, heard: str) -> str:
@@ -257,6 +264,19 @@ def _qc_triage(qc_path):
             lost, frac = r.get("tail_words_lost"), r.get("tail_lost_frac") or 0
             why.append(f"stops early — last {lost} words ({frac*100:.0f}% of the passage) "
                        f"never spoken. LISTEN TO THE END")
+        # The other end (C-M4). Advisory, not a gate: nothing has calibrated a head
+        # threshold, and nothing CAN until the ear has described the failure at least
+        # once — searching every drop note in ratings.csv for a phrase naming a late
+        # start returns nothing, because no auditor has ever been pointed at it. This
+        # line is how those labels start existing. Measured over 3,189 clips: 19 drop
+        # three or more opening words and 8 of those passed every gate.
+        head_lost = r.get("head_words_lost") or 0
+        if head_lost >= HEAD_WORDS_FLAG:
+            frac = r.get("head_lost_frac") or 0
+            why.append(f"starts late — first {head_lost} words "
+                       f"({frac*100:.0f}% of the passage) never spoken. LISTEN TO THE "
+                       f"OPENING, and say so in the note if it is real: this one is "
+                       f"MEASURED BUT NOT GATED and your note is what sets the threshold")
         # Internal dead air. Named before the duration line for the same reason
         # tail_ok is: it tells the auditor WHERE in the clip to listen. The
         # advisory band exists because a long pause is sometimes a real dramatic
