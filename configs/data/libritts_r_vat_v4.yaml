@@ -1,0 +1,72 @@
+# LibriTTS-R train-clean-100 @ native 24 kHz, 8-channel conditioning (contract v2).
+#
+# v4 is the corpus to train on. Derived 2026-08-07 in ONE pass carrying the three
+# decisions the owner took that day, rather than three corpus versions for one
+# re-derivation's worth of work:
+#
+#   width   — 8 channels: V/A/T plus the five-wide one-hot delivery block. This is what
+#             forced the re-derivation at all; `model.vat_dim` is 8 and every v3-line
+#             filelist is 3-wide, which the seam guards refuse at the filelist.
+#   D-L2    — the z-score guard. `std or 1.0` only catches a std of EXACTLY zero, and a
+#             head can be CONSTANT for a speaker (float dust ~1e-21 over dust = max|z| 1.0,
+#             a full-scale contribution manufactured from rounding error). Labels rebuilt
+#             from the immutable raw scores through the corrected guard
+#             (corpus_{soft,valence_combo}_v4.json).
+#   D-M4    — homograph resolution ON (`op_g2p(homographs=True)`). 269 train rows carry
+#             different IPA from v3c: `live` as the VERB, `lˈɪv`, where the flat
+#             dictionary ships the adjective `lˈaɪv`.
+#
+# ⚠ WHAT D-L2 ACTUALLY BOUGHT, measured on the finished corpus rather than on the
+# intermediate file: **V moved on 247 of 30,485 train rows, by at most 0.0008; A and T are
+# bit-identical to v3c.** The finding's headline — 31,443 clips change, up to 0.228 — is
+# true of the combo JSON and almost entirely false of the labels, because
+# `derive_vat_corpus` applies its OWN per-speaker z on top and a constant head contributes
+# a per-speaker-constant offset that the second z subtracts away. Speaker 909's worst clip
+# moves 0.2280 in the combo and 0.000036 in the label. The corrected guard is right and
+# stays; it simply is not a reason to re-derive on its own.
+#
+# Same 31,445 clips / 51.3 h / 247 speakers as the v3 line (MAX_SECONDS=22), and the
+# blake2b hash split held exactly as designed: **960/960 val clips identical to v3c**, so
+# nothing that was held out has become trainable.
+#
+# DELIVERY IS ESSENTIALLY EMPTY HERE, AND THAT IS CORRECT. 48 of 31,445 clips carry a lane
+# (39 Dialogue, 9 Neutral) — the `audit-markup-v0` rows, which are LibriTTS clips someone
+# auditioned. The other ~1,590 delivery labels in ratings.csv belong to the synthetic and
+# LibriVox campaigns, a different corpus that merges in Phase 1. So v4 buys the WIDTH, not
+# the delivery signal; `unknown` is all-zero and is contract-v1 conditioning.
+#
+# Lineage and every source: notes/training-sources.md (SSOT).
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_vat_v4
+train_filelist_path: data/libritts_r_vat_v4/train_op.txt
+valid_filelist_path: data/libritts_r_vat_v4/val_op.txt
+batch_size: 32
+# 8, not 20: workers are spawned (own torch import + RSS each, no COW sharing
+# with the trainer) — 8 saturates wav+mel loading on 16 cores.
+num_workers: 8
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 247
+n_fft: 1024
+n_feats: 80
+sample_rate: 24000
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 12000
+# CARRIED OVER FROM v3c DELIBERATELY, and that is not the "inherit v2's numbers" mistake
+# the v3c config warns about. These are measured on a 30,485-clip train split, and v4's
+# train split is the SAME 30,485 clips over the SAME audio — verified set-equal, not
+# assumed. v4 changes labels, phonemes and width; it changes no wav and no membership, so
+# re-measuring would reproduce these to the printed precision.
+data_statistics:  # matcha/utils/generate_data_statistics.py, in-container, 2026-08-04, 30,485-clip train split (unchanged in v4)
+  mel_mean: -5.525067
+  mel_std: 2.388571
+seed: ${seed}
+load_durations: false
+load_vat: true
+# Single source of truth is the model config: a filelist whose VAT width disagrees
+# with the model now fails at load with both numbers named, instead of deep in the
+# FiLM trunk. Interpolated, never duplicated, so the two cannot drift.
+vat_dim: ${model.vat_dim}

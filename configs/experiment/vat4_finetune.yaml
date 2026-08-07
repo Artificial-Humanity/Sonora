@@ -1,0 +1,53 @@
+# @package _global_
+
+# The v4 round: the FIRST 8-wide run. V/A/T as before, plus the five-wide one-hot
+# delivery block that has existed in the model since 2026-08-07 and has never yet had a
+# corpus to train against.
+#
+# WHAT THIS RUN CAN AND CANNOT SHOW. The delivery channels are all-zero on 31,397 of
+# 31,445 clips, because LibriTTS predates the axis — only the 48 `audit-markup-v0` rows
+# carry a lane. So this run trains the WIDTH, not the delivery behaviour: the zero-init
+# FiLM path means five channels that are always zero contribute nothing, and the honest
+# expectation is a result statistically indistinguishable from a 3-wide run. That is the
+# point. It is the plumbing check before Phase 1 merges the corpus that actually carries
+# 1,189 delivery labels, and a surprise HERE is a bug, not a finding.
+#
+# Do not read a null result as "delivery does not work". Read it as the precondition for
+# asking that question at all.
+#
+# Warm start from vat3-24k ep099 (NOT vat3c ep099, which the holdout retired as a
+# regression — see notes/quality-gap-plan.md § 0a). Every tensor warms except the trunk's
+# input conv, which changes shape when vat_dim goes 3 -> 8; `make_warmstart.py` drops
+# shape-mismatched tensors and reports them, and the zero-init FiLM path is what keeps the
+# warm start meaningful — the five new channels contribute nothing until they are trained.
+#
+#   python scripts/make_warmstart.py --experiment vat4_finetune \
+#       --donor /data/model-training/sonora/warmstart/vat3_ep099.ckpt \
+#       --out /data/model-training/sonora/warmstart/vat4_init.ckpt
+#   python -m matcha.train experiment=vat4_finetune \
+#       ckpt_path=/data/model-training/sonora/warmstart/vat4_init.ckpt
+#
+# Pre-flight, all mandatory:
+#   * AI-Lab-0/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
+#     engines (Gemma director, synth_* renderers, Vocalizer), not just the trainer's.
+#   * scripts/test_vat_dim_seams.py — the vat_dim guards, IN-CONTAINER (they need torch).
+#     22 checks. This is the run they were written for: it is the first time the width
+#     actually changes, so a filelist/model disagreement is live rather than hypothetical.
+#   * The corpus is licence-declared (configs/data_licenses.yaml, libritts_r_vat_v4) —
+#     verified, because the wall is an allowlist and refuses what it cannot classify.
+#
+# JUDGING THIS RUN: score it on the never-trained holdout
+# (scripts/score_holdout.sh, data/libritts_r_holdout_devclean), NOT on loss/val_epoch.
+# MLflow val is permanently unusable for cross-run comparison — historical split
+# contamination — and logged diff_loss carries two scale breaks (2026-08-01 bucketing,
+# 2026-08-06 masking). Deciding this run by its curve is deciding it by an artefact.
+
+defaults:
+  - override /data: libritts_r_vat_v4.yaml
+
+tags: ["libritts_r", "vat", "vat4", "valence", "tension", "energy", "delivery"]
+
+run_name: vat4_finetune
+
+model:
+  use_vat: true
