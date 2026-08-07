@@ -204,14 +204,34 @@ def main():
     audio = os.path.join(root, "audio")
     if os.path.isdir(audio):
         root = audio
+    # C-M9. The recursive glob swept `_dropped/` and `_superseded/` as well, so clips the
+    # ear had ALREADY REJECTED were folded into the cohort statistics — and ROOM is scored
+    # as a robust z against the cohort's own median/MAD, which means the rejects were
+    # helping define what "normal" looks like for the clips still under judgement. On a
+    # cohort quarantined precisely because it was reverberant, that shifts the median
+    # toward the defect and hides the next one.
+    #
+    # `_pre_loudnorm` was already excluded here by substring, which is the same rule; the
+    # other two quarantine directories were simply missed when the drop-quarantine
+    # convention landed on 2026-07-31.
+    EXCLUDED_DIRS = ("_pre_loudnorm", "_dropped", "_superseded")
     wavs = sorted(p for p in glob.glob(os.path.join(root, "**", "*.wav"), recursive=True)
-                  if "_pre_loudnorm" not in p)
+                  if not any(d in p.split(os.sep) for d in EXCLUDED_DIRS))
     if not wavs:
         sys.exit(f"no wavs under {root}")
 
-    # engine per clip, so ROOM can be judged against the right cohort
+    # engine per clip, so ROOM can be judged against the right cohort.
+    #
+    # C-M9, second half: this glob is NOT recursive while the wav glob above is, so a
+    # campaign laid out as <campaign>/<engine-out>/ — which is the layout synth_bank.sh
+    # writes and the QC gate assumes — found no manifests at all. `engine_of` then fell
+    # back to "?" for every clip, and the whole campaign became ONE cohort named "?".
+    # The per-engine comparison is the entire point of this tool, and it was silently
+    # not happening; a "?" row looks like missing metadata rather than a broken join.
     manifests = {}
-    for mf in glob.glob(os.path.join(root, "*_manifest.jsonl")):
+    for mf in glob.glob(os.path.join(root, "**", "*_manifest.jsonl"), recursive=True):
+        if any(d in mf.split(os.sep) for d in EXCLUDED_DIRS):
+            continue
         for line in open(mf, encoding="utf-8"):
             try:
                 r = json.loads(line)

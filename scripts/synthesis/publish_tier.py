@@ -57,6 +57,21 @@ ENGINE_POLICY = {
     # NOT LISTED, deliberately: vibevoice, moss_vg. Their weights licences are
     # unverified. Verify against the model card, then add — do not infer one from
     # a sibling repo or a code licence.
+    #
+    # C-L5: `librivox` is not an ENGINE and its clips are not synthesised — they are
+    # human recordings, public-domain text read by LibriVox volunteers, and the LibriVox
+    # catalogue places its recordings in the public domain. There is no model licence to
+    # verify, so the "verify the model card" instruction above is not merely unanswered
+    # for this row, it is the wrong question. Absent this entry the `unknown` check below
+    # hard-errors the day the first staged real-audio clip reaches a metadata.jsonl —
+    # which is a matter of when, not whether: `stage_pool` writes `engine: "librivox"`
+    # for the force-align lane and three books are already fetched.
+    #
+    # Publishable: the recordings are PD and the text is PD/CC0. That is a stronger
+    # position than any synthetic row here, none of which can point at a human who
+    # consented; it is listed explicitly rather than left to a default so the reasoning
+    # is on the record.
+    "librivox":   ("PD (LibriVox recording; PD/CC0 source text)", True),
 }
 
 

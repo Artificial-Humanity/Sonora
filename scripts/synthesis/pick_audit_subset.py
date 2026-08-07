@@ -66,6 +66,7 @@ Usage:
 import argparse
 import csv
 import json
+import math
 import os
 import random
 import sys
@@ -379,22 +380,54 @@ def cmd_select(args):
         rest_by_engine[eng] += [i for i in sorted(ids) if i not in keep_ids]
     for eng, rest in sorted(rest_by_engine.items()):
         frac = tier_of(eng)["tail"]
-        keep_ids.update(rng.sample(sorted(rest), round(len(rest) * frac)))
+        # C-L6. `round(len(rest) * frac)` is ZERO for a trusted engine's 3% tail until
+        # the remainder reaches 17 clips — and banker's rounding makes it zero at exactly
+        # 16.67 too. So the tail sample, which is the whole mechanism for noticing that a
+        # trusted engine has started drifting, silently did not exist on small batches.
+        # Trusted is the tier where it matters most: those engines are audited 1 per
+        # group precisely BECAUSE the tail is watching them.
+        #
+        # Ceiling, not round: a non-zero fraction of a non-empty remainder means at least
+        # one clip. An engine either has a tail sample or it has none because `frac` is
+        # zero, and no third case where the arithmetic quietly decided for us.
+        n = math.ceil(len(rest) * frac) if frac else 0
+        if rest and frac and n == 0:            # unreachable with ceil; kept as a tripwire
+            n = 1
+        keep_ids.update(rng.sample(sorted(rest), min(n, len(rest))))
 
     defer_ids = set(i for ids in by_group.values() for i in ids) - keep_ids
 
+    counts = {"deferred": 0, "requeued": 0}
+
     def mutate(rows):
-        changed = 0
         for r in rows:
             if r["id"] in defer_ids and r["status"] == "unaudited":
                 r["status"] = "deferred"
-                changed += 1
-        return changed
+                counts["deferred"] += 1
+            # C-M1. The flip only ever went one way, so a clip that was deferred by an
+            # earlier `select` and QC-flagged by a LATER pass stayed deferred forever —
+            # invisible in todo, never heard. `keep_ids` said it belonged in the queue and
+            # nothing acted on that, which quietly breaks this tool's one non-negotiable
+            # rule: "What does NOT relax at any tier is criterion 1: every QC-flagged clip
+            # goes to the ear." QC runs after every generation pass and `--flags` grows;
+            # deferral has to be revisable or the flags cannot reach the ear.
+            #
+            # Written for `keep_ids` rather than for flagged ids alone, because the same
+            # asymmetry bites a re-run that samples differently: whatever select decides
+            # belongs in the queue, belongs in the queue.
+            elif r["id"] in keep_ids and r["status"] == "deferred":
+                r["status"] = "unaudited"
+                counts["requeued"] += 1
+        return counts["deferred"] + counts["requeued"]
 
-    n = _write_guarded(mutate)
+    _write_guarded(mutate)
+    n = counts["deferred"]
     print(f"{args.campaign}: {len(keep_ids)} in the audit queue "
           f"({len(flagged & keep_ids)} QC-flagged), {n} deferred, "
           f"{len(by_group)} groups")
+    if counts["requeued"]:
+        print(f"  re-queued {counts['requeued']} previously-deferred clip(s) that this "
+              f"pass selected (QC flags or a changed sample)")
     if new_readers:
         print(f"  reader/title pairs needing an ear pass ({len(new_readers)}): "
               + ", ".join(f"{r} / {t}" for r, t in sorted(new_readers)))
