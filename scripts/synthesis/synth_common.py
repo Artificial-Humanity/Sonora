@@ -473,8 +473,12 @@ def save_via_atomic(save_fn, path, *args, **kwargs):
     return path
 
 
+class DryRun(Exception):
+    """Raised inside `ratings_transaction` to leave without writing. Never escapes."""
+
+
 @contextlib.contextmanager
-def ratings_transaction(path, *, tag="edit", backup=True):
+def ratings_transaction(path, *, tag="edit", backup=True, dry_run=False):
     """Read ratings.csv, yield (fieldnames, rows), write it back — no window (C-M6/D-M5).
 
     `ratings.csv` is the ear-verdict SSOT and the Dataset Auditions app is a LIVE WRITER,
@@ -493,6 +497,12 @@ def ratings_transaction(path, *, tag="edit", backup=True):
         the vulnerable window is the write itself rather than the whole run.
 
     Mutate `rows` in place; the write happens on clean exit. Raise, and nothing is written.
+
+    `dry_run=True` reads and yields exactly as normal and then does NOT write. Every one of
+    the six converted scripts has a report-only mode, and without this each would either
+    have to rebuild the read itself (which is the duplication being removed) or write a
+    byte-identical file — taking a backup and moving the mtime for a run that was supposed
+    to change nothing, which is precisely the kind of surprise this file is about.
     """
     path = os.fspath(path)
     with _exclusive(path):
@@ -501,7 +511,13 @@ def ratings_transaction(path, *, tag="edit", backup=True):
             reader = csv.DictReader(fh)
             fieldnames, rows = reader.fieldnames, list(reader)
 
-        yield fieldnames, rows
+        try:
+            yield fieldnames, rows
+        except DryRun:
+            return
+
+        if dry_run:
+            return
 
         if os.stat(path).st_mtime_ns != mtime_at_read:
             raise SystemExit(

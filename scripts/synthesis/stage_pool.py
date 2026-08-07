@@ -78,11 +78,8 @@ import collections
 import csv
 import datetime
 import json
-import os
 import pathlib
-import shutil
 import sys
-import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import synth_common  # noqa: E402
@@ -446,54 +443,45 @@ def main() -> int:
         print("\nDRY RUN — pass --apply to write")
         return 0
 
-    before = RATINGS.stat().st_mtime_ns
-    with RATINGS.open(newline="", encoding="utf-8") as fh:
-        rd = csv.DictReader(fh)
-        hdr, rows = rd.fieldnames or [], list(rd)
-    have = {r["id"] for r in rows}
-    added = 0
-    for rec in take:
-        if rec["id"] in have:
-            continue
-        row = {k: "" for k in hdr}
-        unaudited = args.seed_ear or args.delivery_ear or rec["id"] in flagged
-        # A folded clip is a keep — that is the point of folding — but NOBODY
-        # HEARD IT, so it must not carry an ear score. It used to be written
-        # `score=5`, which is a fabricated ear verdict under the v4 rule that
-        # score is vocals/prosody by ear only, and three consumers then trusted
-        # it: gate_calibration counted it as an ear keep, audit_sampler counted
-        # it as scored history (retiring novelty sampling early), and
-        # --mark-delivery accepted it as "the ear said". Blank score + a note
-        # keeps the clip in the dataset while making its provenance legible.
-        row.update({
-            "campaign": f"book-{args.campaign}", "id": rec["id"],
-            "engine": rec.get("engine", "librivox"),
-            "status": "unaudited" if unaudited else "keep",
-            "score": "",
-            "note": "" if unaudited else FOLD_NOTE,
-            "link": f"../{args.campaign}/audio/{rec['wav']}",
-        })
-        if not args.seed_ear:
-            row.update({a: v for a, v in tags_of[rec["id"]].items() if a in hdr})
-            lane = homogeneous_delivery(rec, led_cache)
-            if lane and "delivery" in hdr:
-                row["delivery"] = lane
-        rows.append(row)
-        added += 1
-    if RATINGS.stat().st_mtime_ns != before:
-        print("ABORT: ratings.csv changed under us (live writer)")
-        return 1
-    fd, tmp = tempfile.mkstemp(dir=str(RATINGS.parent), suffix=".tmp")
-    with os.fdopen(fd, "w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=hdr)
-        w.writeheader()
-        w.writerows(rows)
-    if RATINGS.stat().st_mtime_ns != before:
-        os.unlink(tmp)
-        print("ABORT: ratings.csv changed during write")
-        return 1
-    shutil.copymode(str(RATINGS), tmp)
-    os.replace(tmp, str(RATINGS))
+    # C-M6: the shared transaction, not this script's own read/stamp/write flavour.
+    # The flock serialises our scripts against each other (an mtime stamp cannot);
+    # the mtime re-check inside it is what catches the audition app, which takes no lock.
+    with synth_common.ratings_transaction(RATINGS, tag="stage") as (hdr, rows):
+        hdr = hdr or []
+        have = {r["id"] for r in rows}
+        added = 0
+        for rec in take:
+            if rec["id"] in have:
+                continue
+            row = {k: "" for k in hdr}
+            unaudited = args.seed_ear or args.delivery_ear or rec["id"] in flagged
+            # A folded clip is a keep — that is the point of folding — but NOBODY
+            # HEARD IT, so it must not carry an ear score. It used to be written
+            # `score=5`, which is a fabricated ear verdict under the v4 rule that
+            # score is vocals/prosody by ear only, and three consumers then trusted
+            # it: gate_calibration counted it as an ear keep, audit_sampler counted
+            # it as scored history (retiring novelty sampling early), and
+            # --mark-delivery accepted it as "the ear said". Blank score + a note
+            # keeps the clip in the dataset while making its provenance legible.
+            row.update({
+                "campaign": f"book-{args.campaign}", "id": rec["id"],
+                "engine": rec.get("engine", "librivox"),
+                "status": "unaudited" if unaudited else "keep",
+                "score": "",
+                "note": "" if unaudited else FOLD_NOTE,
+                "link": f"../{args.campaign}/audio/{rec['wav']}",
+            })
+            if not args.seed_ear:
+                row.update({a: v for a, v in tags_of[rec["id"]].items() if a in hdr})
+                lane = homogeneous_delivery(rec, led_cache)
+                if lane and "delivery" in hdr:
+                    row["delivery"] = lane
+            rows.append(row)
+            added += 1
+        if not added:
+            # Nothing new to stage. Leave the file untouched rather than rewriting it
+            # byte-identically, which would take a backup and move the mtime.
+            raise synth_common.DryRun
 
     log["runs"].append({
         "run": len(log["runs"]) + 1, "date": DATE, "count": len(take),

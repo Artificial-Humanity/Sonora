@@ -55,11 +55,12 @@ Usage:
     .venv/bin/python scripts/synthesis/seed_delivery.py --ratings <ratings.csv> --apply
 """
 import argparse
-import csv
-import datetime
+import os
 import pathlib
-import shutil
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import synth_common  # noqa: E402
 from collections import Counter
 
 # Third-person prose registers: the narrator is speaking, not a character.
@@ -109,52 +110,32 @@ def main():
     if not path.is_file():
         sys.exit(f"no such file: {path}")
 
-    # The audition app is a live writer: every rating/tag click does a full
-    # read-modify-write of this file. If it commits between our read and our
-    # write, our stale copy silently ERASES whatever was just tagged — which is
-    # exactly how an owner-set accent value was lost on 2026-07-26. Stamp the
-    # mtime now and refuse to write if it moved.
-    mtime_at_read = path.stat().st_mtime_ns
+    # C-M6: the shared transaction. This was the WIDEST of the six private flavours —
+    # it stamped the mtime, then classified and serialized ~1,500 rows, and only then
+    # compared. `ratings_transaction` takes an flock (serialising our own scripts, which
+    # an mtime stamp cannot do) and re-checks the mtime immediately before the write, so
+    # the vulnerable window is the write itself rather than the whole run.
+    with synth_common.ratings_transaction(path, tag="seeddelivery",
+                                          dry_run=not args.apply) as (fieldnames, rows):
+        if "delivery" not in (fieldnames or []):
+            sys.exit("ratings.csv has no `delivery` column")
 
-    with path.open(encoding="utf-8", newline="") as f:
-        reader = csv.DictReader(f)
-        fieldnames, rows = reader.fieldnames, list(reader)
-
-    if "delivery" not in fieldnames:
-        sys.exit("ratings.csv has no `delivery` column")
-
-    seeded, kept, left = Counter(), 0, Counter()
-    for row in rows:
-        if row.get("delivery", "").strip():
-            kept += 1                       # owner-set; never touch
-            continue
-        verdict = classify(row)
-        if verdict is None:
-            left[row["campaign"] if row["campaign"] in SKIP_CAMPAIGNS else "embodiment"] += 1
-            continue
-        if args.apply:
+        seeded, kept, left = Counter(), 0, Counter()
+        for row in rows:
+            if row.get("delivery", "").strip():
+                kept += 1                       # owner-set; never touch
+                continue
+            verdict = classify(row)
+            if verdict is None:
+                left[row["campaign"] if row["campaign"] in SKIP_CAMPAIGNS
+                     else "embodiment"] += 1
+                continue
+            # Written unconditionally now: on a dry run the transaction discards the rows
+            # rather than the caller having to remember not to mutate them. Guarding the
+            # assignment instead is how a dry run and a real run end up on different code
+            # paths, which is how one of them stops being a rehearsal for the other.
             row["delivery"] = verdict
-        seeded[verdict] += 1
-
-    if args.apply:
-        if path.stat().st_mtime_ns != mtime_at_read:
-            sys.exit(
-                "ABORTED: ratings.csv changed while this was running — the audition app\n"
-                "  committed an edit. Writing now would erase it. Nothing was modified;\n"
-                "  re-run (this only fills blank cells, so it is safe to repeat)."
-            )
-        stamp = datetime.datetime.now().strftime("%Y%m%d")
-        backup = path.with_name(f"{path.name}.bak-{stamp}-seeddelivery")
-        if not backup.exists():
-            shutil.copy2(path, backup)
-        # Write-and-rename so a reader never observes a half-written file, matching
-        # what the app itself does.
-        tmp = path.with_suffix(".csv.seedtmp")
-        with tmp.open("w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(rows)
-        tmp.replace(path)
+            seeded[verdict] += 1
 
     verb = "seeded" if args.apply else "would seed"
     print(f"{verb}: " + ", ".join(f"{v} {k}" for k, v in sorted(seeded.items())) + f"  (total {sum(seeded.values())})")
@@ -162,7 +143,10 @@ def main():
     for k, v in sorted(left.items()):
         print(f"left blank for the ear: {v:4d}  {k}")
     if args.apply:
-        print(f"backup: {backup.name}")
+        # The backup is the transaction's now (one per day per tag), so there is no
+        # local name to print. Kept as a line because "did it back up" is the first
+        # thing anyone asks after a bulk write.
+        print(f"backup: {path.name}.bak-<date>-seeddelivery")
 
 
 if __name__ == "__main__":

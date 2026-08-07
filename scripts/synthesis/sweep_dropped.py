@@ -22,11 +22,13 @@ Three guards, each for a way this can go wrong:
     .venv/bin/python scripts/synthesis/sweep_dropped.py --campaign <name> --apply
 """
 import argparse
-import csv
 import os
 import pathlib
 import shutil
-import tempfile
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import synth_common  # noqa: E402
 
 DATASETS = pathlib.Path("/data/model-training/datasets")
 RATINGS = DATASETS / "sonora-expressive-registers" / "ratings.csv"
@@ -47,11 +49,16 @@ def main():
     audio = campaign_dir / "audio"
     dropped_dir = audio / "_dropped"
 
-    before = RATINGS.stat().st_mtime_ns
-    with RATINGS.open(newline="", encoding="utf-8") as fh:
-        rd = csv.DictReader(fh)
-        hdr, rows = rd.fieldnames or [], list(rd)
+    # C-M6: one shared implementation (synth_common.ratings_transaction) instead of this
+    # script's own read/stamp/write flavour. The flock serialises our scripts against each
+    # other, which an mtime stamp cannot do; the mtime re-check inside it is what catches
+    # the audition app, which takes no lock.
+    with synth_common.ratings_transaction(RATINGS, tag="sweep",
+                                          dry_run=not args.apply) as (_hdr, rows):
+        return _sweep(args, rows, audio, dropped_dir)
 
+
+def _sweep(args, rows, audio, dropped_dir):
     # Which wavs are spoken for by some OTHER campaign?
     elsewhere = {os.path.basename(r["link"]) for r in rows
                  if r["campaign"] != args.campaign and r["link"]}
@@ -80,28 +87,19 @@ def main():
         print("\nreport only — pass --apply")
         return 0
     if not move:
-        return 0
+        # Nothing to do, and nothing to write. The sentinel leaves the transaction
+        # without touching the file rather than rewriting it byte-identically.
+        raise synth_common.DryRun
 
+    # The moves happen INSIDE the transaction, so the link rewrite that describes them
+    # either lands with them or the whole thing aborts before either. Previously a
+    # concurrent app edit meant "wavs were moved, re-run to rewrite the links" — a state
+    # where the csv points at files that are no longer there.
     dropped_dir.mkdir(parents=True, exist_ok=True)
     for r, name, src in move:
         shutil.move(str(src), str(dropped_dir / name))
         r["link"] = f"../{args.campaign}/audio/_dropped/{name}"
 
-    if RATINGS.stat().st_mtime_ns != before:
-        print("ABORT: ratings.csv changed under us (live writer) — wavs were moved, "
-              "re-run to rewrite the links")
-        return 1
-    fd, tmp = tempfile.mkstemp(dir=str(RATINGS.parent), suffix=".tmp")
-    with os.fdopen(fd, "w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=hdr)
-        w.writeheader()
-        w.writerows(rows)
-    if RATINGS.stat().st_mtime_ns != before:
-        os.unlink(tmp)
-        print("ABORT: ratings.csv changed during write")
-        return 1
-    shutil.copymode(str(RATINGS), tmp)
-    os.replace(tmp, str(RATINGS))
     print(f"\nquarantined {len(move)} clip(s) -> {dropped_dir}")
     return 0
 

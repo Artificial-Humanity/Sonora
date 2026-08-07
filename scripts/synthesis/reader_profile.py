@@ -46,8 +46,10 @@ import csv
 import json
 import os
 import pathlib
-import shutil
-import tempfile
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import synth_common  # noqa: E402
 
 DATASETS = pathlib.Path("/data/model-training/datasets")
 RATINGS = DATASETS / "sonora-expressive-registers/ratings.csv"
@@ -175,6 +177,66 @@ def learn(rows: list[dict], meta: dict[str, tuple[str, str]]) -> dict:
     return profiles
 
 
+def _title_is_settled(confirmed, attr):
+    """C-M7: is this title's own evidence for `attr` good enough to accept a hint on top?
+
+    The gate was `elif hint and confirmed` — the truthiness of the whole title entry. But a
+    title whose ear pass DISAGREED WITH ITSELF still produces an entry: `learn()` writes
+    `{attr}_CONFLICT` in place of `{attr}`, and `clips_seen` is set either way. So the
+    entry is truthy, the hint fires, and a cross-title guess is written into the one title
+    we have positive evidence is inconsistent — exactly the case the conflict marker exists
+    to stop. It is then recorded in `note` as machine-written and thereafter looks settled.
+
+    Disagreement WITHIN one title is a real inconsistency (same session, same person, same
+    age). Disagreement ACROSS titles is expected, and is what a hint is for. Conflating
+    them is the bug.
+    """
+    if not confirmed:
+        return False                      # no ear pass on this title at all
+    return f"{attr}_CONFLICT" not in confirmed
+
+
+def _fill(rows, hdr, meta, profiles):
+    """Propagate ear-confirmed attributes onto unfilled cells. -> True if anything moved."""
+    filled = collections.Counter()
+    hinted = collections.Counter()
+    for r in rows:
+        reader, title = meta.get(r["id"], ("", ""))
+        entry = profiles.get(reader) or {}
+        confirmed = ((entry.get("titles") or {}).get(title)) or {}
+        wrote = []
+        for a in ATTRS:
+            if a not in hdr or r.get(a):
+                continue
+            if confirmed.get(a):
+                # Same title, ear-confirmed: propagate freely.
+                r[a] = confirmed[a]
+                filled[a] += 1
+                wrote.append(a)
+            elif (entry.get("hint") or {}).get(a) and _title_is_settled(confirmed, a):
+                # Cross-title hint, but only once THIS title has a CLEAN ear pass —
+                # otherwise a name collision or an age shift would propagate unchecked
+                # into a title nobody has heard, or into one that disagreed with itself.
+                r[a] = entry["hint"][a]
+                hinted[a] += 1
+                wrote.append(a)
+        if wrote and "note" in hdr:
+            # Record WHICH cells were machine-written, so a later learn()
+            # pass does not read them back as independent ear agreement.
+            r["note"] = _merge_auto_note(r.get("note") or "", wrote)
+
+    if not (filled or hinted):
+        print("  nothing to fill")
+        return False
+    if filled:
+        print("  filled (same title, ear-confirmed): "
+              + ", ".join(f"{n} {a}" for a, n in filled.items()))
+    if hinted:
+        print("  filled (cross-title hint, title already ear-checked): "
+              + ", ".join(f"{n} {a}" for a, n in hinted.items()))
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--learn", action="store_true")
@@ -219,56 +281,10 @@ def main() -> int:
         print(f"  wrote {PROFILES} ({len(profiles)} readers)")
 
     if args.apply:
-        before = rpath.stat().st_mtime_ns
-        filled = collections.Counter()
-        hinted = collections.Counter()
-        for r in rows:
-            reader, title = meta.get(r["id"], ("", ""))
-            entry = profiles.get(reader) or {}
-            confirmed = ((entry.get("titles") or {}).get(title)) or {}
-            wrote = []
-            for a in ATTRS:
-                if a not in hdr or r.get(a):
-                    continue
-                if confirmed.get(a):
-                    # Same title, ear-confirmed: propagate freely.
-                    r[a] = confirmed[a]
-                    filled[a] += 1
-                    wrote.append(a)
-                elif (entry.get("hint") or {}).get(a) and confirmed:
-                    # Cross-title hint, but only once THIS title has an ear pass —
-                    # otherwise a name collision or an age shift would propagate
-                    # unchecked into a title nobody has heard.
-                    r[a] = entry["hint"][a]
-                    hinted[a] += 1
-                    wrote.append(a)
-            if wrote and "note" in hdr:
-                # Record WHICH cells were machine-written, so a later learn()
-                # pass does not read them back as independent ear agreement.
-                r["note"] = _merge_auto_note(r.get("note") or "", wrote)
-        if not (filled or hinted):
-            print("  nothing to fill")
-            return 0
-        if rpath.stat().st_mtime_ns != before:
-            print("  ABORT: ratings.csv changed under us (live writer)")
-            return 1
-        fd, tmp = tempfile.mkstemp(dir=str(rpath.parent), suffix=".tmp")
-        with os.fdopen(fd, "w", newline="", encoding="utf-8") as fh:
-            w = csv.DictWriter(fh, fieldnames=hdr)
-            w.writeheader()
-            w.writerows(rows)
-        if rpath.stat().st_mtime_ns != before:
-            os.unlink(tmp)
-            print("  ABORT: ratings.csv changed during write")
-            return 1
-        shutil.copymode(str(rpath), tmp)
-        os.replace(tmp, str(rpath))
-        if filled:
-            print("  filled (same title, ear-confirmed): "
-                  + ", ".join(f"{n} {a}" for a, n in filled.items()))
-        if hinted:
-            print("  filled (cross-title hint, title already ear-checked): "
-                  + ", ".join(f"{n} {a}" for a, n in hinted.items()))
+        # C-M6: the shared transaction, not this script's own read/stamp/write flavour.
+        with synth_common.ratings_transaction(rpath, tag="reader") as (_h, live_rows):
+            if not _fill(live_rows, hdr, meta, profiles):
+                raise synth_common.DryRun
     return 0
 
 

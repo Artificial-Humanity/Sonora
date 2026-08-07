@@ -69,8 +69,11 @@ import json
 import os
 import random
 import sys
-import time
+
 from collections import defaultdict
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import synth_common  # noqa: E402
 
 RATINGS = "/data/model-training/datasets/sonora-expressive-registers/ratings.csv"
 DATASETS = "/data/model-training/datasets"
@@ -186,35 +189,37 @@ SCRUTINIZED_ENGINES = {e for e, t in ENGINE_TIER.items() if t == "scrutinized"}
 
 
 def _read():
+    """Read-only view of ratings.csv, for the report paths.
+
+    It used to also return the mtime, for a guard that lived in `_write_guarded`. Both
+    remaining callers discarded it (`rows, _ = _read()`) and the guard is the shared
+    transaction's now, so returning it was one more copy of the rule with no reader.
+    """
     with open(RATINGS, newline="", encoding="utf-8") as f:
-        rows = list(csv.DictReader(f))
-    return rows, os.stat(RATINGS).st_mtime
+        return list(csv.DictReader(f))
 
 
-def _write_guarded(mutate, attempts=5):
-    """Read -> mutate(rows) -> temp+replace, retried if the file moved underneath."""
-    for _ in range(attempts):
-        rows, mtime = _read()
+def _write_guarded(mutate):
+    """Read -> mutate(rows) -> write, through the one shared transaction (C-M6).
+
+    This carried its own flavour: read, stamp the mtime, mutate, re-stamp, temp+replace,
+    and RETRY up to five times with a half-second sleep if the file moved. The retry was
+    the interesting difference and it is gone on purpose — `ratings_transaction` takes an
+    flock, which serialises our scripts against each other outright, so the only writer
+    left to lose a race with is the audition app. Against a human editing in a browser,
+    retrying is a way to eventually win a race we should not be running; aborting and
+    saying so is the behaviour every other writer now has.
+
+    `mutate` returns the number of rows it changed. Zero means leave the file alone —
+    not rewrite it byte-identically, which would take a backup and move the mtime for a
+    run that changed nothing.
+    """
+    changed = 0
+    with synth_common.ratings_transaction(RATINGS, tag="subset") as (_hdr, rows):
         changed = mutate(rows)
         if not changed:
-            return 0
-        if os.stat(RATINGS).st_mtime != mtime:
-            time.sleep(0.5)
-            continue
-        fields = list(rows[0].keys())
-        tmp = RATINGS + ".tmp-subset"
-        with open(tmp, "w", newline="", encoding="utf-8") as f:
-            w = csv.DictWriter(f, fieldnames=fields)
-            w.writeheader()
-            w.writerows(rows)
-        if os.stat(RATINGS).st_mtime != mtime:
-            os.unlink(tmp)
-            time.sleep(0.5)
-            continue
-        os.replace(tmp, RATINGS)
-        return changed
-    print("ratings.csv kept moving — is someone auditioning right now? Aborting.")
-    sys.exit(1)
+            raise synth_common.DryRun
+    return changed
 
 
 def _bank_groups(campaign):
@@ -318,7 +323,7 @@ def cmd_select(args):
     if args.flags and os.path.exists(args.flags):
         flagged = {ln.strip() for ln in open(args.flags) if ln.strip()}
     groups_of = _bank_groups(args.campaign)
-    rows, _ = _read()
+    rows = _read()
     camp = [r for r in rows if r["campaign"] == args.campaign
             and r["status"] == "unaudited"]
     by_group = defaultdict(list)
@@ -418,7 +423,7 @@ def cmd_promote(args):
 
 def cmd_certify(args):
     groups_of = _bank_groups(args.campaign)
-    rows, _ = _read()
+    rows = _read()
     camp = [r for r in rows if r["campaign"] == args.campaign]
     by_group = defaultdict(lambda: {"keep": [], "drop": [], "todo": [], "deferred": [],
                                     "reroll": []})

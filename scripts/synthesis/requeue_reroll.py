@@ -20,12 +20,13 @@ wav is on disk, and `--retire` is the explicit way to close out the other case.
     .venv/bin/python scripts/synthesis/requeue_reroll.py --retire ID --superseded-by ID --apply
 """
 import argparse
-import csv
 import json
 import os
 import pathlib
-import shutil
-import tempfile
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import synth_common  # noqa: E402
 
 RATINGS = pathlib.Path(
     "/data/model-training/datasets/sonora-expressive-registers/ratings.csv")
@@ -38,28 +39,11 @@ RATINGS = pathlib.Path(
 REQUEUE_NOTE = "[re-rendered; judge fresh]"
 
 
-def load_rows():
-    with RATINGS.open(newline="", encoding="utf-8") as fh:
-        rd = csv.DictReader(fh)
-        return rd.fieldnames or [], list(rd)
-
-
-def write_rows(hdr, rows, before):
-    if RATINGS.stat().st_mtime_ns != before:
-        print("ABORT: ratings.csv changed under us (live writer)")
-        return 1
-    fd, tmp = tempfile.mkstemp(dir=str(RATINGS.parent), suffix=".tmp")
-    with os.fdopen(fd, "w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=hdr)
-        w.writeheader()
-        w.writerows(rows)
-    if RATINGS.stat().st_mtime_ns != before:
-        os.unlink(tmp)
-        print("ABORT: ratings.csv changed during write")
-        return 1
-    shutil.copymode(str(RATINGS), tmp)
-    os.replace(tmp, str(RATINGS))
-    return 0
+# C-M6: the read/mtime-stamp/write trio here was one of six private flavours of the same
+# rule. `synth_common.ratings_transaction` is the shared implementation — an flock (which
+# serialises OUR scripts against each other, something an mtime stamp cannot do) plus an
+# mtime re-check inside the lock (the only thing that catches the audition app, which
+# takes no lock). This one's own flavour stamped BEFORE the read rather than at it.
 
 
 def main():
@@ -80,8 +64,12 @@ def main():
     if len(args.retire) != len(args.superseded_by):
         ap.error("--retire and --superseded-by must be given in pairs")
 
-    before = RATINGS.stat().st_mtime_ns
-    hdr, rows = load_rows()
+    with synth_common.ratings_transaction(RATINGS, tag="requeue",
+                                          dry_run=not args.apply) as (_hdr, rows):
+        return _plan_and_apply(args, rows)
+
+
+def _plan_and_apply(args, rows):
     by_id = {r["id"]: r for r in rows}
 
     requeue, blocked = [], []
@@ -137,10 +125,8 @@ def main():
                        f"{repl}. The wav under this id was superseded before the ear "
                        f"heard it, which is why it would not play.")
 
-    rc = write_rows(hdr, rows, before)
-    if rc == 0:
-        print(f"\nwrote {len(requeue)} requeued + {len(retire)} retired -> {RATINGS}")
-    return rc
+    print(f"\nwriting {len(requeue)} requeued + {len(retire)} retired -> {RATINGS}")
+    return 0
 
 
 if __name__ == "__main__":
