@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dataset Auditions | Sonora</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0a0f; --panel:rgba(255,255,255,.04); --panel-brd:rgba(255,255,255,.08);
+    --ink:#e8e8f0; --muted:#8b8ba7; --accent:#22d3ee; --accent2:#c084fc;
+    --keep:#34d399; --drop:#f87171; --retake:#fbbf24; --recat:#a5b4fc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;
+    background-image:radial-gradient(60rem 60rem at 80% -10%,rgba(192,132,252,.10),transparent),
+                     radial-gradient(50rem 50rem at -10% 110%,rgba(34,211,238,.10),transparent);}
+  header{display:flex;align-items:center;justify-content:space-between;gap:1rem;
+    padding:1rem 1.5rem;border-bottom:1px solid var(--panel-brd);position:sticky;top:0;
+    backdrop-filter:blur(12px);background:rgba(10,10,15,.7);z-index:10;flex-wrap:wrap}
+  h1{font-family:Outfit,sans-serif;font-size:1.15rem;font-weight:700;margin:0;letter-spacing:.2px}
+  h1 span{color:var(--accent)}
+  .filters{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center}
+  .chip{border:1px solid var(--panel-brd);background:var(--panel);color:var(--muted);
+    padding:.35rem .7rem;border-radius:999px;font-size:.8rem;cursor:pointer;transition:.15s}
+  .chip:hover{color:var(--ink)}
+  .chip.active{background:var(--accent);color:#04222b;border-color:transparent;font-weight:600}
+  select{background:#12121a;color:var(--ink);border:1px solid var(--panel-brd);
+    border-radius:8px;padding:.35rem .5rem;font-family:inherit;font-size:.8rem}
+  .stat{color:var(--muted);font-size:.8rem}
+  main{max-width:820px;margin:1.5rem auto;padding:0 1rem;display:flex;flex-direction:column;gap:1rem}
+  .card{background:var(--panel);border:1px solid var(--panel-brd);border-radius:16px;
+    padding:1.1rem 1.2rem;transition:.2s}
+  .card.done{opacity:.62}
+  .card .meta{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap}
+  .clip-id{font-family:Outfit,sans-serif;font-weight:600;font-size:1rem}
+  .tag{font-size:.72rem;color:var(--muted);border:1px solid var(--panel-brd);
+    padding:.1rem .5rem;border-radius:6px}
+  .tag.reg{color:var(--accent2);border-color:rgba(192,132,252,.35)}
+  .tag.gender{text-transform:uppercase;letter-spacing:.3px;font-weight:600}
+  .tag.gender[data-g="Male"]{color:#7dd3fc;border-color:rgba(125,211,252,.4)}
+  .tag.gender[data-g="Female"]{color:#f9a8d4;border-color:rgba(249,168,212,.4)}
+  .tag.gender[data-g="Undefined"]{color:var(--muted)}
+  select.tag.gender{font-family:inherit;font-size:.72rem;font-weight:600;text-transform:uppercase;
+    letter-spacing:.3px;cursor:pointer;padding:.1rem .3rem;background:#12121a}
+  select.tag.gender:hover{border-color:var(--muted)}
+  select.tag.sel{font-family:inherit;font-size:.72rem;cursor:pointer;padding:.1rem .3rem;
+    background:#12121a;max-width:12rem}
+  select.tag.sel:hover{border-color:var(--muted)}
+  select.tag.reg{color:var(--accent2);border-color:rgba(192,132,252,.35)}
+  select.tag.acc{color:#fbbf24;border-color:rgba(251,191,36,.35)}
+  select.tag.age{color:#7dd3fc;border-color:rgba(125,211,252,.35)}
+  select.tag.del{color:#34d399;border-color:rgba(52,211,153,.35)}
+  .direction details{margin:.15rem 0}
+  .direction summary{cursor:pointer;list-style:none;opacity:.9}
+  .direction summary::-webkit-details-marker{display:none}
+  .direction summary::before{content:'▸ ';opacity:.5}
+  .direction details[open] summary::before{content:'▾ '}
+  .direction .full{display:block;margin:.25rem 0 .1rem;white-space:pre-wrap}
+  .direction .passage{border-left:2px solid var(--accent2);padding-left:.55rem;opacity:.95}
+  select.tag.gender option{background:#12121a;color:var(--ink);text-transform:none;font-weight:400}
+  .badge{font-size:.68rem;font-weight:600;padding:.12rem .5rem;border-radius:6px;margin-left:auto}
+  .badge.rerate{background:rgba(251,191,36,.15);color:var(--retake)}
+  .badge.set{background:rgba(52,211,153,.15);color:var(--keep)}
+  audio{width:100%;margin:.8rem 0 .6rem;height:38px}
+  .direction{margin:.55rem 0 0;padding:.5rem .65rem;border-left:3px solid var(--accent);
+    background:rgba(127,127,127,.07);border-radius:0 6px 6px 0;font-size:.82rem;
+    line-height:1.45;color:inherit;opacity:.85}
+  .direction b{opacity:.6;font-weight:600;margin-right:.35rem;text-transform:uppercase;
+    font-size:.68rem;letter-spacing:.04em}
+  /* Relay state: the manifest holds the director's FULL output, but each renderer
+     consumes only a subset. Un-relayed direction is struck through so it is never
+     scored against the model. */
+  .direction .dead{text-decoration:line-through;opacity:.45}
+  .direction .flag{font-size:.62rem;letter-spacing:.04em;text-transform:uppercase;
+    border:1px solid currentColor;border-radius:999px;padding:.02rem .38rem;
+    margin-left:.4rem;opacity:.75;white-space:nowrap}
+  .direction .flag.no{color:#e06c6c}
+  .direction .flag.casting{color:#d9a441}
+  .direction .ref{opacity:.7;font-style:italic}
+  .actions{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}
+  .btn{border:1px solid var(--panel-brd);background:#12121a;color:var(--ink);
+    padding:.45rem .8rem;border-radius:9px;font-family:inherit;font-size:.85rem;
+    font-weight:600;cursor:pointer;transition:.15s}
+  .btn:hover{border-color:var(--accent)}
+  .btn.keep{color:var(--keep)} .btn.drop{color:var(--drop)}
+  .btn.retake{color:var(--retake)}
+  /* persistent "this is what you chose" state */
+  .btn.chosen{border-color:transparent;box-shadow:0 0 0 2px rgba(255,255,255,.06)}
+  .btn.keep.chosen{background:var(--keep);color:#043024}
+  .btn.drop.chosen{background:var(--drop);color:#3a0d0d}
+  .btn.retake.chosen{background:var(--retake);color:#3a2a00}
+  .stars{display:none;gap:.25rem;align-items:center}
+  .stars.show{display:inline-flex}
+  .star{width:30px;height:30px;border-radius:7px;border:1px solid var(--panel-brd);
+    background:#12121a;color:var(--muted);cursor:pointer;font-weight:700;font-size:.85rem;
+    display:inline-flex;align-items:center;justify-content:center;line-height:1;padding:0}
+  .star:hover,.star.on{background:var(--keep);color:#043024;border-color:transparent}
+  input[type=text]{background:#12121a;color:var(--ink);border:1px solid var(--panel-brd);
+    border-radius:8px;padding:.45rem .6rem;font-family:inherit;font-size:.85rem}
+  .note{width:100%;margin-top:.6rem}
+  .hint{color:var(--muted);font-size:.72rem;margin-top:.5rem}
+  /* Reference bar — sticks directly under the header so it survives scrolling. */
+  .anchors{position:sticky;top:var(--hdr-h,4.2rem);z-index:9;display:flex;align-items:center;
+    gap:.5rem;flex-wrap:wrap;padding:.45rem 1.5rem;border-bottom:1px solid var(--panel-brd);
+    backdrop-filter:blur(12px);background:rgba(10,10,15,.82);font-size:.75rem}
+  .anchors .alabel{color:var(--accent);font-weight:700;letter-spacing:.3px;cursor:help}
+  .anchors .ahint{color:var(--muted);font-size:.68rem;margin-left:auto}
+  .anchor{display:inline-flex;align-items:center;gap:.3rem;border:1px solid var(--panel-brd);
+    border-radius:.5rem;padding:.15rem .4rem;background:var(--panel)}
+  .anchor.unset{opacity:.4}
+  .anchor .an{font-weight:700;color:var(--keep)}
+  .anchor .ap{cursor:pointer;border:0;background:transparent;color:var(--ink);font-size:.8rem;
+    padding:0 .15rem}
+  .anchor .ap:hover{color:var(--accent)}
+  .anchor .ax{cursor:pointer;border:0;background:transparent;color:var(--muted);font-size:.7rem}
+  .anchor .ax:hover{color:var(--drop)}
+  .anchor .aeng{color:var(--muted)}
+  /* An anchor whose clip has since been re-rated. Shown, never hidden: a silently
+     stale reference is worse than a visibly stale one. */
+  .anchor.drift{border-color:var(--retake)}
+  .anchor.drift .an{color:var(--retake)}
+  .amiss{color:var(--drop);font-size:.7rem}
+  .btn.anchorset{color:var(--muted);padding:.35rem .5rem}
+  .btn.anchorset:hover{color:var(--accent)}
+  .empty{text-align:center;color:var(--muted);padding:4rem 1rem;font-size:.95rem}
+  .pager{display:flex;align-items:center;justify-content:center;gap:.8rem;
+    padding:.4rem 0 .2rem}
+  .pager button{border:1px solid var(--panel-brd);background:#12121a;color:var(--ink);
+    padding:.4rem .9rem;border-radius:9px;font-family:inherit;font-size:.85rem;
+    font-weight:600;cursor:pointer;transition:.15s}
+  .pager button:hover:not(:disabled){border-color:var(--accent)}
+  .pager button:disabled{opacity:.35;cursor:default}
+  .pager .pg{color:var(--muted);font-size:.82rem;min-width:8rem;text-align:center}
+  kbd{background:#1c1c28;border:1px solid var(--panel-brd);border-radius:5px;
+    padding:.05rem .35rem;font-size:.7rem;font-family:ui-monospace,monospace}
+  .toast{position:fixed;bottom:1.2rem;left:50%;transform:translateX(-50%);
+    background:#12121a;border:1px solid var(--panel-brd);border-radius:10px;
+    padding:.6rem 1rem;font-size:.85rem;opacity:0;transition:.25s;pointer-events:none}
+  .toast.show{opacity:1}
+  /* --- Books / conversion queue view --- */
+  .hidden{display:none!important}
+  .chip.vchip{border-color:var(--panel-brd)}
+  .chip.vchip.active{background:var(--accent2);color:#1a1030;border-color:transparent;font-weight:600}
+  #books{max-width:820px;margin:1.5rem auto;padding:0 1rem;display:flex;flex-direction:column;gap:1rem}
+  .addbook{display:flex;gap:.5rem;flex-wrap:wrap;background:var(--panel);
+    border:1px solid var(--panel-brd);border-radius:16px;padding:1rem 1.1rem}
+  .addbook input{flex:1;min-width:11rem}
+  #bookUrl{flex:2 1 20rem}
+  .bookcard{background:var(--panel);border:1px solid var(--panel-brd);border-radius:14px;
+    padding:.85rem 1.1rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+  .bookcard.done{opacity:.6}
+  .bookcard .url{font-family:Outfit,sans-serif;font-weight:600;font-size:.9rem;
+    flex:1;min-width:14rem;word-break:break-all}
+  .bookcard .url a{color:var(--ink);text-decoration:none}
+  .bookcard .url a:hover{color:var(--accent)}
+  .bstatus{font-size:.66rem;font-weight:700;padding:.15rem .55rem;border-radius:6px;
+    text-transform:uppercase;letter-spacing:.3px;white-space:nowrap}
+  .bstatus.pending{background:rgba(34,211,238,.15);color:var(--accent)}
+  .bstatus.converted{background:rgba(52,211,153,.15);color:var(--keep)}
+  .bnote{font-size:.74rem;color:var(--muted);width:100%}
+  .btn.del{color:var(--drop);padding:.35rem .65rem}
+</style>
+</head>
+<body>
+<header>
+  <h1>Dataset <span>Auditions</span></h1>
+  <div class="filters">
+    <span class="chip vchip active" data-v="audit">Audit</span>
+    <span class="chip vchip" data-v="books">Books</span>
+  </div>
+  <div class="filters" id="clipFilters">
+    <span class="chip active" data-f="todo">To rate</span>
+    <span class="chip" data-f="rerate">Rated</span>
+    <span class="chip" data-f="all">All</span>
+    <select id="reg"><option value="">All registers</option></select>
+    <select id="camp"><option value="">All campaigns</option></select>
+  </div>
+  <span class="stat" id="stat">—</span>
+</header>
+
+<!-- Reference bar. Sticky on purpose: an anchor you have to scroll back to is an anchor
+     you stop using, and the whole point is that it is available at the moment of judging. -->
+<section id="anchorBar" class="anchors hidden">
+  <span class="alabel" title="What each number sounds like. Standard MOS practice; added 2026-08-08 because 66% of scored keeps are 5s and librivox REAL audio also means 5.00, so the top of the scale had stopped separating anything.">★ reference</span>
+  <span id="anchorSlots"></span>
+  <span class="ahint">set one from any clip with its <b>⚓</b></span>
+</section>
+
+<main id="list"></main>
+
+<section id="books" class="hidden">
+  <div class="addbook">
+    <input type="text" id="bookUrl" placeholder="Book URL — Standard Ebooks or Project Gutenberg">
+    <input type="text" id="bookNote" placeholder="note / priority (optional)">
+    <button class="btn" id="bookAdd">Add to queue</button>
+  </div>
+  <div class="hint">This is <kbd>book_queue.txt</kbd>. Conversion runs on the host GPU worker
+    (book_ingest → synth → register); a line it has processed is marked <kbd>*</kbd> and shows
+    <b>converted</b>. You can delete a book while it's still <b>pending</b>.</div>
+  <div id="bookList"></div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const AUDIO = p => `/audio?path=${encodeURIComponent(p)}`;
+const PAGE_SIZE = 20;
+let state = {view:'audit', filter:'todo', register:'', campaign:'', page:1};
+let LEXICON = [], ACCENTS = [], AGES = [], DELIVERIES = [];
+let pageInfo = {page:1, pages:1, matched:0, total:0};
+
+function toast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._h); t._h=setTimeout(()=>t.classList.remove('show'),1400);
+}
+
+// --- Anchor exemplars ---------------------------------------------------------------
+// One <audio> for the whole bar, not one per anchor: anchors are for A/B against the clip
+// you are judging, and two references playing at once is not a comparison.
+let ANCHORS = {}, ANCHOR_SCORES = ['1','2','3','4','5'];
+const anchorAudio = new Audio();
+
+function playAnchor(score){
+  const a = ANCHORS[score]; if(!a) return;
+  document.querySelectorAll('audio').forEach(x=>{ if(x!==anchorAudio) x.pause(); });
+  if(!anchorAudio.paused && anchorAudio.dataset.score===score){ anchorAudio.pause(); return; }
+  anchorAudio.src = AUDIO(a.link); anchorAudio.dataset.score = score;
+  anchorAudio.play().catch(()=>toast('anchor '+score+' would not play'));
+}
+
+async function loadAnchors(){
+  let d; try{ d = await (await fetch('/api/anchors')).json(); }catch{ return; }
+  ANCHORS = d.anchors || {};
+  ANCHOR_SCORES = d.scores || ANCHOR_SCORES;
+  const bar = document.getElementById('anchorBar');
+  const slots = document.getElementById('anchorSlots');
+  // Descending, because the question an auditor actually has is "is this a 5?" and the
+  // 5/4 boundary is the one that collapsed.
+  slots.innerHTML = ANCHOR_SCORES.slice().reverse().map(s=>{
+    const a = ANCHORS[s];
+    if(!a) return `<span class="anchor unset" title="no reference set for ${s} — set one from a clip's ⚓"><span class="an">${s}</span><span class="aeng">unset</span></span>`;
+    const why = a.why ? ` — ${a.why}` : '';
+    const drift = a.drifted ? ` [now rated ${a.current_score||'—'}]` : '';
+    return `<span class="anchor${a.drifted?' drift':''}" title="${esc(a.id)}${esc(why)}${esc(drift)}">
+      <span class="an">${s}</span>
+      <button class="ap" data-play="${s}" title="play reference ${s}">▶</button>
+      <span class="aeng">${esc(a.engine||'')}</span>
+      <button class="ax" data-clear="${s}" title="clear this reference">×</button>
+    </span>`;
+  }).join('');
+  (d.missing||[]).forEach(m=>{
+    slots.insertAdjacentHTML('beforeend',
+      `<span class="amiss" title="anchor ${m.score} points at ${esc(m.id)}, which is not in ratings.csv">⚠ ${m.score} broken</span>`);
+  });
+  slots.querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>playAnchor(b.dataset.play));
+  slots.querySelectorAll('[data-clear]').forEach(b=>b.onclick=async()=>{
+    await fetch('/api/anchor',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({score:b.dataset.clear, id:null})});
+    toast('reference '+b.dataset.clear+' cleared'); loadAnchors();
+  });
+  bar.classList.toggle('hidden', state.view!=='audit');
+}
+
+async function setAnchor(clip){
+  const cur = (clip.status==='keep' && /^[1-5]$/.test(clip.score)) ? clip.score : '';
+  const score = prompt(
+    'Make this clip the REFERENCE for which score?\n\n' +
+    clip.id + (cur?`  (currently rated ${cur})`:'  (not yet rated)') +
+    '\n\nEnter 1-5:', cur);
+  if(!score) return;
+  if(!/^[1-5]$/.test(score.trim())) return toast('score must be 1-5');
+  const why = prompt('One line: what makes it that number?\n(Optional — but this is what the next session reads.)','') || '';
+  const r = await fetch('/api/anchor',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({score:score.trim(), id:clip.id, why})});
+  if(!r.ok) return toast('could not set reference');
+  toast('reference '+score.trim()+' set'); loadAnchors();
+}
+
+async function load(){
+  const q = new URLSearchParams({filter:state.filter, page:state.page, page_size:PAGE_SIZE});
+  if(state.register) q.set('register', state.register);
+  if(state.campaign) q.set('campaign', state.campaign);
+  const data = await (await fetch('/api/clips?'+q)).json();
+  const regSel = document.getElementById('reg');
+  if(regSel.options.length<=1){
+    data.registers.forEach(r=>{const o=document.createElement('option');o.value=o.textContent=r;regSel.appendChild(o);});
+    if(state.register) regSel.value=state.register;
+  }
+  const campSel = document.getElementById('camp');
+  if(data.campaigns && campSel.options.length<=1){
+    data.campaigns.forEach(c=>{const o=document.createElement('option');o.value=o.textContent=c;campSel.appendChild(o);});
+    if(state.campaign) campSel.value=state.campaign;
+  }
+  if(data.lexicon && data.lexicon.length) LEXICON = data.lexicon;
+  if(data.accents && data.accents.length) ACCENTS = data.accents;
+  if(data.ages && data.ages.length) AGES = data.ages;
+  if(data.deliveries && data.deliveries.length) DELIVERIES = data.deliveries;
+  pageInfo = {page:data.page, pages:data.pages, matched:data.matched, total:data.total};
+  state.page = data.page;  // server clamps to valid range
+  render(data.clips);
+}
+
+function gotoPage(p){
+  const np = Math.max(1, Math.min(p, pageInfo.pages));
+  if(np===state.page) return;
+  state.page = np; cards=[]; load();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function scoreLabel(s,status){
+  if(s==='')return status||'unrated';
+  if(s==='x')return 'Dropped';
+  if(s==='0')return 'Retake queued';
+  if(s.startsWith('x'))return 'Recat ★'+s.slice(1);
+  return 'Keep ★'+s;
+}
+
+// Derive the (intended) gender from the clip id's voice-label suffix (…intimateM_s1234).
+// NB: this is the PROMPTED gender; the engine sometimes rendered the other — that mismatch
+// is exactly what the tag helps the owner catch.
+function genderOf(id){
+  const m = String(id).match(/_([A-Za-z0-9]+)_s\d+$/);
+  if(m){ const last=m[1].slice(-1); if(last==='M') return 'Male'; if(last==='F') return 'Female'; }
+  return 'Undefined';
+}
+
+// Render one direction field, marked with whether the engine actually received it.
+// The manifest stores the director's full output; each renderer reads only a subset
+// (see RELAY in main.py). Un-relayed text is struck through and flagged so it is never
+// scored as a model failure — the model never saw it.
+function dirField(d,key){
+  const val = d[key];
+  if(!val) return '';
+  const state = d.relay ? d.relay[key] : null;
+  const dead  = state==='no';
+  const flag  = dead ? '<span class="flag no">not relayed</span>'
+              : state==='casting' ? '<span class="flag casting">casting only — gender/age picks the reference</span>'
+              : '';
+  const body = `<span class="${dead?'dead':''}">${esc(val)}</span>${flag}`;
+  // Qwen's 12-key blocks run 330-470 chars and swamp the card; collapse anything
+  // long behind an expander but keep a preview so the card still scans.
+  if(String(val).length <= 110) return `<div><b>${key.replace('_',' ')}</b>${body}</div>`;
+  const preview = esc(String(val).slice(0,100)).replace(/\s+\S*$/,'') + '…';
+  return `<details><summary><b>${key.replace('_',' ')}</b><span class="${dead?'dead':''}">${preview}</span>${flag}</summary>`
+       + `<span class="full ${dead?'dead':''}">${esc(val)}</span></details>`;
+}
+
+// Map a clip's stored score/status back to the action+score the owner chose,
+// so the card can light up its controls on load (and after each re-rate).
+function currentChoice(c){
+  const s=c.score, st=c.status;
+  if(st==='keep' && /^[1-5]$/.test(s)) return {action:'keep', score:+s};
+  if(st==='dropped' || s==='x') return {action:'drop'};
+  if(st==='reroll' || s==='0') return {action:'retake'};
+  if(st==='relabeled' || /^x[1-5]$/.test(s)) return {action:'recategorize', score:+(s.slice(1)||0)};
+  return null;
+}
+
+function render(clips){
+  const list=document.getElementById('list');
+  const {page,pages,matched,total}=pageInfo;
+  const from = matched ? (page-1)*PAGE_SIZE+1 : 0;
+  const to = (page-1)*PAGE_SIZE+clips.length;
+  document.getElementById('stat').textContent=`${from}–${to} of ${matched} · ${total} in set`;
+  if(!clips.length){list.innerHTML='<div class="empty">Nothing to rate here. 🎧 Switch filter above.</div>';return;}
+  list.innerHTML='';
+  if(pages>1) list.appendChild(pagerEl());
+  clips.forEach((c,i)=>list.appendChild(cardEl(c,i)));
+  if(pages>1) list.appendChild(pagerEl());
+}
+
+function pagerEl(){
+  const {page,pages}=pageInfo;
+  const el=document.createElement('div'); el.className='pager';
+  el.innerHTML=`
+    <button data-pg="prev" ${page<=1?'disabled':''}>‹ Prev</button>
+    <span class="pg">Page ${page} of ${pages}</span>
+    <button data-pg="next" ${page>=pages?'disabled':''}>Next ›</button>`;
+  el.querySelector('[data-pg="prev"]').onclick=()=>gotoPage(state.page-1);
+  el.querySelector('[data-pg="next"]').onclick=()=>gotoPage(state.page+1);
+  return el;
+}
+
+let cards=[]; let focusIdx=0;
+function focusCard(i,scroll=false){
+  cards.forEach(c=>c.el.style.outline='none');
+  focusIdx=Math.max(0,Math.min(i,cards.length-1));
+  const c=cards[focusIdx]; if(!c)return;
+  c.el.style.outline='2px solid var(--accent)'; c.el.style.outlineOffset='2px';
+  if(scroll) c.el.scrollIntoView({block:'center',behavior:'smooth'});   // only on explicit keyboard nav
+}
+
+function cardEl(c,i){
+  const el=document.createElement('div'); el.className='card';
+  const set = c._rated;
+  const g = c.gender || genderOf(c.id);
+  el.innerHTML=`
+    <div class="meta">
+      <span class="clip-id">${c.id}</span>
+      <span class="tag">${c.engine}</span>
+      <span class="tag">${c.campaign}</span>
+      <select class="tag reg sel" data-role="register" title="register — controlled lexicon; change to correct a mislabel">${(LEXICON.length?LEXICON:[c.register]).map(o=>`<option value="${esc(o)}"${o===c.register?' selected':''}>${esc(o)}</option>`).join('')}${LEXICON.includes(c.register)?'':`<option value="${esc(c.register)}" selected>${esc(c.register)} (off-lexicon)</option>`}</select>
+      <select class="tag gender" data-g="${g}" title="speaker gender — change to correct a mislabel">${['Male','Female','Undefined'].map(o=>`<option value="${o}"${o===g?' selected':''}>${o}</option>`).join('')}</select>
+      <select class="tag age sel" data-role="age" title="age band you actually HEAR — blank = not assessed, Unclear = assessed but indeterminate">${AGES.map(o=>`<option value="${esc(o)}"${o===(c.age||'')?' selected':''}>${o===''?'age…':esc(o)}</option>`).join('')}${(c.age&&!AGES.includes(c.age))?`<option value="${esc(c.age)}" selected>${esc(c.age)} (unknown)</option>`:''}</select>
+      <select class="tag acc sel" data-role="accent" title="accent you actually HEAR — blank = not assessed, Unclear = assessed but indeterminate">${ACCENTS.map(o=>`<option value="${esc(o)}"${o===(c.accent||'')?' selected':''}>${o===''?'accent…':esc(o)}</option>`).join('')}${(c.accent&&!ACCENTS.includes(c.accent))?`<option value="${esc(c.accent)}" selected>${esc(c.accent)} (unknown)</option>`:''}</select>
+      <select class="tag del sel" data-role="delivery" title="delivery style — orthogonal to register; Dialogue = sounds like an actor speaking a character's line">${DELIVERIES.map(o=>`<option value="${esc(o)}"${o===(c.delivery||'')?' selected':''}>${o===''?'delivery…':esc(o)}</option>`).join('')}${(c.delivery&&!DELIVERIES.includes(c.delivery))?`<option value="${esc(c.delivery)}" selected>${esc(c.delivery)} (unknown)</option>`:''}</select>
+      ${set?`<span class="badge set">Currently: ${scoreLabel(c.score,c.status)}</span>`:''}
+    </div>
+    ${c.direction?`<div class="direction">
+      ${dirField(c.direction,'design')}
+      ${dirField(c.direction,'instruct')}
+      ${dirField(c.direction,'render_text')}
+      ${c.direction.text?`<details><summary><b>passage</b>${esc(String(c.direction.text).slice(0,100))}${String(c.direction.text).length>100?'…':''}</summary><span class="full passage">${esc(c.direction.text)}</span></details>`:''}
+      ${c.direction.ref?`<div><b>ref</b> <span class="ref">${esc(c.direction.ref.id||'?')} · ${esc(c.direction.ref.gender||'?')} · ${esc(c.direction.ref.register||'?')}${c.direction.ref.ref_f0_pct!=null?` · F0 pct ${c.direction.ref.ref_f0_pct}`:''}</span></div>`:''}
+      ${c.direction.intended?`<div><b>intended</b> V ${c.direction.intended.V} · A ${c.direction.intended.A} · T ${c.direction.intended.T}</div>`:''}
+    </div>`:''}
+    <audio controls preload="none" src="${AUDIO(c.link)}"></audio>
+    <div class="actions">
+      <button class="btn keep" data-act="keep">Keep ▸</button>
+      <span class="stars" data-for="keep">${[1,2,3,4,5].map(n=>`<span class="star" data-n="${n}">${n}</span>`).join('')}</span>
+      <button class="btn drop" data-act="drop">Drop</button>
+      <button class="btn retake" data-act="retake">Retake ↻</button>
+      <button class="btn anchorset" data-act="anchor" title="make this clip the REFERENCE for a score — what that number sounds like">⚓</button>
+    </div>
+    <input type="text" class="note" placeholder="comment — kept even on drops (&quot;drop because…&quot;). Category fixes go in the dropdowns above, not here.">
+    <div class="hint"><kbd>1</kbd>–<kbd>5</kbd> keep — <b>vocals &amp; prosody only</b>; fix register/gender/accent above · <kbd>d</kbd> drop · <kbd>r</kbd> retake · <kbd>space</kbd> play · <kbd>j</kbd>/<kbd>k</kbd> next/prev · <kbd>[</kbd>/<kbd>]</kbd> page</div>`;
+
+  const rec={el,c,idx:i};
+  const keepStars=el.querySelector('.stars[data-for="keep"]');
+  const note=el.querySelector('.note'); if(c.note) note.value=c.note;
+
+  el.querySelector('[data-act="keep"]').onclick=()=>keepStars.classList.toggle('show');
+  el.querySelector('[data-act="drop"]').onclick=()=>submit(rec,{action:'drop'});
+  el.querySelector('[data-act="retake"]').onclick=()=>submit(rec,{action:'retake'});
+  el.querySelector('[data-act="anchor"]').onclick=()=>setAnchor(c);
+  keepStars.querySelectorAll('.star').forEach(s=>s.onclick=()=>submit(rec,{action:'keep',score:+s.dataset.n}));
+  // Persist the chosen state on the controls: light up the picked button and,
+  // for keep/recat, the picked number (reveals the star row so it's visible).
+  rec.reflect=(choice)=>{
+    el.querySelectorAll('.btn').forEach(b=>b.classList.remove('chosen'));
+    el.querySelectorAll('.star').forEach(s=>s.classList.remove('on'));
+    if(!choice) return;
+    const btnFor={keep:'keep',drop:'drop',retake:'retake'};
+    const btn=el.querySelector(`[data-act="${btnFor[choice.action]}"]`);
+    if(btn) btn.classList.add('chosen');
+    if(choice.action==='keep'){
+      keepStars.classList.add('show');
+      const st=keepStars.querySelector(`.star[data-n="${choice.score}"]`); if(st) st.classList.add('on');
+    }else{
+      // 'recategorize' is a LEGACY status (retired 2026-07-26). Rows still carrying it
+      // render their score via the badge; there is no button to light up any more.
+      keepStars.classList.remove('show');
+    }
+  };
+
+  // Per-attribute corrections. These replaced the Recategorize action (2026-07-26):
+  // one control per attribute, each enforcing its own vocabulary server-side.
+  el.querySelectorAll('select.sel').forEach(sel=>{
+    sel.onchange=async()=>{
+      const role=sel.dataset.role;
+      const r=await fetch('/api/'+role,{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id:c.id,[role]:sel.value})});
+      if(r.ok){ c[role]=sel.value; toast(`${role}: ${sel.value||'(cleared)'}`); }
+      else { toast(`${role} rejected`); }
+    };
+  });
+
+  rec.note=note; rec.play=()=>{const a=el.querySelector('audio');a.paused?a.play():a.pause();};
+  // Save the comment on its own (blur / Ctrl-Enter) — notes typed after the
+  // score click used to be silently dropped (owner data-loss 2026-07-22).
+  let lastSavedNote=note.value;
+  const saveNote=async()=>{
+    if(note.value===lastSavedNote) return;
+    const res=await fetch('/api/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:c.id,note:note.value})});
+    if(!res.ok){toast('Note save failed: '+res.status);return;}
+    lastSavedNote=note.value; toast(`${c.id}: note saved`);
+  };
+  note.addEventListener('blur',saveNote);
+  note.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();saveNote();}});
+  el.querySelector('audio').addEventListener('play',()=>focusCard(i));   // highlight the card on play
+  const genderSel=el.querySelector('select.gender');
+  genderSel.onchange=async()=>{
+    const val=genderSel.value;
+    const res=await fetch('/api/gender',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:c.id,gender:val})});
+    if(!res.ok){toast('Gender save failed: '+res.status);return;}
+    genderSel.dataset.g=val; c.gender=val; toast(`${c.id}: gender → ${val}`);
+  };
+  if(set) el.classList.add('done');       // already-rated cards read as done
+  rec.reflect(currentChoice(c));           // light up the prior choice on load
+  cards.push(rec); return el;
+}
+
+async function submit(rec,payload){
+  const body={id:rec.c.id,note:rec.note.value,...payload};
+  const res=await fetch('/api/rate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!res.ok){toast('Save failed: '+res.status);return;}
+  const {row}=await res.json();
+  toast(`${rec.c.id}: ${scoreLabel(row.score,row.status)}`+(payload.action==='retake'?' · re-roll queued':''));
+  // update in-memory row so the badge + control highlight reflect the new choice
+  Object.assign(rec.c,{score:row.score,status:row.status,register:row.register,_rated:true});
+  let badge=rec.el.querySelector('.badge.set');
+  if(!badge){badge=document.createElement('span');badge.className='badge set';rec.el.querySelector('.meta').appendChild(badge);}
+  badge.textContent='Currently: '+scoreLabel(row.score,row.status);
+  rec.el.classList.add('done');
+  rec.reflect(currentChoice(rec.c));
+  // no auto-advance — the view stays put after a rating (owner preference)
+}
+
+// filters — any filter/register change resets to page 1 (clip filters only)
+document.querySelectorAll('#clipFilters .chip').forEach(ch=>ch.onclick=()=>{
+  document.querySelectorAll('#clipFilters .chip').forEach(c=>c.classList.remove('active'));
+  ch.classList.add('active'); state.filter=ch.dataset.f; state.page=1; cards=[]; load();
+});
+
+// --- Books / conversion queue view ------------------------------------------
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function switchView(v){
+  state.view=v;
+  document.querySelectorAll('.vchip').forEach(c=>c.classList.toggle('active',c.dataset.v===v));
+  const books = v==='books';
+  document.getElementById('books').classList.toggle('hidden',!books);
+  document.getElementById('list').classList.toggle('hidden',books);
+  document.getElementById('clipFilters').classList.toggle('hidden',books);
+  document.getElementById('anchorBar').classList.toggle('hidden',books);
+  if(books) anchorAudio.pause();
+  books ? loadBooks() : load();
+}
+
+async function loadBooks(){
+  let data;
+  try{ data = await (await fetch('/api/books')).json(); }
+  catch{ document.getElementById('bookList').innerHTML='<div class="empty">Could not load the queue.</div>'; return; }
+  document.getElementById('stat').textContent=`${data.pending} pending · ${data.converted} converted`;
+  const bl=document.getElementById('bookList');
+  if(!data.books.length){ bl.innerHTML='<div class="empty">Queue is empty — add a book URL above. 📚</div>'; return; }
+  bl.innerHTML='';
+  data.books.forEach(b=>{
+    const el=document.createElement('div'); el.className='bookcard'+(b.status==='converted'?' done':'');
+    const label = b.status==='converted' ? ('✓ '+(b.verdict||'processed')) : 'pending';
+    el.innerHTML=`
+      <span class="bstatus ${b.status}">${esc(label)}</span>
+      <span class="url"><a href="${esc(b.url)}" target="_blank" rel="noopener">${esc(b.url)}</a></span>
+      ${b.status==='pending'?'<button class="btn del">Delete</button>':''}
+      ${b.note?`<span class="bnote">${esc(b.note)}</span>`:''}`;
+    const del=el.querySelector('.del');
+    if(del) del.onclick=()=>delBook(b.url);
+    bl.appendChild(el);
+  });
+}
+
+async function addBook(){
+  const urlEl=document.getElementById('bookUrl'), noteEl=document.getElementById('bookNote');
+  const url=urlEl.value.trim(); if(!url){toast('Enter a book URL');return;}
+  const res=await fetch('/api/books',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({url,note:noteEl.value.trim()})});
+  if(!res.ok){const e=await res.json().catch(()=>({}));toast('Add failed: '+(e.detail||res.status));return;}
+  urlEl.value=''; noteEl.value=''; toast('Added to queue'); loadBooks();
+}
+
+async function delBook(url){
+  if(!confirm('Remove this book from the queue?')) return;
+  const res=await fetch('/api/books?url='+encodeURIComponent(url),{method:'DELETE'});
+  if(!res.ok){const e=await res.json().catch(()=>({}));toast('Delete failed: '+(e.detail||res.status));return;}
+  toast('Removed from queue'); loadBooks();
+}
+
+document.querySelectorAll('.vchip').forEach(ch=>ch.onclick=()=>switchView(ch.dataset.v));
+document.getElementById('bookAdd').onclick=addBook;
+['bookUrl','bookNote'].forEach(id=>document.getElementById(id)
+  .addEventListener('keydown',e=>{if(e.key==='Enter')addBook();}));
+document.getElementById('reg').onchange=e=>{state.register=e.target.value;state.page=1;cards=[];load();};
+document.getElementById('camp').onchange=e=>{state.campaign=e.target.value;state.page=1;cards=[];load();};
+
+// keyboard
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;
+  const rec=cards[focusIdx]; if(!rec)return;
+  if(e.key>='1'&&e.key<='5'){submit(rec,{action:'keep',score:+e.key});e.preventDefault();}
+  else if(e.key==='d')submit(rec,{action:'drop'});
+  else if(e.key==='r')submit(rec,{action:'retake'});
+  else if(e.key===' '){rec.play();e.preventDefault();}
+  else if(e.key==='j'){ if(focusIdx<cards.length-1) focusCard(focusIdx+1,true); else gotoPage(state.page+1); }
+  else if(e.key==='k'){ if(focusIdx>0) focusCard(focusIdx-1,true); else gotoPage(state.page-1); }
+  else if(e.key===']'||e.key==='n')gotoPage(state.page+1);
+  else if(e.key==='['||e.key==='p')gotoPage(state.page-1);
+  // Shift+1..5 plays the REFERENCE for that number. Deliberately not a bare key: the
+  // digits already rate, and a mis-key that silently re-rates a clip is the worst
+  // possible collision on this surface.
+  else if(e.shiftKey&&['!','@','#','$','%'].includes(e.key)){
+    playAnchor(String(['!','@','#','$','%'].indexOf(e.key)+1)); e.preventDefault();
+  }
+});
+
+// The reference bar sits directly under the header, whose height depends on how the
+// filter chips wrap — measured rather than guessed, and re-measured on resize.
+function fitAnchorBar(){
+  const h=document.querySelector('header').getBoundingClientRect().height;
+  document.documentElement.style.setProperty('--hdr-h', h+'px');
+}
+addEventListener('resize', fitAnchorBar);
+
+load();
+loadAnchors().then(fitAnchorBar);
+</script>
+</body>
+</html>

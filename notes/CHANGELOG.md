@@ -19,6 +19,51 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-08
 
+### Moved — the audition app comes home, and a forked contract closes
+
+- **`audition/` moved from `AI-Lab-AMD` into this repo** (owner call). AI-Lab-AMD is a
+  **machine blueprint** — enough to rebuild ai-lab-0 elsewhere, and a starting playbook for
+  other Strix Halo owners — so it holds *how the box runs a service*, never a project's
+  domain code. The audition app is domain code by every test: `ratings.csv` is the SSOT the
+  audit trust tiers run on, and its delivery/accent/age vocabularies **are** the
+  Director↔Actor contract. The box already set the precedent — the training code and
+  `vocalizer.py` have always been sourced from here and mounted via `/data/repos/Sonora`.
+  - **Two symptoms said so before anyone looked.** `tests/test_data_mirrors.py` lived *here*
+    and reached across into `AI-Lab-AMD/audition/app` — this repo owned the test for another
+    repo's code. And the changelog entry above had to invent a "cross-repo convention"
+    because code serving this lane sat in a repo with no changelog. Both are gone: the mirror
+    entry is intra-repo now, and audition changes are ordinary entries.
+  - **The move closed a LIVE forked contract, which is the reason it was worth doing.** The
+    five delivery lanes were written out in full in `audition/app/main.py`, **in a different
+    order** from `matcha/delivery.py`'s `DELIVERY_LANES`, **in a different repository** —
+    so no import could reach them. That is the review's most-repeated defect class (B-L5's
+    `MAX_REF_EXCURSION` three times, D-L2's two disagreeing z-guards), and "which number
+    means Newscaster" is precisely the rule that must not fork: getting it wrong produces
+    fluent, confidently mis-delivered audio rather than an error.
+  - **The vocabulary now travels WITH the deployment as an exported asset**, the same pattern
+    as the device G2P's `g2p_contractions.json` — the app runs in a `python:3.12-slim`
+    container with only fastapi and uvicorn, so `matcha` is not importable there and never
+    will be. `deploy.sh` drops `matcha/delivery.py` into `app/_contract/` *after* its
+    `rsync --delete`, and the app **RAISES on startup if it is missing** rather than falling
+    back to a literal — a fallback would re-create the very copy this deletes, and D-C1 is
+    the standing lesson that a hand-synced table is a defect of omission on a delay.
+  - **The picker is byte-identical**, verified: `DELIVERY_LANES` is in *wire* order (channel
+    position is the wire format and can never be re-sorted), which puts Neutral before
+    Documentary, but this dropdown has shown them alphabetically across 1,802 rated rows.
+    Sorting for display keeps the contract owning the SET while the app owns the
+    PRESENTATION — silently swapping two adjacent entries in a control someone uses at speed
+    is how a mis-click becomes a mislabel, and the score cannot detect that defect.
+  - `deploy.sh`'s git helpers are per-repo now, so the stamp and `status` report the **source**
+    repo's HEAD. Comparing an audition deploy against AI-Lab-AMD's HEAD would have read
+    "BEHIND" every time that repo moved for unrelated reasons — a false alarm that teaches
+    people to ignore the check. New `require_source` refuses when the source cannot be found,
+    because `rsync --delete` onto a live service directory is not recoverable.
+  - Guards: `test_the_audition_app_does_not_redeclare_the_delivery_lanes` (text, not value —
+    a re-declared tuple that happens to agree today would pass a value check and drift
+    tomorrow) and `test_the_delivery_contract_is_deployed_beside_the_app`.
+  - ⚠ Git history does not cross repos. The files were copied and deleted rather than renamed;
+    their history to this point is in `AI-Lab-AMD` up to `b2c4b0f`.
+
 ### Added — Phase 1 #1, the Emilia merge (§1)
 
 - **`31207bf` — `data/libritts_r_emilia_vat_v5`, the first corpus here that is not one
@@ -83,10 +128,11 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ### Added — the audition scale gets a fixed reference (§6)
 
-_⚠ **Cross-repo entry.** The audition app lives in `AI-Lab-AMD/audition` and that repo keeps
-no changelog, but the app is the rating surface for the teacher-synthesis lane — `ratings.csv`
-is the SSOT the audit trust tiers run on — so it is recorded here, with its own repo's SHA.
-The convention applies to any AI-Lab-AMD code serving this lane._
+_⚠ **This entry predates the move.** The audition app shipped from `AI-Lab-AMD` when the
+feature landed, which is why the SHA below is that repo's. **The app moved into
+`Sonora/github/audition/` later the same day** — see "Moved" below — so the cross-repo
+convention this entry originally described is retired rather than kept: audition changes are
+now ordinary Sonora changelog entries._
 
 - **`AI-Lab-AMD 38c2259` — anchor exemplars: what each number sounds like.** The 1–5 scale
   had saturated and it measures — **799 of 1,219 scored keeps are 5s (66%)**, on identical

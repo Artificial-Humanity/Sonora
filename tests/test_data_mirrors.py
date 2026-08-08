@@ -41,12 +41,17 @@ pytestmark = pytest.mark.skipif(not DATA.is_dir(), reason="/data is not mounted 
 # from the repo and only checkpoints, graphs, artifacts and the venv remain on /data. That
 # is the preferred resolution — the copy is gone rather than policed. See
 # `test_litert_harness_has_no_code_copy` below, which guards the property directly.
+# The audition entry became INTRA-repo on 2026-08-08 when the app moved here from
+# AI-Lab-AMD. That it had ever been a cross-repo hop was the symptom worth noticing: this
+# repo owned the test for another repo's code, because the code was a Sonora domain surface
+# filed in a machine-blueprint repo. The dashboard hops remain cross-repo and correctly so —
+# a lab status page really is the box's.
 MIRRORS = [
     (REPO / "scripts/synthesis/teacher_audition",
      DATA / "toolchain/teacher-audition", "*.py"),
     (REPO / "scripts/synthesis/teacher_audition",
      DATA / "toolchain/teacher-audition", "*.sh"),
-    (PROJECTS / "AI-Lab-AMD/audition/app",
+    (REPO / "audition/app",
      DATA / "services/audition/app", "*.py"),
     (PROJECTS / "AI-Lab-AMD/dashboard",
      DATA / "services/dashboard", "*.html"),
@@ -102,3 +107,45 @@ def test_litert_harness_has_no_code_copy():
         "  Run the harness from the repo instead: scripts/litert_export/run.sh <script.py>\n"
         "  /data holds the venv, checkpoints and artifacts — not our source (AGENTS.md §6)."
     )
+
+
+# --- The delivery vocabulary must not fork again (2026-08-08) --------------------------
+
+def test_the_audition_app_does_not_redeclare_the_delivery_lanes():
+    """It imports the contract; it must never carry a literal copy of the closed set.
+
+    Until this app moved into Sonora it lived in AI-Lab-AMD and wrote the five lanes out in
+    full — in a different order from `matcha.delivery.DELIVERY_LANES`, in a different
+    repository, where no import could reach them. That is the review's most-repeated defect
+    class (B-L5's MAX_REF_EXCURSION written three times, D-L2's two disagreeing z-guards),
+    and "which number means Newscaster" is the rule that must not fork: getting it wrong
+    produces fluent, confidently mis-delivered audio rather than an error.
+
+    Guarded by text rather than by value, because a re-declared tuple that happens to AGREE
+    today would pass a value check and drift tomorrow.
+    """
+    src = (REPO / "audition/app/main.py").read_text(encoding="utf-8")
+    body = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
+    assert "DELIVERY_LANES = _delivery.DELIVERY_LANES" in body, \
+        "the app must take the lanes from matcha.delivery, not declare them"
+    for lane in ("Dialogue", "Newscaster", "Documentary"):
+        assert f'"{lane}"' not in body, \
+            f"{lane!r} is written literally in main.py — the vocabulary has forked again"
+
+
+def test_the_delivery_contract_is_deployed_beside_the_app():
+    """The app RAISES without it, so a forgotten copy must fail loudly rather than silently.
+
+    `deploy.sh audition` copies `matcha/delivery.py` into the deployed `app/_contract/`
+    after its `rsync --delete` — the same pattern as the device G2P's exported
+    `g2p_contractions.json`, and for the same reason: a hand-synced table is a defect of
+    omission on a delay.
+    """
+    deployed = DATA / "services/audition/app"
+    if not deployed.is_dir():
+        pytest.skip("audition is not deployed on this machine")
+    asset = deployed / "_contract/delivery.py"
+    assert asset.is_file(), (
+        "the deployed app has no _contract/delivery.py — it will refuse to start. "
+        "Run scripts/deploy.sh audition.")
+    assert "DELIVERY_LANES" in asset.read_text(encoding="utf-8")
