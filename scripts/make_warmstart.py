@@ -89,6 +89,12 @@ def _speaker_prefix_ok(donor_speakers, model_speakers):
     return True, f"{len(old)} donor speakers keep their index; {len(new) - len(old)} appended"
 
 
+def _policy(name):
+    """Which filling the new slice of `name` gets — reported, so the log cannot lie."""
+    hit = next((v for suffix, v in _WIDENABLE.items() if name.endswith(suffix)), None)
+    return hit[1] if hit else "n/a"
+
+
 def _widen(name, donor_t, model_t, allow_speakers=False):
     """Donor tensor extended to the model's shape, or None if it must not be widened."""
     hit = next((v for suffix, v in _WIDENABLE.items() if name.endswith(suffix)), None)
@@ -121,11 +127,22 @@ def main():
                          "appended. Without it the table stays fresh: a checkpoint does "
                          "not record which corpus its rows belong to, and copying rows "
                          "across corpora points every speaker at someone else.")
+    ap.add_argument("--override", action="append", default=[], metavar="KEY=VALUE",
+                    help="extra hydra override, repeatable. MUST match the overrides the "
+                         "run itself will use: this script builds the model to decide "
+                         "which tensors warm, so a warm start composed from a different "
+                         "config is a different model. Getting it wrong surfaced as a "
+                         "state_dict shape error 2026-08-08 — the loud failure; the quiet "
+                         "one is a config that happens to agree on shapes and not on "
+                         "meaning.")
     args = ap.parse_args()
 
     config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "configs")
     with initialize_config_dir(version_base="1.3", config_dir=config_dir):
-        cfg = compose(config_name="train.yaml", overrides=[f"experiment={args.experiment}"])
+        cfg = compose(config_name="train.yaml",
+                      overrides=[f"experiment={args.experiment}", *args.override])
+    if args.override:
+        print("overrides: " + " ".join(args.override))
     model = instantiate(cfg.model)
 
     # The proof, before anything is copied. The new corpus's map sits beside the filelist
@@ -162,11 +179,15 @@ def main():
                 shape_dropped.append(f"{k} {tuple(v.shape)}->{tuple(model_sd[k].shape)}")
             else:
                 donor_sd[k] = grown
-                widened.append(f"{k} {tuple(v.shape)}->{tuple(model_sd[k].shape)}")
+                widened.append((k, f"{k} {tuple(v.shape)}->{tuple(model_sd[k].shape)}"))
         else:
             donor_sd[k] = v
     if widened:
-        print("widened (donor channels kept, new channels zero):", widened)
+        # The filling differs per tensor, so the line says which one each got — the old
+        # wording ("new channels zero") was printed for spk_emb too, where it is false.
+        print("widened — donor slice kept, and the rest:")
+        for name, detail in widened:
+            print(f"  {detail}   new: {_policy(name)}")
     if shape_dropped:
         print("shape-mismatched (fresh):", shape_dropped)
     missing, unexpected = model.load_state_dict(donor_sd, strict=False)
