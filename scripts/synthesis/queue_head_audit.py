@@ -43,7 +43,12 @@ DATA_ROOT = Path(os.environ.get(
 RATINGS = Path(os.environ.get(
     "AUDITION_RATINGS_DIR", str(DATA_ROOT / "sonora-expressive-registers"))) / "ratings.csv"
 
-NOTE = ("QC: starts late — first {words} words ({frac:.0f}% of the passage) never spoken. "
+# The dedup key is a STABLE prefix, not the formatted note. Keying on the whole sentence
+# re-queued a clip whenever a measure changed underneath it: the 2026-08-08 hyphen fix
+# moved the reference token count, so the percentage in an already-written note no longer
+# matched the one being generated, and a second `--apply` appended the line again.
+NOTE_MARK = "QC: starts late"
+NOTE = (NOTE_MARK + " — first {words} words ({frac:.0f}% of the passage) never spoken. "
         "LISTEN TO THE OPENING. This clip PASSED every gate; head loss is measured but not "
         "gated, and your note is what sets the threshold (C-M4).")
 
@@ -103,7 +108,7 @@ def main():
             # Preserve the verdict. `score` is untouched, and an existing note is kept
             # ahead of ours — the auditor's own words outrank a generated line.
             existing = (row.get("note") or "").strip()
-            if note.split(" LISTEN")[0] in existing:
+            if NOTE_MARK in existing:
                 continue                     # already queued by an earlier run
             row["note"] = f"{existing} | {note}".strip(" |") if existing else note
             row["status"] = "unaudited"

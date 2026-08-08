@@ -144,8 +144,27 @@ def edge_loss(ref, hyp):
 
     Lives here rather than in qc_gate so the calibration tool can compute it over measures
     already on disk without importing librosa, onnxruntime and faster-whisper to do it.
+
+    HYPHENS ARE SEPARATORS (fixed 2026-08-08). They were STRIPPED, which is not the same
+    thing and silently fabricates word-count differences: the reference "By and by, if I
+    were" tokenizes to 3 leading words and Whisper's "By-and-by, if I were" to ONE
+    (`byandby`), so a passage whose opening was spoken perfectly reported 3 head words
+    lost. That is not a hypothetical — `uneasy-money_lv022_0392` was one of the eight
+    gate-passing clips this measure was about to calibrate `head_ok` from, and its entire
+    "late start" was the hyphen.
+
+    Every other text path in the repo already treats `-` as a separator: `op_g2p.phonemize`
+    and `derive_vat_corpus` both do `re.sub(r"[-–]+", " ", ...)`, because that is what
+    espeak does. This was the one place that disagreed.
+
+    Blast radius, measured over all 3,189 clips on disk before changing it: 8 head counts
+    and 46 tail counts move, and **0 clips had failed `tail_ok` because of it** — so the
+    hard gate never wrongly rejected a clip, and no shipped corpus is affected. The damage
+    was confined to the population `head_ok` has not been calibrated from yet.
     """
-    norm = lambda s: re.sub(r"[^a-z0-9 ]", "", s.lower().replace("’", "'")).split()
+    def norm(s):
+        s = re.sub(r"[-–]+", " ", s.lower().replace("’", "'"))
+        return re.sub(r"[^a-z0-9 ]", "", s).split()
     r, h = norm(ref), norm(hyp)
     if not r:
         return {"head_frac": 0.0, "head_words": 0, "tail_frac": 0.0, "tail_words": 0}

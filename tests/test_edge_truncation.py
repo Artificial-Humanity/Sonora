@@ -135,6 +135,27 @@ def test_the_speech_floor_is_the_owners_number_and_it_gates():
     assert "if SPEECH_MIN_SECONDS is not None:" in src
 
 
+def test_a_hyphen_is_a_separator_not_a_deletion():
+    """Found 2026-08-08 while checking why 4 of the 8 head cases were one LibriVox title.
+
+    The normalizer STRIPPED `-` rather than replacing it with a space, so a hyphenation
+    disagreement between the canonical text and Whisper fabricated word-count differences
+    out of nothing: `By-and-by` collapsed to one token against a three-token reference and
+    reported a 3-word late start on a passage whose opening was spoken perfectly. Every
+    other text path in the repo — op_g2p.phonemize, derive_vat_corpus — already splits on
+    hyphens, because that is what espeak does.
+    """
+    spoken = edge_loss("By and by, if I were to marry you",
+                       "By-and-by, if I were to marry you")
+    assert spoken["head_words"] == 0, "hyphenation is not a late start"
+    assert spoken["tail_words"] == 0
+    # The same at the other end, where it has been GATING since 2026-07-31.
+    assert edge_loss("he found an electric-light switch",
+                     "he found an electric light switch")["tail_words"] == 0
+    # ...and a real late start is still counted.
+    assert edge_loss(PASSAGE, " ".join(PASSAGE.split()[4:]))["head_words"] == 4
+
+
 def test_a_head_flagged_clip_is_owed_an_ear_even_though_nothing_gates_it():
     """C-M4's blind spot, found 2026-08-07 while queueing the eight clips.
 

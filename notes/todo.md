@@ -170,9 +170,26 @@ prevents. No verdict was discarded: status moves, score and the auditor's note s
       0033_neu_ZON` (4 words, previously kept at 5) and `victory_whimsical_00_brightF_s5150`
       (3 words, previously kept). **This is the whole of what is left: hear them, then run
       `gate_calibration.py --sweep head_lost_frac`.** Blocked on ears, nothing else.
-      ⚠ One pattern the finding did not name: **4 of the original 8 are `uneasy-money`**,
-      across both librivox v1 and v2. One title supplying half the population is worth a
-      look at that alignment before the threshold is chosen from it.
+      **The `uneasy-money` cluster was investigated 2026-08-08 and is NOT an alignment
+      defect — the flag was wrong in the direction it was stated.** That title holds 2,030
+      of the 3,189 measured clips (64%), so 4 of 8 is a size effect; its head-loss rate is
+      **0.20%, the LOWEST of any title with occurrences** and a third of the corpus-wide
+      0.60%. What the investigation actually found is more useful:
+      - **Head loss is ~5× a SYNTHESIS problem, not an alignment one**: 1.30% of rendered
+        clips (13/1,001) against 0.27% of force-aligned real audio (6/2,188). Engines
+        ramping in dominates; the aligner cutting late barely registers.
+      - **All four real-audio cases are FALSE POSITIVES** — the words are spoken and ASR
+        misheard the opening ("Two cars farther" → "To Carr's father", "He groped round" →
+        "The grope ground"). This is exactly the asymmetry `edge_loss`'s own docstring
+        warns about: no left context at the first word.
+      - **One was a pure hyphenation artifact and is now fixed.** `edge_loss` STRIPPED
+        hyphens instead of splitting on them, so `By-and-by` scored one token against a
+        three-token `By and by` and reported a 3-word late start on a perfect opening. The
+        calibration population is **8 → 7**. Measured before changing it: 8 head counts and
+        46 tail counts move corpus-wide, and **0 clips had ever failed `tail_ok` because of
+        it**, so no shipped corpus is affected.
+      Net: the 4 queued clips are all SYNTHETIC, which is the right population to calibrate
+      from, and the 3 remaining pooled real-audio cases are ASR noise rather than evidence.
 
 ## 3 · Label derivation
 
