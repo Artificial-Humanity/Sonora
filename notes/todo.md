@@ -282,25 +282,37 @@ above ever opens, recorded so the answer is a decision rather than an improvisat
 
 ## 5 · Ears queue (priority order)
 
-1. [ ] **Qwen vs VibeVoice at equal loudness** — the one teacher-portfolio ranking the
-       loudness confound (5.99 dB spread, Qwen +3.81 dB over VV) could have produced.
-       **Verified 2026-08-08 by measuring the files, and the two halves are in very
-       different states:**
-       - **The SCORE re-test is UNBLOCKED — it is purely an ear job now.** The 56 keeps
-         measure **qwen −22.99 LUFS / vibevoice −23.00**, a **0.01 dB** difference (qwen
-         sd 0.04, vibevoice sd 0.00) against the filed +3.81 dB. The audio is already
-         equal; what is not is the VERDICTS, because qwen 4.94 vs vibevoice 4.20 was
-         scored on the original unequal renders. Re-hearing the 33 qwen+VV keeps at the
-         loudness they now sit at is the whole test.
-       - **The keep-RATE re-test is genuinely blocked, and on two things.** The 24
-         quarantined drops are **not** normalized — measured in `_dropped/` at 10.5 dB and
-         29.1 dB spreads (one clip at −42.2 LUFS). So it needs (a) those 24 re-gained,
-         which is **re-gaining clips the ear has already rated** and therefore the owner's
-         call by the same rule that left the [[loudnorm-reroll-defect]] clips alone, and
-         (b) un-quarantining so they can be re-heard. Cost if both are taken: **80 clips**
-         (56 keeps + 24 drops) — `dia` 15, `vibevoice` 5, `qwen` 2, `moss_vg` 2.
-       Doing only the first is cheap and answers the ranking question that was actually
-       filed; the keep-rate question can stay open without blocking it.
+_**1 · Qwen vs VibeVoice at equal loudness — CLOSED 2026-08-08. The confound was real and
+it ran BACKWARDS.** 33 keeps re-listened at 0.01 dB apart (they had been 3.81 dB apart when
+first scored). Paired, restricted to clips still kept in both states:_
+
+   | engine | n | before | after | Δ |
+   |---|---|---|---|---|
+   | qwen | 17 | 4.94 | **4.88** | −0.06 |
+   | vibevoice | 15 | 4.20 | **3.33** | **−0.87** |
+   | **gap** | | **+0.74** | **+1.55** | |
+
+_The hypothesis was that Qwen's +3.81 dB flattered it, so normalising should have SHRUNK
+the gap. It more than doubled. Bringing VibeVoice UP in level made its defects audible:
+**loudness was masking VibeVoice, not manufacturing Qwen.** Qwen moving −0.06 is the
+control that makes the attribution safe — it says re-listening on its own costs almost
+nothing, so VibeVoice's −0.87 is the level change rather than fresher ears.
+The teacher-portfolio ranking is confirmed and was UNDERSTATED, and this independently
+supports the standing decision to set VibeVoice aside ([[narration-only-engines]])._
+
+_What the re-listen exposed, in the owner's words: **"Vocal effect sounding like an older
+television broadcast… it evokes a picture of black and white tv"** (two clips, both 5 → 1),
+"Reverb effect to the point of sounding boxy", "Echo effect, like in a tiny space". That is
+the ROOM-reverb family, not bandwidth: **`radio_score` does NOT catch it** — the worst
+offender measures 0.3299 against a 0.10 bar and only 1 of 20 VV clips flags. Consistent
+with [[reverb-artifact-diagnosis]], where reverb defeated four detector attempts and stayed
+ear-only. One qwen reroll (`tab_05_whimsy_QWN`, a pitch note, otherwise positive)._
+
+_⚠ Method note for the next re-test: the prior score was parked in the `note` column and the
+audition app OVERWRITES that column when the owner types. 17 of 33 lost it. The comparison
+survived only because `ratings_transaction` had taken `ratings.csv.bak-20260808-ab-loudness`.
+Park before/after state in a sidecar, not in a field the app owns._
+
 _**2 · Orpheus — CLOSED 2026-08-08: held at `normal`** (owner). The filed 80.0% was stale
    in the favourable direction — it is 90.8% ex-`tara` — but `jess` is 78 of those 109
    clips at 97.4%, and the remainder is 74.2% with `mia` at 55.6% and `leah` at 62.5%.

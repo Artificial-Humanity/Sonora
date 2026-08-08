@@ -19,6 +19,38 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-08
 
+### Measured — the ears queue emptied (§5, §2)
+
+- **`683c43f` — `head_ok` gets NO GATE, on evidence.** The owner heard the four queued
+  clips. Ranked by `head_lost_frac`: **0.214** DROP (shrill — nothing to do with the head),
+  **0.211 KEEP 5** (*"I hear all of the words in the printed text"*), **0.132 KEEP 5**,
+  **0.129** DROP (*"the first two words are jumbled together… 'gojawayisabella'"*). The
+  measure is **anti-correlated with the ear**; any cut catching 0.129 catches both 5s.
+  Across all 8 flagged clips not one was a late start — `head_lost_frac` measures ASR head
+  DISAGREEMENT, not truncation. Stays advisory (slurred onsets are real), note reworded:
+  it had told auditors "first N words never spoken", false in 3 of the 4 cases they checked.
+- **`683c43f` — the calibration tool was discarding the ear's rejections.**
+  `parse_score` searched for `[1-5]`, so the reject marker `x` returned `None` and every
+  caller skipped the row: **253 of 286 dropped rows, 88% of every rejection, invisible to
+  the tool whose job is calibrating gates against ear verdicts.** A campaign full of drops
+  swept as "no rated clip matches the defect". **`TAIL_LOST_MAX` 0.05 confirmed** at 3/3
+  catch / 1% false flag once they were visible.
+- **`35bbce6` — `PAUSE_HARD_MAX` re-swept and DELIBERATELY unchanged.** `--campaign-dir` is
+  repeatable now, since one-campaign-at-a-time is what made every defect set thin. Pooled
+  over 161 keeps the drops are **interleaved with keeps** (2.112 keep, 1.984 keep, 1.600
+  DROP, 1.568 keep, 1.536 keep, 1.408 DROP) and the longest pause in the set is a keep. No
+  threshold separates them. **Duration is the wrong axis** — both drop notes object to
+  WHERE the pause falls, mid-phrase. Filed as a pause-POSITION measure, not a new constant.
+- **Qwen vs VibeVoice at equal loudness — the confound was real and ran BACKWARDS.** 33
+  keeps re-listened at 0.01 dB apart (were 3.81 dB apart). Paired: qwen **4.94 → 4.88**
+  (−0.06), vibevoice **4.20 → 3.33** (−0.87), **gap +0.74 → +1.55**. Normalising should
+  have shrunk the gap if loudness flattered Qwen; it more than doubled. **Loudness was
+  masking VibeVoice, not manufacturing Qwen** — and qwen's −0.06 is the control that makes
+  the attribution safe. The ranking is confirmed and was understated. VibeVoice's exposed
+  defect is ROOM reverb (*"an older television broadcast… black and white tv"*, 5 → 1
+  twice), which `radio_score` does NOT catch (0.3299 against a 0.10 bar) — consistent with
+  reverb having defeated four detector attempts.
+
 ### Changed — audit tiers, and the trade that lets them move (§5)
 
 - **`4150dfa` — the defect detectors are wired, and moss_vg leaves `scrutinized`.**
