@@ -294,16 +294,12 @@ is only its headline.
    and it closed **0b** — the clean-lineage retrain from `matcha_vctk` is **not
    indicated**, because the lineage demonstrably generalizes. Owner's call to ratify.
 2. ~~**Re-derive the corpus at `vat_dim` 8.**~~ **DONE 2026-08-07 — `libritts_r_vat_v4`**,
-   with all three owner decisions on one pass. Everything downstream of it is ready:
-   configs, licence declaration, 22/22 seam guards, and a 338/338-warm init checkpoint.
-   **What is left is to LAUNCH it**, which is the owner's call and carries the standing
-   pre-flight — stop ALL inference engines first, and remember that
-   `compose up -d sonora_training` STARTS the run. The deploy clone `/data/repos/Sonora`
-   must be updated (`scripts/deploy.sh training-code`) or it will train the old commit,
-   which has neither the v4 configs nor the widened warm start.
-   Judge the result on the never-trained holdout, not on `loss/val_epoch`. And expect a
-   NULL result: 48 of 31,445 clips carry a delivery lane, so this run trains the width and
-   the delivery behaviour waits for Phase 1 — see [todo.md §1](todo.md).
+   and **SMOKED rather than run to 100 epochs, 2026-08-08 (owner)**. v4 is the same 31,445
+   clips `vat3c_finetune` already spent 100 epochs on and came back a regression, so a full
+   run would re-buy a conclusion the holdout already sold us. The smoke proved what was
+   actually unknown: the 8-wide path trains (25/25 batches, all four loss terms, clean
+   restore), and so does the widened speaker table (247 → 280, 338 warm / 0 fresh,
+   val_epoch 1.572). Seam guards 28/28. **The GPU now goes to Phase 1.**
 3. **Phase 1 — data, cheapest first**, warm-starting from `vat3-24k` ep099.
    Emilia-YODAS keeps (+43%) → expressive-registers (+116) → LibriTTS-R 10× → Hi-Fi TTS
    v1. #1 is the fastest test of whether volume moves quality at all, and the 10× is

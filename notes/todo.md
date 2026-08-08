@@ -105,15 +105,31 @@ front end fails 69 of those 86, and worse than filed: `they've` → `θˈeɪv`, 
       comparison (historical split contamination, 93–97% of v3c's val trained on earlier)
       and there are now **two** scale breaks in logged `diff_loss` — 2026-08-01 bucketing
       and 2026-08-06 masking. Deciding a run by its curve is deciding it by an artefact.
-- [ ] **Launch `vat4_finetune`.** The corpus, configs, licence declaration, 22/22 seam
-      guards and a **338/338-warm** `vat4_init.ckpt` are all in place (`be1cce3`); what is
-      left is the run, which is the owner's. Pre-flight is the standing one — stop ALL
-      inference engines, update the deploy clone (`scripts/deploy.sh training-code`) or it
-      trains a commit with neither the v4 configs nor the widened warm start, and remember
-      `compose up -d sonora_training` STARTS the run.
-      **Expect a NULL result and do not read it as failure**: 48 of 31,445 clips carry a
-      delivery lane, so five always-zero channels on a zero-init FiLM path contribute
-      nothing. This run trains the WIDTH. A surprise here is a bug, not a finding.
+_**Both smoke runs passed 2026-08-08** (`3b6b738`, `76b6aea`), and the owner's call was to
+smoke rather than run v4 to 100 epochs — v4 is the SAME 31,445 clips `vat3c_finetune`
+already spent 100 epochs on and came back a measured regression, so a full run would
+re-buy a conclusion we own. **(1)** 8-wide on v4: 25/25 batches at 0.93 it/s, validation
+ran, all four loss terms logged, restored cleanly from `vat4_init.ckpt`. **(2)** merged
+stub (v4 + 200 real Emilia rows, `n_spks` 247 → 280): speaker map **PREFIX OK**, `spk_emb`
+widened 247 → 280, **338 warm / 0 fresh**, trains to val_epoch 1.572. Seam guards **28/28**
+in-container. Two latent bugs fell out, which is what smoke runs are for: `test: True` (no
+model here defines `test_step`, unreachable only because `max_epochs: -1` means `fit()`
+never returns — the first run to finish normally would crash after writing its checkpoints
+and then crash-loop under `restart: unless-stopped`), and `make_warmstart` composing the
+model from the experiment config alone, so a run with data overrides got a warm start built
+for a different model._
+
+- [ ] **Phase 1 #1 — the Emilia merge.** The scale question is settled (owner took the
+      global anchor, `scripts/anchor_emilia_labels.py`, all 13,141 keeps label and none
+      collapse to zero) and the machinery is proven end-to-end on a 200-row stub. What is
+      left is the real derivation: all 13,141 rows, `n_spks` 247 → 2,655, phonemes on the
+      fixed `op_g2p`, **`data_statistics` re-measured in-container** (they cannot be
+      inherited here — v4 could only inherit v3c's because the audio and split were
+      identical), and an explicit compose bind.
+      ⚠ **T saturates at 54%** and the owner accepted it for this run — the prediction that
+      makes that a test rather than a story is written down in
+      [quality-gap-plan.md](quality-gap-plan.md), and it must be read BEFORE the holdout
+      result, not after.
 
 ## 2 · QC / audit / staging
 

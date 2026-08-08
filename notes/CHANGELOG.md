@@ -17,6 +17,71 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ---
 
+## 2026-08-08
+
+### Changed — audit tiers, and the trade that lets them move (§5)
+
+- **`4150dfa` — the defect detectors are wired, and moss_vg leaves `scrutinized`.**
+  `qc_engine_defects.py` had existed since 2026-08-02 as, in its own words, *"what the tier
+  system needs in order to ever hand those engines a ride-along back: coverage traded for
+  instrumentation"* — but as a manual `--append-flags` step, so the trade was notional. A
+  detector nobody runs trades nothing. `synth_bank.sh` runs it on every bank now.
+  The hold rested on two things and **neither survived re-measurement**: the "24% rate on
+  expressive material" is not reproducible from anything on disk (the source, `4abfd3f`,
+  measured **19/54 = 35% REJECTED on `delivery-v1-narration`** — a *narration* campaign),
+  and **11 of moss_vg's 20 non-keeps are bookkeeping retirements**, not ear rejections, so
+  on real ear verdicts it is **95 heard / 90.5%**, not the 81.1% first reported here. The
+  dialogue re-test the hold was waiting for already existed: 19 heard at **89.5%**, against
+  a 73.5% lane mean and above `chatterbox`, which is trusted.
+  What justified 100% listening was the DEFECT, and both halves are instrumented now: 5 of
+  the 9 genuine rejections were structural (early EOS, 2.82 s and 3.04 s dead air, 0.67 s
+  and 3.68 s of speech) and every one fails `pause_ok`, `tail_ok` or `speech_ok` today; 3
+  of the 4 timbre failures are caught by `radio_timbre` (out/in-band 0.014 / 0.072 / 0.094
+  against a 0.10 bar), flagging 19.8% of the batch. **The residual is named:**
+  `windfairies_nar_0034`, "highly robotic… like an old-fashioned phone IVR", passes every
+  instrument. **Orpheus held at `normal`** — 90.8% ex-`tara` is really `jess` at 97.4%
+  carrying 72% of the population; the remainder is 74.2%.
+- **`b6d29b2` — a hyphen is a separator, not a deletion.** `edge_loss` STRIPPED `-` rather
+  than splitting on it, so `By-and-by` collapsed to one token against a three-token
+  reference and reported a 3-word late start on a perfectly spoken opening. Every other
+  text path already splits on hyphens. Measured before changing it: 8 head counts and 46
+  tail counts move corpus-wide and **0 clips had ever failed `tail_ok` because of it**.
+  Found while checking why 4 of the 8 head cases were one LibriVox title — which turned out
+  to be a **size effect, not an alignment defect** (uneasy-money is 2,030 of 3,189 clips at
+  a 0.20% head-loss rate, the lowest of any title). The real pattern: head loss is **~5× a
+  synthesis problem** (1.30% rendered vs 0.27% force-aligned).
+
+### Added — Phase 1 #1 prep (§1)
+
+- **`e6a2d14` — the Emilia keeps were undeclared, and #1 is not a merge.** The licence wall
+  would have refused every keep: they live in `emilia_kept/` and `emilia_kept_24k/` while
+  the manifest declared only `emilia_yodas`. Provenance verified before declaring, since
+  `emilia_original` next door is NC. And **per-speaker z would have destroyed the corpus
+  silently** — the keeps are tail-selected (`T_full > p90` etc.) across 2,408 speakers at a
+  median of 3 clips each, so re-centring takes V from mean +0.387 to **+0.000** and hands
+  756 one-clip speakers a label of exactly 0.0.
+- **`94d0184` — global anchoring (owner's option 1).** All 13,141 keeps label, **0 all-zero**.
+  ⚠ T saturates at **54.0%** on the ±1 rail against LibriTTS's 4.69%; accepted for this run,
+  with the failure signature recorded in `quality-gap-plan.md` **before** the result.
+- **`2e7d908`, `76b6aea` — the speaker table widens, against proof.** `n_spks` 247 → 2,655
+  needs `spk_emb.weight` widened, which is safe here (indices preserved, new ones appended)
+  and wrong for the vctk donor (row *i* is a different person). `--donor-speakers` proves
+  the prefix property; absent it the table stays fresh. New speaker rows keep the model's
+  init — a zero channel means "contributes nothing", a zero embedding does not.
+
+### Fixed — the smoke runs, and what they caught (§1)
+
+- **`3b6b738` — `test: True` was a trap with teeth.** No model here defines `test_step`, so
+  `trainer.test()` raises — unreachable only because `max_epochs: -1` means `fit()` never
+  returns. Every production run has been stopped by hand or by the E610 fault, never by
+  finishing. The first run to terminate normally would have crashed *after* writing its
+  checkpoints and then crash-looped under `restart: unless-stopped`, reading as a training
+  failure it is not. Found by the vat4 smoke run — the first thing here to set a finite
+  `max_epochs`.
+- **Both smoke runs pass.** 8-wide on v4: 25/25 batches, all four loss terms, clean restore.
+  Merged stub (v4 + 200 Emilia rows, `n_spks` 280): speaker map PREFIX OK, 338 warm / 0
+  fresh, val_epoch 1.572. Seam guards **28/28** in-container.
+
 ## 2026-08-07
 
 ### Added — the v4 corpus (§1)
