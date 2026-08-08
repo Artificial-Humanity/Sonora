@@ -116,3 +116,41 @@ def test_the_librivox_entry_says_why_rather_than_inheriting_a_default():
     src = _src("publish_tier.py")
     assert "not an ENGINE" in src
     assert "C-L5" in src
+
+
+# --- the instrumentation bargain (2026-08-08) -----------------------------------------
+
+
+def test_an_engine_with_a_detector_has_the_detector_wired():
+    """moss_vg left `scrutinized` because its defect became an instrument, not because
+    the defect stopped happening.
+
+    `qc_engine_defects.py` says in its own docstring that it is "what the tier system
+    needs in order to ever hand those engines a ride-along back: coverage traded for
+    instrumentation". Until 2026-08-08 it was a MANUAL step, so the trade was not real —
+    a detector nobody runs trades nothing. If an engine is off scrutinized on the strength
+    of a detector, the detector has to fire on every bank.
+    """
+    bank = _src("synth_bank.sh")
+    assert "qc_engine_defects.py" in bank, \
+        "the defect detectors are not wired into the bank pipeline"
+    assert "--append-flags" in bank, \
+        "detectors run but their flags never reach qc_flags.txt / the ear"
+
+    defects = _src("qc_engine_defects.py")
+    subset = _src("pick_audit_subset.py")
+    # Every engine that HAS a detector must still be sampled, i.e. not trusted — the
+    # detector buys a step down from scrutinized, never a step up to 1-per-group.
+    for engine in ("moss_vg", "zonos"):
+        assert f'"{engine}"' in defects, f"{engine} lost its detector"
+        assert f'"{engine}": "trusted"' not in subset, \
+            f"{engine} has a stochastic defect and a detector; trusted is not the trade"
+
+
+def test_scrutinized_is_still_the_default_for_unknown_engines():
+    """No engine is NAMED scrutinized any more, which must not be read as the tier being
+    retired. It is the landing place for an engine with no track record — the onboarding
+    rule — and the id-join failure path depends on it too."""
+    src = _src("pick_audit_subset.py")
+    assert 'DEFAULT_TIER = "scrutinized"' in src
+    assert "SCRUTINIZED_ENGINES" in src

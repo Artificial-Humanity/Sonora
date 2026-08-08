@@ -22,17 +22,24 @@ Selection, per campaign:
 
 THREE TIERS (owner 2026-07-31), set by measured failure rate:
 
-  tier          engines              per group   tail   unheard clips fold?
-  trusted       qwen, chatterbox         1        3%    yes
-  normal        orpheus (+1), zonos, …   2       10%    yes
-  scrutinized   moss_vg                  4       25%    NO
+  tier          engines                    per group   tail   unheard clips fold?
+  trusted       qwen, chatterbox               1        3%    yes
+  normal        orpheus, zonos, moss_vg, …     2       10%    yes
+  scrutinized   (none named — the DEFAULT)     4       25%    NO
 
 The third tier differs in KIND. Group certification assumes defects are SYSTEMATIC:
 one voice per (book, lane) means a casting or lane error is perfectly correlated
-within the group, so a few clips speak for the rest. MOSS violates that assumption —
-its defects are stochastic per clip (radio timbre, early EOS), and no amount of
-sampling certifies a neighbour that carries an independent risk of its own. So for
-that engine the unheard clips are simply not folded.
+within the group, so a few clips speak for the rest. An engine whose defects are
+STOCHASTIC PER CLIP violates that assumption — no amount of sampling certifies a
+neighbour that carries an independent risk of its own — so its unheard clips are
+simply not folded.
+
+**As of 2026-08-08 no engine is named scrutinized**; it is now purely the default for
+engines with no track record, which is what the onboarding rule asks for. moss_vg was
+the last one, and it left the tier the way the tier is meant to be left: its stochastic
+defects (radio timbre, early EOS) became instruments — `qc_engine_defects.radio_timbre`
+and the pause/tail/speech gates — rather than staying a reason to hear everything. That
+is the trade the tier system exists to make possible; see the note on the entry itself.
 
 Zonos sat here too until 2026-08-04. It was moved to `normal` once its instability
 was traced to the emotion vector rather than the engine — a conditioning bug is
@@ -125,11 +132,31 @@ ENGINE_TIER = {
     # a bookkeeping retirement, not an ear verdict — on clips the ear actually judged
     # it is 37/37, above chatterbox, which is already trusted.
     "zonos": "normal",
-    # moss_vg HELD at scrutinized. 12/12 here is clean but thin, and the prior 20/20
-    # was judged confounded — Newscaster flatters its radio-timbre failure mode, and
-    # its 24% rate was measured on expressive material. One narration lane does not
-    # overturn that. Re-test on dialogue or an expressive register first.
-    "moss_vg": "scrutinized",
+    # moss_vg PROMOTED scrutinized -> normal, 2026-08-08, on the same bargain zonos took
+    # four days earlier: coverage traded for instrumentation.
+    #
+    # The hold rested on two things and neither survived re-measurement. The "24% rate on
+    # expressive material" is not reproducible from anything on disk — the source
+    # (`4abfd3f`) measured moss_vg 19/54 = 35% REJECTED on delivery-v1-narration, a
+    # NARRATION campaign. And 11 of its 20 non-keeps are bookkeeping retirements ("retired
+    # unheard: group failed certification twice", "superseded by _QWE, kept at 5"), not ear
+    # rejections of the clip; on real ear verdicts it is 95 heard / 90.5% keep. The
+    # dialogue re-test the hold was waiting for already existed: 19 heard at 89.5%, against
+    # a 73.5% lane mean and above chatterbox, which is trusted.
+    #
+    # What actually justified 100% listening was the DEFECT, and it is now instrumented at
+    # both ends. The nine genuine rejections were 5 structural (early EOS, 2.82 s and
+    # 3.04 s dead air, 0.67 s and 3.68 s of speech) — every one of which fails pause_ok,
+    # tail_ok or speech_ok today — and 4 timbre. `qc_engine_defects.radio_timbre` catches
+    # 3 of those 3 radio clips (out/in-band 0.014 / 0.072 / 0.094 against a 0.10 bar) and
+    # flags 19.8% of the batch for the ear, and synth_bank.sh now runs it on every bank
+    # rather than leaving it to whoever remembers.
+    #
+    # ⚠ The residual is real and named: `windfairies_nar_0034`, "highly robotic… like an
+    # old-fashioned phone IVR" — 28.8 s, 26.2 s of speech, 0.38 s worst pause. Flat-but-
+    # fluent prosody passes every instrument we have. `normal` sampling (2/group + 10%) is
+    # what covers it now; if that mode recurs, this is the line to revisit.
+    "moss_vg": "normal",
     # Everything below was riding on DEFAULT_TIER when that default was
     # "normal". Naming them keeps their measured tier explicit now that the
     # default is conservative — otherwise tightening the default would have

@@ -277,6 +277,26 @@ if [ ! -s "$QC_MEASURES" ]; then
   exit 1
 fi
 
+# Engine-specific defect detectors (radio timbre for moss_vg, leading gap for zonos).
+# ADVISORY — they never drop a clip; they append ids to qc_flags.txt, which
+# pick_audit_subset always routes to the ear.
+#
+# This was a MANUAL step until 2026-08-08, which made it a coverage hole rather than an
+# instrument: qc_engine_defects.py exists, in its own words, as "what the tier system
+# needs in order to ever hand those engines a ride-along back — coverage traded for
+# instrumentation", and a detector nobody runs trades nothing. moss_vg's promotion off
+# `scrutinized` (100% heard) is what makes that trade real, so the detector has to fire on
+# every bank rather than when someone remembers. Measured on the moss_vg population: 3 of
+# 3 ear-confirmed radio clips caught, 23 of 116 clips flagged (19.8%).
+#
+# Non-fatal by design. A missing detector must not fail a bank whose clips are already
+# rendered and gated — but it is announced, because silently skipping the flag pass is
+# exactly how the coverage would go missing again.
+echo "== engine defect detectors =="
+"$PY" "$SONORA/scripts/synthesis/qc_engine_defects.py" \
+    --campaign "$(basename "$CAMPAIGN_DIR")" --append-flags \
+  || echo "  !! qc_engine_defects failed — advisory flags NOT appended for this bank."
+
 # Register the rendered clips into the audition queue (ratings.csv SSOT) so they
 # reach the review surface. Idempotent, host-side (uv, not the GPU container); only
 # queues clips whose wav lands under DATA_ROOT. Non-fatal if it can't run.
