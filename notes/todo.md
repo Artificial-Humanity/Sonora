@@ -138,8 +138,8 @@ _Three of the item's own numbers did not survive contact. **"All 13,141 rows" is
 moved ten times more than the rule anticipated** — mel mean 0.1587 and std 0.3208, against
 the 0.0203 / 0.0024 that put the rule on the list in the first place._
 
-- [ ] **Launch `vat5_finetune`.** Everything it needs exists; this is a GPU slot and the
-      spin-down rule, not more engineering.
+- [ ] **Rung 1 — launch `vat5_finetune`.** Everything it needs exists; this is a GPU slot
+      and the spin-down rule, not more engineering.
       ⚠ **T saturates at 53.6%** on the Emilia half (LibriTTS: 4.7%) and the owner accepted
       it for this run — the prediction that makes that a test rather than a story is
       written down in [quality-gap-plan.md](quality-gap-plan.md), and it must be read
@@ -147,6 +147,25 @@ the 0.0203 / 0.0024 that put the rule on the list in the first place._
       ⚠ **`loss/val_epoch` is even less usable here than usual**: v5's val set is 1,304
       clips of which 344 are Emilia, so it now mixes two domains and a move in it could be
       either. Score on the holdout.
+
+_**The corpus ladder is sequenced in [quality-gap-plan.md § Phase 1](quality-gap-plan.md),
+not here** — this file is residue, that one is the plan. Owner's framing 2026-08-08: **each
+iteration fine-tunes against a LARGER set than the last**, one lever per rung, each gated
+on the previous rung's HOLDOUT number. **1** v5 (41,138 rows / 78.5 h / 2,500 spk, volume)
+→ **2** v6 = +expressive-registers (ear-certified, and the first real delivery signal)
+→ **3** v7 = +LibriTTS-R full (~10×, the real lever) → **4** v8 = +Hi-Fi TTS (depth per
+voice; independent, slot in when converted). The invariant that makes the ladder work is
+the one v5 already proved: **every rung ADDS rows without re-rolling what came before**, so
+rung n's holdout number is comparable to rung n−1's. A re-derivation destroys that
+silently._
+
+_Also measured there, because the drop counts read like the corpus had been whittled down:
+**the merge filters are the least selective stage in the chain by an order of magnitude.**
+Emilia is 10,997 kept from ~114,000 h licensed — the mining TAIL-SELECTION (19.8%, T
+threshold 5.75σ) and the 9 shards pulled are the real narrowing, and both are deliberate.
+Nothing is wasted; the 53k probed-but-unkept clips still carry their measures. **The skew
+is real though, and T's 53.6% saturation IS that skew showing up in the label.**
+De-skewing is NOT scheduled before rung 1's holdout — it would change two things at once._
 
 ## 2 · QC / audit / staging
 

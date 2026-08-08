@@ -180,7 +180,7 @@ Cheapest first, so the expensive item is decided by evidence rather than assumpt
 
 | # | Source | State | Adds | Work |
 |---|---|---|---|---|
-| 1 | **Emilia-YODAS keeps** | READY, 24 kHz, license-cleared | 13,141 clips (**+43%**) | **NOT "merge only" — see below** |
+| 1 | **Emilia-YODAS keeps** | **MERGED 2026-08-08** → `libritts_r_emilia_vat_v5` | 10,997 clips / +27.2 h (**+36%**) | done; needs a GPU slot |
 | 2 | **sonora-expressive-registers** | DERIVED, 1,071 keeps | small, ear-certified | close **+116** (Neutral +81, Documentary +35) → 1,156, then merge |
 | 3 | **LibriTTS-R, the other 90%** | NOT PULLED | **~10×**, ~2,400 speakers | download + full corpus build |
 | 4 | **Hi-Fi TTS v1** | RAW, 40 GB parquet *with audio* | 292 h / 10 speakers | parquet → wav + filelist |
@@ -193,6 +193,72 @@ we train on have never been joined, which is the largest structural oddity in
 worth gating on #1's result. #4 plays a different role — few voices, deep hours — so it
 is casting anchors and speaker-consistent long-form prosody, not volume; it is
 independent of #3 and can slot in whenever the parquet conversion is worth doing.
+
+### The ladder — a strictly growing corpus, one lever per rung
+
+**Owner's framing, 2026-08-08: each iteration fine-tunes against a LARGER set than the
+last.** That is now the shape of Phase 1 rather than a hope about it, and it costs
+something to hold: every rung must add rows without re-rolling what came before, which the
+merge already proves is possible (v5 carries v4's rows byte-identically, its speaker
+indices untouched, and its held-out clips still held out). Keep that property at every rung
+— it is what makes rung *n*'s holdout number comparable to rung *n−1*'s, and it is the one
+thing a re-derivation destroys silently.
+
+| rung | corpus | train rows | hours | speakers | the one lever it moves | gate to the next |
+|---|---|---|---|---|---|---|
+| — | `libritts_r_vat_v4` | 30,485 | 51.3 | 247 | width only (8-wide) | smoked, superseded |
+| **1** | **`libritts_r_emilia_vat_v5`** | **41,138** | **78.5** | **2,500** | **volume, +36%** | holdout vs `vat3_ep099` |
+| 2 | v6 = v5 + expressive-registers | ~42,300 | ~82 | ~2,510 | **ear-certified + real delivery labels** | delivery channel finally has signal |
+| 3 | v7 = v6 + LibriTTS-R full | ~330,000 | ~615 | ~4,900 | **10× volume, same domain** | the real lever |
+| 4 | v8 = v7 + Hi-Fi TTS v1 | +? | +292 | +10 | **depth per voice**, not breadth | independent; slot in when converted |
+
+Rung sizes past 1 are estimates from `training-sources.md`, not measurements — every one
+of them gets derived from the corpus before it is quoted. Rung 1 already made that point
+three times over: 13,141 rows became 10,997, `n_spks` 2,655 became 2,500, and
+`data_statistics` moved ten times the precedent.
+
+**THE ORDER IS 1 → 2 → 3, and 4 whenever it is ready.** Each rung is gated on the previous
+rung's **holdout** number, never on `loss/val_epoch` — which is now doubly unusable, since
+v5's val set mixes two domains and a move in it could be either.
+
+### ⚠ How much is left on the table, measured 2026-08-08
+
+Asked directly by the owner, because v5's drop counts read like the corpus had been
+whittled down. It has been, and **the merge filters are the least selective stage in the
+chain by an order of magnitude**:
+
+| stage | in | out | kept |
+|---|---|---|---|
+| Emilia-YODAS, licensed (CC-BY) | **~114,000 h** | — | — |
+| shards actually pulled | 9 | 238,203 clips / 8.4 GB | — |
+| probe: sampled + base filters (duration, DNSMOS ≥ 3.0) | 238,203 | 66,217 clips / **159.8 h** | 27.8% |
+| **mining tail-selection** | 66,217 | 13,141 | **19.8%** |
+| merge (digits, caption WER) | 13,141 | 10,997 | 83.7% |
+
+LibriTTS-R is the same shape: **51.3 h of ~585 h**, 8.8%.
+
+**Nothing is wasted — but the corpus IS skewed, and the skew is deliberate.** The 53,076
+probed-but-unkept clips are still on disk *with their acoustic measures already computed*,
+so re-mining costs EIV + ASR, not re-measuring. What matters more is *why* they were
+unkept: the criteria keep a clip only if it sits in a tail (`T > p90`, `V > p95`, `V < p5`,
+`A > p95`), and the T threshold is **5.75 σ** — 5,002 keeps qualify on T+ alone. So v5's
+Emilia half is not 27 hours of speech, it is **27 hours of extremes**, against a LibriTTS
+centre, at roughly 3:1.
+
+**That is what T's 53.6% saturation IS** — not a labelling bug but the mining criteria
+arriving at the label. It is also why the prediction block below is worth more than it
+looks: it is the instrument that tells us whether the skew hurt.
+
+**Two options exist for de-skewing, and neither is scheduled:**
+- **Widen the mining to ~p75** and re-mine the 53k already-measured clips — 3–4× the Emilia
+  half, de-saturates T. Costs EIV + ASR on 53k clips, days of CPU, plus a re-derivation.
+- **Pull more shards.** 160 h probed out of ~114,000 h licensed. Effectively unbounded.
+
+**Neither runs before rung 1's holdout.** Widening now would spend days removing a confound
+we have not shown exists *and* change two things at once, which costs us the test. The
+prediction disambiguates it for free: **if V and A improve, volume is the lever regardless
+of what T does.** If T regresses in the predicted signature, that is when widening is
+indicated — and the plan already names the fix (C-soft).
 
 ### ⚠ #1 is not a merge. Prep pass 2026-08-08, before any GPU time.
 
