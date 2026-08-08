@@ -517,6 +517,13 @@ measured case for Qwen is good — but because ~870 hours of cleared real audio 
 with zero ear time, and spending render-hours before conversion-hours is spending the
 expensive currency first.
 
+**IT HAS TWO USES AND THE SECOND IS THE BETTER ONE.** Bulk volume (§ Text supply) is what
+the phase is named for; **targeted remediation** (§ below) — generating exactly the material
+that fills a measured weakness in Sonora's output — is what it is *for*. The bulk lane asks
+the model to absorb more; the targeted lane asks it to rebalance, which is cheaper, survives
+the capacity ceiling, and is the only lever that can fill a corpus region real audio does not
+happen to contain. Build the machinery once; the second use is where it pays.
+
 ### The measured case FOR it
 
 **Qwen is the highest-yield synthetic engine we have, and it is not close on the axis that
@@ -657,16 +664,95 @@ through volume instead of through labels.
   generation buys nothing until the model grows, which puts the Phase 2 decoder spike on the
   critical path rather than after it.
 
-### Text supply — re-rendering known-good text is legitimate
+### Text supply — the whole Standard Ebooks library
 
-Owner: *"Even if we train on all of LibriTTS-R and repeat already used books through
-synthetic channels, I see value there."* It is real value: same text, different prosody and
-timbre is genuine **prosodic** diversity on text that is already aligned and known-good, and
-the paired real+synthetic reading of an identical line is a substrate nothing else gives us.
-The honest caveat is that **text diversity does not grow** — re-rendering 585 h of LibriTTS
-text twenty times is 11,700 h of audio over the same lexicon and syntax, so the returns are
-on the prosody axis only. Licence is clean throughout: the text is CC-BY-4.0/CC0-derived and
-Qwen's weights are Apache-2.0.
+Owner, 2026-08-08: *"We could theoretically run the entire Standard Ebooks library through
+Qwen in a variety of narrator voices and variations of embodiment. Even if it overlaps
+existing LibriTTS-R, I don't think we would lose out."*
+
+**The overlap worry is a rounding error, and the proposal is stronger than "no loss."**
+Standard Ebooks is ~1,500 titles. At ~90k words per novel and ~150 wpm that is **~10 h per
+book, ~15,000 h per single-voice pass.** All of LibriTTS-R full is **585 h ≈ 5.3M words ≈ 59
+average novels** — so **Standard Ebooks carries ~25× more distinct text than the entire
+LibriTTS-R corpus**, and the overlap is at most a few percent of the pool. This is a large
+net gain in text diversity that happens to *include* some repetition, not repetition with
+acceptable waste.
+
+The overlap is not waste either: an identical line read by a real human *and* rendered by
+Qwen is the cleanest signal we could have that prosody is separable from text, and nothing
+else in the corpus provides it.
+
+**The lane is mostly built.** `books_ledger.json` already tracks **56 entries** across `se:`,
+`pg:` and `lv:` keys, behind `book_router` and `book_ingest`.
+
+Licence is clean throughout — Standard Ebooks' own contributions are CC0, the works are
+public domain, and Qwen's weights are Apache-2.0.
+
+- [ ] ⚠ **PREREQUISITE — close A-M6 before any mass ingest.** `book_ingest` hardcodes
+      provenance `"Standard Ebooks CC0"` **even for Project Gutenberg sources**. At 21 books
+      that is a paperwork defect; at 1,500 it stamps false licence metadata across the
+      largest corpus we would own, in every derived clip's paper trail, and it is not
+      fixable after the fact. Filed in [todo.md §5](todo.md); it is now load-bearing.
+- [ ] ⚠ **THE HOLDOUT EXCLUSION GUARD — this is the trap the idea walks into.**
+      `data/libritts_r_holdout_devclean` is worth exactly one thing: no checkpoint has
+      trained on it. Rendering **dev-clean's source books** through Qwen and training on the
+      result is a subtler destruction of it — the model never hears those recordings but it
+      learns those exact phoneme sequences and their durations, so duration loss especially
+      comes back optimistically biased and nothing downstream flags it.
+      **It is precisely fixable and the metadata exists:** LibriTTS-R ships `*.book.tsv` per
+      chapter, dev-clean has **96 distinct chapters**, and their titles are recoverable from
+      the first utterance of each (`Renaissance in Italy: The Catholic Reaction`, …). Build
+      the exclusion list once and have the render lane **refuse** a title on it — same shape
+      as the licence wall, an allowlist that refuses what it cannot classify, not a filter
+      that silently drops.
+- [ ] ⚠ **Shard format is a WRITE-TIME decision, not a repackaging step.** HF caps repos at
+      **<100k files** and hard-caps **10k entries per folder**. 15,000 h at ~12 s/clip is
+      **~4.5M files — 45× the recommended cap.** So the render lane must emit **WebDataset or
+      Parquet shards** from the start; that is what Emilia itself ships as
+      (`format:webdataset`) and what HF recommends. Storage is *not* the constraint —
+      at 172.8 MB/audio-hour a PRO account's 10 TB public allowance is **~58,000 audio-hours**,
+      more than the whole real-audio ladder plus a Standard Ebooks pass.
+
+⚠ **Embodiment variations are renderable but not yet LABELABLE.** Embodiment is a clip whose
+delivery changes partway through; it stays delivery-blank by contract until span-FiLM ships
+(the 17 keeps are its pilot set). Rendering embodiment variety now is fine and the clips are
+useful, but they enter as `unknown` and the capability to condition on them does not exist
+yet — do not let the render spec imply otherwise.
+
+### Targeted remediation — the pipeline's second and better use
+
+Owner, 2026-08-08: *"As fine tuning continued in cycles, we will eventually reach a point
+where we will be filling in weaknesses in Sonora's output. We can use this proposed pipeline
+as a means of generating training data to precisely target those weaknesses."*
+
+**This is the stronger justification for building the pipeline, and it should be read as the
+destination rather than a later bonus.** Bulk generation asks the model to absorb more;
+targeted generation asks it to *rebalance* what it sees, which is a much cheaper request and
+answers two of this phase's own objections:
+
+- **It survives the capacity ceiling.** If rung 1's holdout says capacity-limited rather than
+  data-limited, bulk volume buys nothing — but filling a specific gap can still move a
+  specific channel, because it changes the distribution rather than the quantity.
+- **It is the direct remedy for corpus skew.** T saturates at 53.6% on the Emilia half and
+  delivery is empty on 41,093 of 41,138 rows. Targeted rendering is exactly how you fill a
+  V/A/T region or a delivery lane the corpus does not cover, and it is the *only* lever that
+  can, since real audio arrives with whatever distribution it has.
+
+**Two thirds of the instrument already exists.** `score_holdout.py` scores every checkpoint
+per clip across 5,463 unseen clips — that is already a per-clip weakness map. The standing
+perceptual tests give a channel-level one (vat3-24k: energy PASS, tension near-pass,
+**valence FAIL**). `render_vat_sweep.py` renders across the VAT space. **What is missing is
+the loop**: nothing takes a scoring result and emits a render spec, and that mapping is the
+whole build.
+
+- [ ] ⚠ **DO NOT DIAGNOSE ON THE HOLDOUT.** This is the methodological trap, and it is the
+      same class of error as training on it. If weaknesses are identified from the holdout
+      and then data is generated to fix precisely what the holdout reports, we are fitting to
+      the holdout and it stops being an unbiased measure — silently, and permanently, with no
+      second dev-clean to fall back on. **Diagnose on a separate diagnostic split, on the ear,
+      and on the standing perceptual tests; use the holdout ONLY as the confirmation that the
+      remediation worked.** Carving that diagnostic split is a prerequisite of this lane, not
+      a detail of it.
 
 ---
 
