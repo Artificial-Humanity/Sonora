@@ -408,9 +408,22 @@ breadth exists to prevent, arriving through the labels instead of the engine mix
       the owner already used informally ("directly compared"), it needs no scale change and
       invalidates no existing verdict, and it yields the comparative signal the absolute
       scale structurally cannot. Bounded: 46 sittings of 3–5 clips.
-- [ ] **Anchor exemplars in the audition app.** The owner has named one; a "this is what a 5
-      sounds like" reference beside the rating control is standard MOS practice and costs a
-      link. Without it, 5 drifts per session and per engine, which is what happened here.
+_**Anchor exemplars — SHIPPED 2026-08-08** (`AI-Lab-AMD 38c2259`, deployed). A sticky
+reference bar with one slot per scale point, `⚓` on every clip to make it the reference for
+a score with a one-line *why*, and `Shift`+`1`–`5` to play one — deliberately not a bare
+digit, since those already rate and a mis-key that silently re-rates a clip is the worst
+collision on this surface._
+
+_Two decisions worth keeping. **Anchors are the ear's, never a measure's** — nothing
+computes one, because a computed anchor re-anchors the scale to whatever the measure already
+believes; it ships with exactly ONE entry, the exemplar the owner named
+(`tab_14_resentment_QWN`), and the other four **unset rather than guessed**. The 56 notes on
+score-3 keeps and 94 on score-4 keeps were checked as seed candidates and are machine
+bookkeeping (`[renamed from: …]`), not ear reasoning, so there was nothing honest to seed
+them from. And **state lives in `anchors.json`, not a clip column** — the Qwen/VibeVoice A/B
+parked prior scores in `note`, which the app overwrites when the owner types, and 17 of 33
+were lost. Drift (anchor clip re-rated) and breakage (anchor clip gone from `ratings.csv`)
+both render rather than hide._
 
 ## 6 · Parked dataset decisions
 
