@@ -90,8 +90,32 @@ SWEEP_GRID = {
 SWEEP_DIRECTION = {"speech_dur_vad": "below", "speech_dur": "below"}
 
 
+DROP_MARK = "x"          # the audition app's reject marker; `pick_audit_subset` reads it too
+
+
 def parse_score(v):
-    m = re.search(r"[1-5]", (v or "").strip())
+    """Ear score 1-5, **0 for the drop marker `x`**, None when there is no verdict at all.
+
+    `x` returned None until 2026-08-08, and every caller then did `if score is None:
+    continue` — so **the ear's own rejections were discarded by the tool whose entire job
+    is to calibrate gates against ear verdicts.** Measured when it was found: 253 of the
+    286 dropped/reroll rows on record carry `x`, so **88% of every rejection was
+    invisible**, and a sweep over a campaign full of drops reported "no rated clip matches
+    the defect" — which reads as "this campaign is clean".
+
+    It fails by doing nothing, and the number it produces looks like an answer. Both
+    thresholds this tool has ever set (`PAUSE_HARD_MAX`, `TAIL_LOST_MAX`) were chosen
+    against a defect set missing most of the drops; they are not thereby wrong, but the
+    evidence behind them is thinner than their comments claim and both deserve a re-sweep
+    now that the rejections are visible.
+
+    0 rather than None because the downstream test is `score < keep_score`: a drop has to
+    compare as worse than any keep, and None cannot.
+    """
+    s = (v or "").strip().lower()
+    if s == DROP_MARK:
+        return 0
+    m = re.search(r"[1-5]", s)
     return int(m.group()) if m else None
 
 

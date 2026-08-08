@@ -175,14 +175,37 @@ PAUSE_MIN_GAP = 0.30        # silences shorter than this are ordinary phrasing
 # and `stage_pool.qc_flagged` reads `gates` too, so putting an uncalibrated measure there
 # would silently make it a hard gate at whatever number happened to be typed.
 #
-#   head_ok — genuinely blocked, and harder than filed. Mirroring TAIL_LOST_MAX is the
-#     obvious guess and it is a guess: ASR is worse at the first word than the last, so
-#     the same fraction does not mean the same thing at each end. Worse, there is nothing
-#     to calibrate AGAINST — searching every drop note in ratings.csv for a phrase naming
-#     a late start returns nothing, because no auditor has ever been asked to listen for
-#     it. `register_audition` now says so on any clip missing >= 3 opening words; those
-#     notes are the evidence a threshold has to come from, and `gate_calibration.py
-#     --sweep head_lost_frac` reads them back.
+#   head_ok — CALIBRATED 2026-08-08, and the answer is NO GATE. Not "not yet": the ear
+#     verdicts are in and they say this measure cannot carry one.
+#
+#     Four flagged clips were auditioned. Ranked by `head_lost_frac`:
+#
+#       0.214  victory_whimsical_00_brightF_s5150   DROP — "too shrill" (nothing to do
+#                                                   with the head)
+#       0.211  wuthering-heights_nar_0036_neu_CHA   KEEP 5 — "I hear all of the words in
+#                                                   the printed text"
+#       0.132  wuthering-heights_nar_0040_neu_CHA   KEEP 5 — "Everything in the printed
+#                                                   passage was heard"
+#       0.129  castle-of-otranto_nar_0033_neu_ZON   DROP — "the first two words are
+#                                                   jumbled together and combined with
+#                                                   the third... 'gojawayisabella'"
+#
+#     The measure is ANTI-CORRELATED with the ear here. The highest score in the set is a
+#     perfect keep; the one genuine head defect sits BELOW two keeps. Any cut that catches
+#     0.129 also catches both 5s. There is no threshold, and adding one would reject good
+#     clips to catch nothing.
+#
+#     WHY, and it is the useful part: `head_lost_frac` does not measure head truncation.
+#     It measures ASR HEAD DISAGREEMENT, and the ear says that disagreement comes from
+#     (a) nothing at all — the reader said every word and Whisper misheard the opening,
+#     which is the no-left-context asymmetry `edge_loss` warns about; (b) a defect
+#     elsewhere in the clip; or (c) a real onset problem that is NOT a late start — words
+#     slurred and run together. Across all 8 gate-passing flagged clips, INCLUDING the
+#     four real-audio ones, not one was a late start.
+#
+#     It stays an advisory because (c) is real and worth an ear. The note wording changed
+#     to match: telling an auditor "first N words never spoken" is telling them something
+#     that was false in 3 of the 4 cases they checked.
 #
 # ------------------------------------------------------ speech_ok: HARD GATE 2026-08-07
 #
@@ -209,7 +232,7 @@ PAUSE_MIN_GAP = 0.30        # silences shorter than this are ordinary phrasing
 # energy gate: it is an INGEST pre-filter, and the two now provably agree at the floor.
 # Cost, stated plainly: ~4% of clips that passed QC yesterday do not pass it today.
 SPEECH_MIN_SECONDS = 4.0    # owner 2026-08-07: a hard gate, not an audition note
-HEAD_LOST_MAX = None        # do NOT copy TAIL_LOST_MAX here without the sweep
+HEAD_LOST_MAX = None        # SWEPT 2026-08-08 — stays None ON EVIDENCE, see above
 HEAD_WORDS_MIN = 3          # ...and one dropped "the" is not a truncation at either end
 
 

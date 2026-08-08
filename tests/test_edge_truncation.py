@@ -81,10 +81,18 @@ def test_empty_reference_does_not_divide_by_zero():
 
 def test_the_live_case_that_passed_every_gate():
     """`delivery-v1-narration/wuthering-heights_nar_0036_neu_CHA`, verbatim from its
-    qc_measures row. The clip lost "There was scarcely time" — 4 of its 19 words, 21% of
-    the passage, the entire subject and verb — and `hard_pass` was True, because a global
-    WER of 0.211 sits comfortably under the 0.35 gate. This is the whole finding in one
-    row: the instrument HAD the number and did not look at it."""
+    qc_measures row: ASR could not match "There was scarcely time" — 4 of 19 words, 21% of
+    the passage — while `hard_pass` stayed True, because a global WER of 0.211 sits under
+    the 0.35 gate. The measurement is the point here: the instrument HAD the number and
+    nothing looked at it.
+
+    ⚠ What it does NOT show is a truncated clip. This one went to the ear on 2026-08-08
+    and came back **keep, 5** — *"I hear all of the words in the printed text."* An earlier
+    version of this docstring called it a clip that "lost the entire subject and verb",
+    which was the measure's story rather than the audio's. Whisper misheard an opening
+    that was spoken correctly, which is exactly the no-left-context asymmetry `edge_loss`
+    warns about. The assertions below are about `edge_loss`, not about the clip's quality.
+    """
     ref = ("There was scarcely time to experience a thrill of horror before we saw "
            "that the little wretch was safe.")
     hyp = "to experience a thrill of horror before we saw that the little wretch was safe."

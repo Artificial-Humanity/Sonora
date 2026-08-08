@@ -281,10 +281,19 @@ def _qc_triage(qc_path):
         head_lost = r.get("head_words_lost") or 0
         if head_lost >= HEAD_WORDS_FLAG:
             frac = r.get("head_lost_frac") or 0
-            why.append(f"starts late — first {head_lost} words "
-                       f"({frac*100:.0f}% of the passage) never spoken. LISTEN TO THE "
-                       f"OPENING, and say so in the note if it is real: this one is "
-                       f"MEASURED BUT NOT GATED and your note is what sets the threshold")
+            # REWORDED 2026-08-08 after the first four verdicts came back. It used to say
+            # "starts late — first N words never spoken", and that was false in three of
+            # the four: two were keeps at 5 ("I hear all of the words in the printed
+            # text") and one was dropped for shrillness. What the measure detects is that
+            # ASR could not ALIGN the opening, which has several causes and only one of
+            # them is truncation — so the note now names the alternatives instead of
+            # asserting the rarest one. Telling an auditor what to conclude is how a
+            # measure launders itself into a finding.
+            why.append(f"ASR could not match the first {head_lost} words "
+                       f"({frac*100:.0f}% of the passage). LISTEN TO THE OPENING — it may "
+                       f"be a late start, words slurred or run together, or nothing at all "
+                       f"(ASR is weakest on the first word, which has no left context). "
+                       f"MEASURED BUT NOT GATED: say what you actually hear")
         # Internal dead air. Named before the duration line for the same reason
         # tail_ok is: it tells the auditor WHERE in the clip to listen. The
         # advisory band exists because a long pause is sometimes a real dramatic

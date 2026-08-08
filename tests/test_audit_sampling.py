@@ -154,3 +154,31 @@ def test_scrutinized_is_still_the_default_for_unknown_engines():
     src = _src("pick_audit_subset.py")
     assert 'DEFAULT_TIER = "scrutinized"' in src
     assert "SCRUTINIZED_ENGINES" in src
+
+
+# --- the calibration tool's blind spot (2026-08-08) -----------------------------------
+
+
+def test_the_drop_marker_is_a_verdict_not_a_missing_score():
+    """`gate_calibration` exists to choose gate thresholds from the ear's own verdicts,
+    and it was discarding almost all of them.
+
+    `parse_score` searched for `[1-5]`, so the audition app's reject marker `x` returned
+    None — and every caller then did `if score is None: continue`. Measured when found:
+    **253 of the 286 dropped/reroll rows carry `x`, so 88% of every rejection was
+    invisible**, and a sweep over a campaign full of drops printed "no rated clip matches
+    the defect", which reads exactly like "this campaign is clean".
+
+    0, not None: the downstream test is `score < keep_score`, and a drop has to compare
+    as worse than any keep.
+    """
+    sys.path.insert(0, str(SYNTH))
+    gc = pytest.importorskip("gate_calibration")
+    assert gc.parse_score("x") == 0
+    assert gc.parse_score("X") == 0
+    assert gc.parse_score(" x ") == 0
+    assert gc.parse_score("5") == 5
+    assert gc.parse_score("") is None, "no verdict is still no verdict"
+    assert gc.parse_score(None) is None
+    # And it must sort below any keep bar.
+    assert gc.parse_score("x") < 4
