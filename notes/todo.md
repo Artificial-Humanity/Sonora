@@ -291,91 +291,24 @@ above ever opens, recorded so the answer is a decision rather than an improvisat
          (56 keeps + 24 drops) — `dia` 15, `vibevoice` 5, `qwen` 2, `moss_vg` 2.
        Doing only the first is cheap and answers the ranking question that was actually
        filed; the keep-rate question can stay open without blocking it.
-2. [ ] **Orpheus tier — RE-MEASURED 2026-08-08, and the case for `trusted` does not
-       survive it.** The numbers here were stale ("105 non-`tara` renders at 80.0% keep /
-       mean 4.49"); the current join of `ratings.csv` to the orpheus manifests says
-       **109 heard ex-`tara`, 90.8% keep, mean 4.57** — which looks *better* than filed and
-       above qwen. It is still the wrong number to decide on:
+_**2 · Orpheus — CLOSED 2026-08-08: held at `normal`** (owner). The filed 80.0% was stale
+   in the favourable direction — it is 90.8% ex-`tara` — but `jess` is 78 of those 109
+   clips at 97.4%, and the remainder is 74.2% with `mia` at 55.6% and `leah` at 62.5%.
+   All-voices it is 76.2%, BELOW `chatterbox` at 77.8%, which is already trusted. A tier
+   tags an ENGINE, so `trusted` would fold the two voices that most need hearing. If the
+   audit saving is ever wanted the honest form is a restricted roster (`jess`/`dan`/`zoe`),
+   and that is a code change — `ENGINE_TIER` has no per-voice concept._
 
-       | voice | heard | keeps | rate |
-       |---|---|---|---|
-       | `jess` | 78 | 76 | **97.4%** |
-       | `dan` | 9 | 8 | 88.9% |
-       | `mia` | 9 | 5 | **55.6%** |
-       | `leah` | 8 | 5 | **62.5%** |
-       | `zoe` | 5 | 5 | 100% |
-       | `tara` | 21 | 0 | **0.0%** |
+_**3 · moss_vg — CLOSED 2026-08-08: promoted to `normal`** (`4150dfa`), on the bargain
+   `qc_engine_defects.py` was written to offer. Neither leg of the hold survived: the "24%
+   on expressive material" is not reproducible (the source measured **35% rejected on a
+   NARRATION campaign**), and 11 of its 20 non-keeps are bookkeeping retirements, so on
+   real ear verdicts it is **95 heard / 90.5%**. The 5 structural rejections all fail
+   `pause_ok`/`tail_ok`/`speech_ok` today; 3 of the 4 timbre ones are caught by
+   `radio_timbre` at 19.8% batch flag. **The detector is now wired into `synth_bank.sh`** —
+   it was a manual step, so the trade had been notional. Residual named:
+   `windfairies_nar_0034`, IVR-flat prosody, passes every instrument._
 
-       **`jess` is 78 of the 109 (72%).** Strip it and the rest is 31 heard / 23 keeps =
-       **74.2%**. So "orpheus at 90.8%" is very nearly "jess at 97.4%", and the tier is a
-       tag on an ENGINE, not on a voice — `trusted` (1 per group + 3%) would fold `mia`
-       and `leah` clips unheard at a ~4-in-10 rejection rate.
-       This is the third instance of one shape: zonos's 31% was two populations averaged,
-       moss_vg's 20/20 was a register that flatters it, and `ref_risk.py` exists **because
-       of this exact case** — "Orpheus reads 36% rejected, but that is `tara` at 90%
-       dragging up a `jess` that is 0 for 24."
-       Against the bar: chatterbox is `trusted` at **77.8%**, qwen at **89.4%**. Orpheus as
-       shipped, all voices, is **76.2% — below chatterbox.**
-       **Recommendation: HOLD at `normal`.** The audit saving is real but it would be
-       bought by not listening to the two voices that most need listening to. If the saving
-       is wanted, the honest form is a restricted roster (`jess`/`dan`/`zoe`), and that is
-       a code change — `ENGINE_TIER` is keyed on engine name and has no per-voice concept.
-3. [ ] **moss_vg — the re-test this asks for ALREADY EXISTS, it passes, and the defect it
-       guards is now INSTRUMENTED.** Checked 2026-08-08.
-
-       ⚠ **Correction to the rates first published in this entry.** 11 of moss_vg's 20
-       non-keeps are **bookkeeping retirements, not ear rejections** — 6 "retired unheard:
-       group failed certification twice" and 5 "superseded by `_QWE`/`_CHA` (kept, score
-       5)". Counting them as rejections is the exact error the zonos promotion note warns
-       about. **On actual ear verdicts moss_vg is 95 heard / 90.5% keep**, not 81.1%, and
-       **Documentary is 16 heard / 75.0%**, not 60.0%. By lane: Neutral 94.7% (38),
-       Newscaster 95.2% (21), Dialogue 89.5% (19), Documentary 75.0% (16).
-       `ENGINE_MIX_BY_LANE["Documentary"]`'s "56% (18)" comment is contaminated the same
-       way and should be re-derived when that table is next touched.
-
-       **The 9 real ear rejections split into two classes, and today both are caught:**
-       - **Structural (5) — every one fails a gate that exists now.** Re-measured from the
-         audio, because these rows predate the measures: `the-return_nar_0049` 2.82 s and
-         `old-english-baron_nar_0045` 3.04 s internal pause (cap 2.5 → `pause_ok`);
-         `tab_15_mystic` 0.67 s and `tab_18_accent_scots` 3.68 s of speech (floor 4.0 →
-         `speech_ok`, hard since 2026-08-07); `nar_0050` 9 tail words (`tail_ok`).
-       - **Timbre (4) — `radio_score` catches them.** Three "mid-1900s radio transmission"
-         clips measure out/in-band 0.014, 0.072, 0.094 against a 0.10 threshold: **3 of 3
-         recall.** Over all 116 moss_vg clips on disk it flags **23 (19.8%)** for the ear.
-         The fourth is `windfairies_nar_0034`, "highly robotic… like an old-fashioned phone
-         IVR" — 28.8 s, 26.2 s speech, 0.38 s worst pause, and it passes everything. That
-         one is genuinely ear-only.
-
-       **This is the bargain `qc_engine_defects.py` was written to offer**, in its own
-       words: *"what the tier system needs in order to ever hand those engines a ride-along
-       back — coverage traded for instrumentation, the same bargain qwen made."* **zonos
-       took that bargain and was promoted 2026-08-04. moss_vg has the same instrument and
-       was not.** Scrutinized costs 100% listening; instrumented `normal` costs ~20% (the
-       radio flags) plus normal sampling — a 5× reduction for full recall on the
-       characterized defect.
-
-       ⚠ **The "24% rate on expressive material" is not reproducible and appears to be a
-       corrupted restatement.** The source is `4abfd3f` (2026-07-31), which measured
-       **`moss_vg 19/54 (35%)` REJECTED on `delivery-v1-narration`** — a narration campaign,
-       not expressive material, and 35% not 24%. Today that same campaign reads 54 heard /
-       66.7% keep, i.e. the same number. Nothing on disk produces 24%. A tier that costs
-       **100% listening** should not rest on a figure that lost its provenance; the same
-       line is in [STATE.md](STATE.md) and should be corrected there too.
-
-       **Documentary is still the weak lane**, at 75.0% against an 83.3% lane mean, and
-       `ref_select.ENGINE_MIX_BY_LANE["Documentary"]` already holds moss_vg to a **0.05
-       floor share** for that reason. So the scrutinized tier is doing duplicate work: it
-       buys 100% listening across every lane — including the two where moss_vg is the
-       strongest engine we have — to guard a lane risk the allocation layer already prices
-       and a timbre defect the detector already flags. That is precisely the split
-       [[audit-trust-tiers]] insists on ("a tier is a TAG ON AN ENGINE; render share lives
-       in `ENGINE_MIX_BY_LANE`").
-
-       **Recommendation: PROMOTE moss_vg scrutinized → normal**, with
-       `qc_engine_defects.py --campaign <c> --append-flags` run on every moss_vg bank so
-       the radio flags keep reaching the ear. Owner call, policy not measurement — but the
-       measurement no longer supports the hold, and the instrument the hold was waiting for
-       has existed since 2026-08-02.
 4. ~~**The 4 head-truncation clips**~~ **HEARD 2026-08-08 — see § 2.** `head_ok` gets no
        gate (the measure is anti-correlated with the ear), `TAIL_LOST_MAX` 0.05 is
        confirmed at 3/3 catch / 1% false flag, and the pause cap is now the open question
