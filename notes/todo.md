@@ -336,6 +336,47 @@ _**3 · moss_vg — CLOSED 2026-08-08: promoted to `normal`** (`4150dfa`), on th
        confirmed at 3/3 catch / 1% false flag, and the pause cap is now the open question
        rather than the head. `speech_ok` left this list on 2026-08-07.
 
+## 6 · The score scale has a ceiling, and it is pinned at human audio
+
+**Owner, 2026-08-08, after the equal-loudness listen:** *"Qwen relays human-like prosody in
+those cases where it scored a 5 that makes me rethink 5's given out to others. Cases like
+'It's fine, it really fine…' are simply magnificent. Vibe Voice paled in comparison."*
+
+That is a finding about the INSTRUMENT, and it measures. The exemplar line — *"No, it's
+fine. It's completely fine. I only rearranged my entire year around it, so it's fine."* — is
+rendered by seven engines, and **six of them hold a 5**: chatterbox, dia, moss_vg, orpheus,
+qwen, zonos. Only VibeVoice was dropped. Across the corpus:
+
+- **62 texts are rendered by ≥3 engines with ear verdicts** (478 clips) — controlled
+  comparisons, identical text.
+- **46 of those 62 groups have ≥3 DIFFERENT engines all scoring 5.** 229 clips tied at the
+  ceiling. On three-quarters of the controlled comparisons the scale cannot separate them.
+- **`librivox` — real human recordings — means 5.00, with 100% of its keeps at 5.** The top
+  of the scale is "indistinguishable from a human read", and six synthetic engines are
+  sitting on it.
+
+**What this invalidates, specifically.** Any RANKING BY MEAN SCORE across engines. The
+engines cluster in a 0.14-point band (chatterbox 4.72 · qwen 4.67 · zonos 4.65 · moss_vg
+4.58) and **the scale places chatterbox above the engine the owner calls the gold
+standard** — an inversion produced by compression, not by quality. Mean-score tables in
+this file and in the changelog should be read as "all of these clear the bar", never as an
+order. *(The tier calls of 2026-08-08 rest on keep RATE and defect characterisation, which
+are binary and survive this; it is the means quoted alongside them that do not.)*
+
+**And it is a corpus problem, not only a bookkeeping one.** Sonora trains on keeps. If
+"magnificent" and "acceptable" both label as 5, the corpus's quality ceiling is set by the
+weakest 5 in it — which is exactly the "clinging to a teacher's style" risk the portfolio
+breadth exists to prevent, arriving through the labels instead of the engine mix.
+
+- [ ] **A forced-ranking pass over the 46 tied groups** (229 clips). Same text, ≥3 engines,
+      all at 5 — rank within the group instead of scoring absolutely. It is the protocol
+      the owner already used informally ("directly compared"), it needs no scale change and
+      invalidates no existing verdict, and it yields the comparative signal the absolute
+      scale structurally cannot. Bounded: 46 sittings of 3–5 clips.
+- [ ] **Anchor exemplars in the audition app.** The owner has named one; a "this is what a 5
+      sounds like" reference beside the rating control is standard MOS practice and costs a
+      link. Without it, 5 drifts per session and per engine, which is what happened here.
+
 ## 6 · Parked dataset decisions
 
 SSOT is `training-sources.md` — not duplicated here. Headlines: the Expresso two-ruling
