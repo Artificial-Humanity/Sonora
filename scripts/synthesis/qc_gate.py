@@ -159,8 +159,36 @@ TAIL_WORDS_MIN = 3          # ...and at least 3 real words, so one dropped "the"
 # only earns an audition — the ear decides. A relative threshold (pause / duration)
 # was tested and matched, not beat, the absolute one; absolute is easier to reason
 # about at the console.
-PAUSE_HARD_MAX = 2.5        # longest internal silence a clip may contain
-PAUSE_FLAG_MAX = 1.4        # ...above this it is advisory: queue it for the ear
+# RE-SWEPT 2026-08-08, pooled across every campaign that holds both the measure and ear
+# verdicts (newscaster-v1 + delivery-v1-narration-r2 + librivox-speech-v1, 161 keeps), and
+# for the first time with the ear's own rejections VISIBLE — `parse_score` had been
+# discarding every `x`, i.e. 88% of all drops. The hard cap was expected to tighten. It
+# must not, and the reason is worth keeping:
+#
+#     2.112  keep   franklin-autobiography_r2_0131_MOS
+#     1.984  keep   conan-stories_r2_0097_ZON
+#     1.600  DROP   news_0020_anchorF1_ZON   "Odd long pause after 'complete'"
+#     1.568  keep   voyage-of-the-beagle_r2_0020_ZON
+#     1.536  keep   walden_r2_0132_MOS
+#     1.408  DROP   news_0011_anchorF1_ZON   "Long pause between 'report' and 'the driest'"
+#
+# The drops are INTERLEAVED with keeps and the longest pause in the set is a keep. No
+# threshold separates them: catching the 1.600 drop hard-rejects the 1.568 and 1.536 keeps
+# (3% of all keeps), and sparing the 2.112 keep misses both drops. `PAUSE_HARD_MAX` stays
+# 2.5 because the two-level design's whole premise is "hard where NO good clip reaches",
+# and 1.4 is demonstrably somewhere good clips do reach.
+#
+# What the sweep actually says is that DURATION IS THE WRONG AXIS for this defect. Both
+# drop notes object to WHERE the pause falls — "after 'complete'", "between 'report' and
+# 'the driest'" — mid-phrase, where no reader would breathe. A 2.1 s pause at a paragraph
+# break is fine and a 1.4 s pause mid-clause is not, and `worst_pause` cannot tell them
+# apart. Separating them needs the pause's POSITION against the phrase, which is a new
+# measure, not a new constant. Filed rather than built.
+# ⚠ Both drops are `news_*_anchorF1_ZON` — one voice, one campaign. n=2 either way.
+PAUSE_HARD_MAX = 2.5        # longest internal silence a clip may contain; see the sweep above
+PAUSE_FLAG_MAX = 1.4        # ...above this it is advisory: queue it for the ear. Catches
+                            # BOTH known defects at a 3% false-flag rate, which is exactly
+                            # what an advisory band is for: it costs an audition, not a clip.
 PAUSE_MIN_GAP = 0.30        # silences shorter than this are ordinary phrasing
 
 # ------------------------------------------------------ UNCALIBRATED (C-M4, 2026-08-07)

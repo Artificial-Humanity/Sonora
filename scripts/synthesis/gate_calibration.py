@@ -177,7 +177,9 @@ def load_ear(ratings_path, ids):
 
 def cmd_sweep(args):
     """Print catch vs false-flag at each candidate threshold, from the ear's own labels."""
-    measures = load_measures(args.campaign_dir, args.measures)
+    measures = {}
+    for d in args.campaign_dir:
+        measures.update(load_measures(d, args.measures))
     ear = load_ear(args.ratings, set(measures))
     direction = args.direction or SWEEP_DIRECTION.get(args.sweep, "above")
     grid = ([float(x) for x in args.grid.split(",")] if args.grid
@@ -201,7 +203,10 @@ def cmd_sweep(args):
         elif not rejected:
             keeps.append((cid, value))
 
-    print(f"campaign : {args.campaign_dir}")
+    print("campaign : " + (args.campaign_dir[0] if len(args.campaign_dir) == 1
+                            else f"{len(args.campaign_dir)} pooled: "
+                                 + ", ".join(os.path.basename(d.rstrip("/"))
+                                             for d in args.campaign_dir)))
     print(f"measure  : {args.sweep}  (flagged when {direction} the threshold)")
     print(f"rated    : {len(ear)} clip(s) with an ear verdict"
           + (f"; {unmeasured} lack this measure" if unmeasured else ""))
@@ -239,7 +244,12 @@ def cmd_sweep(args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--campaign-dir", required=True)
+    # REPEATABLE since 2026-08-08. One campaign at a time structurally guarantees a thin
+    # defect set — a gate's evidence is however many clips one bank happened to break —
+    # and thin is exactly the complaint the sweep prints about itself. PAUSE_HARD_MAX was
+    # chosen this way. Pass it more than once to pool.
+    ap.add_argument("--campaign-dir", required=True, action="append",
+                    help="campaign directory; repeat to pool evidence across campaigns")
     ap.add_argument("--verdicts", default="qc_verdicts.jsonl",
                     help="filename within --campaign-dir")
     ap.add_argument("--ratings", default=RATINGS)
@@ -263,7 +273,7 @@ def main():
     if args.sweep:
         return cmd_sweep(args)
 
-    vpath = os.path.join(args.campaign_dir, args.verdicts)
+    vpath = os.path.join(args.campaign_dir[0], args.verdicts)
     verdicts = {r["id"]: r for r in
                 (json.loads(l) for l in open(vpath, encoding="utf-8") if l.strip())}
 
@@ -291,7 +301,10 @@ def main():
               f"{skipped['dropped']} dropped/reroll rows still carrying a score")
 
     rated = [i for i in verdicts if i in ear]
-    print(f"campaign : {args.campaign_dir}")
+    print("campaign : " + (args.campaign_dir[0] if len(args.campaign_dir) == 1
+                            else f"{len(args.campaign_dir)} pooled: "
+                                 + ", ".join(os.path.basename(d.rstrip("/"))
+                                             for d in args.campaign_dir)))
     print(f"verdicts : {args.verdicts} ({len(verdicts)} clips)")
     print(f"rated    : {len(rated)} of {len(verdicts)}"
           f"  ({len(verdicts) - len(rated)} awaiting the ear)\n")
