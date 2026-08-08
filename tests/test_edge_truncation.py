@@ -345,3 +345,23 @@ def test_direction_is_named_per_measure_not_inferred():
     assert gc.flags(3.0, 4.0, "below") is True
     assert gc.flags(3.0, 4.0, "above") is False
     assert gc.flags(None, 4.0, "below") is None      # not measured is not a pass
+
+
+def test_the_warmstart_widening_is_covered_by_the_mandatory_seam_gate():
+    """The widening logic is torch-only, so it cannot run in the host suite — and a check
+    that only ever skips protects nothing.
+
+    It lives in `scripts/test_vat_dim_seams.py`, which is mandatory pre-flight before any
+    training run and already covers every other vat_dim seam. This test's whole job is to
+    notice if it is removed from there, since nothing else on the host would.
+    """
+    seams = (pathlib.Path(__file__).resolve().parent.parent
+             / "scripts" / "test_vat_dim_seams.py").read_text(encoding="utf-8")
+    assert "import make_warmstart" in seams
+    for name in ("the VAT trunk widens, new channels at zero",
+                 "the speaker table is REFUSED without a proven index map",
+                 "new speakers keep the fresh init",
+                 "a shrink is never a widen",
+                 "an un-allowlisted tensor is never reshaped",
+                 "a reordered speaker map fails the prefix proof"):
+        assert name in seams, f"the seam gate lost its widening check: {name}"

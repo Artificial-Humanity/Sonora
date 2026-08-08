@@ -278,6 +278,25 @@ blocker:
    re-scaling changes what every existing checkpoint, filelist and exported `config.json`
    means. That is a contract change and an owner call (ARCHITECTURE §1), not a constant.
 
+**Owner took option 1 (accept) on 2026-08-08, and the prediction is recorded HERE, before
+the run, so it is a test rather than a story told afterwards.** The whole value of
+accepting is that the holdout gets to answer; that only works if the expected failure
+signature is written down first.
+
+> **PREDICTION, 2026-08-08, Emilia merge with saturated T.** If the shortcut is real, the
+> merged run should show: (a) T **worse** on the never-trained holdout than the
+> LibriTTS-only baseline, while V and A are unchanged or better — a channel-specific
+> regression, not a general one; (b) T's standing perceptual test moving from near-pass
+> toward fail; and (c) renders at T = +1 sounding like *Emilia-domain audio* (podcast/
+> YouTube timbre, room, mic character) rather than like tension, which is the diagnostic
+> an ear can settle and a loss cannot. If instead T holds or improves while V/A move, the
+> shortcut did not form and saturation is a non-issue at this mix.
+>
+> **If (a)+(c) both land, the answer is C-soft** — `tanh(z/2)` for the whole corpus, which
+> maps the saturated span 2.00–5.76σ to 0.762–0.994 instead of collapsing it to 1.0 — and
+> it will then be justified by evidence rather than by anticipation. It is a contract
+> change and a full relabel either way, so it wants to ride a re-derivation, not force one.
+
 ⚠ **Separately, and it IS a blocker: `n_spks`.** The model's speaker table is **247** rows
 and Emilia brings **2,408 new speakers**, so a merged corpus needs `n_spks: 2655` and a
 `spk_emb.weight` widened 247 → 2655. That widening is *safe here and only here*: LibriTTS

@@ -85,6 +85,13 @@ def check(name, fn, want):
     FAIL.append(f"{name}: DID NOT RAISE — the seam is unguarded")
 
 
+
+def _assert(cond):
+    """check_ok judges on "did not raise"; these checks judge on a boolean."""
+    if not cond:
+        raise AssertionError("condition is false")
+    return True
+
 def check_ok(name, fn):
     """`fn` must NOT raise — the guards must not break the working path."""
     try:
@@ -206,6 +213,50 @@ check("delivery: a fractional lane is refused",
 check_ok("delivery: the trunk accepts the production width",
          lambda: VATTrunk(vat_dim=delivery.VAT_DIM, cond_dim=8)(
              torch.zeros(2, delivery.VAT_DIM, 16)))
+
+
+# --- 5. the warm start's widening (2026-08-07/08) -----------------------------------
+#
+# The seam between a 3-wide checkpoint and an 8-wide model. make_warmstart DROPPED every
+# shape-mismatched tensor and let random init stand, which discarded the whole learned
+# V/A/T -> FiLM pathway on a run whose only purpose was to change the width. Widening is
+# an ALLOWLIST because the same operation is right for one tensor and silently wrong for
+# another: channel position is a contract, speaker-row position is not.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import make_warmstart as _mw  # noqa: E402
+
+check_ok("warmstart: the VAT trunk widens, new channels at zero",
+         lambda: _assert(
+             (lambda o, d: o is not None and torch.equal(o[:, :3], d)
+              and bool((o[:, 3:] == 0).all()))(
+                 _mw._widen("encoder.vat_trunk.net.0.weight",
+                            (d := torch.randn(256, 3, 1)), torch.randn(256, 8, 1)), d)))
+
+check_ok("warmstart: the speaker table is REFUSED without a proven index map",
+         lambda: _assert(_mw._widen("spk_emb.weight", torch.randn(247, 64),
+                                    torch.randn(2655, 64)) is None))
+
+check_ok("warmstart: with proof it widens and new speakers keep the fresh init",
+         lambda: _assert(
+             (lambda o, d, m: o is not None and torch.equal(o[:247], d)
+              and torch.equal(o[247:], m[247:]))(
+                 _mw._widen("spk_emb.weight", (d := torch.randn(247, 64)),
+                            (m := torch.randn(2655, 64)), allow_speakers=True), d, m)))
+
+check_ok("warmstart: a shrink is never a widen",
+         lambda: _assert(_mw._widen("spk_emb.weight", torch.randn(2655, 64),
+                                    torch.randn(247, 64), allow_speakers=True) is None))
+
+check_ok("warmstart: an un-allowlisted tensor is never reshaped",
+         lambda: _assert(_mw._widen("decoder.estimator.mid_block1.0.block.0.weight",
+                                    torch.randn(256, 3, 1), torch.randn(256, 8, 1)) is None))
+
+check_ok("warmstart: a reordered speaker map fails the prefix proof",
+         lambda: _assert(
+             not _mw._speaker_prefix_ok({"libritts_id_to_index": {"a": 0, "b": 1}},
+                                        {"libritts_id_to_index": {"b": 0, "a": 1}})[0]
+             and _mw._speaker_prefix_ok({"libritts_id_to_index": {"a": 0, "b": 1}},
+                                        {"libritts_id_to_index": {"a": 0, "b": 1, "c": 2}})[0]))
 
 
 # --- report -----------------------------------------------------------------------

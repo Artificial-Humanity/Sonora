@@ -18,6 +18,7 @@ Then train with:
 """
 
 import argparse
+import json
 import os
 import sys
 
@@ -46,26 +47,64 @@ from lightning import Trainer
 # to change the WIDTH and nothing else. notes/todo.md §1 asserted make_warmstart "already
 # applies" this treatment. It did not.
 #
-# The speaker table is the counter-example and the reason this is an allowlist rather than
-# a rule: `spk_emb.weight` also grows (109 -> 247 rows from the vctk donor), and copying
-# the first 109 rows would be WRONG — speaker ids do not correspond across corpora, so
-# row i is a different person. Growth is only safe where position carries a contract.
-_WIDENABLE = {"vat_trunk.net.0.weight": 1}
+# `spk_emb.weight` is the case that shows why this is an allowlist with a POLICY rather
+# than a rule. It also grows — 109 -> 247 rows from the vctk donor, and 247 -> 2,655 when
+# Emilia's 2,408 speakers merge — but the two growths are not the same operation:
+#
+#   * vctk -> LibriTTS: different corpora, so row `i` is a DIFFERENT PERSON. Copying the
+#     leading rows is silently wrong and the script must refuse.
+#   * LibriTTS v4 -> a merged corpus: the same LibriTTS speakers keep their indices and the
+#     new ones append, so rows 0..246 keep their meaning exactly.
+#
+# Nothing in a checkpoint says which of those it is. So widening the speaker table requires
+# the donor's `speakers.json` on the command line and PROVES the prefix property before
+# touching anything (`--donor-speakers`); absent that proof the table stays fresh, which
+# costs relearning and risks nothing.
+#
+# The new rows also want a different filling from the VAT trunk's. A zero CHANNEL means
+# "contributes nothing", which is exactly right for an unknown delivery lane. A zero
+# speaker EMBEDDING is not a neutral speaker — it is one specific point that every new
+# speaker would start from identically, which is a poor init for something that must be
+# learned. New speaker rows therefore keep the model's own fresh initialisation.
+_WIDENABLE = {
+    "vat_trunk.net.0.weight": (1, "zero"),
+    "spk_emb.weight": (0, "model_init"),
+}
 
 
-def _widen(name, donor_t, model_t):
+def _speaker_prefix_ok(donor_speakers, model_speakers):
+    """Is the donor's speaker index map a PREFIX of the model's? -> (ok, detail)."""
+    if not donor_speakers or not model_speakers:
+        return False, "no speaker map supplied (--donor-speakers)"
+    key = "libritts_id_to_index"
+    old, new = donor_speakers.get(key) or {}, model_speakers.get(key) or {}
+    if not old or not new:
+        return False, f"a speakers.json is missing `{key}`"
+    moved = [s for s, i in old.items() if new.get(s) != i]
+    if moved:
+        return False, (f"{len(moved)} speaker(s) changed index, e.g. "
+                       f"{moved[0]}: {old[moved[0]]} -> {new.get(moved[0])}")
+    if len(new) < len(old):
+        return False, f"the new map has FEWER speakers ({len(new)} < {len(old)})"
+    return True, f"{len(old)} donor speakers keep their index; {len(new) - len(old)} appended"
+
+
+def _widen(name, donor_t, model_t, allow_speakers=False):
     """Donor tensor extended to the model's shape, or None if it must not be widened."""
-    axis = next((a for suffix, a in _WIDENABLE.items() if name.endswith(suffix)), None)
-    if axis is None or donor_t.dim() != model_t.dim():
+    hit = next((v for suffix, v in _WIDENABLE.items() if name.endswith(suffix)), None)
+    if hit is None or donor_t.dim() != model_t.dim():
         return None
-    # Every axis but the channel axis must match exactly, and the channel axis must GROW.
-    # A shrink would silently truncate a trained channel, which is a different edit.
+    axis, policy = hit
+    if policy == "model_init" and not allow_speakers:
+        return None          # no proof of the prefix property — refuse, do not guess
+    # Every axis but the growing one must match exactly, and it must GROW. A shrink would
+    # silently truncate a trained channel or speaker, which is a different edit entirely.
     for a in range(donor_t.dim()):
         if a != axis and donor_t.shape[a] != model_t.shape[a]:
             return None
     if donor_t.shape[axis] >= model_t.shape[axis]:
         return None
-    out = torch.zeros_like(model_t)
+    out = torch.zeros_like(model_t) if policy == "zero" else model_t.clone()
     out.narrow(axis, 0, donor_t.shape[axis]).copy_(donor_t)
     return out
 
@@ -75,12 +114,40 @@ def main():
     ap.add_argument("--experiment", default="derisk_energy")
     ap.add_argument("--donor", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--donor-speakers", default=None,
+                    help="the donor corpus's speakers.json. Supplying it PERMITS the "
+                         "speaker table to be widened, and only if this map is a prefix of "
+                         "the new corpus's — same ids at the same indices, new ones "
+                         "appended. Without it the table stays fresh: a checkpoint does "
+                         "not record which corpus its rows belong to, and copying rows "
+                         "across corpora points every speaker at someone else.")
     args = ap.parse_args()
 
     config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "configs")
     with initialize_config_dir(version_base="1.3", config_dir=config_dir):
         cfg = compose(config_name="train.yaml", overrides=[f"experiment={args.experiment}"])
     model = instantiate(cfg.model)
+
+    # The proof, before anything is copied. The new corpus's map sits beside the filelist
+    # the experiment already names, so there is nothing to pass for that half.
+    allow_speakers = False
+    if args.donor_speakers:
+        new_path = os.path.join(os.path.dirname(cfg.data.train_filelist_path), "speakers.json")
+        try:
+            with open(args.donor_speakers, encoding="utf-8") as f:
+                donor_spk = json.load(f)
+            with open(new_path, encoding="utf-8") as f:
+                new_spk = json.load(f)
+        except OSError as exc:
+            raise SystemExit(f"!! --donor-speakers: {exc}")
+        allow_speakers, detail = _speaker_prefix_ok(donor_spk, new_spk)
+        print(f"speaker map: {'PREFIX OK' if allow_speakers else 'REFUSED'} — {detail}")
+        if not allow_speakers:
+            raise SystemExit(
+                "!! the donor's speaker indices are not preserved in the new corpus, so "
+                "widening\n   spk_emb.weight would point trained rows at different "
+                "people. Re-derive the\n   corpus preserving the index map, or drop "
+                "--donor-speakers to start the table fresh.")
 
     donor = torch.load(args.donor, map_location="cpu", weights_only=False)
     # strict=False tolerates missing/unexpected KEYS but not shape mismatches
@@ -90,7 +157,7 @@ def main():
     shape_dropped, widened = [], []
     for k, v in donor["state_dict"].items():
         if k in model_sd and model_sd[k].shape != v.shape:
-            grown = _widen(k, v, model_sd[k])
+            grown = _widen(k, v, model_sd[k], allow_speakers=allow_speakers)
             if grown is None:
                 shape_dropped.append(f"{k} {tuple(v.shape)}->{tuple(model_sd[k].shape)}")
             else:
