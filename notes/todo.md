@@ -190,14 +190,23 @@ as "no rated clip matches the defect". Fixed. Two consequences: **`TAIL_LOST_MAX
 CONFIRMED** (3/3 catch, 1% false flag, on rejections that could not be seen before), and
 one thing for the owner below._
 
-- [ ] **`PAUSE_HARD_MAX` may be too loose — owner call, and thin.** On `newscaster-v1`,
-      the only campaign holding both the pause measure and ear verdicts, the shipped hard
-      cap of **2.5 s catches 0 of the 2 ear-confirmed pause defects**, while the **1.4 s
-      advisory band catches both at 0% false flag**. n = 2, so this is a signal to
-      re-examine rather than a mandate — and moving a hard cap is a corpus admission
-      change, the same class as `speech_ok`. The comment in `qc_gate.py` says the 2.5 was
-      set against 21 labelled defects; that set was drawn while 88% of rejections were
-      invisible, so it deserves re-deriving before anyone trusts the number.
+_**`PAUSE_HARD_MAX` re-swept 2026-08-08 (`35bbce6`) — it stays at 2.5, against expectation.**
+`--campaign-dir` is repeatable now (sweeping one campaign at a time is what made every
+defect set thin), so this pooled 161 keeps across the three campaigns holding both the
+measure and ear verdicts. The drops turn out to be **interleaved with keeps** — 2.112 keep,
+1.984 keep, **1.600 DROP**, 1.568 keep, 1.536 keep, **1.408 DROP** — and the longest pause
+in the set is a keep. No threshold separates them: catching the 1.600 drop hard-rejects two
+keeps, sparing the 2.112 keep misses both drops. **Duration is the wrong axis.** Both drop
+notes object to WHERE the pause falls ("after 'complete'", "between 'report' and 'the
+driest'") — mid-phrase, where no reader breathes. The advisory band at 1.4 already catches
+both at a 3% false-flag rate, which is what an advisory is for._
+
+- [ ] **A pause-POSITION measure.** The one thing the re-sweep says is missing: `worst_pause`
+      knows how long a silence is and nothing about whether it falls where a reader would
+      breathe. A 2.1 s pause at a paragraph break is fine; a 1.4 s one mid-clause is not.
+      This is a new measure, not a new constant — the phrase boundary is already available
+      from the CTC alignment A-M2 fixed. Not urgent: the advisory band catches these today
+      at the cost of an audition. ⚠ n = 2, and both from one voice in one campaign.
 
 ## 4 · Conditioning axes — one approved, one OPEN
 
