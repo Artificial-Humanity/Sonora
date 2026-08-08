@@ -371,5 +371,7 @@ def test_the_warmstart_widening_is_covered_by_the_mandatory_seam_gate():
                  "new speakers keep the fresh init",
                  "a shrink is never a widen",
                  "an un-allowlisted tensor is never reshaped",
-                 "a reordered speaker map fails the prefix proof"):
+                 "a reordered speaker map fails the prefix proof",
+                 "the prefix proof reads EVERY namespace, not just LibriTTS",
+                 "two speakers on one embedding row is refused"):
         assert name in seams, f"the seam gate lost its widening check: {name}"

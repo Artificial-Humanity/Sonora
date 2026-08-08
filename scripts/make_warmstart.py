@@ -18,6 +18,7 @@ Then train with:
 """
 
 import argparse
+import collections
 import json
 import os
 import sys
@@ -72,14 +73,44 @@ _WIDENABLE = {
 }
 
 
+def _index_map(speakers):
+    """Every `*_id_to_index` block in a speakers.json, as ONE id -> index map.
+
+    A merged corpus keeps its sources in separate namespaces — v5 has
+    `libritts_id_to_index` (247) beside `emilia_id_to_index` (2,253) — because the ids come
+    from different datasets and nothing guarantees they cannot look alike. Reading only the
+    LibriTTS block here would have made the prefix check technically pass and its report a
+    lie: "247 donor speakers keep their index; 0 appended" on a corpus that appends 2,253.
+    A check whose summary is wrong is worse than no check, because it is quoted.
+
+    Refuses on a cross-namespace collision rather than letting one block win, since that is
+    two speakers sharing an embedding row — the exact confusion the prefix proof exists to
+    prevent, arriving from the other side.
+    """
+    merged, source = {}, {}
+    for key, block in sorted((speakers or {}).items()):
+        if not key.endswith("_id_to_index") or not isinstance(block, dict):
+            continue
+        for sid, idx in block.items():
+            if sid in merged and merged[sid] != idx:
+                raise SystemExit(
+                    f"ABORT: speaker id {sid!r} appears in both {source[sid]} and {key} "
+                    f"with different indices ({merged[sid]} vs {idx}).")
+            merged[sid], source[sid] = idx, key
+    return merged
+
+
 def _speaker_prefix_ok(donor_speakers, model_speakers):
     """Is the donor's speaker index map a PREFIX of the model's? -> (ok, detail)."""
     if not donor_speakers or not model_speakers:
         return False, "no speaker map supplied (--donor-speakers)"
-    key = "libritts_id_to_index"
-    old, new = donor_speakers.get(key) or {}, model_speakers.get(key) or {}
+    old, new = _index_map(donor_speakers), _index_map(model_speakers)
     if not old or not new:
-        return False, f"a speakers.json is missing `{key}`"
+        return False, "a speakers.json has no `*_id_to_index` block"
+    dup = [i for i, n in collections.Counter(new.values()).items() if n > 1]
+    if dup:
+        return False, (f"{len(dup)} embedding row(s) are claimed by more than one speaker, "
+                       f"e.g. index {dup[0]}")
     moved = [s for s, i in old.items() if new.get(s) != i]
     if moved:
         return False, (f"{len(moved)} speaker(s) changed index, e.g. "

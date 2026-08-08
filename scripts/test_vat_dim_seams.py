@@ -258,6 +258,25 @@ check_ok("warmstart: a reordered speaker map fails the prefix proof",
              and _mw._speaker_prefix_ok({"libritts_id_to_index": {"a": 0, "b": 1}},
                                         {"libritts_id_to_index": {"a": 0, "b": 1, "c": 2}})[0]))
 
+# A merged corpus keeps its sources in separate namespaces (v5: `libritts_id_to_index`
+# beside `emilia_id_to_index`), so a check that reads only the LibriTTS block PASSES and
+# reports "0 appended" on a corpus that appends 2,253 speakers. The proof must see the
+# whole table, and the summary it prints is the thing people quote.
+check_ok("warmstart: the prefix proof reads EVERY namespace, not just LibriTTS",
+         lambda: _assert(
+             _mw._speaker_prefix_ok(
+                 {"libritts_id_to_index": {"a": 0}},
+                 {"libritts_id_to_index": {"a": 0},
+                  "emilia_id_to_index": {"E1": 1, "E2": 2}}) == (
+                     True, "1 donor speakers keep their index; 2 appended")))
+
+check_ok("warmstart: two speakers on one embedding row is refused",
+         lambda: _assert(
+             not _mw._speaker_prefix_ok(
+                 {"libritts_id_to_index": {"a": 0}},
+                 {"libritts_id_to_index": {"a": 0},
+                  "emilia_id_to_index": {"E1": 0}})[0]))
+
 
 # --- report -----------------------------------------------------------------------
 for p in PASS:
