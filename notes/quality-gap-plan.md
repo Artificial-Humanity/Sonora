@@ -7,7 +7,64 @@ design itself is [model-decisions.md § Decoder v2](model-decisions.md); source 
 [training-sources.md](training-sources.md) (SSOT); run mechanics are
 [training-operations.md](training-operations.md).
 
-Written 2026-08-06, immediately after the diagnostics below. **Nothing here has started.**
+Written 2026-08-06, immediately after the diagnostics below. **Phase 0 is done and Phase 1
+rung 1 is built** — see the pathway below for where the front actually is.
+
+---
+
+## The pathway — one table, whole route
+
+_Added 2026-08-08 at the owner's request. This is the INDEX, not the detail: every row
+links to the section that owns it. If a row and its section disagree, the section wins._
+
+**Where the front is: Phase 1, rung 1, awaiting a GPU slot.**
+
+| | step | status | gated on | detail |
+|---|---|---|---|---|
+| **P0** | 0a — never-trained holdout | ✅ **DONE 2026-08-06** | — | [§ 0a](#0a--the-never-trained-holdout--done-and-it-reported-2026-08-06) |
+| | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
+| **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | 🔨 **BUILT, not launched** | **a GPU slot + spin-down** | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
+| | rung 2 — v6, +expressive-registers | ⏸ needs +116 ear-certified keeps | rung 1's holdout | ditto |
+| | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ not pulled | rung 1's holdout | ditto |
+| | rung 4 — v8, +Hi-Fi TTS (292 h) | ⏸ 40 GB parquet, unconverted | independent — slot in when converted | ditto |
+| | freeze a same-corpus U-Net baseline | ⏸ | **the last act of P1** | [§ Phase 2](#phase-2--the-dit-decoder-spike) |
+| | vocoder transparency re-check | ⏸ | after P1 | [§ gates](#gates-between-phases) |
+| **P2** | DiT decoder spike | ⏸ design written, not started | P1 landing + the frozen baseline | [model-decisions.md § Decoder v2](model-decisions.md) |
+| **P3+** | conditioning: embodiment bank → span-FiLM | ⏸ deferred chain | evidence, not plumbing | [todo.md §4](todo.md) |
+| | categorical emotion block (3+8) | ⏸ **open decision** | P1's valence read | [todo.md §4](todo.md) |
+| | multilingual | ⏸ **plan only** | after rung 3 | [teacher-training-data.md § multilingual](teacher-training-data.md) |
+
+**Running alongside, needing no GPU:** the audit-quality pair in [todo.md §6](todo.md) — a
+forced-ranking pass over the 46 ceiling-tied groups, and anchor exemplars in the audition
+app. Both came out of the 2026-08-08 finding that the 1–5 scale is saturated (`librivox`
+real audio means 5.00, and mean score ranks chatterbox above Qwen). They gate nothing, but
+rungs 2+ depend on ear verdicts and the scale those verdicts are made on is currently
+compressed — so this is the cheapest thing that improves every rung above 1.
+
+### The three standing rules that outlive every phase
+
+1. **Score on the never-trained holdout, never `loss/val_epoch`.** MLflow val is
+   permanently unusable for cross-run comparison, and from v5 on the val set mixes two
+   domains. One epoch on `libritts_r_holdout_devclean` destroys it permanently and there is
+   no second dev-clean.
+2. **Every rung ADDS rows without re-rolling what came before.** That is what makes rung
+   *n*'s holdout number comparable to rung *n−1*'s, and a re-derivation destroys it
+   silently. v5 proves it is achievable; the per-corpus checklist below is how.
+3. **Spin down all inference engines before any run**, and remember that
+   `compose up -d sonora_training` *starts* one.
+
+### What is deliberately NOT on this pathway
+
+- **De-skewing the Emilia mining** (widening past the tail-selection). Recorded under Phase 1
+  with its cost; it must not run before rung 1's holdout, because it would change two things
+  at once and cost us the test.
+- **A staged-quality curriculum** — train broad, then continue on the clean tier. New idea,
+  from reading what Qwen actually disclosed
+  ([teacher-training-data.md](teacher-training-data.md)); costs no new data. Filed, not
+  scheduled, because it competes with the volume lever we have not yet pulled.
+- **Out-scaling the teachers.** Qwen trained on ~5,000,000 h and Chatterbox on ~500,000 h;
+  everything cleared and reachable for us is ~115,000 h, and v5 is 78.5. The teacher-
+  synthesis lane is how that scale reaches us, and no amount of corpus work substitutes.
 
 ---
 

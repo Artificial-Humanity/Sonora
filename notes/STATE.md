@@ -7,75 +7,62 @@ architecture canon is [ARCHITECTURE.md](ARCHITECTURE.md); open work is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
-_Last updated: 2026-08-07._
+_Last updated: 2026-08-08._
 
 ---
 
-## VAT corpus — train on v3c
+## VAT corpus — train on v5
 
-> **Train on `data/libritts_r_vat_v3c`.** Same 31,445 clips / 51.3 h / 247 speakers as
-> v3 (`MAX_SECONDS=22`), twice corrected: **v3b** fixed the phonemes (v1–v3 all carry
-> contraction-poisoned IPA on ~6.4% of rows — `I'll` phonemized as *ill*; the espeak-free
-> G2P had no apostrophe representation), and **v3c** replaced the shuffled train/val
-> split with a per-clip blake2b hash of the wav basename so growing the corpus stops
-> re-rolling membership. **30,485 train / 960 val** (210 of 247 speakers in val).
-> Verified: adding 2,000 synthetic rows moves 0 of 960 val clips.
+> **Train on `data/libritts_r_emilia_vat_v5`.** Built 2026-08-08 — the first corpus here
+> that is not one dataset. **41,138 train / 1,304 val · 78.5 h · 2,500 speakers**, against
+> v4's 30,485 / 960 / 51.3 h / 247. It is v4's LibriTTS-R rows **byte-identical** plus
+> **10,997 Emilia-YODAS keeps**. Warm start `warmstart/vat5_init.ckpt` at **338 warm
+> (1 widened) / 0 fresh**, seam guards **30/30** in-container, smoke run trains to
+> `val_epoch` 1.696. `configs/experiment/vat5_finetune.yaml`. **NOT LAUNCHED** — that is a
+> GPU slot and the [spin-down rule](training-operations.md), not more engineering.
 >
-> The `vat3_finetune` ep099 checkpoint trained on **v2** — poisoned phonemes included —
-> but the labels barely moved between v2 and v3 (corr ≥ 0.9993 per channel on shared
-> clips), so **vat3 is a viable fine-tune base**; a from-scratch retrain is not forced.
+> **It is a merge, not a derivation** (`scripts/merge_emilia_corpus.py`), and the two halves
+> carry labels on deliberately different scales. LibriTTS keeps its per-speaker z; Emilia
+> gets a **global anchor** against v4's distribution, because 2,408 speakers at a median of
+> 3 clips have no per-speaker statistic and re-centring would hand 756 one-clip speakers a
+> label of exactly 0.0 — clips selected FOR being extreme, trained as neutral. Owner's
+> option 1. The semantic cost (a global anchor leaves some speaker identity in the affect
+> channels) is stated in the data config rather than hidden.
 >
-> **COMPLETE 2026-08-06, AND THE RUN IS RETIRED** — `vat3c_finetune` ran 100 epochs (run
-> `2026-08-05_15-02-57`, exit 0), warm-started 338/338 (0 fresh) from vat3-24k ep099,
-> after the 08-04 launch was killed by the E610 NIC fault. The ear said it bought nothing
-> audible; the never-trained holdout, scored the same day, says it was **slightly worse**
-> — +0.0164 against its own warm start, every loss term worse, and worse on v3c's own val
-> split too. **The `op_g2p` fix was the whole fix; the fine-tune was a regression.** Use
-> **vat3-24k ep099** as the base. Note this is a verdict on the *run*, not the corpus —
-> v3c is still the corpus to build Phase 1 on. Paired per-clip scoring, blind A/B,
-> copy-synthesis and the holdout table: **[quality-gap-plan.md](quality-gap-plan.md)**.
-> Launch traps: [training-operations.md](training-operations.md).
+> ⚠ **T saturates at 53.6%** on the Emilia half against LibriTTS's 4.7%, owner-accepted for
+> this run. **That is not a labelling bug — it is the mining criteria arriving at the
+> label**: keeps were tail-selected at a T threshold of 5.75 sigma, so the Emilia half is
+> 27 hours of extremes against a LibriTTS centre at roughly 3:1. The failure signature is
+> written down in [quality-gap-plan.md](quality-gap-plan.md) **before** the result exists
+> and must be read before the holdout number, not after.
 >
-> `configs/experiment/vat3c_finetune.yaml` points at
-> it, `data_statistics` are **measured** on the 30,485-clip train split
-> (`mel_mean −5.525067 / mel_std 2.388571`, vs v2's −5.504811 / 2.386137), and the v3
-> line is finally declared in the license wall — it never had been, so `enforce()` would
-> have refused any run that reached for it. Composition, a real batch, and a conditioned
-> `synthesise` are all verified in-container. Lineage and every source:
-> **[training-sources.md](training-sources.md)** (SSOT). Residual review debt that
-> touches training: [todo.md §1](todo.md).
+> ⚠ **`loss/val_epoch` is worse than useless here** — v5's val set is 1,304 clips of which
+> 344 are Emilia, so it mixes two domains and a move in it could be either. Score on
+> `data/libritts_r_holdout_devclean`; one epoch on it destroys it permanently.
 >
-> Pre-flight for the run itself is unchanged and non-negotiable: stop **all** inference
-> engines first ([spin-down rule](training-operations.md)), and run
-> `scripts/test_vat_dim_seams.py` (22 checks).
+> **Three of the plan's own numbers did not survive contact**, all recorded rather than
+> quietly absorbed: "all 13,141 rows" is **10,997** (1,676 carry digits — D-M3 — and 468
+> exceed the shared `ASR_MAX_WER`); `n_spks` 2,655 is **2,500**, because 155 speakers lost
+> every clip; and `data_statistics` moved **ten times the precedent** that put "re-measure
+> in-container" on the checklist — mel mean **0.1587**, std **0.3208**, against v2→v3c's
+> 0.0203 / 0.0024. Measured values: `mel_mean −5.683762 / mel_std 2.709323`.
 >
-> **The next derivation is one pass carrying three decisions, not three bumps — and the
-> owner took all three on 2026-08-07.** v3c is 3-wide and `vat_dim` is 8, so a
-> re-derivation was already forced before the next run; two label defects rode the same
-> pass rather than costing a corpus version each. **D-L2**'s z-score guard (fixed in code
-> 2026-08-06, but the shipped `_v2` labels and therefore v3c were built with the broken
-> one) — **taken**. **D-M4**'s homograph resolution (shipped 2026-08-07, `off` by default,
-> 281 tokens in 277 rows move; `live` alone is 87 of them, because the dictionary ships the
-> adjective `lˈaɪv`) — **taken**.
+> **v4 is superseded and never ran past a smoke pass.** It remains the base v5 merges into
+> and the donor its warm start widens from. The owner's call was to smoke rather than spend
+> 100 epochs, because v4 is the same 31,445 clips `vat3c_finetune` already spent 100 epochs
+> on and came back a measured regression — a full run would re-buy a conclusion we own.
+> The v1–v4 lineage and every source: **[training-sources.md](training-sources.md)** (SSOT).
 >
-> **DONE 2026-08-07 — train on `data/libritts_r_vat_v4`.** 8-wide, `--delivery-from`,
-> corrected z guard, `op_g2p(homographs=True)`. 31,445 clips / 51.3 h / 247 speakers,
-> 30,485 train / 960 val, independence gate PASS, licence wall accepts it, seam guards
-> 22/22 in-container. **The hash split held: 960/960 val clips identical to v3c**, so
-> nothing held out became trainable. Warm start `/data/model-training/sonora/warmstart/
-> vat4_init.ckpt` is **338/338 warm, 0 fresh** — donor V/A/T channels bit-identical, the
-> five delivery channels zero. Launch: `SONORA_EXPERIMENT=vat4_finetune
-> SONORA_WARMSTART=…/vat4_init.ckpt`. Detail: [todo.md §1](todo.md).
+> ⚠ **What v5 does NOT close: the ear gap.** Its new material was mined on acoustics and
+> nobody has heard a clip of it; every Emilia row is delivery-`unknown`, so the corpus still
+> carries 45 delivery labels in 41,138 train rows. **Phase 1 rung 2** —
+> `sonora-expressive-registers`, 1,071 ear-certified keeps — is what closes it. The order is
+> deliberate: rung 1 asks "does volume move quality at all?" for no ear time.
 >
-> ⚠ **What v4 buys is the WIDTH, not the delivery signal.** 48 of 31,445 clips carry a
-> lane; LibriTTS predates the axis and the 1,189 delivery keeps live in the corpus Phase 1
-> merges. Expect a result indistinguishable from a 3-wide run — five always-zero channels
-> on a zero-init FiLM path contribute nothing. A surprise here is a bug, not a finding.
->
-> ⚠ **D-L2 turned out to be nearly a no-op on the LABELS**: V moved on 247 of 30,485 rows
-> by ≤0.0008, A and T bit-identical. The finding measured the intermediate combo file, and
-> `derive_vat_corpus`'s own per-speaker z subtracts away a constant head's offset. The
-> corrected guard stays; it just was not a reason to re-derive. The width was.
+> Pre-flight is unchanged and non-negotiable: stop **all** inference engines first
+> ([spin-down rule](training-operations.md)), and run `scripts/test_vat_dim_seams.py`
+> (30 checks). Residual review debt that touches training: [todo.md §1](todo.md).
+> The whole route, one table: **[quality-gap-plan.md § the pathway](quality-gap-plan.md)**.
 
 ## The delivery channel — SHIPPED on the training side (2026-08-07)
 

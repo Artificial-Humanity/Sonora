@@ -20,9 +20,12 @@ Two conventions that surprise readers:
 | # | file | is |
 |---|---|---|
 | 1 | [STATE.md](STATE.md) | **what is true now**, per front — read this first |
-| 2 | [quality-gap-plan.md](quality-gap-plan.md) | **what happens next**, and in what order — the SSOT for sequencing |
+| 2 | [quality-gap-plan.md](quality-gap-plan.md) | **what happens next**, and in what order — the SSOT for sequencing. **Its § the pathway is the whole route in one table**, Phase 0 → the four corpus rungs → decoder spike → the deferred conditioning chain and multilingual |
 | 3 | [todo.md](todo.md) | open *residue* — code-review findings and the ears queue. Not the plan |
 | 4 | [ARCHITECTURE.md](ARCHITECTURE.md) | **canon** — the Director↔Actor contract (v2), corpus rules, gates, promotion |
+
+_**Where the front is today** (2026-08-08): Phase 1 rung 1 — `libritts_r_emilia_vat_v5` is
+built and awaiting a GPU slot. Everything below rung 1 is gated on its holdout number._
 
 _Answering a specific question? **"What are we training on"** → `training-sources.md`.
 **"May we use this dataset"** → `dataset-landscape.md`. **"How do I launch a run"** →
@@ -64,6 +67,7 @@ not implemented in the model core — [todo.md §1](todo.md)._
 | [synthesis-pipeline.md](synthesis-pipeline.md) | the render→QC→audition pipeline mechanics + rating vocabulary v4 |
 | [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md) | engine license verdicts + measured standing |
 | [tts-engine-onboarding.md](tts-engine-onboarding.md) | the onboarding pattern, revisit list, and the gotcha compendium |
+| [teacher-training-data.md](teacher-training-data.md) | **what the teachers trained on** — and the multilingual plan. Reference, not a licence ruling: neither Qwen nor Chatterbox discloses a corpus, so what is copyable is method (staged quality curriculum, mixture balance by mode of address), not sources. Holds the scale gap that scopes every data decision |
 
 ## Model & training
 

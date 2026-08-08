@@ -75,6 +75,21 @@ license wall (tightening #3) and the 24 kHz quality bar (which already disqualif
 would hit every 16 kHz multilingual split identically). Do not ingest anything from that file until
 its per-split license/sample-rate checks are done.
 
+> **The multilingual PLAN — what to do and when — lives in
+> [teacher-training-data.md § the multilingual plan](teacher-training-data.md)** (owner asked
+> for one 2026-08-08). This section stays the *licence* surface; that one carries the
+> sequencing, the per-language costs, and what the trailblazers actually did. Two facts from
+> it belong here because they are licence facts:
+>
+> - **Emilia-YODAS is SIX languages — `zh, en, ja, fr, de, ko` — and we have mined English
+>   only.** The CC-BY-4.0 YODAS portion is already declared in `configs/data_licenses.yaml`,
+>   and the mining pipeline is language-agnostic apart from G2P and the ASR cross-check. Five
+>   languages are reachable with zero new licence work.
+> - ⚠ **The `amphion/Emilia-Dataset` repo tag reads `cc-by-4.0` and that is a trap in every
+>   language, not just English.** Emilia-Large mixes the CC-BY 114k-h YODAS portion with the
+>   101k-h ORIGINAL subset, which is **CC-BY-NC-4.0**. Verify per shard, never per repo tag —
+>   `emilia_original` is declared `nc` in the wall for exactly this reason.
+
 ## 🔍 Candidates for a later vetting pass (NOT yet license/provenance-verified)
 
 ~~VCTK~~ (verified CC-BY-4.0 2026-07-19 → promoted to the cleared table above) · ~~EmoV-DB~~
