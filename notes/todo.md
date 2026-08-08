@@ -120,17 +120,33 @@ and then crash-loop under `restart: unless-stopped`), and `make_warmstart` compo
 model from the experiment config alone, so a run with data overrides got a warm start built
 for a different model._
 
-- [ ] **Phase 1 #1 — the Emilia merge.** The scale question is settled (owner took the
-      global anchor, `scripts/anchor_emilia_labels.py`, all 13,141 keeps label and none
-      collapse to zero) and the machinery is proven end-to-end on a 200-row stub. What is
-      left is the real derivation: all 13,141 rows, `n_spks` 247 → 2,655, phonemes on the
-      fixed `op_g2p`, **`data_statistics` re-measured in-container** (they cannot be
-      inherited here — v4 could only inherit v3c's because the audio and split were
-      identical), and an explicit compose bind.
-      ⚠ **T saturates at 54%** and the owner accepted it for this run — the prediction that
-      makes that a test rather than a story is written down in
-      [quality-gap-plan.md](quality-gap-plan.md), and it must be read BEFORE the holdout
-      result, not after.
+_**Phase 1 #1 — the Emilia merge — BUILT 2026-08-08.** `data/libritts_r_emilia_vat_v5`:
+41,138 train / 1,304 val, 78.5 h, 2,500 speakers, against v4's 30,485 / 960 / 51.3 h / 247.
+Warm start 338 warm (1 widened) / 0 fresh, seam guards 30/30, smoke run trains. Every item
+on the per-corpus checklist is done: licence entry (its own `merged_vat_corpora`, not
+folded into `libritts_r` — filing a merged corpus under one of its sources is how a future
+NC merge inherits a permissive label from a name), labels, phonemes on the fixed `op_g2p`,
+`data_statistics` MEASURED in-container, and the compose bind — which needed no change,
+because `emilia_kept_24k` already sits under the `/data/model-training/datasets` mount and
+the corpus under the `data` one. **Verified rather than assumed; that was the whole point
+of the checklist line.**_
+
+_Three of the item's own numbers did not survive contact. **"All 13,141 rows" is 10,997** —
+1,676 keeps carry digits (D-M3) and 468 exceed the shared `ASR_MAX_WER`, a threshold
+`process_emilia_tail` deliberately deferred to merge time back in July. **`n_spks` 2,655 is
+2,500**, because 155 speakers lost every clip to those filters. And **`data_statistics`
+moved ten times more than the rule anticipated** — mel mean 0.1587 and std 0.3208, against
+the 0.0203 / 0.0024 that put the rule on the list in the first place._
+
+- [ ] **Launch `vat5_finetune`.** Everything it needs exists; this is a GPU slot and the
+      spin-down rule, not more engineering.
+      ⚠ **T saturates at 53.6%** on the Emilia half (LibriTTS: 4.7%) and the owner accepted
+      it for this run — the prediction that makes that a test rather than a story is
+      written down in [quality-gap-plan.md](quality-gap-plan.md), and it must be read
+      BEFORE the holdout result, not after.
+      ⚠ **`loss/val_epoch` is even less usable here than usual**: v5's val set is 1,304
+      clips of which 344 are Emilia, so it now mixes two domains and a move in it could be
+      either. Score on the holdout.
 
 ## 2 · QC / audit / staging
 

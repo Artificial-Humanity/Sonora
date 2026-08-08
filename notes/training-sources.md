@@ -70,25 +70,31 @@ filelist yet.
 
 ## What a training run actually consumes today
 
-One corpus. `configs/experiment/vat4_finetune.yaml` points at
-`libritts_r_vat_v4.yaml`, whose filelists are **100 % LibriTTS-R** — as were v3c's and
-v2's before it (verified 2026-08-02, zero non-LibriTTS rows). Every expressive clip we
-have rendered and auditioned sits outside the training path.
+**Two datasets, since 2026-08-08.** `configs/experiment/vat5_finetune.yaml` points at
+`libritts_r_emilia_vat_v5.yaml` — 41,138 train / 1,304 val, **78.5 h, 2,500 speakers** —
+which is v4's LibriTTS-R rows verbatim plus **10,997 Emilia-YODAS keeps**. Every corpus
+before it was 100% LibriTTS-R (v3c's and v2's verified 2026-08-02, zero non-LibriTTS rows).
 
-That gap is the single most important fact in this file. The corpus we spend ear
-time on and the corpus we train on have never been joined.
+**The ear gap is still open, and v5 does not close it either.** The corpus we spend ear
+time on and the corpus we train on have still never been joined: v5's new material was
+mined on ACOUSTICS and nobody has heard a clip of it. That gap remains the single most
+important fact in this file.
 
-**v4 does not close it, and it is worth being precise about how little it moves.** The
-8-wide derivation joins delivery labels from `ratings.csv`, but only **48 of 31,445 clips**
-match — the `audit-markup-v0` rows, which are LibriTTS clips that happened to be
-auditioned. The 1,189 delivery keeps the campaign produced are in
-`sonora-expressive-registers`, still outside the training path. So v4 widens the wire and
-leaves the gap exactly where it was: **Phase 1 is what closes it.**
+- **v4** widened the wire and nothing else. Its derivation joins delivery labels from
+  `ratings.csv` and only **48 of 31,445 clips** match — the `audit-markup-v0` rows, which
+  are LibriTTS clips that happened to be auditioned.
+- **v5** adds volume, and volume is precisely what Phase 1 #1 exists to test. Its Emilia
+  rows are delivery-`unknown` by construction, so the delivery count is still 48.
+- **Phase 1 #2** is the one that closes the gap: `sonora-expressive-registers`, 1,071
+  ear-certified keeps with 1,189 delivery labels, still outside the training path.
+
+So the order is deliberate — v5 asks "does volume move quality at all?" with material that
+costs no ear time, and #2 spends ear time only if the answer is yes.
 
 ## The VAT corpus lineage
 
-All five derive from the same LibriTTS-R `train-clean-100` audio; they differ in
-labels, phonemes and split.
+v1–v4 all derive from the same LibriTTS-R `train-clean-100` audio and differ only in
+labels, phonemes and split. **v5 is the first that adds audio.**
 
 | version | rows | what changed | trained? |
 |---|---|---|---|
@@ -97,13 +103,38 @@ labels, phonemes and split.
 | `_v3` | 31,445 | `MAX_SECONDS` 16 → 22 (owner 2026-08-01) | no |
 | `_v3b` | 31,445 | apostrophe-clean IPA (v1–v3 carry ~6.4 % poisoned rows) | no |
 | `_v3c` | 31,445 | **per-clip hash split** — 30,485 train / 960 val | yes — `vat3c_finetune` ep099, 2026-08-06, **retired as a regression** |
-| **`_v4`** | 31,445 | **8-wide** (V/A/T + one-hot delivery), D-L2's corrected z guard, D-M4 homographs ON | **no — the one to train on.** `vat4_finetune` |
+| `_v4` | 31,445 | **8-wide** (V/A/T + one-hot delivery), D-L2's corrected z guard, D-M4 homographs ON | smoke only — superseded by v5 before it ran |
+| **`libritts_r_emilia_vat_v5`** | **42,442** | **+10,997 Emilia-YODAS keeps**; 247 → 2,500 speakers; 51.3 → 78.5 h | **no — the one to train on.** `vat5_finetune` |
 
-Both blockers are cleared: `configs/experiment/vat3c_finetune.yaml` points at it, and
-`data_statistics` were re-measured **inside the training container** on the 30,485-clip
-split (`mel_mean −5.525067 / mel_std 2.388571`). The v2 values were measured on the
-29,441-clip split and must never be inherited silently — the delta is a constant shift on
-every normalised mel.
+**v5 is a merge, not a derivation** (`scripts/merge_emilia_corpus.py`), and the two halves
+carry labels on different scales *on purpose*. LibriTTS keeps its per-speaker z; Emilia
+gets a **global anchor** against v4's own distribution, because 2,408 speakers at a median
+of 3 clips have no per-speaker statistic and re-centring a tail-selected clip on its own
+mean would hand 756 one-clip speakers a label of exactly 0.0 — clips selected FOR being
+extreme, trained as neutral. Owner's option 1, 2026-08-08. The full argument is in
+`scripts/anchor_emilia_labels.py`; the semantic cost (a global anchor leaves some speaker
+identity in the affect channels) is stated in the data config rather than hidden.
+
+2,144 of the 13,141 keeps did not make it: **1,676 carry digits** (D-M3 — the tokenizer
+deletes them, and "1 Chronicles" is *First* Chronicles, so normalising is a guess not a
+table) and **468 exceed the shared `ASR_MAX_WER` of 0.35** against their YODAS caption.
+`n_spks` is 2,500 rather than the 2,655 the plan predicted, because 155 speakers lost every
+clip — derived from the corpus, never assumed.
+
+`data_statistics` are re-measured **inside the training container** for every version whose
+audio or split moves, and v5 is the version that proves the rule was not pedantry:
+
+| | mel_mean | mel_std | split |
+|---|---|---|---|
+| v2 | — | — | 29,441 clips |
+| v3c / v4 | −5.525067 | 2.388571 | 30,485 (v4 inherited these, against a verified set-equal split) |
+| **v5** | **−5.683762** | **2.709323** | 41,138 |
+
+v2 → v3c moved the mean by 0.0203. **v4 → v5 moves it by 0.1587 and the std by 0.3208** —
+adding 27.2 h of podcast/YouTube audio to 51.3 h of studio reading is a different mel
+distribution by construction. Inheriting there would have put a constant offset and a 12%
+scale error on every normalised mel in the corpus, on the one run whose entire purpose is
+to read a quality difference.
 
 **What the v3c run proved** (2026-08-06): the phoneme fix was worth **−1.411% dur** vs
 matched controls and **nothing audible** — the `op_g2p` repair alone closed it, and the

@@ -19,6 +19,67 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-08
 
+### Added — Phase 1 #1, the Emilia merge (§1)
+
+- **`data/libritts_r_emilia_vat_v5` — the first corpus here that is not one dataset.**
+  41,138 train / 1,304 val, **78.5 h, 2,500 speakers**, against v4's 30,485 / 960 / 51.3 h /
+  247. `scripts/merge_emilia_corpus.py`, `configs/data/libritts_r_emilia_vat_v5.yaml`,
+  `configs/experiment/vat5_finetune.yaml`. Warm start `vat5_init.ckpt` at **338 warm
+  (1 widened) / 0 fresh**; seam guards **30/30**; smoke run trains.
+  - **v4's rows pass through BYTE-IDENTICAL** and its speaker indices are untouched —
+    verified as prefix equality on the artifact, not asserted about the script. That is
+    what makes the warm start legal: `spk_emb` row *i* is a person, and a renumbering that
+    produced identical clips would pass a set comparison while silently reassigning every
+    voice the model has learned. `spk_emb.weight` widened 247 → 2,500, new rows keeping the
+    model's own init (a zero channel contributes nothing; a zero embedding is one specific
+    point, not a neutral speaker).
+  - **The merge is a separate script from `derive_vat_corpus` because of the labels.** The
+    derive lane's per-speaker z is right for LibriTTS and destroys Emilia — 2,408 speakers
+    at a median of 3 clips, tail-selected, so re-centring hands 756 one-clip speakers a
+    label of exactly 0.0. Emilia is labelled on the **global anchor** instead (owner option
+    1). **0 of 10,997 rows label all-zero.**
+  - **2,144 of 13,141 keeps dropped, and the todo's "all 13,141" was never going to hold.**
+    **1,676 carry digits** — D-M3, the tokenizer deletes rather than expands them, so "320
+    members" would train against audio that says the number. NOT normalised to words: "1
+    Chronicles" is *First* Chronicles, "Ezr. 232" is "two thirty-two", 1,262 distinct digit
+    tokens. Guessing produces a transcript that looks right and matches nowhere, which is
+    D-M3 arriving through the fix instead of the bug. The drop is unbiased across the mining
+    criteria (T+ 13.9%, V+ 14.9%, V− 10.8%, A+ 12.5%) over 809 speakers, so it costs volume
+    and not tail-selection. **468 exceed `ASR_MAX_WER`** against their YODAS caption —
+    `process_emilia_tail` recorded that cross-check in July and deferred the threshold to
+    merge time on purpose. Zero clips failed on audio, vocabulary or unresolved words.
+  - **`n_spks` is 2,500, not the 2,655 the plan predicted** — 155 speakers lost every clip
+    to those filters. Derived from the corpus, never assumed.
+  - **The threshold is shared, not copied.** `ASR_MAX_WER` moved to `synth_common`; the QC
+    gate re-exports it. Two lanes asking one question ("does this transcript disagree with
+    this audio too much?") with two constants is B-L5 and D-L2 for the third time.
+  - ⚠ **T saturates at 53.6% on the Emilia half** (LibriTTS: 4.7%), accepted by the owner
+    for this run. The failure signature is in `quality-gap-plan.md`, written **before** the
+    result, and must be read before the holdout number rather than after.
+
+### Fixed — three things the merge walked into (§1)
+
+- **`data_statistics` inheritance would have been a real error this time, not a pedantic
+  one.** v4 → v5 moves the mel mean by **0.1587** and the std by **0.3208**; the v2 → v3c
+  move that put "re-measure in-container" on the checklist was 0.0203 / 0.0024. Adding
+  27.2 h of podcast/YouTube audio to 51.3 h of studio reading is a different distribution by
+  construction. The config shipped with the key **absent** until the container had measured
+  it — `data_statistics` is positional, so a run before then dies naming it, where a
+  plausible placeholder would not.
+- **`make_warmstart`'s prefix proof read only the LibriTTS namespace.** A merged corpus
+  keeps its sources separate (`libritts_id_to_index` beside `emilia_id_to_index`), so the
+  check passed and reported *"247 donor speakers keep their index; 0 appended"* on a corpus
+  appending 2,253. It was not wrong about safety — it was wrong in its summary, which is the
+  line people quote. It now reads every `*_id_to_index` block, refuses a cross-namespace id
+  collision, and refuses two speakers on one embedding row. Two new seam checks (28 → 30).
+- **`on_validation_end` crashed with no logger configured.** It runs a full synthesis pass
+  purely to log spectrogram images, then dereferenced `self.logger.experiment` —
+  `AttributeError: 'NoneType'` — *after* validation had already succeeded, which reads as a
+  data or checkpoint failure and is neither. `logger=[]` is exactly what a smoke run uses,
+  so the one configuration used to prove a new corpus loads was the one that crashed. Same
+  family as `test: True`: a supported setting failing late, in a place that blames something
+  else.
+
 ### Measured — the ears queue emptied (§5, §2)
 
 - **`683c43f` — `head_ok` gets NO GATE, on evidence.** The owner heard the four queued
