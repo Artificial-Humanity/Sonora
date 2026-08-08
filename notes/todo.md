@@ -30,10 +30,28 @@ is concentrated in a handful of words (`live` alone is 87 of 281). Net **11 open
 
 _**2026-08-07, fourth pass**: § 1's device-front-end item closed the day after it was
 filed (see § 1's note). Net **12 open items -> 11**. It also left one thing for the D-M4
-decision to carry, recorded in § 3: gate G7 **refuses a homograph-enabled export**, because
-resolution needs context evidence rather than a table and there is nothing to ship to a
-device. So turning D-M4 on adds "port `matcha/text/homographs.py`" to the mobile lane —
-not a reason to decide either way, but a cost that was invisible before._
+decision to carry: gate G7 **refuses a homograph-enabled export**, because resolution needs
+context evidence rather than a table and there is nothing to ship to a device. So turning
+D-M4 on adds "port `matcha/text/homographs.py`" to the mobile lane — not a reason to decide
+either way, but a cost that was invisible before._
+
+_**2026-08-08, fifth pass — the ears queue was AUDITED rather than worked, and three of
+its four items turned out to rest on numbers that do not survive re-measurement.** § 3 is
+empty and deleted (D-L2 and D-M4 both landed in v4); § 1's re-derivation is done and what
+remains there is the launch. §4 lost three checkboxes that were never tasks — a standing
+rule already enforced in code, and two notes describing a spike that is gated shut.
+**Net 11 open items -> 10.** The three re-measurements, each of which changes what the
+owner should decide:_
+- _**Orpheus** reads 90.8% ex-`tara` (filed: 80.0%) — but `jess` is 72% of that population
+  at 97.4%, and without it the rest is 74.2% with `mia` at 55.6%. **Hold at `normal`.**_
+- _**moss_vg**'s "24% on expressive material" is not reproducible; the source measured 35%
+  rejected on a NARRATION campaign. The dialogue re-test it waits for already exists and
+  passes at 89.5%. **Promote to `normal`.**_
+- _**Qwen vs VibeVoice** — the 56 keeps already measure 0.01 dB apart, so the score re-test
+  is unblocked and purely an ear job; only the keep-RATE half is still owner-blocked._
+- _And the `uneasy-money` head-loss cluster was a size effect, not an alignment defect —
+  but chasing it found a real one: `edge_loss` STRIPPED hyphens instead of splitting on
+  them (`b6d29b2`)._
 
 _Earlier pruning notes for the 2026-08-06 round are in git history._
 
@@ -87,37 +105,15 @@ front end fails 69 of those 86, and worse than filed: `they've` → `θˈeɪv`, 
       comparison (historical split contamination, 93–97% of v3c's val trained on earlier)
       and there are now **two** scale breaks in logged `diff_loss` — 2026-08-01 bucketing
       and 2026-08-06 masking. Deciding a run by its curve is deciding it by an artefact.
-- [ ] **Re-derive the corpus at the new width.** `vat_dim` is 8 now, and every existing
-      filelist is 3-wide — which the seam guards will refuse loudly at the filelist rather
-      than quietly at the trunk, exactly as designed. `derive_vat_corpus.py --delivery-from
-      <ratings.csv>` joins the 1,189 delivery labels; without it every clip is `unknown`,
-      which is all-zero and reproduces v1 conditioning byte for byte. **The zero-init FiLM
-      path means a warm start from `vat3-24k` ep099 is still valid** — the five new
-      channels contribute nothing until they are trained — but the trunk's input conv
-      changes shape, so the warm start needs the same treatment `make_warmstart.py`
-      already applies to a widened tensor. Not yet done.
-      **DONE 2026-08-07** — `data/libritts_r_vat_v4`, all three riders on one pass
-      (`be1cce3`). 31,445 clips / 51.3 h / 247 speakers, 30,485 train / 960 val,
-      independence gate PASS (T·A −0.059, T·V −0.066, V·A +0.027), licence wall accepts it,
-      seam guards 22/22 in-container, warm start `vat4_init.ckpt` at **338/338 warm, 0
-      fresh**. Configs: `configs/data/libritts_r_vat_v4.yaml`,
-      `configs/experiment/vat4_finetune.yaml`. **The hash split held: 960/960 val clips are
-      the same as v3c's**, so nothing held out became trainable.
-      Three things the plan got wrong, each measured rather than argued:
-      - **`--delivery-from` was a silent no-op.** The first run reported "1635 labelled
-        clips" and applied **zero** — `label()` looked up only the absolute corpus path
-        while `ratings.csv` records `link` relative to the ratings dir, so the basename
-        key `_load_delivery` builds was dead code. Right width, all-zero delivery, exit 0.
-        Fixed; the run now reports what was APPLIED, not what was loaded.
-      - **Delivery is nearly empty on this corpus, and that is correct.** 48 of 31,445
-        clips carry a lane (39 Dialogue, 9 Neutral) — the `audit-markup-v0` rows. The
-        ~1,590 other labels belong to the synthetic and LibriVox campaigns, a different
-        corpus that merges in Phase 1. v4 buys the WIDTH, not the delivery signal. The
-        earlier wording here ("joins the 1,189 delivery labels") implied otherwise.
-      - **`make_warmstart.py` did NOT "already apply" a widened-tensor treatment.** It
-        dropped shape-mismatched tensors and let random init stand, which discarded the
-        entire learned V/A/T→FiLM pathway. Widening added, allowlisted to the VAT trunk
-        because contract v2 makes channel position the wire format.
+- [ ] **Launch `vat4_finetune`.** The corpus, configs, licence declaration, 22/22 seam
+      guards and a **338/338-warm** `vat4_init.ckpt` are all in place (`be1cce3`); what is
+      left is the run, which is the owner's. Pre-flight is the standing one — stop ALL
+      inference engines, update the deploy clone (`scripts/deploy.sh training-code`) or it
+      trains a commit with neither the v4 configs nor the widened warm start, and remember
+      `compose up -d sonora_training` STARTS the run.
+      **Expect a NULL result and do not read it as failure**: 48 of 31,445 clips carry a
+      delivery lane, so five always-zero channels on a zero-init FiLM path contribute
+      nothing. This run trains the WIDTH. A surprise here is a bug, not a finding.
 
 ## 2 · QC / audit / staging
 
@@ -191,111 +187,6 @@ prevents. No verdict was discarded: status moves, score and the auditor's note s
       Net: the 4 queued clips are all SYNTHETIC, which is the right population to calibrate
       from, and the 3 remaining pooled real-audio cases are ASR noise rather than evidence.
 
-## 3 · Label derivation
-
-_Mostly closed 2026-08-06 (`tests/test_label_derivation.py`, 12 cases). **D-M1** refuses a
-short EIV head set instead of imputing `0.0` (which z-scores ~3σ NONZERO); only WEIGHTED
-heads are required, since three carry weight 0.0 and two are legitimately absent. **D-M3**
-the corpus lane refuses transcripts containing digits (`--allow-digits` to override) —
-verified inert for existing data: 0 digits in 8,000 sampled LibriTTS transcripts and 0 in
-all 5,736 dev-clean. **D-M6** error rows no longer count as done, so a transiently failed
-clip is retried instead of silently dropped forever. **D-L5** `derive_markup_measures.py`
-follows `--corpus` (default v3c, was pinned to v2) and records `speaker_index` separately
-from the real LibriTTS `speaker`, verified against the wav paths._
-
-- [x] **D-L2 — DONE 2026-08-07 (`be1cce3`), and the finding OVERSTATED itself.**
-      The corrected guard is in v4. But measured on the finished corpus rather than on the
-      intermediate file: **V moved on 247 of 30,485 train rows, by at most 0.0008; A and T
-      are bit-identical to v3c.** The headline below — 31,443 clips change, up to 0.228 —
-      is true of `corpus_valence_combo.json` and almost entirely false of the labels,
-      because `derive_vat_corpus` applies its OWN per-speaker z on top and a constant head
-      contributes a per-speaker-CONSTANT offset, which the second z subtracts away.
-      Speaker `909`'s worst clip moves **0.2280 in the combo and 0.000036 in the label.**
-      The fix is right and stays. It was not, on its own, a reason to bump the corpus —
-      the width was. Kept below because the diagnosis of the DEFECT is still correct and
-      the arithmetic is worth not re-deriving:
-
-- [ ] ~~**D-L2 — the guard is fixed in code; the LABELS still carry the defect.**~~ This was
-      filed as "the two z-implementations disagree", which undersells it: `std or 1.0`
-      only guards a std of *exactly* zero, and that is not the case that occurs. A head can
-      be **constant** for a speaker — the EIV scorer returns one identical value for all 106
-      of speaker `6531`'s clips on `Amusement`, likewise `8095`/Valence and `909`/Valence,
-      **224 clips between them** — and then `v - mean` and `std` are both float dust ~1e-21.
-      Dividing dust by dust gives **max|z| = 1.0**: a full-scale weighted contribution to
-      that speaker's valence, manufactured from rounding error and indistinguishable from a
-      measurement. `+ 1e-6` returns ~1e-15, i.e. zero, which is what a constant head
-      actually says. `eiv_merge_corpus` is corrected, but **the shipped `_v2` files and
-      therefore v3c were built with the broken guard**. Re-deriving moves the raw combo by
-      up to **0.228** and changes 31,443 of 31,445 clips (the floor perturbs every std
-      slightly), so this is a corpus version bump — **owner call**, not a silent fix.
-      Separately: 17 speakers have <10 clips and 5 have ≤2, whose z is fixed by arithmetic
-      (±1 exactly, landing on the V rail at ±0.500); 7.25% of train V sits at |V| ≥ 0.99.
-      `derive_vat_corpus` reports both now rather than repairing them.
-- [ ] **D-M4 — the resolver shipped (`33d2a4f`) and is OFF; turning it on is your call.**
-      Context-aware G2P exists now (`matcha/text/homographs.py`), with
-      `op_g2p(homographs=False)` as the default so nothing has changed yet.
-      **The filed estimate was wrong in shape, not just in size.** "3.3% of transcripts
-      contain a homograph, so roughly half carry a wrong vowel" implied the damage was
-      spread; measured over v3c it is **concentrated**. For `house` (438 occurrences),
-      `does` (227), `number` (116), `wind` (108), `mouth` (81) and `perfect` (67) the
-      dictionary's one pronunciation is right essentially every time — `wind` is not a
-      defect in this corpus at all. **`live` alone is 87 of it**, because the dictionary
-      ships `lˈaɪv`, the *adjective*, and narrative prose is almost all verb. Then `use`
-      37, `read` 19, `content` 16, `suspect` 15, `lives` 9.
-      **281 tokens in 277 rows would change — 0.88% of the corpus.** 85% of homograph
-      tokens abstain. Precision was established by reading **all 288 flips of the first
-      pass by hand**: 6 were wrong, each became a guard, and the re-audit is 281 flips at
-      0 known errors. No IPA is invented anywhere — every alternate is the dictionary's
-      own inflected form minus its suffix, or a rime-mate it already holds.
-      The decision is the same one D-L2 poses, and **it is the same re-derivation**: this
-      is a corpus change, so it wants to ride the § 1 pass rather than force a third bump.
-
-      **One cost surfaced 2026-08-07 that was invisible when this was filed:** the mobile
-      front end would have to resolve homographs too, and it cannot do it from a table —
-      the decision needs the two tokens to the left and one to the right, with punctuation
-      as a barrier. So `matcha/text/homographs.py` has to be ported alongside the
-      dictionary. Gate **G7 refuses a homograph-enabled export** rather than letting the
-      device quietly render `live` as the adjective the corpus was trained away from, so
-      this is a known blocker rather than a future surprise. It is not an argument either
-      way — mobile has not started — but a yes means the port carries a resolver.
-
-      **THE CALL, ANSWERED 2026-08-07: YES — and it SHIPPED in v4** (`be1cce3`).
-      `derive_vat_corpus.py --homographs`, which refuses to combine with `--reuse-from`
-      (the phonemes would come from the old corpus and the flag would do nothing).
-      Verified in the finished corpus: **269 train rows carry different IPA from v3c**,
-      e.g. *"where are you going to live?"* now `lˈɪv` rather than `lˈaɪv`.
-      The three notes below are kept because they are why no ear test is owed — the
-      decision was an admission one, not a measurement one, and re-litigating that is how a
-      settled call turns back into an open one.
-
-      - **There is nothing to audition, and the audition app is not involved.**
-        `measure_homographs.py` writes nothing except the file named by `--json`; it
-        imports no synthesis, touches no `ratings.csv`, and stages no clips.
-        `--apply-sample N` prints N rows as three lines of *text* — the sentence, its IPA
-        with the flag off, its IPA with the flag on. It is a phoneme diff on stdout. An
-        earlier note in this file said "to hear what moves", which was wrong.
-      - **Auditioning the affected corpus clips would tell you nothing.** These are
-        LibriTTS *real audio* rows: the reader already says `lˈɪv` in "they live on buds
-        and blossoms". The wrong vowel is in the label we train against, not in the
-        recording, so the clip sounds correct either way and the ear has no purchase on it.
-      - **A meaningful ear test would have to be synthetic, and is not obviously worth
-        running.** Render both phoneme strings through `vat3-24k` ep099 and A/B them —
-        with per-pair randomised assignment, or position gets scored instead of the
-        phonemes ([quality-gap-plan.md](quality-gap-plan.md), "two traps"). Expect
-        confirmation rather than discrimination: all 281 flips are mechanical vowel and
-        stress corrections sourced from the dictionary's own inflected forms, so the
-        question an A/B answers ("is `lˈɪv` right for *live*?") is not the question in
-        doubt. Worth doing only if the yes/no wants an independent check.
-
-      Out of reach and recorded as data in `NOT_RESOLVABLE`, not as an absence: `bow`
-      `row` `bass` `sow` `lead` (two senses, one part of speech — no POS rule can
-      separate "took the lead" from the metal); `polish` and `august` (carried by CASE,
-      and `cleaners.lowercase()` runs before the G2P sees the token — the evidence is
-      destroyed upstream, which is a *cleaner* problem, not a G2P one); `excuse` (the
-      dictionary gives /s/ for every form, so the verb's /z/ would have to be invented).
-      Past-simple `read` and finite `wound` deliberately never fire: both are
-      indistinguishable from the present without tense agreement across the clause.
-
 ## 4 · Conditioning axes — one approved, one OPEN
 
 Owner approved the position 2026-08-02; the reasoning is canon in
@@ -306,12 +197,11 @@ Owner approved the position 2026-08-02; the reasoning is canon in
       mean of 3.71 is the MODE or was just the old engines — of the four engines in
       those 28 rows (qwen 8, longcat 8, libritts-r 10, scm-spike 2) only qwen is
       still in the portfolio, so we have almost no result rather than a bad one.
-- [ ] **Keep embodiment clips delivery-blank** and outside the 50/30/8/6/6
-      percentages. This is a standing rule, not a task — listed so a future
-      balance pass does not "fix" the blanks. It is now also ENFORCED at the
-      encoding: `matcha.delivery` refuses any label outside the closed five, so an
-      "Embodiment" lane cannot be added by accident, only by a contract change.
-      Blank reaches the model as the all-zero block, which is `unknown`.
+_**Standing rule, not an open item** (de-checkboxed 2026-08-08): embodiment clips stay
+delivery-blank and outside the 50/30/8/6/6 percentages, so a future balance pass does not
+"fix" the blanks. It is ENFORCED at the encoding — `matcha.delivery` refuses any label
+outside the closed five, so an "Embodiment" lane cannot arrive by accident, only by a
+contract change. Blank reaches the model as the all-zero block, which is `unknown`._
 - [ ] **Span-FiLM phase:** delivery varying across an utterance on the same zero-init
       path, expanded through the duration alignment. The 17 keeps are the pilot set.
       **Its prerequisite is met** — the clip-level channel shipped 2026-08-07 — so this
@@ -352,14 +242,17 @@ tells us which: **Phase 1 is the data lever.** So:
       question is answered and this stays closed. Do not spike it before that read — a
       categorical block trained on a corpus that cannot support the continuous channel
       would confound the two.
-- [ ] **If it is spiked, the shape is settled in advance** and cheap: it APPENDS as
+Two notes that are NOT open items — they are what the spike would look like if the gate
+above ever opens, recorded so the answer is a decision rather than an improvisation:
+
+- **If it is spiked, the shape is settled in advance** and cheap: it APPENDS as
       channels 8+ on the same zero-init FiLM path, so `unknown` stays all-zero and every
       existing checkpoint and filelist keeps its meaning. Reordering is the one edit that
       must never happen — position is the wire format now. Vocabulary and width are a
       **contract change requiring an owner call** (ARCHITECTURE §1); `matcha/delivery.py`
       is where it would live and refuses anything outside the closed set, so it cannot
       arrive by accident.
-- [ ] **The labels do not exist yet in that form.** Delivery shipped with 1,189 labelled
+- **The labels do not exist yet in that form.** Delivery shipped with 1,189 labelled
       keeps; an 8-way emotion block starts at zero. The register lexicon is the obvious
       source (a 47 → 8 fold), but it is Director-authored intent rather than an ear
       verdict on the render, and the instrument-vs-intent distinction is the one this
@@ -370,13 +263,76 @@ tells us which: **Phase 1 is the data lever.** So:
 
 1. [ ] **Qwen vs VibeVoice at equal loudness** — the one teacher-portfolio ranking the
        loudness confound (5.99 dB spread, Qwen +3.81 dB over VV) could have produced.
-       The 56 keeps are normalized; a keep-*rate* re-test additionally needs the 24
-       quarantined drops normalized (un-quarantine is an owner call).
-2. [ ] **Orpheus tier** — `normal` is explicit in `ENGINE_TIER`; `trusted` is arguable on
-       105 non-`tara` renders at 80.0% keep / mean 4.49. Policy, not measurement.
-3. [ ] **moss_vg** — newscaster 20/20 is confounded (the register flatters its
-       radio-timbre/IVR failure mode; its 24% rate was measured on expressive material).
-       Re-test on dialogue or an expressive register before any tier movement.
+       **Verified 2026-08-08 by measuring the files, and the two halves are in very
+       different states:**
+       - **The SCORE re-test is UNBLOCKED — it is purely an ear job now.** The 56 keeps
+         measure **qwen −22.99 LUFS / vibevoice −23.00**, a **0.01 dB** difference (qwen
+         sd 0.04, vibevoice sd 0.00) against the filed +3.81 dB. The audio is already
+         equal; what is not is the VERDICTS, because qwen 4.94 vs vibevoice 4.20 was
+         scored on the original unequal renders. Re-hearing the 33 qwen+VV keeps at the
+         loudness they now sit at is the whole test.
+       - **The keep-RATE re-test is genuinely blocked, and on two things.** The 24
+         quarantined drops are **not** normalized — measured in `_dropped/` at 10.5 dB and
+         29.1 dB spreads (one clip at −42.2 LUFS). So it needs (a) those 24 re-gained,
+         which is **re-gaining clips the ear has already rated** and therefore the owner's
+         call by the same rule that left the [[loudnorm-reroll-defect]] clips alone, and
+         (b) un-quarantining so they can be re-heard. Cost if both are taken: **80 clips**
+         (56 keeps + 24 drops) — `dia` 15, `vibevoice` 5, `qwen` 2, `moss_vg` 2.
+       Doing only the first is cheap and answers the ranking question that was actually
+       filed; the keep-rate question can stay open without blocking it.
+2. [ ] **Orpheus tier — RE-MEASURED 2026-08-08, and the case for `trusted` does not
+       survive it.** The numbers here were stale ("105 non-`tara` renders at 80.0% keep /
+       mean 4.49"); the current join of `ratings.csv` to the orpheus manifests says
+       **109 heard ex-`tara`, 90.8% keep, mean 4.57** — which looks *better* than filed and
+       above qwen. It is still the wrong number to decide on:
+
+       | voice | heard | keeps | rate |
+       |---|---|---|---|
+       | `jess` | 78 | 76 | **97.4%** |
+       | `dan` | 9 | 8 | 88.9% |
+       | `mia` | 9 | 5 | **55.6%** |
+       | `leah` | 8 | 5 | **62.5%** |
+       | `zoe` | 5 | 5 | 100% |
+       | `tara` | 21 | 0 | **0.0%** |
+
+       **`jess` is 78 of the 109 (72%).** Strip it and the rest is 31 heard / 23 keeps =
+       **74.2%**. So "orpheus at 90.8%" is very nearly "jess at 97.4%", and the tier is a
+       tag on an ENGINE, not on a voice — `trusted` (1 per group + 3%) would fold `mia`
+       and `leah` clips unheard at a ~4-in-10 rejection rate.
+       This is the third instance of one shape: zonos's 31% was two populations averaged,
+       moss_vg's 20/20 was a register that flatters it, and `ref_risk.py` exists **because
+       of this exact case** — "Orpheus reads 36% rejected, but that is `tara` at 90%
+       dragging up a `jess` that is 0 for 24."
+       Against the bar: chatterbox is `trusted` at **77.8%**, qwen at **89.4%**. Orpheus as
+       shipped, all voices, is **76.2% — below chatterbox.**
+       **Recommendation: HOLD at `normal`.** The audit saving is real but it would be
+       bought by not listening to the two voices that most need listening to. If the saving
+       is wanted, the honest form is a restricted roster (`jess`/`dan`/`zoe`), and that is
+       a code change — `ENGINE_TIER` is keyed on engine name and has no per-voice concept.
+3. [ ] **moss_vg — the re-test this asks for ALREADY EXISTS, and it passes.** Checked
+       2026-08-08. **Dialogue: 19 heard, 89.5% keep** — against a 73.5% lane mean over 801
+       clips, and above `chatterbox` (62.4%), which is `trusted`. By lane: Newscaster 95.2%
+       (21), Dialogue 89.5% (19), Neutral 80.0% (45), Documentary 60.0% (20).
+
+       ⚠ **The "24% rate on expressive material" is not reproducible and appears to be a
+       corrupted restatement.** The source is `4abfd3f` (2026-07-31), which measured
+       **`moss_vg 19/54 (35%)` REJECTED on `delivery-v1-narration`** — a narration campaign,
+       not expressive material, and 35% not 24%. Today that same campaign reads 54 heard /
+       66.7% keep, i.e. the same number. Nothing on disk produces 24%. A tier that costs
+       **100% listening** should not rest on a figure that lost its provenance; the same
+       line is in [STATE.md](STATE.md) and should be corrected there too.
+
+       **The one real weakness is Documentary, and it is ALREADY PRICED.** 60.0% against an
+       83.3% lane mean (qwen 100%, chatterbox 90%, zonos 80.6%) — genuinely engine-specific.
+       But `ref_select.ENGINE_MIX_BY_LANE["Documentary"]` already holds moss_vg at a **0.05
+       floor share** with that exact rationale written beside it. So the scrutinized tier is
+       doing duplicate work: it buys 100% listening across every lane, including the two
+       where moss_vg is the strongest engine we have, to guard a risk the allocation layer
+       already handles — which is precisely the split [[audit-trust-tiers]] insists on
+       ("a tier is a TAG ON AN ENGINE; render share lives in `ENGINE_MIX_BY_LANE`").
+
+       **Recommendation: PROMOTE moss_vg scrutinized → normal.** Owner call, policy not
+       measurement — but the measurement no longer supports the hold.
 4. [ ] **The 4 head-truncation clips, already in the todo queue** (`97c14b4`) — the only
        thing `head_ok` is waiting on. Each carries a note saying the threshold comes from
        what the auditor writes. Then `gate_calibration.py --sweep head_lost_frac`.

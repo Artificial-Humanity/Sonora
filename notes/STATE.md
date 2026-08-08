@@ -183,10 +183,15 @@ true-unconditional zonos in production, since every earlier narration bank had
 directed with emotion off, 37 keeps from 38 heard, and the one non-keep is a
 bookkeeping retirement rather than an ear verdict.
 
-**moss_vg held at scrutinized.** 12/12 on narration is clean but thin, and the prior
-20/20 was confounded — Newscaster flatters its radio-timbre failure mode, and its 24%
-rate was measured on expressive material. Re-test on dialogue or an expressive
-register before moving it. Full ears queue: [todo.md §6](todo.md).
+**moss_vg held at scrutinized — and the hold no longer has evidence behind it (checked
+2026-08-08).** The dialogue re-test it was waiting for already exists: **19 heard at 89.5%**
+against a 73.5% lane mean, above `chatterbox`, which is trusted. The "**24% rate on
+expressive material**" cited here is not reproducible from anything on disk and appears to
+be a corrupted restatement of `4abfd3f`'s measurement — `moss_vg 19/54 (35%)` **rejected on
+`delivery-v1-narration`**, a narration campaign. The one real weakness is **Documentary
+(60.0% vs an 83.3% lane mean)**, and `ENGINE_MIX_BY_LANE` already holds moss_vg to a 0.05
+floor share there for that reason. Promotion to `normal` is the owner's call; the
+measurement supports it. Full ears queue: [todo.md §5](todo.md).
 
 **Director models:** `gemma-4-31b-qat-spec` directs (skill-file obedience 24/24 where
 the MoE managed 8/24 and e4b 5/24); `gemma-4-e4b-qat-spec` handles volume jobs
