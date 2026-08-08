@@ -167,6 +167,16 @@ class BaseLightningClass(LightningModule, ABC):
         return total_loss
 
     def on_validation_end(self) -> None:
+        # This hook exists ONLY to log spectrogram images, and it runs a full synthesis
+        # pass to make them. With no logger configured it did all that work and then died
+        # on `self.logger.experiment` — AttributeError: 'NoneType' — after validation had
+        # already succeeded, which reads as a data or checkpoint failure and is neither.
+        # `logger=[]` is what a smoke run uses (it is the whole point of a smoke run not to
+        # write to MLflow), so the one configuration used to prove a new corpus loads was
+        # the one configuration that crashed. Same family as `test: True`: a supported
+        # setting that fails late, in a place that blames something else.
+        if self.logger is None:
+            return
         if self.trainer.is_global_zero:
             one_batch = next(iter(self.trainer.val_dataloaders))
 
