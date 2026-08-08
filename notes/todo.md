@@ -40,8 +40,9 @@ its four items turned out to rest on numbers that do not survive re-measurement.
 empty and deleted (D-L2 and D-M4 both landed in v4); § 1's re-derivation is done and what
 remains there is the launch. §4 lost three checkboxes that were never tasks — a standing
 rule already enforced in code, and two notes describing a spike that is gated shut.
-**Net 11 open items -> 10.** The three re-measurements, each of which changes what the
-owner should decide:_
+**Net 11 open items -> 7** once the owner's verdicts on the four
+audition clips landed and the two tier calls closed. The three re-measurements, each of
+which changed what the owner decided:_
 - _**Orpheus** reads 90.8% ex-`tara` (filed: 80.0%) — but `jess` is 72% of that population
   at 97.4%, and without it the rest is 74.2% with `mia` at 55.6%. **Hold at `normal`.**_
 - _**moss_vg**'s "24% on expressive material" is not reproducible; the source measured 35%
