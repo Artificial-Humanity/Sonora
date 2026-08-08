@@ -180,7 +180,7 @@ Cheapest first, so the expensive item is decided by evidence rather than assumpt
 
 | # | Source | State | Adds | Work |
 |---|---|---|---|---|
-| 1 | **Emilia-YODAS keeps** | READY, 24 kHz, license-cleared | 13,141 clips (**+43%**) | `eiv_merge_corpus.py` — merge only |
+| 1 | **Emilia-YODAS keeps** | READY, 24 kHz, license-cleared | 13,141 clips (**+43%**) | **NOT "merge only" — see below** |
 | 2 | **sonora-expressive-registers** | DERIVED, 1,071 keeps | small, ear-certified | close **+116** (Neutral +81, Documentary +35) → 1,156, then merge |
 | 3 | **LibriTTS-R, the other 90%** | NOT PULLED | **~10×**, ~2,400 speakers | download + full corpus build |
 | 4 | **Hi-Fi TTS v1** | RAW, 40 GB parquet *with audio* | 292 h / 10 speakers | parquet → wav + filelist |
@@ -193,6 +193,61 @@ we train on have never been joined, which is the largest structural oddity in
 worth gating on #1's result. #4 plays a different role — few voices, deep hours — so it
 is casting anchors and speaker-consistent long-form prosody, not volume; it is
 independent of #3 and can slot in whenever the parquet conversion is worth doing.
+
+### ⚠ #1 is not a merge. Prep pass 2026-08-08, before any GPU time.
+
+Two things would have gone wrong silently, and the second invalidates the experiment
+rather than breaking it.
+
+**The licence wall would have refused it** (fixed, `configs/data_licenses.yaml`). The keeps
+live in `emilia_kept/` and `emilia_kept_24k/`; the manifest declared only `emilia_yodas`
+and `Emilia-YODAS`, and `classify_path` matches exact path COMPONENTS — so no keep matched
+anything. Provenance was verified before declaring, because `emilia_original` next door is
+NC: all 13,141 manifest entries carry the YODAS CC-BY-4.0 note and trace to the nine
+`EN-B0000xx` shards in `emilia_yodas_probe`.
+
+**Per-speaker z would destroy the exact property the corpus was mined for.** This is the
+one to read twice, because the run would complete, the loss would look ordinary, and the
+conclusion — "volume does not move quality" — would be wrong.
+
+The keeps are **deliberately tail-selected**: `mine_emilia_keeps.py`'s pre-registered
+criteria keep a clip only if `T_full > p90`, `V_combo > p95`, `V_combo < p5` or
+`EIV-Arousal > p95`. As mined, on the LibriTTS-anchored global scale, they look like it —
+**A mean +1.168, T mean +4.541, 91.9% of clips beyond |T| = 1**.
+
+But the corpus lane computes V/A/T as a **per-speaker z**, and Emilia is
+**13,141 clips across 2,408 speakers — a median of 3 clips each**, against LibriTTS's 127:
+
+| clips/speaker | speakers | clips | share |
+|---|---|---|---|
+| = 1 | 756 (31.4%) | 756 | 5.8% |
+| ≤ 2 | 1,170 (48.6%) | 1,584 | 12.1% |
+| ≤ 5 | 1,744 (72.4%) | 3,749 | 28.5% |
+| ≤ 10 | 2,057 (**85.4%**) | 6,126 | **46.6%** |
+
+Re-centring each speaker on their own kept clips takes V from mean **+0.387 / sd 0.741** to
+mean **+0.000 / sd 0.971** — the tail richness is annihilated by construction — and **756
+clips selected FOR being extreme come out labelled exactly 0.0**, which in this
+representation means *at the speaker mean*, i.e. neutral. That is D-M1's principle biting a
+second time: a manufactured `0.0` is indistinguishable from a measured one, which is how
+1,094 clips shipped mislabelled in an earlier pass.
+
+`derive_vat_corpus` already reports thin speakers (`!! N speaker(s) with <10 clips … whose
+z is fixed by arithmetic rather than measured`). On LibriTTS that warning covers 80 of
+31,445 clips (0.25%). On Emilia it would cover **46.6%**.
+
+**So #1 needs a scale decision before it is a merge.** The mined T/V/A are already
+LibriTTS-anchored — `mine_emilia_keeps` says so explicitly ("global mean/std from the v2
+corpus measures + scores, so T_full/V_combo mean the same thing they meant in the probe") —
+but they are on the RAW anchored scale, while corpus labels are clamped at 2σ and halved
+into [−1, 1] (v4 measures V/A/T sd 0.42–0.48). The options, none free:
+1. **Use the anchored values, mapped into [−1, 1]** — preserves the tails, needs the
+   anchor re-derived against v4 rather than v2, and bypasses per-speaker z for this corpus.
+2. **Per-speaker z with a minimum-clips floor** — honest but expensive: ≥10 clips/speaker
+   keeps 7,015 of 13,141 (+23% instead of +43%), and still re-centres the tails it keeps.
+3. **Merge as-is** — cheapest, and it answers a question nobody asked.
+
+Not a blocker for the phase; a decision that has to be made before the render of it.
 
 ### Per-corpus checklist — every one of these has bitten
 

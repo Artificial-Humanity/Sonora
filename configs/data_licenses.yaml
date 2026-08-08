@@ -56,7 +56,21 @@ datasets:
     license: CC-BY-4.0 (cdminix prosody measures/alignments)
     class: permissive
   emilia_yodas:
-    dirs: [emilia_yodas, Emilia-YODAS]
+    # The mined keeps live in `emilia_kept` (source mp3) and `emilia_kept_24k` (the 24 kHz
+    # wavs + asr.jsonl that a filelist would point at), NOT in a directory called
+    # `emilia_yodas` — so until 2026-08-08 `classify_path` matched no component of any
+    # keep's path and the wall would have refused the Phase 1 #1 merge outright. Exactly
+    # the failure this file's own checklist warns about, and the one that made v3/v3b/v3c
+    # structurally unrunnable. `emilia_yodas_probe` is the raw pool the keeps were mined
+    # from; declared for completeness, though nothing points a filelist at it.
+    #
+    # VERIFIED before declaring, not assumed — the adjacent `emilia_original` is NC and a
+    # wrong declaration here is how NC audio would reach a shipped checkpoint. All 13,141
+    # entries in `emilia_kept/manifest.json` carry
+    # `"license": "Emilia-YODAS (CC-BY-4.0 subset of amphion/Emilia-Dataset)"`, and every
+    # one traces to a shard in the `EN-B0000xx` set that `emilia_yodas_probe` holds.
+    # Component matching is exact, so `emilia_kept` cannot collide with `emilia`.
+    dirs: [emilia_yodas, Emilia-YODAS, emilia_kept, emilia_kept_24k, emilia_yodas_probe]
     license: CC-BY-4.0 (YODAS subset ONLY — the original Emilia subset is NC)
     class: permissive
   globe_v2:
