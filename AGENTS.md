@@ -172,3 +172,70 @@ symptom is that a fix you believe shipped did not. It has already happened twice
   training-code`'s fast-forward pull cannot cross a history rewrite and failed silently.
 
 Neither was found by noticing something break. Both were found by going to look.
+
+---
+
+### 7. The Deploy Cycle — repo → `/data`, and the check that comes FIRST
+
+§6 says *why* the repo is authoritative. This is the *procedure*, and it is mandatory for
+every target with a `/data` copy. Canonised 2026-08-08, when `audition/` moved into this repo
+and the cycle stopped being another repo's internal business.
+
+**Targets, and where each is sourced from.** `scripts/deploy.sh` lives in `AI-Lab-AMD`
+because it is box tooling, but it deploys from whichever repo owns the code:
+
+| target | source | command |
+|---|---|---|
+| `audition` → `/data/services/audition/app` | **this repo**, `audition/` | `deploy.sh audition` |
+| `training-code` → `/data/repos/Sonora` | **this repo** (ff-pull; a real checkout) | `deploy.sh training-code` |
+| `dashboard` → `/data/services/dashboard` | `AI-Lab-AMD/dashboard` | `deploy.sh dashboard` |
+| `stack` → the compose services | `AI-Lab-AMD` | `deploy.sh stack` |
+
+#### 0 · BEFORE touching related code — confirm the deployed copy is current
+
+**This step comes first and is the point of the section.**
+
+```bash
+../../AI-Lab-AMD/scripts/deploy.sh status                  # which revision is running
+.venv/bin/python -m pytest tests/test_data_mirrors.py -q   # do the bytes still match
+```
+
+A target reading **STALE**, **DIRTY**, or *"deployed from a commit not in this repo"* means
+the running copy is not the code you are about to edit. Editing on top of that and then
+deploying **silently clobbers** whatever was actually live — and since `rsync --delete` is
+not recoverable, there is nothing left to diff. Resolve drift *before* the first edit.
+
+Not hypothetical: `convert_vat.py` ran **three weeks stale** on `/data` — the repo gained a
+`detect_vat_dim` seam guard, the notes recorded it as landed, and the harness that actually
+executed never received it. *A guard that is not installed is not a guard*, and the only
+symptom was that a fix believed shipped had not.
+
+#### 1 · Edit in the repo · 2 · Commit · 3 · Deploy · 4 · Verify
+
+```bash
+git commit …                                    # a dirty tree is REFUSED by deploy.sh
+../../AI-Lab-AMD/scripts/deploy.sh <target>
+../../AI-Lab-AMD/scripts/deploy.sh status       # the target should now read `current`
+.venv/bin/python -m pytest tests/test_data_mirrors.py -q
+```
+
+**Never edit under `/data` and copy back.** An edit there has no history, no diff, no review
+and no changelog entry. A `/data` file that is *newer* is not authoritative — it is unrecorded.
+
+#### Rules that travel with the cycle
+
+* **Register a new target in the same commit that first deploys it.** `MIRRORS` in
+  `tests/test_data_mirrors.py` covers only what it is told about, and
+  `test_there_is_something_to_check` exists so a layout change cannot quietly empty it.
+* **A contract the deployed copy needs must be SHIPPED, never transcribed.** The audition app
+  cannot import `matcha` — its container has fastapi and uvicorn and nothing else — so
+  `deploy.sh` copies `matcha/delivery.py` into `app/_contract/` **after** the `rsync --delete`,
+  and the app **refuses to start** without it. Same pattern as the device G2P's exported
+  `g2p_contractions.json`. A fallback to a literal would re-create the fork the asset exists
+  to delete; D-C1's lesson is that a hand-synced table is a defect of omission on a delay.
+* **Staleness is judged per source PATH, by ancestry** — against the last commit touching that
+  target's own path, never against repo HEAD. A HEAD comparison called `dashboard` BEHIND for
+  a week while it was perfectly current, and a check that cries wolf gets ignored, which is
+  worse than no check.
+* **A dirty tree is refused.** `ALLOW_DIRTY=1` overrides and the stamp records that it was
+  used, so the exception leaves a trace.
