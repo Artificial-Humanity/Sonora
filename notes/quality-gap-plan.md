@@ -247,7 +247,44 @@ into [−1, 1] (v4 measures V/A/T sd 0.42–0.48). The options, none free:
    keeps 7,015 of 13,141 (+23% instead of +43%), and still re-centres the tails it keeps.
 3. **Merge as-is** — cheapest, and it answers a question nobody asked.
 
-Not a blocker for the phase; a decision that has to be made before the render of it.
+**Owner took option 1, 2026-08-08**, and it is implemented in
+`scripts/anchor_emilia_labels.py`: every channel z-scored against the **v4 corpus's global
+distribution of the same underlying measure** — same components, same signs, same second
+normalisation, same `clamp2` — with `per_spk_z` swapped for the global anchor at each step.
+The three EIV heads Emilia lacks all carry weight 0.0, so their absence changes nothing.
+
+It does what it was chosen for. **All 13,141 keeps label, and 0 come out all-zero** against
+756 under per-speaker z:
+
+| | Emilia mean | sd | \|v\| > 0.5 | at the ±1 rail | LibriTTS rail |
+|---|---|---|---|---|---|
+| V | +0.305 | 0.597 | 53.0% | 28.4% | 7.04% |
+| A | +0.014 | 0.598 | 48.7% | 11.1% | 4.66% |
+| T | **+0.749** | 0.359 | 76.3% | **54.0%** | 4.69% |
+
+⚠ **The tails survive, and T now SATURATES — 54% of Emilia clips sit pinned at |T| = 1
+against LibriTTS's 4.69%.** That is not a bug in the anchoring; it is the mining criteria
+being honest. `T_full > p90` was one of the four keep rules, the corpus's representable
+range stops at 2σ, and clips selected for exceeding it land on the rail. But at 30.1% of a
+merged 43,626-clip corpus it means roughly a sixth of all training rows carry "maximum
+tension" with no gradation inside it, and the model has an easy shortcut available:
+Emilia-like acoustics ⇒ T = 1. Three ways out, and this is the next decision, not a
+blocker:
+1. **Accept it** — honest labels, and the run measures whether the shortcut actually hurts.
+2. **Re-balance the merge** — take fewer of the most extreme keeps, trading volume (the
+   thing Phase 1 is testing) for gradation.
+3. **Widen the clamp for the merged corpus** — the most tempting and the most expensive:
+   ±1 is documented in the control contract as *the edge of the TRAINED range*, so
+   re-scaling changes what every existing checkpoint, filelist and exported `config.json`
+   means. That is a contract change and an owner call (ARCHITECTURE §1), not a constant.
+
+⚠ **Separately, and it IS a blocker: `n_spks`.** The model's speaker table is **247** rows
+and Emilia brings **2,408 new speakers**, so a merged corpus needs `n_spks: 2655` and a
+`spk_emb.weight` widened 247 → 2655. That widening is *safe here and only here*: LibriTTS
+speakers keep their existing indices and the new ones append, so rows 0–246 keep their
+meaning — unlike the vctk 109 → 247 case `make_warmstart._WIDENABLE` deliberately refuses,
+where row *i* is a different person. It needs the derivation to preserve the index map and
+the warm start to verify that rather than assume it.
 
 ### Per-corpus checklist — every one of these has bitten
 
