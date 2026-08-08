@@ -81,6 +81,40 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
   family as `test: True`: a supported setting failing late, in a place that blames something
   else.
 
+### Added — the audition scale gets a fixed reference (§6)
+
+_⚠ **Cross-repo entry.** The audition app lives in `AI-Lab-AMD/audition` and that repo keeps
+no changelog, but the app is the rating surface for the teacher-synthesis lane — `ratings.csv`
+is the SSOT the audit trust tiers run on — so it is recorded here, with its own repo's SHA.
+The convention applies to any AI-Lab-AMD code serving this lane._
+
+- **`AI-Lab-AMD 38c2259` — anchor exemplars: what each number sounds like.** The 1–5 scale
+  had saturated and it measures — **799 of 1,219 scored keeps are 5s (66%)**, on identical
+  text **46 of 62 controlled groups have ≥3 different engines all at 5**, and `librivox`
+  **real human audio means exactly 5.00** across its 43 keeps. The top of the scale is
+  "indistinguishable from a human read" and most of the corpus sits on it, which is why mean
+  score ranks `chatterbox` above `qwen`. Owner, after the equal-loudness re-listen: *"Qwen
+  relays human-like prosody in those cases where it scored a 5 that makes me rethink 5's
+  given out to others."*
+  - A saturated scale is not fixed by adding scale points but by a **fixed reference** —
+    standard MOS practice, and the one thing this app never had. Sticky reference bar (one
+    slot per scale point, descending, since the live question is "is this a 5?"), `⚓` on
+    every clip to make it the reference for a score with a one-line *why*, and `Shift`+`1`–`5`
+    to play one — deliberately **not** a bare digit, since those already rate and a mis-key
+    that silently re-rates a clip is the worst collision on this surface.
+  - **Nothing picks an anchor from a measure.** A computed anchor re-anchors the scale to
+    whatever the measure already believes. Ships with **exactly one** entry — the exemplar
+    the owner named — and four **unset rather than guessed**; the 56 notes on score-3 keeps
+    and 94 on score-4 keeps were checked as seeds and are machine bookkeeping
+    (`[renamed from: …]`), not ear reasoning.
+  - **A sidecar, not a column**, and that is a scar: the Qwen/VibeVoice A/B parked prior
+    scores in `note`, which the app overwrites when the owner types, and **17 of 33 were
+    lost**. Drift (anchor clip re-rated) and breakage (anchor clip gone from `ratings.csv`)
+    both render rather than hide.
+  - Standing rule that came out of the measurement, now in the app's README where an auditor
+    will read it: **never rank engines by mean score.** Keep RATE survives the ceiling; means
+    do not.
+
 ### Measured — the ears queue emptied (§5, §2)
 
 - **`683c43f` — `head_ok` gets NO GATE, on evidence.** The owner heard the four queued
