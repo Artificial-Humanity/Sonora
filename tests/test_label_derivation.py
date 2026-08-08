@@ -198,3 +198,99 @@ def test_a_short_title_is_not_punished_for_being_short():
 
 def test_spread_alone_is_not_enough():
     assert _thin(4, {1, 5, 9, 13}, 15), "four clips cannot certify a whole book"
+
+
+# --- Phase 1 #1: the Emilia merge (2026-08-08) -----------------------------------------
+#
+# The merge's whole safety argument is that v4's rows and speaker indices survive it
+# untouched, because `spk_emb` row *i* is a person and renumbering silently reassigns every
+# voice the model has learned. These check the corpus ON DISK rather than a stub: the merge
+# is a one-off derivation, and the artifact is what a run will read.
+
+MERGED = os.path.join(os.path.dirname(SCRIPTS), "data", "libritts_r_emilia_vat_v5")
+BASE = os.path.join(os.path.dirname(SCRIPTS), "data", "libritts_r_vat_v4")
+
+pytestmark_merged = pytest.mark.skipif(
+    not os.path.isdir(MERGED), reason="the merged corpus is not on this machine")
+
+
+def _rows(corpus, name):
+    with open(os.path.join(corpus, name), encoding="utf-8") as fh:
+        return [ln.rstrip("\n") for ln in fh if ln.strip()]
+
+
+@pytestmark_merged
+@pytest.mark.parametrize("name", ["train_op.txt", "val_op.txt"])
+def test_the_base_corpus_survives_the_merge_verbatim(name):
+    """Not "the same clips" — the same BYTES, in the same order.
+
+    A row carries the speaker INDEX, so a re-derivation that produced identical clips with
+    a renumbered speaker table would pass a set comparison and invalidate the warm start.
+    Prefix equality is the property `make_warmstart --donor-speakers` proves, checked here
+    against the artifact rather than against the script's intent.
+    """
+    base, merged = _rows(BASE, name), _rows(MERGED, name)
+    assert merged[:len(base)] == base
+
+
+@pytestmark_merged
+def test_nothing_held_out_became_trainable():
+    """The hash split's promise is that a clip's side is a property of the clip, so growth
+    never moves one. v4's val clips must still be val — otherwise every comparison against
+    a v4-lineage checkpoint quietly leaks."""
+    val = {r.split("|", 1)[0] for r in _rows(BASE, "val_op.txt")}
+    train = {r.split("|", 1)[0] for r in _rows(MERGED, "train_op.txt")}
+    assert not val & train
+
+
+@pytestmark_merged
+def test_the_speaker_table_only_ever_grew():
+    """LibriTTS ids keep their indices, the appended ones are contiguous above them, and no
+    two speakers share an embedding row."""
+    with open(os.path.join(BASE, "speakers.json"), encoding="utf-8") as fh:
+        base = json.load(fh)
+    with open(os.path.join(MERGED, "speakers.json"), encoding="utf-8") as fh:
+        merged = json.load(fh)
+    assert merged["libritts_id_to_index"] == base["libritts_id_to_index"]
+    every = {**merged["libritts_id_to_index"], **merged["emilia_id_to_index"]}
+    assert len(every) == merged["n_spks"], "an id appears in both namespaces"
+    assert sorted(every.values()) == list(range(merged["n_spks"]))
+    assert min(merged["emilia_id_to_index"].values()) == base["n_spks"]
+
+
+@pytestmark_merged
+def test_no_merged_row_carries_a_digit_or_the_wrong_width():
+    """D-M3 at the artifact. The tokenizer DELETES digits, so a surviving digit means a
+    clip whose transcript is missing a word its audio speaks — undetectable downstream,
+    which is why it is checked where it would land rather than only where it is filtered."""
+    for name in ("train_op.txt", "val_op.txt"):
+        for row in _rows(MERGED, name):
+            fields = row.split("|")
+            assert len(fields) == 4
+            assert len(fields[3].split(",")) == 8, "conditioning must be contract-v2 wide"
+            assert not any(c.isdigit() for c in fields[2]), "a digit reached the phonemes"
+
+
+@pytestmark_merged
+def test_every_emilia_row_carries_a_label_and_no_delivery_lane():
+    """The failure the global anchor exists to prevent is an all-zero V/A/T — a clip
+    selected FOR being extreme, trained as neutral (D-M1's principle). And Emilia rows must
+    stay delivery-`unknown`: nobody has heard one, so a lane there would be a guess."""
+    base_n = len(_rows(BASE, "train_op.txt"))
+    emilia = _rows(MERGED, "train_op.txt")[base_n:]
+    assert emilia, "the merge added no rows"
+    for row in emilia:
+        vat = [float(x) for x in row.split("|")[3].split(",")]
+        assert any(abs(v) > 1e-9 for v in vat[:3]), "a keep labelled all-zero"
+        assert sum(vat[3:]) == 0, "an Emilia row claims a delivery lane"
+
+
+def test_one_wer_threshold_serves_both_lanes():
+    """The corpus filter and the QC gate ask the same question of a transcript, and two
+    copies of one threshold is the review's most repeated finding (B-L5, D-L2). `qc_gate`
+    re-exports `synth_common`'s rather than declaring its own."""
+    sys.path.insert(0, os.path.join(SCRIPTS, "synthesis"))
+    sc = pytest.importorskip("synth_common")
+    assert isinstance(sc.ASR_MAX_WER, float)
+    gate = open(os.path.join(SCRIPTS, "synthesis", "qc_gate.py"), encoding="utf-8").read()
+    assert "ASR_MAX_WER = synth_common.ASR_MAX_WER" in gate, "the threshold forked again"

@@ -1,0 +1,70 @@
+# @package _global_
+
+# Phase 1 #1 — the first run whose corpus is not one dataset, and the first real test of
+# the question Phase 1 exists to ask: **does volume move quality at all?**
+#
+# v4 answered nothing on purpose (its five delivery channels were zero on 31,397 of 31,445
+# clips, so it trained the WIDTH). This one changes the data: 41,138 train rows against
+# v4's 30,485, 78.5 h against 51.3, 2,500 speakers against 247. Same architecture, same
+# width, same loss. If the holdout does not move here, the corpus is not the lever and
+# Phase 1 #3 (the other 90% of LibriTTS-R) is a much larger bet than it looks.
+#
+# ⚠ READ notes/quality-gap-plan.md's PREDICTION BLOCK BEFORE THE HOLDOUT NUMBER.
+# The Emilia half's T channel is saturated — 53.6% of its rows on the +/-1 rail against
+# LibriTTS's 4.7% — and the owner accepted that for this run. The failure signature was
+# written down on 2026-08-08, before the run existed, precisely so this is a test rather
+# than a story told afterwards: T regressing on the holdout while V and A hold, plus
+# T = +1 renders that sound like podcast-domain audio rather than like tension, is the
+# shortcut forming, and the answer is C-soft (`tanh(z/2)` corpus-wide, a full relabel).
+# T holding means saturation is a non-issue at this mix. Reading the prediction after the
+# result converts a test into a rationalisation.
+#
+# ⚠ THE SPEAKER TABLE WIDENS 247 -> 2,500, and it is safe here and only here. LibriTTS
+# speakers keep their existing indices and the Emilia ones append, so rows 0-246 keep
+# their meaning. That is NOT true in general — `make_warmstart._WIDENABLE` refuses the
+# vctk 109 -> 247 case because row *i* there is a different person, and a silent
+# renumbering reassigns every voice the model has learned. `--donor-speakers` makes the
+# warm start PROVE the donor's index map is a prefix instead of assuming it; without the
+# flag the table stays fresh, which is the safe default and the wrong outcome here.
+#
+# Warm start from vat4's own run if it has one, else vat3-24k ep099 — NOT vat3c ep099,
+# which the holdout retired as a regression (quality-gap-plan § 0a).
+#
+#   python scripts/make_warmstart.py --experiment vat5_finetune \
+#       --donor /data/model-training/sonora/warmstart/vat4_init.ckpt \
+#       --donor-speakers data/libritts_r_vat_v4/speakers.json \
+#       --out /data/model-training/sonora/warmstart/vat5_init.ckpt
+#   python -m matcha.train experiment=vat5_finetune \
+#       ckpt_path=/data/model-training/sonora/warmstart/vat5_init.ckpt
+#
+# Pre-flight, all mandatory:
+#   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
+#     engines (Gemma director, synth_* renderers, Vocalizer), not just the trainer's.
+#   * scripts/test_vat_dim_seams.py — IN-CONTAINER (they need torch).
+#   * The corpus is licence-declared (configs/data_licenses.yaml, `merged_vat_corpora`).
+#     It is declared under its OWN entry rather than folded into `libritts_r`, because
+#     filing a merged corpus under one of its sources is how a future NC merge would
+#     inherit a permissive label from a name. Every wav path inside is still classified
+#     on its own components.
+#   * `data_statistics` MEASURED, not inherited (see the data config). v4 could inherit
+#     v3c's because the audio and split were verified set-equal; adding 27.2 h of
+#     podcast/YouTube audio to 51.3 h of studio reading is a different mel distribution by
+#     construction, and inheriting would shift every normalised mel in the corpus silently.
+#
+# JUDGING THIS RUN: score it on the never-trained holdout
+# (scripts/score_holdout.sh, data/libritts_r_holdout_devclean), NOT on loss/val_epoch.
+# That is doubly true here — v5's val set is 1,304 clips of which 344 are Emilia, so
+# val_epoch now mixes two domains and a change in it could be either. The holdout is 40
+# LibriTTS dev-clean speakers and does not move when the training mix does, which is
+# exactly why it is the instrument.
+
+defaults:
+  - override /data: libritts_r_emilia_vat_v5.yaml
+
+tags: ["libritts_r", "emilia_yodas", "vat", "vat5", "phase1", "valence", "tension",
+       "energy", "delivery"]
+
+run_name: vat5_finetune
+
+model:
+  use_vat: true

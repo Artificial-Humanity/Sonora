@@ -47,6 +47,27 @@ datasets:
            libritts_r_vat_v4, libritts_r_holdout_devclean]
     license: CC-BY-4.0
     class: permissive
+  merged_vat_corpora:
+    # Corpus directories that hold FILELISTS ONLY — no audio — and point at more than one
+    # source dataset. `libritts_r_emilia_vat_v5` (2026-08-08, Phase 1 #1) is v4's LibriTTS-R
+    # rows verbatim plus the Emilia-YODAS keeps.
+    #
+    # Declared separately rather than folded into `libritts_r` BECAUSE the classification
+    # would be a false statement about the contents. The wall classifies the filelist's own
+    # directory as well as every audio directory inside it, so a merged corpus filed under
+    # one of its sources reads as "this is LibriTTS-R" — and the next merge, which may pull
+    # in something NC, would inherit a permissive label from a name rather than from its
+    # audio. The safety here is NOT this entry: it is that every wav path inside is
+    # classified on its OWN components, so `emilia_kept_24k` is checked as Emilia-YODAS and
+    # `LibriTTS_R` as LibriTTS-R, exactly as if they were separate corpora.
+    #
+    # The licence a merged corpus carries is therefore the INTERSECTION of its sources'
+    # terms, not this line. Both sources here are CC-BY-4.0, so attribution is the whole
+    # obligation; a future merge whose sources differ needs that spelled out per source in
+    # notes/training-sources.md before it is added to `dirs`.
+    dirs: [libritts_r_emilia_vat_v5]
+    license: CC-BY-4.0 (filelists only; each audio path is classified by its own source)
+    class: permissive
   parler_libritts_r_annotated:
     dirs: [parler-tts, libritts-r-filtered-speaker-descriptions]
     license: CC-BY-4.0 (annotations over LibriTTS-R)

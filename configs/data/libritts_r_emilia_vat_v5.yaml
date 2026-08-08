@@ -1,0 +1,97 @@
+# LibriTTS-R train-clean-100 + Emilia-YODAS keeps @ 24 kHz, 8-channel conditioning (v2).
+#
+# Phase 1 #1 — the first corpus here that is not one dataset. v4's 31,445 LibriTTS rows
+# pass through BYTE-IDENTICAL (verified: v4's files are a verbatim prefix of these, and
+# every v4 val clip is still in val) and 10,997 Emilia keeps are appended.
+#
+#   41,138 train / 1,304 val · 78.5 h · 2,500 speakers
+#   v4 was 30,485 / 960 · 51.3 h · 247 speakers — so +36% clips, +53% hours, 10× speakers.
+#
+# Built by `scripts/merge_emilia_corpus.py`, NOT by `derive_vat_corpus --root`, and the
+# reason is the labels. The derive lane computes V/A/T as a per-speaker z-score, which is
+# right for LibriTTS (247 speakers, ~127 clips each) and destroys Emilia (2,408 speakers,
+# median 3 clips): re-centring a TAIL-SELECTED clip on its own speaker's mean hands 756
+# one-clip speakers a label of exactly 0.0, and those clips were selected for being
+# extreme. Emilia is labelled on the GLOBAL anchor instead — owner's option 1, 2026-08-08,
+# `scripts/anchor_emilia_labels.py` — same composites, same clamp2, z-scored against v4's
+# own distribution rather than against a speaker who has three clips.
+#
+# ⚠ THE TWO HALVES MEAN SLIGHTLY DIFFERENT THINGS, and it is written here rather than
+# discovered later. A LibriTTS label says "relative to THIS SPEAKER"; an Emilia label says
+# "relative to the corpus". Per-speaker z exists to keep speaker identity out of the affect
+# channels — a constitutionally loud reader is not high-arousal — and a global anchor
+# leaves some of that identity in. With a median of 3 clips there is no per-speaker
+# statistic to be had, so the choice was a global anchor or a manufactured zero. The
+# speaker embedding is what the model has to disentangle the residue with.
+#
+# ⚠ T IS SATURATED ON THE EMILIA HALF: 53.6% of its rows sit on the +/-1 rail against
+# LibriTTS's 4.7%, mean +0.747. Accepted for this run by the owner. **The failure signature
+# is written down in notes/quality-gap-plan.md BEFORE the result, and must be read before
+# the holdout number, not after** — if T regresses on the holdout while V/A hold, and
+# T = +1 renders sound like podcast-domain audio rather than like tension, the model
+# learned "Emilia" from a channel that is nearly constant there, and the answer is C-soft
+# (`tanh(z/2)` corpus-wide). If T holds, saturation is a non-issue at this mix.
+#
+# DELIVERY IS STILL ESSENTIALLY EMPTY — 45 of 41,138 train rows, the same `audit-markup-v0`
+# clips v4 carried, and 0 of them Emilia. The keeps were mined on acoustics and nobody has
+# heard one, so a lane there would be a guess about mode of address. `unknown` is the
+# all-zero block, which is exactly contract-v1 conditioning. The ~1,590 real delivery
+# labels still live in the synthetic and LibriVox campaigns, which merge later.
+#
+# WHAT WAS DROPPED, 2,144 of 13,141 keeps (16.3%), and why none of it is a fix:
+#   1,676  digits — D-M3, the tokenizer DELETES them, so "320 members" would train as
+#          "members" against audio that says the number. Not normalised to words: "1
+#          Chronicles" is *First* Chronicles and "Ezr. 232" is "two thirty-two", 1,262
+#          distinct digit tokens. The drop is unbiased across the mining criteria
+#          (T+ 13.9%, V+ 14.9%, V- 10.8%, A+ 12.5%) over 809 speakers, so it costs volume
+#          and not tail-selection.
+#     468  caption/ASR WER > 0.35 (`synth_common.ASR_MAX_WER`, shared with the QC gate).
+#          `process_emilia_tail` recorded the cross-check and deferred the threshold to
+#          merge time on purpose. A loose bar, because the ASR is base.en int8 on CPU and
+#          much of the WER is the CHECK being weak, not the caption being wrong.
+#   Zero clips failed on audio, phoneme vocabulary, or unresolved words.
+#
+# n_spks is 2,500, NOT the 2,655 the plan predicted: 155 Emilia speakers lost every one of
+# their clips to the filters above. The number is derived from the corpus, never assumed.
+#
+# Lineage and every source: notes/training-sources.md (SSOT).
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_emilia_vat_v5
+train_filelist_path: data/libritts_r_emilia_vat_v5/train_op.txt
+valid_filelist_path: data/libritts_r_emilia_vat_v5/val_op.txt
+batch_size: 32
+# 8, not 20: workers are spawned (own torch import + RSS each, no COW sharing
+# with the trainer) — 8 saturates wav+mel loading on 16 cores.
+num_workers: 8
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 2500
+n_fft: 1024
+n_feats: 80
+sample_rate: 24000
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 12000
+# MEASURED, NOT INHERITED — and this is the version where that stops being pedantry.
+# v4 could legitimately carry v3c's numbers because the audio and the split were verified
+# SET-EQUAL; v5 adds 27.2 h of podcast/YouTube audio to 51.3 h of studio reading, which is
+# a different mel distribution by construction. Inheriting here would apply a constant
+# shift to every normalised mel in the corpus and nothing downstream would report it.
+#
+# AND THE MEASUREMENT EARNED ITS PLACE ON THE CHECKLIST. v4 -> v5 moves the mel mean by
+# **0.1587** and the std by **0.3208**; the v2 -> v3c move that put this rule on the list
+# was 0.0203 / 0.0024, an order of magnitude smaller. Inheriting v4's numbers here would
+# have applied a constant offset and a 12% scale error to every normalised mel in the
+# corpus, on the one run whose entire purpose is to read a quality difference.
+data_statistics:  # matcha/utils/generate_data_statistics.py, in-container, 2026-08-08, 41,138-clip train split (161 batches @ 256)
+  mel_mean: -5.683762
+  mel_std: 2.709323
+seed: ${seed}
+load_durations: false
+load_vat: true
+# Single source of truth is the model config: a filelist whose VAT width disagrees
+# with the model now fails at load with both numbers named, instead of deep in the
+# FiLM trunk. Interpolated, never duplicated, so the two cannot drift.
+vat_dim: ${model.vat_dim}
