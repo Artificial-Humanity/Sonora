@@ -21,7 +21,8 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ### Added — Phase 1 #1, the Emilia merge (§1)
 
-- **`data/libritts_r_emilia_vat_v5` — the first corpus here that is not one dataset.**
+- **`31207bf` — `data/libritts_r_emilia_vat_v5`, the first corpus here that is not one
+  dataset.**
   41,138 train / 1,304 val, **78.5 h, 2,500 speakers**, against v4's 30,485 / 960 / 51.3 h /
   247. `scripts/merge_emilia_corpus.py`, `configs/data/libritts_r_emilia_vat_v5.yaml`,
   `configs/experiment/vat5_finetune.yaml`. Warm start `vat5_init.ckpt` at **338 warm
@@ -50,7 +51,7 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
     merge time on purpose. Zero clips failed on audio, vocabulary or unresolved words.
   - **`n_spks` is 2,500, not the 2,655 the plan predicted** — 155 speakers lost every clip
     to those filters. Derived from the corpus, never assumed.
-  - **The threshold is shared, not copied.** `ASR_MAX_WER` moved to `synth_common`; the QC
+  - **`0fe4b3d` — the threshold is shared, not copied.** `ASR_MAX_WER` moved to `synth_common`; the QC
     gate re-exports it. Two lanes asking one question ("does this transcript disagree with
     this audio too much?") with two constants is B-L5 and D-L2 for the third time.
   - ⚠ **T saturates at 53.6% on the Emilia half** (LibriTTS: 4.7%), accepted by the owner
@@ -59,20 +60,20 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ### Fixed — three things the merge walked into (§1)
 
-- **`data_statistics` inheritance would have been a real error this time, not a pedantic
-  one.** v4 → v5 moves the mel mean by **0.1587** and the std by **0.3208**; the v2 → v3c
+- **`31207bf` — `data_statistics` inheritance would have been a real error this time,
+  not a pedantic one.** v4 → v5 moves the mel mean by **0.1587** and the std by **0.3208**; the v2 → v3c
   move that put "re-measure in-container" on the checklist was 0.0203 / 0.0024. Adding
   27.2 h of podcast/YouTube audio to 51.3 h of studio reading is a different distribution by
   construction. The config shipped with the key **absent** until the container had measured
   it — `data_statistics` is positional, so a run before then dies naming it, where a
   plausible placeholder would not.
-- **`make_warmstart`'s prefix proof read only the LibriTTS namespace.** A merged corpus
+- **`92c04f5` — `make_warmstart`'s prefix proof read only the LibriTTS namespace.** A merged corpus
   keeps its sources separate (`libritts_id_to_index` beside `emilia_id_to_index`), so the
   check passed and reported *"247 donor speakers keep their index; 0 appended"* on a corpus
   appending 2,253. It was not wrong about safety — it was wrong in its summary, which is the
   line people quote. It now reads every `*_id_to_index` block, refuses a cross-namespace id
   collision, and refuses two speakers on one embedding row. Two new seam checks (28 → 30).
-- **`on_validation_end` crashed with no logger configured.** It runs a full synthesis pass
+- **`b5abf90` — `on_validation_end` crashed with no logger configured.** It runs a full synthesis pass
   purely to log spectrogram images, then dereferenced `self.logger.experiment` —
   `AttributeError: 'NoneType'` — *after* validation had already succeeded, which reads as a
   data or checkpoint failure and is neither. `logger=[]` is exactly what a smoke run uses,
