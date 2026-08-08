@@ -169,39 +169,34 @@ honoured by `stage_pool.qc_flagged`, with `queue_head_audit.py` for the backlog.
 there was nothing to re-audition, and they are exactly the silent fold `qc_flagged` now
 prevents. No verdict was discarded: status moves, score and the auditor's note stay._
 
-- [ ] **C-M4 — the measurement shipped (`a4b6ec5`); one threshold is still yours.**
-      `head_lost_frac`/`head_words_lost` is recorded beside the existing measures, in an
-      `advisories` dict that gates NOTHING, and `gate_calibration.py --sweep head_lost_frac`
-      reproduces the procedure that set `PAUSE_HARD_MAX`.
-      **`head_ok` needs the ear, and the queue now exists** — that was the missing half.
-      There is still nothing to calibrate against: no drop note in `ratings.csv` names a
-      late start, because no auditor has been asked to listen for one.
-      **4 clips are in the todo queue now** with a note saying the threshold comes from
-      what they write — `wuthering-heights_nar_0036_neu_CHA` (4 of 19 words, 21% of the
-      passage, WER 0.211 against a 0.35 gate), `_0040` (5 words), `castle-of-otranto_nar_
-      0033_neu_ZON` (4 words, previously kept at 5) and `victory_whimsical_00_brightF_s5150`
-      (3 words, previously kept). **This is the whole of what is left: hear them, then run
-      `gate_calibration.py --sweep head_lost_frac`.** Blocked on ears, nothing else.
-      **The `uneasy-money` cluster was investigated 2026-08-08 and is NOT an alignment
-      defect — the flag was wrong in the direction it was stated.** That title holds 2,030
-      of the 3,189 measured clips (64%), so 4 of 8 is a size effect; its head-loss rate is
-      **0.20%, the LOWEST of any title with occurrences** and a third of the corpus-wide
-      0.60%. What the investigation actually found is more useful:
-      - **Head loss is ~5× a SYNTHESIS problem, not an alignment one**: 1.30% of rendered
-        clips (13/1,001) against 0.27% of force-aligned real audio (6/2,188). Engines
-        ramping in dominates; the aligner cutting late barely registers.
-      - **All four real-audio cases are FALSE POSITIVES** — the words are spoken and ASR
-        misheard the opening ("Two cars farther" → "To Carr's father", "He groped round" →
-        "The grope ground"). This is exactly the asymmetry `edge_loss`'s own docstring
-        warns about: no left context at the first word.
-      - **One was a pure hyphenation artifact and is now fixed.** `edge_loss` STRIPPED
-        hyphens instead of splitting on them, so `By-and-by` scored one token against a
-        three-token `By and by` and reported a 3-word late start on a perfect opening. The
-        calibration population is **8 → 7**. Measured before changing it: 8 head counts and
-        46 tail counts move corpus-wide, and **0 clips had ever failed `tail_ok` because of
-        it**, so no shipped corpus is affected.
-      Net: the 4 queued clips are all SYNTHETIC, which is the right population to calibrate
-      from, and the 3 remaining pooled real-audio cases are ASR noise rather than evidence.
+_**C-M4 CLOSED 2026-08-08** (`683c43f`). The owner heard the four queued clips and the
+answer is **`head_ok` gets NO GATE — on evidence, not for want of it.** Ranked by
+`head_lost_frac`: **0.214** DROP (shrill, nothing to do with the head) · **0.211** KEEP 5
+(*"I hear all of the words in the printed text"*) · **0.132** KEEP 5 · **0.129** DROP
+(*"the first two words are jumbled together… 'gojawayisabella'"*). The measure is
+**anti-correlated with the ear** — the highest score is a perfect keep, the one real head
+defect sits below two 5s, and any cut catching 0.129 catches both. Across all 8 flagged
+clips, including the four real-audio ones, **not one was a late start**:
+`head_lost_frac` measures ASR head DISAGREEMENT, not truncation. It stays advisory,
+because slurred onsets are real, and the note was reworded — it told auditors "first N
+words never spoken", which was false in 3 of the 4 cases they checked._
+
+_Acting on it found the reason the sweep had been useless: **`gate_calibration.parse_score`
+searched for `[1-5]`, so the reject marker `x` returned `None` and every caller skipped the
+row.** 253 of 286 dropped rows carry `x` — **88% of every ear rejection was invisible to
+the tool that calibrates gates against ear verdicts**, and a campaign full of drops swept
+as "no rated clip matches the defect". Fixed. Two consequences: **`TAIL_LOST_MAX` 0.05 is
+CONFIRMED** (3/3 catch, 1% false flag, on rejections that could not be seen before), and
+one thing for the owner below._
+
+- [ ] **`PAUSE_HARD_MAX` may be too loose — owner call, and thin.** On `newscaster-v1`,
+      the only campaign holding both the pause measure and ear verdicts, the shipped hard
+      cap of **2.5 s catches 0 of the 2 ear-confirmed pause defects**, while the **1.4 s
+      advisory band catches both at 0% false flag**. n = 2, so this is a signal to
+      re-examine rather than a mandate — and moving a hard cap is a corpus admission
+      change, the same class as `speech_ok`. The comment in `qc_gate.py` says the 2.5 was
+      set against 21 labelled defects; that set was drawn while 88% of rejections were
+      invisible, so it deserves re-deriving before anyone trusts the number.
 
 ## 4 · Conditioning axes — one approved, one OPEN
 
@@ -381,11 +376,10 @@ above ever opens, recorded so the answer is a decision rather than an improvisat
        the radio flags keep reaching the ear. Owner call, policy not measurement — but the
        measurement no longer supports the hold, and the instrument the hold was waiting for
        has existed since 2026-08-02.
-4. [ ] **The 4 head-truncation clips, already in the todo queue** (`97c14b4`) — the only
-       thing `head_ok` is waiting on. Each carries a note saying the threshold comes from
-       what the auditor writes. Then `gate_calibration.py --sweep head_lost_frac`.
-       `speech_ok` left this list on 2026-08-07: it is a hard gate now, by owner's call.
-       Still open alongside: ear-calibrating `tail_ok` and the 1.4 s pause advisory band.
+4. ~~**The 4 head-truncation clips**~~ **HEARD 2026-08-08 — see § 2.** `head_ok` gets no
+       gate (the measure is anti-correlated with the ear), `TAIL_LOST_MAX` 0.05 is
+       confirmed at 3/3 catch / 1% false flag, and the pause cap is now the open question
+       rather than the head. `speech_ok` left this list on 2026-08-07.
 
 ## 6 · Parked dataset decisions
 
