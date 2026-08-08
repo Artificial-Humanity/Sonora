@@ -24,11 +24,13 @@ links to the section that owns it. If a row and its section disagree, the sectio
 | **P0** | 0a — never-trained holdout | ✅ **DONE 2026-08-06** | — | [§ 0a](#0a--the-never-trained-holdout--done-and-it-reported-2026-08-06) |
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | 🔨 **BUILT, not launched** | **a GPU slot + spin-down** | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
-| | rung 2 — v6, +expressive-registers | ⏸ needs +116 ear-certified keeps | rung 1's holdout | ditto |
+| | rung 2 — v6, +expressive-registers (**existing** synth) | ⏸ needs +116 ear-certified keeps | rung 1's holdout | ditto |
 | | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ not pulled | rung 1's holdout | ditto |
-| | rung 4 — v8, +Hi-Fi TTS (292 h) | ⏸ 40 GB parquet, unconverted | independent — slot in when converted | ditto |
+| | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
+| | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
 | | freeze a same-corpus U-Net baseline | ⏸ | **the last act of P1** | [§ Phase 2](#phase-2--the-dit-decoder-spike) |
 | | vocoder transparency re-check | ⏸ | after P1 | [§ gates](#gates-between-phases) |
+| **P1S** | mass synthetic production, Qwen-primary | ⏸ **plan written, 3 prerequisites open** | **rungs 1–5** (owner: exhaust public sources first) | [§ Phase 1S](#phase-1s--mass-synthetic-production-qwen-primary) |
 | **P2** | DiT decoder spike | ⏸ design written, not started | P1 landing + the frozen baseline | [model-decisions.md § Decoder v2](model-decisions.md) |
 | **P3+** | conditioning: embodiment bank → span-FiLM | ⏸ deferred chain | evidence, not plumbing | [todo.md §4](todo.md) |
 | | categorical emotion block (3+8) | ⏸ **open decision** | P1's valence read | [todo.md §4](todo.md) |
@@ -63,8 +65,12 @@ compressed — so this is the cheapest thing that improves every rung above 1.
   ([teacher-training-data.md](teacher-training-data.md)); costs no new data. Filed, not
   scheduled, because it competes with the volume lever we have not yet pulled.
 - **Out-scaling the teachers.** Qwen trained on ~5,000,000 h and Chatterbox on ~500,000 h;
-  everything cleared and reachable for us is ~115,000 h, and v5 is 78.5. The teacher-
-  synthesis lane is how that scale reaches us, and no amount of corpus work substitutes.
+  everything cleared and reachable for us is ~115,000 h, and v5 is 78.5. Distillation is how
+  that scale reaches us — Phase 1S — and no amount of corpus work substitutes for it.
+- **Mass synthetic generation before the public sources are exhausted** (owner, 2026-08-08).
+  Not a judgement on the idea: real audio yields ~100% against Qwen's 89.3% and costs no ear
+  time, so render-hours before conversion-hours spends the expensive currency first. **The
+  synthetic we ALREADY have is not deferred** — it is rung 2.
 
 ---
 
@@ -261,20 +267,60 @@ indices untouched, and its held-out clips still held out). Keep that property at
 — it is what makes rung *n*'s holdout number comparable to rung *n−1*'s, and it is the one
 thing a re-derivation destroys silently.
 
+**EXHAUST THE WELL-KNOWN PUBLIC SOURCES FIRST — owner, 2026-08-08.** That is the ordering
+principle above everything below, and the measured case for it is strong: **real audio
+yields ~100% and costs no ear time.** `librivox` keeps 99.0% of what is heard (103/104) and
+`emilia-yodas` 100% (48/48), against 89.3% for our best synthetic engine. Real audio needs
+no rendering, no direction pass, no QA pruning and no listening — **every hour of it is
+cheaper than every hour of synthetic**, and roughly 870 of them are cleared and unused.
+
 | rung | corpus | train rows | hours | speakers | the one lever it moves | gate to the next |
 |---|---|---|---|---|---|---|
 | — | `libritts_r_vat_v4` | 30,485 | 51.3 | 247 | width only (8-wide) | smoked, superseded |
 | **1** | **`libritts_r_emilia_vat_v5`** | **41,138** | **78.5** | **2,500** | **volume, +36%** | holdout vs `vat3_ep099` |
-| 2 | v6 = v5 + expressive-registers | ~42,300 | ~82 | ~2,510 | **ear-certified + real delivery labels** | delivery channel finally has signal |
-| 3 | v7 = v6 + LibriTTS-R full | ~330,000 | ~615 | ~4,900 | **10× volume, same domain** | the real lever |
-| 4 | v8 = v7 + Hi-Fi TTS v1 | +? | +292 | +10 | **depth per voice**, not breadth | independent; slot in when converted |
+| 2 | v6 = +expressive-registers | ~42,300 | ~82 | ~2,510 | **ear-certified + real delivery labels** | delivery channel finally has signal |
+| 3 | v7 = +LibriTTS-R full | ~330,000 | ~615 | ~4,900 | **10× volume, same domain** | the real lever |
+| 4 | v8 = +Hi-Fi TTS v1 + VCTK | +? | +336 | +120 | **depth per voice** + studio timbre breadth | independent; slot in when converted |
+| 5 | v9 = +more Emilia-YODAS shards | +? | unbounded | +thousands | **in-the-wild expressivity at scale** | the mining pipeline already exists |
+| 6+ | the synthetic lane | — | — | — | see **§ Phase 1S** below | gated on 1–5 |
+
+### The low-hanging fruit, itemised — ~870 h before anything is rendered
+
+Everything here is **licence-cleared** and costs conversion work rather than GPU-hours.
+Hours are the sources' own figures (`training-sources.md`), not measured by us.
+
+| source | state | hours | what it actually costs |
+|---|---|---|---|
+| **Hi-Fi TTS v1** | **40 GB of parquet WITH audio, ON DISK, never opened** | **292** | parquet → wav + filelist. The largest corpus we own and the only one needing no download |
+| **LibriTTS-R, the other 90%** | not pulled — we hold `train-clean-100` only | **+534** | download + corpus build, same pipeline as v4 verbatim |
+| **VCTK** | **4.3 GB zip ON DISK, still unextracted** | **44** | `unzip` + filelist. 110 speakers, 48 kHz studio. Casting/accent breadth only — no conveyance value |
+| Emilia-YODAS, more shards | 9 shards probed of ~114,000 h licensed | unbounded | the mining pipeline exists and ran this week |
+| sonora-expressive-registers | derived, 1,071 ear-certified keeps | small | close **+116** (Neutral +81, Documentary +35), then merge |
+| librivox-v2 | derived, 1,366 clips, nothing staged | 3.1 | stage; re-earn v1's 12 ear verdicts |
+
+**Two are already on the disk and merely unconverted** — Hi-Fi TTS and VCTK, **336 hours
+between them, 4× the entire corpus v5 just became**, and neither has ever been opened.
+That is the definition of low-hanging.
+
+⚠ **THE SYNTHETIC WE ALREADY HAVE IS NOT WHAT IS BEING DEFERRED** (owner, 2026-08-08:
+*"I'm not counting our existing synth. Let's use that now."*). `sonora-expressive-registers`
+is **rung 2 and stays at rung 2**, immediately after v5 — it is already rendered, already
+ear-certified, and already paid for in ear time, so using it costs nothing but the merge.
+It is also the **only** thing that gives the delivery channel real signal: v5 carries 45
+delivery labels in 41,138 rows, and the 1,189 delivery keeps all live here. What waits
+behind the real-audio rungs is **mass production of NEW synthetic** — Phase 1S.
+
+⚠ Deliberately NOT on this list: **MLS English** (CC-BY-4.0 but 16 kHz — the quality bar
+disqualifies it), **HiFiTTS-2** (metadata only; a 2.8 TB fetch is a decision, not fruit),
+**GLOBE V2** (CC0 but supersampled — true bandwidth below nominal), **Expresso** (NC,
+unresolved owner call).
 
 Rung sizes past 1 are estimates from `training-sources.md`, not measurements — every one
 of them gets derived from the corpus before it is quoted. Rung 1 already made that point
 three times over: 13,141 rows became 10,997, `n_spks` 2,655 became 2,500, and
 `data_statistics` moved ten times the precedent.
 
-**THE ORDER IS 1 → 2 → 3, and 4 whenever it is ready.** Each rung is gated on the previous
+**THE ORDER IS 1 → 2 → 3 → 4 → 5, then Phase 1S.** Each rung is gated on the previous
 rung's **holdout** number, never on `loss/val_epoch` — which is now doubly unusable, since
 v5's val set mixes two domains and a move in it could be either.
 
@@ -455,6 +501,172 @@ had already been ruled out and were right to be. `compute_loss` masks now, gradi
 unchanged, and `tests/test_training_seams.py` holds the curve honest. **Cost:** a second
 scale break in logged loss (after 2026-08-01's bucketing change) — nothing before this commit compares to anything after it,
 which is one more reason Phase 0a's holdout scoring is the real measurement.
+
+---
+
+## Phase 1S — mass synthetic production, Qwen-primary
+
+**Owner goal, 2026-08-08.** Generate training audio at a scale the licence wall cannot
+reach through real sources, on a repeatable pipeline: Gemma directs → TTS renders → machine
+QA admits, with the owner's ear out of the per-clip loop. *"Qwen has proven to be
+trustworthy and high quality. Frankly, its output is shockingly realistic. I think we can
+[get] high yields from it alone without a lot of QA pruning or 'dirty' clips."*
+
+**SEQUENCED BEHIND RUNGS 1–5, by owner decision.** Not because the idea is unsound — the
+measured case for Qwen is good — but because ~870 hours of cleared real audio yield ~100%
+with zero ear time, and spending render-hours before conversion-hours is spending the
+expensive currency first.
+
+### The measured case FOR it
+
+**Qwen is the highest-yield synthetic engine we have, and it is not close on the axis that
+matters.** Over every ear verdict in `ratings.csv`:
+
+| engine | heard | keeps | **keep rate** |
+|---|---|---|---|
+| `librivox` (real) | 104 | 103 | **99.0%** |
+| `emilia-yodas` (real) | 48 | 48 | **100.0%** |
+| **`qwen`** | **293** | **260** | **89.3%** |
+| `orpheus` | 130 | 99 | 86.1 |
+| `zonos` | 183 | 147 | 82.6 |
+| `chatterbox` | 160 | 125 | 81.2 |
+| `vibevoice` | 116 | 76 | 65.5 |
+| `dia` | 68 | 34 | 52.3 |
+
+Qwen is `trusted` tier (1 clip/group + 3% heard), was **confirmed superior at equal
+loudness** when the loudness confound was tested and ran backwards, and is the owner's
+stated gold standard. An 89.3% keep rate is a ~11% prune, not "a lot of QA pruning" — the
+owner's read is supported.
+
+**Qwen is also the right engine for VARIETY, which is the non-obvious part.** VoiceDesign
+takes **no reference audio** — timbre comes from the words alone, across twelve free-text
+axes (gender, pitch, speed, volume, age, clarity, fluency, accent, texture, emotion, tone,
+personality). Its speaker space is continuous and directable rather than bounded by a
+reference bank, which is the opposite of Chatterbox, whose diversity is capped by our
+reference pool (small, and carrying a blacklist). Leaning on Qwen for variety is the
+mechanically sound call, not the risky one.
+
+### The corpus becomes a RECIPE, not a pile of wavs
+
+Owner, 2026-08-08: *"I don't think we need to carry all of it on disk. That would assume a
+single training pass."* Correct, and it removes the storage wall entirely — 24 kHz/16-bit
+mono is **172.8 MB per audio-hour**, so 100,000 h would be 17.3 TB against 3.1 TB free,
+while a *streamed* 500 h shard is 86 GB.
+
+**The two prerequisites already exist**, which is what makes this real rather than
+appealing: renders are **seeded** (`make_bulk_bank` expands registers × line pools × job
+templates × seeds; `seed` lands in every manifest beside text, direction, engine and
+`weights_source`), and the environment is **digest-pinned** (`container_env.sh` pins
+`rocm/pytorch@sha256:…` and every wheel — written for campaign reproducibility, which is
+exactly what recipe-addressed data needs).
+
+So a synthetic corpus is `manifest + pin`, regenerable on demand, and only the shard being
+trained on has to exist. A manifest is also diffable, reviewable and version-controllable
+in a way that 17 TB of wav is not.
+
+⚠ **It trades storage for compute, and the exchange rate is the number of passes.**
+Discard-and-regenerate pays render cost *per epoch*. At 100 epochs that is prohibitive; at
+one-to-few passes it is the standard large-scale recipe. **That is a training-regime
+change, not a data change** — we currently run `max_epochs: -1` with warm-started
+100-epoch fine-tunes.
+
+**The design that falls out: resident real corpus + streamed synthetic.** Keep the
+real-audio rungs (~615 h LibriTTS-R full ≈ 106 GB) permanently on disk as the anchor and
+stream synthetic shards over it. Bounded storage, no forgetting of the real base across
+shards, and the holdout is untouched either way.
+
+### Three prerequisites, none of which is the pipeline itself
+
+- [ ] **1 · Measure render throughput.** **No synth script records elapsed time** — checked
+      2026-08-08 across every `synth_*.py`, and no manifest carries a timing field. The
+      entire feasibility of this phase is arithmetic in a number nobody has ever measured.
+      One afternoon. Do it first, and record it per engine per clip so it stays measured.
+      Under streaming it matters *more*, since the cost may be paid repeatedly.
+- [ ] **2 · The voice-design diversity probe.** The open question is not whether Qwen's
+      design space is large — it is whether the model *realises* it. Many distinct
+      descriptions collapsing to few distinct voices is the failure mode, and gate **G6**
+      already encodes this exact logic for delivery ("the lanes must be mutually
+      distinguishable, since five inputs on one summing junction pass the per-channel probe
+      five times"). Same test, applied to voice designs.
+      **Cheap version first**, no new dependency: render a designed grid of instructs and
+      measure spread with what we already compute — F0 median and excursion, the phonation
+      composite (`alpha_db`, `cpp`, `h1h2`), LUFS — against the spread of LibriTTS's 247
+      real speakers as the yardstick. Only if that says *collapsed* do we add a
+      speaker-verification embedder, which we do not currently have.
+- [ ] **3 · The direction-adherence gate — the one QA idea that reaches past structural.**
+      Every synthetic clip already carries **both** Gemma's `intended` V/A/T (in the
+      manifest) and the acoustically-measured V/A/T derived from the render. **Nothing
+      compares them.** Their disagreement is a free, fully-automated expressivity check
+      that needs no ear: directed high arousal + measured low arousal = the render did not
+      follow direction, a defect no current gate sees. The signal is known to be large —
+      the VAT audit measured markup at 93% but **valence at 62%**. Calibratable without the
+      owner's ears against **E-VOC** (CC-BY-4.0, human ratings on precisely the
+      instruction↔perception gap).
+
+### The Gemma split — settled, and it is variant-based not task-based
+
+**`gemma-4-31b-qat-spec` writes direction; `gemma-4-e4b-qat-spec` does volume.** Recorded
+in [book-prose-lane.md § Director model](book-prose-lane.md) and STATE.md. For a
+variety-driven pipeline the decisive column is casting diversity: on 24 narration passages
+31b produced **16 distinct castings** and E4B **5**, and E4B disobeyed the skill file on 19
+of 24 lines. **E4B is fast and clean, not obedient.**
+
+The cost objection does not bind, because **the direction pass is per-PASSAGE, not
+per-clip** — run 31b over the passages once and reuse each casting across many renders and
+seeds, so its 4× per-call cost lands on a small denominator. E4B keeps the high-count
+mechanical jobs (`judge_passages`, the markup labeler), which is the `e4b-labels /
+31b-judges` shape the markup spike already runs.
+
+⚠ Terminology trap, since it has already caused one: *"e4b for volume, 31b for judgement"*
+means the **director's** judgement. `judge_passages.py` runs on **e4b**.
+
+### What the ear is still for, and why that does not scale with corpus size
+
+The bottleneck is real but it is not where it looks. A `trusted` engine is already sampled
+at **1 clip per group + 3%** — the owner is already not listening to 97% of Qwen output.
+What the ear is actually for is **calibration and novelty**, and neither scales with hours;
+they scale with the number of distinct **defect modes**. 100,000 hours from one engine at
+fixed settings needs roughly the ear time of 1,000 hours from that engine.
+
+⚠ **The perceptual-QA ceiling is a property of the measures, not of effort, and it stands
+at any scale.** Seven documented attempts to replace the ear on quality have failed, two of
+them *anti-correlated*: DNSMOS cannot separate expressive from broken in its 2.0–2.6 band;
+room reverb defeated **four** detector attempts; `radio_score` misses the worst offender
+(0.3299 against a 0.10 bar, 1 of 20 flags); `head_ok` runs opposite the ear; `PAUSE_HARD_MAX`
+cannot be tightened because duration is the wrong axis; clip incompleteness is undetectable
+by design; and the 1–5 scale itself saturated. **Structural failure is machine-detectable;
+perceptual quality is not.**
+
+The sharp consequence for mass production: **sampling catches prevalence, not severity.** A
+defect at 0.5% prevalence in 100,000 hours is 500 hours of poisoned corpus that no
+affordable sample rate will see. Sonora trains on keeps, so anything the detectors cannot
+see is in the corpus at scale — this is the ceiling-set-by-the-weakest-keep problem arriving
+through volume instead of through labels.
+
+### Two risks specific to scale, recorded before they bite
+
+- **PerTh watermarking.** Chatterbox embeds an inaudible watermark in **every** output. At
+  1,000 h that is noise; at 100,000 h of Chatterbox it could be a dominant corpus signal,
+  and nobody has checked whether it survives our resample and loudnorm — let alone whether
+  Sonora would learn to reproduce it. Qwen-primary largely sidesteps this; it becomes live
+  the moment Chatterbox is used at volume.
+- **Capacity, which may make the whole phase moot.** The acoustic model is **22.7M
+  parameters**. LibriTTS-R full is 585 h and trains good TTS; even 5,000–20,000 h is 10–35×
+  that into a model sized for hundreds. **Rung 1's holdout is the instrument** — if +36%
+  does not move it, the diagnosis is capacity-limited rather than data-limited and mass
+  generation buys nothing until the model grows, which puts the Phase 2 decoder spike on the
+  critical path rather than after it.
+
+### Text supply — re-rendering known-good text is legitimate
+
+Owner: *"Even if we train on all of LibriTTS-R and repeat already used books through
+synthetic channels, I see value there."* It is real value: same text, different prosody and
+timbre is genuine **prosodic** diversity on text that is already aligned and known-good, and
+the paired real+synthetic reading of an identical line is a substrate nothing else gives us.
+The honest caveat is that **text diversity does not grow** — re-rendering 585 h of LibriTTS
+text twenty times is 11,700 h of audio over the same lexicon and syntax, so the returns are
+on the prosody axis only. Licence is clean throughout: the text is CC-BY-4.0/CC0-derived and
+Qwen's weights are Apache-2.0.
 
 ---
 
