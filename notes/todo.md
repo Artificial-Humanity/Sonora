@@ -309,10 +309,39 @@ above ever opens, recorded so the answer is a decision rather than an improvisat
        bought by not listening to the two voices that most need listening to. If the saving
        is wanted, the honest form is a restricted roster (`jess`/`dan`/`zoe`), and that is
        a code change — `ENGINE_TIER` is keyed on engine name and has no per-voice concept.
-3. [ ] **moss_vg — the re-test this asks for ALREADY EXISTS, and it passes.** Checked
-       2026-08-08. **Dialogue: 19 heard, 89.5% keep** — against a 73.5% lane mean over 801
-       clips, and above `chatterbox` (62.4%), which is `trusted`. By lane: Newscaster 95.2%
-       (21), Dialogue 89.5% (19), Neutral 80.0% (45), Documentary 60.0% (20).
+3. [ ] **moss_vg — the re-test this asks for ALREADY EXISTS, it passes, and the defect it
+       guards is now INSTRUMENTED.** Checked 2026-08-08.
+
+       ⚠ **Correction to the rates first published in this entry.** 11 of moss_vg's 20
+       non-keeps are **bookkeeping retirements, not ear rejections** — 6 "retired unheard:
+       group failed certification twice" and 5 "superseded by `_QWE`/`_CHA` (kept, score
+       5)". Counting them as rejections is the exact error the zonos promotion note warns
+       about. **On actual ear verdicts moss_vg is 95 heard / 90.5% keep**, not 81.1%, and
+       **Documentary is 16 heard / 75.0%**, not 60.0%. By lane: Neutral 94.7% (38),
+       Newscaster 95.2% (21), Dialogue 89.5% (19), Documentary 75.0% (16).
+       `ENGINE_MIX_BY_LANE["Documentary"]`'s "56% (18)" comment is contaminated the same
+       way and should be re-derived when that table is next touched.
+
+       **The 9 real ear rejections split into two classes, and today both are caught:**
+       - **Structural (5) — every one fails a gate that exists now.** Re-measured from the
+         audio, because these rows predate the measures: `the-return_nar_0049` 2.82 s and
+         `old-english-baron_nar_0045` 3.04 s internal pause (cap 2.5 → `pause_ok`);
+         `tab_15_mystic` 0.67 s and `tab_18_accent_scots` 3.68 s of speech (floor 4.0 →
+         `speech_ok`, hard since 2026-08-07); `nar_0050` 9 tail words (`tail_ok`).
+       - **Timbre (4) — `radio_score` catches them.** Three "mid-1900s radio transmission"
+         clips measure out/in-band 0.014, 0.072, 0.094 against a 0.10 threshold: **3 of 3
+         recall.** Over all 116 moss_vg clips on disk it flags **23 (19.8%)** for the ear.
+         The fourth is `windfairies_nar_0034`, "highly robotic… like an old-fashioned phone
+         IVR" — 28.8 s, 26.2 s speech, 0.38 s worst pause, and it passes everything. That
+         one is genuinely ear-only.
+
+       **This is the bargain `qc_engine_defects.py` was written to offer**, in its own
+       words: *"what the tier system needs in order to ever hand those engines a ride-along
+       back — coverage traded for instrumentation, the same bargain qwen made."* **zonos
+       took that bargain and was promoted 2026-08-04. moss_vg has the same instrument and
+       was not.** Scrutinized costs 100% listening; instrumented `normal` costs ~20% (the
+       radio flags) plus normal sampling — a 5× reduction for full recall on the
+       characterized defect.
 
        ⚠ **The "24% rate on expressive material" is not reproducible and appears to be a
        corrupted restatement.** The source is `4abfd3f` (2026-07-31), which measured
@@ -322,17 +351,20 @@ above ever opens, recorded so the answer is a decision rather than an improvisat
        **100% listening** should not rest on a figure that lost its provenance; the same
        line is in [STATE.md](STATE.md) and should be corrected there too.
 
-       **The one real weakness is Documentary, and it is ALREADY PRICED.** 60.0% against an
-       83.3% lane mean (qwen 100%, chatterbox 90%, zonos 80.6%) — genuinely engine-specific.
-       But `ref_select.ENGINE_MIX_BY_LANE["Documentary"]` already holds moss_vg at a **0.05
-       floor share** with that exact rationale written beside it. So the scrutinized tier is
-       doing duplicate work: it buys 100% listening across every lane, including the two
-       where moss_vg is the strongest engine we have, to guard a risk the allocation layer
-       already handles — which is precisely the split [[audit-trust-tiers]] insists on
-       ("a tier is a TAG ON AN ENGINE; render share lives in `ENGINE_MIX_BY_LANE`").
+       **Documentary is still the weak lane**, at 75.0% against an 83.3% lane mean, and
+       `ref_select.ENGINE_MIX_BY_LANE["Documentary"]` already holds moss_vg to a **0.05
+       floor share** for that reason. So the scrutinized tier is doing duplicate work: it
+       buys 100% listening across every lane — including the two where moss_vg is the
+       strongest engine we have — to guard a lane risk the allocation layer already prices
+       and a timbre defect the detector already flags. That is precisely the split
+       [[audit-trust-tiers]] insists on ("a tier is a TAG ON AN ENGINE; render share lives
+       in `ENGINE_MIX_BY_LANE`").
 
-       **Recommendation: PROMOTE moss_vg scrutinized → normal.** Owner call, policy not
-       measurement — but the measurement no longer supports the hold.
+       **Recommendation: PROMOTE moss_vg scrutinized → normal**, with
+       `qc_engine_defects.py --campaign <c> --append-flags` run on every moss_vg bank so
+       the radio flags keep reaching the ear. Owner call, policy not measurement — but the
+       measurement no longer supports the hold, and the instrument the hold was waiting for
+       has existed since 2026-08-02.
 4. [ ] **The 4 head-truncation clips, already in the todo queue** (`97c14b4`) — the only
        thing `head_ok` is waiting on. Each carries a note saying the threshold comes from
        what the auditor writes. Then `gate_calibration.py --sweep head_lost_frac`.
