@@ -191,6 +191,19 @@ because it is box tooling, but it deploys from whichever repo owns the code:
 | `dashboard` → `/data/services/dashboard` | `AI-Lab-AMD/dashboard` | `deploy.sh dashboard` |
 | `stack` → the compose services | `AI-Lab-AMD` | `deploy.sh stack` |
 
+**Deploying is idempotent and free to over-run** (2026-08-08). `deploy.sh audition` /
+`dashboard` diff the target first and do **nothing** when it already matches — no copy, no
+stamp rewrite, no container restart. So running a deploy at the outset of any work costs
+nothing and requires no judgement about whether it is needed; that is the point, because a
+deploy that always restarted a live rating app made the safe habit the expensive one.
+`training-code` (`git pull --ff-only`) and `stack` (`compose up -d`) were already idempotent
+by construction.
+
+⚠ **`stack` REFUSES during a training run**, because `up -d` restarts manually-stopped
+services and would put every inference engine back on the GPU under a live run — the
+spin-down rule broken by a command that never mentions inference. Override with
+`ALLOW_STACK_DURING_TRAINING=1`, then re-run `inference-engines.sh stop`.
+
 #### 0 · BEFORE touching related code — confirm the deployed copy is current
 
 **This step comes first and is the point of the section.**
@@ -219,8 +232,26 @@ git commit …                                    # a dirty tree is REFUSED by d
 .venv/bin/python -m pytest tests/test_data_mirrors.py -q
 ```
 
-**Never edit under `/data` and copy back.** An edit there has no history, no diff, no review
-and no changelog entry. A `/data` file that is *newer* is not authoritative — it is unrecorded.
+#### THE RULE: edit at the SOURCE, deploy to the target. Never the reverse.
+
+**Code is edited in the repo and deployed. It is never edited at the deploy target, and
+never copied back from one.** This is not a style preference and it has no exceptions:
+
+* An edit under `/data` has **no history, no diff, no review and no changelog entry**. A
+  `/data` file that is *newer* than its tracked original is not authoritative — it is
+  unrecorded, and it will be destroyed without ceremony by the next deploy, because
+  `rsync --delete` leaves nothing to recover or diff.
+* It defeats every guard we have. `test_data_mirrors.py` reports drift but cannot tell an
+  intentional in-place fix from an accident; `.deployed.json` will name a commit that does
+  not contain what is running; and `deploy.sh status` will read `current` while the target
+  holds code that exists nowhere in git.
+* **Enforced, not merely stated.** `deploy.sh` diffs the target before copying and, when it
+  finds content the repo does not match, prints the exact files and says they are about to
+  be overwritten *before* doing it — so an in-place edit is caught at the moment it costs
+  nothing rather than discovered later as a mystery.
+
+If an edit was made at the target and is the one you want: **port it into the repo, commit
+it, and deploy** — do not rsync it backwards.
 
 #### Rules that travel with the cycle
 
