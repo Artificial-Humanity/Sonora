@@ -40,9 +40,21 @@ tags: ["dev"]
 # set False to skip model training
 train: True
 
-# evaluate on test set, using best model weights achieved during training
-# lightning chooses best weights based on the metric specified in checkpoint callback
-test: True
+# Evaluate on a test set after training, using the best weights.
+#
+# FALSE, and it has to be: **no model in this repo defines `test_step`**, so
+# `trainer.test()` raises MisconfigurationException. It was True — inherited from the
+# lightning-hydra template, which assumes one exists — and the only reason nobody hit it
+# is that `trainer/default.yaml` sets `max_epochs: -1`, so `trainer.fit()` never returns
+# and line 96 of matcha/train.py is unreachable. Every production run has been stopped by
+# hand or by the E610 fault, never by finishing.
+#
+# Found 2026-08-08 by the vat4 smoke run, which is the first thing here to set a finite
+# `max_epochs`. Left True it is a trap with teeth: `sonora_training` is
+# `restart: unless-stopped`, so the first run that ever terminates normally would crash
+# after training and then crash-loop, having already written its checkpoints — a failure
+# that looks like a training failure and is not one.
+test: False
 
 # simply provide checkpoint path to resume training
 ckpt_path: null
