@@ -162,13 +162,24 @@ def test_the_vocalizer_ships_a_dial_in_the_same_phase():
     """The standing rule: every new model capability ships with a Vocalizer control in the
     same phase. A capability with no control cannot be vetted, and an unvetted
     conditioning channel is one whose failure mode we learn about from a training run
-    instead of from a listen."""
+    instead of from a listen.
+
+    THE GENERIC HALF OF THIS TEST HAS MOVED. That a dial exists, and that its shape does
+    not misrepresent the dimension, is now checked for EVERY declared dimension by
+    `tests/test_direction_surface.py`. This version asserted one widget by name, so it
+    could never fail for a channel it did not mention — which is exactly how the speaker
+    dimension went two corpus generations silently clamped while this test passed.
+
+    What stays here is the part that is specific to delivery: that the Vocalizer takes the
+    vocabulary and the encoding FROM `matcha.delivery` rather than spelling either out
+    itself. A dial that agreed with nothing would still satisfy the generic check.
+    """
+    direction = pytest.importorskip("matcha.direction")
+    # Registered, therefore covered by the generic parity check rather than only here.
+    assert direction.dimension("delivery_lane").kind == "categorical"
     src = (REPO / "vocalizer.py").read_text(encoding="utf-8")
-    assert "delivery_lane = gr.Dropdown(" in src, "no delivery control on the vetting surface"
-    assert "delivery.DELIVERY_LANES" in src
-    assert "delivery.vat_vector(" in src
-    # A dropdown, not a slider: interpolating between Newscaster and Dialogue is meaningless.
-    assert "delivery_lane = gr.Slider(" not in src
+    assert "delivery.DELIVERY_LANES" in src, "the dial builds its own lane list"
+    assert "delivery.vat_vector(" in src, "the dial builds its own conditioning vector"
 
 
 def test_the_vocalizer_still_renders_a_pre_v2_checkpoint():

@@ -47,7 +47,7 @@ import torch
 # Those two files are byte-identical — checked, not assumed — so consolidating on the
 # colocated one changes nothing today, which is exactly the kind of near-miss that stops
 # being harmless the moment one of them is edited.
-from matcha import delivery
+from matcha import delivery, direction
 from matcha.cli import (
     detect_lane,
     get_device,
@@ -169,6 +169,37 @@ def bounded(body, name, default, cast=float):
     return value
 
 
+def bounded_speaker(spk_id, n_spks_):
+    """Hold a speaker id to the LOADED CHECKPOINT's embedding table.
+
+    Not in `CONTROL_BOUNDS` because its bound is not a constant — it is whatever `n_spks`
+    this checkpoint reports. That is exactly why it escaped E-M2: the sweep that gave
+    every other control a bound could only see the ones with static ranges, and speaker
+    stayed unchecked across two corpus generations while `n_spks` went 247 -> 2500.
+
+    Rejects rather than clamping, and the clamp is the reason this exists. `render` used
+    to hold the id down to the table's last row, so asking a 2500-speaker checkpoint for
+    speaker 5000 rendered speaker 2499 and reported success. On a VETTING surface that is
+    the worst available outcome: not an error, but a confident verdict about a voice
+    nobody selected. Same argument as `bounded`'s, with more at stake, because a wrong
+    V/A/T is audible as wrongness and a wrong speaker is simply a different person.
+    """
+    try:
+        value = int(spk_id)
+    except (TypeError, ValueError):
+        raise ClientError(f"speaker id must be a whole number, got {spk_id!r}") from None
+    lo, hi = direction.speaker_bound(n_spks_)
+    if not lo <= value <= hi:
+        raise ClientError(
+            f"speaker id {value} is outside this checkpoint's table [{lo}, {hi}] — it "
+            f"has {n_spks_} speaker(s). Ids are indices into THIS checkpoint's embedding "
+            "table, not corpus speaker numbers, and they are re-assigned every time the "
+            "corpus is re-derived: id 245 was a LibriTTS-R val speaker under 247 "
+            "speakers and is an unrelated voice under 2500."
+        )
+    return value
+
+
 def render(checkpoint_path, text, n_timesteps, temperature, length_scale,
            spk_id, valence, energy, tension, guidance=1.0, delivery_lane=""):
     ensure_model_loaded(checkpoint_path)
@@ -176,8 +207,11 @@ def render(checkpoint_path, text, n_timesteps, temperature, length_scale,
         x, x_lengths = encode_text(text)
         kwargs = {}
         if n_spks > 1:
+            # Bounded, NOT clamped — see `bounded_speaker`. What this replaced held an
+            # out-of-range id down to the last row of the table, turning it into a
+            # different valid voice and reporting success.
             kwargs["spks"] = torch.tensor(
-                [max(0, min(int(spk_id), n_spks - 1))], dtype=torch.long)
+                [bounded_speaker(spk_id, n_spks)], dtype=torch.long)
         else:
             kwargs["spks"] = None
         if lane == "vat":
@@ -291,9 +325,20 @@ def main():
                         minimum=0.5, maximum=2.0, step=0.05, value=1.0)
 
                 with gr.Row():
+                    # A Number and not a Slider: this is an INDEX into the checkpoint's
+                    # embedding table, and neighbouring ids are unrelated people, so a
+                    # slider would imply an ordering the table does not have.
+                    #
+                    # No `maximum` here on purpose. The bound is n_spks, which is not known
+                    # until a checkpoint loads — and a maximum baked in at build time is
+                    # the same defect as the 245 default it replaces: correct for one
+                    # corpus and quietly wrong for the next. `bounded_speaker` rejects
+                    # out-of-range at render and names the live range, and the info line
+                    # reports `speakers=` after every synth.
                     spk_input = gr.Number(
-                        label="Speaker id (multi-speaker ckpts)",
-                        value=245, precision=0, minimum=0)
+                        label="Speaker id (index into THIS checkpoint's table — see "
+                              "speakers= in the info line)",
+                        value=0, precision=0, minimum=0)
                     valence = gr.Slider(
                         label="Valence", minimum=-1.0, maximum=1.0,
                         step=0.05, value=0.0)
@@ -408,10 +453,13 @@ def main():
             if not checkpoint_path:
                 return StreamingResponse(io.BytesIO(b"Error: No checkpoints found"), status_code=400)
 
-            try:
-                spk_id = int(voice)
-            except (TypeError, ValueError):
-                spk_id = 245  # a known-good LibriTTS-R val speaker
+            # Default 0, not 245. 245 was "a known-good LibriTTS-R val speaker" when the
+            # table had 247 rows; under v5's 2500 it is an unrelated voice, and a default
+            # that silently means someone different after each re-derivation is not a
+            # default. 0 is the only id valid for every multi-speaker checkpoint. Range is
+            # enforced in `render` via `bounded_speaker`, which needs the loaded
+            # checkpoint's n_spks and so cannot run before the model is resolved.
+            spk_id = voice if str(voice).strip() else 0
 
             s = bounded(body, "guidance", 1.0)
             _, waveform = render(
