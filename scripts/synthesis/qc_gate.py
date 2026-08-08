@@ -56,12 +56,10 @@ P_OVR = np.poly1d([-0.06766283, 1.11546468, 0.04602535])
 TARGET_SR = 24000
 CHARS_PER_SEC_FAST = 26.0   # duration below text_len/26 s => truncated/collapsed (26 not 22: a fast drawl nicked the pilot's arrogance take)
 CHARS_PER_SEC_SLOW = 5.0    # duration above text_len/5 + 2 s => improvised tail
-# Owner-audit finding 2026-07-17: DNSMOS cannot separate "expressive" from
-# "broken" in its 2.0-2.6 band (a great giddy clip scored 2.25; white-noise
-# collapse scored 2.05). ASR fidelity is the primary structural gate now:
-# transcribe and compare to the script. Catches collapse, wordless output,
-# half-empty files, and improvised tails in one instrument.
-ASR_MAX_WER = 0.35
+# ASR_MAX_WER now lives in synth_common (imported above) — the corpus merge lane needs the
+# same threshold and a second copy is how B-L5 and D-L2 happened. Re-exported here because
+# this is where every caller has always read it from.
+ASR_MAX_WER = synth_common.ASR_MAX_WER
 
 
 def _words(s):

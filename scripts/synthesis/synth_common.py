@@ -107,6 +107,28 @@ def write_text_atomic(path, text, *, encoding="utf-8"):
     _atomic_write(path, lambda fh: fh.write(text), encoding=encoding)
 
 
+# Owner-audit finding 2026-07-17: DNSMOS cannot separate "expressive" from "broken" in its
+# 2.0-2.6 band (a great giddy clip scored 2.25; white-noise collapse scored 2.05). ASR
+# fidelity is the primary structural gate: transcribe and compare to the script. Catches
+# collapse, wordless output, half-empty files, and improvised tails in one instrument.
+#
+# MOVED HERE FROM qc_gate 2026-08-08, because a SECOND lane now needs it. The corpus side
+# asks the same question of a mined clip — "does the transcript disagree with the audio too
+# much to train on?" — where the transcript is a YODAS caption rather than our own script,
+# and the ASR is the cross-check `process_emilia_tail` recorded for exactly this decision
+# ("the drop threshold is a merge-time decision"). Two thresholds for one rule is the
+# review's most repeated finding (B-L5's duplicated MAX_REF_EXCURSION, D-L2's two
+# disagreeing z-guards), and a corpus filter that drifts from the QC gate would admit
+# training clips the render lane would reject. `qc_gate` re-exports it, so nothing there
+# changed.
+#
+# ⚠ It means slightly different things on the two sides and that is deliberate. In QC a
+# high WER indicts the RENDER; on the corpus side it indicts the CAPTION, since the audio
+# is a real human recording and cannot be wrong. Same number, same intent — reject the pair
+# — but do not read a corpus rejection as an audio-quality verdict.
+ASR_MAX_WER = 0.35
+
+
 def edge_loss(ref, hyp):
     """Words of the passage left unspoken at EACH END of the clip.
 
