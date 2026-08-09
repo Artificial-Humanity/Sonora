@@ -27,7 +27,7 @@ aside (2026-07-29, reversible).
 | `synth_vibevoice.py` | VibeVoice-Large (aoi-ot mirror, MIT) | **SET ASIDE 2026-07-29.** No natural-language instruction slot at all: `design` feeds `ref_select.py` to pick a reference clip; `instruct` never reaches the model. It stages scenes on dialogue. Its ceiling was bounded by a 100%-synthetic reference pool, not the engine — the pool is real speech now, which is why the set-aside is reversible. |
 | `render_moss_tts.py` / `render_moss_anchors.py` | MOSS-TTS 8.5B flagship (`moss85`) | **NOT a directed teacher** — un-SFT'd base model; its card lists no `instruction` input and it reads prompts aloud on short lines. Retained only as a possible CLONING engine via its unused `reference` slot. |
 | `render_higgs.py` | Higgs TTS 3 | **NC-walled** — benchmark shelf only, never trains, never calibrates a detector. |
-| `render_longcat.sh` | LongCat | **Affect-transfer multiplier only**, and excluded from campaigns until that experiment passes. Deliberately still at onboarding step 3: no renderer, no direction to give. |
+| `render_longcat.sh` | LongCat | **BENCHED 2026-08-09** — no instruction slot, so no skill file is possible and it stays at onboarding step 3. Status, evidence and the condition that would un-bench it: [teacher-tts-audition-shortlist.md § Benched engines](../../../notes/teacher-tts-audition-shortlist.md#benched-engines). Do not restate it here. |
 | `coach_dia_threat.py` | — | Dia direction-sensitivity probe (collapse-class investigation) |
 
 **teacher-ab-v1 (2026-07-26) — pass rates:** qwen 19/20 · vibevoice 19/20 · moss_vg 18/20 · dia 12/20.

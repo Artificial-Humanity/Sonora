@@ -28,7 +28,10 @@ POOL_ROOT = POOL_PATH.parent
 ACOUSTICS_PATH = POOL_ROOT / "pool_acoustics.json"
 # Lower is preferred. `libritts-r` is NEGATIVE, and that is the half of the pool
 # switch that actually does the work: an unlisted engine defaults to 0.2, so real
-# speech would have ranked BELOW moss85 (0.0) and longcat (0.05) — both retired.
+# speech would have ranked BELOW moss85 (0.0) and longcat (0.05) — neither is a live
+# engine. ("retired" here previously; longcat is BENCHED, not retired — the distinction
+# and the condition that would end it live in
+# notes/teacher-tts-audition-shortlist.md § Benched engines. Do not restate a status here.)
 # Measured over 18 narration casts against the merged pool: unlisted gave
 # moss85 9 / longcat 3 / libritts-r 6; at -0.10 it gives libritts-r 18. Building
 # the pool without this line leaves two thirds of narration casting on engines we

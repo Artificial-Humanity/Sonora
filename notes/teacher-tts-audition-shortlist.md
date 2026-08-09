@@ -6,8 +6,10 @@ the live portfolio stands. The 2026-07-17 per-clip audition narrative and the
 superseded portfolio proposals were cut 2026-08-02 (git history has them); what
 remains here is what stays decision-relevant.
 
-**Current portfolio: chatterbox · qwen · zonos · orpheus · moss_vg** (VibeVoice + Dia
-set aside 2026-07-29, reversible). Allocation is three-layer
+**Current portfolio: chatterbox · qwen · zonos · orpheus · moss_vg.** Benched:
+**VibeVoice · Dia · LongCat** — status, evidence and end-conditions in
+[§ Benched engines](#benched-engines) (one record; do not restate elsewhere).
+Allocation is three-layer
 (`ref_select.ENGINE_MIX_BY_LANE`, see [delivery-mix-campaign.md](delivery-mix-campaign.md));
 onboarding pattern + interface gotchas: [tts-engine-onboarding.md](tts-engine-onboarding.md).
 
@@ -32,10 +34,10 @@ onboarding pattern + interface gotchas: [tts-engine-onboarding.md](tts-engine-on
 | **Zonos-v0.1-transformer** | 1.6B | Apache-2.0. Numeric prosody dials (the closest native V/A/T interface); **normal** tier 2026-08-04 (r2: 44/44 directed emotion-off, 37/38 keeps) |
 | **Orpheus-3B `-ft`** | 3B | Apache-2.0. Normal tier; `tara` banned in code (room reverb) |
 | **Chatterbox** (classic, NOT Turbo) | 0.5B | MIT. Trusted-provisional; exaggeration dial is real (Turbo's `generate()` accepts and then discards it — verified in shipped code 2026-07-28) |
-| **LongCat-AudioDiT-3.5B** | 3.5B | MIT. **Affect-transfer multiplier only** — clone from OUR labeled synthetic anchors onto new text, labels inherited, blind QC per output; standard (promptless) mode unused. Excluded from campaigns until the affect-transfer experiment passes |
+| **LongCat-AudioDiT-3.5B** | 3.5B | MIT. **BENCHED** — see [§ Benched engines](#benched-engines) |
 | **Maya1** | 3B | Apache-2.0 verified on the weights repo. Un-auditioned; enters at onboarding step 1 if the field ever wants another description-driven engine |
-| VibeVoice-Large | — | MIT, **set aside 2026-07-29**: no instruction slot (casting = reference clip only), stages scenes on dialogue; its ceiling was bounded by a 100%-synthetic reference pool, not the engine |
-| Dia-1.6B-0626 | 1.6B | Apache-2.0, **set aside 2026-07-29**: no instruct slot, weakest measured quality (12/20 QC pass, DNSMOS 2.53); temp 1.8 floor is a hard constraint |
+| VibeVoice-Large | — | MIT. **BENCHED** — see [§ Benched engines](#benched-engines) |
+| Dia-1.6B-0626 | 1.6B | Apache-2.0. **BENCHED** — see [§ Benched engines](#benched-engines) |
 
 ### Excluded on license (never teachers; verified live tags on dates noted)
 
@@ -81,3 +83,56 @@ Two standing measurement lessons, both paid for twice:
 Latest clean comparison (newscaster-v1, 2026-08-02, same texts, matched refs): qwen
 27/27 · zonos 29/31 (emotion truly off) · moss_vg 20/20 (confounded — the register
 flatters its failure mode). Ears queue and pending tier decisions: [todo.md §4](todo.md).
+
+## Benched engines
+
+Not retired — all three carry usable licences. They are out of *this* game.
+
+**Rule: a bench needs a written end-condition and a last-checked date, or it drifts.**
+LongCat proved it — for three weeks it was simultaneously "excluded until the
+affect-transfer experiment passes" (this file), *retired* (`ref_select.py`), and quietly
+passed (the experiment ran 2026-07-18 and was never written up). Change a bench **here and
+nowhere else**.
+
+| Engine | Benched | Why — all structural, none a quality verdict | What would end it | Checked |
+|---|---|---|---|---|
+| **LongCat-AudioDiT-3.5B** (MIT) | 2026-08-09 | No instruction slot — clone-only, so no skill file is possible | Upstream ships a text-instruct interface, **or** we adopt it as a pure clone-multiplier (needs a *label-fidelity* test) | 2026-08-09 |
+| **VibeVoice-Large** (MIT) | 2026-07-29 | ① no instruct slot (`instruct` never reaches the model) ② **sings / adds music, uncontrollably** | An answer to ②. ⚠ see trap below | 2026-08-09 |
+| **Dia-1.6B-0626** (Apache-2.0) | 2026-07-29 | ① no instruct slot ② same music/flair failure ③ weakest quality: 12/20 QC, DNSMOS 2.53, hard temp floor 1.8 | Nothing identified | 2026-08-09 |
+
+### The unrequested-flair failure is exclusive to two engines
+
+Measured 2026-08-09 over the expressive-registers bank, from auditor notes on dropped
+clips (*"a singing segment with music and multiple singers"*, *"Noise, semi-musical"*):
+
+| Engine | Clips | Noted music/song | Share |
+|---|---|---|---|
+| vibevoice | 116 | 7 | **6.0%** |
+| dia | 69 | 4 | **5.8%** |
+| qwen · chatterbox · zonos · orpheus · moss_vg · longcat | 1,107 | **0** | **0.0%** |
+
+A floor, not a rate — it counts clips where an auditor wrote the reason down. Cause and
+upstream quotes: [tts-engine-onboarding.md § VibeVoice sings, and you cannot stop it](tts-engine-onboarding.md).
+Emergent, never trained for, content-aware, and per the maker *"we can't directly control
+whether they are generated or not"*.
+
+### Two traps
+
+**VibeVoice's "reversible" covers only one blocker.** The recorded condition — *its ceiling
+was bounded by a 100%-synthetic reference pool, and the pool is real speech now* — is true,
+and fixes casting quality. **A better pool does not stop it singing**, and a prompt
+containing music makes it worse. Re-testing on pool grounds alone would rediscover the 6%
+and call it new.
+
+**LongCat's gate passed on the wrong axis.** `transfer1` (2026-07-18) scored 51/55 keeps
+(92.7%) — trusted-tier. But keep-rate measures whether the audio is *good*, not whether the
+*affect transferred*, which is the entire question for a clone-multiplier with inherited
+labels. Its 55 clips stay out of training corpora while benched (v6, 2026-08-09).
+
+> **Why none of these is "the model is too narrow":** apparent narrowness is usually a
+> missing director skill file — the survivors narrate at 94%, the same as VibeVoice. Each
+> bench above is for something the model *is*, not something it failed to do.
+
+**Referenced from** (these point here, never restate a status):
+`scripts/synthesis/teacher_audition/README.md`, `notes/delivery-mix-campaign.md`,
+`scripts/synthesis/ref_select.py`.

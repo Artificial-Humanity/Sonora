@@ -247,7 +247,10 @@ newscaster/documentary audio we have.
 | Speech | chatterbox · orpheus · qwen · zonos | stress-proven at high arousal; expect the known stochastic defects — reroll, don't re-cast |
 | (Dialogue) | closed for this campaign | at target; book dialogue lines keep accruing via the normal book lane afterward |
 
-LongCat: excluded until the affect-transfer experiment passes (standing rule).
+LongCat: **BENCHED 2026-08-09**, status and resolution condition in
+[teacher-tts-audition-shortlist.md § Benched engines](teacher-tts-audition-shortlist.md#benched-engines).
+(The "until the affect-transfer experiment passes" wording this line used to carry was
+already stale when written — the experiment ran 2026-07-18 and was never adjudicated.)
 
 ## Discipline carried over
 
