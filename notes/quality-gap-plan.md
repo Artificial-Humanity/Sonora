@@ -363,10 +363,12 @@ work rather than a lookup:
   Still the informative half whenever it is wanted: how far the gap is says what to spend
   on next, which two tied checkpoints never could. Deferred, not dropped — it needs an ear
   and an ear was not what rung 2 was waiting on.
-- ⬜ **The pre-v6 baseline capture is a separate, ear-free job** and is the only part with
-  an expiry: rendering and keeping a handful of `ep019` clips costs no listening time, and
-  once v6 trains, "what did Sonora sound like before the delivery channel existed" cannot
-  be reconstructed. Cheap now, impossible later.
+- ❌ **A pre-v6 baseline render is NOT needed** (owner, 2026-08-09), and the argument for it
+  was simply wrong. It was justified as "cheap now, impossible later" — but **`ep019` is
+  retained on disk** and v6 trains into a *new* run directory from its own warm start, so
+  nothing consumes or overwrites it. The checkpoint IS the baseline: load it in the
+  Vocalizer whenever a before/after is wanted. Generalises — *before treating an artifact as
+  perishable, check whether the thing that produces it is retained.*
 
 **WHY THIS COMES FIRST, AND IT IS NOT OPTIONAL.** Before v6 trains,
 put **ep009 · ep019 · Qwen** in front of the ear on **delivery-blank** passages. Three
