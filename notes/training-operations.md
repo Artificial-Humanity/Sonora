@@ -73,13 +73,12 @@ SONORA_EXPERIMENT=<name> docker compose -f AI-Lab-AMD/docker-compose.yml \
 rather than training. Auto-resume is **scoped to the named experiment's own run dirs**, so
 a run can only ever resume itself.
 
-⚠ **ALWAYS PASS `SONORA_WARMSTART` EXPLICITLY.** Its compose default is still
-`warmstart/vat3_ep099.ckpt`, which was the best checkpoint in the lineage when that default
-was written and is **no longer the base** — `vat5_finetune` **ep019** is (STATE.md). The
-default is also 3-wide against an 8-wide config, so relying on it lands on the vat_dim seam
-rather than on a silent mistrain; the seam guard is what makes the stale default merely
-annoying instead of dangerous. Fixing the default is an `AI-Lab-AMD/docker-compose.yml`
-change and belongs to whoever next launches a run.
+⚠ **`SONORA_WARMSTART` has NO DEFAULT** (2026-08-09, `AI-Lab-AMD a29b982`) — a fresh run
+with it unset prints why and idles. It used to default to `vat3_ep099`, described here as
+"the best checkpoint in the lineage", which stopped being true when ep019 was selected and
+could not know it. **A default may encode a fact, never a judgement.** The current base is
+in [STATE.md § Checkpoint lineage](STATE.md); the launcher points at that record rather than
+copying it, so it cannot go stale the same way twice.
 
 **A concluded run cannot be silently continued.** The launcher refuses any experiment whose
 log dir holds a `RETIRED.md` or `SELECTED.md` verdict file — because auto-resume takes the

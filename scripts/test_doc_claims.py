@@ -46,6 +46,7 @@ Exit: 0 every recognised claim agrees with disk; 1 otherwise.
 # requires-python = ">=3.10"
 # dependencies = []
 # ///
+import glob
 import json
 import os
 import re
@@ -167,12 +168,38 @@ FACTS = [
 ]
 
 
-# The checkpoint the lineage builds on. Not a count, so it is checked differently: the
-# file the docs name must exist, because "warm start from epNNN" is worthless if it does not.
-SELECTED_CKPT = "checkpoint_epoch=019.ckpt"
-SELECTED_GLOB = os.path.join(
-    "/data/model-training/sonora/logs/train/vat5_finetune/runs",
-    "2026-08-08_05-36-05", "checkpoints", SELECTED_CKPT)
+# The checkpoint a concluded run SELECTED. Not a count, so it is checked differently: the
+# file the verdict names must exist, because "warm start from epNNN" is worthless if it does
+# not.
+#
+# ⚠ DERIVED, NOT HARDCODED — and the first version of this got it wrong. It pinned
+# `checkpoint_epoch=019.ckpt` and a run directory, which is a DEFAULT THAT ENCODES A
+# JUDGMENT ("the current pick") rather than a fact. Judgments rot and the constant cannot
+# know it: the day v6 concludes, that line would have been quietly wrong inside the very
+# gate written to stop documents being quietly wrong.
+#
+# The invariant is self-updating instead: every `SELECTED.md` on disk names a checkpoint,
+# and that checkpoint must exist. A new run's verdict is picked up with no edit here.
+TRAIN_LOGS = "/data/model-training/sonora/logs/train"
+CKPT_IN_VERDICT = re.compile(r"checkpoint_epoch=\d+\.ckpt")
+
+
+def selected_checkpoints():
+    """-> [(experiment, checkpoint filename, verdict path)] for every concluded run."""
+    out = []
+    if not os.path.isdir(TRAIN_LOGS):
+        return out
+    for exp in sorted(os.listdir(TRAIN_LOGS)):
+        verdict = os.path.join(TRAIN_LOGS, exp, "SELECTED.md")
+        if not os.path.isfile(verdict):
+            continue
+        with open(verdict, encoding="utf-8") as fh:
+            names = CKPT_IN_VERDICT.findall(fh.read())
+        # The heading names the pick; later mentions may reference others (ep039 as the
+        # newest, ep009 as the runner-up), so the FIRST is the one the verdict selects.
+        if names:
+            out.append((exp, names[0], verdict))
+    return out
 
 
 def docs():
@@ -229,13 +256,20 @@ def main():
     # read as a pass either, so the skip is printed rather than silent. Where the mount IS
     # present, a missing checkpoint is a real failure: the docs name it as v6's warm start.
     if not os.path.isdir("/data/model-training"):
-        print(f"  ~ selected checkpoint NOT CHECKED: /data is not mounted here")
-    elif not os.path.exists(SELECTED_GLOB):
-        failures.append(
-            f"the selected checkpoint {SELECTED_CKPT} is not on disk at {SELECTED_GLOB} — "
-            "the docs name it as v6's warm start")
+        print("  ~ selected checkpoints NOT CHECKED: /data is not mounted here")
     else:
-        print(f"  selected checkpoint present: {SELECTED_CKPT}")
+        picked = selected_checkpoints()
+        if not picked:
+            print("  ~ no concluded run carries a SELECTED.md")
+        for exp, name, verdict in picked:
+            hits = glob.glob(os.path.join(TRAIN_LOGS, exp, "runs", "*", "checkpoints", name))
+            if hits:
+                print(f"  {exp} selected {name} — present")
+            else:
+                failures.append(
+                    f"{verdict} selects {name}, which is not on disk under "
+                    f"{TRAIN_LOGS}/{exp}/runs/*/checkpoints/ — the docs name a warm start "
+                    f"that does not exist")
 
     if failures:
         print(f"\nFAIL — {len(failures)} claim(s) disagree with the artifact:\n")
