@@ -300,9 +300,13 @@ echo "== engine defect detectors =="
 # Register the rendered clips into the audition queue (ratings.csv SSOT) so they
 # reach the review surface. Idempotent, host-side (uv, not the GPU container); only
 # queues clips whose wav lands under DATA_ROOT. Non-fatal if it can't run.
-# With --qc, structural failures (ASR / 4 s floor) register as `reroll` instead of
-# spending an audition slot; advisory flags are still queued AND written to
-# qc_flags.txt for pick_audit_subset --flags, because the QC-flag path never relaxes.
+# With --qc, every flagged clip is queued for the ear with the finding in its note —
+# a QC failure never changes a clip's status (owner: every QC failure is auditioned,
+# regardless of engine tier). Flagged ids are ALSO written to qc_flags.txt for
+# pick_audit_subset --flags, because the QC-flag path never relaxes.
+# (QC-L1: this said structural failures "register as `reroll` instead of spending an
+# audition slot". That design was considered and rejected — the instrument tells the
+# ear what to check, it does not decide alone — and `_qc_triage` has never done it.)
 echo "== register audition =="
 "$PY" "$SONORA/scripts/synthesis/register_audition.py" --audio-dir "$OUT" \
     ${QC_MEASURES:+--qc "$QC_MEASURES"} \

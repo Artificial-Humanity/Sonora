@@ -58,9 +58,15 @@ MODEL = "gemma-4-31b-qat-spec"
 CHARS_PER_SEC = 14.0            # mirrors synth_dia.py length model
 # Owner floor (2026-07-25): nothing shorter than 4 s of speech enters a bank.
 # Purpose, in the owner's words: "avoid content too short to gauge performance
-# around". This gates INPUT TEXT, not render duration — a clip that lands slightly
-# under 4 s because the engine spoke fast is fine. Do NOT add an output-duration
-# gate at 4 s; the QC gate's duration-vs-text check already catches real failures.
+# around". This gates INPUT TEXT, not render duration.
+#
+# ⚠ SUPERSEDED IN PART (QC-L5). This used to add "Do NOT add an output-duration gate at
+# 4 s; the QC gate's duration-vs-text check already catches real failures" — and on
+# 2026-08-07 the owner made exactly that gate, `speech_ok`, hard at 4 s of VAD speech
+# (`qc_gate.py`). The instruction outlived the decision that overruled it. What remains
+# true is the reason it was written: this constant gates TEXT, so it is not the place to
+# express an output rule, and the two floors are independent even though they share a
+# number.
 # Audit evidence — moss85 keep rate by estimated length: <2 s 60%, 2-4 s 40%,
 # 4-10 s 91%, 10 s+ 100%. Short lines are also where MOSS reads the prompt
 # aloud (the instruction:text ratio hits 13x on ~1 s dialogue fragments), and
@@ -679,10 +685,18 @@ def _chunk_speech(text):
         return [text]
     out, cur = [], ""
     for s in split_sentences(text):
-        if len(s) > WINDOW_MAX_CHARS:
+        if len(s) > WINDOW_MAX_CHARS:               # a single long sentence: take it alone
             if cur:
                 out.append(cur.strip()); cur = ""
-            out.append(s.strip()); continue
+            # ...unless no engine can render it (QC-L2). `_window_sentences` grew this
+            # guard from the 3,964-character / ~283 s passage that motivated
+            # HARD_MAX_CHARS; the fix covered the NARRATION path only, and dialogue —
+            # which is 64% of the corpus and where a single unbroken speech is most
+            # likely — kept appending unbounded. The cost is GPU time spent rendering a
+            # passage that qc_gate then throws away at its 30 s gate.
+            if len(s) <= HARD_MAX_CHARS:
+                out.append(s.strip())
+            continue
         if len(cur) + len(s) + 1 <= WINDOW_MAX_CHARS:
             cur = (cur + " " + s).strip()
         else:

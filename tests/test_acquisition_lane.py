@@ -881,3 +881,43 @@ def test_a_torn_trailing_record_does_not_lose_the_rest(ingest_mod, tmp_path):
 
 def test_a_missing_checkpoint_is_not_an_error(ingest_mod, tmp_path):
     assert ingest_mod.load_director_checkpoint(tmp_path / "absent.jsonl") == {}
+
+
+# --- QC-L2: the length ceiling covered narration only ---------------------------------
+
+
+def test_dialogue_chunking_refuses_an_unrenderable_speech():
+    """`_window_sentences` grew the `HARD_MAX_CHARS` guard from a real defect — one
+    3,964-character passage, ~283 s — and the fix covered the NARRATION path only.
+    `_chunk_speech` appended an over-long sentence unbounded, and dialogue is 64% of the
+    corpus and where a single unbroken speech is most likely.
+
+    The cost is not a bad clip; it is GPU time spent rendering a passage `qc_gate` then
+    throws away at its 30 s cap, on the one shared GPU where training and rendering are
+    mutually exclusive.
+    """
+    bi = pytest.importorskip("book_ingest")
+    sentence = "I tell you " + "and again " * 60 + "that it is so."
+    assert len(sentence) > bi.HARD_MAX_CHARS
+    assert bi._chunk_speech(sentence) == []
+    # ...and the same rule the narration path applies.
+    assert bi._window_sentences([sentence]) == []
+
+
+def test_dialogue_chunking_still_keeps_a_long_but_renderable_speech():
+    """The ceiling must not become the window: between WINDOW_MAX and HARD_MAX a sentence
+    is long, not unrenderable, and taking it alone is the intended behavior."""
+    bi = pytest.importorskip("book_ingest")
+    sentence = ("I tell you plainly " + "and once more " * 22 + "that it is so.")
+    assert bi.WINDOW_MAX_CHARS < len(sentence) <= bi.HARD_MAX_CHARS
+    assert bi._chunk_speech(sentence) == [sentence]
+
+
+def test_a_long_speech_does_not_take_its_neighbours_down():
+    """The over-long sentence is dropped; whatever was accumulating before it is still
+    emitted, or one bad sentence would cost the whole speech."""
+    bi = pytest.importorskip("book_ingest")
+    good = "That is a perfectly reasonable thing for anyone to say in the circumstances."
+    huge = "I tell you " + "and again " * 60 + "that it is so."
+    out = bi._chunk_speech(good + " " + huge)
+    assert out == [good]

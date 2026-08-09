@@ -306,7 +306,17 @@ def _qc_triage(qc_path):
                        else "suspicious but within the cap")
             why.append(f"{pause:.1f}s of silence mid-clip ({verdict}) — "
                        f"LISTEN TO THE MIDDLE for a stall or a rushed resumption")
-        speech = r.get("speech_dur")
+        # THE SAME MEASURE THE GATE USES (QC-L5). This read `speech_dur`, the ENERGY
+        # figure, while `speech_ok` has hard-gated on `speech_dur_vad` since 2026-08-07.
+        # The two agree closely (mean ratio 1.008 over 150 clips) but not exactly, and the
+        # disagreement lands precisely at the floor: a clip at VAD 3.9 s / energy 4.1 s is
+        # hard-failed by the gate and gets NO triage note from here, so the auditor is
+        # handed a rejected clip with nothing said about why. Roughly 0.7% of clips sit in
+        # that boundary population — small, and exactly the population this note is for.
+        # Falls back to the energy figure for rows written before the VAD measure existed.
+        speech = r.get("speech_dur_vad")
+        if speech is None:
+            speech = r.get("speech_dur")
         if speech is not None and speech < MIN_SPEECH_SECONDS:
             why.append(f"only {speech:.1f}s of speech (floor {MIN_SPEECH_SECONDS}s)")
         if not g.get("duration_ok", True) and len(why) == 0:
@@ -381,10 +391,11 @@ def main():
     ap.add_argument("--dry-run", action="store_true",
                     help="report what would be added without writing")
     ap.add_argument("--qc", metavar="QC_MEASURES.JSONL", default=None,
-                    help="qc_gate output. Clips failing ASR or the 4s speech floor are "
-                         "registered as `reroll` instead of reaching the ear; every "
-                         "other gate failure is still queued and also written to "
-                         "<campaign>/qc_flags.txt for pick_audit_subset --flags.")
+                    help="qc_gate output. EVERY flagged clip is queued for the ear "
+                         "(owner rule) with the finding written into its note; a QC "
+                         "failure never changes a clip's status. Flagged ids are also "
+                         "written to <campaign>/qc_flags.txt for pick_audit_subset "
+                         "--flags, so a thin sampling tier cannot skip them.")
     args = ap.parse_args()
 
     qc_map, advisory = None, []

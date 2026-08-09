@@ -219,3 +219,46 @@ def test_the_app_lock_is_reusable_and_released_on_error(tmp_path, monkeypatch):
             raise ValueError("boom")
     with app._lock:            # would hang forever if the release leaked
         pass
+
+
+def test_the_app_writes_the_header_the_file_has(tmp_path, monkeypatch):
+    """QC-L4. `_write_rows` emitted exactly `CSV_FIELDS`, so any column a script added was
+    silently dropped the next time an auditor saved a rating — and the app is this file's
+    most frequent writer, so "next time" is minutes. It was the one writer that did not
+    honor the on-disk header the way `register_audition._read_header_and_ids` does."""
+    app = _app_module(tmp_path, monkeypatch)
+    path = tmp_path / "ratings.csv"
+    extra = list(app.CSV_FIELDS) + ["provenance"]        # a column a script added
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=extra)
+        w.writeheader()
+        w.writerow({**{k: "" for k in extra}, "id": "a", "provenance": "group-sampled"})
+
+    app._write_rows(app._read_rows())
+
+    with path.open(newline="", encoding="utf-8") as fh:
+        r = csv.DictReader(fh)
+        assert r.fieldnames == extra, "the app reordered or truncated the header"
+        assert next(r)["provenance"] == "group-sampled"
+
+
+def test_a_column_the_app_knows_survives_an_older_sheet(tmp_path, monkeypatch):
+    """The other direction: a sheet written before a column existed must still accept a
+    rating in it, or the app can never introduce one."""
+    app = _app_module(tmp_path, monkeypatch)
+    path = tmp_path / "ratings.csv"
+    old = ["campaign", "id", "score", "status"]
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=old)
+        w.writeheader()
+        w.writerow({"campaign": "c", "id": "a", "score": "", "status": "unaudited"})
+
+    rows = app._read_rows()
+    rows[0]["delivery"] = "Dialogue"
+    app._write_rows(rows)
+
+    with path.open(newline="", encoding="utf-8") as fh:
+        r = csv.DictReader(fh)
+        assert r.fieldnames[:4] == old, "existing columns keep their positions"
+        assert "delivery" in r.fieldnames
+        assert next(r)["delivery"] == "Dialogue"

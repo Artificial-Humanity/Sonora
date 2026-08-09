@@ -242,12 +242,33 @@ def _read_rows():
         return list(csv.DictReader(f))
 
 
+def _on_disk_fields():
+    """The header ratings.csv actually has, with anything the app needs appended.
+
+    QC-L4: this used to write exactly `CSV_FIELDS`, so ANY column a script added would be
+    silently dropped the next time an auditor saved a rating — the app is the file's most
+    frequent writer, so "next time" is minutes. Harmless today (the live header matches
+    the 12 fields, verified), but it makes the app the one writer that does not honor the
+    on-disk header. `register_audition._read_header_and_ids` has read it since it was
+    written, precisely so a schema change does not need a coordinated deploy.
+
+    The union, not the file's header alone: a column the app knows about must still appear
+    on a sheet that predates it, or a rating written today would have nowhere to go.
+    Order is preserved — the on-disk columns keep their positions and new ones append —
+    because a reordered header is a diff nobody can read.
+    """
+    with open(RATINGS_CSV, newline="", encoding="utf-8") as f:
+        on_disk = csv.DictReader(f).fieldnames or []
+    return list(on_disk) + [c for c in CSV_FIELDS if c not in on_disk]
+
+
 def _write_rows(rows):
+    fields = _on_disk_fields()
     tmp = RATINGS_CSV.with_suffix(".csv.tmp")
     with open(tmp, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+        w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
-        w.writerows({k: r.get(k, "") for k in CSV_FIELDS} for r in rows)
+        w.writerows({k: r.get(k, "") for k in fields} for r in rows)
     os.replace(tmp, RATINGS_CSV)  # atomic
 
 
