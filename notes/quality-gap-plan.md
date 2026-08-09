@@ -359,10 +359,13 @@ work rather than a lookup:
   button not being pressed. Before treating a dead dial as a model defect, confirm the
   render actually re-ran: at `guidance` 1.0 (CFG off) and 10 ODE steps the effect is subtle
   by design, and temperature 0.667 means two renders at identical settings already differ.
-- ⏸ **Sonora vs Qwen — DEFERRED by the owner, 2026-08-09. It does not gate rung 2.**
-  Still the informative half whenever it is wanted: how far the gap is says what to spend
-  on next, which two tied checkpoints never could. Deferred, not dropped — it needs an ear
-  and an ear was not what rung 2 was waiting on.
+- ⏸ **Sonora vs Qwen — WANTED, but held until the model is far enough along to learn from
+  it (owner, 2026-08-09).** Not a deferral for want of time: run today it measures a gap
+  dominated by scale — **78.5 h against Qwen's ~5,000,000 h** — and returns the answer we
+  already have, "more data." It starts saying something about the *model* rather than the
+  *corpus* only once the volume lever has actually been pulled and a gap still remains.
+  **Proposed trigger (assistant's, unless the owner sets otherwise): after rung 3's holdout
+  lands** — v7, LibriTTS-R full, ~615 h, the 10×. Does not gate rung 2.
 - ❌ **A pre-v6 baseline render is NOT needed** (owner, 2026-08-09), and the argument for it
   was simply wrong. It was justified as "cheap now, impossible later" — but **`ep019` is
   retained on disk** and v6 trains into a *new* run directory from its own warm start, so
