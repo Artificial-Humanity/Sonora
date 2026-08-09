@@ -106,166 +106,49 @@ compressed — so this is the cheapest thing that improves every rung above 1.
 
 ---
 
-## What scoped this (2026-08-06)
+## What scoped this — three measured facts that still direct the work
 
-`vat3c_finetune` ran 100 epochs off the v2-trained warmstart onto v3c's clean IPA
-(run `2026-08-05_15-02-57`, exit 0). Three measurements came out of it, and together
-they say where the remaining quality lives.
-
-**1. The G2P fix was the whole fix — retraining was never needed.** Per-clip *paired*
-scoring (same torch seed per clip/draw across both checkpoints) of `vat3c_init` vs
-`epoch=099`, over the 2,784 clips whose phonemes changed between v3 and v3c, against
-2,782 speaker/length-matched controls:
-
-| term | corrected | control | attributable to the fix |
-|---|---|---|---|
-| prior | −0.560% | −0.427% | **−0.133%** |
-| dur | −5.568% | −4.158% | **−1.411%** |
-| diff | −2.554% | −2.242% | **−0.311%** |
-
-All three significant (bootstrap CIs exclude zero), all perceptually negligible. Blind
-A/B renders confirmed **no audible difference**. The poisoning was text→phoneme only;
-the model's phoneme→audio mapping was always sound, so the warmstart — which never
-trained on a single corrected contraction — already says `I'm` and `that's` correctly.
-Fixing `op_g2p` closed it. *Generalizes: check the front end before spending a run.*
-
-**2. The vocoder is not the bottleneck.** Copy-synthesis (real audio → mel with exact
-training params → `cp_hifigan_24k/g_02510000`, no acoustic model in the path) gives mean
-**mel L1 = 0.2447**, uniform across 10 clips = **10.2% of this corpus's mel_std (2.389)**.
-Owner's verdict: *"similar to ref, if not identical."* This **rules out** vocoder
-training, vocoder replacement and sample-rate work as quality levers.
-
-**3. The gap belongs entirely to the acoustic model's predicted mel.** That is what both
-phases below target, and it is why they are the right two phases.
-
-**What this does NOT support:** starting the project over. The architecture responds to
-conditioning, the corpus is sound, the 1,802 human ratings are untouched, and no
-checkpoint was ever selected by the broken metric (`monitor: epoch`, not val loss).
-
-Harness kept at `/data/model-training/sonora/eval_phoneme_fix/` —
-`build_sets.py`, `eval_phoneme_fix.py`, `render_ab.py`, `copy_synth.py`.
-
-### Two traps this exposed, for any future comparison
-
-- **Always randomise A/B assignment per pair.** The owner's "the second one sounds
-  better" tracked *position*, not checkpoint — per-pair randomisation caught it because
-  A/B was reversed on the pairs heard. A fixed A=old/B=new layout would have recorded a
-  false positive.
-- **Copy-synthesis must skip `normalize()`.** `TextMelDataset.get_mel` normalises for
-  *model* input, but `MatchaTTS.synthesise` returns `denormalize(...)` before vocoding —
-  **the vocoder consumes RAW log-mel.** Normalising first produces garbage. Assert the
-  vocoder's `config.json` against the data config's mel params first (they agree:
-  24000/80/256/1024/0/12000).
+1. **The vocoder is NOT the bottleneck.** Copy-synthesis puts mel L1 at 10.2% of the
+   corpus's mel_std; the owner heard "similar to ref, if not identical". **This rules out
+   vocoder training, vocoder replacement and sample-rate work as quality levers.** The gap
+   belongs entirely to the acoustic model's predicted mel, which is what both phases below
+   target. ⚠ The vocoder consumes **RAW log-mel** — copy-synthesis must skip `normalize()`,
+   or it produces garbage.
+2. **Check the front end before spending a run.** `vat3c`'s G2P fix turned out to be the
+   whole fix: retraining bought a perceptually negligible change and blind A/B heard no
+   difference. The model's phoneme→audio mapping was always sound; only text→phoneme was
+   poisoned.
+3. **Always randomise A/B assignment per pair.** "The second one sounds better" tracked
+   *position*, not checkpoint. A fixed A=old/B=new layout records false positives.
 
 ---
 
-## Phase 0 — make it measurable
+## Phase 0 — the measurement, and what it fixed
 
-Everything downstream is wasted if we cannot tell whether it worked. Until 2026-08-06 we
-could not: `loss/val_epoch` has never been a generalization measure, because splits were
-re-drawn per corpus version while runs warm-started from the previous version. **93–97%
-of v3c's val clips were trained on under an earlier corpus.** Cross-run val comparisons —
-the 3.18 (07-20) vs 3.48 (08-05) pairing in particular — are invalid.
+**`loss/val_epoch` is not a generalization measure and never will be.** Splits were
+re-drawn per corpus version while runs warm-started from the previous one, so 93–97% of
+v3c's val clips had been trained on. The contamination is historical and does not heal.
+**Score on the holdout; do not compare val curves across runs.**
 
-**0a closed that.** There is now a never-trained holdout and every retained checkpoint
-has a number on it; read 0a below before reading any MLflow curve. The rest of this
-section is kept because the defect it describes is permanent — the historical
-contamination does not heal, so `loss/val_epoch` stays unusable for cross-run
-comparison even now.
+**The instrument: `data/libritts_r_holdout_devclean`** — LibriTTS-R dev-clean, 5,463 clips
+/ 8.7 h / 40 speakers disjoint from the corpus. Score with `scripts/score_holdout.{py,sh}`,
+stratify by conditioning channel with `scripts/stratify_holdout_sweep.py`. **Score every
+retained checkpoint as a matter of course** — ~100 min for eight on an idle card.
 
-Going forward the split itself is fine: `derive_vat_corpus._in_val` hashes the wav
-basename (blake2b, `SPLIT_SALT="sonora-vat-split-20260802"`) as of 2026-08-02, and adding
-2,000 rows moved 0 of 960 val clips. **The contamination is historical**, inherited
-through the warm-start chain. It does not fix itself.
+- **Resolution floor: −0.0111.** That is the smallest movement this instrument has
+  resolved (0a's `vat3_ep099` gain, CI excluding zero). Treat anything of that order as the
+  floor, not as a result.
+- **Its one failure mode is training on it**, which is permanent and has no second
+  dev-clean. Now enforced in code — `license_wall.refuse_holdout` refuses any train or val
+  filelist whose path names a holdout.
+- **`vat3c_ep099` is RETIRED** — do not stage or export it. Its run was a measured
+  regression on all three loss terms, which is what established that more epochs on a fixed
+  corpus is not the lever; more corpus is. Rung 1 has since confirmed that at −0.0606.
 
-### 0a — the never-trained holdout — **DONE, and it reported. 2026-08-06**
-
-**LibriTTS-R `dev-clean`**, derived scoring-only as
-`data/libritts_r_holdout_devclean`: 5,463 clips / 8.7 h / **40 speakers, zero overlap**
-with the corpus's 247. Every retained VAT checkpoint scored teacher-forced with four
-paired noise draws per clip — 43,704 per-clip rows, `scripts/score_holdout.{py,sh}`,
-raw at `/data/model-training/sonora/holdout_eval/lineage.csv`. No training was done.
-
-| checkpoint | dur | prior | diff | **total** |
-|---|---|---|---|---|
-| `vat3_init` (warm start of the v2 run) | 0.5369 | 1.0351 | 0.2903 | 1.8623 |
-| **`vat3_ep099`** (v2 corpus) | 0.5466 | 1.0384 | 0.2662 | **1.8512** |
-| `vat3c_init` | 0.5466 | 1.0384 | 0.2662 | 1.8512 |
-| **`vat3c_ep009`** | 0.5463 | 1.0380 | 0.2663 | **1.8506** |
-| `vat3c_ep029` | 0.5533 | 1.0393 | 0.2679 | 1.8604 |
-| `vat3c_ep049` | 0.5468 | 1.0393 | 0.2693 | 1.8554 |
-| `vat3c_ep069` | 0.5540 | 1.0389 | 0.2678 | 1.8607 |
-| `vat3c_ep099` (shipped as the v3c result) | 0.5562 | 1.0400 | 0.2714 | 1.8676 |
-
-**1. The gate passes: checkpoints separate on never-trained audio.** `vat3_ep099` beats
-its own warm start by **−0.0111** [−0.0131, −0.0091]. The instrument resolves the
-lineage, so the speaker-conditioning floor (dev-clean's 40 speakers land on arbitrary
-trained embeddings — see `score_holdout.py`) did **not** swamp the signal, and the ECAPA
-nearest-voice mapping held in reserve for that case is **not needed**.
-
-**2. The v2 fine-tune genuinely generalized.** Its gain is concentrated exactly where it
-should be: `diff` — the flow-matching objective that actually generates the mel —
-improved **−0.0241, on 78.7% of clips**, while `dur`/`prior` gave back a little.
-
-**3. The v3c fine-tune was a regression, not a no-op.** `vat3c_init → ep099` is
-**+0.0164** [+0.0148, +0.0180], better on only **39.1%** of clips, and **all three
-terms worsened** — there is no component it bought. It is monotone-ish from `ep009`
-onward, and `ep009` is statistically tied with the init it started from (−0.0006,
-CI spans zero). *The best checkpoint in the entire lineage is `vat3_ep099`.*
-
-**4. Same verdict on v3c's own val split**, which it trained on: `vat3c_ep099` loses to
-`vat3_ep099` by **+0.0443**, better on just **14.5%** of 960 clips. So this is not
-holdout-specific and not a distribution artifact — the run is worse everywhere under
-teacher-forced loss.
-
-**5. It is not a normalisation artifact.** Re-scored under the **v2** constants the
-checkpoint was trained with, the gap is +0.0172 against +0.0164 under v3c's. The
-asymmetry also ran *against* the conclusion — `vat3_ep099` won while being scored under
-constants it never saw.
-
-**6. `vat3c_init` is bit-identical to `vat3_ep099`** across all 5,463 clips (Δ = 0.0000,
-every clip). The warm start is now verified by measurement rather than by a 338/338 log
-line, which also means a checkpoint's per-clip numbers are reproducible within a run.
-
-This is consistent with the ear ("no audible change") and sharpens it: the ear could not
-resolve a 0.9% move, and the direction is *down*. It also lines up with the two findings
-that bracket it — the vocoder is transparent, so the gap is the acoustic model's; and
-the v2→v3c label change was tiny (corr ≥ 0.9993, a phoneme fix on 6.4% of rows). **100
-more epochs against ~30k clips a model was already fit to had almost no new signal to
-learn, so it sharpened to the training set instead.** That is the evidence Phase 1 was
-assuming: more epochs on this corpus is not the lever; more corpus is.
-
-**Actions.** Retire `vat3c_ep099` — do not stage or export it. `vat3_ep099`
-(= `vat3c_init`) stays the base and the warm start for Phase 1. Score every future
-checkpoint on the holdout as a matter of course; it costs ~100 min for eight checkpoints
-on an idle card and it is now the only honest number we have.
-
-### 0b — clean-lineage restart — **NOT INDICATED. Owner's call to ratify.**
-
-0b was conditional: *"if 0a shows the fine-tune lineage is genuinely compromised rather
-than merely unmeasured."* It does not. The lineage **generalizes** — finding 2 is a real
-gain on audio no checkpoint had seen, which is precisely what a compromised lineage
-could not produce. What 0a found is narrower and cheaper to fix: **one wasted run**, not
-a poisoned ancestry. Dropping `vat3c_ep099` recovers everything the restart would have.
-
-That matters because 0b is **a retrain, not a fine-tune**: `matcha_vctk` is 22.05 kHz,
-VCTK speaker set, no VAT trunk, so the decoder starts over at 24 kHz with our
-conditioning. *(An earlier verbal framing of this as "near-zero cost" was about
-abandoning the fine-tune lineage, which is cheap; the retrain is not.)* On this evidence
-that cost buys nothing the holdout does not already give us. **Recommendation: close 0b
-and go straight to Phase 1** from `vat3_ep099`. Reopen it only if a Phase 1 run with
-materially more data also fails to move the holdout, which would point at the ancestry
-rather than the corpus.
-
-### What the holdout is, and the one way to destroy it
-
-`data/libritts_r_holdout_devclean` is worth exactly one thing: no checkpoint has trained
-on it. One epoch ends that permanently, and there is no second dev-clean. The directory
-therefore ships with a `README.md` saying so, and `derive_vat_corpus.py`'s `train_op.txt`
-/ `val_op.txt` were **deleted** after concatenation into `holdout.txt`, so no file in it
-carries a name a training config would accept. Note that `configs/data_licenses.yaml`
-*does* declare it — the wall gates on provenance, not intent, and would happily let a run
-train on it. The naming is the guard.
+**0b — clean-lineage restart: CLOSED, not indicated.** The lineage generalizes, so what 0a
+found was one wasted run rather than a poisoned ancestry, and 0b is a full retrain from
+22.05 kHz rather than a fine-tune. **Reopen only if a run with materially more data also
+fails to move the holdout** — that would point at the ancestry rather than the corpus.
 
 ---
 
@@ -506,162 +389,41 @@ prediction disambiguates it for free: **if V and A improve, volume is the lever 
 of what T does.** If T regresses in the predicted signature, that is when widening is
 indicated — and the plan already names the fix (C-soft).
 
-### ⚠ #1 is not a merge. Prep pass 2026-08-08, before any GPU time.
+### What the Emilia merge established, and what it directs
 
-Two things would have gone wrong silently, and the second invalidates the experiment
-rather than breaking it.
+- **A licence-manifest entry is required before a corpus can be merged**, not after —
+  `classify_path` matches exact path COMPONENTS, so a directory the manifest does not name
+  refuses the whole run. Verify provenance before declaring; `emilia_original` next door is
+  a different licence.
+- **Emilia labels use a GLOBAL anchor, not per-speaker z.** 46.6% of its speakers have
+  under 10 clips, where per-speaker z is fixed by arithmetic rather than measured — it
+  would hand 756 one-clip speakers a label of exactly 0.0, i.e. clips selected FOR being
+  extreme, trained as neutral. The semantic cost (a global anchor leaves some speaker
+  identity in the affect channels) is stated in the data config rather than hidden.
+- **The speaker table widens by APPENDING.** LibriTTS speakers keep their indices and new
+  ones append, so rows 0–246 keep their meaning — unlike the vctk 109 → 247 case
+  `make_warmstart._WIDENABLE` refuses, where row *i* is a different person. The warm start
+  verifies the index map rather than assuming it.
 
-**The licence wall would have refused it** (fixed, `configs/data_licenses.yaml`). The keeps
-live in `emilia_kept/` and `emilia_kept_24k/`; the manifest declared only `emilia_yodas`
-and `Emilia-YODAS`, and `classify_path` matches exact path COMPONENTS — so no keep matched
-anything. Provenance was verified before declaring, because `emilia_original` next door is
-NC: all 13,141 manifest entries carry the YODAS CC-BY-4.0 note and trace to the nine
-`EN-B0000xx` shards in `emilia_yodas_probe`.
+**T's saturation was accepted on a pre-registered bet, and the bet paid.** Read
+2026-08-09 from `v5_ckpt_sweep` — no T-specific regression on the holdout: T's extremes
+improved exactly as much as its centre (gap −0.0006, CI [−0.0065, +0.0055], straddling
+zero). **The shortcut did not form; saturation is a non-issue at this mix.**
 
-**Per-speaker z would destroy the exact property the corpus was mined for.** This is the
-one to read twice, because the run would complete, the loss would look ordinary, and the
-conclusion — "volume does not move quality" — would be wrong.
+- **Do not re-open `tanh(z/2)` (C-soft) on this evidence.** It stays available if a later
+  rung produces the signature; it is a contract change and a full relabel, so it rides a
+  re-derivation rather than forcing one.
+- ⚠ **PRE-REGISTERED FOR v6: `A`'s extremes lagged its centre** (+0.0133, CI excludes
+  zero) — nobody predicted this and it is not acted on. **If v6's sweep shows A lagging
+  again it is a real channel effect, and the loudness normalisation is the first thing to
+  check** (A is loudness-derived, and Emilia's loudness distribution differs). If it does
+  not reappear, drop it rather than carry it.
+- The ear still owes T's perceptual legs — does T = +1 sound like *Emilia-domain audio*
+  rather than like tension? Not urgent, since a loss cannot settle it and it cannot
+  trigger C-soft alone, but a "T sounds like a podcast" verdict would be its own finding.
 
-The keeps are **deliberately tail-selected**: `mine_emilia_keeps.py`'s pre-registered
-criteria keep a clip only if `T_full > p90`, `V_combo > p95`, `V_combo < p5` or
-`EIV-Arousal > p95`. As mined, on the LibriTTS-anchored global scale, they look like it —
-**A mean +1.168, T mean +4.541, 91.9% of clips beyond |T| = 1**.
-
-But the corpus lane computes V/A/T as a **per-speaker z**, and Emilia is
-**13,141 clips across 2,408 speakers — a median of 3 clips each**, against LibriTTS's 127:
-
-| clips/speaker | speakers | clips | share |
-|---|---|---|---|
-| = 1 | 756 (31.4%) | 756 | 5.8% |
-| ≤ 2 | 1,170 (48.6%) | 1,584 | 12.1% |
-| ≤ 5 | 1,744 (72.4%) | 3,749 | 28.5% |
-| ≤ 10 | 2,057 (**85.4%**) | 6,126 | **46.6%** |
-
-Re-centring each speaker on their own kept clips takes V from mean **+0.387 / sd 0.741** to
-mean **+0.000 / sd 0.971** — the tail richness is annihilated by construction — and **756
-clips selected FOR being extreme come out labelled exactly 0.0**, which in this
-representation means *at the speaker mean*, i.e. neutral. That is D-M1's principle biting a
-second time: a manufactured `0.0` is indistinguishable from a measured one, which is how
-1,094 clips shipped mislabelled in an earlier pass.
-
-`derive_vat_corpus` already reports thin speakers (`!! N speaker(s) with <10 clips … whose
-z is fixed by arithmetic rather than measured`). On LibriTTS that warning covers 80 of
-31,445 clips (0.25%). On Emilia it would cover **46.6%**.
-
-**So #1 needs a scale decision before it is a merge.** The mined T/V/A are already
-LibriTTS-anchored — `mine_emilia_keeps` says so explicitly ("global mean/std from the v2
-corpus measures + scores, so T_full/V_combo mean the same thing they meant in the probe") —
-but they are on the RAW anchored scale, while corpus labels are clamped at 2σ and halved
-into [−1, 1] (v4 measures V/A/T sd 0.42–0.48). The options, none free:
-1. **Use the anchored values, mapped into [−1, 1]** — preserves the tails, needs the
-   anchor re-derived against v4 rather than v2, and bypasses per-speaker z for this corpus.
-2. **Per-speaker z with a minimum-clips floor** — honest but expensive: ≥10 clips/speaker
-   keeps 7,015 of 13,141 (+23% instead of +43%), and still re-centres the tails it keeps.
-3. **Merge as-is** — cheapest, and it answers a question nobody asked.
-
-**Owner took option 1, 2026-08-08**, and it is implemented in
-`scripts/anchor_emilia_labels.py`: every channel z-scored against the **v4 corpus's global
-distribution of the same underlying measure** — same components, same signs, same second
-normalisation, same `clamp2` — with `per_spk_z` swapped for the global anchor at each step.
-The three EIV heads Emilia lacks all carry weight 0.0, so their absence changes nothing.
-
-It does what it was chosen for. **All 13,141 keeps label, and 0 come out all-zero** against
-756 under per-speaker z:
-
-| | Emilia mean | sd | \|v\| > 0.5 | at the ±1 rail | LibriTTS rail |
-|---|---|---|---|---|---|
-| V | +0.305 | 0.597 | 53.0% | 28.4% | 7.04% |
-| A | +0.014 | 0.598 | 48.7% | 11.1% | 4.66% |
-| T | **+0.749** | 0.359 | 76.3% | **54.0%** | 4.69% |
-
-⚠ **The tails survive, and T now SATURATES — 54% of Emilia clips sit pinned at |T| = 1
-against LibriTTS's 4.69%.** That is not a bug in the anchoring; it is the mining criteria
-being honest. `T_full > p90` was one of the four keep rules, the corpus's representable
-range stops at 2σ, and clips selected for exceeding it land on the rail. But at 30.1% of a
-merged 43,626-clip corpus it means roughly a sixth of all training rows carry "maximum
-tension" with no gradation inside it, and the model has an easy shortcut available:
-Emilia-like acoustics ⇒ T = 1. Three ways out, and this is the next decision, not a
-blocker:
-1. **Accept it** — honest labels, and the run measures whether the shortcut actually hurts.
-2. **Re-balance the merge** — take fewer of the most extreme keeps, trading volume (the
-   thing Phase 1 is testing) for gradation.
-3. **Widen the clamp for the merged corpus** — the most tempting and the most expensive:
-   ±1 is documented in the control contract as *the edge of the TRAINED range*, so
-   re-scaling changes what every existing checkpoint, filelist and exported `config.json`
-   means. That is a contract change and an owner call (ARCHITECTURE §1), not a constant.
-
-**Owner took option 1 (accept) on 2026-08-08, and the prediction is recorded HERE, before
-the run, so it is a test rather than a story told afterwards.** The whole value of
-accepting is that the holdout gets to answer; that only works if the expected failure
-signature is written down first.
-
-> **PREDICTION, 2026-08-08, Emilia merge with saturated T.** If the shortcut is real, the
-> merged run should show: (a) T **worse** on the never-trained holdout than the
-> LibriTTS-only baseline, while V and A are unchanged or better — a channel-specific
-> regression, not a general one; (b) T's standing perceptual test moving from near-pass
-> toward fail; and (c) renders at T = +1 sounding like *Emilia-domain audio* (podcast/
-> YouTube timbre, room, mic character) rather than like tension, which is the diagnostic
-> an ear can settle and a loss cannot. If instead T holds or improves while V/A move, the
-> shortcut did not form and saturation is a non-issue at this mix.
->
-> **If (a)+(c) both land, the answer is C-soft** — `tanh(z/2)` for the whole corpus, which
-> maps the saturated span 2.00–5.76σ to 0.762–0.994 instead of collapsing it to 1.0 — and
-> it will then be justified by evidence rather than by anticipation. It is a contract
-> change and a full relabel either way, so it wants to ride a re-derivation, not force one.
-
-**READ-OUT, 2026-08-09 (PR-H3). Leg (a) did NOT land: there is no T-specific regression.**
-
-Recomputed from artifacts already on disk — `v5_ckpt_sweep` holds per-clip losses for
-`vat5_init` and `ep019` under identical constants, and the holdout filelist holds the
-labels — so this cost no GPU and could have been read at any point since the run landed.
-Reproduce with:
-
-    .venv/bin/python scripts/stratify_holdout_sweep.py \
-        --sweep /data/model-training/sonora/holdout_eval/v5_ckpt_sweep.csv \
-        --filelist data/libritts_r_holdout_devclean/holdout_8w.txt \
-        --baseline vat5_init --pick vat5_ep019
-
-Per clip, `Δ = loss(ep019) − loss(init)`; each channel split at the top and bottom quintile
-of |label|. **Positive "gap" = that channel's extremes improved LESS than its centre**,
-which is the regression shape leg (a) describes. 95% CI, 2,000 bootstrap resamples, seed 42
-— the same adjudication contrast 0a used.
-
-| channel | extreme | central | gap | 95% CI | verdict |
-|---|---|---|---|---|---|
-| **T (tension)** | −0.0616 | −0.0610 | **−0.0006** | [−0.0065, +0.0055] | **crosses zero — no effect** |
-| V (valence) | −0.0655 | −0.0498 | −0.0157 | [−0.0212, −0.0098] | excludes zero — extremes improved MORE |
-| A (energy) | −0.0546 | −0.0679 | **+0.0133** | [+0.0068, +0.0195] | excludes zero — **extremes lagged** |
-
-Overall Δtotal −0.0606, improved on 82.1% of 5,463 clips.
-
-**The prediction named T, and T is the one channel that shows nothing.** Its CI straddles
-zero, which is an ABSENT effect rather than a small one. By the pre-registration's own
-terms — *"if instead T holds or improves while V/A move, the shortcut did not form and
-saturation is a non-issue at this mix"* — **the shortcut did not form.** T's 53.6%
-saturation was accepted on a bet, and the bet paid: the mining criteria arriving at the
-label did not become a shortcut the model could take.
-
-**C-soft is therefore NOT triggered.** It needs (a)+(c) together and (a) is out. Do not
-re-open `tanh(z/2)` on this evidence; it remains available if a later rung produces the
-signature.
-
-⚠ **Two things this does not settle, and they are the honest residue.**
-
-1. **Legs (b) and (c) are still owed the ear** — the standing perceptual test, and whether
-   T = +1 renders sound like *Emilia-domain audio* rather than like tension. A
-   teacher-forced loss cannot see either. Leg (a) is the cheap leg and it is now closed;
-   the ear legs are a Vocalizer session on `ep019`. Since (a) is out, they are no longer
-   urgent — they cannot trigger C-soft alone — but a "T sounds like a podcast" verdict
-   would be a finding in its own right.
-2. **A NEW signature appeared that nobody predicted: `A`'s extremes lagged its centre**
-   (+0.0133, CI excludes zero). Small, and the direction is the one leg (a) described —
-   for the wrong channel. Recorded here rather than acted on: n is large but this is one
-   contrast on one rung, the effect is ~20% of the overall gain, and the obvious
-   explanation is benign (A is loudness-derived, and the Emilia half arrives at a
-   different loudness distribution than LibriTTS-R). **Pre-registered follow-up: if v6's
-   sweep shows A lagging again, it is a real channel effect and wants the loudness
-   normalisation checked before anything else.** If it does not reappear, this was one
-   rung's noise and should be dropped rather than carried.
+Stratify any rung's sweep by channel with `scripts/stratify_holdout_sweep.py` — the
+aggregate hides exactly this question.
 
 ⚠ **Separately, and it IS a blocker: `n_spks`.** The model's speaker table is **247** rows
 and Emilia brings **2,408 new speakers**, so a merged corpus needs `n_spks: 2655` and a
@@ -687,19 +449,6 @@ the warm start to verify that rather than assume it.
 - **Split is automatic** — the hash split needs no attention, which is the point of it.
 - **QC gate** after every generation pass, and **spin down all inference engines**
   before any run.
-
-### Closed 2026-08-06, before the phase started
-
-`train_diff_loss` 0.643 vs `val_diff_loss` 2.085 — the **3.2× gap** — was E-M5. The
-diffusion loss summed its residual unmasked while the decoder masks its output, so every
-batch paid a floor proportional to its padding; train batches are length-bucketed and val
-batches are not, which is the whole of the "gap". `out_size` and clip-length distribution
-had already been ruled out and were right to be. `compute_loss` masks now, gradients
-unchanged, and `tests/test_training_seams.py` holds the curve honest. **Cost:** a second
-scale break in logged loss (after 2026-08-01's bucketing change) — nothing before this commit compares to anything after it,
-which is one more reason Phase 0a's holdout scoring is the real measurement.
-
----
 
 ## Phase 1S — mass synthetic production, Qwen-primary
 
