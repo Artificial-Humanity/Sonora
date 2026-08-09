@@ -344,6 +344,9 @@ is only its headline.
   under tests that grepped for source strings rather than exercising behaviour.** A grep
   test cannot see reachability — QC-H2's requeue branch was unreachable for two days under
   a test asserting its exact source lines. Where the suite is behavioural it is genuinely
-  strong; control flow is where it must be. The product/roadmap findings (PR-*) are
-  **open** — they are document-state lag and sequencing calls, not code, and three of them
-  need an owner decision.
+  strong; control flow is where it must be. **PR-H1 is closed by owner decision: `ep019`
+  is the pick and the designation** — the rung-2 recipe and `SELECTED.md` both said `ep009`
+  against a Step 0 record written seven minutes earlier, so the SSOT instructed two
+  different warm starts for a day. The remaining PR-* findings are open: document-state lag
+  in the entry-point docs (PR-H2/M1/L1), the unread T-saturation prediction (PR-H3), and
+  four sequencing calls (PR-M2…M5).

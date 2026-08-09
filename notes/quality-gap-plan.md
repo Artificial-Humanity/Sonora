@@ -373,18 +373,31 @@ work rather than a lookup:
   Vocalizer whenever a before/after is wanted. Generalises — *before treating an artifact as
   perishable, check whether the thing that produces it is retained.*
 
-**WHY THIS COMES FIRST, AND IT IS NOT OPTIONAL.** Before v6 trains,
-put **ep009 · ep019 · Qwen** in front of the ear on **delivery-blank** passages. Three
-things it buys, and only the third is time-critical:
+**DISCHARGED 2026-08-09 — this block no longer gates v6.** It read "WHY THIS COMES
+FIRST, AND IT IS NOT OPTIONAL: before v6 trains, put ep009 · ep019 · Qwen in front of the
+ear", and all three of its justifications were retired by the Step 0 records directly
+above — written seven minutes apart and never reconciled, so the section argued against
+itself for a day. Kept as a record rather than deleted, because *why* each leg fell is
+worth more than the instruction was:
 
-1. Settles ep009 vs ep019 — 0.0004 apart on holdout total, split on which term you weight
-   (ep009 wins `diff`, ep019 wins total), so the instrument cannot separate them.
-2. Measures the Sonora↔Qwen gap honestly, against the confirmed gold standard.
-3. **Captures what Sonora sounds like before the delivery channel exists — which cannot be
-   reconstructed once v6 trains.** That is why this precedes the merge rather than
-   following it.
+1. ~~Settles ep009 vs ep019.~~ **Settled**: the ear heard no difference and the owner took
+   **`ep019`** on total. The null IS the result — neither loss margin is perceptually real,
+   so ep009's 0.0013 `diff` edge is not grounds to reopen it.
+2. ~~Measures the Sonora↔Qwen gap.~~ **Held until after rung 3**, on model maturity rather
+   than time: run today it measures 78.5 h against ~5,000,000 h and returns "more data",
+   which is the answer we already have. Does not gate rung 2.
+3. ~~Captures what Sonora sounds like before the delivery channel exists, which cannot be
+   reconstructed once v6 trains.~~ **Simply wrong**: `ep019` is retained on disk and v6
+   trains into a new run directory from its own warm start, so nothing consumes or
+   overwrites it. The checkpoint IS the baseline.
 
-Delivery-blank on purpose: the channel is untrained (48 labelled rows in 42,442), so
+A session following the old text literally would have blocked v6 on a listen the owner
+waived and re-run a comparison already settled. **The generalisable lesson is #3's:**
+before treating an artifact as perishable, check whether the thing that produces it is
+retained.
+
+**The protocol below survives** — it is how the Qwen comparison should be run whenever it
+does happen, at rung 3. Delivery-blank on purpose: the channel is untrained (48 labelled rows in 42,442), so
 directing it would measure nothing and read as an architecture failure. Run it blind and
 order-randomised, **forced-choice rather than scored** (the scale is saturated — real
 LibriVox audio means 5.00 and six engines tie at 5), loudness-normalised (the
@@ -393,8 +406,9 @@ across every clip, or delivery differences confound with voice.
 
 **Then the build:** dedup (3) → EIV pass (1) → merge with v5 rows byte-identical and ids
 appended per (2)+decision → hash split → measure `data_statistics` → licence entry → config
-→ warm start from `vat5_finetune` **ep009**. Follow `merge_emilia_corpus.py` verbatim; its
-contiguity, collision and val-nonempty guards are the ones that matter.
+→ warm start from `vat5_finetune` **`ep019`** — the pick, reaffirmed by the owner
+2026-08-09. Follow `merge_emilia_corpus.py` verbatim; its contiguity, collision and
+val-nonempty guards are the ones that matter.
 
 ### The low-hanging fruit, itemised — ~870 h before anything is rendered
 
