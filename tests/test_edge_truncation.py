@@ -164,6 +164,58 @@ def test_a_hyphen_is_a_separator_not_a_deletion():
     assert edge_loss(PASSAGE, " ".join(PASSAGE.split()[4:]))["head_words"] == 4
 
 
+def test_an_em_dash_is_a_separator_too():
+    """QC-M1: the hyphen fix's class was `[-–]` — hyphen-minus and EN-dash. The em-dash,
+    which is the dash English prose actually uses, was still deleted: "Well—I suppose"
+    fused to `welli` against Whisper's `well` + `i` and fabricated head loss out of
+    punctuation. `tail_ok` is a HARD gate on this measure and em-dash is everywhere in the
+    SE/PG epub prose the book lane reads.
+    """
+    assert edge_loss("Well I suppose so, if you insist",
+                     "Well—I suppose so, if you insist") == {
+        "head_frac": 0.0, "head_words": 0, "tail_frac": 0.0, "tail_words": 0}
+    # The gating end.
+    assert edge_loss("and then he stopped talking altogether",
+                     "and then he stopped talking—altogether")["tail_words"] == 0
+
+
+@pytest.mark.parametrize("dash", ["-", "‐", "‑", "‒", "–", "—", "―", "−"])
+def test_every_unicode_dash_separates(dash):
+    """Named codepoints are what failed twice. The class is a RANGE now, and this is the
+    inventory it has to cover."""
+    assert edge_loss("one two three", f"one{dash}two three")["head_words"] == 0
+
+
+def test_an_apostrophe_is_still_part_of_its_word():
+    """The counterweight: this must not become a general strip-punctuation rule. A dash
+    between words is a separator; an apostrophe belongs to its word, and re-tokenizing
+    every contraction would move counts on a hard gate for no reason."""
+    assert edge_loss("don't stop now", "don’t stop now")["head_words"] == 0
+    # One token, not two: the apostrophe is removed, never replaced with a space. Were it
+    # treated like a dash, `don't` would become `don` + `t` and every contraction in the
+    # corpus would shift the counts a hard gate reads.
+    assert edge_loss("dont stop now", "don't stop now")["head_words"] == 0
+    assert edge_loss("do not stop now", "don't stop now")["head_words"] == 2
+
+
+def test_the_two_dash_classes_have_not_forked():
+    """`op_g2p` cannot import `synth_common` (it runs in the training container, where
+    `scripts/synthesis` is not on the path) and `synth_common` must not import `matcha`
+    (the QC lane is stdlib-only by design). So the rule is deliberately written twice —
+    the device-G2P arrangement — and this is the gate that keeps the copies honest.
+
+    Forking is not hypothetical here: QC-M1 IS the fork. `op_g2p` escaped the em-dash bug
+    only because `convert_to_ascii` runs before its sub, not because its class was right.
+    """
+    import re
+    op_g2p = pytest.importorskip("matcha.text.op_g2p")
+    assert op_g2p.DASH_RUN.pattern == synth_common.DASH_RUN.pattern
+    for ch in "-‐‑‒–—―−":
+        assert re.fullmatch(synth_common.DASH_RUN, ch), f"{ch!r} is not covered"
+    for ch in "_.,'":
+        assert not re.fullmatch(synth_common.DASH_RUN, ch), f"{ch!r} is not a dash"
+
+
 def test_a_head_flagged_clip_is_owed_an_ear_even_though_nothing_gates_it():
     """C-M4's blind spot, found 2026-08-07 while queueing the eight clips.
 

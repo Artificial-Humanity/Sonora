@@ -129,6 +129,28 @@ def write_text_atomic(path, text, *, encoding="utf-8"):
 ASR_MAX_WER = 0.35
 
 
+# Every Unicode dash a prose source realistically carries, as ONE definition.
+#
+# Naming dash codepoints individually has now failed twice: `[-–]` shipped in 2026-08-08's
+# hyphen fix and missed the em-dash (QC-M1), which is the character English prose uses
+# most. So this is a RANGE — U+2010 hyphen through U+2015 horizontal bar, which covers
+# non-breaking hyphen, figure dash, en dash and em dash — plus ASCII hyphen-minus and the
+# U+2212 minus sign that unidecode-free text picks up from typeset sources.
+#
+# ⚠ Not a general "strip punctuation" rule. A dash between words is a SEPARATOR (espeak
+# reads it as one, so every text path in the repo must), while an apostrophe is part of
+# its word. Widening this to all punctuation would silently re-tokenize every contraction
+# and move counts on a hard gate.
+#
+# `op_g2p.phonemize` carries the identical class. It CANNOT import this one — it runs
+# inside the training container, where `scripts/synthesis` is not on the path, and a
+# package importing out of `scripts/` is the wrong direction regardless. So it is the
+# device-G2P arrangement: reimplemented deliberately, held identical by a parity test
+# (`test_edge_truncation.test_the_two_dash_classes_have_not_forked`), because two
+# spellings of one rule with nothing checking them is how the first miss happened.
+DASH_RUN = re.compile(r"[-‐-―−]+")
+
+
 def edge_loss(ref, hyp):
     """Words of the passage left unspoken at EACH END of the clip.
 
@@ -183,9 +205,31 @@ def edge_loss(ref, hyp):
     and 46 tail counts move, and **0 clips had failed `tail_ok` because of it** — so the
     hard gate never wrongly rejected a clip, and no shipped corpus is affected. The damage
     was confined to the population `head_ok` has not been calibrated from yet.
+
+    ...AND SO IS THE EM-DASH (QC-M1, fixed 2026-08-09). The class above covered
+    hyphen-minus and en-dash but not `—` (U+2014), which is the SAME BUG one codepoint
+    over: "Well—I suppose" fused to `['welli', 'suppose']` against Whisper's
+    `['well', 'i', ...]`. The rest of the repo escaped it by accident rather than by
+    care — `op_g2p.phonemize` runs `convert_to_ascii` first, and unidecode maps `—` to
+    `--` before its own sub ever sees it. `edge_loss` has no unidecode, so it was the
+    only path where the codepoint survived to the strip. Em-dash is ubiquitous in the
+    SE/PG epub prose the book lane reads, and `tail_ok` is a HARD gate on this measure.
+
+    The class is now every Unicode dash a prose source realistically carries, defined
+    once as `DASH_RUN` and shared with `op_g2p` — this is the second time a dash has been
+    missed by naming its codepoints individually, and "which characters are dashes" is
+    exactly the kind of rule that must not fork.
+
+    Blast radius, measured the same way over the same 3,189 clips: 132 carry a non-ASCII
+    dash somewhere in text or hypothesis, 0 head counts move, and exactly 1 tail count
+    moves — `the-return_nar_0050_doc_MOS`, 0.101 -> 0.111, which was already failing
+    `tail_ok` at both values. So no gate verdict changes and no shipped corpus is
+    affected; as with the hyphen, the exposure is prospective. It is worth noting where
+    that clip came from: the-return_nar_0051, one id over, is the tail-truncation the
+    QC-note plumbing was fixed for the same day.
     """
     def norm(s):
-        s = re.sub(r"[-–]+", " ", s.lower().replace("’", "'"))
+        s = DASH_RUN.sub(" ", s.lower().replace("’", "'"))
         return re.sub(r"[^a-z0-9 ]", "", s).split()
     r, h = norm(ref), norm(hyp)
     if not r:

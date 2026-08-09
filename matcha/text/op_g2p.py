@@ -59,6 +59,11 @@ def _default_assets():
 # it is vocab punctuation (hyphens/brackets are separators, handled upstream).
 _TOKEN_RE = re.compile(r"[a-z']+|[.,!?;:—…\"«»“”¡¿]")
 _WORD_RE = re.compile(r"[a-z']+")
+# Held byte-identical to `synth_common.DASH_RUN` — see the note at its use site in
+# `phonemize`. The QC lane cannot import this module and this module cannot import the QC
+# lane, so the two are kept in step by `test_edge_truncation`, the same way the device
+# G2P's tables are.
+DASH_RUN = re.compile(r"[-‐-―−]+")
 _COMBINING_TILDE = "̃"
 
 _VOCAB = set(symbols)
@@ -392,7 +397,13 @@ class OpenPhonemizerG2P:
         text = expand_abbreviations(text)
         text = remove_brackets(text)
         # Hyphens/dashes between words act as separators, like espeak.
-        text = re.sub(r"[-–]+", " ", text)
+        #
+        # `convert_to_ascii` above already folds every Unicode dash to ASCII (`—` -> `--`),
+        # so this line only ever sees hyphen-minus here. The full class is kept anyway and
+        # held byte-identical to `synth_common.DASH_RUN` (parity-tested): the QC lane has
+        # no unidecode, that asymmetry is what produced QC-M1, and a caller that ever
+        # reaches this method without the ascii pass must not silently get a narrower rule.
+        text = DASH_RUN.sub(" ", text)
         text = collapse_whitespace(text)
         # Materialised rather than streamed: homograph resolution needs the two tokens
         # to the left and one to the right, and a punctuation mark between them is a
