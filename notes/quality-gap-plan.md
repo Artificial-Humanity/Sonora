@@ -278,11 +278,43 @@ cheaper than every hour of synthetic**, and roughly 870 of them are cleared and 
 |---|---|---|---|---|---|---|
 | — | `libritts_r_vat_v4` | 30,485 | 51.3 | 247 | width only (8-wide) | smoked, superseded |
 | **1** | **`libritts_r_emilia_vat_v5`** | **41,138** | **78.5** | **2,500** | **volume, +36%** | holdout vs `vat3_ep099` |
-| 2 | v6 = +expressive-registers | ~42,300 | ~82 | ~2,510 | **ear-certified + real delivery labels** | delivery channel finally has signal |
+| 2 | v6 = +expressive-registers | ~42,140 | ~81 | ~2,510 | **the delivery channel's only training signal** — see below | delivery channel finally has signal |
 | 3 | v7 = +LibriTTS-R full | ~330,000 | ~615 | ~4,900 | **10× volume, same domain** | the real lever |
 | 4 | v8 = +Hi-Fi TTS v1 + VCTK | +? | +336 | +120 | **depth per voice** + studio timbre breadth | independent; slot in when converted |
 | 5 | v9 = +more Emilia-YODAS shards | +? | unbounded | +thousands | **in-the-wild expressivity at scale** | the mining pipeline already exists |
 | 6+ | the synthetic lane | — | — | — | see **§ Phase 1S** below | gated on 1–5 |
+
+### Rung 2 is not a volume rung — it is the only delivery signal that exists
+
+Measured 2026-08-09 against the shipped v5 filelists. **The delivery channel is untrained:**
+
+```
+v5 (41,138 train + 1,304 val):  48 rows carry ANY delivery label  — 0.11%
+   Dialogue 39 · Neutral 9 · Documentary 0 · Newscaster 0 · Speech 0
+```
+
+Three of the five lanes have **zero positive examples**, so the 8-wide conditioning vector
+that shipped in contract v2 is, today, five channels the model has never seen fire. Any
+delivery audition run against a v5 checkpoint measures an untrained channel and will read
+as an architecture failure — it isn't one.
+
+**v6 scope (owner, 2026-08-09): 1,004 eligible keeps** — 902 delivery-labelled + 102
+delivery-blank. Filtered from 1,279 total keeps by licence and standing policy, all four
+exclusions honoured as written: VibeVoice/Dia 133 (benched), moss85 83 (un-SFT'd base),
+longcat 45 (benched), higgs3-NC 8 (**NC — never trains**). Per lane after filtering:
+Dialogue 402 · Neutral 270 · Documentary 85 · Newscaster 76 · Speech 69.
+
+⚠ **Known confound, accepted deliberately rather than bought off.** Dialogue, Documentary
+and Newscaster have **no real audio at all** — no documentary real audio exists, and the
+same holds for the other two — so after the merge, *delivery-labelled ⇒ ~91% synthetic*
+while *blank ⇒ ~99.8% real*. The model can satisfy the loss by learning "labelled means
+render like a teacher engine" instead of a manner of address. Removing the confound is not
+purchasable: matching the labelled-rate across provenance needs **~36,700 blank synthetic
+renders ≈ 336 GPU-hours**, and would make the corpus ~47% synthetic — contradicting the
+ordering principle above. So we **measure it instead**: direct a real, well-represented
+speaker through each lane and check whether manner changes or only timbre. Predict before
+training, not after. The 57 synthetic blank keeps in the merge help slightly and do not
+close it.
 
 ### The low-hanging fruit, itemised — ~870 h before anything is rendered
 
@@ -295,7 +327,7 @@ Hours are the sources' own figures (`training-sources.md`), not measured by us.
 | **LibriTTS-R, the other 90%** | not pulled — we hold `train-clean-100` only | **+534** | download + corpus build, same pipeline as v4 verbatim |
 | **VCTK** | **4.3 GB zip ON DISK, still unextracted** | **44** | `unzip` + filelist. 110 speakers, 48 kHz studio. Casting/accent breadth only — no conveyance value |
 | Emilia-YODAS, more shards | 9 shards probed of ~114,000 h licensed | unbounded | the mining pipeline exists and ran this week |
-| sonora-expressive-registers | derived, 1,071 ear-certified keeps | small | close **+116** (Neutral +81, Documentary +35), then merge |
+| sonora-expressive-registers | derived, **1,004 eligible ear-certified keeps** (scoped 2026-08-09) | small | merge as v6 — see § Rung 2 below for the eligibility filter and why this rung is not optional |
 | librivox-v2 | derived, 1,366 clips, nothing staged | 3.1 | stage; re-earn v1's 12 ear verdicts |
 
 **Two are already on the disk and merely unconverted** — Hi-Fi TTS and VCTK, **336 hours

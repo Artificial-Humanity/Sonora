@@ -12,7 +12,7 @@ Deliberately NOT here: license deliberation (→ `dataset-landscape.md`), the
 multilingual survey (→ same, § Multilingual), teacher-engine selection (→
 `teacher-tts-audition-shortlist.md`), audit policy (→ `delivery-mix-campaign.md`).
 
-Last verified against disk and configs: **2026-08-06**. The *order* in which the READY /
+Last verified against disk and configs: **2026-08-09** (v5 landed 08-08; Emilia moved READY -> TRAINED, expressive-registers rescoped). The *order* in which the READY /
 NOT PULLED / RAW rows below get taken up is not decided here — it is
 [quality-gap-plan.md](quality-gap-plan.md).
 
@@ -41,7 +41,7 @@ had been blurring into each other:
 | **Hi-Fi TTS (v1)** | NVIDIA, CC-BY-4.0, LibriVox-sourced. ~292 h / 10 speakers / 44.1 kHz. **40 GB of parquet WITH audio** | **RAW** — largest corpus on disk, never touched | Convert parquet → wav + filelist. Role: casting anchors and speaker-consistent long-form prosody (few voices, deep hours) |
 | **HiFiTTS-2** | NVIDIA, CC-BY-4.0, LibriVox-sourced. 36.7 k h @22 kHz / 31.7 k h @44 kHz, ~5 k speakers | **RAW — METADATA ONLY.** 16.6 GB of manifests and chapter lists (8.9 GB 22 kHz + 7.7 GB 44 kHz). NVIDIA does not redistribute the audio | Decide before any download: **2.8 TB for 22 kHz, 4.0 TB for 44 kHz**, fetched from LibriVox via NeMo-speech-data-processor. A bandwidth-filtered subset is the realistic version |
 | **VCTK** | CSTR Edinburgh, CC-BY-4.0 (verified 2026-07-19). 110 speakers / ~44 h / 48 kHz studio | **RAW** — still `VCTK-Corpus-0.92.zip`, 4.3 GB, unextracted | Unzip and build a filelist if the casting/accent grid needs it. Neutral read sentences — no conveyance value |
-| **Emilia-YODAS keeps** | Amphion, CC-BY-4.0 (**YODAS subset only**). **13,141 clips**, mined and resampled to 24 kHz, 5.4 GB | **READY** — the closest thing to usable that is not in a filelist | Merge into the VAT filelists (`eiv_merge_corpus.py`). This is the v1.1 volume lane and per the mining verdict likely holds our only REAL newscaster/documentary audio |
+| **Emilia-YODAS keeps** | Amphion, CC-BY-4.0 (**YODAS subset only**). Mined and resampled to 24 kHz, 5.4 GB | **TRAINED** (2026-08-08) — merged as **10,653 rows** of `libritts_r_emilia_vat_v5`, taking the corpus to 41,138 / 78.5 h / 2,500 speakers. The planned 13,141 became 10,653 on contact (digit handling, D-M3) | None. ⚠ It did **not** bring real newscaster/documentary audio — the mining verdict expected that and it did not survive: **100% of Emilia rows carry blank delivery.** Those lanes still have no real audio from any source |
 | **Emilia-YODAS probe shards** | Same. 9.8 GB of raw shards | **RAW** — the pool the keeps were mined from | Keep or delete. Mining is done; this is the working set behind it |
 | **JL-Corpus** | CC0. 2,400 utterances, 459 MB | **READY** — used as a calibration anchor, not as training audio | None. Correctly scoped as an instrument |
 | **Expresso** | Meta, **CC-BY-NC-4.0**. 11,615 read-speech clips, 48 kHz, 1.8 GB | **BLOCKED** — see § The Expresso conflict | Owner call. Two ratified decisions disagree about it |
@@ -59,7 +59,7 @@ filelist yet.
 
 | Source | Origin | Status in our training | Next action |
 |---|---|---|---|
-| **sonora-expressive-registers** | Teacher renders (qwen · chatterbox · zonos · orpheus · moss_vg) + real keeps. **1,071 fold-eligible keeps** | **DERIVED** — the expressive corpus, ear-certified via `ratings.csv` | Close the last **+116** (Neutral +81, Documentary +35), then merge. Target 1,156 |
+| **sonora-expressive-registers** | Teacher renders (qwen · chatterbox · zonos · orpheus · moss_vg) + real keeps. **1,004 eligible keeps** of 1,279 — 902 delivery-labelled + 102 blank; scoped 2026-08-09 | **DERIVED** — the expressive corpus, ear-certified via `ratings.csv`. **The only delivery-label signal in existence:** v5 carries 48 labelled rows in 42,442 (0.11%), and Documentary/Newscaster/Speech have zero | Merge as **v6**. Eligibility filter and the accepted provenance confound: [quality-gap-plan.md § Rung 2](quality-gap-plan.md) |
 | **book-prose** | Standard Ebooks CC0 text → director-labelled banks. 21 books, 856 rendered wavs | **DERIVED** — the text shelf that feeds synthesis | None outstanding. The 4 owner-approved titles queued 2026-08-02 (+`conan-stories`) are ingested; delivery-v1 closed on them. ⚠ `book_ingest` hardcodes provenance "Standard Ebooks CC0" even for PG sources — false licence metadata in every derived clip's paper trail (A-M6, [todo.md §5](todo.md)) |
 | **librivox-v2** | Force-aligned LibriVox audio (Uneasy Money). 1,366 clips / 3.13 h | **DERIVED** — better cut than v1, nothing staged from it | Stage when re-earning v1's 12 ear verdicts is worth it |
 | **librivox-v1** | Same book, pre-fix cut. 664 clips | **DERIVED** — kept for its 12 valid ear verdicts | Retire once v2 is staged |
