@@ -30,6 +30,7 @@ ratings_history.csv (append-only audit log).
 """
 import csv
 import datetime
+import fcntl
 import importlib.util
 import json
 import os
@@ -175,7 +176,62 @@ DELIVERY = (DELIVERY_UNKNOWN, *sorted(DELIVERY_LANES), "Unclear")
 # They are treated like deferred rows: reachable, never in the pending queue.
 FOLD_MARKER = "folded: staged unheard"
 
-_lock = threading.Lock()  # serialize CSV read-modify-write
+class _RatingsLock:
+    """Serialize every read-modify-write of ratings.csv — against our own threads AND
+    against the scripts (QC-M5).
+
+    The threading lock was here from the start and covers uvicorn's workers. It cannot see
+    another PROCESS, and `scripts/synthesis` writes this file constantly — `stage_pool`,
+    `pick_audit_subset`, `sweep_dropped`, `register_audition`. Those scripts protect
+    themselves against the app (`synth_common.ratings_transaction` re-checks the mtime
+    inside its own lock and aborts if the app moved the file), but nothing protected the
+    reverse direction: a script transaction committing inside this app's read -> replace
+    window was silently overwritten. The window is milliseconds; the loss is a whole
+    staging run's rows or a select pass's defers, with no error anywhere.
+
+    So the app takes the SAME flock the scripts take. It shares the filesystem with them,
+    which is the only thing both sides can agree on.
+
+    ⚠ The lock path must stay byte-identical to `synth_common._exclusive`'s — `<path>.lock`
+    — or the two sides take different locks and neither notices. It is reimplemented here
+    rather than imported because this app runs in a `python:3.12-slim` container with only
+    fastapi and uvicorn, where `synth_common` is not importable and never will be; that is
+    the same constraint the delivery vocabulary works around, and the same answer applies:
+    a test holds the two in step (`tests/test_ratings_transaction.py`).
+
+    Sidecar, not the file itself: both sides replace the target by rename, and a lock held
+    on the old inode would protect nothing once the rename lands.
+    """
+
+    def __init__(self, path):
+        self._path = path
+        self._thread_lock = threading.Lock()
+        self._fh = None
+
+    def __enter__(self):
+        self._thread_lock.acquire()
+        try:
+            self._fh = open(f"{self._path}.lock", "a+", encoding="utf-8")
+            fcntl.flock(self._fh, fcntl.LOCK_EX)
+        except Exception:
+            self._thread_lock.release()
+            if self._fh is not None:
+                self._fh.close()
+                self._fh = None
+            raise
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            fcntl.flock(self._fh, fcntl.LOCK_UN)
+            self._fh.close()
+        finally:
+            self._fh = None
+            self._thread_lock.release()
+        return False
+
+
+_lock = _RatingsLock(RATINGS_CSV)  # serialize CSV read-modify-write
 
 app = FastAPI(title="Dataset Auditions")
 

@@ -72,7 +72,12 @@ vocalizer = ["gradio", "fastapi", "uvicorn", "starlette"]
 # The `app` extra (`gradio==3.43.2`, for matcha/app.py) was REMOVED 2026-08-07 with the
 # file. It also pinned a second, older gradio against the `vocalizer` extra's unpinned
 # one, so installing both resolved to whichever came last.
-dev = ["pytest", "pre-commit"]
+# `fastapi` is here because the audition app came home in `2399aed` and its code is now
+# ours to test. Without it every test that drives `audition/app/main.py` can only skip, and
+# QC-M5 — the app silently overwriting a script's commit — is exactly the kind of defect a
+# source-string test cannot see. The app's own runtime pins live in
+# `audition/requirements.txt`; this is the test-time import only.
+dev = ["pytest", "pre-commit", "fastapi"]
 
 [project.scripts]
 matcha-data-stats = "matcha.utils.generate_data_statistics:main"

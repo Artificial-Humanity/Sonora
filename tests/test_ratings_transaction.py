@@ -142,3 +142,80 @@ def test_the_conflict_gate_blocks_a_hint_on_a_disputed_title():
     # A conflict on a DIFFERENT attribute must not block this one — that title's gender
     # evidence can still be clean.
     assert rp._title_is_settled({"age_CONFLICT": {"a": 1}, "clips_seen": 4}, "gender") is True
+
+
+# --- QC-M5: the app was the one writer outside the lock -------------------------------
+
+
+def _app_module(tmp_path, monkeypatch):
+    """Import the audition app against a synthetic ratings dir."""
+    import importlib
+    monkeypatch.setenv("AUDITION_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUDITION_RATINGS_DIR", str(tmp_path))
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "audition"))
+    sys.modules.pop("app.main", None)
+    return importlib.import_module("app.main")
+
+
+def test_the_app_and_the_scripts_take_the_same_lock(tmp_path, monkeypatch):  # noqa: D401
+    """QC-M5. The scripts guard themselves against the app (mtime re-check inside their
+    own lock), but nothing guarded the reverse: a `stage_pool` or `pick_audit_subset`
+    commit landing inside the app's read -> `os.replace` window was silently overwritten.
+    Milliseconds wide, and the loss — a whole staging run's rows — is silent.
+
+    The two cannot share code: the app runs in a `python:3.12-slim` container with only
+    fastapi and uvicorn, so `synth_common` is not importable there. They share the
+    filesystem instead, which means the lock PATH is the contract and this is the test
+    that holds it.
+    """
+    app = _app_module(tmp_path, monkeypatch)
+    assert app._lock._path == app.RATINGS_CSV
+    # Byte-identical to `synth_common._exclusive`'s sidecar convention.
+    src = (SYNTH / "synth_common.py").read_text(encoding="utf-8")
+    assert 'lock_path = f"{path}.lock"' in src
+    assert 'f"{self._path}.lock"' in (
+        pathlib.Path(app.__file__).read_text(encoding="utf-8"))
+
+
+def test_the_app_lock_actually_excludes_a_script(tmp_path, monkeypatch):
+    """Behavior, not path-matching: while the app holds its lock, a script transaction on
+    the same file must block rather than proceed."""
+    app = _app_module(tmp_path, monkeypatch)
+    path = tmp_path / "ratings.csv"
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=HEADER)
+        w.writeheader()
+        w.writerow({"id": "a", "status": "unaudited", "score": "", "note": ""})
+
+    import subprocess
+
+    # A separate PROCESS, because that is the whole point: a threading.Lock cannot see
+    # one, and every script that writes this file is one.
+    probe = (
+        "import fcntl,sys\n"
+        "fh = open(sys.argv[1] + '.lock', 'a+')\n"
+        "try:\n"
+        "    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)\n"
+        "    print('FREE')\n"
+        "except BlockingIOError:\n"
+        "    print('HELD')\n"
+    )
+
+    def probe_lock():
+        return subprocess.run([sys.executable, "-c", probe, str(path)],
+                              capture_output=True, text=True, timeout=30).stdout.strip()
+
+    with app._lock:
+        assert probe_lock() == "HELD", "a script could have written inside the app's window"
+    # ...and it is released afterwards, or the app deadlocks every script on the box.
+    assert probe_lock() == "FREE"
+
+
+def test_the_app_lock_is_reusable_and_released_on_error(tmp_path, monkeypatch):
+    """11 call sites enter it in sequence; a raise inside one must not wedge the rest."""
+    app = _app_module(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        with app._lock:
+            raise ValueError("boom")
+    with app._lock:            # would hang forever if the release leaked
+        pass
