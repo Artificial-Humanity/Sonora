@@ -31,12 +31,18 @@ class BaseLightningClass(LightningModule, ABC):
         optimizer = self.hparams.optimizer(params=self.parameters())
         if self.hparams.scheduler not in (None, {}):
             scheduler_args = {}
-            # Manage last epoch for exponential schedulers
+            # Manage last epoch for exponential schedulers.
+            #
+            # TR-L4: `current_epoch` was assigned only inside this `if`, while the
+            # `scheduler.last_epoch = current_epoch` below ran unconditionally — so a
+            # scheduler without a `last_epoch` parameter raised `NameError`. Unreachable
+            # today (no config defines a scheduler at all), and the first scheduler
+            # experiment would have hit it on line one. Initialised outside instead, which
+            # is also the value the branch means: -1 is "no epochs consumed yet".
+            current_epoch = -1
             if "last_epoch" in inspect.signature(self.hparams.scheduler.scheduler).parameters:
                 if hasattr(self, "ckpt_loaded_epoch"):
                     current_epoch = self.ckpt_loaded_epoch - 1
-                else:
-                    current_epoch = -1
 
             scheduler_args.update({"optimizer": optimizer})
             scheduler = self.hparams.scheduler.scheduler(**scheduler_args)

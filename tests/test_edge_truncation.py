@@ -515,5 +515,70 @@ def test_the_warmstart_widening_is_covered_by_the_mandatory_seam_gate():
                  "an un-allowlisted tensor is never reshaped",
                  "a reordered speaker map fails the prefix proof",
                  "the prefix proof reads EVERY namespace, not just LibriTTS",
-                 "two speakers on one embedding row is refused"):
+                 "two speakers on one embedding row is refused",
+                 "one id in two namespaces is refused even at the same index"):
         assert name in seams, f"the seam gate lost its widening check: {name}"
+
+
+def test_the_holdout_refusal_is_covered_by_the_mandatory_seam_gate():
+    """TR-M3. `refuse_holdout` itself is torch-free and unit-tested on the host below;
+    what CANNOT run here is the proof that the datamodule calls it. That lives in the seam
+    gate, which is mandatory pre-flight before any training run — the same argument as the
+    widening check above, and for a guard whose failure costs the lineage's only
+    never-trained measurement."""
+    seams = (pathlib.Path(__file__).resolve().parent.parent
+             / "scripts" / "test_vat_dim_seams.py").read_text(encoding="utf-8")
+    for name in ("an 8-wide holdout filelist is refused as a TRAINING path",
+                 "refused as a VAL path too",
+                 "an ordinary corpus filelist still loads"):
+        assert name in seams, f"the seam gate lost its holdout check: {name}"
+    datamodule = (pathlib.Path(__file__).resolve().parent.parent
+                  / "matcha" / "data" / "text_mel_datamodule.py").read_text(encoding="utf-8")
+    assert "refuse_holdout(" in datamodule, "the datamodule stopped calling the guard"
+
+
+@pytest.mark.parametrize("path", [
+    "data/libritts_r_holdout_devclean/holdout.txt",
+    "data/libritts_r_holdout_devclean/holdout_8w.txt",
+    "/data/model-training/datasets/SOME_HOLDOUT/train_op.txt",
+    "data/a_new_holdout_we_have_not_cut_yet/whatever.txt",
+])
+def test_a_holdout_path_is_refused_for_training(path):
+    """A substring test on the PATH, deliberately — not a manifest lookup. It has to hold
+    for a holdout that does not exist yet, and the naming convention is already what every
+    other guard here leans on. The README said so plainly: "the naming is the guard"; this
+    is the guard actually being one."""
+    wall = pytest.importorskip("matcha.data.license_wall")
+    with pytest.raises(RuntimeError, match="REFUSING to train"):
+        wall.refuse_holdout([path])
+
+
+def test_an_ordinary_corpus_is_not_refused():
+    """A guard that fires on the working path gets disabled."""
+    wall = pytest.importorskip("matcha.data.license_wall")
+    wall.refuse_holdout(["data/libritts_r_emilia_vat_v5/train_op.txt",
+                         "data/libritts_r_emilia_vat_v5/val_op.txt"])
+
+
+def test_the_sanctioned_reader_is_not_caught_by_it():
+    """`score_holdout.py` builds its dataset directly and never comes through the
+    datamodule — which is the seam that makes this refusal cheap. If it ever started
+    using `TextMelDataModule`, the instrument would refuse to score."""
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "scripts" / "score_holdout.py").read_text(encoding="utf-8")
+    assert "TextMelDataset" in src
+    assert "TextMelDataModule" not in src
+
+
+def test_scoring_without_a_contamination_check_is_refused():
+    """The other half of TR-M3. `--assert-disjoint-from` defaults to `[]`, so an
+    invocation that omitted it scored with NO disjointness check and produced numbers that
+    look like holdout numbers and carry none of the guarantee. `score_holdout.sh` supplies
+    no default either."""
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "scripts" / "score_holdout.py").read_text(encoding="utf-8")
+    assert "REFUSING to score with no contamination check" in src
+    i = src.index("def assert_disjoint")
+    j = src.index("REFUSING to score with no contamination check")
+    k = src.index("for corpus in corpus_filelists:", i)
+    assert i < j < k, "the refusal must precede the loop it replaces"

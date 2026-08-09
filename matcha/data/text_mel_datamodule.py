@@ -9,6 +9,8 @@ from lightning import LightningDataModule
 from torch.utils.data.dataloader import DataLoader
 
 from matcha.data.license_wall import enforce as enforce_license_wall
+from matcha.data.license_wall import refuse_holdout
+from matcha.delivery import VAT_BASE_DIM, lane_of_vector
 from matcha.text import text_to_sequence
 from matcha.utils.audio import mel_spectrogram
 from matcha.utils.model import fix_len_compatibility, normalize
@@ -19,7 +21,6 @@ def parse_filelist(filelist_path, split_char="|"):
     with open(filelist_path, encoding="utf-8") as f:
         filepaths_and_text = [line.strip().split(split_char) for line in f]
     return filepaths_and_text
-
 
 
 class LengthBucketBatchSampler(torch.utils.data.Sampler):
@@ -118,6 +119,9 @@ class TextMelDataModule(LightningDataModule):
         # The license wall (north star §8.2): every dataset in the filelists
         # must be declared permissive in configs/data_licenses.yaml.
         enforce_license_wall(
+            [self.hparams.train_filelist_path, self.hparams.valid_filelist_path]
+        )
+        refuse_holdout(
             [self.hparams.train_filelist_path, self.hparams.valid_filelist_path]
         )
 
@@ -281,6 +285,16 @@ class TextMelDataset(torch.utils.data.Dataset):
                     f"vat_dim={self.vat_dim}. Filelist and model config disagree — see "
                     "notes/todo.md §1 (delivery-channel seams)."
                 )
+            # ...and the WIDTH is only half of what "a valid conditioning vector" means
+            # (TR-L3). The count was checked and the delivery block's shape was not, on
+            # the one path that trains on it: `lane_of_vector`'s one-hot refusal is called
+            # only by readers (CLI, manifests), never by the loader. A future writer
+            # emitting `...,0.5,0.5,0,0,0` would train silently as an interpolated
+            # category — the meaning-error `matcha/delivery.py` says has no meaning —
+            # rather than raising. Derive and merge both write `int(x)` and the shipped v5
+            # was verified 0/1 on disk, so this is a seam guard, not a live fix.
+            if self.vat_dim is not None and vat.numel() > VAT_BASE_DIM:
+                lane_of_vector(vat.tolist())     # raises unless the block is one-hot
             filepath_and_text = filepath_and_text[:-1]
         if self.n_spks > 1:
             filepath, spk, text = (

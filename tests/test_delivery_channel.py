@@ -266,3 +266,56 @@ def test_the_recorded_gate_names_the_evidence_it_waits_on():
     assert "corpus-label limit, not architectural" in todo
     assert "sob and a laugh have similar energy" in todo
     assert "1,189 labelled keeps; an 8-way emotion block starts at zero" in todo
+
+
+# --- TR-L3: the loader checked the width and not the shape ----------------------------
+
+
+def test_the_loader_refuses_an_interpolated_delivery_block():
+    """`lane_of_vector`'s one-hot refusal was called only by READERS — the CLI and the
+    manifest tools — never by the training loader. So a future writer emitting
+    `...,0.5,0.5,0,0,0` would train silently as an interpolated category: the meaning-error
+    `matcha/delivery.py`'s own docstring says has no meaning.
+
+    Derive and merge both write `int(x)` and the shipped v5 was verified 0/1 on disk, so
+    this is a seam guard rather than a live fix — which is exactly when it is cheap to add.
+    """
+    with pytest.raises(ValueError, match="not one-hot"):
+        delivery.lane_of_vector([0.1, 0.2, 0.3, 0.5, 0.5, 0.0, 0.0, 0.0])
+    with pytest.raises(ValueError, match="not one-hot"):
+        delivery.lane_of_vector([0.1, 0.2, 0.3, 1.0, 1.0, 0.0, 0.0, 0.0])
+
+
+def test_a_valid_block_and_the_unknown_block_still_pass():
+    """The all-zero block is `unknown`, not a violation — it is the conditioning every
+    contract-v1 checkpoint trained under, and refusing it would refuse the corpus."""
+    assert delivery.lane_of_vector([0.1, 0.2, 0.3, 0, 0, 0, 0, 0]) == delivery.DELIVERY_UNKNOWN
+    for i, lane in enumerate(delivery.DELIVERY_LANES):
+        block = [0.0] * len(delivery.DELIVERY_LANES)
+        block[i] = 1.0
+        assert delivery.lane_of_vector([0.1, 0.2, 0.3, *block]) == lane
+
+
+def test_the_training_loader_calls_it():
+    """Torch-only, so the behaviour cannot run on the host — this notices if the call is
+    removed. The width check alone passed an interpolated block for as long as the
+    delivery channel has existed."""
+    src = (REPO / "matcha" / "data" / "text_mel_datamodule.py").read_text(encoding="utf-8")
+    assert "lane_of_vector(vat.tolist())" in src
+    assert src.index("vat.numel() != self.vat_dim") < src.index("lane_of_vector(vat.tolist())"), \
+        "width must be checked first, or the one-hot check reads a mis-sized block"
+
+
+# --- TR-L5: the default checkpoint cadence -------------------------------------------
+
+
+def test_the_checkpoint_cadence_matches_how_the_lineage_is_measured():
+    """TR-L5. `every_n_epochs: 100` outlived the evidence: v5 delivered 100% of its gain by
+    epoch 9, so a default-config run retained only `last.ckpt` and the per-epoch
+    checkpoints the holdout methodology reads did not exist unless someone remembered a
+    launch-time override. The v5 run clearly used one; where it lived was recorded nowhere.
+    """
+    cfg = (pathlib.Path(__file__).resolve().parent.parent
+           / "configs" / "callbacks" / "model_checkpoint.yaml").read_text(encoding="utf-8")
+    assert "every_n_epochs: 1 " in cfg or "every_n_epochs: 1\n" in cfg
+    assert "save_top_k: 10" in cfg, "the retention bound is what keeps this free"

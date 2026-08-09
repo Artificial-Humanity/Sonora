@@ -224,6 +224,7 @@ check_ok("delivery: the trunk accepts the production width",
 # another: channel position is a contract, speaker-row position is not.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import make_warmstart as _mw  # noqa: E402
+from matcha.data import license_wall as _license_wall  # noqa: E402
 
 check_ok("warmstart: the VAT trunk widens, new channels at zero",
          lambda: _assert(
@@ -276,6 +277,43 @@ check_ok("warmstart: two speakers on one embedding row is refused",
                  {"libritts_id_to_index": {"a": 0}},
                  {"libritts_id_to_index": {"a": 0},
                   "emilia_id_to_index": {"E1": 0}})[0]))
+
+# TR-L2. The collision abort fired only on DIFFERENT indices, so two namespaces assigning
+# the same id string to the SAME index collapsed into one dict entry and the dup check
+# passed — two speakers on one embedding row, reached quietly instead of loudly. Whether
+# the two namespaces happen to agree on a row number says nothing about whether they are
+# the same voice; the shared id across namespaces IS the defect.
+check("warmstart: one id in two namespaces is refused even at the same index",
+      lambda: _mw._index_map({"libritts_id_to_index": {"shared": 4},
+                              "emilia_id_to_index": {"shared": 4}}),
+      "appears in both")
+
+check_ok("warmstart: the same id twice within ONE namespace is not a collision",
+         lambda: _assert(
+             _mw._index_map({"libritts_id_to_index": {"a": 0, "b": 1}}) == {"a": 0, "b": 1}))
+
+# --- the clean holdout ------------------------------------------------------------
+#
+# TR-M3. What had been stopping a training run pointed at the holdout was an ACCIDENT —
+# `holdout.txt` is 3-wide and an 8-wide config refuses it on the vat_dim seam above. That
+# accident ended with `holdout_8w.txt`, correctly built for scoring at the current width
+# and therefore the first holdout file a current config would load happily. One epoch and
+# the lineage's only never-trained instrument is gone, with no second dev-clean.
+check("holdout: an 8-wide holdout filelist is refused as a TRAINING path",
+      lambda: _license_wall.refuse_holdout(
+          ["data/libritts_r_holdout_devclean/holdout_8w.txt"]),
+      "REFUSING to train")
+
+check("holdout: refused as a VAL path too (selecting on it is fitting to it)",
+      lambda: _license_wall.refuse_holdout(
+          ["data/libritts_r_emilia_vat_v5/train_op.txt",
+           "data/libritts_r_holdout_devclean/holdout.txt"]),
+      "REFUSING to train")
+
+check_ok("holdout: an ordinary corpus filelist still loads",
+         lambda: _license_wall.refuse_holdout(
+             ["data/libritts_r_emilia_vat_v5/train_op.txt",
+              "data/libritts_r_emilia_vat_v5/val_op.txt"]))
 
 
 # --- report -----------------------------------------------------------------------

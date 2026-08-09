@@ -93,3 +93,34 @@ def test_rope_cache_survives_inference_mode():
     rope(x).sum().backward()
 
     assert x.grad is not None
+
+
+# --- TR-L4: an unbound variable on a path no config reaches yet -----------------------
+
+
+def test_configure_optimizers_survives_a_scheduler_without_last_epoch():
+    """`current_epoch` was assigned only inside `if "last_epoch" in signature(...)`, while
+    `scheduler.last_epoch = current_epoch` ran unconditionally — so a scheduler that does
+    NOT take `last_epoch` raised `NameError`. Unreachable today (no config defines a
+    scheduler at all), and the first scheduler experiment would have hit it immediately.
+    """
+    import inspect as _inspect
+
+    base = pytest.importorskip("matcha.models.baselightningmodule")
+    src = pathlib.Path(base.__file__).read_text(encoding="utf-8")
+    body = src[src.index("def configure_optimizers"):src.index("def ", src.index("def configure_optimizers") + 10)]
+    # The assignment must dominate the use, not sit under the branch that may not run.
+    assert body.index("current_epoch = -1") < body.index('if "last_epoch" in')
+    assert body.index("current_epoch = -1") < body.index("scheduler.last_epoch = current_epoch")
+
+    # And the shape of the bug, reproduced so the fix has something to be a fix OF.
+    def old(has_last_epoch):
+        if has_last_epoch:
+            current_epoch = -1
+        return current_epoch                      # noqa: F821 — the defect
+    assert old(True) == -1
+    with pytest.raises(UnboundLocalError):
+        old(False)
+    assert "last_epoch" in _inspect.signature(
+        torch.optim.lr_scheduler.ExponentialLR).parameters, (
+        "the schedulers that DO take it are why the branch exists")

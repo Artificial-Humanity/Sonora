@@ -86,16 +86,27 @@ def _index_map(speakers):
     Refuses on a cross-namespace collision rather than letting one block win, since that is
     two speakers sharing an embedding row — the exact confusion the prefix proof exists to
     prevent, arriving from the other side.
+
+    TR-L2: that refusal used to fire only on DIFFERENT indices, so two namespaces assigning
+    the same id string to the SAME index collapsed into one dict entry and the check passed
+    with two speakers on one embedding row — the identical outcome, reached quietly. The id
+    is refused now regardless of index: a shared id across namespaces is the defect itself,
+    and whether the two happen to agree on a row number says nothing about whether they are
+    the same voice. Unreachable through `merge_emilia_corpus` (its own collision abort
+    refuses shared ids outright); the gap is against a hand-assembled `speakers.json`, which
+    is exactly the input a proof should not assume was produced correctly.
     """
     merged, source = {}, {}
     for key, block in sorted((speakers or {}).items()):
         if not key.endswith("_id_to_index") or not isinstance(block, dict):
             continue
         for sid, idx in block.items():
-            if sid in merged and merged[sid] != idx:
+            if sid in merged and source[sid] != key:
                 raise SystemExit(
                     f"ABORT: speaker id {sid!r} appears in both {source[sid]} and {key} "
-                    f"with different indices ({merged[sid]} vs {idx}).")
+                    f"(indices {merged[sid]} and {idx}). Namespaces exist because ids from "
+                    f"different datasets can look alike; one id in two of them is two "
+                    f"speakers sharing an embedding row, whether or not the indices match.")
             merged[sid], source[sid] = idx, key
     return merged
 

@@ -98,6 +98,21 @@ def assert_disjoint(holdout, corpus_filelists):
             return {os.path.basename(line.split("|")[0]) for line in f if line.strip()}
 
     held = basenames(holdout)
+    if not corpus_filelists:
+        # An omitted `--assert-disjoint-from` used to mean "no check ran", silently
+        # (TR-M3). The report then carried numbers that LOOK like holdout numbers and
+        # carry none of the guarantee, which is worse than not scoring: a contaminated
+        # comparison reads as a result. The check is the reason the instrument means
+        # anything, so it is not optional — name the corpora, or say out loud that you
+        # are deliberately scoring without the guarantee.
+        raise SystemExit(
+            "REFUSING to score with no contamination check.\n"
+            "  Pass --assert-disjoint-from <corpus filelist> [...] — normally every\n"
+            "  train/val filelist of the corpus the checkpoints were trained on.\n"
+            "  The holdout's entire claim is that no checkpoint has seen these clips;\n"
+            "  unchecked, this run would produce numbers with that claim's shape and\n"
+            "  none of its content."
+        )
     for corpus in corpus_filelists:
         overlap = held & basenames(corpus)
         if overlap:

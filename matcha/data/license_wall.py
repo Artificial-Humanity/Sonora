@@ -100,3 +100,42 @@ def enforce(filelist_paths):
                 "NC sources are de-risk-only (north star §8.2). For a de-risk "
                 "experiment set SONORA_LICENSE_WALL=derisk (taints the run)."
             )
+
+
+# The clean-holdout wall, as a gate rather than a naming convention (TR-M3).
+#
+# `data/libritts_r_holdout_devclean/README.md` said it plainly: "the wall will not stop a
+# training run pointed here. The naming is the guard." What actually stopped it was an
+# ACCIDENT — the 3-wide `holdout.txt` refused an 8-wide config on the vat_dim seam — and
+# that accident is gone: `holdout_8w.txt` was correctly built for scoring at the current
+# width, and it is the first holdout file a current config would happily TRAIN on.
+#
+# One epoch permanently destroys the lineage's only never-trained instrument, and there is
+# no second dev-clean to cut a new one from. Every rung of the quality-gap plan is gated on
+# holdout deltas, so the cost is not one run — it is the ability to measure any future run.
+# Grep-verified at the time of writing that no config or script references a holdout as a
+# training path: this is exposure, not an incident.
+#
+# Deliberately a substring test on the PATH, not a manifest lookup. It has to hold for a
+# holdout that does not exist yet, and the naming convention is already the thing every
+# other guard leans on. `score_holdout.py` is unaffected — it constructs `TextMelDataset`
+# directly and never comes through the datamodule, which is the seam that makes this
+# cheap: the sanctioned reader keeps working, and only the training path refuses.
+#
+# Val is refused too. A holdout used as a val set selects checkpoints on it, which is
+# fitting to it by a slower route.
+HOLDOUT_MARKER = "holdout"
+
+
+def refuse_holdout(filelist_paths):
+    hits = [p for p in filelist_paths if HOLDOUT_MARKER in str(p).lower()]
+    if hits:
+        raise RuntimeError(
+            "REFUSING to train: a filelist path names a HOLDOUT.\n"
+            + "".join(f"  {p}\n" for p in hits)
+            + "  The clean holdout is the lineage's only never-trained measurement and\n"
+              "  there is no second dev-clean to replace it. One epoch over it and every\n"
+              "  cross-rung comparison the plan depends on becomes meaningless.\n"
+              "  To SCORE a checkpoint on it, use scripts/score_holdout.py, which reads\n"
+              "  the filelist without ever putting it in front of an optimizer."
+        )

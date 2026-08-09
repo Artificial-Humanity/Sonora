@@ -13,5 +13,11 @@ model_checkpoint:
   save_weights_only: False # if True, then only the model’s weights will be saved
   every_n_train_steps: null # number of training steps between checkpoints
   train_time_interval: null # checkpoints are monitored at the specified time interval
-  every_n_epochs: 100 # number of epochs between checkpoints
+  # TR-L5: was 100, which is longer than this lineage's runs converge in — v5 delivered
+  # 100% of its gain by epoch 9 — so a default-config run retained only `last.ckpt` and
+  # the per-epoch checkpoints the holdout methodology reads did not exist unless someone
+  # remembered a launch-time override. The v5 run clearly used one and where it lived was
+  # recorded nowhere. 1 makes the default match how the lineage is actually measured;
+  # `save_top_k: 10` above still bounds what is retained, so this costs no more disk.
+  every_n_epochs: 1 # number of epochs between checkpoints
   save_on_train_epoch_end: null # whether to run checkpointing at the end of the training epoch or the end of validation
