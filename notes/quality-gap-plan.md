@@ -25,7 +25,7 @@ scoped and decided but NOT built.**
 | **P0** | 0a — never-trained holdout | ✅ **DONE 2026-08-06** | — | [§ 0a](#0a--the-never-trained-holdout--done-and-it-reported-2026-08-06) |
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
-| | **rung 2 — v6, +expressive-registers (1,004 eligible keeps)** | 🔨 **decided, NOT built** — 3 prerequisites open | **the baseline audition's Qwen half**, then the build | ditto |
+| | **rung 2 — v6, +expressive-registers (1,004 eligible keeps)** | 🔨 **decided, NOT built** — 3 prerequisites open | the build itself (the Qwen audition was **deferred**, owner 2026-08-09, and does not gate this) | ditto |
 | | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ not pulled | rung 1's holdout | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
@@ -359,10 +359,14 @@ work rather than a lookup:
   button not being pressed. Before treating a dead dial as a model defect, confirm the
   render actually re-ran: at `guidance` 1.0 (CFG off) and 10 ODE steps the effect is subtle
   by design, and temperature 0.667 means two renders at identical settings already differ.
-- ⬜ **Sonora vs Qwen — still open, and it is the informative half.** How far the gap is
-  says what to spend on next; two tied checkpoints never could.
-- ⬜ **The pre-v6 baseline capture**, for the same reason it was scheduled first: once v6
-  trains, "what did Sonora sound like before the delivery channel existed" is gone.
+- ⏸ **Sonora vs Qwen — DEFERRED by the owner, 2026-08-09. It does not gate rung 2.**
+  Still the informative half whenever it is wanted: how far the gap is says what to spend
+  on next, which two tied checkpoints never could. Deferred, not dropped — it needs an ear
+  and an ear was not what rung 2 was waiting on.
+- ⬜ **The pre-v6 baseline capture is a separate, ear-free job** and is the only part with
+  an expiry: rendering and keeping a handful of `ep019` clips costs no listening time, and
+  once v6 trains, "what did Sonora sound like before the delivery channel existed" cannot
+  be reconstructed. Cheap now, impossible later.
 
 **WHY THIS COMES FIRST, AND IT IS NOT OPTIONAL.** Before v6 trains,
 put **ep009 · ep019 · Qwen** in front of the ear on **delivery-blank** passages. Three
