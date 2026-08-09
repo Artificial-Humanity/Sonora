@@ -17,14 +17,15 @@ rung 1 is built** — see the pathway below for where the front actually is.
 _Added 2026-08-08 at the owner's request. This is the INDEX, not the detail: every row
 links to the section that owns it. If a row and its section disagree, the section wins._
 
-**Where the front is: Phase 1, rung 1, awaiting a GPU slot.**
+**Where the front is: Phase 1, rung 2 — v5 trained and scored, `ep019` selected; v6 is
+scoped and decided but NOT built.**
 
 | | step | status | gated on | detail |
 |---|---|---|---|---|
 | **P0** | 0a — never-trained holdout | ✅ **DONE 2026-08-06** | — | [§ 0a](#0a--the-never-trained-holdout--done-and-it-reported-2026-08-06) |
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
-| **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | 🔨 **BUILT, not launched** | **a GPU slot + spin-down** | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
-| | rung 2 — v6, +expressive-registers (**existing** synth) | ⏸ needs +116 ear-certified keeps | rung 1's holdout | ditto |
+| **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
+| | **rung 2 — v6, +expressive-registers (1,004 eligible keeps)** | 🔨 **decided, NOT built** — 3 prerequisites open | **the baseline audition's Qwen half**, then the build | ditto |
 | | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ not pulled | rung 1's holdout | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
@@ -347,7 +348,23 @@ work rather than a lookup:
    their existing ids or drop them; do not append. The 103 `librivox` keeps are ours and
    genuinely new.
 
-**STEP 0 — THE BASELINE AUDITION COMES FIRST, AND IT IS NOT OPTIONAL.** Before v6 trains,
+**STEP 0 — PARTLY DONE 2026-08-09.** The checkpoint half ran; the Qwen half has not.
+
+- ✅ **ep009 vs ep019 — no discernible difference (owner's ear).** The pick is **ep019**,
+  taken on total. The null is the result: neither loss margin is perceptually real, so
+  ep009's 0.0013 `diff` edge is not grounds to reopen it. Recorded in
+  `logs/train/vat5_finetune/SELECTED.md`.
+- ✅ **The V/A/T dials work** — small but real effect, confirmed the same session. Worth
+  recording because the first read was "the dials do nothing", which was the Synthesize
+  button not being pressed. Before treating a dead dial as a model defect, confirm the
+  render actually re-ran: at `guidance` 1.0 (CFG off) and 10 ODE steps the effect is subtle
+  by design, and temperature 0.667 means two renders at identical settings already differ.
+- ⬜ **Sonora vs Qwen — still open, and it is the informative half.** How far the gap is
+  says what to spend on next; two tied checkpoints never could.
+- ⬜ **The pre-v6 baseline capture**, for the same reason it was scheduled first: once v6
+  trains, "what did Sonora sound like before the delivery channel existed" is gone.
+
+**WHY THIS COMES FIRST, AND IT IS NOT OPTIONAL.** Before v6 trains,
 put **ep009 · ep019 · Qwen** in front of the ear on **delivery-blank** passages. Three
 things it buys, and only the third is time-critical:
 
