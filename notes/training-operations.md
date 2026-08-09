@@ -12,19 +12,8 @@ _Last updated: 2026-08-06._
 
 ## Runs to date
 
-**Nothing is training right now.** Every row below is stopped or complete; no run is queued.
-
-| Run | Container | State | Purpose |
-|---|---|---|---|
-| HiFi-GAN 24 kHz/80-band fine-tune | `vocoder_training` | **STOPPED 2026-07-15 @ g_02510000** — convergence watcher fired CONVERGED, A/B pairs human-audited (indistinguishable), checkpoint promoted. Watcher timer disabled. Confirmed 2026-08-06 by copy-synthesis to be **perceptually transparent** — the vocoder is not the quality bottleneck ([quality-gap-plan.md](quality-gap-plan.md)). | The 24 kHz vocoder ([decision](model-decisions.md)) |
-| §7 de-risk energy fine-tune | `sonora_training` | **STOPPED 2026-07-16 @ checkpoint_epoch=099** — watcher fired CONVERGED (all 4 sweep groups, real margin: energy ρ≈1.000, WER Δ≤0.042, leakage≤0.091), sweep renders human-audited (energy/loudness discernible, natural). Training had continued to epoch 106; epoch 099 is the promoted checkpoint. Watcher timer disabled. | One trained FiLM channel (energy) |
-| vat3 full 3-channel fine-tune | `sonora_training` | **STOPPED 2026-07-21 @ checkpoint_epoch=099** (owner call after the corrected audition; run had reached ~epoch 101 on a val-loss curve flat since epoch ~5). Verdict: energy PASS (ρ=1.0 ×4), tension near-pass (ρ=1.0 ×2, 0.90 ×2), **valence FAIL** (ρ scattered — labels, not steps, are the binding constraint). Eval-harness valence measure was found degenerate (raw EIV head, 81% dead zone) and switched to the valence_combo_v1 9-head combo mid-audit; both reports kept. Staged to `Sonora/huggingface/vat3-24k/`. MLflow run `wistful-dolphin-948` FINISHED. | First full-VAT (V/A/T) checkpoint |
-| **vat3c fine-tune** | `sonora_training` | **COMPLETE 2026-08-06 @ epoch=099** — 100 epochs, run `2026-08-05_15-02-57`, exit 0. Same three FiLM channels on the corrected corpus (`libritts_r_vat_v3c`, 30,485 train clips: apostrophe-clean phonemes, per-clip hash split, `data_statistics` measured on this split — mel_mean −5.525067 / mel_std 2.388571 vs v2's −5.504811 / 2.386137). Warm-started **338/338, 0 fresh** from vat3-24k ep099. Repo at `25a0f68`; seam test 13/13 in-container before launch. **Verdict: RETIRED 2026-08-06 — a regression, not the no-op the ear reported.** The `op_g2p` fix was the whole fix; scored against the never-trained holdout, ep099 is +0.0164 worse than its own warm start with all three loss terms worse, and +0.0443 worse on v3c's own val split ([quality-gap-plan.md § 0a](quality-gap-plan.md)). Base new runs on **vat3-24k ep099** (`warmstart/vat3_ep099.ckpt`); the launcher refuses this experiment by name. | The last 3-wide run before the delivery channel — kept for provenance, not as a starting point |
-
-> The 2026-08-04 13:19 launch of this same run is not a separate row: the E610 NIC fault killed it
-> at ~4.5 h and then crash-looped it 2,077 times. That is a host fault, and it is written up in
-> [AI-Lab-AMD/notes/host-networking.md](../../../AI-Lab-AMD/notes/host-networking.md); the
-> `&&`-in-the-prep-chain half of it is fixed in compose (see § Checkpoint and resume settings).
+**Checkpoint standing lives in [STATE.md § Checkpoint lineage](STATE.md)** — one table, not
+restated here. What belongs in this file is how to run one, and what has bitten.
 
 ### Reading a Matcha training curve (learned on vat3c)
 
@@ -81,10 +70,29 @@ SONORA_EXPERIMENT=<name> docker compose -f AI-Lab-AMD/docker-compose.yml \
 ```
 
 `SONORA_EXPERIMENT` has **no default**, and unset the container prints why and idles
-rather than training. `SONORA_WARMSTART` picks the base for a genuinely fresh run and
-defaults to `warmstart/vat3_ep099.ckpt` — the best checkpoint in the lineage on
-never-trained audio. Auto-resume is now **scoped to the named experiment's own run
-dirs**, so a run can only ever resume itself.
+rather than training. Auto-resume is **scoped to the named experiment's own run dirs**, so
+a run can only ever resume itself.
+
+⚠ **ALWAYS PASS `SONORA_WARMSTART` EXPLICITLY.** Its compose default is still
+`warmstart/vat3_ep099.ckpt`, which was the best checkpoint in the lineage when that default
+was written and is **no longer the base** — `vat5_finetune` **ep019** is (STATE.md). The
+default is also 3-wide against an 8-wide config, so relying on it lands on the vat_dim seam
+rather than on a silent mistrain; the seam guard is what makes the stale default merely
+annoying instead of dangerous. Fixing the default is an `AI-Lab-AMD/docker-compose.yml`
+change and belongs to whoever next launches a run.
+
+**A concluded run cannot be silently continued.** The launcher refuses any experiment whose
+log dir holds a `RETIRED.md` or `SELECTED.md` verdict file — because auto-resume takes the
+NEWEST checkpoint, which is not necessarily the one the verdict selected (for
+`vat5_finetune` the newest is ep039, inside the degraded region, not the ep019 that was
+picked). It also refuses `vat3c_finetune` by name. To build on a concluded run, choose a
+**new** `SONORA_EXPERIMENT` and pass the selected checkpoint as `SONORA_WARMSTART`.
+
+**Per-epoch checkpointing is forced at launch**, not by the experiment config: the compose
+command appends `callbacks.model_checkpoint.every_n_epochs=1` and `save_top_k=-1`. The
+repo config default was 100 until 2026-08-09 — longer than this lineage converges in — so a
+run launched any other way retained only `last.ckpt` and the per-epoch checkpoints the
+holdout methodology reads did not exist. Both now say 1.
 
 This replaced a `command:` that hardcoded `experiment=vat3c_finetune` *and*, separately,
 globbed that experiment's checkpoints for a resume target. Both halves were traps the
