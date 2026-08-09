@@ -352,8 +352,18 @@ def cmd_select(args):
         flagged = {ln.strip() for ln in open(args.flags) if ln.strip()}
     groups_of = _bank_groups(args.campaign)
     rows = _read()
+    # C-M1, second half. The requeue branch in `mutate` below draws from `keep_ids`, and
+    # `keep_ids` is built entirely out of `by_group` — so restricting the pool to
+    # `unaudited` made "deferral is revisable" unreachable code: an id in `keep_ids` was
+    # by construction an unaudited row's id, and the `elif ... == "deferred"` branch could
+    # never fire. Deferred rows are candidates again on every pass; `mutate` is what
+    # distinguishes the two states, not this filter.
+    #
+    # Rows the ear has already ruled on (keep/drop/reroll/…) stay out: a verdict is not
+    # revisable by sampling. This also makes selection STABLE across re-runs — the group's
+    # id list no longer shrinks each pass, so the positional spread picks the same clips.
     camp = [r for r in rows if r["campaign"] == args.campaign
-            and r["status"] == "unaudited"]
+            and r["status"] in ("unaudited", "deferred")]
     by_group = defaultdict(list)
     unmatched = []
     for r in camp:

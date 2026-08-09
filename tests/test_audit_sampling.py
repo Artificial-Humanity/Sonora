@@ -6,6 +6,9 @@ into the statistics they are supposed to be excluded from — none of them error
 leaves a report that looks complete.
 """
 
+import argparse
+import csv
+import json
 import math
 import os
 import pathlib
@@ -52,16 +55,102 @@ def test_a_zero_fraction_still_means_no_sample():
 # --- C-M1: deferral was one-way -------------------------------------------------------
 
 
-def test_deferral_is_revisable():
+def _select_fixture(tmp_path, monkeypatch, n=12, engine="qwen"):
+    """A one-group campaign on disk: bank.json + ratings.csv, all rows unaudited."""
+    pa = pytest.importorskip("pick_audit_subset")
+    datasets = tmp_path / "datasets"
+    (datasets / "camp").mkdir(parents=True)
+    ids = [f"clip_{i:04d}" for i in range(n)]
+    (datasets / "camp" / "bank.json").write_text(json.dumps({"lines": [
+        {"id": i, "book": "a-book", "intended_delivery": "Neutral", "engine": engine}
+        for i in ids]}), encoding="utf-8")
+
+    ratings = tmp_path / "ratings.csv"
+    with open(ratings, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["campaign", "id", "engine", "score",
+                                          "note", "status"])
+        w.writeheader()
+        for i in ids:
+            w.writerow({"campaign": "camp", "id": i, "engine": engine,
+                        "score": "", "note": "", "status": "unaudited"})
+
+    monkeypatch.setattr(pa, "RATINGS", str(ratings))
+    monkeypatch.setattr(pa, "DATASETS", str(datasets))
+    # The new-reader rule reads real manifests and profiles off /data; this campaign is
+    # synthesis, so neither applies. Stubbed so the test isolates the defer/requeue flip.
+    monkeypatch.setattr(pa, "_clip_readers", lambda: {})
+    monkeypatch.setattr(pa, "_confirmed_reader_titles", lambda: set())
+    return pa, ratings, ids
+
+
+def _statuses(ratings):
+    with open(ratings, newline="", encoding="utf-8") as f:
+        return {r["id"]: r["status"] for r in csv.DictReader(f)}
+
+
+def _select(pa, flags=None):
+    pa.cmd_select(argparse.Namespace(campaign="camp", flags=flags))
+
+
+def test_deferral_is_revisable(tmp_path, monkeypatch):
     """A clip deferred by an earlier `select` and QC-flagged by a LATER pass stayed
     deferred forever — invisible in todo, never heard. QC runs after every generation pass
     and `--flags` grows, so deferral has to be revisable or the flags cannot reach the ear
     at all. That quietly breaks this tool's one non-negotiable rule, which its own
-    docstring states: every QC-flagged clip goes to the ear."""
-    src = _src("pick_audit_subset.py")
-    assert 'r["id"] in keep_ids and r["status"] == "deferred"' in src
-    assert 'r["status"] = "unaudited"' in src
-    assert "re-queued" in src, "a silent re-queue is the same class of problem"
+    docstring states: every QC-flagged clip goes to the ear.
+
+    QC-H2 (2026-08-09): this test used to assert the SOURCE STRINGS of the fix, and it
+    passed for two days over a branch that could never execute — `by_group` was built from
+    `status == "unaudited"` rows only, so every id in `keep_ids` was an unaudited row's id
+    and the `elif ... == "deferred"` arm was unreachable. A grep test cannot see reachability.
+    """
+    pa, ratings, ids = _select_fixture(tmp_path, monkeypatch)
+
+    _select(pa)                                   # first pass: sample, defer the rest
+    after_first = _statuses(ratings)
+    deferred = [i for i, s in after_first.items() if s == "deferred"]
+    assert deferred, "the fixture must actually defer something for this to mean anything"
+
+    # A later qc_gate pass flags one of the deferred clips.
+    flags = tmp_path / "qc_flags.txt"
+    flags.write_text(deferred[0] + "\n", encoding="utf-8")
+    _select(pa, flags=str(flags))
+
+    assert _statuses(ratings)[deferred[0]] == "unaudited", (
+        "a QC-flagged clip that was previously deferred never reached the ear")
+
+
+def test_a_verdict_the_ear_has_already_given_is_not_revisable(tmp_path, monkeypatch):
+    """Deferral is a sampling decision and may be revisited; a `keep`/`drop` is the ear's
+    answer and sampling must never touch it. Widening the candidate pool is only safe
+    because the widening stops at `deferred`."""
+    pa, ratings, ids = _select_fixture(tmp_path, monkeypatch)
+    rows = list(csv.DictReader(open(ratings, newline="", encoding="utf-8")))
+    for r in rows[:4]:
+        r["status"], r["score"] = "keep", "4"
+    with open(ratings, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+
+    flags = tmp_path / "qc_flags.txt"
+    flags.write_text("\n".join(r["id"] for r in rows[:4]), encoding="utf-8")
+    _select(pa, flags=str(flags))
+
+    after = _statuses(ratings)
+    assert [after[r["id"]] for r in rows[:4]] == ["keep"] * 4
+
+
+def test_selection_is_stable_across_reruns(tmp_path, monkeypatch):
+    """A consequence of the fix worth pinning: because the candidate pool no longer
+    shrinks each pass, the positional spread picks the SAME clips on a re-run. Under the
+    old filter a second `select` re-sampled whatever was left and slowly dragged the whole
+    campaign into the queue, one pass at a time."""
+    pa, ratings, ids = _select_fixture(tmp_path, monkeypatch)
+    _select(pa)
+    first = _statuses(ratings)
+    _select(pa)
+    assert _statuses(ratings) == first
 
 
 def test_the_rule_it_protects_is_still_written_down():
