@@ -171,6 +171,7 @@ def main():
     from matcha.data.license_wall import classify_path
     from matcha.data.license_wall import enforce as license_check
     from matcha.delivery import vat_vector
+    from matcha.text import op_g2p
     from matcha.text.op_g2p import OpenPhonemizerG2P
 
     # Pre-flight the provenance of everything this will touch, BEFORE ~13k phonemizations.
@@ -238,6 +239,14 @@ def main():
         if rec is None:
             drop("no ASR cross-check", base)
             continue
+        # A row whose transcription ERRORED carries `error` and no `wer` (TR-L1). It is
+        # neither absent nor droppable by the test above, so `rec["wer"]` raised a bare
+        # `KeyError: 'wer'` — late in a ~13k-clip run, naming no clip, from a script whose
+        # every other refusal says which clip and why. An unmeasurable caption is simply
+        # one we cannot cross-check, which is what "no ASR cross-check" already means.
+        if "wer" not in rec:
+            drop("no ASR cross-check", base, f"asr error: {str(rec.get('error'))[:60]}")
+            continue
         if rec["wer"] > ASR_MAX_WER:
             drop("caption WER", base, f"wer={rec['wer']:.2f} :: {rec['text'].strip()[:60]}")
             continue
@@ -247,7 +256,15 @@ def main():
             drop("empty caption", base)
             continue
         # D-M3, per clip. See the module docstring for why these are not normalized.
-        if re.search(r"[0-9]", text):
+        #
+        # Asked of the text the TOKENIZER will see, not of the raw caption (TR-M1). This
+        # was `re.search(r"[0-9]", text)` on the raw string, and `op_g2p.phonemize` runs
+        # `convert_to_ascii` first — unidecode manufactures ASCII digits out of characters
+        # `[0-9]` cannot match (`１００` -> `100`, `²` -> `2`, `½` -> ` 1/2`), which
+        # `_TOKEN_RE` then silently deletes. Such a clip trained with a transcript missing
+        # a word its audio speaks: the exact defect this drop exists to prevent, shipped
+        # THROUGH the drop.
+        if op_g2p.carries_digits(text):
             drop("digits", base, text[:60])
             continue
 
@@ -268,7 +285,14 @@ def main():
             continue
         spk_seen.setdefault(spk, None)
 
-        v, a, t = anchor_mod.label(row, anchor)
+        # A clip whose label cannot be trusted is dropped, not degraded into a number
+        # (TR-M2). `label` refuses a non-finite result or a missing weighted head; both
+        # would otherwise reach the filelist looking exactly like a measurement.
+        try:
+            v, a, t = anchor_mod.label(row, anchor)
+        except anchor_mod.LabelError as e:
+            drop("unlabelable", base, str(e)[:80])
+            continue
         # Delivery is `unknown` for every Emilia row, which is the all-zero block and
         # therefore exactly contract-v1 conditioning. These clips were mined on acoustics
         # and nobody has heard one, so a lane here would be a guess about mode of address.

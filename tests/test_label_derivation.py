@@ -8,12 +8,15 @@ and is quietly wrong, in units indistinguishable from real measurements.
 
 import json
 import os
+import pathlib
 import sys
 
 import pytest
 
+REPO = pathlib.Path(__file__).resolve().parent.parent
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 sys.path.insert(0, SCRIPTS)
+sys.path.insert(0, str(REPO))
 
 np = pytest.importorskip("numpy")
 
@@ -262,13 +265,62 @@ def test_the_speaker_table_only_ever_grew():
 def test_no_merged_row_carries_a_digit_or_the_wrong_width():
     """D-M3 at the artifact. The tokenizer DELETES digits, so a surviving digit means a
     clip whose transcript is missing a word its audio speaks — undetectable downstream,
-    which is why it is checked where it would land rather than only where it is filtered."""
+    which is why it is checked where it would land rather than only where it is filtered.
+
+    ⚠ TR-M1: the phoneme half of this assertion CANNOT FAIL, by construction — `_TOKEN_RE`
+    deletes digits, so they are gone from the IPA whether or not the filter caught them.
+    It is kept as a structural pin, and the real check lives in
+    `test_the_digit_filter_asks_what_the_tokenizer_will_see` below, on the INPUT side.
+    """
     for name in ("train_op.txt", "val_op.txt"):
         for row in _rows(MERGED, name):
             fields = row.split("|")
             assert len(fields) == 4
             assert len(fields[3].split(",")) == 8, "conditioning must be contract-v2 wide"
             assert not any(c.isdigit() for c in fields[2]), "a digit reached the phonemes"
+
+
+def test_the_digit_filter_asks_what_the_tokenizer_will_see():
+    """TR-M1. The rule existed in three spellings with three answers, and NONE of them ran
+    on the string the tokenizer sees:
+
+        merge     re.search(r"[0-9]", raw)          — misses full-width, superscript, ½
+        derive    any(c.isdigit() for c in raw)     — misses ½ (that is `isnumeric`)
+        validate  looks at the IPA                  — where digits can never appear
+
+    All three ran BEFORE `convert_to_ascii`, and unidecode MANUFACTURES ASCII digits:
+    `１００` -> `100`, `²` -> `2`, `½` -> ` 1/2`. So a caption passed the filter, the
+    tokenizer deleted the numeral, and the clip trained with a transcript missing a word
+    its audio speaks — the exact defect the drop exists to prevent, shipped through it.
+    """
+    op_g2p = pytest.importorskip("matcha.text.op_g2p")
+    for text in ("chapter 100", "chapter １００", "a ² power", "half a ½ measure",
+                 "2 o'clock"):
+        assert op_g2p.carries_digits(text), text
+        # ...and each of these really does lose a token to `_TOKEN_RE`.
+        assert not any(t.isdigit() for t in
+                       op_g2p._TOKEN_RE.findall(op_g2p.normalize_for_tokens(text)))
+    for text in ("plain words only", "chapter Ⅻ", "a hyphen-joined word"):
+        assert not op_g2p.carries_digits(text), text
+
+
+def test_the_old_spellings_are_gone_from_both_lanes():
+    """One rule, one implementation — beside the tokenizer that does the deleting."""
+    for name in ("merge_emilia_corpus.py", "derive_vat_corpus.py"):
+        src = (REPO / "scripts" / name).read_text(encoding="utf-8")
+        code = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
+        assert "op_g2p.carries_digits(" in code, f"{name} does not use the shared rule"
+        assert 'search(r"[0-9]"' not in code, f"{name} still carries its own spelling"
+        assert "any(c.isdigit() for c in text)" not in code
+
+
+def test_normalization_and_tokenization_have_not_drifted_apart():
+    """`carries_digits` is only correct while it runs the SAME prefix `phonemize` does.
+    Factoring it out is what makes that true; this is what keeps it true."""
+    op_g2p = pytest.importorskip("matcha.text.op_g2p")
+    src = pathlib.Path(op_g2p.__file__).read_text(encoding="utf-8")
+    assert "text = normalize_for_tokens(text)" in src, "phonemize forked its own prefix"
+    assert src.count("convert_to_ascii(text)") == 1
 
 
 @pytestmark_merged
@@ -294,3 +346,79 @@ def test_one_wer_threshold_serves_both_lanes():
     assert isinstance(sc.ASR_MAX_WER, float)
     gate = open(os.path.join(SCRIPTS, "synthesis", "qc_gate.py"), encoding="utf-8").read()
     assert "ASR_MAX_WER = synth_common.ASR_MAX_WER" in gate, "the threshold forked again"
+
+
+# --- TR-M2: the anchor lane had no non-finite guard -----------------------------------
+
+
+ANCHOR = {"lufs": (-20.0, 3.0), "alpha_db": (0.0, 1.0), "cpp": (0.0, 1.0),
+          "h1h2": (0.0, 1.0), "head:Soft_vs._Harsh": (0.0, 1.0),
+          "head:Amusement": (0.0, 1.0), "head:Valence": (0.0, 1.0),
+          "t_composite": (0.0, 1.0), "v_composite": (0.0, 1.0),
+          "weights": {"Amusement": 0.4, "Valence": 0.6}}
+ROW = {"lufs": -20.0, "alpha_db": 0.1, "cpp": 0.2, "h1h2": 0.3,
+       "head:Soft_vs._Harsh": 0.1, "head:Amusement": 0.2, "head:Valence": -0.1}
+
+
+def _anchor_mod():
+    return pytest.importorskip("anchor_emilia_labels")
+
+
+def test_a_clean_row_still_labels():
+    mod = _anchor_mod()
+    v, a, t = mod.label(dict(ROW), ANCHOR)
+    assert all(-1.0 <= x <= 1.0 for x in (v, a, t))
+
+
+@pytest.mark.parametrize("field", ["lufs", "cpp", "head:Valence"])
+def test_a_single_nan_measure_refuses_rather_than_shipping(field):
+    """TR-M2. The derive lane aborts on a non-finite z for exactly this reason and this
+    lane had no check, though it labels the same three channels of the same corpus.
+
+    A NaN here is worse than a crash: `np.clip` propagates it, the filelist carries the
+    string `"nan"`, `float("nan")` parses CLEANLY at load, and the poisoned conditioning
+    vector reaches the FiLM trunk with nothing having failed anywhere. The artifact test
+    only catches the all-three-NaN case, so a single-channel NaN passed everything.
+    """
+    mod = _anchor_mod()
+    row = dict(ROW, **{field: float("nan")})
+    with pytest.raises(mod.LabelError, match="non-finite"):
+        mod.label(row, ANCHOR)
+
+
+def test_the_clamp_is_why_a_nan_is_not_obvious():
+    """Kept as the record of why this needed a guard rather than being self-evident:
+    `np.clip(nan, -1, 1)` is `nan`, and `float(nan)` formats as a perfectly ordinary
+    `nan` in a `%.4f` field — the row looks like every other row."""
+    assert np.isnan(np.clip(float("nan"), -1.0, 1.0))
+    assert f"{float('nan'):.4f}" == "nan"
+    assert np.isnan(float("nan")), "and it parses straight back at load time"
+
+
+def test_a_missing_weighted_head_refuses_instead_of_biasing_v():
+    """The quieter half. Skipping a head the row does not carry does not fail — it biases
+    V toward 0 in units indistinguishable from a measurement. `mine_emilia_keeps` checks
+    one sample row per tar, so a degraded EIV run is invisible to it at row granularity."""
+    mod = _anchor_mod()
+    row = dict(ROW)
+    del row["head:Valence"]                        # weight 0.6 — the dominant term
+    with pytest.raises(mod.LabelError, match="weighted head"):
+        mod.label(row, ANCHOR)
+
+
+def test_the_merge_drops_an_unlabelable_clip_rather_than_dying():
+    """A corpus build is 13k clips long; one bad row must cost that row, not the run."""
+    src = (REPO / "scripts" / "merge_emilia_corpus.py").read_text(encoding="utf-8")
+    assert "except anchor_mod.LabelError" in src
+    assert 'drop("unlabelable"' in src
+
+
+def test_an_asr_error_row_names_the_clip_it_dropped():
+    """TR-L1. A clip whose transcription ERRORED carries `error` and no `wer`, so it is
+    neither absent nor droppable by the `rec is None` test — `rec["wer"]` raised a bare
+    `KeyError: 'wer'` late in a ~13k-clip run, naming no clip, from a script whose every
+    other refusal says which clip and why."""
+    src = (REPO / "scripts" / "merge_emilia_corpus.py").read_text(encoding="utf-8")
+    assert 'if "wer" not in rec:' in src
+    i, j = src.index('if "wer" not in rec:'), src.index('if rec["wer"] > ASR_MAX_WER')
+    assert i < j, "the guard must precede the read it protects"

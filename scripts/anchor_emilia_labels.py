@@ -75,6 +75,10 @@ SOFT_HEAD = "Soft_vs._Harsh"
 COMPONENTS = (("alpha_db", 1.0), ("cpp", 1.0), ("h1h2", -1.0))
 
 
+class LabelError(ValueError):
+    """A clip whose label cannot be trusted. Never silently degraded into a number."""
+
+
 def clamp2(z):
     """The corpus lane's final mapping, unchanged — see derive_vat_corpus."""
     return np.clip(z / 2.0, -1.0, 1.0)
@@ -155,16 +159,45 @@ def emilia_rows():
 
 
 def label(row, anchor):
-    """One clip's (V, A, T) on the global anchor, in the corpus's own [-1, 1]."""
+    """One clip's (V, A, T) on the global anchor, in the corpus's own [-1, 1].
+
+    Raises `LabelError` on a non-finite result or a missing weighted head (TR-M2). The
+    derive lane aborts on exactly this and this lane did not, though it produces labels
+    for the same three channels of the same corpus.
+
+    **Why a NaN here is worse than a crash.** `np.clip` propagates it, the filelist
+    carries the string `"nan"`, and `float("nan")` parses cleanly at load
+    (`text_mel_datamodule`), so a poisoned conditioning vector reaches the FiLM trunk with
+    nothing having failed anywhere. The artifact test catches the all-three-NaN case; a
+    single-channel NaN passes every test we have. The shipped v5 corpus was verified clean
+    (0 non-finite / out-of-range rows) — this is the guard for the NEXT anchor run.
+
+    The missing-head check is the quieter half. `label()` used to skip a weighted head it
+    could not find, which does not fail — it biases V toward 0 in units indistinguishable
+    from a real measurement. `mine_emilia_keeps` checks one sample row per tar, so an EIV
+    run that degrades partway through a file is invisible to it. Silence is the failure
+    mode; the count is the fix.
+    """
     z = lambda key, val: (val - anchor[key][0]) / anchor[key][1]
     a = clamp2(z("lufs", row["lufs"]))
     t = sum(sign * z(n, row[n]) for n, sign in COMPONENTS)
     t -= z(f"head:{SOFT_HEAD}", row[f"head:{SOFT_HEAD}"])
     t = clamp2((t - anchor["t_composite"][0]) / anchor["t_composite"][1])
+    missing = [h for h in anchor["weights"] if f"head:{h}" not in row]
+    if missing:
+        raise LabelError(f"{len(missing)} weighted head(s) absent from this row, "
+                         f"e.g. {sorted(missing)[:3]} — V would be biased toward 0 in "
+                         f"units indistinguishable from a measurement")
     v = sum(w * z(f"head:{h}", row[f"head:{h}"])
             for h, w in anchor["weights"].items() if f"head:{h}" in row)
     v = clamp2((v - anchor["v_composite"][0]) / anchor["v_composite"][1])
-    return float(v), float(a), float(t)
+    out = (float(v), float(a), float(t))
+    bad = [n for n, x in zip("VAT", out) if not np.isfinite(x)]
+    if bad:
+        raise LabelError(f"non-finite label on channel(s) {bad} — this would reach the "
+                         f"filelist as 'nan', parse cleanly at load, and poison the FiLM "
+                         f"trunk mid-run")
+    return out
 
 
 def main():
@@ -181,7 +214,21 @@ def main():
         print(f"  !! {len(missing)} keep(s) have no probe measure or EIV score: "
               f"{missing[:3]} — they cannot be labelled and must not be written")
 
-    lab = {b: label(r, anchor) for b, r in rows.items()}
+    lab, unlabelable = {}, []
+    for b, r in rows.items():
+        try:
+            lab[b] = label(r, anchor)
+        except LabelError as e:
+            unlabelable.append((b, str(e)))
+    if unlabelable:
+        # Reported here rather than raised, because this script is the REPORT: it prints
+        # the distribution the owner reads before the merge consumes the same labels. A
+        # crash would hide the other 41k rows' summary; a silent skip would misstate it.
+        # The merge drops these clips (TR-M2).
+        print(f"\n!! {len(unlabelable)} clip(s) CANNOT be labelled and must not be "
+              f"written:")
+        for b, why in unlabelable[:3]:
+            print(f"     {b}: {why[:100]}")
     arr = np.array(list(lab.values()))
     ref = np.array([[float(x) for x in ln.split("|")[3].split(",")[:3]]
                     for ln in open(os.path.join(CORPUS, "train_op.txt"), encoding="utf-8")])

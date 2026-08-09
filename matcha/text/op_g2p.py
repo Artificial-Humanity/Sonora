@@ -133,6 +133,54 @@ _VOICELESS_ENDINGS = ("p", "t", "k", "f", "θ")
 _STRESS_MARKS = "ˈˌː"
 
 
+def normalize_for_tokens(text):
+    """The exact pre-normalization `phonemize` applies before `_TOKEN_RE` runs.
+
+    Factored out (TR-M1) so a caller can ask what the TOKENIZER will see rather than
+    guessing from the raw string. Everything upstream of tokenization lives here and
+    nowhere else; `phonemize` calls this and then tokenizes.
+    """
+    text = convert_to_ascii(text)
+    text = lowercase(text)
+    text = expand_abbreviations(text)
+    text = remove_brackets(text)
+    # Hyphens/dashes between words act as separators, like espeak.
+    #
+    # `convert_to_ascii` above already folds every Unicode dash to ASCII (`—` -> `--`),
+    # so this line only ever sees hyphen-minus here. The full class is kept anyway and
+    # held byte-identical to `synth_common.DASH_RUN` (parity-tested): the QC lane has no
+    # unidecode, that asymmetry is what produced QC-M1, and a caller that ever reaches
+    # this without the ascii pass must not silently get a narrower rule.
+    text = DASH_RUN.sub(" ", text)
+    return collapse_whitespace(text)
+
+
+def carries_digits(text):
+    """Will this text still contain a digit when the tokenizer deletes it? (TR-M1)
+
+    ONE definition, deliberately placed beside the tokenizer that does the deleting.
+    There were three, with three different answers, and none of them ran on the string
+    the tokenizer actually sees:
+
+        `merge_emilia_corpus`   re.search(r"[0-9]", raw_caption)
+        `derive_vat_corpus`     any(c.isdigit() for c in raw_text)
+        `op_g2p.validate`       looks at the IPA — where digits can never appear,
+                                because `_TOKEN_RE` already deleted them
+
+    The gap is that the check ran BEFORE `convert_to_ascii`, and unidecode manufactures
+    ASCII digits out of characters none of those tests match: `１００` -> `100`,
+    `²` -> `2`, `½` -> ` 1/2`. So a caption reading "２ o'clock" passed the filter, the
+    tokenizer silently deleted the numeral, and the clip trained with a transcript
+    missing a word the audio speaks — exactly the D-M3 defect the drop exists to prevent.
+    `str.isdigit` additionally answers False for `½` (that is `isnumeric`), so the derive
+    lane missed it from the other side too.
+
+    Checking after normalization makes the question unambiguous: not "does this look
+    numeric to some predicate" but "will a digit reach `_TOKEN_RE` and be dropped".
+    """
+    return bool(re.search(r"\d", normalize_for_tokens(text)))
+
+
 def _possessive_suffix(base_ipa):
     """The 's allomorph for a base's final phoneme: ᵻz / s / z."""
     tail = base_ipa.rstrip(_STRESS_MARKS)
@@ -390,21 +438,10 @@ class OpenPhonemizerG2P:
         Applies the same pre-normalization as english_cleaners2 (ascii,
         lowercase, abbreviations, bracket removal) minus espeak itself.
         Digits are NOT expanded — feed normalized text (e.g. the LJSpeech
-        normalized column); leftover digits surface in validate().
+        normalized column); leftover digits are DELETED by `_TOKEN_RE`, which is
+        why `carries_digits` exists and why the corpus lanes gate on it.
         """
-        text = convert_to_ascii(text)
-        text = lowercase(text)
-        text = expand_abbreviations(text)
-        text = remove_brackets(text)
-        # Hyphens/dashes between words act as separators, like espeak.
-        #
-        # `convert_to_ascii` above already folds every Unicode dash to ASCII (`—` -> `--`),
-        # so this line only ever sees hyphen-minus here. The full class is kept anyway and
-        # held byte-identical to `synth_common.DASH_RUN` (parity-tested): the QC lane has
-        # no unidecode, that asymmetry is what produced QC-M1, and a caller that ever
-        # reaches this method without the ascii pass must not silently get a narrower rule.
-        text = DASH_RUN.sub(" ", text)
-        text = collapse_whitespace(text)
+        text = normalize_for_tokens(text)
         # Materialised rather than streamed: homograph resolution needs the two tokens
         # to the left and one to the right, and a punctuation mark between them is a
         # barrier (see homographs._evidence) rather than something to look through.

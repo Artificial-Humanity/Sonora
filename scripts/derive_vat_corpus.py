@@ -611,6 +611,7 @@ def main():
         )
 
     # Phonemize (espeak-free lane) and assemble rows.
+    from matcha.text import op_g2p
     from matcha.text.op_g2p import OpenPhonemizerG2P
     from matcha.data.license_wall import enforce as license_check  # noqa: F401
 
@@ -667,7 +668,14 @@ def main():
             # Latent for LibriTTS (0 of 5,000 sampled rows carry a digit) and LIVE for
             # Emilia YODAS captions, which is the corpus Phase 1 merges. Collected rather
             # than dropped per-clip so the count is visible before it decides anything.
-            if any(c.isdigit() for c in text):
+            #
+            # Asked of the text the TOKENIZER will see (TR-M1). This was
+            # `any(c.isdigit() for c in text)` on the raw string, which is a THIRD
+            # spelling of the rule and wrong in both directions: it runs before
+            # `convert_to_ascii` manufactures ASCII digits (`１００`, `²`, `½`), and
+            # `str.isdigit` answers False for `½` in the first place — that is
+            # `isnumeric`. One definition now, beside the tokenizer that does the deleting.
+            if op_g2p.carries_digits(text):
                 with_digits.append((p, text))
             ipa = g2p.phonemize(text)
             if g2p.validate(ipa):
