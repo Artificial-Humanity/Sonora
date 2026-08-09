@@ -26,10 +26,9 @@ Ship a ~20–40 MB on-device actor that:
 2. Is **directable** — renders Valence/Arousal/Tension (VAT) emotion codes from the Gemma Director
    as audible prosody (pitch, energy), **plus a five-lane categorical delivery channel** (contract
    v2, 2026-07-30).
-   ⚠ **`rate` is NOT a model channel** — this line promised it until 2026-08-09, against
-   contract v2, which makes tempo and loudness **host-side** controls. The model is not asked
-   to learn a dial the host can simply apply, and a doc promising otherwise sets an
-   integration expectation the export contract will refuse.
+   ⚠ **`rate` is NOT a model channel.** Contract v2 makes tempo and loudness **host-side**:
+   the model is not asked to learn a dial the host can simply apply, and the export contract
+   refuses one.
 3. Is **castable** — exposes the same continuous voice space the existing `voice_loader` +
    casting grid drive, so the Director's casting payload still works.
    ⚠ **Two casting vocabularies are in circulation and must be reconciled before anything is

@@ -276,7 +276,7 @@ Cheapest first, so the expensive item is decided by evidence rather than assumpt
 | # | Source | State | Adds | Work |
 |---|---|---|---|---|
 | 1 | **Emilia-YODAS keeps** | **MERGED 2026-08-08** → `libritts_r_emilia_vat_v5` | 10,997 clips / +27.2 h (**+36%**) | done; needs a GPU slot |
-| 2 | **sonora-expressive-registers** | DERIVED, **1,004 eligible keeps** | small, ear-certified | **merge as v6 at 1,004** (owner-scoped 2026-08-09). ⚠ This cell said "close **+116** (Neutral +81, Documentary +35) → 1,156, then merge" until 2026-08-09 — superseded, and it silently re-opened the owner's **Documentary close** (87/92, closed because *no documentary real audio exists*) |
+| 2 | **sonora-expressive-registers** | DERIVED, **1,004 eligible keeps** | small, ear-certified | **merge as v6 at 1,004** (owner-scoped 2026-08-09). ⚠ Do not re-open the **Documentary close** (87/92 — closed because *no documentary real audio exists*) |
 | 3 | **LibriTTS-R, the other 90%** | NOT PULLED | **~10×**, ~2,400 speakers | download + full corpus build |
 | 4 | **Hi-Fi TTS v1** | RAW, 40 GB parquet *with audio* | 292 h / 10 speakers | parquet → wav + filelist |
 
@@ -404,28 +404,14 @@ work rather than a lookup:
   Vocalizer whenever a before/after is wanted. Generalises — *before treating an artifact as
   perishable, check whether the thing that produces it is retained.*
 
-**DISCHARGED 2026-08-09 — this block no longer gates v6.** It read "WHY THIS COMES
-FIRST, AND IT IS NOT OPTIONAL: before v6 trains, put ep009 · ep019 · Qwen in front of the
-ear", and all three of its justifications were retired by the Step 0 records directly
-above — written seven minutes apart and never reconciled, so the section argued against
-itself for a day. Kept as a record rather than deleted, because *why* each leg fell is
-worth more than the instruction was:
+**No pre-v6 audition is required. This does not gate the build.** Step 0 above settled it:
+`ep019` is the pick, the Qwen comparison is held until after rung 3, and `ep019` is retained
+on disk so the checkpoint IS the baseline — nothing about v6 consumes or overwrites it.
 
-1. ~~Settles ep009 vs ep019.~~ **Settled**: the ear heard no difference and the owner took
-   **`ep019`** on total. The null IS the result — neither loss margin is perceptually real,
-   so ep009's 0.0013 `diff` edge is not grounds to reopen it.
-2. ~~Measures the Sonora↔Qwen gap.~~ **Held until after rung 3**, on model maturity rather
-   than time: run today it measures 78.5 h against ~5,000,000 h and returns "more data",
-   which is the answer we already have. Does not gate rung 2.
-3. ~~Captures what Sonora sounds like before the delivery channel exists, which cannot be
-   reconstructed once v6 trains.~~ **Simply wrong**: `ep019` is retained on disk and v6
-   trains into a new run directory from its own warm start, so nothing consumes or
-   overwrites it. The checkpoint IS the baseline.
-
-A session following the old text literally would have blocked v6 on a listen the owner
-waived and re-run a comparison already settled. **The generalisable lesson is #3's:**
-before treating an artifact as perishable, check whether the thing that produces it is
-retained.
+*(A "NOT OPTIONAL" block stood here until 2026-08-09 requiring ep009 · ep019 · Qwen in front
+of the ear before v6. Its three justifications had each been retired by the records above it;
+it is in git history and in the 2026-08-09 review. The lesson worth keeping: **before treating
+an artifact as perishable, check whether the thing that produces it is retained.**)*
 
 **The protocol below survives** — it is how the Qwen comparison should be run whenever it
 does happen, at rung 3. Delivery-blank on purpose: the channel is untrained (48 labelled rows in 42,442), so
@@ -1057,7 +1043,7 @@ This remains a spike, not a pivot: the decoder is ~7.6% of the codebase.
 | gate | question | consequence of the answer |
 |---|---|---|
 | ~~after **0a**~~ **PASSED 2026-08-06** | do retained checkpoints separate at all on never-trained audio? | **yes** — `vat3_ep099` − `vat3_init` = −0.0111, CI excludes zero. Instrument is sound; 0b closed, Phase 1 proceeds from `vat3_ep099` |
-| ~~after **1.1**~~ **PASSED 2026-08-09** | does **+36%** move the clean holdout? | **yes** — `ep019` − `vat5_init` = **−0.0606**, improved on 82.1% of 5,463 clips, an order of magnitude past the −0.0111 that cleared gate 0a. Data-limited, not capacity-limited: **the 10× proceeds.** (The question read "+43%" until 2026-08-09; +43% was the *planned* merge and **+36%** is what shipped, after 1,676 digit rows and 468 WER rows dropped out. A gate quoting a number the corpus never had cannot be checked against it) |
+| ~~after **1.1**~~ **PASSED 2026-08-09** | does **+36%** move the clean holdout? | **yes** — `ep019` − `vat5_init` = **−0.0606**, improved on 82.1% of 5,463 clips, an order of magnitude past the −0.0111 that cleared gate 0a. Data-limited, not capacity-limited: **the 10× proceeds.** (**+36% is what shipped**; +43% was the planned merge, before 1,676 digit rows and 468 WER rows dropped out. Quote the shipped figure — a gate naming a number the corpus never had cannot be checked against it) |
 | after **rung 2 (v6)** | does the **delivery channel** show signal? | see the pre-registered criterion below — the holdout **cannot** answer this one |
 | after **Phase 1** | is the vocoder still transparent? | re-run `copy_synth.py`; a better acoustic model can walk into the vocoder's ceiling unnoticed |
 | before **Phase 2** | is there a same-corpus U-Net baseline? | if not, the parity gate is unreadable — do not start |

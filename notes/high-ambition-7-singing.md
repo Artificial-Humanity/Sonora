@@ -71,11 +71,9 @@ the live portfolio only (qwen · chatterbox · zonos · orpheus · moss_vg) on a
 a Qwen sing-song instruct line and a chatterbox/zonos equivalent. Owner ear-audit. No new
 tooling; VAT labels as usual.
 
-⚠ **Rewritten 2026-08-09.** It named a **Dia** `(sings)` probe, and Dia is benched *for
-singing unbidden* — so the step asked engines to demonstrate the exact behaviour they were
-removed for, and would have read the defect as a pass. The question is not "can they sing"
-(VibeVoice will, unprompted, all day) but **"can they be *asked* to, and can they be asked
-*not* to"**.
+⚠ **Do not probe a benched engine here.** The question is not "can they sing" — VibeVoice
+will, unprompted, all day — but **"can they be *asked* to, and asked *not* to."** A probe
+run against the engines benched *for* singing unbidden reads the defect as a pass.
 
 ### S1 — Melodic-speech register family (corpus phase)
 

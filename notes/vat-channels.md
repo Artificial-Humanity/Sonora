@@ -278,8 +278,8 @@ nasal-adjacent brightness — the corpus lacks genuine strain to find. Owner cal
 speech fixes the +T tail at the data level, which no label formula can. Dominance fallback
 retired unless Emilia-enriched +T also fails audit.
 
-✅ **The data-level fix this section calls for has reached the model** (2026-08-09; this
-paragraph said the opposite until then). The Emilia mining's keeps merged as
+✅ **The data-level fix this section calls for has reached the model** (2026-08-09). The
+Emilia mining's keeps merged as
 `libritts_r_emilia_vat_v5` — **10,997 of 13,141**, the rest lost to digits (D-M3) and the
 shared `ASR_MAX_WER` — and `vat5_finetune` trained on it to `ep019`.
 
