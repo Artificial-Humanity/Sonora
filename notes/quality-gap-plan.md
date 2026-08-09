@@ -316,6 +316,60 @@ speaker through each lane and check whether manner changes or only timbre. Predi
 training, not after. The 57 synthetic blank keeps in the merge help slightly and do not
 close it.
 
+#### Rung 2 build decisions — recorded 2026-08-09, NOT BUILT, NOT LAUNCHED
+
+The corpus does not exist yet and no run is queued. What follows is settled so the next
+session starts from a decision rather than a re-investigation.
+
+**SPEAKER IDENTITY — one speaker id per clip (owner, 2026-08-09).** Each merged clip gets
+its own id appended after v5's 2,500, taking the table to ~3,500. It makes no false claim,
+and the precedent is already in the corpus: v5 carries **756 one-clip speakers**. Rejected:
+*one id per engine* (10 ids — asserts all 147 zonos clips are the same person, which is the
+speaker table lying); *recover true identity from the manifests* (real archaeology, see
+prerequisite 2 — the information largely is not there).
+
+**Three prerequisites, measured 2026-08-09.** None was in the 1,004-row scope, and each is
+work rather than a lookup:
+
+1. **V/A/T is not derived for the bank.** Only the 193-row v1 slice carries `measured_z`;
+   the remaining ~810 eligible keeps have none, and `eiv_scores/` covers the corpus lanes
+   with **zero id overlap** with this bank. Needs an EIV pass before any merge.
+2. **Voice identity is not recoverable from what was recorded.** **880 of 1,004** ids carry
+   no `_sSEED` suffix (the naming convention changed across campaigns) and only 114 rows in
+   any manifest carry a reference/voice field. Parsing identity out of ids collapses the
+   bank into per-engine buckets — which is exactly the false claim decision 1 avoids. This
+   prerequisite is *why* one-per-clip is the honest answer, not merely the easy one.
+3. **~91 rows are copies of audio already in v5.** `libritts-r` (43) and `emilia-yodas`
+   (48) keeps are audit-set copies (`audit-sets/tension-v2/…`, ids encoding `spk122`,
+   `spk136`) of corpora v5 already contains. Merging them would hand a voice that already
+   owns a speaker row a **second** one — the precise failure `merge_emilia_corpus.py`'s
+   collision check exists to stop ("one voice would get two rows"). Resolve them back to
+   their existing ids or drop them; do not append. The 103 `librivox` keeps are ours and
+   genuinely new.
+
+**STEP 0 — THE BASELINE AUDITION COMES FIRST, AND IT IS NOT OPTIONAL.** Before v6 trains,
+put **ep009 · ep019 · Qwen** in front of the ear on **delivery-blank** passages. Three
+things it buys, and only the third is time-critical:
+
+1. Settles ep009 vs ep019 — 0.0004 apart on holdout total, split on which term you weight
+   (ep009 wins `diff`, ep019 wins total), so the instrument cannot separate them.
+2. Measures the Sonora↔Qwen gap honestly, against the confirmed gold standard.
+3. **Captures what Sonora sounds like before the delivery channel exists — which cannot be
+   reconstructed once v6 trains.** That is why this precedes the merge rather than
+   following it.
+
+Delivery-blank on purpose: the channel is untrained (48 labelled rows in 42,442), so
+directing it would measure nothing and read as an architecture failure. Run it blind and
+order-randomised, **forced-choice rather than scored** (the scale is saturated — real
+LibriVox audio means 5.00 and six engines tie at 5), loudness-normalised (the
+Qwen loudness confound ran backwards once already), and with **one pinned speaker id**
+across every clip, or delivery differences confound with voice.
+
+**Then the build:** dedup (3) → EIV pass (1) → merge with v5 rows byte-identical and ids
+appended per (2)+decision → hash split → measure `data_statistics` → licence entry → config
+→ warm start from `vat5_finetune` **ep009**. Follow `merge_emilia_corpus.py` verbatim; its
+contiguity, collision and val-nonempty guards are the ones that matter.
+
 ### The low-hanging fruit, itemised — ~870 h before anything is rendered
 
 Everything here is **licence-cleared** and costs conversion work rather than GPU-hours.
