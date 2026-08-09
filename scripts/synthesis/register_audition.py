@@ -264,7 +264,14 @@ def _qc_triage(qc_path):
             else:
                 what = (f"{heard} words vs {want} in the passage — wording differs; "
                         f"check for misreadings")
-            why.append(f"ASR WER {r.get('asr_wer'):.2f}, {what}")
+            # A row can carry the verdict without the number — qc_engine_defects appends
+            # gate results for its own measures, and a partial/interrupted qc_gate run
+            # writes the same shape. Formatting None here raised TypeError and took down
+            # the whole registration, which is the worst possible response to an
+            # incomplete measure: the clips that DID have findings never reach the queue.
+            wer = r.get("asr_wer")
+            why.append(f"ASR WER {wer:.2f}, {what}" if isinstance(wer, (int, float))
+                       else f"ASR mismatch, {what}")
         # tail_ok is the gate WER cannot substitute for: a read that simply stops
         # scores a small global error rate and is still unusable. Report it in its own
         # words, and before the duration message, because it names WHERE to listen.
@@ -436,7 +443,8 @@ def main():
         if not audio.is_dir():
             print(f"  ! {audio} is not a dir; skipped", file=sys.stderr)
             continue
-        all_new += register_audio_dir(audio, slug, existing_ids, fields, args.dry_run)
+        all_new += register_audio_dir(audio, slug, existing_ids, fields, args.dry_run,
+                                      qc=qc_map)
 
     if not all_new:
         print("nothing to add.")
