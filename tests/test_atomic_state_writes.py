@@ -70,6 +70,17 @@ def staging(tmp_path, monkeypatch):
                 "section": 1, "sentence_index": i, "wav": f"clip{i}.wav",
                 "seconds": 8.0, "librivox_url": "https://librivox.org/a-book/",
             }) + "\n")
+    # QC-M2: staging REFUSES a campaign with no measures, so a realistic fixture has to
+    # carry them. Before that guard this fixture modelled the defect — a pooled campaign
+    # folding clips on the strength of an instrument that had never run.
+    with (cdir / "qc_measures.jsonl").open("w", encoding="utf-8") as fh:
+        for i in range(4):
+            fh.write(json.dumps({
+                "id": f"clip{i}", "hard_pass": True, "worst_pause": 0.4,
+                "head_words_lost": 0,
+                "gates": {"asr_ok": True, "tail_ok": True, "pause_ok": True,
+                          "speech_ok": True, "length_ok": True},
+            }) + "\n")
 
     ratings = datasets / "ratings.csv"
     _write_ratings(ratings)

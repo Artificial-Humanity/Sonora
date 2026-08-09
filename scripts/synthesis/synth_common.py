@@ -273,6 +273,35 @@ def head_flagged(row):
     return (lost or 0) >= HEAD_WORDS_FLAG
 
 
+# The internal-dead-air band where a clip earns an audition rather than a rejection.
+# THE definition — `qc_gate.PAUSE_FLAG_MAX` and `register_audition.PAUSE_FLAG_SECONDS`
+# both bind to this name now. It was written out three times, and `scripts/test_skill_files`
+# checked two of the three for drift; the third was `stage_pool`, which did not have the
+# number at all because it never asked the question (QC-M2).
+PAUSE_FLAG_SECONDS = 1.4
+
+
+def pause_flagged(row):
+    """Does this qc_measures row stall long enough mid-clip to owe the ear a listen?
+
+    QC-M2, the same shape as `head_flagged` one band over. `stage_pool.qc_flagged` tested
+    failing GATES plus the head advisory, so the pause ADVISORY band (1.4–2.5 s) could not
+    queue a pooled clip at all: a 2.0 s mid-clause stall folded unheard into the corpus,
+    while the identical clip in the synth lane at least reached `qc_flags.txt` through
+    `register_audition._qc_triage`. One clip, two lanes, opposite fates.
+
+    The band exists because the sweep found `worst_pause` cannot separate a paragraph
+    breath from a mid-clause stall — position is the missing axis, and it is a new measure
+    rather than a new constant. Until that exists, the honest response to the ambiguous
+    middle is to ask a human, which costs an audition and not a clip.
+
+    Above `PAUSE_HARD_MAX` the gate has already failed the clip, so it is flagged by the
+    gate test and never reaches here as the deciding term.
+    """
+    pause = row.get("worst_pause")
+    return pause is not None and pause >= PAUSE_FLAG_SECONDS
+
+
 def append_jsonl(path, records):
     """Append to a `.jsonl` sidecar without the two ways an append can lose a record.
 

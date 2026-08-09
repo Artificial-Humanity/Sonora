@@ -161,10 +161,12 @@ def _build_row(rec, wav: Path, book_slug: str, fields):
 # and its id written to qc_flags.txt so pick_audit_subset routes it to the ear however
 # thin that engine's sampling tier is.
 MIN_SPEECH_SECONDS = 4.0        # owner floor 2026-07-25; keep-rate cliff is exactly here
-# Mirrors qc_gate.PAUSE_FLAG_MAX — the advisory band for internal dead air, where
-# the clip earns an audition rather than a rejection. Kept in sync by
-# test_skill_files.py so the two cannot drift apart silently.
-PAUSE_FLAG_SECONDS = 1.4
+# The advisory band for internal dead air, where the clip earns an audition rather than a
+# rejection. Imported rather than re-declared (QC-M2), for the same reason as
+# HEAD_WORDS_FLAG below: three copies existed, `scripts/test_skill_files` watched two of
+# them for drift, and the third lane — `stage_pool` — did not carry the number at all, so
+# the band could not queue a pooled clip.
+PAUSE_FLAG_SECONDS = synth_common.PAUSE_FLAG_SECONDS
 # Head truncation is measured but NOT gated (C-M4) — see qc_gate's uncalibrated block.
 # This is the advisory count at which the auditor is told to listen to the opening. It is
 # a REPORTING threshold, not a gate: the cost of it being wrong is an auditor reading one

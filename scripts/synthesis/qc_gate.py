@@ -184,9 +184,12 @@ TAIL_WORDS_MIN = 3          # ...and at least 3 real words, so one dropped "the"
 # measure, not a new constant. Filed rather than built.
 # ⚠ Both drops are `news_*_anchorF1_ZON` — one voice, one campaign. n=2 either way.
 PAUSE_HARD_MAX = 2.5        # longest internal silence a clip may contain; see the sweep above
-PAUSE_FLAG_MAX = 1.4        # ...above this it is advisory: queue it for the ear. Catches
-                            # BOTH known defects at a 3% false-flag rate, which is exactly
-                            # what an advisory band is for: it costs an audition, not a clip.
+                            # ...above PAUSE_FLAG_MAX it is advisory: queue it for the ear.
+                            # Catches BOTH known defects at a 3% false-flag rate, which is
+                            # exactly what an advisory band is for: it costs an audition,
+                            # not a clip. Bound to synth_common (QC-M2) so the three lanes
+                            # that act on this band cannot hold three different numbers.
+PAUSE_FLAG_MAX = synth_common.PAUSE_FLAG_SECONDS
 PAUSE_MIN_GAP = 0.30        # silences shorter than this are ordinary phrasing
 
 # ------------------------------------------------------ UNCALIBRATED (C-M4, 2026-08-07)

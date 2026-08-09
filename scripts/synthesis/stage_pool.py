@@ -183,7 +183,7 @@ def load_pool(campaign_dir: pathlib.Path) -> list[dict]:
 
 
 def qc_flagged(campaign_dir: pathlib.Path) -> set[str]:
-    """Ids owed an ear pass: any failing gate, OR a late start.
+    """Ids owed an ear pass: any failing gate, a late start, OR a stall mid-clip.
 
     The head clause was added 2026-08-07. Testing `all(gates.values())` alone meant an
     ADVISORY could never queue a clip, and `head_ok` is an advisory on purpose — it has no
@@ -194,11 +194,31 @@ def qc_flagged(campaign_dir: pathlib.Path) -> set[str]:
     every gate are pooled LibriVox clips waiting to enter exactly that way.
 
     A threshold is only needed to REJECT. Queueing costs a listen.
+
+    The pause band joined it 2026-08-09 (QC-M2). The head advisory was wired here and the
+    dead-air advisory was not, so a 2.0 s mid-clause stall — inside the 1.4–2.5 s band the
+    sweep says is genuinely ambiguous — folded unheard through this lane while the SAME
+    clip in the synth lane reached `qc_flags.txt` via `register_audition._qc_triage`. Two
+    lanes, one clip, opposite fates, and this is the lane that folds without a ratings row.
+
+    ⚠ A MISSING `qc_measures.jsonl` is now a refusal, not an empty set. It used to return
+    `{}` silently, so a pooled campaign staged before anyone ran `qc_gate` folded every
+    clip as a machine-written `keep` with zero flags — "QC follows EVERY generation pass"
+    defeated by file absence. That is the missing-file-treated-as-pass shape this repo has
+    already closed twice (the empty-glob 0/0 report, `qc_gate`'s empty-measures refusal),
+    and it fails in the direction that costs a corpus rather than a run.
     """
     out: set[str] = set()
     qc = campaign_dir / "qc_measures.jsonl"
     if not qc.is_file():
-        return out
+        raise SystemExit(
+            f"REFUSED: no qc_measures.jsonl in {campaign_dir}.\n"
+            "  Staging folds unheard clips into the corpus on the strength of the QC\n"
+            "  instrument, so an absent instrument cannot mean 'nothing was flagged' —\n"
+            "  it means nothing was measured, and every clip would enter as a clean keep.\n"
+            f"  Run:  .venv/bin/python scripts/synthesis/qc_gate.py --campaign-dir {campaign_dir}"
+        )
+    no_pause_measure = 0
     for line in qc.read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
@@ -208,8 +228,23 @@ def qc_flagged(campaign_dir: pathlib.Path) -> set[str]:
             continue
         if not r.get("id"):
             continue
-        if not all((r.get("gates") or {}).values()) or synth_common.head_flagged(r):
+        if "worst_pause" not in r:
+            no_pause_measure += 1
+        if (not all((r.get("gates") or {}).values())
+                or synth_common.head_flagged(r)
+                or synth_common.pause_flagged(r)):
             out.add(r["id"])
+    if no_pause_measure:
+        # Said out loud rather than assumed clean. `head_flagged` can recompute from
+        # `text`/`asr_hyp` when a row predates its measure; a pause cannot be recovered
+        # from text at all — it needs the audio and the VAD — so for these rows the band
+        # is simply not covered. Measured 2026-08-09: 2,030 of the 2,188 pooled clips on
+        # disk (librivox-v1 and -v2, written before `worst_pause` existed) are in exactly
+        # this state. Silence here would report the strongest possible claim — every clip
+        # checked — on a campaign where the check never ran.
+        print(f"  ! {no_pause_measure} clip(s) carry no `worst_pause`: the dead-air "
+              f"advisory band is NOT covered for them.\n"
+              f"    Re-run qc_gate on {campaign_dir.name} to close the gap.")
     return out
 
 
