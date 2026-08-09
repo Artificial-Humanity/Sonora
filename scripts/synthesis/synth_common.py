@@ -273,6 +273,34 @@ def head_flagged(row):
     return (lost or 0) >= HEAD_WORDS_FLAG
 
 
+HEAD_NOTE_MARK = "ASR could not match the first"
+
+
+def head_note(words, frac):
+    """The auditor-facing wording for a head-loss finding. ONE writer of it (QC-M6).
+
+    REWORDED 2026-08-08 (`683c43f`) after the first four verdicts came back. It used to
+    say "starts late — first N words never spoken", which was FALSE in three of the four:
+    two were keeps at 5 ("I hear all of the words in the printed text") and one was
+    dropped for shrillness. Across all eight flagged clips not one was a late start. What
+    the measure detects is that ASR could not ALIGN the opening, which has several causes
+    and only one of them is truncation.
+
+    **Telling an auditor what to conclude is how a measure launders itself into a
+    finding** — and this measure is precisely the one whose ear labels decide whether a
+    threshold exists at all, so a leading note would contaminate its own calibration set.
+
+    That rewording reached `register_audition` and missed `queue_head_audit`, which writes
+    the same instrument's note into the same column of the same file and kept the retired
+    sentence for a day. Hence one function: the wording is a judgement about what may be
+    said to an auditor, not a formatting detail, and it cannot live in two places.
+    """
+    return (f"{HEAD_NOTE_MARK} {words} words ({frac * 100:.0f}% of the passage). "
+            f"LISTEN TO THE OPENING — it may be a late start, words slurred or run "
+            f"together, or nothing at all (ASR is weakest on the first word, which has "
+            f"no left context). MEASURED BUT NOT GATED: say what you actually hear")
+
+
 # The internal-dead-air band where a clip earns an audition rather than a rejection.
 # THE definition — `qc_gate.PAUSE_FLAG_MAX` and `register_audition.PAUSE_FLAG_SECONDS`
 # both bind to this name now. It was written out three times, and `scripts/test_skill_files`

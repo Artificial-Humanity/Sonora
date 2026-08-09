@@ -290,19 +290,11 @@ def _qc_triage(qc_path):
         head_lost = r.get("head_words_lost") or 0
         if head_lost >= HEAD_WORDS_FLAG:
             frac = r.get("head_lost_frac") or 0
-            # REWORDED 2026-08-08 after the first four verdicts came back. It used to say
-            # "starts late — first N words never spoken", and that was false in three of
-            # the four: two were keeps at 5 ("I hear all of the words in the printed
-            # text") and one was dropped for shrillness. What the measure detects is that
-            # ASR could not ALIGN the opening, which has several causes and only one of
-            # them is truncation — so the note now names the alternatives instead of
-            # asserting the rarest one. Telling an auditor what to conclude is how a
-            # measure launders itself into a finding.
-            why.append(f"ASR could not match the first {head_lost} words "
-                       f"({frac*100:.0f}% of the passage). LISTEN TO THE OPENING — it may "
-                       f"be a late start, words slurred or run together, or nothing at all "
-                       f"(ASR is weakest on the first word, which has no left context). "
-                       f"MEASURED BUT NOT GATED: say what you actually hear")
+            # Shared with `queue_head_audit` since QC-M6 — the two write the same
+            # instrument's note into the same column, and the 2026-08-08 rewording
+            # reached only this one. See `synth_common.head_note` for why the wording
+            # is a judgement rather than a formatting detail.
+            why.append(synth_common.head_note(head_lost, frac))
         # Internal dead air. Named before the duration line for the same reason
         # tail_ok is: it tells the auditor WHERE in the clip to listen. The
         # advisory band exists because a long pause is sometimes a real dramatic

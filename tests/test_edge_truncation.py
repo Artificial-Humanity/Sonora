@@ -24,6 +24,7 @@ changing side at the floor), so what remained was admission policy, and that is 
 rather than a measurement.
 """
 
+import csv
 import json
 import pathlib
 import sys
@@ -286,22 +287,111 @@ def test_the_queue_takes_the_clips_the_instrument_called_clean(tmp_path, monkeyp
     assert [r["id"] for _, r in mod.candidates()] == ["late-clean"]
 
 
+def _ratings(path, rows):
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=["campaign", "id", "score", "note", "status"])
+        w.writeheader()
+        w.writerows(rows)
+
+
+def _read_ratings(path):
+    with path.open(newline="", encoding="utf-8") as fh:
+        return {r["id"]: r for r in csv.DictReader(fh)}
+
+
+def _queue_campaign(tmp_path, monkeypatch, ratings_rows):
+    """A campaign with one gate-passing, head-flagged clip, plus a ratings.csv."""
+    camp = tmp_path / "campaign-x"
+    camp.mkdir(exist_ok=True)
+    camp.joinpath("qc_measures.jsonl").write_text(json.dumps(
+        {"id": "late-clean", "hard_pass": True, "gates": {"asr_ok": True},
+         "head_words_lost": 4, "head_lost_frac": 0.21}) + "\n", encoding="utf-8")
+    _ratings(tmp_path / "ratings.csv", ratings_rows)
+    mod = _queue_module(tmp_path, monkeypatch)
+    monkeypatch.setattr(sys, "argv", ["queue_head_audit", "--apply"])
+    mod.main()
+    return _read_ratings(tmp_path / "ratings.csv")
+
+
 def test_queueing_never_discards_a_verdict(tmp_path, monkeypatch):
     """Four of the eight already carry an ear verdict, two of them a `keep` — one scored 5.
 
     The auditor is being asked a question nobody asked before ("does it start late?"),
     not told their previous answer was wrong. Status moves so the clip reaches the todo
     queue; the score and the auditor's own words stay exactly where they were.
+
+    Behavioral since 2026-08-09: this asserted the source strings of the writer, which is
+    what let QC-M6 sit here — the file kept a retired NOTE constant while every string
+    this test checked was still present and correct.
     """
+    rows = _queue_campaign(tmp_path, monkeypatch, [
+        {"campaign": "c", "id": "late-clean", "score": "5", "status": "keep",
+         "note": "lovely read"}])
+    row = rows["late-clean"]
+    assert row["score"] == "5", "the ear's verdict must survive the question"
+    assert row["status"] == "unaudited"
+    assert row["note"].startswith("lovely read | "), "the auditor's words come first"
+
+
+def test_the_queued_note_does_not_tell_the_auditor_what_to_conclude(tmp_path, monkeypatch):
+    """QC-M6. `683c43f` retired "first N words … never spoken" because it was FALSE in
+    three of the four audited cases — but it reworded `register_audition`'s copy and
+    missed this one, the second writer of the same instrument's note into the same column.
+
+    This measure's whole purpose is to accumulate the ear labels a threshold would have to
+    come from, so a note that asserts the conclusion contaminates its own calibration set.
+    """
+    rows = _queue_campaign(tmp_path, monkeypatch, [
+        {"campaign": "c", "id": "late-clean", "score": "", "status": "unaudited",
+         "note": ""}])
+    note = rows["late-clean"]["note"]
+    assert "never spoken" not in note
+    assert "starts late —" not in note
+    assert note.startswith(synth_common.HEAD_NOTE_MARK)
+    assert "it may be a late start, words slurred or run together, or nothing at all" in note
+    assert "say what you actually hear" in note
+    # ...and it still says why the auditor is being asked at all.
+    assert "PASSED every gate" in note
+
+
+def test_both_writers_of_the_head_note_say_the_same_thing():
+    """One instrument, one note. They were two constants in two files, and only one got
+    the correction."""
+    ra = pytest.importorskip("register_audition")
+    qh = pytest.importorskip("queue_head_audit")
+    assert qh.NOTE_MARK == synth_common.HEAD_NOTE_MARK
+    assert synth_common.head_note(4, 0.21) in synth_common.head_note(4, 0.21) + qh.NOTE_TAIL
+    # `register_audition` reaches it through the same function rather than a second copy.
+    ra_src = pathlib.Path(ra.__file__).read_text(encoding="utf-8")
+    assert "synth_common.head_note(" in ra_src
+    assert "LISTEN TO THE OPENING" not in ra_src
+    # ⚠ "never spoken" is still correct for the TAIL note and must survive here: tail_ok
+    # is calibrated, gating, and 3/3 on the ear. Only the HEAD claim was unsupported.
+    assert "never spoken. LISTEN TO THE END" in ra_src
+
+
+def test_a_clip_already_carrying_the_retired_note_is_not_queued_twice(tmp_path, monkeypatch):
+    """Changing the wording changes the dedup key. Any sheet still holding the old mark
+    must not collect a second note — the old key stays in the set for exactly that."""
+    rows = _queue_campaign(tmp_path, monkeypatch, [
+        {"campaign": "c", "id": "late-clean", "score": "", "status": "unaudited",
+         "note": "QC: starts late — first 4 words (21% of the passage) never spoken."}])
+    assert rows["late-clean"]["note"].count("LISTEN TO THE OPENING") == 0
+
+
+def test_the_writer_is_report_only_unless_asked(tmp_path, monkeypatch):
+    camp = tmp_path / "campaign-x"
+    camp.mkdir()
+    camp.joinpath("qc_measures.jsonl").write_text(json.dumps(
+        {"id": "late-clean", "hard_pass": True, "gates": {"asr_ok": True},
+         "head_words_lost": 4, "head_lost_frac": 0.21}) + "\n", encoding="utf-8")
+    _ratings(tmp_path / "ratings.csv", [
+        {"campaign": "c", "id": "late-clean", "score": "5", "status": "keep", "note": ""}])
     mod = _queue_module(tmp_path, monkeypatch)
-    src = pathlib.Path(mod.__file__).read_text(encoding="utf-8")
-    assert 'row["score"]' not in src, "the score column must not be written"
-    assert 'row["status"] = "unaudited"' in src
-    # The auditor's note is kept AHEAD of the generated one.
-    assert 'f"{existing} | {note}"' in src
-    # Report-only unless asked, through the shared transaction's dry_run.
-    assert "dry_run=not args.apply" in src
-    assert 'ap.add_argument("--apply"' in src
+    monkeypatch.setattr(sys, "argv", ["queue_head_audit"])
+    mod.main()
+    row = _read_ratings(tmp_path / "ratings.csv")["late-clean"]
+    assert row["status"] == "keep" and row["note"] == ""
 
 
 def test_none_is_not_false():

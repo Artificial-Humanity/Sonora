@@ -47,10 +47,17 @@ RATINGS = Path(os.environ.get(
 # re-queued a clip whenever a measure changed underneath it: the 2026-08-08 hyphen fix
 # moved the reference token count, so the percentage in an already-written note no longer
 # matched the one being generated, and a second `--apply` appended the line again.
-NOTE_MARK = "QC: starts late"
-NOTE = (NOTE_MARK + " — first {words} words ({frac:.0f}% of the passage) never spoken. "
-        "LISTEN TO THE OPENING. This clip PASSED every gate; head loss is measured but not "
-        "gated, and your note is what sets the threshold (C-M4).")
+#
+# QC-M6: the wording itself now comes from `synth_common.head_note`, shared with
+# `register_audition`. This file kept writing "first N words … never spoken" for a day
+# after `683c43f` retired that sentence for asserting a conclusion the evidence
+# contradicts — the rewording reached one of the instrument's two writers. The old mark
+# stays in the dedup set so any sheet that DOES carry it is not queued a second time; no
+# row on the live sheet does, checked 2026-08-09.
+NOTE_MARK = synth_common.HEAD_NOTE_MARK
+LEGACY_NOTE_MARKS = ("QC: starts late",)
+NOTE_TAIL = (" This clip PASSED every gate; head loss is measured but not gated, and "
+             "your note is what sets the threshold (C-M4).")
 
 
 def candidates():
@@ -102,13 +109,13 @@ def main():
             seen.add(row["id"])
             campaign, measures = by_id[row["id"]]
             words = measures.get("head_words_lost") or 0
-            note = NOTE.format(words=words,
-                               frac=(measures.get("head_lost_frac") or 0) * 100)
+            note = synth_common.head_note(
+                words, measures.get("head_lost_frac") or 0) + NOTE_TAIL
             was = row.get("status") or ""
             # Preserve the verdict. `score` is untouched, and an existing note is kept
             # ahead of ours — the auditor's own words outrank a generated line.
             existing = (row.get("note") or "").strip()
-            if NOTE_MARK in existing:
+            if any(m in existing for m in (NOTE_MARK, *LEGACY_NOTE_MARKS)):
                 continue                     # already queued by an earlier run
             row["note"] = f"{existing} | {note}".strip(" |") if existing else note
             row["status"] = "unaudited"
