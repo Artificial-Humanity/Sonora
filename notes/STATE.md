@@ -7,7 +7,7 @@ architecture canon is [ARCHITECTURE.md](ARCHITECTURE.md); open work is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
-_Last updated: 2026-08-08._
+_Last updated: 2026-08-09._
 
 ---
 
@@ -18,8 +18,14 @@ _Last updated: 2026-08-08._
 > v4's 30,485 / 960 / 51.3 h / 247. It is v4's LibriTTS-R rows **byte-identical** plus
 > **10,997 Emilia-YODAS keeps**. Warm start `warmstart/vat5_init.ckpt` at **338 warm
 > (1 widened) / 0 fresh**, seam guards **30/30** in-container, smoke run trains to
-> `val_epoch` 1.696. `configs/experiment/vat5_finetune.yaml`. **NOT LAUNCHED** — that is a
-> GPU slot and the [spin-down rule](training-operations.md), not more engineering.
+> `val_epoch` 1.696. `configs/experiment/vat5_finetune.yaml`.
+>
+> **TRAINED 2026-08-08/09 — 48 epochs, holdout-scored, `ep019` SELECTED** (owner, on the
+> ear; converged by epoch 9, so epochs 10–39 were net worse and the run is closed —
+> `logs/train/vat5_finetune/SELECTED.md` refuses a relaunch). Rung 1's gate **PASSED**:
+> `ep019 − vat5_init` = **−0.0606** on the clean holdout, improved on 82.1% of 5,463 clips,
+> an order of magnitude past the −0.0111 that cleared gate 0a. **Data-limited, not
+> capacity-limited — the 10× proceeds.** ep019 is the warm-start donor for v6.
 >
 > **It is a merge, not a derivation** (`scripts/merge_emilia_corpus.py`), and the two halves
 > carry labels on deliberately different scales. LibriTTS keeps its per-speaker z; Emilia
@@ -62,7 +68,10 @@ _Last updated: 2026-08-08._
 > Pre-flight is unchanged and non-negotiable: stop **all** inference engines first
 > ([spin-down rule](training-operations.md)), and run `scripts/test_vat_dim_seams.py`
 > (30 checks). Residual review debt that touches training: [todo.md §1](todo.md).
-> The whole route, one table: **[quality-gap-plan.md § the pathway](quality-gap-plan.md)**.
+> The quality ladder, one table: **[quality-gap-plan.md § the pathway](quality-gap-plan.md)**
+> — the route to a model worth casting. Casting itself is **parked** with an
+> end-condition (same file, § Parked), not scheduled; it is half of goal 1 and no rung
+> ladders to it.
 
 ## The delivery channel — SHIPPED on the training side (2026-08-07)
 
@@ -287,11 +296,19 @@ is only its headline.
    actually unknown: the 8-wide path trains (25/25 batches, all four loss terms, clean
    restore), and so does the widened speaker table (247 → 280, 338 warm / 0 fresh,
    val_epoch 1.572). Seam guards 28/28. **The GPU now goes to Phase 1.**
-3. **Phase 1 — data, cheapest first**, warm-starting from `vat3-24k` ep099.
-   Emilia-YODAS keeps (+43%) → expressive-registers (+116) → LibriTTS-R 10× → Hi-Fi TTS
-   v1. #1 is the fastest test of whether volume moves quality at all, and the 10× is
-   gated on its answer. 0a supplies the evidence this phase was assuming: 100 epochs
-   against the same ~30k clips made the model *worse*, so the lever is corpus, not epochs.
+3. ~~**Phase 1 rung 1 — Emilia-YODAS keeps.**~~ **DONE 2026-08-08/09.** +36% shipped (not
+   the planned +43% — 1,676 digit rows and 468 WER rows dropped out), and it moved the
+   holdout decisively: **−0.0606**, the answer to "does volume move quality at all" being
+   yes. **The front is now Phase 1 rung 2 — v6, +expressive-registers at 1,004 eligible
+   keeps** (owner-scoped 2026-08-09): decided, NOT built, 3 prerequisites open, warm start
+   from `ep019`. Then rung 3's 10× → rung 4 Hi-Fi TTS + VCTK → rung 5. 0a supplies the
+   evidence this phase was assuming: 100 epochs against the same ~30k clips made the model
+   *worse*, so the lever is corpus, not epochs.
+   - The **T-saturation prediction is now read** (2026-08-09): leg (a) did **not** land —
+     no T-specific regression, CI straddles zero — so the shortcut did not form and C-soft
+     is not triggered. Legs (b)/(c) are still owed the ear. An unpredicted signature did
+     appear on **A** and is pre-registered for v6 rather than acted on
+     ([quality-gap-plan.md](quality-gap-plan.md) § READ-OUT).
 4. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
    baseline frozen as the last act of Phase 1.
 5. Ears queue in priority order — [todo.md §5](todo.md). §2's C-M4 lost one of its two

@@ -12,11 +12,17 @@ rung 1 is built** — see the pathway below for where the front actually is.
 
 ---
 
-## The pathway — one table, whole route
+## The pathway — one table, the QUALITY ladder
 
 _Added 2026-08-08 at the owner's request. This is the INDEX, not the detail: every row
 links to the section that owns it. If a row and its section disagree, the section wins._
 
+⚠ **This is the quality ladder — the route to a model worth casting — not the whole route
+to the product** (owner, 2026-08-09; PR-M3). It said "whole route" and it does not contain
+a casting rung, while the repo leads with "directable, **castable**, and mobile-friendly"
+and goal 2 (Dramatic Reader) depends on casting more than on mel loss. Every step below
+ladders to *quality*; nothing here ladders to *castability*. That is a deliberate scope,
+now stated rather than implied — see [§ Parked — the casting/blend layer](#parked--the-castingblend-layer).
 **Where the front is: Phase 1, rung 2 — v5 trained and scored, `ep019` selected; v6 is
 scoped and decided but NOT built.**
 
@@ -33,6 +39,31 @@ scoped and decided but NOT built.**
 | | vocoder transparency re-check | ⏸ | after P1 | [§ gates](#gates-between-phases) |
 | **P1S** | mass synthetic production, Qwen-primary | ⏸ **plan written, 3 prerequisites open** | **rungs 1–5** (owner: exhaust public sources first) | [§ Phase 1S](#phase-1s--mass-synthetic-production-qwen-primary) |
 | **P2** | DiT decoder spike | ⏸ design written, not started | P1 landing + the frozen baseline | [model-decisions.md § Decoder v2](model-decisions.md) |
+
+### Parked — the casting/blend layer
+
+**Parked, not dropped** (owner, 2026-08-09). It is half of goal 1 and
+`high-ambition-1-matcha-actor.md` names the casting/blend layer one of "the three things we
+build", so its absence from the ladder above needs to be a recorded decision rather than an
+oversight. This is the same treatment the emotion block got, and for the same reason: an
+unscheduled ambition with no end-condition drifts into a forgotten one.
+
+- **Why parked.** Rungs 1–5 each move exactly one lever, and that lever is quality. Casting
+  needs its own instrument and none exists — the clean holdout is teacher-forced loss on
+  audiobook narration and cannot see whether a directed cast matched its brief. Scheduling
+  a rung before its instrument exists is what this plan refuses everywhere else.
+- **What would end it.** (1) The measurable gender/age/accent norm set —
+  `casting-attribute-norms-brief.md` item 3, "the actual goal", currently **logged, not
+  scheduled**; and (2) a casting eval that is not the holdout. Rung 4 already tags Hi-Fi
+  TTS as "casting anchors" and no scheduled work consumes them, which is the cheapest place
+  to start when this un-parks.
+- **Reconcile the vocabulary FIRST.** Two casting vocabularies are in circulation and they
+  disagree: `high-ambition-1-matcha-actor.md` says **age / masculinity / strain**, while the
+  owner-scoped norms brief says **gender / age / accent**. Building an instrument against
+  the wrong one is the expensive version of this mistake — and "define our own measurable
+  norms, never inherit another model's gender conflation" is the standing ruling that the
+  brief's vocabulary is the live one.
+- **Checked:** 2026-08-09.
 | **P3+** | conditioning: embodiment bank → span-FiLM | ⏸ deferred chain | evidence, not plumbing | [todo.md §4](todo.md) |
 | | categorical emotion block (3+8) | ⏸ **open decision** | P1's valence read | [todo.md §4](todo.md) |
 | | multilingual | ⏸ **plan only** | after rung 3 | [teacher-training-data.md § multilingual](teacher-training-data.md) |
@@ -245,7 +276,7 @@ Cheapest first, so the expensive item is decided by evidence rather than assumpt
 | # | Source | State | Adds | Work |
 |---|---|---|---|---|
 | 1 | **Emilia-YODAS keeps** | **MERGED 2026-08-08** → `libritts_r_emilia_vat_v5` | 10,997 clips / +27.2 h (**+36%**) | done; needs a GPU slot |
-| 2 | **sonora-expressive-registers** | DERIVED, 1,071 keeps | small, ear-certified | close **+116** (Neutral +81, Documentary +35) → 1,156, then merge |
+| 2 | **sonora-expressive-registers** | DERIVED, **1,004 eligible keeps** | small, ear-certified | **merge as v6 at 1,004** (owner-scoped 2026-08-09). ⚠ This cell said "close **+116** (Neutral +81, Documentary +35) → 1,156, then merge" until 2026-08-09 — superseded, and it silently re-opened the owner's **Documentary close** (87/92, closed because *no documentary real audio exists*) |
 | 3 | **LibriTTS-R, the other 90%** | NOT PULLED | **~10×**, ~2,400 speakers | download + full corpus build |
 | 4 | **Hi-Fi TTS v1** | RAW, 40 GB parquet *with audio* | 292 h / 10 speakers | parquet → wav + filelist |
 
@@ -592,6 +623,60 @@ signature is written down first.
 > it will then be justified by evidence rather than by anticipation. It is a contract
 > change and a full relabel either way, so it wants to ride a re-derivation, not force one.
 
+**READ-OUT, 2026-08-09 (PR-H3). Leg (a) did NOT land: there is no T-specific regression.**
+
+Recomputed from artifacts already on disk — `v5_ckpt_sweep` holds per-clip losses for
+`vat5_init` and `ep019` under identical constants, and the holdout filelist holds the
+labels — so this cost no GPU and could have been read at any point since the run landed.
+Reproduce with:
+
+    .venv/bin/python scripts/stratify_holdout_sweep.py \
+        --sweep /data/model-training/sonora/holdout_eval/v5_ckpt_sweep.csv \
+        --filelist data/libritts_r_holdout_devclean/holdout_8w.txt \
+        --baseline vat5_init --pick vat5_ep019
+
+Per clip, `Δ = loss(ep019) − loss(init)`; each channel split at the top and bottom quintile
+of |label|. **Positive "gap" = that channel's extremes improved LESS than its centre**,
+which is the regression shape leg (a) describes. 95% CI, 2,000 bootstrap resamples, seed 42
+— the same adjudication contrast 0a used.
+
+| channel | extreme | central | gap | 95% CI | verdict |
+|---|---|---|---|---|---|
+| **T (tension)** | −0.0616 | −0.0610 | **−0.0006** | [−0.0065, +0.0055] | **crosses zero — no effect** |
+| V (valence) | −0.0655 | −0.0498 | −0.0157 | [−0.0212, −0.0098] | excludes zero — extremes improved MORE |
+| A (energy) | −0.0546 | −0.0679 | **+0.0133** | [+0.0068, +0.0195] | excludes zero — **extremes lagged** |
+
+Overall Δtotal −0.0606, improved on 82.1% of 5,463 clips.
+
+**The prediction named T, and T is the one channel that shows nothing.** Its CI straddles
+zero, which is an ABSENT effect rather than a small one. By the pre-registration's own
+terms — *"if instead T holds or improves while V/A move, the shortcut did not form and
+saturation is a non-issue at this mix"* — **the shortcut did not form.** T's 53.6%
+saturation was accepted on a bet, and the bet paid: the mining criteria arriving at the
+label did not become a shortcut the model could take.
+
+**C-soft is therefore NOT triggered.** It needs (a)+(c) together and (a) is out. Do not
+re-open `tanh(z/2)` on this evidence; it remains available if a later rung produces the
+signature.
+
+⚠ **Two things this does not settle, and they are the honest residue.**
+
+1. **Legs (b) and (c) are still owed the ear** — the standing perceptual test, and whether
+   T = +1 renders sound like *Emilia-domain audio* rather than like tension. A
+   teacher-forced loss cannot see either. Leg (a) is the cheap leg and it is now closed;
+   the ear legs are a Vocalizer session on `ep019`. Since (a) is out, they are no longer
+   urgent — they cannot trigger C-soft alone — but a "T sounds like a podcast" verdict
+   would be a finding in its own right.
+2. **A NEW signature appeared that nobody predicted: `A`'s extremes lagged its centre**
+   (+0.0133, CI excludes zero). Small, and the direction is the one leg (a) described —
+   for the wrong channel. Recorded here rather than acted on: n is large but this is one
+   contrast on one rung, the effect is ~20% of the overall gain, and the obvious
+   explanation is benign (A is loudness-derived, and the Emilia half arrives at a
+   different loudness distribution than LibriTTS-R). **Pre-registered follow-up: if v6's
+   sweep shows A lagging again, it is a real channel effect and wants the loudness
+   normalisation checked before anything else.** If it does not reappear, this was one
+   rung's noise and should be dropped rather than carried.
+
 ⚠ **Separately, and it IS a blocker: `n_spks`.** The model's speaker table is **247** rows
 and Emilia brings **2,408 new speakers**, so a merged corpus needs `n_spks: 2655` and a
 `spk_emb.weight` widened 247 → 2655. That widening is *safe here and only here*: LibriTTS
@@ -710,6 +795,15 @@ shards, and the holdout is untouched either way.
 
 ### Three prerequisites, none of which is the pipeline itself
 
+⚠ **Resolve the Expresso conflict BEFORE this phase's register specs are written** (PR-L1).
+It blocks nothing today and is well-recorded in
+[training-sources.md § The Expresso conflict](training-sources.md) — two ratified decisions
+pointing opposite ways, needing the owner. It becomes load-bearing exactly here: Expresso is
+the best design reference we have for expressive style taxonomies (8 read + 26 improvised
+styles), and the whisper/laughter gap this phase would remediate is precisely what it
+covers. Deciding it after the specs are written means either rewriting them or quietly
+not using the reference.
+
 - [ ] **1 · Measure render throughput.** **No synth script records elapsed time** — checked
       2026-08-08 across every `synth_*.py`, and no manifest carries a timing field. The
       entire feasibility of this phase is arithmetic in a number nobody has ever measured.
@@ -726,6 +820,15 @@ shards, and the holdout is untouched either way.
       composite (`alpha_db`, `cpp`, `h1h2`), LUFS — against the spread of LibriTTS's 247
       real speakers as the yardstick. Only if that says *collapsed* do we add a
       speaker-verification embedder, which we do not currently have.
+
+      **AND THE PROBE ONE LEVEL UP — engine STYLE, not just voice (owner, 2026-08-09;
+      PR-M4).** The test above asks whether Qwen collapses to few TIMBRES across many
+      designs. It cannot see the risk that actually threatens this phase: whether a
+      **Qwen-primary corpus collapses to one STYLE** against the five-engine mix. Those are
+      different failures — a corpus can hold two hundred distinct voices that all *phrase*
+      the same way, and phrasing is what a prosody model learns. Run the same forced-ranking
+      instrument the scale-saturation work produced, engine-blind, comparing a Qwen-primary
+      sample against a mixed-engine sample on identical text.
 - [ ] **3 · The direction-adherence gate — the one QA idea that reaches past structural.**
       Every synthetic clip already carries **both** Gemma's `intended` V/A/T (in the
       manifest) and the acoustically-measured V/A/T derived from the render. **Nothing
@@ -735,6 +838,40 @@ shards, and the holdout is untouched either way.
       the VAT audit measured markup at 93% but **valence at 62%**. Calibratable without the
       owner's ears against **E-VOC** (CC-BY-4.0, human ratings on precisely the
       instruction↔perception gap).
+
+### The Qwen-primary exception, recorded rather than assumed (PR-M4)
+
+**Owner, 2026-08-09.** Concentrating mass production on one engine is knowingly in tension
+with an owner-ratified principle, and the tension is written down here so it cannot be
+mistaken for an oversight later.
+
+**The principle:** *"max keep-rate is not the objective; a one-timbre teacher corpus has
+failed at its job."* It is why `MIN_SHARE` and `MAX_SHARE_NARRATION` exist, and why the
+allocation layer carries a diversity floor and cap at all. **The distillation framing makes
+this a first-order risk, not a corner case:** the standing lesson from the teacher-data
+work is *copy their METHOD, not their sources* — and a single-teacher corpus copies one
+teacher's style along with its method.
+
+**The exception, and its reasoning.** Qwen-primary is a YIELD decision — 89.3% keep against
+a mix whose other engines yield materially lower — and Phase 1S is the one lane where
+throughput is the binding constraint, since it sits behind ~870 h of cleared real audio on
+a single shared GPU. Diversity within the phase is bought by voice design rather than by
+engine mix.
+
+**What makes it revisable rather than a bet.** No `MAX_SHARE_QWEN` is set *yet*, and that
+is deliberate: a cap chosen now would be a number with no measurement behind it, which is
+the failure this plan names everywhere else. Prerequisite 2's widened probe is what supplies
+the measurement. **If the style probe fires, a share cap analogous to
+`MAX_SHARE_NARRATION` follows on evidence** — and the cap belongs in
+`ref_select.ENGINE_MIX_BY_LANE` with the numbers that chose it beside it, like every other
+constant here.
+
+⚠ **Read this against the phase's real purpose.** Phase 1S's point is **targeted
+remediation, not bulk** — filling measured gaps that no real audio covers. A remediation
+lane is *less* exposed to monoculture than a bulk lane, because its output is a minority of
+a corpus by construction. That is a reason the exception is defensible; it is not a reason
+to skip the probe, since "minority" is an assumption that stops being true if the lane ever
+grows.
 
 ### The Gemma split — settled, and it is variant-based not task-based
 
@@ -775,6 +912,17 @@ defect at 0.5% prevalence in 100,000 hours is 500 hours of poisoned corpus that 
 affordable sample rate will see. Sonora trains on keeps, so anything the detectors cannot
 see is in the corpus at scale — this is the ceiling-set-by-the-weakest-keep problem arriving
 through volume instead of through labels.
+
+⚠ **And the unnamed risk underneath all of it: there is exactly ONE ear** (recorded
+2026-08-09, PR-L1). Every scale plan here calibrates against a single rater. The docs are
+scrupulous about the *instrument's* ceiling and silent about the *rater's* — availability,
+drift over months, and a bus factor of one. Two mitigations already exist and neither
+addresses singularity: forced ranking (which fixes scale saturation, not drift) and anchor
+exemplars (which fix drift, not availability). **What would actually reduce it:** a small
+held-back re-rate set the owner scores again at intervals, so drift becomes measurable
+rather than assumed absent; and writing the *verdict rationale* down often enough that a
+second rater could be calibrated against it later. Named as a risk rather than solved —
+naming it is what makes it schedulable.
 
 ### Two risks specific to scale, recorded before they bite
 
@@ -909,9 +1057,43 @@ This remains a spike, not a pivot: the decoder is ~7.6% of the codebase.
 | gate | question | consequence of the answer |
 |---|---|---|
 | ~~after **0a**~~ **PASSED 2026-08-06** | do retained checkpoints separate at all on never-trained audio? | **yes** — `vat3_ep099` − `vat3_init` = −0.0111, CI excludes zero. Instrument is sound; 0b closed, Phase 1 proceeds from `vat3_ep099` |
-| after **1.1** | does +43% move the clean holdout? | no movement ⇒ likely capacity-limited, not data-limited ⇒ **promote Phase 2 ahead of the 10×** |
+| ~~after **1.1**~~ **PASSED 2026-08-09** | does **+36%** move the clean holdout? | **yes** — `ep019` − `vat5_init` = **−0.0606**, improved on 82.1% of 5,463 clips, an order of magnitude past the −0.0111 that cleared gate 0a. Data-limited, not capacity-limited: **the 10× proceeds.** (The question read "+43%" until 2026-08-09; +43% was the *planned* merge and **+36%** is what shipped, after 1,676 digit rows and 468 WER rows dropped out. A gate quoting a number the corpus never had cannot be checked against it) |
+| after **rung 2 (v6)** | does the **delivery channel** show signal? | see the pre-registered criterion below — the holdout **cannot** answer this one |
 | after **Phase 1** | is the vocoder still transparent? | re-run `copy_synth.py`; a better acoustic model can walk into the vocoder's ceiling unnoticed |
 | before **Phase 2** | is there a same-corpus U-Net baseline? | if not, the parity gate is unreadable — do not start |
+
+**Gates need an effect size written BEFORE the run, and most of these do not have one
+(PR-M2).** Gate 0a did — it was adjudicated on bootstrap CIs — and the T-saturation
+prediction did, which is exactly why both could be read as pass or fail rather than
+narrated afterwards. "Does it move the holdout" without a criterion is a question that
+cannot be failed. Proposed below (assistant's, unless the owner sets otherwise); the point
+is that a number exists in advance, not that it is this number.
+
+- **A rung PASSES its holdout gate** when its `pick − init` mean Δtotal is negative and its
+  95% bootstrap CI excludes zero, computed init-relative under that rung's own constants
+  (`scripts/stratify_holdout_sweep.py` reports both). **Init-relative is not a detail** —
+  SELECTED.md records that absolute holdout numbers do NOT compare across a
+  normalization-constant change, and every rung re-measures `data_statistics`, so a gate
+  written on absolutes would compare noise across rungs and read it as a result. What
+  carries across rungs is the DELTA plus byte-identical row carry-forward.
+- **A rung is INCONCLUSIVE, not passed,** when the CI straddles zero. Gate 0a's −0.0111 is
+  the smallest movement the instrument has resolved on this holdout; treat anything of that
+  order as the floor rather than as a result.
+- **⚠ Structural limit, and it is not a threshold problem.** The holdout is clean audiobook
+  narration scored on teacher-forced loss. Rung 2's lever is **delivery**, rung 4's is
+  **depth per voice**, rung 5's is **in-the-wild expressivity** — *the instrument cannot see
+  any of them directly.* Rung 2's gate column read "the build itself", which is a
+  description, not a measurement. **The right instrument already exists in this plan: the
+  manner-vs-timbre test** — direct one real speaker through each of the five lanes and have
+  the ear say whether the manner changed while the voice did not. That is what should gate
+  rung 2, and `stratify_holdout_sweep.py --metric diff` is the supporting read, not the
+  verdict. Wiring it in is open work.
+- **Pre-registered now, because it will otherwise be misread (PR-M2).** Rungs 3–5 dilute the
+  delivery-labelled share from ~2.3% (v6) to ~0.3% (v7). **A channel that learns at v6 and
+  then washes out at v7 is dilution, not breakage**, and the two are indistinguishable
+  after the fact. Record v6's per-lane delivery result before v7 trains, and read any v7
+  regression against it — the same inoculation this plan already wrote for the *untrained*
+  channel.
 
 ## Why data before decoder
 

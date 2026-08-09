@@ -278,9 +278,17 @@ nasal-adjacent brightness — the corpus lacks genuine strain to find. Owner cal
 speech fixes the +T tail at the data level, which no label formula can. Dominance fallback
 retired unless Emilia-enriched +T also fails audit.
 
-⚠ **The Emilia mining ran and its 13,141 keeps are still not in a training filelist** — the
-data-level fix this section calls for has never actually reached the model. It is item #1 of
-[quality-gap-plan.md § Phase 1](quality-gap-plan.md); state in
-[training-sources.md](training-sources.md).
+✅ **The data-level fix this section calls for has reached the model** (2026-08-09; this
+paragraph said the opposite until then). The Emilia mining's keeps merged as
+`libritts_r_emilia_vat_v5` — **10,997 of 13,141**, the rest lost to digits (D-M3) and the
+shared `ASR_MAX_WER` — and `vat5_finetune` trained on it to `ep019`.
+
+⚠ **It did not do what THIS section wanted, and that is the finding.** The mining was
+tail-selected on T, so the Emilia half arrives **53.6% saturated on T** against LibriTTS's
+4.7%. The pre-registered worry was that this hands the model a shortcut; **read 2026-08-09,
+it did not** — no T-specific regression on the never-trained holdout, CI straddling zero
+([quality-gap-plan.md](quality-gap-plan.md) § READ-OUT). So T is not poisoned, but neither
+has this section's valence FAIL been retested: v5's new material is delivery-blank and
+nobody has heard a clip of it. State in [training-sources.md](training-sources.md).
 
 Linked from: **§2 above** · [STATE.md](STATE.md).

@@ -20,9 +20,19 @@ Sonora-heavy option that must not contort the small-model contract today.
 ## Phases
 
 ### S0 — Border probe (immediate, ~zero cost)
-Add to the current pilot bank: a Dia `(sings)` lullaby line and a Qwen sing-song instruct
-line (authored lyrics). Owner ear-audit answers: can our ratified teachers produce usable
-melodic speech at all, and does affect survive it? No new tooling; VAT labels as usual.
+
+⚠ **SUPERSEDED IN PART, 2026-08-09 — do not run this step as written.** It named **Dia**,
+which is [benched](teacher-tts-audition-shortlist.md#benched-engines) and out of the live
+portfolio; and its premise has been overtaken from the other side, because **unrequested
+singing is now a measured DEFECT class** — it is one of the two blockers that benched
+VibeVoice and Dia in the first place. A probe asking "can our teachers sing?" against
+engines benched *for* singing unbidden measures the wrong thing.
+
+The question is still live and the rewrite is small: use the **live portfolio only**
+(qwen · chatterbox · zonos · orpheus · moss_vg), ask for a Qwen sing-song instruct line and
+a chatterbox/zonos equivalent on authored lyrics, and make the ear-audit question
+**"is melodic speech reachable ON PURPOSE, with affect surviving"** — the distinction from
+unrequested flair being the whole point. No new tooling; VAT labels as usual.
 
 ### S1 — Melodic-speech register family (corpus phase, near-term)
 If S0 passes: a register family in the bank — *lullaby* (V+ A− T−, the tenderness corner

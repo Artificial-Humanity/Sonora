@@ -35,13 +35,13 @@ had been blurring into each other:
 | **LJSpeech-1.1** | keithito, public domain. 13,100 clips / 24 h / 1 speaker / 22.05 kHz | **TRAINED** — Phase 0, `ljspeech` runs 2026-07-10 and 07-11 (ep199). The current v1 voice | None. Carries the contraction-poisoned IPA at ~1.2% of rows and was NOT rebuilt — it feeds the Phase-0 warm start, not the VAT lane. Rebuild only if Phase 0 is re-run |
 | **LibriTTS-R `train-clean-100`** | Google, CC-BY-4.0, quality-restored LibriTTS. 257 speaker dirs, 9.0 GB on disk → 31,445 rows / **51.3 h** | **TRAINED** — the only VAT source. `derisk_energy` (v1), `vat3_finetune` ep099 (v2), `vat3c_finetune` ep099 (v3c) | None outstanding. See § The VAT corpus lineage |
 | **LibriTTS-R `dev-clean`** | Same, CC-BY-4.0. 5,463 clips / **8.7 h** / 40 speakers | **NEVER TRAINED ON, DELIBERATELY, AND IT MUST STAY THAT WAY.** Pulled 2026-08-06 and derived scoring-only as `data/libritts_r_holdout_devclean`; its 40 speakers are disjoint from the corpus's 247 | Nothing. It is the standing instrument — score every new checkpoint with `scripts/score_holdout.sh` and normalise with the *training* corpus's `data_statistics`, never a re-measure. **Training on it destroys it permanently; there is no second dev-clean.** The wall declares it (so `enforce()` loads it) and therefore will *not* stop such a run — the deleted `train_op.txt`/`val_op.txt` and the directory README are the guard. Results: [quality-gap-plan.md § 0a](quality-gap-plan.md) |
-| **LibriTTS-R (the other 90%)** | Same, CC-BY-4.0. Full set ≈ 585 h / ~2,400 speakers | **NOT PULLED** — we hold `train-clean-100` only | The 10×. Gated on whether Emilia's +43% moves the holdout — [quality-gap-plan.md § Phase 1](quality-gap-plan.md) |
+| **LibriTTS-R (the other 90%)** | Same, CC-BY-4.0. Full set ≈ 585 h / ~2,400 speakers | **NOT PULLED** — we hold `train-clean-100` only | **The 10×, and it is UNGATED as of 2026-08-09** — Emilia's **+36%** (not the planned +43%) moved the clean holdout by **−0.0606**, so the corpus is data-limited and rung 3 proceeds. It sequences after rung 2, not behind another gate — [quality-gap-plan.md § Phase 1](quality-gap-plan.md) |
 | **`parler-tts/libritts-r-filtered-speaker-descriptions`** | CC-BY-4.0. LibriTTS-R + per-utterance natural-language annotations (pace, pitch, expressivity, quality) | **NOT PULLED** | Evaluate against our derived V/A/T. Cleared as the "labeling shortcut" and we hand-built that substrate instead |
 | **`cdminix/libritts-r-aligned`** | CC-BY-4.0. LibriTTS-R + forced alignments and per-token pitch/energy/duration | **NOT PULLED** | Same evaluation. Its prosody measures overlap what `derive_vat_corpus.py` computes; worth knowing whether it is better |
 | **Hi-Fi TTS (v1)** | NVIDIA, CC-BY-4.0, LibriVox-sourced. ~292 h / 10 speakers / 44.1 kHz. **40 GB of parquet WITH audio** | **RAW** — largest corpus on disk, never touched | Convert parquet → wav + filelist. Role: casting anchors and speaker-consistent long-form prosody (few voices, deep hours) |
 | **HiFiTTS-2** | NVIDIA, CC-BY-4.0, LibriVox-sourced. 36.7 k h @22 kHz / 31.7 k h @44 kHz, ~5 k speakers | **RAW — METADATA ONLY.** 16.6 GB of manifests and chapter lists (8.9 GB 22 kHz + 7.7 GB 44 kHz). NVIDIA does not redistribute the audio | Decide before any download: **2.8 TB for 22 kHz, 4.0 TB for 44 kHz**, fetched from LibriVox via NeMo-speech-data-processor. A bandwidth-filtered subset is the realistic version |
 | **VCTK** | CSTR Edinburgh, CC-BY-4.0 (verified 2026-07-19). 110 speakers / ~44 h / 48 kHz studio | **RAW** — still `VCTK-Corpus-0.92.zip`, 4.3 GB, unextracted | Unzip and build a filelist if the casting/accent grid needs it. Neutral read sentences — no conveyance value |
-| **Emilia-YODAS keeps** | Amphion, CC-BY-4.0 (**YODAS subset only**). Mined and resampled to 24 kHz, 5.4 GB | **TRAINED** (2026-08-08) — merged as **10,653 rows** of `libritts_r_emilia_vat_v5`, taking the corpus to 41,138 / 78.5 h / 2,500 speakers. The planned 13,141 became 10,653 on contact (digit handling, D-M3) | None. ⚠ It did **not** bring real newscaster/documentary audio — the mining verdict expected that and it did not survive: **100% of Emilia rows carry blank delivery.** Those lanes still have no real audio from any source |
+| **Emilia-YODAS keeps** | Amphion, CC-BY-4.0 (**YODAS subset only**). Mined and resampled to 24 kHz, 5.4 GB | **TRAINED** (2026-08-08) — merged as **10,997 rows** of `libritts_r_emilia_vat_v5`, taking the corpus to 41,138 / 78.5 h / 2,500 speakers. The planned 13,141 became 10,997 on contact — 1,676 rows dropped on digits (D-M3) and 468 on the shared `ASR_MAX_WER`. (This cell read **10,653** until 2026-08-09, against every other doc and against the artifact: 42,442 − 31,445 = 10,997, confirmed by counting Emilia rows in the shipped filelists. This file is where rung sizes are quoted from, so a wrong figure here propagates) | None. ⚠ It did **not** bring real newscaster/documentary audio — the mining verdict expected that and it did not survive: **100% of Emilia rows carry blank delivery.** Those lanes still have no real audio from any source |
 | **Emilia-YODAS probe shards** | Same. 9.8 GB of raw shards | **RAW** — the pool the keeps were mined from | Keep or delete. Mining is done; this is the working set behind it |
 | **JL-Corpus** | CC0. 2,400 utterances, 459 MB | **READY** — used as a calibration anchor, not as training audio | None. Correctly scoped as an instrument |
 | **Expresso** | Meta, **CC-BY-NC-4.0**. 11,615 read-speech clips, 48 kHz, 1.8 GB | **BLOCKED** — see § The Expresso conflict | Owner call. Two ratified decisions disagree about it |
@@ -85,8 +85,16 @@ important fact in this file.
   are LibriTTS clips that happened to be auditioned.
 - **v5** adds volume, and volume is precisely what Phase 1 #1 exists to test. Its Emilia
   rows are delivery-`unknown` by construction, so the delivery count is still 48.
-- **Phase 1 #2** is the one that closes the gap: `sonora-expressive-registers`, 1,071
-  ear-certified keeps with 1,189 delivery labels, still outside the training path.
+- **Phase 1 #2** is the one that closes the gap: `sonora-expressive-registers`, **1,004
+  eligible keeps** (owner-scoped 2026-08-09), still outside the training path.
+
+  ⚠ **Five sizes for this corpus have circulated and they are not contradictions — they are
+  different filters, which nothing said out loud until 2026-08-09.** In order:
+  **1,279** total keeps → **1,189** delivery-labelled (the delivery-v1 campaign's own count)
+  → **1,156** the *planned* close of +116 that the owner's scoping superseded → **1,071** an
+  intermediate ear-certified count → **1,004 eligible**, which is the v6 scope: 1,279 minus
+  licence and standing-policy exclusions (VibeVoice/Dia 133 benched, moss85 83, longcat 45,
+  higgs3 8 NC). **Quote 1,004 for v6 and name the filter whenever another number is used.**
 
 So the order is deliberate — v5 asks "does volume move quality at all?" with material that
 costs no ear time, and #2 spends ear time only if the answer is yes.
@@ -104,7 +112,7 @@ labels, phonemes and split. **v5 is the first that adds audio.**
 | `_v3b` | 31,445 | apostrophe-clean IPA (v1–v3 carry ~6.4 % poisoned rows) | no |
 | `_v3c` | 31,445 | **per-clip hash split** — 30,485 train / 960 val | yes — `vat3c_finetune` ep099, 2026-08-06, **retired as a regression** |
 | `_v4` | 31,445 | **8-wide** (V/A/T + one-hot delivery), D-L2's corrected z guard, D-M4 homographs ON | smoke only — superseded by v5 before it ran |
-| **`libritts_r_emilia_vat_v5`** | **42,442** | **+10,997 Emilia-YODAS keeps**; 247 → 2,500 speakers; 51.3 → 78.5 h | **no — the one to train on.** `vat5_finetune` |
+| **`libritts_r_emilia_vat_v5`** | **42,442** | **+10,997 Emilia-YODAS keeps**; 247 → 2,500 speakers; 51.3 → 78.5 h | **YES — trained 2026-08-08/09.** `vat5_finetune`, 48 epochs, holdout-scored, **`ep019` selected** (converged by epoch 9). The warm-start donor for v6 |
 
 **v5 is a merge, not a derivation** (`scripts/merge_emilia_corpus.py`), and the two halves
 carry labels on different scales *on purpose*. LibriTTS keeps its per-speaker z; Emilia

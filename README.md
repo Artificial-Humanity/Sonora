@@ -63,7 +63,7 @@ Training is structured in sequential phases to isolate complexity:
 * **Process:**
   1. Convert with the split-graph recipe (`convert_final.py` for the 22.05 kHz baseline, `convert_vat.py` for 24 kHz/multi-speaker/VAT). `python -m matcha.onnx.export` is the Plan B path, not the default.
   2. Validate per-graph parity (corr ≈ 1.0) and end-to-end waveform parity against torch, then that the graphs load and synthesize in the target runtime.
-* **Status:** verified at parity on Phase 0 and on the de-risk checkpoint. ⚠ The gate suite currently *reports* rather than *refuses*, and valence/tension have never been driven nonzero through a converted graph — see [`notes/todo.md`](notes/todo.md) §2 before trusting it.
+* **Status:** verified at parity on Phase 0 and on the de-risk checkpoint. The gate suite **refuses** on failure (since F-C1, 2026-08-06 — it *reported* rather than refused until then, which is a gate that cannot fail). ⚠ Valence/tension have still never been driven nonzero through a converted graph — see [`notes/todo.md`](notes/todo.md) §2 before trusting it.
 
 ### Phase 3: Directability (VAT Conditioning)
 * **Goal:** condition on `(valence, energy, tension)` — energy occupies the arousal slot — via zero-init FiLM in the text encoder and flow decoder.
@@ -72,7 +72,7 @@ Training is structured in sequential phases to isolate complexity:
 
 ### Phase 4: Delivery — the 4th conditioning channel
 * **Goal:** one of `{Dialogue, Neutral, Documentary, Newscaster, Speech}` + `unknown`, embedded host-side onto the same zero-init FiLM path (Director↔Actor contract v2).
-* **Status:** corpus complete (1,189 labelled keeps), **model core not started** — `vat_dim` is still 3. Seam assertions are pre-placed and proven to fire (`scripts/test_vat_dim_seams.py`).
+* **Status:** **shipped on the training side** — `vat_dim` is **8** (three V/A/T channels plus a five-wide one-hot delivery block), and `vat5_finetune` trained 8-wide to `ep019` (2026-08-08/09). The expressive corpus that gives the delivery channel something to learn from — **1,004 eligible keeps** — merges as v6, which is decided and not yet built. The export lane is deliberately still 3-wide. Seam assertions proven to fire (`scripts/test_vat_dim_seams.py`).
 
 ### Phase 5: Casting & Speaker Embedding Blends
 * **Goal:** Re-derive continuous voice casting spaces (e.g., age, masculinity, strain) in speaker-embedding space.

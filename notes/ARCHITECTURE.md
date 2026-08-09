@@ -7,12 +7,18 @@ commit that changes architectural behavior (corpus rules, contract, gates, promo
 this file in the same commit. Detail lives in the linked docs; what is written HERE is what's
 pinned._
 
-_Established by the Phase 0 (baseline-ljspeech-22k) and §7 de-risk (derisk-energy-24k) lineages;
-every pinned item below has shipped at least once **except the v2 Delivery row, which is still
-unimplemented** — `vat_dim` is 3 in every checkpoint to date, `vat3c` (2026-08-06) included. The
-seam assertions that make the migration safe are pre-placed and proven to fire
-(`scripts/test_vat_dim_seams.py`); the migration itself is [todo.md §1](todo.md).
-Last updated: 2026-08-06._
+_Established by the Phase 0 (baseline-ljspeech-22k) and §7 de-risk (derisk-energy-24k) lineages.
+**Every pinned item below has now shipped at least once, the v2 Delivery row included** —
+`vat_dim` is **8** from `libritts_r_vat_v4` (2026-08-07) onward, and `vat5_finetune` trained
+8-wide to `ep019` (2026-08-08/09). This paragraph said the Delivery row was "still
+unimplemented — `vat_dim` is 3 in every checkpoint to date" for two days after both stopped
+being true, against this file's own covenant; corrected 2026-08-09.
+⚠ **The EXPORT lane is deliberately still 3-wide**: `convert_vat.py` refuses a wider
+checkpoint on purpose, because a mobile host told nothing about the last five channels being
+categorical will interpolate them ([todo.md §1](todo.md)). Shipped on the training side is
+not shipped on the device.
+The seam assertions that make the width safe are proven to fire (`scripts/test_vat_dim_seams.py`).
+Last updated: 2026-08-09._
 
 ---
 
