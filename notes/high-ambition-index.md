@@ -2,7 +2,12 @@
 
 The series spans **two repositories**, which is deliberate but was undiscoverable: each note
 carried a "Sequence: N of 5" header written when there were five, and no note listed where
-its siblings actually live. Six exist. This index is the map.
+its siblings actually live. **Seven exist** (7 added 2026-08-09). This index is the map.
+
+⚠ **7 was promoted from a roadmap, and the promotion is the point** (owner, 2026-08-09).
+It lived as `singing-roadmap.md` with a phase marked "immediate, ~zero cost", which made a
+long-range ambition read as due work. Filing it here fixes the sequencing claim: singing is
+wanted, and it is wanted *after* the model reliably delivers the five spoken lanes.
 
 **The split is by subject, not by accident.** A goal lives with the thing it changes: goals
 that change the MODEL or the CORPUS live in `Sonora/github/notes`; goals that change the
@@ -16,12 +21,17 @@ PRODUCT — what the app does with a model it already has — live in `Prosodia/
 | 4 | [Multilingual G2P](../../../Prosodia/notes/high-ambition-4-multilingual-g2p.md) | Prosodia | live — after English production quality |
 | 5 | StyleTTS2-Lite custom model | git history (deleted 2026-08-02) | **RETIRED 2026-07-29** — the quality-ceiling escape hatch is now a scaled flow-matching backbone; decision record in [model-decisions.md §5](model-decisions.md) |
 | 6 | [Audience: conveyance-aware STT](high-ambition-6-audience-conveyance-stt.md) | Sonora | live — the reverse lane; perceive prosody rather than dictate it |
+| 7 | [Singing](high-ambition-7-singing.md) | Sonora | **added 2026-08-09** — down the road, behind the quality ladder. ⚠ *Unrequested* singing is a DEFECT and stays one |
 
-Two things a reader should know before following the numbers:
+Three things a reader should know before following the numbers:
 
 - **5 is retired, not pending** — its design note was deleted with the notes `archive/`
   on 2026-08-02 (git history keeps it; the decision survives in model-decisions.md §5).
   Any "5 of 5" phrasing in older notes predates that and predates 6 existing at all.
+- **7 carries a defect on the other side of the same behaviour.** Unrequested singing is
+  what benched VibeVoice and Dia; requested singing is goal 7. Progress on the goal is not
+  evidence about those engines, which were benched for *uncontrollability* rather than for
+  inability — a capability you cannot withhold is not a capability.
 - **3 and 4 sit in Prosodia but are arguably model-side work.** That is the one place the
   Sonora/Prosodia boundary is genuinely blurred: child voices and multilingual G2P both
   change the model, not the app. Left where they are because they have accumulated their own

@@ -93,11 +93,11 @@ so do not renumber or rename them.
 
 | file | is |
 |---|---|
-| [high-ambition-index.md](high-ambition-index.md) | the six-goal map, and which repo each lives in |
+| [high-ambition-index.md](high-ambition-index.md) | the seven-goal map, and which repo each lives in |
 | [high-ambition-1-matcha-actor.md](high-ambition-1-matcha-actor.md) | goal 1 — the directable production actor (**live**; this is the project) |
 | [high-ambition-2-dramatic-reader.md](high-ambition-2-dramatic-reader.md) | goal 2 — full-cast audiobooks (design, needs 1 first) |
 | [high-ambition-6-audience-conveyance-stt.md](high-ambition-6-audience-conveyance-stt.md) | goal 6 — conveyance-aware STT (vision, parked) |
-| [singing-roadmap.md](singing-roadmap.md) | where singing fits (S0–S3, gated) |
+| [high-ambition-7-singing.md](high-ambition-7-singing.md) | goal 7 — singing (**down the road**, gated behind the quality ladder). ⚠ *unrequested* singing is a defect and stays one |
 
 _(Goal 5, the StyleTTS2-Lite re-platform, was **retired 2026-07-29** and its note deleted
 2026-08-02. The decision record is [model-decisions.md §5](model-decisions.md).)_

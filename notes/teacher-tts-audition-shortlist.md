@@ -124,6 +124,15 @@ and fixes casting quality. **A better pool does not stop it singing**, and a pro
 containing music makes it worse. Re-testing on pool grounds alone would rediscover the 6%
 and call it new.
 
+**And a third, which will arrive later: "but we WANT singing now."** Singing is
+[high ambition 7](high-ambition-7-singing.md) as of 2026-08-09 — a real goal, deliberately
+down the road. When it opens, these two engines will look like a head start and they are
+not one. **They were benched for uncontrollability, not for inability**: per the maker,
+*"we can't directly control whether they are generated or not."* A capability that cannot be
+withheld is not a capability — for a teacher it is a contaminant, because every clip it
+touches must then be checked for a behaviour nobody asked for. The end-condition in the
+table above is unchanged by goal 7: **an answer to ②**, meaning it can be told *not* to.
+
 **LongCat's gate passed on the wrong axis.** `transfer1` (2026-07-18) scored 51/55 keeps
 (92.7%) — trusted-tier. But keep-rate measures whether the audio is *good*, not whether the
 *affect transferred*, which is the entire question for a clone-multiplier with inherited
