@@ -337,4 +337,13 @@ is only its headline.
   risk is **drift**, and it had already bitten: the running export harness was three weeks
   stale and missing a seam guard the repo recorded as landed. `tests/test_data_mirrors.py`
   fails on any divergence. **The repo is authoritative; `/data` is a working copy.**
-- Latest code review — [code-review-20260809-040409.md](code-review-20260809-040409.md)
+- Latest code review — [code-review-20260809-040409.md](code-review-20260809-040409.md).
+  **Every code finding is closed** (QC, training and changelog lanes; see its Resolution
+  table). What it found worth carrying forward is a pattern, not a bug: **the two High
+  findings were both enforcement code that existed and was never wired in, and both sat
+  under tests that grepped for source strings rather than exercising behaviour.** A grep
+  test cannot see reachability — QC-H2's requeue branch was unreachable for two days under
+  a test asserting its exact source lines. Where the suite is behavioural it is genuinely
+  strong; control flow is where it must be. The product/roadmap findings (PR-*) are
+  **open** — they are document-state lag and sequencing calls, not code, and three of them
+  need an owner decision.

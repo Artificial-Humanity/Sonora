@@ -17,9 +17,111 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ---
 
+## 2026-08-09
+
+### Fixed — the 2026-08-09 review's QC-lane findings
+
+Two High findings, both the same shape: a documented, owner-ratified rule — *every
+QC-flagged clip reaches the ear* — whose enforcement code existed and was not wired in.
+Both sat under tests that grepped for source strings instead of exercising behaviour, so
+both are re-covered behaviourally.
+
+- **`2b1ac84` (QC-H1)** — `register_audition.main()` computed `qc_map`, announced "N clips
+  carry a QC finding", and called `register_audio_dir(...)` **without `qc=qc_map`**. The
+  parameter defaults to `None`, so the note-attaching branch was dead code for nine days
+  and `qc_noted` always printed 0. Coverage survived via `qc_flags.txt`, which is why
+  nobody noticed; the GUIDANCE did not. Every "stops early — LISTEN TO THE END" note was
+  computed and discarded — the `the-return_nar_0051_doc_MOS` failure they exist to prevent.
+  Also fixes a `TypeError` the new fixture surfaced: a row with `asr_ok: False` and no
+  `asr_wer` took down the entire registration, so an incomplete measure cost the whole
+  campaign's queue.
+- **`2c979e2` (QC-H2)** — `pick_audit_subset.cmd_select` drew candidates from
+  `status == "unaudited"` only, and `keep_ids` is built from that pool, so the C-M1 requeue
+  branch could never fire. A clip deferred by an earlier pass and QC-flagged by a later one
+  stayed deferred forever. Deferred rows are candidates again; ear verdicts are not.
+  Selection is now also stable across re-runs.
+- **`ef4578f` (QC-M1)** — `edge_loss`'s dash class was `[-–]`: it missed the em-dash, which
+  is the dash English prose uses. `op_g2p` escaped by accident (unidecode folds `—` to
+  `--` before its own sub). Now a RANGE, defined once as `DASH_RUN` and parity-tested
+  against `op_g2p`'s copy. Measured over the same 3,189 clips: 132 carry a non-ASCII dash,
+  1 tail count moves, 0 gate verdicts change.
+- **`168fd35` (QC-M2)** — `stage_pool.qc_flagged` returned an empty set for a missing
+  `qc_measures.jsonl`, so a campaign staged before `qc_gate` ran folded every clip as a
+  clean keep: "QC follows every generation pass" defeated by file absence, in the lane that
+  writes no ratings row. It refuses now. The dead-air ADVISORY band also could not queue a
+  pooled clip at all, so a 2.0 s mid-clause stall folded unheard here while the same clip
+  in the synth lane reached the ear. `PAUSE_FLAG_SECONDS` had three spellings and
+  `stage_pool` had none of them; one definition now. The 2,030 pooled clips whose measures
+  predate `worst_pause` are reported rather than assumed clean.
+- **`29fd21f` (QC-M3, QC-M4)** — `parse_score` learned `x` in 2026-08-08 and not `"0"`, so
+  all 34 Retake rows stayed invisible to calibration. And the confusion matrix skipped
+  dropped/reroll rows wholesale, emptying the false-negative cell of exactly the clips it
+  counts, while reading one campaign and printing a pooled header. (`x1`..`x5` are legacy
+  *relabeled* keeps and still parse as 1–5 — pinned by test.)
+- **`f0ef3b7` (QC-M5)** — the audition app was the last unguarded writer of `ratings.csv`:
+  read → modify → `os.replace` under a `threading.Lock` that cannot see another process. It
+  takes the scripts' sidecar flock now. `fastapi` joins the `dev` extra so the app's tests
+  can run at all.
+- **`a97a4c9` (QC-M6)** — `683c43f` retired "first N words … never spoken" as a
+  conclusion the evidence contradicts, and reworded only one of the note's two writers.
+  `synth_common.head_note` is now the single writer.
+- **`5abf783` (QC-L1…L5)** — `--qc` help and `synth_bank.sh` described a `reroll` design
+  that was considered and rejected; dialogue chunking lacked narration's `HARD_MAX_CHARS`
+  bound; `sweep_dropped`'s "licensed corpora are protected" had no mechanism (it reads
+  `data_licenses.yaml` now) and its sweep looked in one hard-coded directory; the app wrote
+  a hard-coded CSV schema; and two 4 s statements outlived the owner's `speech_ok` ruling.
+
+### Fixed — the review's training-lane findings
+
+- **`6ca6cce` (TR-M1, TR-M2, TR-L1)** — the digit filter existed in three spellings with
+  three answers and none ran on the string the tokenizer sees: all of them preceded
+  `convert_to_ascii`, which manufactures ASCII digits (`１００`, `²`, `½`) that `_TOKEN_RE`
+  then deletes. `op_g2p.carries_digits` is the one rule, beside the tokenizer that does the
+  deleting; verified 0 of 13,141 Emilia keeps newly rejected, so v5 is unaffected. The
+  global-anchor label path gained the non-finite guard the derive lane has had (a NaN there
+  reaches the filelist as `"nan"`, parses cleanly, and poisons the FiLM trunk), plus a
+  refusal for a missing weighted head. `merge_emilia_corpus` no longer dies with a bare
+  `KeyError: 'wer'` on an ASR-error row.
+- **`4620148` (TR-M3, TR-L2…L5)** — the holdout's "the naming is the guard" is now an
+  actual gate (`refuse_holdout`, beside the licence wall, refusing train AND val paths);
+  what had been stopping a run was the accident that `holdout.txt` is 3-wide, and
+  `holdout_8w.txt` ended it. `score_holdout` refuses to score with no
+  `--assert-disjoint-from`. Plus: the warm-start collision abort now refuses a shared id
+  across namespaces even at the same index; the loader validates the delivery block is
+  one-hot, not just the right width; `configure_optimizers`' unbound `current_epoch`; and
+  `every_n_epochs` 100 → 1, since this lineage converges by epoch ~10 and the default
+  retained no per-epoch checkpoints for the holdout methodology to read.
+
+### Changed — the review's changelog-lane findings
+
+- **`3a29416` (CL-L1, CL-L2)** — `vocalizer` treated `"voice": null` and an absent `voice`
+  differently (400 vs default) and refused named voices without saying why; the
+  teacher-audition README's VibeVoice and Dia rows still restated a bench status that
+  `23c6af3` moved to one place.
+- **CL-M1** — this section is the missing changelog work: `106e142` (below) had no entry,
+  and `2399aed`'s entry carried no SHA. Both closed.
+
+### Added — the directable surface, declared (`106e142`)
+
+- **`matcha/direction.py`** declares the model's directable surface, and `vocalizer.py`
+  gained the dial for it, per the standing rule that a capability with no control cannot be
+  vetted. The rule's test asserted that ONE dropdown existed, so it could only fail for the
+  capability in flight when it was written; it now enumerates the surface.
+- **The speaker id it found unguarded is bounded rather than clamped.** `render` used to
+  hold an out-of-range id down to the table's last row, so asking a 2,500-speaker
+  checkpoint for speaker 5000 rendered speaker 2499 and reported success — on a vetting
+  surface, a confident verdict about a voice nobody selected. The default also moved 245 →
+  0: 245 was a known-good LibriTTS-R val speaker under 247 rows and is an unrelated voice
+  under 2,500, so it was a default that silently meant someone different after each
+  re-derivation.
+- ⚠ Behaviour change this commit's message did not state, recorded here for callers: an
+  unparseable `voice` (`"alloy"`) is now a **400**, where it previously mapped to speaker
+  245 and rendered. Intended — reject, don't guess — see `3a29416` for the message that
+  explains it to an OpenAI-shaped client.
+
 ## 2026-08-08
 
-### Moved — the audition app comes home, and a forked contract closes
+### Moved — the audition app comes home, and a forked contract closes (`2399aed`)
 
 - **`audition/` moved from `AI-Lab-AMD` into this repo** (owner call). AI-Lab-AMD is a
   **machine blueprint** — enough to rebuild ai-lab-0 elsewhere, and a starting playbook for
