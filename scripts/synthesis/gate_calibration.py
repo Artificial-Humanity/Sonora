@@ -91,10 +91,11 @@ SWEEP_DIRECTION = {"speech_dur_vad": "below", "speech_dur": "below"}
 
 
 DROP_MARK = "x"          # the audition app's reject marker; `pick_audit_subset` reads it too
+RETAKE_MARK = "0"        # ...and its Retake marker (`audition/app/main.py` `_apply`)
 
 
 def parse_score(v):
-    """Ear score 1-5, **0 for the drop marker `x`**, None when there is no verdict at all.
+    """Ear score 1-5, **0 for either rejection marker**, None when there is no verdict.
 
     `x` returned None until 2026-08-08, and every caller then did `if score is None:
     continue` — so **the ear's own rejections were discarded by the tool whose entire job
@@ -111,9 +112,21 @@ def parse_score(v):
 
     0 rather than None because the downstream test is `score < keep_score`: a drop has to
     compare as worse than any keep, and None cannot.
+
+    **The 2026-08-08 fix covered `x` and stopped there (QC-M3).** Retake writes `"0"`,
+    not `x` — `re.search(r"[1-5]", "0")` finds nothing, so it returned None and `load_ear`
+    dropped the row exactly as it had dropped the drops. That is the SAME "fails by doing
+    nothing" failure, one marker over, for the remaining slice of rejections: 34 rows on
+    the live sheet today, every one of them status `reroll`. A bad take rejected via
+    Retake never entered a sweep's defect set.
+
+    ⚠ `x1`..`x5` are NOT this case and must keep parsing as 1..5. They are legacy
+    Recategorize rows (status `relabeled`, retired 2026-07-26) — a clip the ear KEPT at
+    that score and re-labelled, which `stage_pool` also counts as a keep. 57 on the sheet.
+    The digit search is what reads them correctly, so it stays.
     """
     s = (v or "").strip().lower()
-    if s == DROP_MARK:
+    if s in (DROP_MARK, RETAKE_MARK):
         return 0
     m = re.search(r"[1-5]", s)
     return int(m.group()) if m else None
@@ -273,17 +286,38 @@ def main():
     if args.sweep:
         return cmd_sweep(args)
 
-    vpath = os.path.join(args.campaign_dir[0], args.verdicts)
-    verdicts = {r["id"]: r for r in
-                (json.loads(l) for l in open(vpath, encoding="utf-8") if l.strip())}
+    # POOLED, like the sweep path (QC-M4). `--campaign-dir` is `action="append"` and the
+    # header below has always printed "{N} pooled: <every dir>" — while this path read
+    # `campaign_dir[0]` and scored ONE campaign. A matrix quoted as multi-campaign
+    # evidence when it covers a single campaign is the "a check whose summary is wrong is
+    # worse than no check" defect one file over, applied to the number that gates
+    # pipeline 1.0.
+    verdicts = {}
+    for d in args.campaign_dir:
+        vpath = os.path.join(d, args.verdicts)
+        with open(vpath, encoding="utf-8") as fh:
+            for l in fh:
+                if l.strip():
+                    r = json.loads(l)
+                    verdicts[r["id"]] = r          # last record wins, as everywhere else
 
-    # Only genuine ear verdicts calibrate the gate. Two kinds of row used to
-    # slip in: machine-folded rows carrying a fabricated score, and rows the
-    # owner DROPPED that still hold the score they were given before the drop
-    # (38 of them in delivery-v1-narration). Both were counted as ear keeps, so
-    # the false-negative rate that gates pipeline 1.0 was computed over
-    # polluted cells.
-    ear, skipped = {}, {"folded": 0, "dropped": 0}
+    # Only genuine ear verdicts calibrate the gate, and a machine-folded row is not one:
+    # it carries a fabricated score the ear never gave.
+    #
+    # A DROPPED row is the opposite case and used to be skipped alongside it (QC-M4). The
+    # reason it was skipped is real — its `score` is the one it held BEFORE the drop, so
+    # reading that number as an ear keep polluted the cells (38 such rows in
+    # delivery-v1-narration). But skipping the row throws away the verdict along with the
+    # stale number, and drops are the ear's STRONGEST rejections: excluding them empties
+    # the "instrument keep / ear reject" false-negative cell of exactly the clips it
+    # exists to count, so the figure that decides pipeline 1.0 was systematically
+    # understated.
+    #
+    # The status IS the verdict. `cmd_sweep` has read it that way since 2026-08-08
+    # (`rejected = status in ("dropped", "reroll") or score < keep_score`); that fix
+    # simply never reached this path. Scored 0 here for the same reason `x` is: the
+    # downstream test is `>= keep_score`, and a rejection must compare below every keep.
+    ear, skipped, rejections = {}, {"folded": 0}, 0
     with open(args.ratings, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             s = parse_score(row.get("score"))
@@ -293,12 +327,15 @@ def main():
                 skipped["folded"] += 1
                 continue
             if (row.get("status") or "") in ("dropped", "reroll"):
-                skipped["dropped"] += 1
-                continue
+                s = 0                      # the verdict, not the pre-drop number
+                rejections += 1
             ear[row["id"]] = s
-    if any(skipped.values()):
-        print(f"excluded from ear evidence: {skipped['folded']} machine-folded, "
-              f"{skipped['dropped']} dropped/reroll rows still carrying a score")
+    if skipped["folded"]:
+        print(f"excluded from ear evidence: {skipped['folded']} machine-folded rows "
+              f"(no ear verdict)")
+    if rejections:
+        print(f"ear rejections counted: {rejections} dropped/reroll rows, scored 0 "
+              f"(their stored score predates the rejection)")
 
     rated = [i for i in verdicts if i in ear]
     print("campaign : " + (args.campaign_dir[0] if len(args.campaign_dir) == 1

@@ -271,3 +271,26 @@ def test_the_drop_marker_is_a_verdict_not_a_missing_score():
     assert gc.parse_score(None) is None
     # And it must sort below any keep bar.
     assert gc.parse_score("x") < 4
+
+
+def test_the_retake_marker_is_a_verdict_too():
+    """QC-M3: the 2026-08-08 fix covered `x` and stopped there. Retake writes `"0"`, and
+    `re.search(r"[1-5]", "0")` finds nothing — so it returned None and `load_ear` dropped
+    the row exactly as it had dropped the drops, for the remaining slice of rejections.
+    34 rows on the live sheet, every one status `reroll`. Same failure, one marker over.
+    """
+    sys.path.insert(0, str(SYNTH))
+    gc = pytest.importorskip("gate_calibration")
+    assert gc.parse_score("0") == 0
+    assert gc.parse_score(" 0 ") == 0
+    assert gc.parse_score("0") < 4, "a retake must sort below any keep bar"
+
+
+def test_a_recategorized_row_is_still_the_keep_it_was():
+    """The counterweight to both marker fixes. `x1`..`x5` are legacy Recategorize rows
+    (status `relabeled`, retired 2026-07-26): the ear KEPT the clip at that score and
+    re-labelled it, and `stage_pool` counts `relabeled` as a keep. 57 on the sheet. Widen
+    the `x` test to "starts with x" and all 57 silently become rejections."""
+    sys.path.insert(0, str(SYNTH))
+    gc = pytest.importorskip("gate_calibration")
+    assert [gc.parse_score(f"x{n}") for n in range(1, 6)] == [1, 2, 3, 4, 5]
