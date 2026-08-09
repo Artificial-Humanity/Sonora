@@ -21,6 +21,34 @@ the decision after it is made on data instead of spec sheets.
 > "a killed run still leaves data." (2) The loader-ceiling sweep (step 2) has not been run,
 > and it is the term the whole decision turns on. **GPU-bound locally is exactly the case
 > the worked trap below is about**: local headroom does not survive the pod's vCPU cut.
+>
+> ✅ **PARTLY UNBLOCKED 2026-08-09 (PR-M5), and the headline answer is: rung 3 does not
+> need this decision.** The `throughput_summary.json` gap is real and still open, but it
+> obscured the fact that **the per-epoch probe DID write** — 48 epochs of
+> `throughput_probe.jsonl` sit in the v5 run directory, and they carry the terms the
+> projection needs. Measured over the 47 steady-state epochs (epoch 0 is the 3,941 s
+> MIOpen ramp, as documented):
+>
+> | term | v5, measured |
+> |---|---|
+> | samples/s | **39.80** mean · 40.26 p50 · 35.80 min |
+> | wall per epoch | **1,015 s** (16.9 min) over 41,138 rows |
+> | **loader stall fraction** | **0.47%** mean, 0.57% max |
+> | GPU mem peak | 18.9 GB (batch ≈ 32) |
+>
+> **Rung 3 projected at that rate:** v7 is ~615 h ≈ 322k rows, so **2.25 h/epoch — about
+> ONE DAY of GPU for the ~10 epochs this lineage actually converges in**, and 4.5 days for
+> a full 48. Not multi-week. **So the local-vs-cloud call does not have to precede the v7
+> corpus build**, which was the specific worry: an interrupted multi-week run is a very
+> different risk from an interrupted one-day run. Even if the loader degrades **3×** at 8×
+> the corpus — well past anything the 0.47% stall fraction suggests — v7's converged
+> portion is ~2.8 days.
+>
+> ⚠ **What this does NOT answer, and it is still step 2's job:** whether the loader holds
+> at 8× the rows. 0.47% stall says there is large headroom *at v5's size*; it does not say
+> where the ceiling is, and the pod's vCPU cut is applied to the ceiling, not to the
+> achieved rate. The sweep is still the right thing to run before *renting* anything — it
+> is simply no longer blocking rung 3.
 
 ## The one equation
 

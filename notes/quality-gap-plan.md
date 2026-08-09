@@ -32,7 +32,7 @@ scoped and decided but NOT built.**
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
 | | **rung 2 — v6, +expressive-registers (1,004 eligible keeps)** | 🔨 **decided, NOT built** — 3 prerequisites open | the build itself (the Qwen audition was **deferred**, owner 2026-08-09, and does not gate this) | ditto |
-| | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ not pulled | rung 1's holdout | ditto |
+| | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ **UNGATED — rung 1 passed.** ~**2.25 h/epoch, ~1 day** to convergence (measured 2026-08-09) | rung 1's holdout ✅ | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
 | | freeze a same-corpus U-Net baseline | ⏸ | **the last act of P1** | [§ Phase 2](#phase-2--the-dit-decoder-spike) |

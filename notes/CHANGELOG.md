@@ -19,6 +19,32 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-09
 
+### Added — an instrument for reading a sweep by channel (`e4873c7`)
+
+- **`scripts/stratify_holdout_sweep.py`** — reads a `score_holdout` sweep stratified by
+  CONDITIONING LABEL instead of in aggregate. `score_holdout` answers "did the run get
+  better"; it cannot answer "did it get better *at the thing we changed*", because a
+  channel-specific regression hides inside an aggregate that improved.
+  - Built to close **PR-H3**: the T-saturation prediction named a shape — *T worse on the
+    holdout while V and A are unchanged or better* — and the sweep already held the data to
+    read it, per clip, for both checkpoints, under identical constants. Nothing read it, and
+    rung 1 was marked done, which is how a pre-registration decays into a ritual exactly
+    where it was supposed to pay.
+  - Per clip `Δ = loss(pick) − loss(baseline)`, split at the top and bottom quintile of
+    each channel's |label|; the statistic is extreme-minus-central, so **positive means the
+    channel's extremes lagged** — the regression shape. 95% bootstrap CI, seeded, matching
+    how contrast 0a was adjudicated. Quintiles rather than a correlation because the
+    prediction was written about extremes, and a correlation averages the tails away — the
+    same way the mean hid the question.
+  - Costs no GPU: it recomputes from artifacts already on disk, and it is reusable for
+    every future rung's sweep rather than being this one's answer.
+  - Reports "crosses zero — no effect" rather than a small number, deliberately: a gap whose
+    CI straddles zero is an ABSENT effect, and reporting it as small is how a null becomes a
+    hedge. It also says out loud what it cannot see — a teacher-forced loss says nothing
+    about whether T=+1 *sounds like* Emilia-domain audio, so a prediction with ear legs is
+    only partly closed by it.
+
+
 ### Fixed — the 2026-08-09 review's QC-lane findings
 
 Two High findings, both the same shape: a documented, owner-ratified rule — *every

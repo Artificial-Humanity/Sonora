@@ -366,4 +366,9 @@ is only its headline.
   against a Step 0 record written seven minutes earlier, so the SSOT instructed two
   different warm starts for a day. The remaining PR-* findings are open: document-state lag
   in the entry-point docs (PR-H2/M1/L1), the unread T-saturation prediction (PR-H3), and
-  four sequencing calls (PR-M2…M5).
+  four sequencing calls (PR-M2…M5) — **all now closed as well.** Two carried findings worth
+  keeping: the T prediction's leg (a) did **not** land (no T-specific regression, CI
+  straddles zero — the saturation shortcut did not form, and C-soft is not triggered), and
+  **rung 3 projects to ~1 day of GPU**, not multi-week, so the local-vs-cloud decision does
+  not have to precede the v7 build. Both were computable from artifacts that had been
+  sitting on disk since the run finished.
