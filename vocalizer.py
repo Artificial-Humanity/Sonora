@@ -187,7 +187,17 @@ def bounded_speaker(spk_id, n_spks_):
     try:
         value = int(spk_id)
     except (TypeError, ValueError):
-        raise ClientError(f"speaker id must be a whole number, got {spk_id!r}") from None
+        # Named voices (`alloy`, `nova`, …) land here, and that is deliberate: the old
+        # code mapped ANY unparseable voice to speaker 245 and rendered, which on a
+        # vetting surface is a confident verdict about a voice nobody selected. Say so,
+        # though — an OpenAI-shaped client sends a name, and "must be a whole number" on
+        # its own reads as a bug in the caller's serializer rather than a deliberate
+        # difference in this API (CL-L1).
+        raise ClientError(
+            f"speaker id must be a whole number, got {spk_id!r}. This API has no named "
+            f"voices: ids are indices into the loaded checkpoint's embedding table "
+            f"(see GET /v1/voices). Omit `voice` for the default."
+        ) from None
     lo, hi = direction.speaker_bound(n_spks_)
     if not lo <= value <= hi:
         raise ClientError(
@@ -459,7 +469,14 @@ def main():
             # default. 0 is the only id valid for every multi-speaker checkpoint. Range is
             # enforced in `render` via `bounded_speaker`, which needs the loaded
             # checkpoint's n_spks and so cannot run before the model is resolved.
-            spk_id = voice if str(voice).strip() else 0
+            #
+            # CL-L1: `None` is ABSENT, not a value. `body.get("voice", "")` returns None
+            # for an explicit `"voice": null`, and `str(None).strip()` is the truthy
+            # `"None"` — so a client that sent null got a 400 reading "got None" while a
+            # client that omitted the field entirely got the default. Two spellings of
+            # "no preference", two different answers, and the error named a Python repr
+            # rather than anything the caller wrote.
+            spk_id = voice if voice is not None and str(voice).strip() else 0
 
             s = bounded(body, "guidance", 1.0)
             _, waveform = render(
