@@ -19,6 +19,32 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-09
 
+### Added — a gate for the documents (`df43527`)
+
+- **`scripts/test_doc_claims.py`** — the notes' corpus/checkpoint numbers are now verified
+  against the artifacts on disk, collected by `tests/test_gate_scripts.py` so `make test`
+  runs it. Owner-commissioned; scope is corpus/checkpoint facts only, and check-first rather
+  than restructure-first.
+  - **The asymmetry it closes:** every forked CODE constant here eventually got a test
+    (`test_skill_files`'s 92 claims, the seam gate's 30+, the `DASH_RUN` and delivery
+    parity tests, `test_data_mirrors`). Documentation had none. Measured that day: **30
+    notes files, ~9,000 lines, 18 declaring themselves SSOT or canon, every load-bearing
+    corpus number restated in 6–8 files.**
+  - **Docs are compared to ARTIFACTS, never to each other** — two documents can agree and
+    both be wrong. Building the registry is what exposed `10,653`: a figure the review
+    called "simply wrong" and the fix pass duly "corrected", when it was Emilia's TRAIN
+    rows measured against a TOTAL and both numbers were right. Train/val/total are separate
+    registry facts for exactly that reason.
+  - **Scope precedes extraction.** The first run produced 32 failures, all false — a bare
+    `N speakers` pattern compared VCTK's 110 against v5's 2,500. A line must match the
+    fact's subject before its numbers are read. A noisy gate is one that gets switched off,
+    which is the same lesson F-C1 records.
+  - **Proven to fire:** reintroducing the original defect fails it with file, line and both
+    values. It also states its own blind spots — recognised phrasings only, exemptions
+    printed per run — so a green result reads as "nothing recognised disagrees", not "the
+    docs are correct".
+
+
 ### Added — an instrument for reading a sweep by channel (`e4873c7`)
 
 - **`scripts/stratify_holdout_sweep.py`** — reads a `score_holdout` sweep stratified by
