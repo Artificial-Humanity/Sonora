@@ -224,7 +224,13 @@ def main():
     print(f"  {len(files)} documents scanned, {matched} recognised statements, "
           f"{exempted} exempted line(s)")
 
-    if not os.path.exists(SELECTED_GLOB):
+    # ⚠ Checked only where it CAN be: the checkpoint lives on the /data mount, which exists
+    # on ai-lab-0 and nowhere else. "The mount is absent" is not a finding — but it must not
+    # read as a pass either, so the skip is printed rather than silent. Where the mount IS
+    # present, a missing checkpoint is a real failure: the docs name it as v6's warm start.
+    if not os.path.isdir("/data/model-training"):
+        print(f"  ~ selected checkpoint NOT CHECKED: /data is not mounted here")
+    elif not os.path.exists(SELECTED_GLOB):
         failures.append(
             f"the selected checkpoint {SELECTED_CKPT} is not on disk at {SELECTED_GLOB} — "
             "the docs name it as v6's warm start")
