@@ -24,7 +24,12 @@ SCRIPTS = os.path.join(REPO, "scripts")
 PY = os.path.join(REPO, ".venv", "bin", "python")
 
 # Scripts that need nothing but the repo venv.
-FAST = ["test_skill_files.py", "test_text_selection.py"]
+#
+# `test_doc_claims.py` joined 2026-08-09. It reads the corpus artifacts under `data/`, which
+# are tracked, so it needs no /data mount — but it DOES need the derivation reports to be
+# present, and it fails loudly rather than skipping if one is missing, because a fact whose
+# source cannot be read is not a passing fact.
+FAST = ["test_skill_files.py", "test_text_selection.py", "test_doc_claims.py"]
 
 # (script, env var naming its prerequisite, default path to probe)
 SLOW = [

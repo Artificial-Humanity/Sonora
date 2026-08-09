@@ -1,0 +1,250 @@
+#!/usr/bin/env python3
+"""Gate: the notes' corpus/checkpoint numbers must agree with the artifacts on disk.
+
+WHY THIS EXISTS (2026-08-09, owner-commissioned)
+------------------------------------------------
+This repo catches forked CODE constants and nothing else. `test_skill_files.py` verifies 92
+claims against source; `test_vat_dim_seams.py` has 30+; there are parity tests for
+`DASH_RUN`, the delivery vocabulary and the device G2P tables, and `test_data_mirrors.py`
+for `/data` copies. **Every one of those exists because a value forked once.** Documentation
+had no equivalent — a doc fork was caught by a code review, if one happened to run.
+
+The scale of the exposure, measured the day this was written: **30 notes files, ~9,000
+lines, 18 of them declaring themselves SSOT or canon for something, and every load-bearing
+corpus number restated in 6-8 files.** Consolidation does not fix that on its own. LongCat
+is the proof: `23c6af3` consolidated three contradictory bench states into one record and
+forbade restating it, and **it did not hold for 24 hours** — CL-L2 found two rows still
+restating a status the commit had just centralised. Consolidation is a one-time act; drift
+is continuous; only a check is continuous.
+
+**IT COMPARES DOCS TO ARTIFACTS, NOT TO EACH OTHER — that is the whole design.** Two
+documents can agree and both be wrong. The 2026-08-09 review found `10,653` in
+`training-sources.md` and called it "simply wrong" because differencing two other numbers
+gave 10,997; that finding was itself wrong (10,653 is Emilia's TRAIN rows, 10,997 is
+train+val, both in `derivation_report.json`), and the fix pass propagated the error. It
+survived a review, a fix and a re-read, and fell out the moment a number was checked against
+the artifact instead of against another document.
+
+**TRAIN, VAL AND TOTAL ARE SEPARATE FACTS HERE, deliberately**, because conflating them is
+precisely the mistake above. A registry that recorded "v5 rows" as one number would have
+reproduced it.
+
+WHAT IT DOES NOT COVER — read this before trusting a pass
+---------------------------------------------------------
+* **Only corpus/checkpoint numbers** (owner scope, 2026-08-09). Not statuses, not prose, not
+  the sequencing claims that made up most of the review's product findings.
+* **Only phrasings the patterns match.** A number written in a form no pattern recognises is
+  invisible here — a silent miss, not an error. When a check goes green it means "no
+  RECOGNISED statement disagrees", never "the docs are correct".
+* **Historical mentions are exempted by explicit substring**, listed per fact and printed on
+  every run, so an exemption cannot quietly become a hiding place.
+
+Run:  .venv/bin/python scripts/test_doc_claims.py
+Exit: 0 every recognised claim agrees with disk; 1 otherwise.
+"""
+# /// script
+# requires-python = ">=3.10"
+# dependencies = []
+# ///
+import json
+import os
+import re
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+NOTES = os.path.join(REPO, "notes")
+V5 = os.path.join(REPO, "data", "libritts_r_emilia_vat_v5")
+V4 = os.path.join(REPO, "data", "libritts_r_vat_v4")
+HOLDOUT = os.path.join(REPO, "data", "libritts_r_holdout_devclean")
+
+
+def rows(path):
+    with open(path, encoding="utf-8") as fh:
+        return sum(1 for line in fh if line.strip())
+
+
+def report(key, path=os.path.join(V5, "derivation_report.json")):
+    with open(path, encoding="utf-8") as fh:
+        node = json.load(fh)
+    for part in key.split("."):
+        node = node[part]
+    return node
+
+
+def comma(n):
+    return f"{n:,}"
+
+
+# --- the registry -------------------------------------------------------------------
+#
+# Each fact: how to READ it from disk, and the phrasings that STATE it in prose. Patterns
+# carry exactly one capture group — the number as written. Keep patterns narrow: a loose
+# one produces false failures, which is how a gate gets switched off.
+#
+# `exempt` lines are skipped and announced. They exist for deliberate historical mentions
+# ("this cell read X until <date>"), which the repo writes on purpose.
+FACTS = [
+    {
+        "name": "v5 TRAIN rows",
+        "truth": lambda: rows(os.path.join(V5, "train_op.txt")),
+        "scope": r"v5|libritts_r_emilia_vat_v5",
+        "patterns": [r"([\d,]{6,}) train / [\d,]+ val", r"([\d,]{6,}) train rows",
+                     r"([\d,]{6,}) train \+ [\d,]+ val\)"],
+        "exempt": [],
+    },
+    {
+        "name": "v5 VAL rows",
+        "truth": lambda: rows(os.path.join(V5, "val_op.txt")),
+        "scope": r"v5|libritts_r_emilia_vat_v5",
+        "patterns": [r"[\d,]{6,} train / ([\d,]+) val", r"[\d,]{6,} train \+ ([\d,]+) val\)"],
+        "exempt": [],
+    },
+    {
+        "name": "v5 TOTAL rows",
+        "truth": lambda: (rows(os.path.join(V5, "train_op.txt"))
+                          + rows(os.path.join(V5, "val_op.txt"))),
+        "scope": r"v5|libritts_r_emilia_vat_v5",
+        "patterns": [r"\*\*([\d,]{6,})\*\* \| \*\*\+[\d,]+ Emilia"],
+        "exempt": [],
+    },
+    {
+        "name": "v5 speakers",
+        "truth": lambda: report("n_spks"),
+        # Only the composite idioms the corpus is actually quoted in. A bare "N speakers"
+        # matches every dataset row in dataset-landscape.md, which is how this check first
+        # produced 20 false failures — and a noisy gate is a gate someone turns off.
+        "scope": r"v5|libritts_r_emilia_vat_v5",
+        "patterns": [r"[\d.]+ h(?:ours)? [/·|] \*?\*?([\d,]+) (?:spk|speakers)",
+                     r"([\d,]+) speakers\*\*, against"],
+        "exempt": [],
+    },
+    {
+        "name": "Emilia keeps (train+val)",
+        "truth": lambda: report("emilia.kept"),
+        "scope": r"Emilia|emilia",
+        "patterns": [r"\+?([\d,]+) Emilia-YODAS keeps", r"([\d,]+) keeps of `?libritts"],
+        "exempt": ["until 2026-08-09", "10,653 and 10,997"],
+    },
+    {
+        "name": "Emilia TRAIN rows",
+        "truth": lambda: report("emilia.train"),
+        "scope": r"Emilia|emilia",
+        "patterns": [r"\*\*([\d,]+) train \+ [\d,]+ val\*\*"],
+        "exempt": [],
+    },
+    {
+        "name": "Emilia candidates before filtering",
+        "truth": lambda: report("emilia.candidates"),
+        "scope": r"Emilia|emilia|13,141",
+        "patterns": [r"planned ([\d,]+) became", r"([\d,]+) candidates"],
+        "exempt": [],
+    },
+    {
+        "name": "Emilia rows dropped on digits",
+        "truth": lambda: report("emilia.dropped.digits"),
+        "scope": r"Emilia|emilia|digit",
+        "patterns": [r"([\d,]+) (?:rows )?dropped on digits", r"([\d,]+) digit rows"],
+        "exempt": [],
+    },
+    {
+        "name": "v4 TOTAL rows (the base v5 merges into)",
+        "truth": lambda: (rows(os.path.join(V4, "train_op.txt"))
+                          + rows(os.path.join(V4, "val_op.txt"))),
+        "scope": r"v4|libritts_r_vat_v4|31,44",
+        "patterns": [r"v4 rows verbatim.{0,40}?([\d,]{6,})", r"([\d,]{6,}) clips `vat3c"],
+        "exempt": [],
+    },
+    {
+        "name": "holdout clips",
+        "truth": lambda: rows(os.path.join(HOLDOUT, "holdout_8w.txt")),
+        "scope": r"holdout|dev-clean|dev_clean",
+        "patterns": [r"([\d,]+) clips? / [\d.]+ h / \*?\*?40 speakers",
+                     r"([\d,]+) clips? / \*\*[\d.]+ h\*\* / 40 speakers",
+                     r"of ([\d,]+) clips, never trained on"],
+        "exempt": [],
+    },
+]
+
+
+# The checkpoint the lineage builds on. Not a count, so it is checked differently: the
+# file the docs name must exist, because "warm start from epNNN" is worthless if it does not.
+SELECTED_CKPT = "checkpoint_epoch=019.ckpt"
+SELECTED_GLOB = os.path.join(
+    "/data/model-training/sonora/logs/train/vat5_finetune/runs",
+    "2026-08-08_05-36-05", "checkpoints", SELECTED_CKPT)
+
+
+def docs():
+    out = []
+    for name in sorted(os.listdir(NOTES)):
+        if name.endswith(".md"):
+            out.append(os.path.join(NOTES, name))
+    out.append(os.path.join(REPO, "README.md"))
+    return out
+
+
+def main():
+    failures, checked, matched, exempted = [], 0, 0, 0
+    files = docs()
+
+    for fact in FACTS:
+        try:
+            truth = fact["truth"]()
+        except (OSError, KeyError) as e:
+            failures.append(f"{fact['name']}: cannot read the artifact ({e}). "
+                            "A fact whose source is missing is not a passing fact.")
+            continue
+        want = {comma(truth), str(truth)}
+        checked += 1
+        for path in files:
+            rel = os.path.relpath(path, REPO)
+            scope = re.compile(fact["scope"])
+            with open(path, encoding="utf-8") as fh:
+                for lineno, line in enumerate(fh, 1):
+                    # SCOPE FIRST. A number is only read on a line that is demonstrably
+                    # about this corpus; otherwise "110 speakers" in a VCTK row is compared
+                    # against v5's 2,500. That produced 20 false failures on the first run.
+                    if not scope.search(line):
+                        continue
+                    if any(x in line for x in fact["exempt"]):
+                        exempted += 1
+                        continue
+                    for pat in fact["patterns"]:
+                        for m in re.finditer(pat, line):
+                            matched += 1
+                            got = m.group(1)
+                            if got not in want:
+                                failures.append(
+                                    f"{rel}:{lineno} — {fact['name']}: doc says {got!r}, "
+                                    f"artifact says {comma(truth)!r}\n"
+                                    f"      {line.strip()[:110]}")
+
+    print(f"checked {checked} corpus/checkpoint facts against the artifacts on disk")
+    print(f"  {len(files)} documents scanned, {matched} recognised statements, "
+          f"{exempted} exempted line(s)")
+
+    if not os.path.exists(SELECTED_GLOB):
+        failures.append(
+            f"the selected checkpoint {SELECTED_CKPT} is not on disk at {SELECTED_GLOB} — "
+            "the docs name it as v6's warm start")
+    else:
+        print(f"  selected checkpoint present: {SELECTED_CKPT}")
+
+    if failures:
+        print(f"\nFAIL — {len(failures)} claim(s) disagree with the artifact:\n")
+        for f in failures:
+            print(f"  {f}")
+        print("\nThe artifact is right and the document is wrong, unless the artifact was "
+              "rebuilt —\nin which case update the registry in this file IN THE SAME COMMIT.")
+        return 1
+
+    print("\nPASS — every recognised claim matches disk.")
+    print("⚠ This does NOT mean the docs are correct: only recognised phrasings are seen, "
+          "and\n  scope is corpus/checkpoint numbers only (owner, 2026-08-09). A green run "
+          "means\n  'nothing recognised disagrees'.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
