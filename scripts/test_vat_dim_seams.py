@@ -18,6 +18,8 @@ asserts on the error, so the assertions are known-good BEFORE anything relies on
 
 Run:  .venv/bin/python scripts/test_vat_dim_seams.py
 """
+import atexit
+import os
 import pathlib
 import sys
 import tempfile
@@ -70,6 +72,36 @@ def _config_vat_dim():
     return int(m.group(1)) if m else None
 
 PASS, FAIL = [], []
+_COMPLETED = False
+
+
+def _report():
+    """Print what ran — registered with atexit so ANY early exit still reports.
+
+    The wrappers below cannot cover the whole file: `VATTrunk(...)`, the convert_vat
+    load, `import make_warmstart`, `from matcha import delivery` and the collate
+    property check are module-level statements, and a SystemExit out of any of them
+    would otherwise take the summary with it. That is the defect this file exists to
+    close, so the report cannot itself be reachable only on the happy path.
+
+    A truncated run exits 1 whatever the escaping SystemExit's own code was. An
+    escaping `SystemExit("ABORT: ...")` exits 1 already, but any `SystemExit(0)`
+    reached through a check would exit **0 having run nothing** — a pre-flight
+    reporting green is the one outcome worse than a pre-flight reporting nothing.
+    """
+    for p in PASS:
+        print(f"  PASS  {p}")
+    for f in FAIL:
+        print(f"  FAIL  {f}")
+    print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
+    if not _COMPLETED:
+        print("\n  SUITE TRUNCATED — something aborted before the last check. The counts "
+              "above are what RAN, not the suite. Do not read this as a pre-flight.")
+        sys.stdout.flush()
+        os._exit(1)  # noqa: S606 — atexit cannot change the exit code any other way
+
+
+atexit.register(_report)
 
 
 def check(name, fn, want):
@@ -110,11 +142,21 @@ def _assert(cond):
     return True
 
 def check_ok(name, fn):
-    """`fn` must NOT raise — the guards must not break the working path."""
+    """`fn` must NOT raise — the guards must not break the working path.
+
+    Catches BaseException for the same reason `check` does, and this is the MORE exposed
+    half: check_ok drives `_mw._index_map` and the guard functions on their working path,
+    which is exactly where a regression makes a `raise SystemExit("ABORT: ...")` fire when
+    it should not. Under `except Exception` that abort escaped, killed the run at that
+    line, and took every check after it — the same truncation, on the wrapper whose whole
+    job is to assert the aborts stay quiet.
+    """
     try:
         fn()
         PASS.append(name)
-    except Exception as e:  # pylint: disable=broad-except
+    except KeyboardInterrupt:
+        raise
+    except BaseException as e:  # pylint: disable=broad-except
         FAIL.append(f"{name}: raised on a VALID input -> {e}")
 
 
@@ -334,9 +376,7 @@ check_ok("holdout: an ordinary corpus filelist still loads",
 
 
 # --- report -----------------------------------------------------------------------
-for p in PASS:
-    print(f"  PASS  {p}")
-for f in FAIL:
-    print(f"  FAIL  {f}")
-print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
+# Reaching this line is the ONLY thing that makes the report a full one; `_report` runs
+# at exit either way and says so when it is not.
+_COMPLETED = True
 sys.exit(1 if FAIL else 0)
