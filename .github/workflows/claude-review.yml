@@ -39,10 +39,6 @@ jobs:
           # do not match — do not "fix" the left side to agree with the right.
           claude_code_oauth_token: ${{ secrets.CLAUDE_OAUTH_TOKEN }}
 
-          # TEMP: the SDK error is suppressed by default and every attempt to
-          # unmask it from a PR was killed by the workflow-validation gate, so it
-          # has to land on main. Revert once the error is known.
-          show_full_output: true
 
           # --allowedTools is what actually lets the agent reach GitHub. Without
           # it the model can analyze the diff but has no mechanism to post, so a
