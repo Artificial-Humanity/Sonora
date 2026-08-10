@@ -59,7 +59,7 @@ filelist yet.
 
 | Source | Origin | Status in our training | Next action |
 |---|---|---|---|
-| **sonora-expressive-registers** | Teacher renders (qwen · chatterbox · zonos · orpheus · moss_vg) + real keeps. **1,004 eligible keeps** of 1,279 — 902 delivery-labelled + 102 blank; scoped 2026-08-09 | **DERIVED** — the expressive corpus, ear-certified via `ratings.csv`. **The only delivery-label signal in existence:** v5 carries 48 labelled rows in 42,442 (0.11%), and Documentary/Newscaster/Speech have zero | Merge as **v6**. Eligibility filter and the accepted provenance confound: [quality-gap-plan.md § Rung 2](quality-gap-plan.md) |
+| **sonora-expressive-registers** | Teacher renders (qwen · chatterbox · zonos · orpheus · moss_vg) + real keeps. **846 rows to append** — 1,004 eligible of 1,279 (902 delivery-labelled + 102 blank; scoped 2026-08-09) less 158 duplicate-audio rows (2026-08-10), leaving 836 labelled + 10 blank | **DERIVED** — the expressive corpus, ear-certified via `ratings.csv`. **The only delivery-label signal in existence:** v5 carries 48 labelled rows in 42,442 (0.11%), and Documentary/Newscaster/Speech have zero | Merge as **v6**. Eligibility filter and the accepted provenance confound: [quality-gap-plan.md § Rung 2](quality-gap-plan.md) |
 | **book-prose** | Standard Ebooks CC0 text → director-labelled banks. 21 books, 856 rendered wavs | **DERIVED** — the text shelf that feeds synthesis | None outstanding. The 4 owner-approved titles queued 2026-08-02 (+`conan-stories`) are ingested; delivery-v1 closed on them. ⚠ `book_ingest` hardcodes provenance "Standard Ebooks CC0" even for PG sources — false licence metadata in every derived clip's paper trail (A-M6, [todo.md §5](todo.md)) |
 | **librivox-v2** | Force-aligned LibriVox audio (Uneasy Money). 1,366 clips / 3.13 h | **DERIVED** — better cut than v1, nothing staged from it | Stage when re-earning v1's 12 ear verdicts is worth it |
 | **librivox-v1** | Same book, pre-fix cut. 664 clips | **DERIVED** — kept for its 12 valid ear verdicts | Retire once v2 is staged |
@@ -85,16 +85,18 @@ important fact in this file.
   are LibriTTS clips that happened to be auditioned.
 - **v5** adds volume, and volume is precisely what Phase 1 #1 exists to test. Its Emilia
   rows are delivery-`unknown` by construction, so the delivery count is still 48.
-- **Phase 1 #2** is the one that closes the gap: `sonora-expressive-registers`, **1,004
-  eligible keeps** (owner-scoped 2026-08-09), still outside the training path.
+- **Phase 1 #2** is the one that closes the gap: `sonora-expressive-registers`, **846 rows
+  to append** (owner-scoped 2026-08-09 at 1,004 eligible; 158 duplicate-audio rows removed
+  2026-08-10), still outside the training path.
 
-  ⚠ **Five sizes for this corpus circulate, and they are not contradictions — they are five
+  ⚠ **Six sizes for this corpus circulate, and they are not contradictions — they are six
   different filters.** In order:
   **1,279** total keeps → **1,189** delivery-labelled (the delivery-v1 campaign's own count)
   → **1,156** the *planned* close of +116 that the owner's scoping superseded → **1,071** an
-  intermediate ear-certified count → **1,004 eligible**, which is the v6 scope: 1,279 minus
-  licence and standing-policy exclusions (VibeVoice/Dia 133 benched, moss85 83, longcat 45,
-  higgs3 8 NC). **Quote 1,004 for v6 and name the filter whenever another number is used.**
+  intermediate ear-certified count → **1,004 eligible before dedup**: 1,279 minus licence
+  and standing-policy exclusions (VibeVoice/Dia 133 benched, moss85 83, longcat 45, higgs3 8
+  NC) → **846 appended**, the v6 scope: 1,004 minus 158 rows whose audio is already in v5.
+  **Quote 846 for v6 and name the filter whenever another number is used.**
 
 So the order is deliberate — v5 asks "does volume move quality at all?" with material that
 costs no ear time, and #2 spends ear time only if the answer is yes.

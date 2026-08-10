@@ -163,7 +163,7 @@ Cheapest first, so the expensive item is decided by evidence rather than assumpt
 | # | Source | State | Adds | Work |
 |---|---|---|---|---|
 | 1 | **Emilia-YODAS keeps** | **MERGED 2026-08-08** → `libritts_r_emilia_vat_v5` | 10,997 clips / +27.2 h (**+36%**) | done; needs a GPU slot |
-| 2 | **sonora-expressive-registers** | DERIVED, **1,004 eligible keeps** | small, ear-certified | **merge as v6 at 1,004** (owner-scoped 2026-08-09). ⚠ Do not re-open the **Documentary close** (87/92 — closed because *no documentary real audio exists*) |
+| 2 | **sonora-expressive-registers** | DERIVED, 1,004 eligible keeps → **846 to append** after dedup | small, ear-certified | **merge as v6 at 846** (1,004 owner-scoped 2026-08-09, less 158 duplicate-audio rows found 2026-08-10). ⚠ Do not re-open the **Documentary close** (87/92 — closed because *no documentary real audio exists*) |
 | 3 | **LibriTTS-R, the other 90%** | NOT PULLED | **~10×**, ~2,400 speakers | download + full corpus build |
 | 4 | **Hi-Fi TTS v1** | RAW, 40 GB parquet *with audio* | 292 h / 10 speakers | parquet → wav + filelist |
 
@@ -197,7 +197,7 @@ cheaper than every hour of synthetic**, and roughly 870 of them are cleared and 
 |---|---|---|---|---|---|---|
 | — | `libritts_r_vat_v4` | 30,485 | 51.3 | 247 | width only (8-wide) | smoked, superseded |
 | **1** | **`libritts_r_emilia_vat_v5`** | **41,138** | **78.5** | **2,500** | **volume, +36%** | holdout vs `vat3_ep099` |
-| 2 | v6 = +expressive-registers | ~42,140 | ~81 | ~2,510 | **the delivery channel's only training signal** — see below | delivery channel finally has signal |
+| 2 | v6 = +expressive-registers | ~41,980 | ~81 | ~3,350 | **the delivery channel's only training signal** — see below | delivery channel finally has signal |
 | 3 | v7 = +LibriTTS-R full | ~330,000 | ~615 | ~4,900 | **10× volume, same domain** | the real lever |
 | 4 | v8 = +Hi-Fi TTS v1 + VCTK | +? | +336 | +120 | **depth per voice** + studio timbre breadth | independent; slot in when converted |
 | 5 | v9 = +more Emilia-YODAS shards | +? | unbounded | +thousands | **in-the-wild expressivity at scale** | the mining pipeline already exists |
@@ -217,11 +217,14 @@ that shipped in contract v2 is, today, five channels the model has never seen fi
 delivery audition run against a v5 checkpoint measures an untrained channel and will read
 as an architecture failure — it isn't one.
 
-**v6 scope (owner, 2026-08-09): 1,004 eligible keeps** — 902 delivery-labelled + 102
-delivery-blank. Filtered from 1,279 total keeps by licence and standing policy, all four
-exclusions honoured as written: VibeVoice/Dia 133 (benched), moss85 83 (un-SFT'd base),
-longcat 45 (benched), higgs3-NC 8 (**NC — never trains**). Per lane after filtering:
-Dialogue 402 · Neutral 270 · Documentary 85 · Newscaster 76 · Speech 69.
+**v6 scope: 1,004 eligible keeps before dedup → 846 appended (owner 2026-08-09; dedup
+2026-08-10).** The 1,004 — 902 delivery-labelled + 102 delivery-blank — is what survives
+the licence and standing-policy filter over 1,279 total keeps, all four exclusions honoured
+as written: VibeVoice/Dia 133 (benched), moss85 83 (un-SFT'd base), longcat 45 (benched),
+higgs3-NC 8 (**NC — never trains**). Per lane at that stage: Dialogue 402 · Neutral 270 ·
+Documentary 85 · Newscaster 76 · Speech 69. **158 of those rows duplicate audio already in
+v5** (three classes, § Rung 2 prerequisite 3), leaving **846 to append** — quote 846 as the
+v6 figure and 1,004 only as "eligible before dedup".
 
 ⚠ **Known confound, accepted deliberately rather than bought off.** Dialogue, Documentary
 and Newscaster have **no real audio at all** — no documentary real audio exists, and the
@@ -433,7 +436,7 @@ Hours are the sources' own figures (`training-sources.md`), not measured by us.
 | **LibriTTS-R, the other 90%** | not pulled — we hold `train-clean-100` only | **+534** | download + corpus build, same pipeline as v4 verbatim |
 | **VCTK** | **4.3 GB zip ON DISK, still unextracted** | **44** | `unzip` + filelist. 110 speakers, 48 kHz studio. Casting/accent breadth only — no conveyance value |
 | Emilia-YODAS, more shards | 9 shards probed of ~114,000 h licensed | unbounded | the mining pipeline exists and ran this week |
-| sonora-expressive-registers | derived, **1,004 eligible ear-certified keeps** (scoped 2026-08-09) | small | merge as v6 — see § Rung 2 below for the eligibility filter and why this rung is not optional |
+| sonora-expressive-registers | derived, 1,004 eligible ear-certified keeps (scoped 2026-08-09) → **846 to append** (dedup 2026-08-10) | small | merge as v6 — see § Rung 2 below for the eligibility filter and why this rung is not optional |
 | librivox-v2 | derived, 1,366 clips, nothing staged | 3.1 | stage; re-earn v1's 12 ear verdicts |
 
 **Two are already on the disk and merely unconverted** — Hi-Fi TTS and VCTK, **336 hours

@@ -62,7 +62,7 @@ _Last updated: 2026-08-09._
 > ⚠ **What v5 does NOT close: the ear gap.** Its new material was mined on acoustics and
 > nobody has heard a clip of it; every Emilia row is delivery-`unknown`, so the corpus still
 > carries 45 delivery labels in 41,138 train rows. **Phase 1 rung 2** —
-> `sonora-expressive-registers`, 1,071 ear-certified keeps — is what closes it. The order is
+> `sonora-expressive-registers`, 846 rows to append — is what closes it. The order is
 > deliberate: rung 1 asks "does volume move quality at all?" for no ear time.
 >
 > Pre-flight is unchanged and non-negotiable: stop **all** inference engines first
