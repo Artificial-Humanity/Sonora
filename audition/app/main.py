@@ -84,6 +84,7 @@ def _load_delivery_contract():
 
 _delivery = _load_delivery_contract()
 DELIVERY_LANES = _delivery.DELIVERY_LANES
+ACTIVE_DELIVERY_LANES = _delivery.ACTIVE_DELIVERY_LANES
 DELIVERY_UNKNOWN = _delivery.DELIVERY_UNKNOWN
 
 # --- Paths (overridable via env for local dev) --------------------------------
@@ -154,19 +155,30 @@ AGES = ("", "child", "teen", "adult", "middle-aged", "elderly", "Unclear")
 # The repo boundary is what made it un-importable, which is the concrete reason the move
 # was worth doing rather than a tidiness argument.
 #
-# Two entries are the APP's and stay here, because they are rating-surface states rather
-# than contract lanes: `""` is DELIVERY_UNKNOWN (not assessed — the blank cell the corpus
-# reads as the all-zero block) and `"Unclear"` means assessed and indeterminate, which the
-# model never sees. Keeping them explicit is what stops a future edit folding them into the
-# contract.
+# ONE entry is the APP's and stays here: `""` is DELIVERY_UNKNOWN — not assessed, the blank
+# cell the corpus reads as the all-zero block, and a legitimate value rather than a gap
+# (embodiment clips are delivery-blank BY RULE).
+#
+# `"Unclear"` was REMOVED 2026-08-10 (owner: "it really should just be our settled four").
+# It read as a peer of the lanes and was not one: `delivery_index()` refuses any value
+# outside `DELIVERY_LANES`, so a clip marked Unclear could never be built — it would abort
+# the merge at `check_assignable`. It was a trap in a dropdown, not a rating state, and
+# nothing ever carried it (0 of 1,802 rows). The accent column keeps its own "Unclear",
+# where assessed-and-indeterminate IS a real distinct answer and must not be collapsed
+# into blank; delivery has no such need because a lane it does not fit is simply unlabelled.
+#
+# `Documentary` is gone for the other reason: it is RETIRED (RETIRED_LANES), still inside
+# DELIVERY_LANES because channel position is the wire format, but no longer assignable. The
+# picker therefore offers ACTIVE_DELIVERY_LANES, never DELIVERY_LANES — offering a retired
+# lane invites a label the build will refuse.
 # SORTED FOR DISPLAY, and that is not a second fork — the contract owns the SET, this owns
 # the PRESENTATION. `DELIVERY_LANES` is in wire order (channel position IS the wire format,
-# so it can never be re-sorted there), which puts Neutral before Documentary. This picker
-# has shown them alphabetically across 1,802 rated rows, and silently swapping two adjacent
-# entries in a dropdown someone uses at speed is how a mis-click becomes a mislabel — the
-# kind of defect the score cannot detect. Sorting reproduces the existing order exactly and
-# stays correct if a lane is ever added.
-DELIVERY = (DELIVERY_UNKNOWN, *sorted(DELIVERY_LANES), "Unclear")
+# so it can never be re-sorted there). This picker has shown them alphabetically across
+# 1,802 rated rows, and silently swapping two adjacent entries in a dropdown someone uses
+# at speed is how a mis-click becomes a mislabel — the kind of defect the score cannot
+# detect. Sorting reproduces the existing order exactly and stays correct if a lane is ever
+# added.
+DELIVERY = (DELIVERY_UNKNOWN, *sorted(ACTIVE_DELIVERY_LANES))
 
 # Marker stage_pool.py writes into the note column of a machine-folded row: a clip
 # staged into the dataset on its GROUP's certification, which nobody listened to.

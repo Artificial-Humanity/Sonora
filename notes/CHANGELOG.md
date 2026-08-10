@@ -19,6 +19,31 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-10
 
+### Fixed — the audition picker offered two delivery values no build would accept
+
+Owner, 2026-08-10: *"it really should just be our settled four."* The picker now offers
+**blank + Dialogue · Neutral · Newscaster · Speech** — `ACTIVE_DELIVERY_LANES`, never
+`DELIVERY_LANES`.
+
+Both removals were traps rather than states, and nothing ever carried either (0 of 1,802
+rated rows):
+
+- **`Documentary`** is RETIRED. It stays inside `DELIVERY_LANES` because channel position
+  is the wire format, but `check_assignable()` refuses it — so offering it in a dropdown
+  invited a label the merge would abort on.
+- **`Unclear`** read as a peer of the lanes and was not one. `delivery_index()` refuses any
+  value outside `DELIVERY_LANES`, so a clip marked Unclear could never be built. The
+  **accent** column keeps its own `Unclear`, where assessed-and-indeterminate is a real
+  answer that must not collapse into blank; delivery has no such need, because a lane a
+  clip does not fit is simply left unlabelled — and blank is already a legitimate value
+  (embodiment clips are delivery-blank BY RULE).
+
+`NARRATION_LANES` still lists `Documentary` and is deliberately untouched: `book_ingest`
+only membership-tests an already-chosen lane against it, so the entry is vestigial once
+nothing can be assigned that lane. Removing it would reshape `MAX_SHARE_NARRATION` and
+future campaign balance for an unrelated reason.
+
+
 ### Added — rung 2's A/T labels, and the loudness defect measuring them exposed (`9964c60`, `c5bada3`)
 
 - **`scripts/measure_expressive_registers.py`** — the acoustic pass for the 846-row v6 append
