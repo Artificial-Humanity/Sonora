@@ -295,8 +295,11 @@ async function load(){
   const delivSel=document.getElementById('deliv');
   if(data.deliveries && delivSel.options.length<=1){
     // `_none` is a real query, not "no filter": delivery-blank is a legitimate value
-    // (embodiment clips are blank by rule) and is otherwise unreachable in the UI.
-    [...data.deliveries, '_none'].forEach(d=>{const o=document.createElement('option');
+    // (embodiment clips are blank by rule) and is otherwise unreachable in the UI. The
+    // vocabulary's own blank entry (DELIVERY_UNKNOWN, the first element of DELIVERY) is
+    // dropped — it would render as an unlabelled second copy of "All deliveries" that
+    // silently clears the filter, decoying the one entry that actually finds blank clips.
+    [...data.deliveries.filter(d=>d!==''), '_none'].forEach(d=>{const o=document.createElement('option');
       o.value=d; o.textContent=(d==='_none'?'(no delivery)':d); delivSel.appendChild(o);});
     if(state.delivery) delivSel.value=state.delivery;
   }
