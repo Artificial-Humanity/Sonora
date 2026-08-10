@@ -239,7 +239,14 @@ def main():
     if already:
         raise SystemExit(f"ABORT: {len(already)} append row(s) whose audio is ALREADY in the "
                          f"base, e.g. {already[0]['id']} — the dedup did not hold.")
-    print("no append row duplicates base audio: OK")
+    # ⚠ PATH identity only, and it is the narrow half of the risk. The 158-row dedup was
+    # found by CONTENT — 91 of them are audit-set copies of LibriTTS-R/Emilia audio living
+    # under BANK-LOCAL paths — and the two trees are disjoint, so this comparison cannot
+    # see that case at all. What it does catch is a `link` that is absolute into a base
+    # tree, since os.path.join returns an absolute right-hand side unchanged. Worded as
+    # what it tests, not as the property it would be nice to have verified: content dedup
+    # happens upstream and is asserted there.
+    print("no append row shares a PATH with base audio: OK (content dedup is upstream)")
 
     texts = _resolve_text(rows)
     print(f"text resolved for {len(texts)}/{len(rows)}")
@@ -313,7 +320,14 @@ def main():
 
         vec = vat_vector(r["v"], r["a"], r["t"], lane)
         lab = ",".join([f"{x:.4f}" for x in vec[:3]] + [f"{int(x)}" for x in vec[3:]])
-        new.append((cid, f"{wav}|{{spk}}|{ipa}|{lab}", seconds))
+        # The pieces are kept apart and joined once the speaker index is known, rather
+        # than parked in a `{spk}` placeholder and `str.format`-ed later. `.format`
+        # re-parses the WHOLE string, so a stray brace surviving into `wav` or `ipa`
+        # raises KeyError/ValueError after the full staging and G2P passes have run —
+        # the expensive part. This bank demonstrably contains braces: the build's own
+        # digits filter caught a Gutenberg footnote marker `{53}`, and it only caught it
+        # because that one happens to contain digits.
+        new.append((cid, (wav, ipa, lab), seconds))
 
     n_drop = sum(dropped.values())
     print(f"\nkept {len(new)} of {len(rows)}; dropped {n_drop}:")
@@ -366,7 +380,8 @@ def main():
                          f"e.g. {sorted(collision)[:3]} — one voice would get two rows.")
     n_spks = next_index + len(er_index)
 
-    rendered = [row.format(spk=er_index[f"er_{cid}"]) for cid, row, _ in new]
+    rendered = [f"{wav}|{er_index[f'er_{cid}']}|{ipa}|{lab}"
+                for cid, (wav, ipa, lab), _ in new]
     seconds_added = sum(s for _, _, s in new)
     val_new = sorted(r for r in rendered if _in_val(r))
     train_new = sorted(r for r in rendered if not _in_val(r))
