@@ -24,14 +24,15 @@ and goal 2 (Dramatic Reader) depends on casting more than on mel loss. Every ste
 ladders to *quality*; nothing here ladders to *castability*. That is a deliberate scope,
 now stated rather than implied — see [§ Parked — the casting/blend layer](#parked--the-castingblend-layer).
 **Where the front is: Phase 1, rung 2 — v5 trained and scored, `ep019` selected; v6 is
-scoped and decided but NOT built.**
+scoped, decided, and unblocked (all three prerequisites closed 2026-08-10) but NOT built.
+846 rows are labelled and waiting; the build is the only step between here and the run.**
 
 | | step | status | gated on | detail |
 |---|---|---|---|---|
 | **P0** | 0a — never-trained holdout | ✅ **DONE 2026-08-06** | — | [§ 0a](#0a--the-never-trained-holdout--done-and-it-reported-2026-08-06) |
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
-| | **rung 2 — v6, +expressive-registers (1,004 eligible keeps)** | 🔨 **decided, NOT built** — 3 prerequisites open | the build itself (the Qwen audition was **deferred**, owner 2026-08-09, and does not gate this) | ditto |
+| | **rung 2 — v6, +expressive-registers (846 rows to append)** | 🔨 **decided, NOT built — all 3 prerequisites CLOSED 2026-08-10**; the build is the only step left | the build itself (the Qwen audition was **deferred**, owner 2026-08-09, and does not gate this) | ditto |
 | | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ **UNGATED — rung 1 passed.** ~**2.25 h/epoch, ~1 day** to convergence (measured 2026-08-09) | rung 1's holdout ✅ | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
@@ -243,24 +244,53 @@ and the precedent is already in the corpus: v5 carries **756 one-clip speakers**
 speaker table lying); *recover true identity from the manifests* (real archaeology, see
 prerequisite 2 — the information largely is not there).
 
-**Three prerequisites, measured 2026-08-09.** None was in the 1,004-row scope, and each is
-work rather than a lookup:
+**Three prerequisites, measured 2026-08-09 — ALL CLOSED 2026-08-10.** Two of the three
+numbers below were wrong when filed, in opposite directions. **v6 appends 846 rows**
+(836 delivery-labelled + 10 blank): Dialogue 345 · Neutral 261 · Documentary 85 ·
+Newscaster 76 · Speech 69.
 
-1. **V/A/T is not derived for the bank.** Only the 193-row v1 slice carries `measured_z`;
-   the remaining ~810 eligible keeps have none, and `eiv_scores/` covers the corpus lanes
-   with **zero id overlap** with this bank. Needs an EIV pass before any merge.
-2. **Voice identity is not recoverable from what was recorded.** **880 of 1,004** ids carry
-   no `_sSEED` suffix (the naming convention changed across campaigns) and only 114 rows in
-   any manifest carry a reference/voice field. Parsing identity out of ids collapses the
-   bank into per-engine buckets — which is exactly the false claim decision 1 avoids. This
-   prerequisite is *why* one-per-clip is the honest answer, not merely the easy one.
-3. **~91 rows are copies of audio already in v5.** `libritts-r` (43) and `emilia-yodas`
-   (48) keeps are audit-set copies (`audit-sets/tension-v2/…`, ids encoding `spk122`,
-   `spk136`) of corpora v5 already contains. Merging them would hand a voice that already
-   owns a speaker row a **second** one — the precise failure `merge_emilia_corpus.py`'s
-   collision check exists to stop ("one voice would get two rows"). Resolve them back to
-   their existing ids or drop them; do not append. The 103 `librivox` keeps are ours and
-   genuinely new.
+1. ✅ **V/A/T derived for the bank (2026-08-10).** **The scope was 923, not ~810.** The
+   ~810 assumed the whole 193-row v1 slice was eligible; it is not — that slice's keeps are
+   `qwen` 82 · `longcat` 51 · `moss85` 42 · `dia` 5, and three of those four engines are
+   excluded by the filter above, so only **81** eligible rows carried `measured_z`.
+   Scored **846** clips (the 923 less the duplicate classes in 3, plus 60 whose only
+   labels lived in `v1/metadata.jsonl` rather than the corpus files — the hand-launched
+   split `eiv_score.sh` was written to end). Raw:
+   `eiv_scores/expressive_registers_v6.jsonl`; derived: `corpus_soft_v6.json` /
+   `corpus_valence_combo_v6.json` (31,197 entries); env captured per D-M2.
+   ⚠ **Score with all 12 heads, never the default 4.** `eiv_score.py` defaults to
+   `Valence,Arousal,Distress,Soft_vs._Harsh`, but `valence_combo_v1.json` weights **9**
+   heads, 8 of them family heads — the default set silently omits 8 of the 9 and
+   `eiv_merge_corpus.py` then hard-exits on "raw scores missing weighted heads".
+   The **standing rule held**: folding 846 into 30,351 moved every existing clip by
+   `corr=1.000000, mean shift +0.0000`, well inside D-L2's ≤0.0008 precedent.
+2. ✅ **Not work — answered by the speaker-identity decision above.** 880 of 1,004 ids
+   carry no `_sSEED` suffix and only 114 rows in any manifest carry a reference/voice
+   field, so identity is not recoverable; parsing it out of ids collapses the bank into
+   per-engine buckets. That is *why* one-id-per-clip is the honest answer rather than
+   merely the easy one — the prerequisite records the reasoning, it does not gate a build.
+3. ✅ **158 rows duplicate audio, not 91 — three disjoint classes** (verified no overlap):
+   - **91** audit-set copies (`libritts-r` 43, `emilia-yodas` 48, ids encoding `spk122`/
+     `spk136`), **all delivery-blank** → **dropped**; they carry no signal v5 lacks.
+   - **45** `scm-spike-v1` rows → **excluded, and they needed nothing.** The engine field
+     names the *markup* spike, not the audio, which is real LibriTTS-R `train-clean-100`
+     already in `train_op.txt`. They were merged into v5 **with their labels**: v5's 48
+     delivery-labelled rows (39 Dialogue + 9 Neutral) are **44 of these clips plus 4
+     others**, and `ratings.csv` agrees with v5 on every one (0 disagreements). Appending
+     them would have handed a voice a second speaker row for labels v5 already holds.
+   - **22** rows sharing a wav with another eligible row (one file, two ids) → keep the
+     original-campaign row, drop the `mk_` twin. 21 pairs agreed on delivery; **1
+     contradicted** — `neutral_narration_00_narratorFM_s1234`, `Neutral` (bulk1/qwen)
+     vs `Dialogue` (audit-markup-v0/scm-spike). **Owner heard it 2026-08-10: Neutral.**
+     The text is narration prose with no quoted speech, and the markup campaign appears
+     to have annotated emotional register through a field that means mix balance.
+
+   The 103 `librivox` keeps are ours and genuinely new.
+
+   **The lesson worth keeping: an engine tag is not audio provenance.** Class 2 was
+   invisible to the engine-name rule that found class 1, and class 3 only surfaced because
+   `collect_wavs` deduped by path and returned 786 for a 787-row list. Check where the
+   audio actually lives.
 
 **STEP 0 — PARTLY DONE 2026-08-09.** The checkpoint half ran; the Qwen half has not.
 
