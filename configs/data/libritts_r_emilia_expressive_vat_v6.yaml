@@ -11,8 +11,12 @@
 # moved the holdout by -0.0606. This adds 2.08. What it adds instead is the ONLY delivery
 # signal in the corpus: v5 carries 45 delivery-labelled train rows in 41,138 (0.11%), and
 # Documentary/Newscaster/Speech have exactly zero. v6 appends 816 more, across four lanes —
-# the lane table below, post-drop. (822 is the count for the staged 832; six of those were
-# dropped on digits and all six came out of the labelled half.)
+# the lane table below, post-drop. ⚠ THE 816 IS CORPUS-WIDE and the 45 is train-only, so
+# the two do not add: the append splits 799 train / 27 val, and the train-only gain is 816
+# minus whatever share of those 27 carries a lane. It has not been counted yet — the
+# command that counts it is in the experiment config's pre-flight, and its output belongs
+# here. (822 is the count for the staged 832; six of those were dropped on digits and all
+# six came out of the labelled half.)
 # If the holdout barely moves, that is the expected result — rung 2 is a conditioning
 # rung, not a volume rung, and the volume lever is rung 3.
 #

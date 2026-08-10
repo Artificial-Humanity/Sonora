@@ -48,9 +48,11 @@
 #     48 + the 816 appended. ⚠ Read that as a train+val total, NOT as a train count —
 #     the append is 799 train / 27 val, so at most 27 of the 816 landed in val and the
 #     train-only figure is 45 + (816 − labelled val rows), i.e. somewhere in 834-844.
-#     Nothing in the build record splits the 816 by side, and this rung will be judged
-#     on "does the delivery channel do anything once it has labels", so count it off
-#     the filelists before quoting a train number rather than reusing this range.
+#     ⚠ THAT RANGE IS PROVISIONAL AND IS TO BE REPLACED BY A COUNT, not quoted. Nothing
+#     in the build record splits the 816 by side, and this rung will be judged on "does
+#     the delivery channel do anything once it has labels", so the denominator has to be
+#     measured. The command is in the pre-flight below; it takes one pass over the two
+#     filelists. Write the two numbers in here and delete the range.
 #   * `Documentary` RETIRED into Neutral (owner 2026-08-10). vat_dim is UNCHANGED at 8 —
 #     the lane keeps its channel because position is the wire format — so the conditioning
 #     trunk is not touched and `ep019` warm-starts into it directly.
@@ -70,6 +72,34 @@
 #   * `data_statistics` MEASURED, not inherited. The move was small (-0.0154 mean) and
 #     that was a PREDICTION THAT GOT CHECKED, not a reason to skip it — see the data
 #     config for the three-generation comparison.
+#   * COUNT the delivery-labelled rows PER SPLIT and write them into the list above, in
+#     place of the provisional 834-844. This is the denominator the rung is judged on and
+#     it is the one number here that is an inference rather than a measurement. It needs
+#     NO torch and NO container — `matcha/delivery.py` imports nothing and the package
+#     `__init__` is empty — so it runs anywhere the built corpus is mounted, from the
+#     repo root:
+#
+#       python - <<'PY'
+#       import collections
+#       from matcha.delivery import DELIVERY_UNKNOWN, lane_of_vector
+#       root = "data/libritts_r_emilia_expressive_vat_v6"
+#       for split in ("train_op.txt", "val_op.txt"):
+#           lanes = collections.Counter()
+#           with open(f"{root}/{split}", encoding="utf-8") as fh:
+#               for ln in fh:
+#                   if ln.strip():
+#                       vec = [float(x) for x in ln.split("|")[3].split(",")]
+#                       lanes[lane_of_vector(vec)] += 1
+#           n = sum(lanes.values())
+#           print(f"{split}: {n - lanes[DELIVERY_UNKNOWN]} labelled of {n} — {dict(lanes)}")
+#       PY
+#
+#     It reads the delivery block through `lane_of_vector`, the same function the corpus
+#     was written with, rather than a fresh slice of the label field — so it cannot drift
+#     from the wire format, and it REFUSES a block that is not one-hot instead of
+#     double-counting it. Expected: the two labelled counts sum to **864** (v5's 48 + the
+#     816 appended) and the val one is at most 27. If they do not, the filelists are not
+#     the ones this config describes and nothing below it should be trusted either.
 #   * Warm start built and VERIFIED WIDENED — see below.
 #
 # ⚠ THE WARM START WIDENS THE SPEAKER TABLE, 2,500 -> 3,326, and that is the one operation
