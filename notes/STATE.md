@@ -62,7 +62,7 @@ _Last updated: 2026-08-10._
 > ⚠ **What v5 does NOT close: the ear gap.** Its new material was mined on acoustics and
 > nobody has heard a clip of it; every Emilia row is delivery-`unknown`, so the corpus still
 > carries 45 delivery labels in 41,138 train rows. **Phase 1 rung 2** —
-> `sonora-expressive-registers`, 846 rows to append — is what closes it. The order is
+> `sonora-expressive-registers`, 832 rows to append — is what closes it. The order is
 > deliberate: rung 1 asks "does volume move quality at all?" for no ear time.
 >
 > Pre-flight is unchanged and non-negotiable: stop **all** inference engines first
@@ -280,7 +280,7 @@ The ordered plan and the gate between each phase is
 headline; open items are in [todo.md](todo.md).
 
 1. **Phase 1 rung 2 — build v6** (+expressive-registers): decided, NOT built, warm start
-   from **`ep019`**. The append set is settled at **846 rows** (836 delivery-labelled + 10
+   from **`ep019`**. The append set is settled at **832 rows** (822 delivery-labelled + 10
    blank) = 1,004 eligible − 158 whose audio is already in v5 — **three disjoint duplicate
    classes needing opposite treatment** (91 dropped, 45 excluded because v5 holds their
    labels, 22 `mk_` twins resolved to one row), not the 91 originally recorded. Those 846
@@ -302,7 +302,9 @@ headline; open items are in [todo.md](todo.md).
    sd 0.217, **2.4% clamped**. ⚠ A stays near-constant for the 638 clips loudnorm flattened
    and that is CORRECT — the model reproduces the normalised audio.
    ⚠ **What remains is the build script, which does not exist**, plus one open call: **14
-   clips exceed `MAX_SECONDS` (22 s)**, so dropping them makes the append **832**, not 846.
+   clips exceeded `MAX_SECONDS` (22 s) and were **dropped** (owner, 2026-08-10) — all 14
+   delivery-labelled, so the append is **832 = 822 labelled + 10 blank** and the blank half
+   is untouched. The distribution did not move: V +0.005 / A +0.024 / T +0.261.
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
 2. **Rung 3 — the 10×** (LibriTTS-R full, ~615 h). Ungated: rung 1 passed. ~2.25 h/epoch,

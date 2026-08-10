@@ -26,7 +26,7 @@ Two conventions that surprise readers:
 
 _**Where the front is today** (2026-08-09): Phase 1 **rung 2** — `libritts_r_emilia_vat_v5`
 trained to `ep019` and rung 1's holdout gate **PASSED** (−0.0606, data-limited not
-capacity-limited), so the 10× proceeds. v6 (+expressive-registers, **846 rows to append** —
+capacity-limited), so the 10× proceeds. v6 (+expressive-registers, **832 rows to append** —
 1,004 eligible less 158 duplicate-audio) is decided and NOT built; scope and duplicates
 closed 2026-08-10, the A/T measures pass and the labelling-lane choice still open._
 

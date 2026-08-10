@@ -24,13 +24,14 @@ and goal 2 (Dramatic Reader) depends on casting more than on mel loss. Every ste
 ladders to *quality*; nothing here ladders to *castability*. That is a deliberate scope,
 now stated rather than implied — see [§ Parked — the casting/blend layer](#parked--the-castingblend-layer).
 **Where the front is: Phase 1, rung 2 — v5 trained and scored, `ep019` selected; v6 is
-scoped, labelled and decided but NOT built.** The append set is settled at **846 rows**
-(836 delivery-labelled + 10 delivery-blank), and as of **2026-08-10 all three
+scoped, labelled and decided but NOT built.** The append set is settled at **832 rows**
+(822 delivery-labelled + 10 delivery-blank), and as of **2026-08-10 all three
 prerequisites are closed**: V from the 12-head EIV pass, **A and T from a new acoustic
 pass** (846/846 measured, 0 unmeasurable), and the labelling lane ratified as the **global
 anchor with A centred per campaign**. What remains is the **build script itself**, which
 does not exist — plus one open owner decision that can still move the count: **14 clips
-exceed `MAX_SECONDS` (22 s)**, so dropping them makes the append 832 rather than 846.
+exceeded `MAX_SECONDS` (22 s) and were **dropped** (owner, 2026-08-10), so the append is
+**832**.
 See [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
 
 | | step | status | gated on | detail |
@@ -38,7 +39,7 @@ See [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-cor
 | **P0** | 0a — never-trained holdout | ✅ **DONE 2026-08-06** | — | [§ 0a](#0a--the-never-trained-holdout--done-and-it-reported-2026-08-06) |
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
-| | **rung 2 — v6, +expressive-registers (846 rows to append)** | 🔨 **labelled, NOT built** — all three prerequisites closed 2026-08-10; V/A/T in hand for 846/846 | **the build script, which does not exist** (the Qwen audition was **deferred**, owner 2026-08-09, and does not gate this); one open call — drop the 14 over-length clips, or raise `MAX_SECONDS` | ditto |
+| | **rung 2 — v6, +expressive-registers (832 rows to append)** | 🔨 **labelled, NOT built** — all three prerequisites closed 2026-08-10; V/A/T in hand for 832/832 | **the build script, which does not exist.** The Qwen audition was **deferred** (owner 2026-08-09) and does not gate this; the 14 over-length rows were **dropped** (owner 2026-08-10) | ditto |
 | | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ **UNGATED — rung 1 passed.** ~**2.25 h/epoch, ~1 day** to convergence (measured 2026-08-09) | rung 1's holdout ✅ | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
@@ -166,7 +167,7 @@ Cheapest first, so the expensive item is decided by evidence rather than assumpt
 | # | Source | State | Adds | Work |
 |---|---|---|---|---|
 | 1 | **Emilia-YODAS keeps** | **MERGED 2026-08-08** → `libritts_r_emilia_vat_v5` | 10,997 clips / +27.2 h (**+36%**) | done; needs a GPU slot |
-| 2 | **sonora-expressive-registers** | DERIVED, 1,004 eligible keeps → **846 to append** after dedup | small, ear-certified | **merge as v6 at 846** (1,004 owner-scoped 2026-08-09, less 158 duplicate-audio rows found 2026-08-10). ⚠ Do not re-open the **Documentary close** (87/92 — closed because *no documentary real audio exists*) |
+| 2 | **sonora-expressive-registers** | DERIVED, 1,004 eligible keeps → **832 to append** after dedup + duration filter | small, ear-certified | **merge as v6 at 832** (1,004 owner-scoped 2026-08-09, less 158 duplicate-audio rows found 2026-08-10, less 14 over `MAX_SECONDS` dropped 2026-08-10). ⚠ Do not re-open the **Documentary close** (87/92 — closed because *no documentary real audio exists*) |
 | 3 | **LibriTTS-R, the other 90%** | NOT PULLED | **~10×**, ~2,400 speakers | download + full corpus build |
 | 4 | **Hi-Fi TTS v1** | RAW, 40 GB parquet *with audio* | 292 h / 10 speakers | parquet → wav + filelist |
 
@@ -226,8 +227,10 @@ the licence and standing-policy filter over 1,279 total keeps, all four exclusio
 as written: VibeVoice/Dia 133 (benched), moss85 83 (un-SFT'd base), longcat 45 (benched),
 higgs3-NC 8 (**NC — never trains**). Per lane at that stage: Dialogue 402 · Neutral 270 ·
 Documentary 85 · Newscaster 76 · Speech 69. **158 of those rows duplicate audio already in
-v5** (three classes, § Rung 2 prerequisite 3), leaving **846 to append** — quote 846 as the
-v6 figure and 1,004 only as "eligible before dedup".
+v5** (three classes, § Rung 2 prerequisite 3), leaving 846 — less **14 over-length rows**
+dropped on the owner's call (2026-08-10) for **832 to append**. Quote **832** as the v6
+figure, 846 as "after dedup, before the duration filter", and 1,004 only as "eligible
+before dedup".
 
 ⚠ **Known confound, accepted deliberately rather than bought off.** Dialogue, Documentary
 and Newscaster have **no real audio at all** — no documentary real audio exists, and the
@@ -241,13 +244,13 @@ speaker through each lane and check whether manner changes or only timbre. Predi
 training, not after.
 
 ⚠ **The two percentages above were measured against the superseded 1,004-row scope and
-have NOT been recomputed for the 846.** They are stale in a direction that matters:
+have NOT been recomputed for the 832.** They are stale in a direction that matters:
 
 - A closing sentence — *"The 57 synthetic blank keeps in the merge help slightly and do
   not close it"* — has been **struck**, not merely restated. The append set holds **10**
   blank rows in total, so 57 synthetic blanks cannot be among them.
 - 91% / 99.8% was measured over 902 labelled + 102 blank; the population is now 836 + 10,
-  and the 158 removals were **not** provenance-neutral (class 1 is 91 real `libritts-r` /
+  and after the 14-row duration drop 822 + 10; the 158 removals were **not** provenance-neutral (class 1 is 91 real `libritts-r` /
   `emilia-yodas` rows, class 2 is 45 real LibriTTS-R rows). The labelled half loses 66
   rows, most of them real, so the labelled set's synthetic share moves **up**.
 - Internal contradiction, exposed by the drop: if 57 of the 102 blanks were synthetic then
@@ -256,7 +259,7 @@ have NOT been recomputed for the 846.** They are stale in a direction that matte
 
 The confound is the reason this rung ships with a pre-registered measurement, so its
 magnitude is load-bearing. **Recompute both percentages and the synthetic-blank count
-against the 846 before the build.**
+against the 832 before the build.**
 
 #### Rung 2 build decisions — recorded 2026-08-09, CORPUS NOT BUILT, NO RUN QUEUED
 
@@ -276,10 +279,17 @@ prerequisite 2 — the information largely is not there).
 labelling half of 1 and 2 is still open.** Two of the three numbers below were wrong when
 filed, in opposite directions.
 
-**v6 appends 846 rows = 1,004 eligible − 158 duplicate.** That is the one derivation to
-quote, and it cross-checks on both halves: **836** delivery-labelled (902 − 66) + **10**
-blank (102 − 92), with 66 + 92 = 158. Per lane: Dialogue 345 · Neutral 261 · Documentary
-85 · Newscaster 76 · Speech 69.
+**v6 appends 832 rows = 1,004 eligible − 158 duplicate − 14 over-length.** The middle
+figure cross-checks on both halves: 1,004 − 158 = **846** = **836** delivery-labelled
+(902 − 66) + **10** blank (102 − 92), with 66 + 92 = 158. **The 14** exceed
+`derive_vat_corpus.MAX_SECONDS` (22 s, up to 64.2 s) and were **dropped on the owner's
+call, 2026-08-10** — all 14 are delivery-labelled (Neutral 10 · Documentary 3 · Dialogue 1),
+so the blank half is untouched.
+**Final append: 832 = 822 delivery-labelled + 10 blank.** Per lane: Dialogue 344 ·
+Neutral 251 · Documentary 82 · Newscaster 76 · Speech 69.
+⚠ Dropping them moved nothing else: the label distribution is unchanged to two decimals
+(V +0.005 / A +0.024 / T +0.261, clamped 21.6% / 2.4% / 23.1%), and **no campaign crossed
+the `MIN_CAMPAIGN_N` floor**, so no clip changed offset lane.
 ⚠ **Do not derive 846 from the 923 scoring scope.** 923 is the count of eligible rows that
 needed an EIV pass (1,004 less the rows already carrying `measured_z`), not the append set,
 and the "923 − 158 + 60" reading recorded on 2026-08-10 gives **825**. Whether those 60
@@ -344,8 +354,10 @@ is defined by the 1,004 − 158 line above regardless.
    the 24 kHz clips to within 0.08 dB, so the resample is not moving loudness.
    **14 clips exceed `MAX_SECONDS` (22.0 s, up to 64.2 s)** — measured and flagged
    (`over_max_seconds`), **not** dropped, because dropping them silently moves the append
-   count from 846 to 832. ⚠ **Drop-or-raise is still an open owner decision**; it is the
-   only thing left that can change the append count.
+   count from 846 to 832. ✅ **DROPPED — owner's call, 2026-08-10.** All 14 are
+   delivery-labelled (Neutral 10 · Documentary 3 · Dialogue 1), so the blank half is
+   untouched, and nothing else moved: the label distribution is unchanged to two decimals
+   and no campaign crossed the `MIN_CAMPAIGN_N` floor. **Append set: 832.**
 2. ✅ **CLOSED 2026-08-10 — identity is not recoverable, and the lane that implies is now
    ratified: GLOBAL ANCHOR, with A centred per campaign (owner).**
    880 of 1,004 ids carry no `_sSEED` suffix and only 114 rows in any manifest carry a
@@ -508,7 +520,7 @@ Hours are the sources' own figures (`training-sources.md`), not measured by us.
 | **LibriTTS-R, the other 90%** | not pulled — we hold `train-clean-100` only | **+534** | download + corpus build, same pipeline as v4 verbatim |
 | **VCTK** | **4.3 GB zip ON DISK, still unextracted** | **44** | `unzip` + filelist. 110 speakers, 48 kHz studio. Casting/accent breadth only — no conveyance value |
 | Emilia-YODAS, more shards | 9 shards probed of ~114,000 h licensed | unbounded | the mining pipeline exists and ran this week |
-| sonora-expressive-registers | derived, 1,004 eligible ear-certified keeps (scoped 2026-08-09) → **846 to append** (dedup 2026-08-10) | small | merge as v6 — see § Rung 2 below for the eligibility filter and why this rung is not optional |
+| sonora-expressive-registers | derived, 1,004 eligible ear-certified keeps (scoped 2026-08-09) → **832 to append** (dedup + duration filter, 2026-08-10) | small | merge as v6 — see § Rung 2 below for the eligibility filter and why this rung is not optional |
 | librivox-v2 | derived, 1,366 clips, nothing staged | 3.1 | stage; re-earn v1's 12 ear verdicts |
 
 **Two are already on the disk and merely unconverted** — Hi-Fi TTS and VCTK, **336 hours
