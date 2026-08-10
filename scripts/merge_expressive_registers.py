@@ -70,6 +70,13 @@ BANK = "/data/model-training/datasets/sonora-expressive-registers"
 STAGE = "/data/model-training/datasets/expressive_registers_24k"
 TARGET_SR = 24000
 
+# Every key a corpus `speakers.json` may carry a speaker map under, read AND written.
+# `libritts_id_to_index` is the accumulating map — it has held the LibriTTS+Emilia union
+# since `merge_emilia_corpus.py`, and `derive_vat_corpus.py --reuse-from` and
+# `merge_emilia_corpus.py` both index it BY NAME. Writing v6's map under a new name would
+# leave the file readable and every consumer broken with a KeyError.
+SPEAKER_MAP_KEYS = ("libritts_id_to_index", "emilia_id_to_index", "expressive_id_to_index")
+
 
 def _resolve_text(rows):
     """-> {clip_id: text}, from the manifests then v1/metadata.jsonl, with the mk_ fallback."""
@@ -329,10 +336,24 @@ def main():
         raise SystemExit("ABORT: no append row survived. Nothing to merge.")
 
     # ---- speaker numbering: one id per clip, appended after the base ------------------
+    # SPEAKER_MAP_KEYS is the read AND the write vocabulary, because rung 3 points --base
+    # at v6 and comes back through this same reader. Every rung of the plan is a further
+    # append onto the previous corpus, so a key this reader does not know is not a cosmetic
+    # difference — it is the ladder stopping.
     base_index = {}
-    for key in ("libritts_id_to_index", "emilia_id_to_index"):
+    for key in SPEAKER_MAP_KEYS:
         base_index.update(base_spk.get(key, {}))
     next_index = base_spk["n_spks"]
+    if not base_index:
+        # Distinct from the contiguity abort below, which it used to be folded into: an
+        # empty map made `sorted([]) != range(n)` fire and send the reader hunting a
+        # corruption in a speaker table that is perfectly fine. Different cause, different
+        # fix, so different message.
+        raise SystemExit(
+            f"ABORT: {os.path.join(args.base, 'speakers.json')} has none of the recognised "
+            f"speaker-map keys {list(SPEAKER_MAP_KEYS)} — it has "
+            f"{sorted(k for k in base_spk if k != 'n_spks')}. The map is not corrupt, this "
+            f"reader does not know its key: add the name to SPEAKER_MAP_KEYS.")
     if sorted(base_index.values()) != list(range(next_index)):
         raise SystemExit("ABORT: the base speaker map is not contiguous 0..n-1; appending "
                          "to it would collide or leave holes.")
@@ -374,7 +395,12 @@ def main():
               "configs/data_licenses.yaml before training.")
 
     with open(os.path.join(args.out, "speakers.json"), "w", encoding="utf-8") as fh:
-        json.dump({"n_spks": n_spks, "base_id_to_index": base_index,
+        # `libritts_id_to_index` carries the ACCUMULATED base map, matching
+        # merge_emilia_corpus.py:395-396's shape — that is the name every consumer reads
+        # (merge_emilia_corpus.py:199, derive_vat_corpus.py:445, and this script's own
+        # reader above). It has meant "everything numbered before this rung" since v5
+        # folded Emilia into it; the lineage is in derivation_report.json, not in a key.
+        json.dump({"n_spks": n_spks, "libritts_id_to_index": base_index,
                    "expressive_id_to_index": er_index}, fh, indent=2)
 
     report = {
