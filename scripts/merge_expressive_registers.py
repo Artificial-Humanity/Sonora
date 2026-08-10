@@ -104,37 +104,66 @@ def _resolve_text(rows):
     return out
 
 
-def _stage_24k(rows, stage_dir, force=False):
-    """Write every clip as 24 kHz mono PCM under `stage_dir/wavs`, and return {id: path}.
+def _stage_24k(rows, stage_dir, force=False, dry_run=False):
+    """Write every clip as 24 kHz mono PCM under `stage_dir/wavs`.
 
-    Idempotent: a staged file already at 24 kHz with the expected frame count is left
-    alone, so a re-run costs a stat rather than a resample. The corpus points at the
-    staged tree and NOT at the bank, so a later reroll in the bank cannot silently
-    change what a built corpus trained on — the failure the loudnorm sidecar hit when
-    it keyed on path and a reroll re-rendered in place.
+    -> ({id: staged_path}, {id: seconds}). The durations are returned rather than
+    re-stat'ed by the caller so that `--dry-run` can report them without writing.
+
+    Idempotent: a staged file already at 24 kHz WITH the expected frame count is left
+    alone, so a re-run costs a stat rather than a resample. The frame count is not
+    decoration — a run interrupted partway through 832 resamples (Ctrl-C, OOM, a full
+    disk) leaves a `dst` whose header already says 24 kHz, and a samplerate-only check
+    would reuse the truncated clip forever. It survives everything downstream too: an
+    8 s remnant of a 15 s original still sits inside [MIN_SECONDS, MAX_SECONDS], so the
+    corpus would carry audio the model sees against V/A/T measured on the full clip.
+    New files are written to `.tmp` and `os.replace`d, so a partial one can never
+    occupy the final name in the first place.
+
+    The corpus points at the staged tree and NOT at the bank, so a later reroll in the
+    bank cannot silently change what a built corpus trained on — the failure the
+    loudnorm sidecar hit when it keyed on path and a reroll re-rendered in place.
+
+    `dry_run` plans without writing: the source `sf.info` needed for the reuse decision
+    already carries frames and samplerate, so the staged duration and the resample count
+    are both reportable without touching the disk.
     """
-    import librosa
     import soundfile as sf
 
     wavs = os.path.join(stage_dir, "wavs")
-    os.makedirs(wavs, exist_ok=True)
-    out, resampled, reused = {}, 0, 0
+    if not dry_run:
+        os.makedirs(wavs, exist_ok=True)
+    out, seconds, resampled, reused, native = {}, {}, 0, 0, 0
     for r in rows:
         dst = os.path.join(wavs, r["id"] + ".wav")
+        src = sf.info(r["wav"])
+        native += src.samplerate != TARGET_SR
+        expected = round(src.frames * TARGET_SR / src.samplerate)
         if not force and os.path.exists(dst):
             try:
-                if sf.info(dst).samplerate == TARGET_SR:
+                got = sf.info(dst)
+                if got.samplerate == TARGET_SR and abs(got.frames - expected) <= 1:
                     out[r["id"]] = dst
+                    seconds[r["id"]] = got.frames / got.samplerate
                     reused += 1
                     continue
             except Exception:
                 pass
-        y, _ = librosa.load(r["wav"], sr=TARGET_SR, mono=True)
-        sf.write(dst, y, TARGET_SR, subtype="PCM_16")
         out[r["id"]] = dst
+        seconds[r["id"]] = expected / TARGET_SR
         resampled += 1
-    print(f"staged {len(out)} clips -> {wavs}  ({resampled} written, {reused} reused)")
-    return out
+        if dry_run:
+            continue
+        import librosa
+        y, _ = librosa.load(r["wav"], sr=TARGET_SR, mono=True)
+        tmp = dst + ".tmp"
+        sf.write(tmp, y, TARGET_SR, subtype="PCM_16")
+        os.replace(tmp, dst)
+    verb = "would stage" if dry_run else "staged"
+    written = "would write" if dry_run else "written"
+    print(f"{verb} {len(out)} clips -> {wavs}  ({resampled} {written}, {reused} reused; "
+          f"{native} not natively {TARGET_SR} Hz)")
+    return out, seconds
 
 
 def main():
@@ -206,7 +235,12 @@ def main():
     texts = _resolve_text(rows)
     print(f"text resolved for {len(texts)}/{len(rows)}")
 
-    staged = _stage_24k(rows, args.stage, force=args.restage)
+    # Staging is a WRITE — ~832 resampled wavs and a new tree on /data — so --dry-run has
+    # to reach it, not just the filelist write 100 lines below. The documented first
+    # command in this module's `Run:` block is the dry run, and it was materialising the
+    # whole staged tree before printing "nothing written".
+    staged, staged_seconds = _stage_24k(rows, args.stage, force=args.restage,
+                                        dry_run=args.dry_run)
 
     # ---- build the new rows ----------------------------------------------------------
     g2p = OpenPhonemizerG2P(use_neural_oov=not args.no_neural_oov, homographs=True)
@@ -224,10 +258,11 @@ def main():
     for r in sorted(rows, key=lambda x: x["id"]):
         cid = r["id"]
         wav = staged[cid]
-        info = sf.info(wav)
-        seconds = info.frames / info.samplerate
-        if info.samplerate != TARGET_SR:
-            drop("audio", cid, f"sample_rate {info.samplerate}")
+        seconds = staged_seconds[cid]
+        # Post-condition on what is actually on disk. Skipped under --dry-run, where the
+        # staged file does not exist and `seconds` is what the resample WOULD produce.
+        if not args.dry_run and sf.info(wav).samplerate != TARGET_SR:
+            drop("audio", cid, f"sample_rate {sf.info(wav).samplerate}")
             continue
         if not MIN_SECONDS <= seconds <= MAX_SECONDS:
             # The 14 over-length rows were dropped upstream (owner, 2026-08-10); anything
