@@ -68,6 +68,26 @@ Vocabulary changes are contract changes and require an owner call.
 # ADDRESS (who is being spoken to), which is orthogonal to affect.
 DELIVERY_LANES = ("Dialogue", "Neutral", "Documentary", "Newscaster", "Speech")
 
+# Lanes that keep their CHANNEL but may no longer be ASSIGNED. `Documentary` was retired
+# into `Neutral` (owner, 2026-08-10): its 82 clips split bimodally toward Neutral and
+# Newscaster with an empty middle, and every one of them was synthetic — so the split is a
+# property of the render brief, not of a manner of speaking.
+#
+# It stays inside `DELIVERY_LANES` because ORDER IS THE WIRE FORMAT. Removing it would
+# renumber Newscaster and Speech and silently reinterpret every filelist and every
+# checkpoint written at `vat_dim` 8 — `ep019` warm-starts from one. So the channel stays
+# and the label retires, and those are two different statements that need two different
+# names here. Without this constant "Documentary is retired" is a fact about `ratings.csv`
+# that no build can check: `lane not in DELIVERY_LANES` is False for it, so a guard
+# written that way passes a retired lane straight through to the one-hot.
+RETIRED_LANES = ("Documentary",)
+
+# What a NEW row may be labelled. Producers validate against this; READERS
+# (`delivery_index`, `delivery_onehot`, `lane_of_vector`) deliberately stay on the full
+# vocabulary, because v5's filelists and ep019's weights both carry the retired channel
+# and must keep decoding.
+ACTIVE_DELIVERY_LANES = tuple(ln for ln in DELIVERY_LANES if ln not in RETIRED_LANES)
+
 # The label `unknown` carries in ratings.csv and the corpus filelists: a blank cell.
 # `seed_delivery.py` deliberately leaves the ear's cases blank rather than guessing, and
 # every LibriTTS clip is blank because that corpus predates the axis entirely.
@@ -105,6 +125,36 @@ def delivery_index(lane):
             "an embodiment clip, it is deliberately BLANK, not a sixth lane."
         )
     return DELIVERY_LANES.index(lane)
+
+
+def check_assignable(lane):
+    """-> the normalised lane, or raises if it may not be put on a NEW row.
+
+    Deliberately NOT folded into `delivery_index`. Indexing is a READ of the wire format
+    and has to keep working for a retired lane; assignment is a WRITE and has to refuse
+    one. A corpus builder calls this, a filelist reader does not.
+
+    Raising rather than dropping is the point: these rows are ear-certified, and a lane
+    that is no longer assignable is a stale metadata source, which is a fact about the
+    INPUT. Dropping would move the append count with no record — the exact failure the
+    surrounding merge discipline exists to prevent.
+    """
+    if lane is None:
+        return DELIVERY_UNKNOWN
+    lane = str(lane).strip()
+    if lane == DELIVERY_UNKNOWN:
+        return lane
+    if lane in RETIRED_LANES:
+        raise ValueError(
+            f"delivery lane {lane!r} is RETIRED and cannot be assigned to a new row. "
+            f"Its channel remains in the wire format at position "
+            f"{DELIVERY_LANES.index(lane)} so existing filelists and checkpoints still "
+            f"decode, but the assignable vocabulary is {list(ACTIVE_DELIVERY_LANES)} "
+            f"(+ blank for unknown). Rows still carrying it mean the metadata source is "
+            f"stale — re-read it rather than reassigning the lane here."
+        )
+    delivery_index(lane)                       # same message for an unrecognised lane
+    return lane
 
 
 def delivery_onehot(lane):

@@ -24,11 +24,13 @@ Two conventions that surprise readers:
 | 3 | [todo.md](todo.md) | open *residue* — code-review findings and the ears queue. Not the plan |
 | 4 | [ARCHITECTURE.md](ARCHITECTURE.md) | **canon** — the Director↔Actor contract (v2), corpus rules, gates, promotion |
 
-_**Where the front is today** (2026-08-09): Phase 1 **rung 2** — `libritts_r_emilia_vat_v5`
+_**Where the front is today** (2026-08-10): Phase 1 **rung 2** — `libritts_r_emilia_vat_v5`
 trained to `ep019` and rung 1's holdout gate **PASSED** (−0.0606, data-limited not
-capacity-limited), so the 10× proceeds. v6 (+expressive-registers, **846 rows to append** —
-1,004 eligible less 158 duplicate-audio) is decided and NOT built; scope and duplicates
-closed 2026-08-10, the A/T measures pass and the labelling-lane choice still open._
+capacity-limited), so the 10× proceeds. v6 (+expressive-registers, **832 rows appended** —
+1,004 eligible, less 158 duplicate-audio, less 14 over `MAX_SECONDS`) is **BUILT** as
+`libritts_r_emilia_expressive_vat_v6` (41,937 train / 1,331 val, n_spks 3,326); all three
+prerequisites closed, two in-container steps outstanding (`data_statistics`,
+`test_vat_dim_seams.py`)._
 
 _Answering a specific question? **"What are we training on"** → `training-sources.md`.
 **"May we use this dataset"** → `dataset-landscape.md`. **"How do I launch a run"** →
