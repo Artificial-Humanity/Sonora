@@ -144,7 +144,7 @@ jobs:
             STEP 0 — BEFORE YOU READ THE DIFF, fetch the finding ledger ONCE:
 
               gh issue list --repo ${{ github.repository }} --state all --limit 150 \
-                --label review-finding --json number,title,body,state,updatedAt
+                --label review-finding --json number,title,body,state,createdAt,updatedAt
 
             One call, bodies included, and it is the ONLY time you query issues in this
             run. HOLD IT IN CONTEXT for the whole review. Do NOT re-query — in particular,
@@ -188,6 +188,24 @@ jobs:
               is the loudest thing you can find: the defect was fixed and has come back.
               Reopen the issue, say which PR reintroduced it, and call it out by name in
               your summary.
+
+            END YOUR SUMMARY WITH THE LEDGER DIGEST — three lines, and they cost
+            nothing because step 0 already holds the whole ledger:
+
+              📒 **Finding ledger** — <N> open · <M> recurred more than once ·
+                 oldest open <D> days (#<num>) · dedup <complete|PARTIAL>
+
+            THIS IS THE FORCING FUNCTION, and it is the ONLY one left. Blocking used to
+            put the debt in front of the owner — crudely, but it did do it. Nothing else
+            in this design does, and "we will check the issues tab" is exactly the
+            intention that decays. Printing the number on every PR puts it where someone
+            is already reading, without anyone having to remember to look.
+
+            Report it even when it is boring. A digest that appears only when the count
+            is alarming teaches the reader that its absence means fine, and then a run
+            that failed to fetch the ledger reads as good news. If the dedup was partial
+            (see step 0), say **PARTIAL** here too — a debt number from an incomplete
+            ledger is a floor, not a count, and it must not be quoted as one.
 
             NOTHING YOU FILE BLOCKS THIS PR. You are not a gate. Post ONE top-level
             summary: counts by severity, links to what you filed, recurrences and
