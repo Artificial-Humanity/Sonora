@@ -110,34 +110,102 @@ instrument is coverage.
 
 ---
 
-## 3. Dynamic direction without span-FiLM: mean + slope
+## 3. Dynamic direction — the conditioning path is ALREADY time-varying
 
-The owner wants direction that *moves*. Clip-level conditioning cannot express it,
-and `embodiment` is parked for exactly this reason — those 17 clips are blank BY RULE
-because their delivery **changes partway through**, and a clip-level channel has no
-way to say so.
+**Span-FiLM is not the architecture project this plan files it as.** Checked
+2026-08-10, and the finding reframes the whole ambition.
 
-Span-FiLM is the eventual answer and it is a real architecture project. **There is a
-much cheaper intermediate that gets most of the value:** condition on each affect
-channel's **mean and slope** across the clip rather than its mean alone.
+`matcha/models/components/film.py` — `VATTrunk` takes **`[B, vat_dim, T]`** and
+*explicitly refuses* a per-utterance vector:
 
-- Doubles the affect block (10 → 20) instead of building a span architecture.
-- **Backwards compatible in the way this corpus already trusts**: a static clip has
-  slope 0, which is the same "absence of a value, not a value" property that makes
-  `unknown` ≡ the zero vector work for delivery. A corpus with no slopes reproduces
-  v2 conditioning exactly.
-- **Costs no new labels.** A (LUFS) and T (alpha/cpp/h1h2) are already windowable —
-  they are computed per-frame and averaged. Only the EIV heads need a second pass,
-  scored over clip halves.
-- **It un-parks embodiment for free.** Those 17 clips are precisely the ones where
-  slope ≠ 0. They stop being an unlabellable special case and become the most
-  informative rows in the set.
-- It is directly what Qwen's own demo asks for in prose — *"Initially commanding,
-  shifting to narrative amusement"* — expressed as something measurable.
+> `VATTrunk expects [B, vat_dim, T]; got …. Per-utterance (B, vat_dim) tensors must
+> be expanded by the caller.`
 
-⚠ Slope over a whole clip is a crude trajectory: it cannot express "quiet, loud,
-quiet". That is the honest limit, and it is the point at which span-FiLM stops being
-deferrable. Mean+slope is a step on the path, not a replacement for it.
+`flow_matching.py:45` documents the decoder's input the same way — *"frame-level VAT
+conditioning (batch_size, vat_dim, mel_timesteps)"*. **The model already consumes a
+time-varying conditioning sequence; we broadcast a constant along T.** Feeding it
+something that varies needs **zero model changes**, the zero-init heads keep a warm
+start exactly equal to the unconditioned checkpoint at step 0, and the export path
+was chosen to survive it (pointwise Conv1d + mul/add, "the op families already proven
+through the litert-torch fixed-shape export path").
+
+So this is a **labels-and-compiler project, not a modelling one.**
+
+⚠ **Correction to an earlier framing in this file's first draft.** "Mean + slope" was
+proposed as a cheap alternative that would double the affect block, 10 → 20. That is
+wrong. A slope is a **linear ramp along T in the channels that already exist** — no
+new width, no new parameters. Mean+slope is not an alternative to span conditioning;
+it is its smallest case, and it is reachable today without touching the model.
+
+### What is actually missing
+
+| piece | state |
+|---|---|
+| frame-level conditioning path | ✅ **built** |
+| frame-level **A** (LUFS) | ✅ computed per frame, then averaged — un-averaging deletes a line |
+| frame-level **T** (alpha_db / cpp / h1h2) | ✅ same; all three are frame-wise before the mean |
+| frame-level **emotion** | ❌ EIV is utterance-level. A real gap. |
+| forced alignment (token ↔ frame) | ❌ not on disk — `derive_markup_measures.py` names the cleared source (cdminix/libritts-r-aligned, CC-BY-4.0) |
+| Director → frames compiler | ❌ does not exist |
+
+### The decision that determines whether it works
+
+At training a trajectory can be **measured** from the audio. At inference the Director
+must **supply** one — and no LLM can author 500 frames of a 10-dim vector. Train on
+rich measured trajectories, infer from sparse authored ones, and the two sides speak
+different languages. That is the classic prosody-transfer failure and it is how this
+kind of project usually dies.
+
+The answer is already ratified: **SCM** ([markup-schema-brief.md](markup-schema-brief.md)),
+closed vocabularies — `emphasis` 1-3, `pause_after`, `pace`, `pitch_move`, `nonverbal`.
+
+> **Train on the COMPILED SCM, never on raw measured frames.** Derive SCM *from* audio
+> for training; compile SCM *to* conditioning for inference. Both sides then speak one
+> language, and the closed vocabulary stays checkable — which raw frame trajectories
+> never are.
+
+### Why the data argument runs the other way here
+
+Span conditioning is **more** data-efficient than clip conditioning, not less.
+Clip-level labels give ~43,000 supervision events in total; frame-level gives 43,000 ×
+hundreds. The scarcity that cripples delivery (§2) does not apply, because these
+labels come from the audio rather than from the ear.
+
+It also **un-parks embodiment for free**: those 17 clips are blank BY RULE because
+their delivery changes partway through. Under a time-varying channel they stop being
+an unlabellable special case and become the most informative rows in the set.
+
+### ⚠ The two real risks
+
+- **Duration coupling.** Matcha predicts durations, so token-level conditioning
+  reaches the decoder through *predicted* durations at inference and *ground-truth*
+  ones at training. This mismatch is the genuine technical hazard and the spike below
+  exists to answer it before anything is committed.
+- **Export.** `convert_vat.py` already refuses a wider checkpoint and F-H2 is open
+  because a mobile host told nothing about the channels will interpolate them. A
+  time-varying channel makes that story harder, not easier.
+
+### THE SPIKE — frame-level A, one channel, nothing else
+
+The cheapest decisive experiment available, and it fits between rungs rather than
+blocking one:
+
+- **No new labels.** Per-frame LUFS already exists inside the measure pass.
+- **No alignment needed.** Energy is frame-level, not token-level — the token↔frame
+  substrate is only required once SCM spans enter.
+- **No new width.** `vat_dim` stays 8; only the A row stops being constant.
+- **It already has a verifier.** Energy conditioning checks out at **ρ ≈ 1.000**, so
+  "did the model follow a *time-varying* target?" is answerable with **zero ear time**.
+
+**Read it as:** if frame-level energy is not followed, nothing more ambitious will be,
+and we learn that from one run on data we already hold. If it is followed, the
+duration-coupling question is answered empirically and everything after it is
+label-building rather than architecture.
+
+⚠ Do not let the spike quietly become the feature. It conditions on a *measured*
+trajectory, which is the train/inference mismatch above; it is a test of the model's
+capacity to follow, **not** a shippable direction surface. The SCM compiler is what
+makes it shippable. Mean+slope is a step on the path, not a replacement for it.
 
 ---
 
@@ -172,8 +240,9 @@ not only against the corpus statistics.
 | now | four delivery lanes, Documentary retired | **done 2026-08-10** | `vat_dim` unchanged at 8; `ep019` warm-starts v6 cleanly |
 | rung 2 | **no contract change** | — | v6 exists to test volume + delivery, one lever |
 | after rung 2 | delivery instrument (§2) | needs no GPU | unlocks delivery on 43,000 rows instead of 822 |
+| after rung 2 | **frame-level A spike (§3)** | **no width change, no new labels** | answers duration coupling for one run; has a verifier already |
 | rung 3+ | affect block A·T·8 (§1) | `vat_dim` 8 → 14 | new warm start + seam pass; do it once |
-| later | mean+slope (§3) | 14 → 24 | after the affect block proves out |
+| after the spike | SCM compiler + alignment (§3) | no width change | the substrate that makes span conditioning *shippable* rather than merely possible |
 | gate | verifier rule (§4) | **before Phase 1S** | 1S without it mass-produces unverified labels |
 
 Nothing here touches v6. That is deliberate: rung 2's whole purpose is one lever, and
