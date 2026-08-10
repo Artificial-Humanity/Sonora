@@ -139,6 +139,7 @@ def _stage_24k(rows, stage_dir, force=False, dry_run=False):
 
     wavs = os.path.join(stage_dir, "wavs")
     if not dry_run:
+        import librosa                       # a dry run decodes nothing, so it needs none
         os.makedirs(wavs, exist_ok=True)
     out, seconds, resampled, reused, native = {}, {}, 0, 0, 0
     for r in rows:
@@ -161,7 +162,6 @@ def _stage_24k(rows, stage_dir, force=False, dry_run=False):
         resampled += 1
         if dry_run:
             continue
-        import librosa
         y, _ = librosa.load(r["wav"], sr=TARGET_SR, mono=True)
         tmp = dst + ".tmp"
         sf.write(tmp, y, TARGET_SR, subtype="PCM_16")
@@ -277,9 +277,11 @@ def main():
         seconds = staged_seconds[cid]
         # Post-condition on what is actually on disk. Skipped under --dry-run, where the
         # staged file does not exist and `seconds` is what the resample WOULD produce.
-        if not args.dry_run and sf.info(wav).samplerate != TARGET_SR:
-            drop("audio", cid, f"sample_rate {sf.info(wav).samplerate}")
-            continue
+        if not args.dry_run:
+            staged_sr = sf.info(wav).samplerate
+            if staged_sr != TARGET_SR:
+                drop("audio", cid, f"sample_rate {staged_sr}")
+                continue
         if not MIN_SECONDS <= seconds <= MAX_SECONDS:
             # The 14 over-length rows were dropped upstream (owner, 2026-08-10); anything
             # landing here is a staging bug, not a corpus decision.
