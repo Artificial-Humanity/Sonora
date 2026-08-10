@@ -7,7 +7,7 @@ architecture canon is [ARCHITECTURE.md](ARCHITECTURE.md); open work is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
-_Last updated: 2026-08-09._
+_Last updated: 2026-08-10._
 
 ---
 
@@ -287,9 +287,23 @@ headline; open items are in [todo.md](todo.md).
    are **scored for valence** on a uniform 12-head EIV pass:
    `eiv_scores/expressive_registers_v6.jsonl`, derived to `corpus_soft_v6.json` /
    `corpus_valence_combo_v6.json` (31,197 entries = the v4 lineage + these 846, *not* the
-   merged corpus). ⚠ **Two items still gate the build**: the `measures.jsonl` acoustic pass
-   that A and T are built from is not recorded as having run for these clips, and the
-   labelling lane one-id-per-clip forces (anchored vs per-speaker z) is not decided — see
+   merged corpus).
+   ✅ **All three prerequisites CLOSED 2026-08-10 — the 846 now carry V, A and T.** The
+   acoustic pass had genuinely never run (`scripts/measure_expressive_registers.py` is the
+   third measure producer, for the third corpus shape); **846/846 measured, 846/846
+   labelled, 0 unmeasurable**. The lane is the **global anchor**, same as Emilia
+   (`scripts/label_expressive_registers.py`) — per-speaker z would hand every appended row
+   exactly 0.000, since one id per clip means n = 1.
+   ⚠ **A needed a loudness correction that V and T did not.** This bank is loudnorm'd
+   (median exactly −23.00 LUFS), LibriTTS-R is not (−18.16), and a 2.8-sd gap pinned **A at
+   −1 on 94.4% of rows** — our encoder's target recorded as a property of the voice. It is
+   centred **per campaign, not per bank**, because the bank holds at least three loudness
+   targets and one offset still left the 103 librivox rows at −0.835. Final: A mean +0.024,
+   sd 0.217, **2.4% clamped**. ⚠ A stays near-constant for the 638 clips loudnorm flattened
+   and that is CORRECT — the model reproduces the normalised audio.
+   ⚠ **What remains is the build script, which does not exist**, plus one open call: **14
+   clips exceed `MAX_SECONDS` (22 s)**, so dropping them makes the append **832**, not 846.
+   Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
 2. **Rung 3 — the 10×** (LibriTTS-R full, ~615 h). Ungated: rung 1 passed. ~2.25 h/epoch,
    about a day to convergence — it does not need the local-vs-cloud decision first.

@@ -19,6 +19,75 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-10
 
+### Added — rung 2's A/T labels, and the loudness defect measuring them exposed (`9964c60`, `c5bada3`)
+
+- **`scripts/measure_expressive_registers.py`** — the acoustic pass for the 846-row v6 append
+  set. The 12-head EIV pass produces **V only**; A and T are acoustic
+  (`anchor_emilia_labels.py:35-36`), and **neither existing producer covered this bank** —
+  verified on disk, every `measures.jsonl` present is LibriTTS-R lineage and Emilia's A/T come
+  from `probe_measures.jsonl` written by the mining pass. `derive_vat_corpus.py:536` would have
+  hard-aborted at v6 build time. **846/846 measured, 0 unmeasurable.**
+  `phonation_measures` is **imported, never reimplemented** — a second implementation of the
+  tension composite would put half the corpus on a silently different scale, the one failure
+  that does not announce itself.
+  Two things this bank does that the other two sources do not, both handled rather than
+  inherited: **148 clips are 44.1 kHz** (`measure_clip` rejects `sr != 24000` outright, so
+  reuse would have dropped 17.5% of the set in silence — resampled, `native_sr` recorded per
+  row, and their LUFS matches the 24 kHz clips to 0.08 dB); and **14 clips exceed
+  `MAX_SECONDS` (22 s, up to 64.2 s)** — measured and flagged, **not dropped**, because a
+  silent drop moves the append count from 846 to 832 with no record. ⚠ drop-or-raise is still
+  an open owner call and is the only thing left that can change that count.
+
+- **`scripts/label_expressive_registers.py`** — V/A/T for the 846 on the **global anchor**
+  (owner-ratified 2026-08-10; per-speaker z would return exactly 0.000 on every appended row,
+  since one id per clip is n = 1 — the failure `merge_emilia_corpus.py:20-29` already documents
+  for 756 one-clip speakers). **846/846 labelled, 0 non-finite or out-of-range.**
+
+### Fixed — A was pinned at −1 on 94.4% of the append set, and the cause was our own encoder
+
+Running the labels **before** the build is what caught it. Plain global anchor over the 846
+gave V +0.004 / sd .58 / 21.4% clamped and T +0.262 / .58 / 22.8% — both inside v5 precedent,
+with T at **less than half** the Emilia half's 54.0% saturation. But **A came out −0.970 / sd
+0.135 / 94.4% clamped**, and the cause is not performance: this bank is loudness-normalised
+(**median exactly −23.00 LUFS**), LibriTTS-R is not (−18.16, sd 1.86), and a **2.8-anchor-sd**
+gap is mapped by `clamp2` to −1.39 and clipped. Emilia's mean (−17.73) lands near LibriTTS's by
+accident of source — which is precisely why the plain anchor worked there and not here.
+Uncorrected, A would have taught the model that every expressive-register clip is the quietest
+thing in the corpus: **our encoder's target recorded as a property of the voice.**
+
+⚠ **Centring per bank was the first fix and it was not enough.** The bank holds at least
+**three loudness targets** — −23.0 general, −20.4 `quote-pilot-*`, −26.3…−27.1
+`book-librivox-*` — so one offset leaves each displaced by up to 6.7 dB and the 103 librivox
+rows still read **−0.835**: the same defect one level down. Centring **per campaign** fixes it
+at every level:
+
+| | plain | bank-wide | **per-campaign** |
+|---|---|---|---|
+| A mean | −0.970 | +0.011 | **+0.024** |
+| A sd | 0.135 | 0.385 | **0.217** |
+| A clamped | 94.4% | 8.7% | **2.4%** |
+| librivox 103, A mean | −0.917 | −0.835 | **+0.000** |
+
+**A constant A is the CORRECT answer for most of these rows and is not a failure.** 638 of 846
+sit within 0.05 dB of −23.00 — loudnorm already destroyed their performance loudness and no
+offset recovers it — but the model reproduces the *normalised* audio, so "unremarkable
+loudness" is true of the target. The real variation survives wherever loudnorm did not flatten
+it, and it is now the **real-audio librivox clips that carry the most A signal** (sd 0.309 vs
+the register-labelled 0.201), which is the right way round.
+
+Only the **centre** is corrected, never the spread — rescaling the sd would assert this bank's
+loudness variation means what LibriTTS-R's does, which nothing has measured. **V and T are not
+offset**: a correction with no defect to correct. Campaigns below `MIN_CAMPAIGN_N = 10` take
+the bank-wide fallback (25 rows, 8 campaigns), because centring a lone clip on itself is the
+n = 1 trap again. `anchor_emilia_labels.py` is deliberately **untouched** — it is the shipped
+v5 labelling path, so the shift is applied to the row before `label()` sees it and every row
+carries `lufs_native` / `lufs_offset` / `lufs_adjusted`.
+
+⚠ Pre-loudnorm loudness is recoverable for **104 of the 846 only** (`v1/audio/loudnorm.jsonl`
+carries `lufs_in`; `_pre_loudnorm_v1/` holds the originals). Using it would put 104 rows on a
+fourth scale, so it is unused — and it is the one lane that could carry real A signal if that
+sidecar were ever backfilled across the bank.
+
 ### Added
 - **`.github/workflows/claude-fix.yml` — the review loop is closed** (`d76869e`). The reviewer only
   ever commented; nothing acted on those comments. Adding the `claude-fix` label to a PR now runs
