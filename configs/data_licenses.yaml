@@ -95,13 +95,19 @@ datasets:
     # (synthesis output), while a DIFFERENT 45 rows carrying the same tag were real
     # LibriTTS-R audio and are excluded from v6 entirely. Classify by where the audio
     # lives, never by what produced the row.
-    dirs: [sonora-expressive-registers, expressive_registers_24k,
-           delivery-v1-narration, delivery-v1-narration-r2, newscaster-v1,
-           librivox-v1, librivox-v2, librivox-speech-v1,
-           stress-v1, stress-v2, teacher-ab-v1, revisit-v1, retake-v1,
-           orpheus-retake-v1, dialect-probe, book-prose,
-           artifact-probe-blind, artifact-probe-chatterbox, artifact-probe-orpheus,
-           artifact-probe-routing]
+    #
+    # ⚠ TWO ENTRIES ONLY, AND THAT IS DELIBERATE. A `dirs` name is matched as a path
+    # component ANYWHERE on any path, with no scoping to this dataset's tree, so every
+    # name added here permissively classifies that component for every filelist this repo
+    # will ever check. The v6 campaign dirs (`book-prose`, `librivox-v1`, `newscaster-v1`,
+    # `delivery-v1-narration*`, the `artifact-probe-*` set, …) were declared here and
+    # bought nothing: `_stage_24k` writes every clip to `expressive_registers_24k/wavs/`,
+    # so each v6 audio path names that one component and no other. They only widened the
+    # wall. `book-prose` in particular is a SEPARATE dataset in notes/training-sources.md
+    # with an open defect against its provenance metadata (A-M6: `book_ingest` hardcodes
+    # "Standard Ebooks CC0" even for PG sources) — it needs its own entry with its own
+    # licence string when a filelist first names it, not this one's.
+    dirs: [sonora-expressive-registers, expressive_registers_24k]
     license: CC-BY-4.0 (ours — teacher renders we produced + LibriVox public-domain
       recordings; published as CC-BY-4.0 on HF)
     class: permissive
