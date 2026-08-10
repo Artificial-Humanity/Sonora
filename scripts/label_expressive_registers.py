@@ -328,21 +328,25 @@ def main():
     # model something" from "the A correction moved lane-level energy into it". quality-
     # gap-plan.md bills this rung as one lever; unmeasured, this quietly makes it two.
     #
-    # So: the between-lane variance of A, before and after. If it barely moves, the
+    # So: the spread of the per-lane means, before and after. If it barely moves, the
     # campaigns are not lane-aligned in a way that matters and the concern evaporates —
     # measured, not assumed. If it collapses, the size of what was removed is on record
     # before the run rather than diagnosed after it.
-    # Measured on LUFS, in dB, NOT on A. A before the correction is pinned at -1 on 94.4%
-    # of these rows, and a clamp destroys between-lane structure by itself — so comparing
-    # A-before against A-after would confound the clamp with the offset and understate what
-    # the centring removed. LUFS is the unclamped quantity the offset actually acts on.
-    # `uncorrected_a` is reported alongside so the clamp's own share stays visible.
+    #
+    # Measured in dB on LUFS and NOT on A, deliberately. A before the correction is pinned
+    # at -1 on 94.4% of these rows, and a clamp destroys between-lane structure all by
+    # itself — so an A-before/A-after comparison would confound the clamp with the offset
+    # and understate what the centring removed. LUFS is the unclamped quantity the offset
+    # actually acts on. Both A columns are printed beside it so the clamp's own share of
+    # the flattening stays visible rather than being attributed to the centring.
     by_lane = collections.defaultdict(list)
     for r in labelled:
         by_lane[r.get("delivery") or "(blank)"].append(
             (r["lufs_native"], r["lufs_adjusted"], r["a"], uncorrected_a[r["wav"]]))
     if len(by_lane) > 1:
-        col = lambda vals, i: np.mean([v[i] for v in vals])          # noqa: E731
+        def col(vals, i):
+            return float(np.mean([v[i] for v in vals]))
+
         before = np.array([col(v, 0) for v in by_lane.values()])
         after = np.array([col(v, 1) for v in by_lane.values()])
         print(f"\nbetween-lane structure ({len(by_lane)} lanes) — the centring's "
