@@ -90,7 +90,7 @@ delivery labels reproduces v1 conditioning exactly. Owner call; ~1k extra parame
 The 2026-08-04 seam work is what made this safe to do: the four places that silently
 assumed 3 — FiLM trunk, filelist parse, collate, export converter — each refuse a
 mismatch, and the data configs interpolate `vat_dim: ${model.vat_dim}` so the model config
-is the single source of width. `scripts/test_vat_dim_seams.py` is now **22 checks** and
+is the single source of width. `scripts/test_vat_dim_seams.py` is now **35 checks** and
 passes; it is the thing that makes a width disagreement fail loudly at the filelist
 instead of quietly at the trunk.
 

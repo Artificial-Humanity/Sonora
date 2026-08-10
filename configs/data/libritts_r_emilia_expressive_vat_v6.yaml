@@ -1,0 +1,125 @@
+# v5 + the sonora-expressive-registers append set @ 24 kHz, 8-channel conditioning (v2).
+#
+# Phase 1 rung 2. v5's 42,442 rows pass through BYTE-IDENTICAL (verified: v5's files are a
+# verbatim prefix of these, on BOTH train and val) and 826 expressive-registers rows are
+# appended.
+#
+#   41,937 train / 1,331 val · 80.6 h · 3,326 speakers
+#   v5 was 41,138 / 1,304 · 78.5 h · 2,500 speakers — so +2.0% clips, +2.6% hours.
+#
+# ⚠ THE VOLUME IS NOT THE POINT AND MUST NOT BE READ AS ONE. Rung 1 added 27 hours and
+# moved the holdout by -0.0606. This adds 2.08. What it adds instead is the ONLY delivery
+# signal in the corpus: v5 carries 45 delivery-labelled train rows in 41,138 (0.11%), and
+# Documentary/Newscaster/Speech have exactly zero. v6 appends 816 more, across four lanes —
+# the lane table below, post-drop. ⚠ THE 816 IS CORPUS-WIDE and the 45 is train-only, so
+# the two do not add: the append splits 799 train / 27 val, and the train-only gain is 816
+# minus whatever share of those 27 carries a lane. It has not been counted yet — the
+# command that counts it is in the experiment config's pre-flight, and its output belongs
+# here. (822 is the count for the staged 832; six of those were dropped on digits and all
+# six came out of the labelled half.)
+# If the holdout barely moves, that is the expected result — rung 2 is a conditioning
+# rung, not a volume rung, and the volume lever is rung 3.
+#
+# Built by `scripts/merge_expressive_registers.py` — a THIRD merge script, because this is
+# a third corpus shape: flat, keyed by `ratings.csv`, ear-certified, and labelled ahead of
+# time rather than during the merge.
+#
+# LABELS: the appended rows use the SAME global anchor as the Emilia half
+# (`scripts/label_expressive_registers.py`), for the same reason. One speaker id per clip
+# (owner 2026-08-09, identity is not recoverable) makes every appended row n = 1 under
+# per-speaker z, which returns exactly 0.000 on all three channels — a fabricated label
+# indistinguishable from a real one.
+#
+# ⚠ WITH ONE DEPARTURE FROM THE EMILIA LANE: **A is centred PER CAMPAIGN.** This bank is
+# loudness-normalised (median exactly -23.00 LUFS) and LibriTTS-R is not (-18.16, sd 1.86).
+# Uncorrected, that 2.8-sigma gap pinned **A at -1 on 94.4% of the append set** — our
+# encoder's target recorded as a property of the voice. Per BANK was not enough either:
+# there are at least three loudness targets here (-23.0 general, -20.4 quote-pilot,
+# -26.3..-27.1 book-librivox), and one offset still left the 103 librivox rows at -0.835.
+# Final: A mean +0.024, sd 0.217, 2.4% clamped — between v5's two halves (4.9% / 11.5%).
+#
+# ⚠ A IS NEAR-CONSTANT FOR MOST APPENDED ROWS AND THAT IS CORRECT. 638 of 832 sit within
+# 0.05 dB of -23.00: loudnorm destroyed their performance loudness and no offset recovers
+# it. The model reproduces the NORMALISED audio, so "unremarkable loudness" is a true
+# statement about the target. The real variation survives where loudnorm did not flatten
+# it — and it is the real-audio librivox clips that now carry the most A signal (sd 0.309
+# against the register-labelled 0.201), which is the right way round.
+#
+# ⚠ T DOES **NOT** REPEAT RUNG 1's SATURATION: 23.1% of appended rows on the rail against
+# the Emilia half's 53.6%. Read that before the holdout number, not after — the v5 config
+# writes down the failure signature to watch for, and this rung does not carry it.
+#
+# DELIVERY: Dialogue 344 · Neutral 328 · Newscaster 76 · Speech 68 · blank 10.
+# `Documentary` was RETIRED into Neutral (owner, 2026-08-10) — its 82 rows split bimodally
+# toward Neutral and Newscaster with an empty middle, and all were synthetic, so it was a
+# property of the brief rather than of any audio. The lane stays in `DELIVERY_LANES`
+# because channel position is the wire format; `RETIRED_LANES` + `check_assignable()` are
+# what stop it being assigned. **vat_dim is therefore UNCHANGED at 8, and `ep019`
+# warm-starts with no widening of the conditioning trunk.**
+#
+# WHAT WAS DROPPED, 6 of 832 (0.7%), all on digits (D-M3): the tokenizer DELETES them, so
+# "£5,000" would train as "£," against audio that says the number. Five are correct — the
+# audio genuinely speaks numbers (£5,000, 43° 10′, 1801, 20-30 fathoms). The sixth,
+# `speeches-literary-and-social_lv003_0095`, is a Gutenberg footnote marker `{53}` the
+# reader does not say, and it costs a row from the 69-row Speech lane. Flagged for the
+# owner rather than stripped, per the text-audio gap rule. Zero clips failed on audio,
+# phoneme vocabulary, or unresolved words.
+#
+# n_spks is 3,326 = v5's 2,500 + one id per appended clip. Derived from the corpus, never
+# assumed, and the merge aborts if the base map is not contiguous or if any id collides.
+#
+# ⚠ THE SPEAKER TABLE GROWS BY 826 AND THE EMBEDDING MUST BE **WIDENED**, not copied.
+# `make_warmstart._WIDENABLE` is the path that does it, and it proves the donor's index map
+# is a PREFIX rather than assuming it. This corpus has been bitten here before: the v4->v5
+# work found `make_warmstart` DISCARDING the widened tensor instead of widening it, which
+# fails silently and trains 826 speakers on a randomly-initialised row.
+#
+# Lineage and every source: notes/training-sources.md (SSOT).
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_emilia_expressive_vat_v6
+train_filelist_path: data/libritts_r_emilia_expressive_vat_v6/train_op.txt
+valid_filelist_path: data/libritts_r_emilia_expressive_vat_v6/val_op.txt
+batch_size: 32
+# 8, not 20: workers are spawned (own torch import + RSS each, no COW sharing
+# with the trainer) — 8 saturates wav+mel loading on 16 cores.
+num_workers: 8
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 3326
+n_fft: 1024
+n_feats: 80
+sample_rate: 24000
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 12000
+# MEASURED, NOT INHERITED — and the v5 entry explains why this is not pedantry: v4 -> v5
+# moved the mel mean by 0.1587 and the std by 0.3208, an order of magnitude past the
+# 0.0203 / 0.0024 that put "re-measure in-container" on the checklist.
+#
+# ⚠ THE SMALL DELTA HERE IS NOT A LICENCE TO INHERIT. v6 adds only 2.6% more audio, so the
+# move was EXPECTED to be small — but "expected small" is a prediction, and the point of
+# this line is that the prediction gets CHECKED. It was, and it held:
+#
+#   v5 -> v6   mel_mean -0.015356   mel_std -0.000079      <- measured 2026-08-10
+#   v4 -> v5   mel_mean  0.158700   mel_std  0.320800      <- the move that earned this rule
+#   v2 -> v3c  mel_mean  0.020300   mel_std  0.002400      <- the move that first raised it
+#
+# So the mean shift is 10x smaller than v4->v5 and slightly under the v2->v3c precedent,
+# and the std barely moves at all — consistent with 2.6% more audio drawn from a different
+# but not wildly different distribution (teacher renders and LibriVox loudness-normalised
+# to -23 LUFS against a corpus centred at -18.16). Inheriting v5's numbers would probably
+# have been survivable HERE. It is still not what we do: the cost of measuring is 85
+# seconds, and "probably survivable" is a judgement that has to be re-made every rung
+# whereas the measurement is a fact.
+data_statistics:  # matcha/utils/generate_data_statistics.py, in-container, 2026-08-10, 41,937-clip train split (164 batches @ 256)
+  mel_mean: -5.699118
+  mel_std: 2.709244
+seed: ${seed}
+load_durations: false
+load_vat: true
+# Single source of truth is the model config: a filelist whose VAT width disagrees
+# with the model now fails at load with both numbers named, instead of deep in the
+# FiLM trunk. Interpolated, never duplicated, so the two cannot drift.
+vat_dim: ${model.vat_dim}

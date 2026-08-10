@@ -1,0 +1,160 @@
+# @package _global_
+
+# Phase 1 rung 2 — the CONDITIONING rung, and the first run that can be judged on
+# something other than volume.
+#
+# ⚠ READ THIS BEFORE THE HOLDOUT NUMBER, NOT AFTER.
+#
+# **This run is NOT expected to move the holdout much, and a flat result is not a
+# failure.** Rung 1 added 27 hours and moved the clean holdout by -0.0606. This adds
+# **2.08 hours** — 41,937 train rows against v5's 41,138, 80.6 h against 78.5. Judged as a
+# volume run it is a rounding error, and judging it that way is the mistake this block
+# exists to prevent.
+#
+# What it actually buys is the **only delivery signal in the corpus**. v5 carries 48
+# delivery-labelled rows in 42,442 — 45 of them in the 41,138-row train split (0.11%) —
+# and Documentary/Newscaster/Speech have exactly ZERO. v6 appends **816** more across four
+# lanes: Dialogue 344 · Neutral 328 · Newscaster 76 · Speech 68. The delivery block has
+# been eight channels wide since 2026-08-07 and has never had data behind it; this is the
+# first run where those channels see more than noise.
+#
+# ⚠ 816, not the 822 the plan notes carry. 822 is the count for the **staged 832**
+# (822 labelled + 10 blank); D-M3 then dropped 6 of those 832 on digits, all six from the
+# labelled half, so what v6 actually holds is 826 = 816 labelled + 10 blank. The lane
+# table above is the post-drop, post-Documentary-retirement one and sums to 816 — quoting
+# 822 beside it counts six rows that are not in the corpus.
+#
+# So the question this run answers is NOT "did loss drop" but "does the delivery channel
+# do anything once it has labels" — and the holdout cannot answer that, because it is 40
+# LibriTTS dev-clean speakers of audiobook narration, all delivery-`unknown`. The holdout
+# is here as a REGRESSION GUARD: if it moves materially WORSE, the append hurt. If it
+# holds flat, that is the expected and acceptable result, and the delivery question goes
+# to the ear and the Vocalizer's dials.
+#
+# PREDICTION, recorded before the run exists so this stays a test rather than a story:
+#   * holdout: flat to slightly better. A move worse than v5's ep019 by more than the
+#     -0.0111 that cleared gate 0a is a REGRESSION and the append is suspect.
+#   * T does NOT repeat rung 1's saturation — 23.1% of appended rows on the rail against
+#     the Emilia half's 53.6%. If T regresses anyway, the cause is not this rung's mix.
+#   * A is near-constant on 638 of the 832 STAGED clips BY CONSTRUCTION (they are
+#     loudnorm'd to -23 LUFS), so A learning nothing new from them is expected, not a
+#     defect. Measured over the staged set, before the 6-row D-M3 drop — the denominator
+#     is 832, and how many of the 638 survive into the 826 was not re-counted.
+#
+# WHAT CHANGED FROM v5, in one list:
+#   * +826 rows / +2.08 h from sonora-expressive-registers, ear-certified.
+#   * n_spks 2,500 -> 3,326, one id per appended clip (owner 2026-08-09).
+#   * Delivery goes from v5's 48 labelled rows to **864**, corpus-wide (train + val):
+#     48 + the 816 appended. ⚠ Read that as a train+val total, NOT as a train count —
+#     the append is 799 train / 27 val, so at most 27 of the 816 landed in val and the
+#     train-only figure is 45 + (816 − labelled val rows), i.e. somewhere in 834-844.
+#     ⚠ THAT RANGE IS PROVISIONAL AND IS TO BE REPLACED BY A COUNT, not quoted. Nothing
+#     in the build record splits the 816 by side, and this rung will be judged on "does
+#     the delivery channel do anything once it has labels", so the denominator has to be
+#     measured. The command is in the pre-flight below; it takes one pass over the two
+#     filelists. Write the two numbers in here and delete the range.
+#   * `Documentary` RETIRED into Neutral (owner 2026-08-10). vat_dim is UNCHANGED at 8 —
+#     the lane keeps its channel because position is the wire format — so the conditioning
+#     trunk is not touched and `ep019` warm-starts into it directly.
+#   * data_statistics re-measured: mel_mean -5.699118 / mel_std 2.709244.
+#
+# Pre-flight, all mandatory:
+#   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
+#     engines (Gemma director, synth_* renderers, Vocalizer), not just the trainer's.
+#   * scripts/test_vat_dim_seams.py — IN-CONTAINER (they need torch). 35 checks.
+#     ⚠ Run it with a container that has real shm: the suite and the datamodule both use
+#     DataLoader workers, and `sonora_vocalizer` has Docker's default 64 MB /dev/shm,
+#     which DEADLOCKS them silently — 8 workers alive at 0.0% CPU, no error, forever. The
+#     training service sets `ipc: host` + `shm_size: 16gb` for exactly this reason.
+#   * The corpus is licence-declared (configs/data_licenses.yaml): the filelist dir under
+#     `merged_vat_corpora`, and its audio under `sonora_expressive_registers`. The merge
+#     refuses to write filelists at all if the wall does not accept them.
+#   * `data_statistics` MEASURED, not inherited. The move was small (-0.0154 mean) and
+#     that was a PREDICTION THAT GOT CHECKED, not a reason to skip it — see the data
+#     config for the three-generation comparison.
+#   * COUNT the delivery-labelled rows PER SPLIT and write them into the list above, in
+#     place of the provisional 834-844. This is the denominator the rung is judged on and
+#     it is the one number here that is an inference rather than a measurement. It needs
+#     NO torch and NO container — `matcha/delivery.py` imports nothing and the package
+#     `__init__` is empty — so it runs anywhere the built corpus is mounted, from the
+#     repo root:
+#
+#       python - <<'PY'
+#       import collections
+#       from matcha.delivery import DELIVERY_UNKNOWN, lane_of_vector
+#       root = "data/libritts_r_emilia_expressive_vat_v6"
+#       for split in ("train_op.txt", "val_op.txt"):
+#           lanes = collections.Counter()
+#           with open(f"{root}/{split}", encoding="utf-8") as fh:
+#               for ln in fh:
+#                   if ln.strip():
+#                       vec = [float(x) for x in ln.split("|")[3].split(",")]
+#                       lanes[lane_of_vector(vec)] += 1
+#           n = sum(lanes.values())
+#           print(f"{split}: {n - lanes[DELIVERY_UNKNOWN]} labelled of {n} — {dict(lanes)}")
+#       PY
+#
+#     It reads the delivery block through `lane_of_vector`, the same function the corpus
+#     was written with, rather than a fresh slice of the label field — so it cannot drift
+#     from the wire format, and it REFUSES a block that is not one-hot instead of
+#     double-counting it. Expected: the two labelled counts sum to **864** (v5's 48 + the
+#     816 appended) and the val one is at most 27. If they do not, the filelists are not
+#     the ones this config describes and nothing below it should be trusted either.
+#   * Warm start built and VERIFIED WIDENED — see below.
+#
+# ⚠ THE WARM START WIDENS THE SPEAKER TABLE, 2,500 -> 3,326, and that is the one operation
+# in this run with a history of failing SILENTLY. The v4->v5 work found `make_warmstart`
+# DISCARDING the widened tensor instead of widening it, which trains 826 speakers on a
+# randomly-initialised row and reports success. Do not accept the script's exit code as
+# proof: `_speaker_prefix_ok` must confirm v5's map is an index-preserving PREFIX of v6's
+# (it is — verified 2026-08-10), and the seam suite's widen checks must pass.
+#
+#   # donor: vat5_finetune's SELECTED ep019, under the run dir recorded in STATE.md
+#   # (/data/model-training/sonora/logs/train/vat5_finetune/runs/<stamp>/checkpoints/).
+#   python scripts/make_warmstart.py --experiment vat6_finetune \
+#       --donor <.../vat5_finetune/runs/<stamp>/checkpoints/checkpoint_019.ckpt> \
+#       --donor-speakers data/libritts_r_emilia_vat_v5/speakers.json \
+#       --out /data/model-training/sonora/warmstart/vat6_init.ckpt
+#   python -m matcha.train experiment=vat6_finetune \
+#       ckpt_path=/data/model-training/sonora/warmstart/vat6_init.ckpt \
+#       callbacks.model_checkpoint.every_n_epochs=1 \
+#       callbacks.model_checkpoint.save_top_k=-1
+#
+# ⚠ `--donor-speakers` IS NOT OPTIONAL, and it is the flag with no error message. It is
+# what PERMITS the widening at all; without it `_widen` returns `None` for `spk_emb.weight`,
+# the table stays freshly initialised, the script still exits 0, and the run trains 826
+# speakers on random rows. The two `model_checkpoint` overrides are equally non-optional —
+# see the checkpointing block below for why `save_top_k=-1` is the one that bites.
+#
+# JUDGING THIS RUN: score on the never-trained holdout (scripts/score_holdout.sh,
+# data/libritts_r_holdout_devclean), NEVER on loss/val_epoch — v6's val set is 1,331 clips
+# spanning THREE domains now (LibriTTS, Emilia, expressive-registers), so a move in it
+# could be any of them.
+#
+# ⚠ CHECKPOINT EVERY EPOCH, KEEP THEM ALL, AND EXPECT CONVERGENCE UNDER 10. The v5 run put
+# 100% of its gain in epochs 0-9 and epochs 10-39 were net WORSE; the entire useful signal
+# lived inside a single checkpoint interval, so the best epoch was never written to disk.
+# BOTH overrides are required and the second is the one that is easy to drop:
+#
+#     callbacks.model_checkpoint.every_n_epochs=1
+#     callbacks.model_checkpoint.save_top_k=-1
+#
+# `every_n_epochs: 1` is the repo default since TR-L5, so that one is belt-and-braces. But
+# the composed `configs/callbacks/model_checkpoint.yaml` is also `monitor: epoch` /
+# `mode: max` / `save_top_k: 10` — "retain the ten HIGHEST-NUMBERED epochs". Written every
+# epoch, then pruned: a run that reaches epoch 19 has deleted `checkpoint_000..009`, which
+# is precisely the window this block says carries the whole gain. Without `save_top_k=-1`
+# the v5 failure reproduces exactly — `last.ckpt` plus a window that excludes the best
+# epoch — with per-epoch checkpointing switched on the whole time.
+# Sample accordingly and stop early. Both overrides are in the launch commands above.
+
+defaults:
+  - override /data: libritts_r_emilia_expressive_vat_v6.yaml
+
+tags: ["libritts_r", "emilia_yodas", "expressive_registers", "vat", "vat6", "phase1",
+       "rung2", "delivery", "valence", "tension", "energy"]
+
+run_name: vat6_finetune
+
+model:
+  use_vat: true
