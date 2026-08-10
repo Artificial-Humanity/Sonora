@@ -39,6 +39,10 @@ jobs:
           # do not match — do not "fix" the left side to agree with the right.
           claude_code_oauth_token: ${{ secrets.CLAUDE_OAUTH_TOKEN }}
 
+          # TEMPORARY DIAGNOSTIC — remove before merge. The run fails in 21ms at
+          # $0 cost with the real error suppressed by "output hidden for security".
+          show_full_output: true
+
           # --allowedTools is what actually lets the agent reach GitHub. Without
           # it the model can analyze the diff but has no mechanism to post, so a
           # prompt asking for "inline comments" produces nothing. This is the
