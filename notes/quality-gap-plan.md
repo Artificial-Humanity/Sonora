@@ -232,8 +232,25 @@ purchasable: matching the labelled-rate across provenance needs **~36,700 blank 
 renders ≈ 336 GPU-hours**, and would make the corpus ~47% synthetic — contradicting the
 ordering principle above. So we **measure it instead**: direct a real, well-represented
 speaker through each lane and check whether manner changes or only timbre. Predict before
-training, not after. The 57 synthetic blank keeps in the merge help slightly and do not
-close it.
+training, not after.
+
+⚠ **The two percentages above were measured against the superseded 1,004-row scope and
+have NOT been recomputed for the 846.** They are stale in a direction that matters:
+
+- A closing sentence — *"The 57 synthetic blank keeps in the merge help slightly and do
+  not close it"* — has been **struck**, not merely restated. The append set holds **10**
+  blank rows in total, so 57 synthetic blanks cannot be among them.
+- 91% / 99.8% was measured over 902 labelled + 102 blank; the population is now 836 + 10,
+  and the 158 removals were **not** provenance-neutral (class 1 is 91 real `libritts-r` /
+  `emilia-yodas` rows, class 2 is 45 real LibriTTS-R rows). The labelled half loses 66
+  rows, most of them real, so the labelled set's synthetic share moves **up**.
+- Internal contradiction, exposed by the drop: if 57 of the 102 blanks were synthetic then
+  at most 45 blanks were real — yet class 1 is 91 real rows described as all
+  delivery-blank. Both cannot hold.
+
+The confound is the reason this rung ships with a pre-registered measurement, so its
+magnitude is load-bearing. **Recompute both percentages and the synthetic-blank count
+against the 846 before the build.**
 
 #### Rung 2 build decisions — recorded 2026-08-09, CORPUS NOT BUILT, NO RUN QUEUED
 
