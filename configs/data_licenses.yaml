@@ -65,8 +65,45 @@ datasets:
     # terms, not this line. Both sources here are CC-BY-4.0, so attribution is the whole
     # obligation; a future merge whose sources differ needs that spelled out per source in
     # notes/training-sources.md before it is added to `dirs`.
-    dirs: [libritts_r_emilia_vat_v5]
+    #
+    # `libritts_r_emilia_expressive_vat_v6` (2026-08-10, Phase 1 rung 2) adds the
+    # expressive-registers append set on top of v5. Third source, same rule: its audio is
+    # classified as `sonora_expressive_registers` below, not by this line.
+    dirs: [libritts_r_emilia_vat_v5, libritts_r_emilia_expressive_vat_v6]
     license: CC-BY-4.0 (filelists only; each audio path is classified by its own source)
+    class: permissive
+  sonora_expressive_registers:
+    # OURS — the ear-certified expressive bank (notes/training-sources.md). Two kinds of
+    # audio and NOTHING else, verified by path before declaring rather than assumed:
+    #   * 729 teacher renders (qwen · zonos · chatterbox · orpheus · moss_vg) — our own
+    #     output, produced by models we run locally under their own weights licences. The
+    #     WEIGHTS licence gates whether an engine may be used at all (notes/dataset-
+    #     landscape.md); it does not attach to the audio those weights produce.
+    #   * 103 LibriVox recordings — public domain, the same basis as `ljspeech`.
+    # Checked 2026-08-10: **0 of the 832 staged clips resolve into `LibriTTS_R` or any
+    # `emilia*` tree**, so no third-party corpus audio is laundered through this entry.
+    #
+    # ⚠ `expressive_registers_24k` is the STAGED tree the v6 filelists point at — 24 kHz
+    # PCM copies written by `merge_expressive_registers.py`, because 148 of the source
+    # clips are 44.1 kHz and the corpus contract is 24 kHz. It is declared alongside the
+    # bank for the same reason `emilia_kept_24k` is: the wall classifies the path a
+    # filelist actually names, and the resampled tree is that path. Declaring only the
+    # bank would refuse every v6 row.
+    #
+    # ⚠ An engine tag is NOT audio provenance — the lesson that cost this rung 158 rows.
+    # 21 rows tagged `scm-spike-v1` live under `sonora-expressive-registers/v1/audio`
+    # (synthesis output), while a DIFFERENT 45 rows carrying the same tag were real
+    # LibriTTS-R audio and are excluded from v6 entirely. Classify by where the audio
+    # lives, never by what produced the row.
+    dirs: [sonora-expressive-registers, expressive_registers_24k,
+           delivery-v1-narration, delivery-v1-narration-r2, newscaster-v1,
+           librivox-v1, librivox-v2, librivox-speech-v1,
+           stress-v1, stress-v2, teacher-ab-v1, revisit-v1, retake-v1,
+           orpheus-retake-v1, dialect-probe, book-prose,
+           artifact-probe-blind, artifact-probe-chatterbox, artifact-probe-orpheus,
+           artifact-probe-routing]
+    license: CC-BY-4.0 (ours — teacher renders we produced + LibriVox public-domain
+      recordings; published as CC-BY-4.0 on HF)
     class: permissive
   parler_libritts_r_annotated:
     dirs: [parler-tts, libritts-r-filtered-speaker-descriptions]
