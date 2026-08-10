@@ -1,6 +1,6 @@
 """V/A/T labels for the v6 append set — global anchor, with a loudness offset on A.
 
-THE LANE, decided 2026-08-10 (owner). The 846 appended rows are labelled on the
+THE LANE, decided 2026-08-10 (owner). The 832 appended rows are labelled on the
 **global anchor** (`anchor_emilia_labels.libritts_anchor`), the same lane Emilia
 uses, for the same reason: one speaker id per clip makes every appended row n = 1
 under `derive_vat_corpus.per_spk_z`, which re-centres each clip on its own mean and
@@ -133,10 +133,24 @@ def main():
                          "relabel — pass --no-refresh-meta to reproduce that older output.")
     ap.add_argument("--no-refresh-meta", action="store_true",
                     help="trust --measures' frozen metadata (reproduces pre-2026-08-10 runs)")
-    ap.add_argument("--drop-over-max", action="store_true",
-                    help="exclude clips flagged over_max_seconds instead of labelling "
-                         "them; the drop-or-raise decision is NOT settled, so this is "
-                         "off by default and the flag is carried through either way")
+    # SETTLED 2026-08-10 (owner): the 14 over-length clips are DROPPED, and the append set
+    # is 832. On by default because the offsets below are a property of THIS SET's loudness
+    # centres — labelling 846 changes `bank_offset`, changes every campaign mean that held
+    # one of the 14, and so changes the A value of clips that were never over-length. A
+    # default that produced 846 rows meant the documented Run: command no longer
+    # reproduced the artifact on disk, and nothing downstream announced the divergence:
+    # merge_expressive_registers.py catches the 14 as a `duration` drop labelled "a staging
+    # bug, not a corpus decision", and 14/846 = 1.7% sails under the 10% drop ceiling.
+    # `--keep-over-max` reproduces the older artifact, the same shape as --no-refresh-meta.
+    ap.add_argument("--drop-over-max", dest="drop_over_max", action="store_true",
+                    default=True,
+                    help="exclude clips flagged over_max_seconds (DEFAULT since "
+                         "2026-08-10, when the drop-or-raise call was made; the flag "
+                         "is carried through either way)")
+    ap.add_argument("--keep-over-max", dest="drop_over_max", action="store_false",
+                    help="label the over-length clips too, reproducing the 846-row "
+                         "pre-2026-08-10 artifact. Note this also shifts the A channel of "
+                         "in-range clips, because the offsets are recomputed per set.")
     args = ap.parse_args()
 
     anchor_mod.CORPUS = args.base
