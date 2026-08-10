@@ -209,6 +209,49 @@ makes it shippable. Mean+slope is a step on the path, not a replacement for it.
 
 ---
 
+## 3b. A has THREE reference frames in one corpus — the contract question v6 forces
+
+Filed as **issue #14**, deferred out of PR #10 by the owner ("change neither and let the
+diagnostics decide"), and recorded here because it is a property of the *lineage*, not of
+any one script.
+
+`data/libritts_r_emilia_expressive_vat_v6` z-scores the same channel against three
+different things:
+
+| rows | A is z-scored against |
+|---|---|
+| LibriTTS-R | the **speaker's** own distribution (`per_spk_z`) |
+| Emilia | the **global anchor** |
+| expressive append | the mean of the **rendering campaign** the clip was in |
+
+At inference the Director supplies one absolute A, and the trunk has been trained on three
+references for it. The first two predate this work and were an accepted trade (§ v5's data
+config states the semantic cost). **The third is new, and it is different in kind**: a
+campaign is a batch identifier, so it is the first reference frame with *no acoustic
+meaning at all*. A clip's A now depends on which rendering run happened to contain it.
+
+⚠ **The defence is real but narrow.** Per-campaign centring was not a preference — the
+uncorrected label pinned **A at −1 on 94.4%** of the append set, and per-*bank* centring
+still left the 103 librivox rows at −0.835, because the bank holds three loudness targets.
+Campaign was the grouping that removed the artefact at every level it occurred. It is the
+best available proxy for "recording chain", and it is a proxy, which is exactly the
+complaint.
+
+**This is an argument FOR §1's direction, not against it.** A ten-dim affect block whose
+channels are named, instrument-measured and independently verifiable is what makes "which
+frame is A in?" answerable per channel instead of per corpus generation. The single
+squashed A is what allows three frames to hide inside one number.
+
+**Not resolved here, deliberately.** The `bb76085` diagnostic prints per-campaign mean LUFS
+with dominant lane and lane share, plus the per-lane sd of lane means before and after
+centring — measured on LUFS, not on A, so `clamp2` pinning is not credited to the centring.
+If that table shows the centring is eating real lane structure, re-cutting v6 with
+target-clustered offsets is its own commit with its own before/after. **Read the table
+before taking a position**; that is the same discipline the T-saturation prediction block
+gets.
+
+---
+
 ## 4. The gate that ties these together
 
 Every proposal above is a channel. Proposed promotion rule — a channel enters the

@@ -131,6 +131,11 @@ def main():
                          "delivery is an ear verdict and does. Documentary was retired into "
                          "Neutral on 2026-08-10 and the stale copy silently survived a "
                          "relabel — pass --no-refresh-meta to reproduce that older output.")
+    ap.add_argument("--allow-campaign-moves", action="store_true",
+                    help="proceed when a clip's campaign changed since the measure pass. "
+                         "OFF by default: campaign is the A-channel grouping key, so a "
+                         "move silently changes labels the same inputs produced before "
+                         "(issue #13). Use for a deliberate rename.")
     ap.add_argument("--no-refresh-meta", action="store_true",
                     help="trust --measures' frozen metadata (reproduces pre-2026-08-10 runs)")
     # SETTLED 2026-08-10 (owner): the 14 over-length clips are DROPPED, and the append set
@@ -203,6 +208,35 @@ def main():
             print(f"  {move}: {n} clip(s)")
         if not changed:
             print("  no delivery/register/campaign changed since the measure pass")
+
+        # A CAMPAIGN MOVE CHANGES THE A-CHANNEL GROUPING KEY, so it must not be able to
+        # happen quietly (issue #13, owner's option 2). `campaign` is what the per-campaign
+        # loudness centring groups by, so the SAME measures and the SAME EIV scores can
+        # produce DIFFERENT A values across two runs purely because a row was recategorised
+        # in a live `ratings.csv`. That is precisely the channel this script exists to get
+        # right — the reason it exists at all is that the uncorrected label pinned A at -1
+        # on 94.4% of the append set.
+        #
+        # The offsets are all recorded in labels_v6_manifest.json, so the move is auditable
+        # AFTER THE FACT. That was judged enough once and it is not: "loud in the log" only
+        # works if somebody reads the log, and a run whose output is a wall of per-campaign
+        # offsets is exactly where one more line goes unread. This corpus has already been
+        # bitten by the silent-mutation shape today — probe_measures.jsonl had frozen
+        # `delivery` at measure time, so the first relabel after the Documentary retirement
+        # kept the retired lane and nothing failed.
+        #
+        # `delivery` and `register` moves stay LOUD-BUT-ALLOWED: neither feeds the grouping,
+        # so re-reading them is the fix rather than the hazard.
+        campaign_moves = sum(n for k, n in changed.items() if k.startswith("campaign:"))
+        if campaign_moves and not args.allow_campaign_moves:
+            sys.exit(
+                f"ABORT: {campaign_moves} clip(s) changed CAMPAIGN since the measure pass, "
+                f"and campaign is the grouping key for the A-channel centring — the same "
+                f"inputs would now produce different A values.\n"
+                f"  If the rename is deliberate, re-run with --allow-campaign-moves; the "
+                f"new offsets are recorded in labels_v6_manifest.json either way.\n"
+                f"  If it is not, something recategorised rows in a live ratings.csv and "
+                f"the corpus should not be built until you know what.")
     shared = sorted(set(measures) & set(heads))
     only_m, only_e = set(measures) - set(heads), set(heads) - set(measures)
     print(f"measures {len(measures)} · eiv {len(heads)} · joined {len(shared)}")

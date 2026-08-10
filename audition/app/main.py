@@ -83,9 +83,34 @@ def _load_delivery_contract():
 
 
 _delivery = _load_delivery_contract()
-DELIVERY_LANES = _delivery.DELIVERY_LANES
-ACTIVE_DELIVERY_LANES = _delivery.ACTIVE_DELIVERY_LANES
 DELIVERY_UNKNOWN = _delivery.DELIVERY_UNKNOWN
+
+# A BARE ATTRIBUTE READ HERE DEFEATS THE LOADER'S OWN CONTRACT (issue #16).
+# `_load_delivery_contract()` goes to real trouble to turn a MISSING contract into an
+# actionable RuntimeError naming `scripts/deploy.sh audition`, on the stated reasoning
+# that failing to start must be "a loud, immediate, obviously-correct failure". A contract
+# that is PRESENT but STALE — an app deployed without its `_contract/` asset, a partial
+# rsync, a rollback of one and not the other — became newly reachable when the picker
+# started needing `ACTIVE_DELIVERY_LANES`, and `_delivery.ACTIVE_DELIVERY_LANES` would
+# have died with
+#     AttributeError: module '_delivery_contract' has no attribute 'ACTIVE_DELIVERY_LANES'
+# which names neither the file nor the fix. Same failure class, opposite failure quality.
+#
+# `DELIVERY_LANES` is deliberately NOT bound here any more (issue #17). After the picker
+# moved to the active set it had exactly one reference — this module — kept alive only by
+# a string match in tests/test_data_mirrors.py. A guard that asserts on a line with no
+# readers proves nothing about behaviour: the picker could have been hardcoded and the
+# assertion would still pass. The mirror test now pins the binding the picker ACTUALLY
+# uses.
+ACTIVE_DELIVERY_LANES = getattr(_delivery, "ACTIVE_DELIVERY_LANES", None)
+if ACTIVE_DELIVERY_LANES is None:
+    raise RuntimeError(
+        "the delivery contract beside this app is STALE: it has no "
+        "ACTIVE_DELIVERY_LANES, so the picker cannot know which lanes are assignable. "
+        "It predates the Documentary retirement (RETIRED_LANES, 2026-08-10). The app "
+        "refuses to start rather than offer a vocabulary it cannot verify. "
+        "Fix: scripts/deploy.sh audition — which copies matcha/delivery.py to "
+        "app/_contract/delivery.py, not just the app code.")
 
 # --- Paths (overridable via env for local dev) --------------------------------
 DATA_ROOT = Path(os.environ.get("AUDITION_DATA_ROOT", "/data/model-training/datasets")).resolve()
