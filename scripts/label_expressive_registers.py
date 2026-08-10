@@ -154,23 +154,41 @@ def main():
     if not args.no_refresh_meta:
         import csv
         ratings_mtime = os.stat(args.ratings).st_mtime_ns
-        live = {r["id"]: r for r in csv.DictReader(open(args.ratings, encoding="utf-8"))}
-        changed = collections.Counter()
+        with open(args.ratings, encoding="utf-8") as fh:
+            live = {r["id"]: r for r in csv.DictReader(fh)}
+        # ALL THREE FIELDS ARE COUNTED, not just delivery. `campaign` is the grouping key
+        # for the A-channel offsets below — a rename or correction in ratings.csv moves
+        # clips between offset groups and therefore changes their A value. Reporting only
+        # `delivery` meant a run in which campaigns moved and deliveries did not printed
+        # "no delivery changed since the measure pass", which an operator reads as "the
+        # refresh was a no-op". It was not.
+        changed, unmatched = collections.Counter(), 0
         for row in measures.values():
             cur = live.get(row.get("id"))
             if not cur:
+                # Counted rather than skipped in silence. measure_expressive_registers.py
+                # hard-aborts on an id missing from ratings.csv; the same condition here
+                # was a no-op, so a reindexed id scheme would leave EVERY row on frozen
+                # metadata and still print the reassuring line. Zero is the interesting
+                # number, so it has to be printed to be trusted.
+                unmatched += 1
                 continue
             for field in ("delivery", "register", "campaign"):
+                if field not in cur:
+                    sys.exit(f"FATAL: {args.ratings} has no {field!r} column — the refresh "
+                             f"cannot tell 'unchanged' from 'not present'.")
                 if row.get(field) != cur[field]:
-                    if field == "delivery":
-                        changed[f"{row.get(field) or '(blank)'} -> "
-                                f"{cur[field] or '(blank)'}"] += 1
+                    changed[f"{field}: {row.get(field) or '(blank)'} -> "
+                            f"{cur[field] or '(blank)'}"] += 1
                     row[field] = cur[field]
         print(f"refreshed metadata from {args.ratings} (mtime_ns {ratings_mtime})")
+        if unmatched:
+            print(f"  ⚠ {unmatched} measured clip(s) have no row in ratings.csv — frozen "
+                  f"metadata kept for them")
         for move, n in changed.most_common():
-            print(f"  delivery {move}: {n} clip(s)")
+            print(f"  {move}: {n} clip(s)")
         if not changed:
-            print("  no delivery changed since the measure pass")
+            print("  no delivery/register/campaign changed since the measure pass")
     shared = sorted(set(measures) & set(heads))
     only_m, only_e = set(measures) - set(heads), set(heads) - set(measures)
     print(f"measures {len(measures)} · eiv {len(heads)} · joined {len(shared)}")
