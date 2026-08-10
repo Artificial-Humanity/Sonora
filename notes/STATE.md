@@ -301,10 +301,26 @@ headline; open items are in [todo.md](todo.md).
    targets and one offset still left the 103 librivox rows at −0.835. Final: A mean +0.024,
    sd 0.217, **2.4% clamped**. ⚠ A stays near-constant for the 638 clips loudnorm flattened
    and that is CORRECT — the model reproduces the normalised audio.
-   ⚠ **What remains is the build script, which does not exist**, plus one open call: **14
-   clips exceeded `MAX_SECONDS` (22 s) and were **dropped** (owner, 2026-08-10) — all 14
+   **14 clips exceeded `MAX_SECONDS` (22 s) and were dropped** (owner, 2026-08-10) — all 14
    delivery-labelled, so the append is **832 = 822 labelled + 10 blank** and the blank half
    is untouched. The distribution did not move: V +0.005 / A +0.024 / T +0.261.
+   ✅ **BUILT 2026-08-10 — `data/libritts_r_emilia_expressive_vat_v6`.**
+   **41,937 train / 1,331 val · n_spks 3,326 · +826 rows · +2.08 h**, from
+   `scripts/merge_expressive_registers.py`. v5's rows pass through **byte-identical** on
+   both files (verified, not assumed) and v5's split reproduces under the shared hash, so
+   rung 2's holdout stays comparable to rung 1's. Merged delivery: Dialogue 344 ·
+   Neutral 328 · Newscaster 76 · Speech 68 · blank 10.
+   **6 of the 832 dropped on digits (D-M3)** — five correctly (the audio speaks £5,000,
+   43° 10′, 1801, 20–30 fathoms); the sixth is a Gutenberg footnote marker `{53}` the
+   reader does not say, costing a row from the 69-row **Speech** lane. Flagged, not
+   stripped.
+   ⚠ **The licence wall REFUSED the first build** — the staged 24 kHz tree was undeclared.
+   `sonora_expressive_registers` is now in `configs/data_licenses.yaml`, verified by path:
+   **0 of the 832 clips resolve into `LibriTTS_R` or any `emilia*` tree.**
+   ⚠ **TWO IN-CONTAINER STEPS REMAIN, neither optional**: `data_statistics` must be
+   **re-measured** (they cannot be inherited from v5 — this changes the audio set *and*
+   the split), and `scripts/test_vat_dim_seams.py` must pass. `vat_dim` is unchanged at 8,
+   so **`ep019` warm-starts with no widening.**
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
 2. **Rung 3 — the 10×** (LibriTTS-R full, ~615 h). Ungated: rung 1 passed. ~2.25 h/epoch,
