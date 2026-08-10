@@ -73,10 +73,27 @@ PASS, FAIL = [], []
 
 
 def check(name, fn, want):
-    """`fn` must raise something whose message contains `want`."""
+    """`fn` must raise something whose message contains `want`.
+
+    Catches BaseException, not Exception, and that is load-bearing rather than sloppy.
+    This codebase aborts with `raise SystemExit("ABORT: ...")` — see make_warmstart
+    `_index_map`, merge_emilia_corpus, derive_vat_corpus — and SystemExit inherits from
+    BaseException, so `except Exception` does not catch it.
+
+    The consequence was not a failing check, it was a TRUNCATED SUITE: the first
+    SystemExit-raising seam killed the run, every check after it never executed, and the
+    summary that would have said so never printed either. Introduced 2026-08-09 in the
+    same commit as the TR-L2 guard it was written to exercise (4620148), found 2026-08-10
+    when v6 needed the suite as a launch pre-flight. A pre-flight that stops early and
+    says nothing is worse than no pre-flight, because it is quoted as having passed.
+
+    KeyboardInterrupt is re-raised: a suite you cannot Ctrl-C is its own defect.
+    """
     try:
         fn()
-    except Exception as e:  # pylint: disable=broad-except
+    except KeyboardInterrupt:
+        raise
+    except BaseException as e:  # pylint: disable=broad-except
         if want in str(e):
             PASS.append(name)
         else:

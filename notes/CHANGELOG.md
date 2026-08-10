@@ -19,6 +19,58 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-10
 
+### Fixed — the vat_dim seam suite was silently truncated, and had been since it was written
+
+`check()` caught `Exception`. This codebase aborts with `raise SystemExit("ABORT: ...")`
+(`make_warmstart._index_map`, `merge_emilia_corpus`, `derive_vat_corpus`), and
+**`SystemExit` inherits from `BaseException`, not `Exception`** — so the first
+SystemExit-raising seam killed the run, every check after it never executed, and the
+summary that would have said so never printed either.
+
+Introduced 2026-08-09 in `4620148`, the same commit that added the TR-L2 guard the failing
+check was written to exercise. Found 2026-08-10 when v6 needed the suite as a launch
+pre-flight and it produced one line of stderr and nothing else. **A pre-flight that stops
+early and says nothing is worse than no pre-flight, because it gets quoted as having
+passed.** Now catches `BaseException` (re-raising `KeyboardInterrupt`): **35 passed, 0
+failed.**
+
+### Added — v6 configs, and the measurement that closes rung 2's last prerequisite
+
+- **`configs/data/libritts_r_emilia_expressive_vat_v6.yaml`** — 41,937 train / 1,331 val ·
+  80.6 h · 3,326 speakers. `data_statistics` **measured in-container 2026-08-10**:
+  `mel_mean -5.699118 / mel_std 2.709244`.
+  The config recorded a PREDICTION that the move would be small because v6 adds only 2.6%
+  more audio, and the point of the line is that the prediction gets checked. It held:
+
+  | | mel_mean | mel_std |
+  |---|---|---|
+  | v5 → v6 | **−0.015356** | **−0.000079** |
+  | v4 → v5 | 0.158700 | 0.320800 |
+  | v2 → v3c | 0.020300 | 0.002400 |
+
+  10× smaller than the move that earned the re-measure rule. Inheriting would probably
+  have been survivable here — it is still not what we do, because measuring costs 85
+  seconds and "probably survivable" is a judgement that must be re-made every rung,
+  whereas the measurement is a fact.
+
+- **`configs/experiment/vat6_finetune.yaml`** — warm start `vat6_init.ckpt` from `ep019`,
+  **338 warm / 1 widened / 0 fresh**, `spk_emb.weight (2500,64) → (3326,64)`. Verified
+  rather than trusted: donor rows byte-identical, appended rows carrying a real
+  `model_init` (std 0.9999) rather than zeros — the widening this corpus has seen fail
+  silently before.
+
+  ⚠ Its pre-flight now records a trap that cost 5½ hours: **`sonora_vocalizer` has
+  Docker's default 64 MB `/dev/shm`**, and the DataLoader deadlocks there with no error —
+  8 workers alive at 0.0% CPU, forever. The training service sets `ipc: host` +
+  `shm_size: 16gb` for exactly this reason. Single-process, the same pass took 85 seconds.
+
+  ⚠ It also records the prediction for the run itself: **a flat holdout is the EXPECTED
+  result.** Rung 1 added 27 h and moved it −0.0606; this adds 2.08 h. What it buys is
+  delivery going from 45 labelled train rows to 867 — and the holdout is 40 audiobook
+  speakers, all delivery-`unknown`, so it structurally cannot see that. It is a regression
+  guard here, not the instrument.
+
+
 ### Fixed — the audition picker offered two delivery values no build would accept
 
 Owner, 2026-08-10: *"it really should just be our settled four."* The picker now offers
