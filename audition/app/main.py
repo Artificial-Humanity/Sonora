@@ -403,7 +403,7 @@ def _annotate_relay(direction: dict, engine: str) -> dict:
 
 @app.get("/api/clips")
 def clips(filter: str = "todo", register: str | None = None,
-          campaign: str | None = None,
+          campaign: str | None = None, delivery: str | None = None,
           page: int = 1, page_size: int = 20):
     """List clips, paginated.
 
@@ -448,6 +448,15 @@ def clips(filter: str = "todo", register: str | None = None,
         # campaign filter: a restart leaves hundreds of superseded clips
         # queued, and they drown the campaign actually being audited.
         if campaign and r.get("campaign") != campaign:
+            continue
+        # delivery filter: added 2026-08-10 to work a single lane end-to-end. The
+        # case in hand is Documentary, which is being retired — its 82 clips split
+        # bimodally toward Neutral and Newscaster and each needs reassigning on the
+        # ear. Without this you cannot reach a lane except by remembering which
+        # campaigns fed it. `_none` matches delivery-blank clips, which are otherwise
+        # unreachable: blank is a legitimate value (embodiment clips are blank BY
+        # RULE), so "has no delivery" is a real query, not an empty filter.
+        if delivery and (r.get("delivery") or "_none") != delivery:
             continue
         matched.append({**r, "_rated": is_rated, "_unaudited": is_unaudited,
                         "_folded": is_folded,

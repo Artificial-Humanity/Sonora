@@ -122,6 +122,17 @@ def main():
                          "the anchor; 'bank' uses one offset for all 846 and leaves the "
                          "three loudness targets displaced; 'none' reproduces the dry run "
                          "that motivated the correction and must not build a corpus")
+    ap.add_argument("--ratings",
+                    default="/data/model-training/datasets/sonora-expressive-registers/"
+                            "ratings.csv",
+                    help="re-read the MUTABLE metadata (delivery, register, campaign) from "
+                         "here instead of trusting the copy frozen into --measures. "
+                         "Acoustic measures are facts about a file and never change; "
+                         "delivery is an ear verdict and does. Documentary was retired into "
+                         "Neutral on 2026-08-10 and the stale copy silently survived a "
+                         "relabel — pass --no-refresh-meta to reproduce that older output.")
+    ap.add_argument("--no-refresh-meta", action="store_true",
+                    help="trust --measures' frozen metadata (reproduces pre-2026-08-10 runs)")
     ap.add_argument("--drop-over-max", action="store_true",
                     help="exclude clips flagged over_max_seconds instead of labelling "
                          "them; the drop-or-raise decision is NOT settled, so this is "
@@ -136,6 +147,30 @@ def main():
 
     measures = {r["wav"]: r for r in anchor_mod._jsonl(args.measures)}
     heads = {r["wav"]: r for r in anchor_mod._jsonl(args.eiv)}
+
+    # Refresh the mutable half against the SSOT. Read-only — the Auditions app owns this
+    # file — and the mtime is recorded in the manifest so a concurrent edit is visible.
+    ratings_mtime = None
+    if not args.no_refresh_meta:
+        import csv
+        ratings_mtime = os.stat(args.ratings).st_mtime_ns
+        live = {r["id"]: r for r in csv.DictReader(open(args.ratings, encoding="utf-8"))}
+        changed = collections.Counter()
+        for row in measures.values():
+            cur = live.get(row.get("id"))
+            if not cur:
+                continue
+            for field in ("delivery", "register", "campaign"):
+                if row.get(field) != cur[field]:
+                    if field == "delivery":
+                        changed[f"{row.get(field) or '(blank)'} -> "
+                                f"{cur[field] or '(blank)'}"] += 1
+                    row[field] = cur[field]
+        print(f"refreshed metadata from {args.ratings} (mtime_ns {ratings_mtime})")
+        for move, n in changed.most_common():
+            print(f"  delivery {move}: {n} clip(s)")
+        if not changed:
+            print("  no delivery changed since the measure pass")
     shared = sorted(set(measures) & set(heads))
     only_m, only_e = set(measures) - set(heads), set(heads) - set(measures)
     print(f"measures {len(measures)} · eiv {len(heads)} · joined {len(shared)}")
@@ -250,6 +285,8 @@ def main():
         "anchor_lufs": {"mean": anchor_lufs_mean, "sd": anchor_lufs_sd},
         "source_lufs": {"mean": float(src_lufs.mean()), "sd": float(src_lufs.std()),
                         "n": len(src_lufs)},
+        "ratings_csv_mtime_ns": ratings_mtime,
+        "metadata_refreshed": not args.no_refresh_meta,
         "dropped_over_max_seconds": bool(args.drop_over_max),
         "n_labelled": len(labelled),
         "distribution": {ch: {"mean": float(arr[:, i].mean()), "sd": float(arr[:, i].std()),

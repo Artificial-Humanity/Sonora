@@ -177,6 +177,7 @@
     <span class="chip" data-f="all">All</span>
     <select id="reg"><option value="">All registers</option></select>
     <select id="camp"><option value="">All campaigns</option></select>
+    <select id="deliv"><option value="">All deliveries</option></select>
   </div>
   <span class="stat" id="stat">—</span>
 </header>
@@ -208,7 +209,7 @@
 <script>
 const AUDIO = p => `/audio?path=${encodeURIComponent(p)}`;
 const PAGE_SIZE = 20;
-let state = {view:'audit', filter:'todo', register:'', campaign:'', page:1};
+let state = {view:'audit', filter:'todo', register:'', campaign:'', delivery:'', page:1};
 let LEXICON = [], ACCENTS = [], AGES = [], DELIVERIES = [];
 let pageInfo = {page:1, pages:1, matched:0, total:0};
 
@@ -283,6 +284,7 @@ async function load(){
   const q = new URLSearchParams({filter:state.filter, page:state.page, page_size:PAGE_SIZE});
   if(state.register) q.set('register', state.register);
   if(state.campaign) q.set('campaign', state.campaign);
+  if(state.delivery) q.set('delivery', state.delivery);
   const data = await (await fetch('/api/clips?'+q)).json();
   const regSel = document.getElementById('reg');
   if(regSel.options.length<=1){
@@ -290,6 +292,14 @@ async function load(){
     if(state.register) regSel.value=state.register;
   }
   const campSel = document.getElementById('camp');
+  const delivSel=document.getElementById('deliv');
+  if(data.deliveries && delivSel.options.length<=1){
+    // `_none` is a real query, not "no filter": delivery-blank is a legitimate value
+    // (embodiment clips are blank by rule) and is otherwise unreachable in the UI.
+    [...data.deliveries, '_none'].forEach(d=>{const o=document.createElement('option');
+      o.value=d; o.textContent=(d==='_none'?'(no delivery)':d); delivSel.appendChild(o);});
+    if(state.delivery) delivSel.value=state.delivery;
+  }
   if(data.campaigns && campSel.options.length<=1){
     data.campaigns.forEach(c=>{const o=document.createElement('option');o.value=o.textContent=c;campSel.appendChild(o);});
     if(state.campaign) campSel.value=state.campaign;
@@ -574,6 +584,7 @@ document.getElementById('bookAdd').onclick=addBook;
   .addEventListener('keydown',e=>{if(e.key==='Enter')addBook();}));
 document.getElementById('reg').onchange=e=>{state.register=e.target.value;state.page=1;cards=[];load();};
 document.getElementById('camp').onchange=e=>{state.campaign=e.target.value;state.page=1;cards=[];load();};
+document.getElementById('deliv').onchange=e=>{state.delivery=e.target.value;state.page=1;cards=[];load();};
 
 // keyboard
 document.addEventListener('keydown',e=>{
