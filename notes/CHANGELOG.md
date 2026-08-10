@@ -34,6 +34,16 @@ early and says nothing is worse than no pre-flight, because it gets quoted as ha
 passed.** Now catches `BaseException` (re-raising `KeyboardInterrupt`): **35 passed, 0
 failed.**
 
+⚠ **Half-fixed on the first pass, completed on review (PR #18).** Only `check()` was
+widened; `check_ok()` still caught `Exception`, and it is the more exposed wrapper — it
+drives `_mw._index_map` and the guards on their *working* path, which is where a
+regression makes an abort fire wrongly. Both wrappers now catch `BaseException`, and the
+report moved to an `atexit` handler so the module-level statements outside both wrappers
+(`VATTrunk(...)`, the `convert_vat` load, `import make_warmstart`) can no longer take the
+summary with them. A truncated run prints what ran, says it is truncated, and **exits 1
+regardless of the escaping `SystemExit`'s own code** — a `SystemExit(0)` reaching the top
+would otherwise exit 0 having run nothing, which is the one outcome worse than silence.
+
 ### Added — v6 configs, and the measurement that closes rung 2's last prerequisite
 
 - **`configs/data/libritts_r_emilia_expressive_vat_v6.yaml`** — 41,937 train / 1,331 val ·
@@ -66,9 +76,9 @@ failed.**
 
   ⚠ It also records the prediction for the run itself: **a flat holdout is the EXPECTED
   result.** Rung 1 added 27 h and moved it −0.0606; this adds 2.08 h. What it buys is
-  delivery going from 45 labelled train rows to 867 — and the holdout is 40 audiobook
-  speakers, all delivery-`unknown`, so it structurally cannot see that. It is a regression
-  guard here, not the instrument.
+  delivery going from v5's 48 labelled rows to **864** corpus-wide (train + val) — and the
+  holdout is 40 audiobook speakers, all delivery-`unknown`, so it structurally cannot see
+  that. It is a regression guard here, not the instrument.
 
 
 ### Fixed — the audition picker offered two delivery values no build would accept
