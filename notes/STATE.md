@@ -62,7 +62,7 @@ _Last updated: 2026-08-09._
 > ⚠ **What v5 does NOT close: the ear gap.** Its new material was mined on acoustics and
 > nobody has heard a clip of it; every Emilia row is delivery-`unknown`, so the corpus still
 > carries 45 delivery labels in 41,138 train rows. **Phase 1 rung 2** —
-> `sonora-expressive-registers`, 1,071 ear-certified keeps — is what closes it. The order is
+> `sonora-expressive-registers`, 846 rows to append — is what closes it. The order is
 > deliberate: rung 1 asks "does volume move quality at all?" for no ear time.
 >
 > Pre-flight is unchanged and non-negotiable: stop **all** inference engines first
@@ -280,13 +280,17 @@ The ordered plan and the gate between each phase is
 headline; open items are in [todo.md](todo.md).
 
 1. **Phase 1 rung 2 — build v6** (+expressive-registers): decided, NOT built, warm start
-   from **`ep019`**. **All three prerequisites CLOSED 2026-08-10** — the append set is
-   **846 rows** (836 delivery-labelled + 10 blank), every one carrying V/A/T from a
-   uniform 12-head EIV pass (`corpus_soft_v6.json` / `corpus_valence_combo_v6.json`,
-   31,197 entries; existing clips moved by `corr=1.000000`). The scope shrank from the
-   filed 1,004 because **158 rows duplicate audio**, not the 91 recorded — see
-   [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md). **The build is the
-   only step left.**
+   from **`ep019`**. The append set is settled at **846 rows** (836 delivery-labelled + 10
+   blank) = 1,004 eligible − 158 whose audio is already in v5 — **three disjoint duplicate
+   classes needing opposite treatment** (91 dropped, 45 excluded because v5 holds their
+   labels, 22 `mk_` twins resolved to one row), not the 91 originally recorded. Those 846
+   are **scored for valence** on a uniform 12-head EIV pass:
+   `eiv_scores/expressive_registers_v6.jsonl`, derived to `corpus_soft_v6.json` /
+   `corpus_valence_combo_v6.json` (31,197 entries = the v4 lineage + these 846, *not* the
+   merged corpus). ⚠ **Two items still gate the build**: the `measures.jsonl` acoustic pass
+   that A and T are built from is not recorded as having run for these clips, and the
+   labelling lane one-id-per-clip forces (anchored vs per-speaker z) is not decided — see
+   [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
 2. **Rung 3 — the 10×** (LibriTTS-R full, ~615 h). Ungated: rung 1 passed. ~2.25 h/epoch,
    about a day to convergence — it does not need the local-vs-cloud decision first.
 3. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net

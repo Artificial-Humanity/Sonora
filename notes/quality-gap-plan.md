@@ -24,15 +24,18 @@ and goal 2 (Dramatic Reader) depends on casting more than on mel loss. Every ste
 ladders to *quality*; nothing here ladders to *castability*. That is a deliberate scope,
 now stated rather than implied — see [§ Parked — the casting/blend layer](#parked--the-castingblend-layer).
 **Where the front is: Phase 1, rung 2 — v5 trained and scored, `ep019` selected; v6 is
-scoped, decided, and unblocked (all three prerequisites closed 2026-08-10) but NOT built.
-846 rows are labelled and waiting; the build is the only step between here and the run.**
+scoped and decided but NOT built.** The append set is settled at **846 rows** (836
+delivery-labelled + 10 delivery-blank) and they are EIV-scored for valence, but **two
+prerequisite-1/2 items remain before the build**: the `measures.jsonl` acoustic pass that
+A and T are built from, and the choice of labelling lane (anchored vs per-speaker z) that
+one-id-per-clip forces. See [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
 
 | | step | status | gated on | detail |
 |---|---|---|---|---|
 | **P0** | 0a — never-trained holdout | ✅ **DONE 2026-08-06** | — | [§ 0a](#0a--the-never-trained-holdout--done-and-it-reported-2026-08-06) |
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
-| | **rung 2 — v6, +expressive-registers (846 rows to append)** | 🔨 **decided, NOT built — all 3 prerequisites CLOSED 2026-08-10**; the build is the only step left | the build itself (the Qwen audition was **deferred**, owner 2026-08-09, and does not gate this) | ditto |
+| | **rung 2 — v6, +expressive-registers (846 rows to append)** | 🔨 **decided, NOT built** — scope and duplicates closed 2026-08-10; **A/T measures pass and the labelling-lane choice still open** | those two items, then the build (the Qwen audition was **deferred**, owner 2026-08-09, and does not gate this) | ditto |
 | | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ **UNGATED — rung 1 passed.** ~**2.25 h/epoch, ~1 day** to convergence (measured 2026-08-09) | rung 1's holdout ✅ | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
@@ -160,7 +163,7 @@ Cheapest first, so the expensive item is decided by evidence rather than assumpt
 | # | Source | State | Adds | Work |
 |---|---|---|---|---|
 | 1 | **Emilia-YODAS keeps** | **MERGED 2026-08-08** → `libritts_r_emilia_vat_v5` | 10,997 clips / +27.2 h (**+36%**) | done; needs a GPU slot |
-| 2 | **sonora-expressive-registers** | DERIVED, **1,004 eligible keeps** | small, ear-certified | **merge as v6 at 1,004** (owner-scoped 2026-08-09). ⚠ Do not re-open the **Documentary close** (87/92 — closed because *no documentary real audio exists*) |
+| 2 | **sonora-expressive-registers** | DERIVED, 1,004 eligible keeps → **846 to append** after dedup | small, ear-certified | **merge as v6 at 846** (1,004 owner-scoped 2026-08-09, less 158 duplicate-audio rows found 2026-08-10). ⚠ Do not re-open the **Documentary close** (87/92 — closed because *no documentary real audio exists*) |
 | 3 | **LibriTTS-R, the other 90%** | NOT PULLED | **~10×**, ~2,400 speakers | download + full corpus build |
 | 4 | **Hi-Fi TTS v1** | RAW, 40 GB parquet *with audio* | 292 h / 10 speakers | parquet → wav + filelist |
 
@@ -194,7 +197,7 @@ cheaper than every hour of synthetic**, and roughly 870 of them are cleared and 
 |---|---|---|---|---|---|---|
 | — | `libritts_r_vat_v4` | 30,485 | 51.3 | 247 | width only (8-wide) | smoked, superseded |
 | **1** | **`libritts_r_emilia_vat_v5`** | **41,138** | **78.5** | **2,500** | **volume, +36%** | holdout vs `vat3_ep099` |
-| 2 | v6 = +expressive-registers | ~42,140 | ~81 | ~2,510 | **the delivery channel's only training signal** — see below | delivery channel finally has signal |
+| 2 | v6 = +expressive-registers | ~41,980 | ~81 | ~3,350 | **the delivery channel's only training signal** — see below | delivery channel finally has signal |
 | 3 | v7 = +LibriTTS-R full | ~330,000 | ~615 | ~4,900 | **10× volume, same domain** | the real lever |
 | 4 | v8 = +Hi-Fi TTS v1 + VCTK | +? | +336 | +120 | **depth per voice** + studio timbre breadth | independent; slot in when converted |
 | 5 | v9 = +more Emilia-YODAS shards | +? | unbounded | +thousands | **in-the-wild expressivity at scale** | the mining pipeline already exists |
@@ -214,11 +217,14 @@ that shipped in contract v2 is, today, five channels the model has never seen fi
 delivery audition run against a v5 checkpoint measures an untrained channel and will read
 as an architecture failure — it isn't one.
 
-**v6 scope (owner, 2026-08-09): 1,004 eligible keeps** — 902 delivery-labelled + 102
-delivery-blank. Filtered from 1,279 total keeps by licence and standing policy, all four
-exclusions honoured as written: VibeVoice/Dia 133 (benched), moss85 83 (un-SFT'd base),
-longcat 45 (benched), higgs3-NC 8 (**NC — never trains**). Per lane after filtering:
-Dialogue 402 · Neutral 270 · Documentary 85 · Newscaster 76 · Speech 69.
+**v6 scope: 1,004 eligible keeps before dedup → 846 appended (owner 2026-08-09; dedup
+2026-08-10).** The 1,004 — 902 delivery-labelled + 102 delivery-blank — is what survives
+the licence and standing-policy filter over 1,279 total keeps, all four exclusions honoured
+as written: VibeVoice/Dia 133 (benched), moss85 83 (un-SFT'd base), longcat 45 (benched),
+higgs3-NC 8 (**NC — never trains**). Per lane at that stage: Dialogue 402 · Neutral 270 ·
+Documentary 85 · Newscaster 76 · Speech 69. **158 of those rows duplicate audio already in
+v5** (three classes, § Rung 2 prerequisite 3), leaving **846 to append** — quote 846 as the
+v6 figure and 1,004 only as "eligible before dedup".
 
 ⚠ **Known confound, accepted deliberately rather than bought off.** Dialogue, Documentary
 and Newscaster have **no real audio at all** — no documentary real audio exists, and the
@@ -229,13 +235,32 @@ purchasable: matching the labelled-rate across provenance needs **~36,700 blank 
 renders ≈ 336 GPU-hours**, and would make the corpus ~47% synthetic — contradicting the
 ordering principle above. So we **measure it instead**: direct a real, well-represented
 speaker through each lane and check whether manner changes or only timbre. Predict before
-training, not after. The 57 synthetic blank keeps in the merge help slightly and do not
-close it.
+training, not after.
 
-#### Rung 2 build decisions — recorded 2026-08-09, NOT BUILT, NOT LAUNCHED
+⚠ **The two percentages above were measured against the superseded 1,004-row scope and
+have NOT been recomputed for the 846.** They are stale in a direction that matters:
 
-The corpus does not exist yet and no run is queued. What follows is settled so the next
-session starts from a decision rather than a re-investigation.
+- A closing sentence — *"The 57 synthetic blank keeps in the merge help slightly and do
+  not close it"* — has been **struck**, not merely restated. The append set holds **10**
+  blank rows in total, so 57 synthetic blanks cannot be among them.
+- 91% / 99.8% was measured over 902 labelled + 102 blank; the population is now 836 + 10,
+  and the 158 removals were **not** provenance-neutral (class 1 is 91 real `libritts-r` /
+  `emilia-yodas` rows, class 2 is 45 real LibriTTS-R rows). The labelled half loses 66
+  rows, most of them real, so the labelled set's synthetic share moves **up**.
+- Internal contradiction, exposed by the drop: if 57 of the 102 blanks were synthetic then
+  at most 45 blanks were real — yet class 1 is 91 real rows described as all
+  delivery-blank. Both cannot hold.
+
+The confound is the reason this rung ships with a pre-registered measurement, so its
+magnitude is load-bearing. **Recompute both percentages and the synthetic-blank count
+against the 846 before the build.**
+
+#### Rung 2 build decisions — recorded 2026-08-09, CORPUS NOT BUILT, NO RUN QUEUED
+
+The v6 corpus does not exist yet and no training run is queued. An EIV scoring pass *has*
+run (prerequisite 1 below) and its artifacts are on `/data`; nothing downstream of it has.
+What follows is settled so the next session starts from a decision rather than a
+re-investigation.
 
 **SPEAKER IDENTITY — one speaker id per clip (owner, 2026-08-09).** Each merged clip gets
 its own id appended after v5's 2,500, taking the table to ~3,500. It makes no false claim,
@@ -244,53 +269,113 @@ and the precedent is already in the corpus: v5 carries **756 one-clip speakers**
 speaker table lying); *recover true identity from the manifests* (real archaeology, see
 prerequisite 2 — the information largely is not there).
 
-**Three prerequisites, measured 2026-08-09 — ALL CLOSED 2026-08-10.** Two of the three
-numbers below were wrong when filed, in opposite directions. **v6 appends 846 rows**
-(836 delivery-labelled + 10 blank): Dialogue 345 · Neutral 261 · Documentary 85 ·
-Newscaster 76 · Speech 69.
+**Three prerequisites, measured 2026-08-09 — scope and duplicates closed 2026-08-10; the
+labelling half of 1 and 2 is still open.** Two of the three numbers below were wrong when
+filed, in opposite directions.
 
-1. ✅ **V/A/T derived for the bank (2026-08-10).** **The scope was 923, not ~810.** The
-   ~810 assumed the whole 193-row v1 slice was eligible; it is not — that slice's keeps are
-   `qwen` 82 · `longcat` 51 · `moss85` 42 · `dia` 5, and three of those four engines are
-   excluded by the filter above, so only **81** eligible rows carried `measured_z`.
-   Scored **846** clips (the 923 less the duplicate classes in 3, plus 60 whose only
-   labels lived in `v1/metadata.jsonl` rather than the corpus files — the hand-launched
-   split `eiv_score.sh` was written to end). Raw:
-   `eiv_scores/expressive_registers_v6.jsonl`; derived: `corpus_soft_v6.json` /
-   `corpus_valence_combo_v6.json` (31,197 entries); env captured per D-M2.
-   ⚠ **Score with all 12 heads, never the default 4.** `eiv_score.py` defaults to
+**v6 appends 846 rows = 1,004 eligible − 158 duplicate.** That is the one derivation to
+quote, and it cross-checks on both halves: **836** delivery-labelled (902 − 66) + **10**
+blank (102 − 92), with 66 + 92 = 158. Per lane: Dialogue 345 · Neutral 261 · Documentary
+85 · Newscaster 76 · Speech 69.
+⚠ **Do not derive 846 from the 923 scoring scope.** 923 is the count of eligible rows that
+needed an EIV pass (1,004 less the rows already carrying `measured_z`), not the append set,
+and the "923 − 158 + 60" reading recorded on 2026-08-10 gives **825**. Whether those 60
+`v1/metadata.jsonl`-only rows are inside or outside the 1,004 is unrecorded; the append set
+is defined by the 1,004 − 158 line above regardless.
+
+1. ⚠ **PARTLY CLOSED — EIV scored for the bank (2026-08-10), the V half. A and T are
+   still open.**
+   **The scope was 923, not ~810.** The ~810 assumed the whole 193-row v1 slice was
+   eligible; it is not — that slice's keeps are `qwen` 82 · `longcat` 51 · `moss85` 42 ·
+   `dia` 5 (**180 of the 193**; the remaining 13 are unexplained and worth a recount),
+   and three of those four engines are excluded by the filter above. The prerequisite as
+   filed recorded **81** eligible rows carrying `measured_z`, which is one short of the
+   82 `qwen` keeps the same sentence gives — if a qwen row is excluded for a second
+   reason, it is not written down, and 923 = 1,004 − 81 moves to 922 if the answer is 82.
+   Raw: `eiv_scores/expressive_registers_v6.jsonl` (846 rows); derived:
+   `corpus_soft_v6.json` / `corpus_valence_combo_v6.json` (**31,197 entries = the
+   v4-lineage 30,351 + these 846** — not the merged v6 corpus, whose Emilia half is
+   labelled on the global anchor and is not in these maps); env captured per D-M2.
+   **On the add-rows-without-re-rolling rule: this append did not test it.** The merge
+   printed `corr=1.000000, mean shift +0.0000`, but `eiv_merge_corpus.combo` z-scores
+   within path-derived speaker groups (`wav.split("/")[-3]`, line 76) and the 846 clips
+   live under the expressive-registers tree — they join **new** groups, so they cannot
+   move an existing clip's mean or sd. That output is what the script prints whether or
+   not the new scores are sane. Nor does it meet D-L2's precedent on its own terms:
+   ≤0.0008 was a per-row **maximum** (CHANGELOG line 476), while `mean shift` is
+   `np.abs(a - b).mean()` over ~30k clips (line 138). To claim the precedent, record
+   `np.abs(a - b).max()`; to show the 846 are on-scale, record the new-clip valence
+   mean/sd vs corpus that the script already prints at lines 141-147.
+   ⚠ **Score with all 12 heads, never the default 4.** `eiv_score.py:94` defaults to
    `Valence,Arousal,Distress,Soft_vs._Harsh`, but `valence_combo_v1.json` weights **9**
    heads, 8 of them family heads — the default set silently omits 8 of the 9 and
-   `eiv_merge_corpus.py` then hard-exits on "raw scores missing weighted heads".
-   The **standing rule held**: folding 846 into 30,351 moved every existing clip by
-   `corr=1.000000, mean shift +0.0000`, well inside D-L2's ≤0.0008 precedent.
-2. ✅ **Not work — answered by the speaker-identity decision above.** 880 of 1,004 ids
-   carry no `_sSEED` suffix and only 114 rows in any manifest carry a reference/voice
-   field, so identity is not recoverable; parsing it out of ids collapses the bank into
-   per-engine buckets. That is *why* one-id-per-clip is the honest answer rather than
-   merely the easy one — the prerequisite records the reasoning, it does not gate a build.
-3. ✅ **158 rows duplicate audio, not 91 — three disjoint classes** (verified no overlap):
+   `eiv_merge_corpus.py:84` then hard-exits on "raw scores missing weighted heads".
+   **A wrong-head run is repaired by deleting the output and rescoring, not by
+   re-running:** `eiv_score.py:126-132` resumes on wav path alone, with no regard for
+   which heads a row already holds, so a second pass skips every row already present and
+   leaves a mixed head set. `eiv_score.sh` advertises that resume as the recovery path,
+   which makes this easy to walk into.
+   **What is NOT closed by this pass — only V comes from the EIV heads.** Per
+   `derive_vat_corpus.py:97-115`, **A** is the per-speaker z of **LUFS** and **T** is the
+   `alpha_db`/`cpp`/`−h1h2` composite with the `Soft_vs._Harsh` head repairing the pressed
+   end — one of four terms. Those four measures come from an acoustic pass writing
+   `measures.jsonl`, and **nothing in this repo records one having run for the 846 clips.**
+   `derive_vat_corpus.py:536-546` hard-aborts with *"label sources do not cover every kept
+   clip"* rather than writing zeros, so if that pass has not run the build fails at derive
+   time. **Either record where the 846 clips' `measures.jsonl` rows came from, or run the
+   acoustic pass — this is the remaining prerequisite-1 work.**
+2. ⚠ **PARTLY CLOSED — identity is not recoverable, but the labelling lane that implies
+   is NOT decided.**
+   880 of 1,004 ids carry no `_sSEED` suffix and only 114 rows in any manifest carry a
+   reference/voice field, so identity is not recoverable; parsing it out of ids collapses
+   the bank into per-engine buckets. That is *why* one-id-per-clip is the honest answer
+   rather than merely the easy one.
+   ⚠ **The consequence this prerequisite does not record.** One id per clip means every
+   appended row is **n = 1** under `derive_vat_corpus.per_spk_z` (lines 503-525), which
+   re-centres each clip on its own speaker's mean — so V, A and T all come out **exactly
+   0.000**, and a 0.0 label is indistinguishable from a real at-speaker-mean one. This
+   corpus has already been bitten by it: `merge_emilia_corpus.py:20-29` exists precisely
+   because per-speaker z *"hands 756 one-clip speakers a label of exactly 0.0"*, which is
+   why Emilia is labelled on the **global anchor** (`anchor_emilia_labels.libritts_anchor`).
+   Note also that `eiv_merge_corpus.combo` z-scores within `wav.split("/")[-3]` groups
+   (line 76), so a group of one there zeroes the combo before `derive_vat_corpus` ever
+   sees it. **The v5 precedent says anchored labels; that has not been ratified for the
+   846 and no V/A/T distribution for them is recorded. Decide and record it before the
+   build** — otherwise the 12-head pass buys nothing and the delivery one-hot is the only
+   real signal in the append set.
+3. ✅ **CLOSED — 158 rows duplicate audio, not 91; three disjoint classes needing opposite
+   treatment** (verified no overlap):
    - **91** audit-set copies (`libritts-r` 43, `emilia-yodas` 48, ids encoding `spk122`/
      `spk136`), **all delivery-blank** → **dropped**; they carry no signal v5 lacks.
-   - **45** `scm-spike-v1` rows → **excluded, and they needed nothing.** The engine field
-     names the *markup* spike, not the audio, which is real LibriTTS-R `train-clean-100`
-     already in `train_op.txt`. They were merged into v5 **with their labels**: v5's 48
-     delivery-labelled rows (39 Dialogue + 9 Neutral) are **44 of these clips plus 4
-     others**, and `ratings.csv` agrees with v5 on every one (0 disagreements). Appending
-     them would have handed a voice a second speaker row for labels v5 already holds.
-   - **22** rows sharing a wav with another eligible row (one file, two ids) → keep the
-     original-campaign row, drop the `mk_` twin. 21 pairs agreed on delivery; **1
-     contradicted** — `neutral_narration_00_narratorFM_s1234`, `Neutral` (bulk1/qwen)
-     vs `Dialogue` (audit-markup-v0/scm-spike). **Owner heard it 2026-08-10: Neutral.**
-     The text is narration prose with no quoted speech, and the markup campaign appears
-     to have annotated emotional register through a field that means mix balance.
+   - **45** rows whose **engine tag** is `scm-spike-v1` (the *markup* campaign that
+     produced them, path `audit-markup-v0/scm-spike` — not the audio's origin) →
+     **excluded, and they needed nothing.** The audio is real LibriTTS-R
+     `train-clean-100`, already in `train_op.txt`. They were merged into v5 **with their
+     labels**: v5's 48 delivery-labelled rows (39 Dialogue + 9 Neutral) are **44 of these
+     clips plus 4 others**, and `ratings.csv` agrees with v5 on all 44 (0 disagreements).
+     Appending them would have handed a voice a second speaker row for labels v5 already
+     holds.
+     ⚠ **44 ≠ 45 — the 45th row is unaccounted for.** The exclusion rests on "v5 already
+     holds their labels", and that claim demonstrably covers only 44. Delivery labels are
+     the scarcest signal in this corpus (48 in 42,442), so before the build: confirm the
+     45th is delivery-blank, or resolve it back to its existing v5 id rather than dropping
+     it.
+   - **22 `mk_` twins dropped** — **22 pairs (44 rows)** where two ids share one wav; the
+     original-campaign row is kept and the `mk_` twin dropped, so class 3 contributes 22
+     to the 158. (Classes 1 and 2 count *all* affected rows; class 3 counts only the
+     dropped side. 91 + 45 + 22 = 158.) 21 pairs agreed on delivery; **1 contradicted** —
+     `neutral_narration_00_narratorFM_s1234`, `Neutral` (bulk1/qwen) vs `Dialogue`
+     (audit-markup-v0/scm-spike). **Owner heard it 2026-08-10: Neutral.** The text is
+     narration prose with no quoted speech, and the markup campaign appears to have
+     annotated emotional register through a field that means mix balance.
 
    The 103 `librivox` keeps are ours and genuinely new.
 
    **The lesson worth keeping: an engine tag is not audio provenance.** Class 2 was
-   invisible to the engine-name rule that found class 1, and class 3 only surfaced because
-   `collect_wavs` deduped by path and returned 786 for a 787-row list. Check where the
-   audio actually lives.
+   invisible to the engine-name rule that found class 1, and class 3 was *noticed* because
+   `collect_wavs` deduped by path and returned 786 for a 787-row list — that is one
+   collapsed path, not the measurement. What sized the class was a full path-multiplicity
+   count over the eligible set. Check where the audio actually lives.
 
 **STEP 0 — PARTLY DONE 2026-08-09.** The checkpoint half ran; the Qwen half has not.
 
@@ -351,7 +436,7 @@ Hours are the sources' own figures (`training-sources.md`), not measured by us.
 | **LibriTTS-R, the other 90%** | not pulled — we hold `train-clean-100` only | **+534** | download + corpus build, same pipeline as v4 verbatim |
 | **VCTK** | **4.3 GB zip ON DISK, still unextracted** | **44** | `unzip` + filelist. 110 speakers, 48 kHz studio. Casting/accent breadth only — no conveyance value |
 | Emilia-YODAS, more shards | 9 shards probed of ~114,000 h licensed | unbounded | the mining pipeline exists and ran this week |
-| sonora-expressive-registers | derived, **1,004 eligible ear-certified keeps** (scoped 2026-08-09) | small | merge as v6 — see § Rung 2 below for the eligibility filter and why this rung is not optional |
+| sonora-expressive-registers | derived, 1,004 eligible ear-certified keeps (scoped 2026-08-09) → **846 to append** (dedup 2026-08-10) | small | merge as v6 — see § Rung 2 below for the eligibility filter and why this rung is not optional |
 | librivox-v2 | derived, 1,366 clips, nothing staged | 3.1 | stage; re-earn v1's 12 ear verdicts |
 
 **Two are already on the disk and merely unconverted** — Hi-Fi TTS and VCTK, **336 hours
