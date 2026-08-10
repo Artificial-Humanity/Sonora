@@ -246,18 +246,31 @@ def main():
     print(f"  bank   lufs   mean {src_lufs.mean():+7.2f}  sd {src_lufs.std():5.2f}  "
           f"(n={len(src_lufs)}, bank-wide offset {bank_offset:+.3f} dB)")
     if args.offset_scope == "campaign":
-        print(f"  {len(by_campaign)} campaigns; per-campaign offsets:")
+        # The DOMINANT LANE is printed beside each campaign because campaign is close to a
+        # proxy for delivery lane in this bank (`newscaster-v1` -> Newscaster,
+        # `librivox-speech-v1` -> Speech, `delivery-v1-narration*` -> the narration lanes).
+        # Wherever a campaign is lane-aligned, centring on its mean subtracts exactly the
+        # component of loudness that differs BETWEEN lanes — so this column is what says
+        # whether that is happening, rather than leaving it assumed either way.
+        lane_of = collections.defaultdict(collections.Counter)
+        for w in shared:
+            lane_of[measures[w].get("campaign") or "(none)"][
+                measures[w].get("delivery") or "(blank)"] += 1
+        print(f"  {len(by_campaign)} campaigns; per-campaign offsets "
+              f"(and the lane each is a proxy for):")
         for name, vals in sorted(by_campaign.items(), key=lambda kv: -len(kv[1])):
             tag = "  [fallback: bank-wide]" if len(vals) < MIN_CAMPAIGN_N else ""
+            lane, lane_n = lane_of[name].most_common(1)[0]
             print(f"    n={len(vals):4d}  lufs {np.mean(vals):+7.2f}  "
-                  f"offset {offsets[name]:+7.3f}  {name}{tag}")
+                  f"offset {offsets[name]:+7.3f}  {name}{tag}\n"
+                  f"           dominant lane {lane} ({100 * lane_n / len(vals):.0f}%)")
         if fell_back:
             print(f"  {sum(n for _, n in fell_back)} row(s) in {len(fell_back)} campaign(s) "
                   f"below n={MIN_CAMPAIGN_N} took the bank-wide fallback")
     if args.offset_scope == "none":
         print("  ⚠ NO CORRECTION APPLIED — dry-run mode; do not build a corpus from this.")
 
-    labelled, errors = [], []
+    labelled, errors, uncorrected_a = [], [], {}
     for w in shared:
         m, h = measures[w], heads[w]
         offset = offsets[m.get("campaign") or "(none)"]
@@ -265,9 +278,15 @@ def main():
                **{f"head:{k}": v for k, v in h.items() if k != "wav"}}
         try:
             v, a, t = anchor_mod.label(row, anchor)
+            # The same clip's A with NO offset, kept only for the between-lane report
+            # below. Pure arithmetic on the measures row — no audio is touched — and it is
+            # deliberately not written to the output, so the artifact's schema is
+            # unchanged and there is exactly one A per row on disk.
+            a_raw = anchor_mod.label({**row, "lufs": m["lufs"]}, anchor)[1]
         except anchor_mod.LabelError as e:
             errors.append((m.get("id", w), str(e)))
             continue
+        uncorrected_a[w] = a_raw
         labelled.append({
             "wav": w, "id": m.get("id"), "v": v, "a": a, "t": t,
             "lufs_native": m["lufs"], "lufs_offset": offset,
@@ -299,6 +318,46 @@ def main():
     if bad:
         sys.exit(f"FATAL: {bad} non-finite or out-of-range value(s) in the label set.")
     print("  0 non-finite / out-of-range")
+
+    # ---- WHAT THE CENTRING REMOVED, measured rather than assumed ----------------------
+    # Campaign is close to a proxy for delivery lane (see the dominant-lane column above),
+    # so subtracting each campaign's mean LUFS also subtracts whatever loudness genuinely
+    # differs BETWEEN lanes wherever a campaign is lane-aligned. That is not fatal — the
+    # delivery one-hot can carry it — but it means the one-hot becomes the SOLE carrier of
+    # between-lane energy, and rung 2 then cannot separate "the delivery channel taught the
+    # model something" from "the A correction moved lane-level energy into it". quality-
+    # gap-plan.md bills this rung as one lever; unmeasured, this quietly makes it two.
+    #
+    # So: the between-lane variance of A, before and after. If it barely moves, the
+    # campaigns are not lane-aligned in a way that matters and the concern evaporates —
+    # measured, not assumed. If it collapses, the size of what was removed is on record
+    # before the run rather than diagnosed after it.
+    # Measured on LUFS, in dB, NOT on A. A before the correction is pinned at -1 on 94.4%
+    # of these rows, and a clamp destroys between-lane structure by itself — so comparing
+    # A-before against A-after would confound the clamp with the offset and understate what
+    # the centring removed. LUFS is the unclamped quantity the offset actually acts on.
+    # `uncorrected_a` is reported alongside so the clamp's own share stays visible.
+    by_lane = collections.defaultdict(list)
+    for r in labelled:
+        by_lane[r.get("delivery") or "(blank)"].append(
+            (r["lufs_native"], r["lufs_adjusted"], r["a"], uncorrected_a[r["wav"]]))
+    if len(by_lane) > 1:
+        col = lambda vals, i: np.mean([v[i] for v in vals])          # noqa: E731
+        before = np.array([col(v, 0) for v in by_lane.values()])
+        after = np.array([col(v, 1) for v in by_lane.values()])
+        print(f"\nbetween-lane structure ({len(by_lane)} lanes) — the centring's "
+              f"collateral, measured:")
+        print("    lane                 n   lufs raw   lufs centred    A raw    A final")
+        for lane, v in sorted(by_lane.items(), key=lambda kv: -len(kv[1])):
+            print(f"    {lane:<18} {len(v):4d}   {col(v, 0):+8.2f}   {col(v, 1):+11.2f}"
+                  f"  {col(v, 3):+7.3f}   {col(v, 2):+7.3f}")
+        print(f"  sd of the lane means (LUFS): {before.std():.3f} dB raw -> "
+              f"{after.std():.3f} dB centred")
+        if before.std() > 1e-6:
+            kept = 100 * after.std() / before.std()
+            print(f"  {kept:.0f}% of the between-lane loudness spread survives the "
+                  f"centring. Whatever does not must now be carried by the delivery "
+                  f"one-hot, which makes it the sole carrier of lane-level energy.")
 
     with open(args.out, "w", encoding="utf-8") as f:
         for r in labelled:
