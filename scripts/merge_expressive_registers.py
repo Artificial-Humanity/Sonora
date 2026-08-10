@@ -194,10 +194,12 @@ def main():
     from derive_vat_corpus import VAL_FRACTION, _in_val
     from matcha.delivery import check_assignable, vat_vector
 
-    try:
-        from matcha.data.license_wall import enforce as license_check
-    except ImportError:                                    # older tree
-        license_check = None
+    # Imported unconditionally, and deliberately NOT behind a try/except. This module is
+    # in this repo, on the import path set up above — an ImportError here means a broken
+    # environment, not an old tree, and the previous fallback answered it by writing a
+    # complete, training-ready corpus with no licence check at all and a printed warning.
+    # A wall that turns advisory when its own import fails is not a wall.
+    from matcha.data.license_wall import enforce as license_check
 
     # ---- the append set, already labelled --------------------------------------------
     rows = [json.loads(ln) for ln in open(args.labels, encoding="utf-8") if ln.strip()]
@@ -381,18 +383,35 @@ def main():
         print("\n--dry-run: nothing written")
         return
 
+    # THE WALL RUNS BEFORE THE CORPUS EXISTS. It used to run after both filelists were
+    # written, so a refusal left `train_op.txt` and `val_op.txt` on disk with no
+    # speakers.json and no derivation_report.json behind them — a corpus that half-exists,
+    # which anything globbing `data/*/train_op.txt` reads as a corpus. A refusal must
+    # leave nothing.
+    #
+    # Staged under `.tmp` INSIDE --out rather than in a scratch dir because the wall
+    # classifies the filelist's own directory as well as the audio inside it, and it is
+    # `--out`'s dirname that is declared in configs/data_licenses.yaml. Classification has
+    # to see the real destination.
     os.makedirs(args.out, exist_ok=True)
-    for name, part in (("val_op.txt", val), ("train_op.txt", train)):
-        with open(os.path.join(args.out, name), "w", encoding="utf-8") as fh:
+    filelists = (("val_op.txt", val), ("train_op.txt", train))
+    tmps = [os.path.join(args.out, name + ".tmp") for name, _ in filelists]
+    for (name, part), tmp in zip(filelists, tmps):
+        with open(tmp, "w", encoding="utf-8") as fh:
             fh.write("\n".join(part) + "\n")
-        print(f"wrote {len(part)} rows -> {os.path.join(args.out, name)}")
+    try:
+        license_check(tmps)
+    except BaseException:
+        for tmp in tmps:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        raise
+    print("licence wall: accepted")
 
-    if license_check:
-        license_check([os.path.join(args.out, n) for n in ("train_op.txt", "val_op.txt")])
-        print("licence wall: accepted")
-    else:
-        print("⚠ license_check not importable — declare the staged dir in "
-              "configs/data_licenses.yaml before training.")
+    for (name, part), tmp in zip(filelists, tmps):
+        dst = os.path.join(args.out, name)
+        os.replace(tmp, dst)
+        print(f"wrote {len(part)} rows -> {dst}")
 
     with open(os.path.join(args.out, "speakers.json"), "w", encoding="utf-8") as fh:
         # `libritts_id_to_index` carries the ACCUMULATED base map, matching
