@@ -156,7 +156,7 @@ def main():
     from matcha.text import op_g2p
     from matcha.text.op_g2p import OpenPhonemizerG2P
     from derive_vat_corpus import VAL_FRACTION, _in_val
-    from matcha.delivery import DELIVERY_LANES, vat_vector
+    from matcha.delivery import check_assignable, vat_vector
 
     try:
         from matcha.data.license_wall import enforce as license_check
@@ -251,13 +251,20 @@ def main():
             drop("vocab violation", cid, text[:60])
             continue
 
-        lane = r.get("delivery") or ""
-        if lane and lane not in DELIVERY_LANES:
-            # Documentary was retired into Neutral on 2026-08-10. A lane that is no longer
-            # in the vocabulary must stop the build rather than silently become `unknown`,
-            # which is a real conditioning value and would look exactly like a blank.
-            drop("unknown delivery lane", cid, lane)
-            continue
+        # ABORTS on a retired or unrecognised lane rather than dropping the row. A retired
+        # lane here means `labels_v6.jsonl` was built from stale metadata (the label pass's
+        # --no-refresh-meta path reproduces exactly that), which is a fault in the INPUT —
+        # and silently losing ear-certified rows to a `dropped` counter is the failure this
+        # whole merge is written against. Documentary was the case in hand: it is still in
+        # `DELIVERY_LANES` for wire compatibility, so a `not in DELIVERY_LANES` test would
+        # have passed it through to the channel-5 one-hot without a word.
+        try:
+            lane = check_assignable(r.get("delivery"))
+        except ValueError as e:
+            raise SystemExit(f"ABORT: {cid} carries a delivery lane that cannot be "
+                             f"assigned — {e}\n"
+                             f"  Rebuild {args.labels} against the live ratings.csv "
+                             f"(label_expressive_registers.py, without --no-refresh-meta).")
         lanes[lane or "(blank)"] += 1
 
         vec = vat_vector(r["v"], r["a"], r["t"], lane)
