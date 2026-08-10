@@ -1,3 +1,9 @@
+# /// script
+# requires-python = ">=3.11,<3.13"
+# dependencies = [
+#   "numpy", "soundfile", "librosa>=0.10", "pyloudnorm",
+# ]
+# ///
 """Acoustic pass for the v6 append set — the A and T half of rung 2's labels.
 
 The 12-head EIV pass (`eiv_score.py`) produces **V only**. Per
@@ -52,6 +58,7 @@ Run:  .venv/bin/python scripts/measure_expressive_registers.py \
 """
 
 import argparse
+import collections
 import csv
 import json
 import multiprocessing as mp
@@ -80,13 +87,25 @@ def measure_one(job):
     if len(wav) < TARGET_SR:
         return clip_id, None, f"under 1.0 s ({seconds:.2f})"
 
+    # WHICH INSTRUMENT MEASURED THIS IS RECORDED ON THE ROW. The fallback is RMS dBFS —
+    # a different quantity on a different scale, no K-weighting and no gating — and
+    # `import pyloudnorm` sitting inside the try meant an ImportError was caught by the
+    # same handler as a measurement failure, so a missing package silently moved the whole
+    # bank onto the other scale with nothing to distinguish it afterwards. The A channel is
+    # exactly what this pass exists to get right, and the per-campaign centring downstream
+    # is precisely the thing that would HIDE it: subtracting each campaign's own mean
+    # absorbs the constant offset between LUFS and RMS dBFS, so A still comes out near 0
+    # with a plausible sd while the spread — the part deliberately left uncorrected — is on
+    # the wrong footing. `main()` refuses to write a mixed-instrument set.
     try:
         import pyloudnorm
 
         lufs = float(pyloudnorm.Meter(TARGET_SR).integrated_loudness(wav))
-    except Exception:
+        meter = "pyloudnorm"
+    except Exception as e:  # noqa: BLE001
         rms = float(np.sqrt(np.mean(wav**2)))
         lufs = 20 * float(np.log10(max(rms, 1e-9)))
+        meter = f"rms_fallback ({type(e).__name__})"
     if not np.isfinite(lufs) or lufs < -60:
         return clip_id, None, f"silent / broken (lufs {lufs:.1f})"
 
@@ -100,6 +119,7 @@ def measure_one(job):
         "wav": path,
         "id": clip_id,
         "lufs": lufs,
+        "lufs_meter": meter,
         **phon,
         "duration": seconds,
         "native_sr": meta["native_sr"],
@@ -165,6 +185,20 @@ def main():
     failed = [(cid, why) for cid, row, why in results if row is None]
     measured.sort(key=lambda r: r["id"])
 
+    # Refuse to write a mixed-instrument set, for the same reason label_expressive_
+    # registers.py refuses a partial label set: the damage is silent and lands far from
+    # the cause. A row measured with RMS dBFS is on a different scale from the LibriTTS-R
+    # anchor's LUFS, and A is a z-score against that anchor.
+    meters = collections.Counter(r["lufs_meter"] for r in measured)
+    if set(meters) - {"pyloudnorm"}:
+        wrong = {k: n for k, n in meters.items() if k != "pyloudnorm"}
+        sys.exit(f"FATAL: {sum(wrong.values())} of {len(measured)} clip(s) fell back off "
+                 f"pyloudnorm: {wrong}. RMS dBFS is a different quantity on a different "
+                 f"scale from LUFS — no K-weighting, no gating — and the anchor these "
+                 f"labels are z-scored against was measured with pyloudnorm. Install it "
+                 f"(the PEP-723 header above lists it) and re-run; a mixed set would be "
+                 f"hidden by the per-campaign centring downstream, not caught by it.")
+
     os.makedirs(args.out, exist_ok=True)
     out_path = os.path.join(args.out, "probe_measures.jsonl")
     with open(out_path, "w", encoding="utf-8") as f:
@@ -184,6 +218,9 @@ def main():
         "over_max_seconds": {"max_seconds": MAX_SECONDS, "n": len(over), "ids": over},
         "measure_source": "derive_vat_corpus.phonation_measures + pyloudnorm (shared "
                           "with the LibriTTS-R lineage and mine_emilia_probe)",
+        # Asserted from the rows rather than stated in prose. The line above used to claim
+        # pyloudnorm unconditionally while the code would happily have produced RMS dBFS.
+        "lufs_meters": dict(meters),
     }
     with open(os.path.join(args.out, "measures_manifest.json"), "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
