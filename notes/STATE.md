@@ -279,8 +279,14 @@ The ordered plan and the gate between each phase is
 **[quality-gap-plan.md](quality-gap-plan.md)** — the SSOT for sequencing. This is only its
 headline; open items are in [todo.md](todo.md).
 
-1. **Phase 1 rung 2 — build v6** (+expressive-registers, 1,004 eligible keeps): decided,
-   NOT built, three prerequisites open, warm start from **`ep019`**.
+1. **Phase 1 rung 2 — build v6** (+expressive-registers): decided, NOT built, warm start
+   from **`ep019`**. **All three prerequisites CLOSED 2026-08-10** — the append set is
+   **846 rows** (836 delivery-labelled + 10 blank), every one carrying V/A/T from a
+   uniform 12-head EIV pass (`corpus_soft_v6.json` / `corpus_valence_combo_v6.json`,
+   31,197 entries; existing clips moved by `corr=1.000000`). The scope shrank from the
+   filed 1,004 because **158 rows duplicate audio**, not the 91 recorded — see
+   [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md). **The build is the
+   only step left.**
 2. **Rung 3 — the 10×** (LibriTTS-R full, ~615 h). Ungated: rung 1 passed. ~2.25 h/epoch,
    about a day to convergence — it does not need the local-vs-cloud decision first.
 3. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
