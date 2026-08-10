@@ -126,8 +126,15 @@ def test_the_audition_app_does_not_redeclare_the_delivery_lanes():
     """
     src = (REPO / "audition/app/main.py").read_text(encoding="utf-8")
     body = "\n".join(ln for ln in src.splitlines() if not ln.lstrip().startswith("#"))
-    assert "DELIVERY_LANES = _delivery.DELIVERY_LANES" in body, \
-        "the app must take the lanes from matcha.delivery, not declare them"
+    # Pins the binding the PICKER actually uses. This asserted on
+    # `DELIVERY_LANES = _delivery.DELIVERY_LANES` until 2026-08-10, and by then that line
+    # had no readers left — the picker had moved to the active set, so the guard was
+    # keeping a string alive rather than proving a fact (issue #17). Someone could have
+    # hardcoded `DELIVERY = ("", "Dialogue", …)` and this would still have passed.
+    assert "ACTIVE_DELIVERY_LANES = getattr(_delivery," in body, \
+        "the app must take its assignable lanes from matcha.delivery, not declare them"
+    assert "*sorted(ACTIVE_DELIVERY_LANES)" in body, \
+        "the picker must be composed from ACTIVE_DELIVERY_LANES, not from a literal"
     for lane in ("Dialogue", "Newscaster", "Documentary"):
         assert f'"{lane}"' not in body, \
             f"{lane!r} is written literally in main.py — the vocabulary has forked again"
@@ -148,4 +155,12 @@ def test_the_delivery_contract_is_deployed_beside_the_app():
     assert asset.is_file(), (
         "the deployed app has no _contract/delivery.py — it will refuse to start. "
         "Run scripts/deploy.sh audition.")
-    assert "DELIVERY_LANES" in asset.read_text(encoding="utf-8")
+    # ACTIVE_DELIVERY_LANES, not DELIVERY_LANES: a contract copy predating the Documentary
+    # retirement satisfies the weaker check while being exactly the stale asset that makes
+    # the app raise at import (issue #16). The test has to fail on the same input the app
+    # fails on, or it certifies a deploy that cannot start.
+    asset_text = asset.read_text(encoding="utf-8")
+    assert "DELIVERY_LANES" in asset_text
+    assert "ACTIVE_DELIVERY_LANES" in asset_text, (
+        "the deployed _contract/delivery.py predates RETIRED_LANES — the app will refuse "
+        "to start. Run scripts/deploy.sh audition (it copies the contract, not just code).")
