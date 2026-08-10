@@ -39,6 +39,32 @@ jobs:
           # amend if it needs to.
           fetch-depth: 0
 
+      - name: Set up Python for verification
+        # WITHOUT THIS THE AGENTS CANNOT CHECK THEIR OWN WORK. Both of them reported
+        # "Python execution was blocked in this sandbox" and inferred a sandbox limit;
+        # it was not. GitHub runners ship Python — what was missing was the tool grant
+        # below, and the deps. So every finding either agent made was reasoned from
+        # READING, and the fix pass shipped 11 unverified edits on PR #10 (one of which
+        # left a latent defect that only surfaced when the tests were run by hand).
+        #
+        # TORCH IS DELIBERATELY NOT INSTALLED. It is ~2 GB for exactly ONE test file
+        # (tests/test_gate_scripts.py). Measured 2026-08-10 without it:
+        #   516 passed · 9 skipped · 1 failed (env-gated doc check) — in 3.2 seconds.
+        # So ~98% of the suite is verifiable for about a minute of CI, and the last 2%
+        # costs more than the whole review does.
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the non-torch test dependencies
+        # Best-effort on purpose: a dependency hiccup must not fail the REVIEW, which is
+        # useful even when it cannot run anything. The agent is told below to say so
+        # rather than claim verification it did not do.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pyyaml numpy scipy librosa soundfile unidecode inflect \
+            || echo "DEP INSTALL FAILED — the agent must report findings as unverified"
+
       - name: Run Claude Fix Agent
         uses: anthropics/claude-code-action@v1
         with:
@@ -48,7 +74,7 @@ jobs:
 
           claude_args: >-
             --model claude-opus-5
-            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh api:*)"
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(gh pr edit:*),Bash(gh api:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(pip:*)"
 
           prompt: |
             REPO: ${{ github.repository }}
@@ -68,6 +94,17 @@ jobs:
             on its own line, then a blank line, then the content. Never omit it, and
             never use Janis's badge. When you quote or answer one of her findings, it
             stays hers — you are replying to Janis, not speaking as her.
+
+
+            0. VERIFY YOUR OWN WORK — Python and the non-torch test dependencies are
+               installed. `pytest tests/ -q` runs ~516 tests in about 3 seconds. Run the
+               suite BEFORE you push and again AFTER, and put both results in your
+               summary. A fix pass that cannot say whether it broke anything is asking
+               the owner to be the test suite.
+
+               ⚠ `tests/test_gate_scripts.py` needs torch, deliberately not installed
+               (~2 GB for one file) — skip it. If the dependency install failed, say so
+               and mark the pass unverified rather than implying you checked.
 
             1. Read every thread IN FULL, replies included. Inline comments are not in
                `gh pr view`. Pull the threads with their ids and whole conversations:

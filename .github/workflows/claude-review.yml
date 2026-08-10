@@ -43,6 +43,32 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Set up Python for verification
+        # WITHOUT THIS THE AGENTS CANNOT CHECK THEIR OWN WORK. Both of them reported
+        # "Python execution was blocked in this sandbox" and inferred a sandbox limit;
+        # it was not. GitHub runners ship Python — what was missing was the tool grant
+        # below, and the deps. So every finding either agent made was reasoned from
+        # READING, and the fix pass shipped 11 unverified edits on PR #10 (one of which
+        # left a latent defect that only surfaced when the tests were run by hand).
+        #
+        # TORCH IS DELIBERATELY NOT INSTALLED. It is ~2 GB for exactly ONE test file
+        # (tests/test_gate_scripts.py). Measured 2026-08-10 without it:
+        #   516 passed · 9 skipped · 1 failed (env-gated doc check) — in 3.2 seconds.
+        # So ~98% of the suite is verifiable for about a minute of CI, and the last 2%
+        # costs more than the whole review does.
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the non-torch test dependencies
+        # Best-effort on purpose: a dependency hiccup must not fail the REVIEW, which is
+        # useful even when it cannot run anything. The agent is told below to say so
+        # rather than claim verification it did not do.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pyyaml numpy scipy librosa soundfile unidecode inflect \
+            || echo "DEP INSTALL FAILED — the agent must report findings as unverified"
+
       - name: Run Claude Review Agent
         uses: anthropics/claude-code-action@v1
         with:
@@ -63,7 +89,7 @@ jobs:
           # models, so naming it buys nothing and risks failing on an unknown arg.
           claude_args: >-
             --model claude-opus-5
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(pip:*)"
 
           prompt: |
             REPO: ${{ github.repository }}
@@ -96,6 +122,17 @@ jobs:
             drops real bugs.
 
             The PR branch is already checked out in the working directory.
+
+            VERIFY, DO NOT ONLY REASON. Python and the non-torch test dependencies are
+            installed for you — `pytest tests/ -q` runs ~516 tests in about 3 seconds.
+            Before you report a finding you could have checked by running something,
+            RUN IT. A finding you reproduced outranks three you inferred.
+
+            ⚠ `tests/test_gate_scripts.py` needs torch, which is deliberately NOT
+            installed (~2 GB for one file). Skip it rather than reporting its collection
+            error as a defect. If the dependency install failed, say so plainly in the
+            review and mark every finding as unverified — never imply you ran something
+            you did not.
 
             Use `gh pr comment` for top-level feedback.
             Use `mcp__github_inline_comment__create_inline_comment` (with
