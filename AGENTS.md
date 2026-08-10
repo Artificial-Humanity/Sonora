@@ -61,10 +61,32 @@ case-insensitive macOS/Windows.
 
 ### 1. Commit Hygiene
 
-* **Pull before push, every time.** The Mac and `ai-lab-0` (and their agent sessions) commit to
-  the same `main` branch concurrently: run `git pull --rebase` as the first step of any
-  commit-and-push sequence. If the tree holds the owner's uncommitted local edits, fetch and
-  check ahead/behind instead of forcing a rebase.
+* **`main` is PR-only. Do not push to it directly** (owner, 2026-08-10). Branch, push the
+  branch, open a PR, and let it merge. This applies to agent sessions exactly as it applies
+  to the owner — an agent that "just needs one small fix on main" is the case the rule exists
+  for. The two reasons it is a rule and not a preference:
+  * **The Mac and `ai-lab-0` (and their agent sessions) commit concurrently.** Direct pushes
+    to a shared `main` are how two sessions silently interleave half-finished work; a branch
+    is a place for work to be incomplete without being everyone's problem.
+  * **Nothing reviews a direct push.** `.github/workflows/claude-review.yml` triggers on
+    `pull_request`, so work that skips the PR skips the review entirely — the automation
+    cannot see a commit that was never proposed.
+* **Branch naming**: `<type>/<short-slug>` matching the commit type (`fix/`, `feat/`,
+  `docs/`, `chore/`), e.g. `fix/holdout-filelist-width`.
+* **Pull before push, every time.** Run `git pull --rebase` as the first step of any
+  commit-and-push sequence on your branch, and rebase on `main` before opening the PR. If the
+  tree holds the owner's uncommitted local edits, fetch and check ahead/behind instead of
+  forcing a rebase.
+* **The exception is the owner's, not yours.** If the owner explicitly directs a direct push
+  to `main`, that is their call to make and it does not need re-litigating — say the rule
+  exists once, then do as asked. An agent never grants itself the exception.
+* ⚠ **A rule in this file is not an enforcement mechanism.** This project has already learned
+  that the expensive way — `deploy.sh`'s "deploy the stack only when a service change is
+  intended" was a header comment for weeks and then got ignored eleven hours into a live
+  training run, which is why it is now a hard refusal in code. Treat the same way here: the
+  authority is the branch protection on `main`, and this section only explains it. If a direct
+  push to `main` ever *succeeds*, the protection is missing or was bypassed — report that
+  rather than taking it as permission.
 
 ### 2. Training & Troubleshooting Mandates
 

@@ -17,6 +17,38 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ---
 
+## 2026-08-10
+
+### Fixed — the review workflow could not post (`7a56836`)
+
+- **`.github/workflows/claude-review.yml`** — the automated PR reviewer ran to completion
+  and delivered nothing. Three independent gaps, each sufficient alone to make the run a
+  silent no-op, plus a wrong secret name:
+  - **No `permissions:` block.** The repo's default workflow token is read-only
+    (`default_workflow_permissions: "read"`), so the job analyzed the diff, billed the
+    tokens, and had no right to comment. Added `contents: read` / `pull-requests: write` /
+    `id-token: write`.
+  - **No `--allowedTools`.** Permissions grant the TOKEN the right; `--allowedTools` grants
+    the AGENT the tool. Without the inline-comment MCP tool and the `gh` allowlist there
+    was no mechanism to post at all.
+  - **The prompt never said to post to GitHub** — added the `REPO` / `PR NUMBER` context
+    and explicit `gh pr comment` / `create_inline_comment` instructions.
+  - **Secret is the org-level `CLAUDE_OAUTH_TOKEN`**, not `CLAUDE_CODE_OAUTH_TOKEN`. The
+    action's *input* name stays `claude_code_oauth_token`, so the two deliberately
+    disagree; the file carries a comment on that line because it reads as a typo.
+- **Dropped `--effort xhigh`** — not a documented `claude_args` flag, an unrecognized flag
+  fails the run outright, and Claude Code already defaults to xhigh effort on capable
+  models. Naming it bought nothing and risked the run.
+- **Rewrote the severity instruction.** "Ignore superficial style or formatting nitpicks"
+  is followed *literally*: the model finds the bugs, then declines to report anything below
+  the bar, so precision looks excellent while real findings vanish. Replaced with a concrete
+  bar (anything that could cause incorrect behavior, a test failure, a security weakness, or
+  a misleading result, each with explicit severity) and an instruction not to filter past it.
+  Same failure mode already documented for review harnesses in the model migration notes.
+- Softened "security exploits" to "security vulnerabilities" (`claude-fable-5` runs
+  classifiers over cybersecurity content and can return `stop_reason: "refusal"`), added a
+  `concurrency` group so rapid pushes cancel superseded billed runs, and pinned checkout `@v6`.
+
 ## 2026-08-09
 
 ### Added — a gate for the documents (`df43527`)
