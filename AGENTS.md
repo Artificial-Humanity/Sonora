@@ -223,9 +223,15 @@ case-insensitive macOS/Windows.
 
 * **Review happens in the pull request.** `.github/workflows/claude-review.yml` reviews each
   PR and posts findings inline; §1 covers how they are resolved. There is **no review
-  document, no SHA-range bookkeeping, and no pointer to maintain** — the reviewer bounds its
-  own range with the `<!-- janis-reviewed: <sha> -->` marker it writes into each summary, so
-  the thing §5 used to ask a human to track is now automatic and per-PR.
+  document and no pointer to maintain** — the reviewer bounds its own range with the
+  `<!-- janis-reviewed: <sha> -->` marker it writes into each summary, so the thing §5 used to
+  ask a human to track is now automatic and per-PR.
+  * ⚠ **The marker bounds a range only while the branch's history is APPEND-ONLY. A rebase or
+    force-push invalidates it and costs a full re-review.** Measured on this PR: it was rebased
+    twice, the previous marker stopped being an ancestor of HEAD (`compare` reports *diverged*),
+    and the reviewer correctly fell back to reading everything. The prompt handles that and says
+    so — but the cost is real, **tidying a branch's history is not free**, and an earlier version
+    of this bullet claimed there was no SHA bookkeeping at all.
 * **A review is a report, not a fix pass.** This survives the retirement and applies to any
   agent asked to review anything: the deliverable is the findings. Take on fixes only when
   the owner explicitly asks, never as a rider on the review itself.
@@ -264,11 +270,16 @@ same hour twice.
   **live** by the Auditions app, so a count taken from it (the 1,279 keeps, say) moves as the
   audit continues, and a fact guarding it would go **red on correct work**. A gate that fails
   when nothing is wrong gets switched off, which costs every other fact in the registry.
-* ⚠ **A fact whose only enforced line lives in a file some convention DELETES is already
-  disarmed.** `v5 speakers` had exactly one enforced line in the whole repo, inside a
-  `notes/code-review-*.md` — a file the retired review cycle replaced every few days. Deleting
-  that document dropped the fact to **zero** enforced lines, and nothing went red, because the
-  checker only reports a *disagreement*: a fact matching no document simply passes.
+* ⚠ **A fact enforced only in a file some convention DELETES is one deletion from being
+  disarmed** — because the checker reports only a *disagreement*, so a fact matching no
+  document simply passes.
+  * ⚠ **CORRECTED: `v5 speakers` is NOT an example of this, and an earlier version of this
+    bullet said it was.** Measured against the merge base: it had **two** enforced lines, in a
+    `notes/code-review-*.md` and in `configs/data/…_v6.yaml:8` — the latter in scope since
+    `configs/data/*.yaml` was added to the scan. Deleting the review document took it **2 → 1**,
+    never to zero, so it was never disarmed. The hazard is real as a class; this was not an
+    instance of it, and the claim was made by measuring on a tree that predated the config
+    scan.
   * The near-miss underneath it: `notes/STATE.md` already stated the number, but `scope` is
     matched **per line** and the scope token sat on the line above, so the fact never matched
     there. **Check that a fact's scope and its number are on the SAME LINE.**
