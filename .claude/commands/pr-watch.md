@@ -69,59 +69,60 @@ gh api graphql -f query='{repository(owner:"OWNER",name:"REPO"){pullRequest(numb
 **No unresolved threads** → the review is current and clean. Say so once, name the PR, and
 stop. **Do not merge.** Merging is the owner's, and on a draft it is not even possible.
 
-**Unresolved threads exist** → check these two things BEFORE fixing, in this order:
+**Unresolved threads exist** → work through ALL THREE of these BEFORE fixing, in order:
 
 1. **Is the owner mid-conversation?** If the LAST comment in any unresolved thread comes from
    an `authorAssociation` of **OWNER**, **MEMBER** or **COLLABORATOR** and reads as a question
    to you or a decision in progress, that thread is a conversation, not a work item.
    Answer it if you can answer it; otherwise leave it and report that the owner has the ball.
    **Never resolve a thread the owner is still talking in.**
-2. **Is the review CONVERGING?** Count the findings each round produced, oldest to newest:
+2. **How many passes have you already had?** Count your own fix-pass summaries — a badge you
+   control, so the count is reliable:
 
    ```
-   gh pr view <N> --json comments --jq '.comments[] | select(.body|contains("janis-reviewed")) | .body' | grep -oE '[0-9]+ finding'
+   gh pr view <N> --json comments --jq '[.comments[] | select(.body | contains("Quincy") and contains("fix pass"))] | length'
    ```
 
-   **If the newest round is not SMALLER than the one before it, stop — the diff is not
-   converging, and another fix pass will not change that.**
+   **At 2 or more, do the escalation in step 3.** ⚠ **This threshold is ADVISORY and it is
+   arbitrary.** Do not defend it, and do not override it with a prediction — see below.
 
-   ⚠ **A COUNT OF PASSES IS THE WRONG TRIGGER, measured 2026-08-11.** This rule used to say
-   "at 2 or more passes, escalate", and both of that day's long PRs show why it fails in both
-   directions:
+   ⚠ **DO NOT TRY TO MEASURE "IS IT CONVERGING?" FROM THE REVIEW TEXT.** An earlier version of
+   this file did, with `grep -oE '[0-9]+ finding'`, and it was wrong three ways: the summary
+   format never mandates that token so the number often *precedes* it and is missed; the
+   pipeline flattens every match from every comment into one list, so it counts matches rather
+   than rounds; and the first review of any PR has no predecessor, leaving the comparison
+   undefined in the state every PR passes through.
 
-   * **#62** needed four rounds of legitimate repair across 25 files. A hard cap at two would
-     have blocked real work.
-   * **#65** ran `4 → 3 → 3 → 4 → 3` — flat over five rounds, every finding in the *prose*
-     rather than the substance, which had been correct since the first commit. A cap at two
-     was overridden twice with reasoning, once on the explicit claim that "this remedy is
-     structural and will end the loop". It did not: the next round showed the fix had removed
-     the explanation and kept the one token that was actually drifting.
+   ⚠ **And a strict-decrease rule is no less strict than this count.** Measured on 2026-08-11:
+   #62's rounds were `7 → 5 → 9 → 7`, so "must be smaller than the last" halts it at round 3 —
+   exactly where a two-pass cap halts it. The version of this file that replaced the count with
+   convergence claimed the count "would have blocked real work" on #62; **its own rule would
+   have blocked it in the same place.** No automatic threshold distinguished #62's legitimate
+   repair from #65's five flat rounds; the owner's judgement at round 4 did.
 
-   **Flatness has a mechanism, which is why it is the better signal: each fix lands in code the
-   next review then reads.** So a large or prose-heavy diff never converges by being corrected —
-   only by getting smaller. "My next fix is different" is a prediction; the round sizes are a
-   measurement.
+   **So report the numbers and let the human weigh them. Do not compute a verdict from them.**
+   What *is* worth stating, because it is a mechanism rather than a heuristic: each fix lands in
+   code the next review then reads, so a large or prose-heavy diff does not converge by being
+   corrected — only by getting smaller.
 
-3. **ESCALATION IS AN ACTION YOU TAKE, NOT A MESSAGE YOU SEND.** Do not stop and wait. Do all
-   of this yourself, then report it:
+3. **ESCALATION IS AN ACTION YOU TAKE, NOT A MESSAGE YOU SEND** — but it is a *reporting* action.
+   Do these, then report:
 
-   * **Leave every unresolved thread OPEN.** An open thread means outstanding work; resolving
-     one to look tidy records it as fixed.
-   * **Shrink the diff.** Either delete the surface generating the findings — if they are all in
-     prose or comments, the fix is deletion, not another correction — or carry the remainder
-     into a small follow-up PR off `main`, never a stacked branch showing the whole diff.
-   * **Say the rate in your report**, not just the lap count: `4 → 3 → 3 → 4 → 3, flat`. That
-     is what tells the owner whether to merge and defer.
+   * **Leave every unresolved thread OPEN.** An open thread means outstanding work; resolving one
+     to look tidy records it as fixed.
+   * **Report the round sizes and what is still open**, so the owner can decide between merging
+     and deferring — that call is theirs, and on #62 it was the thing that ended the loop.
+   * **PROPOSE how to shrink the diff. Do not perform it.** Say which surface you would delete,
+     or what you would carry into a follow-up off `main` — then stop.
 
-   Only a genuine disagreement or a decision the owner has to make needs to wait for them —
+   ⚠ **YOU MAY NOT DELETE CONTENT TO STOP THE REVIEWER FINDING THINGS.** An earlier version of
+   this file authorised exactly that, on a trigger that same version made unreliable. A false
+   positive on a reporting rule costs a wasted lap; a false positive on an autonomous delete
+   destroys work, and "the findings stopped" is indistinguishable from "the evidence was
+   removed". Deletion may be the right remedy — it was on #65 — but the owner authorises it.
+
+   Only a genuine disagreement or a decision the owner has to make needs to wait for them,
    which is the same bar as filing an issue.
-
-Otherwise: run the fix pass, in this session, so the context that wrote the code is the
-context that answers for it:
-
-```
-/fix-pr <N>
-```
 
 ## 3. Report
 
