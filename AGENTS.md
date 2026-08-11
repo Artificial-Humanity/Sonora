@@ -184,16 +184,26 @@ case-insensitive macOS/Windows.
   standard above is intact; only the invocation changes. Container scripts are unaffected.
   `tests/test_gate_scripts.py` enforces this for both shell scripts and Python docs.
 * **The test set is a dependency GROUP, and it is the one answer to "what do I install to
-  run the suite"** (owner-approved 2026-08-11). `uv pip install --group test` — declared once
-  in `pyproject.toml` under `[dependency-groups]`, so nothing restates the list.
+  run the suite"** (owner-approved 2026-08-11):
+  `uv pip install --python .venv/bin/python --group test`, declared once in `pyproject.toml`
+  under `[dependency-groups]`. ⚠ Known-good uv: uv 0.11.29 (x86_64-unknown-linux-gnu); `--group` needs PEP 735 support.
+  * ⚠ **It is not yet the ONLY copy, and the other copy has already drifted.**
+    `.github/workflows/claude-review.yml` carries its own hand-written `pip install` line, and
+    it lacks `pysbd` and `fastapi` — **8 tests fail in the review lane for want of them**, so
+    every finding from a run that needed those modules was reasoned rather than executed.
+    `ci.yml` (arriving with #62) carries a third copy. Both should point at this group; until
+    they do, "declared once" describes the intent, not the state.
   * ⚠ **Not an extra.** `[project.optional-dependencies]` is *additive* to
     `[project.dependencies]`, so `.[dev]` drags **torch** in — ~2 GB for one test file
     (`tests/test_gate_scripts.py`) that skips without it. A PEP 735 group installs on its own.
     Measured: `--group test` resolves 43 packages and **zero** torch; `.[dev]` resolves torch.
   * ⚠ **`numpy<2.2` in that group is load-bearing** and the list does not install without it.
-    Unconstrained, numpy resolves to 2.2+, which no numba supports, so the resolver walks
-    numba back to 0.53.1 — a 2021 release that cannot build on 3.12 — and the failure
-    surfaces as a **librosa** build error that never mentions numpy.
+    Unconstrained, uv picks numpy **2.5.2**, which numba 0.66 excludes (`numpy<2.5`), and uv
+    backtracks **numba** to **0.53.1** — a 2021 release that cannot build on 3.12 — rather
+    than backtracking numpy. The failure surfaces as a **librosa** build error that mentions
+    neither numpy nor numba. ⚠ It is a CEILING tracking numba's, not a claim that numba caps
+    at 2.2; raise it as numba does, and do not drop it on the grounds that numba supports
+    2.2, because the install still breaks.
   * The `dev` extra stays for what it is: `pre-commit`, plus test-time imports for anyone who
     genuinely wants the project installed too. It is not the answer to the question above.
 * **New work must use uv from the start** — new scripts, containers, CI steps, and docs. Do not

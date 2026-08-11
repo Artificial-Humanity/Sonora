@@ -104,16 +104,26 @@ dev = ["pytest", "pre-commit", "fastapi", "pysbd"]
 # still drag **torch** — ~2 GB for one test file that skips without it — which is the exact
 # thing the set exists to avoid. A dependency group installs on its own:
 #
-#     uv pip install --group test          # the suite, no torch, no project install
+#     uv venv
+#     uv pip install --python .venv/bin/python --group test
+#
+# ⚠ Needs a uv new enough to implement PEP 735 groups. Known-good: uv 0.11.29 (x86_64-unknown-linux-gnu). If `--group` is
+# rejected as an unknown flag, upgrade uv rather than reaching for the `dev` extra.
 #
 # THIS IS THE ONE ANSWER TO "WHAT DO I INSTALL TO RUN THE SUITE", and unlike the prose it
 # replaces it is executable. Measured on ai-lab-0 2026-08-11: 510 passed / 6 failed /
 # 11 skipped in 1.6 s, the six being absent corpus artifacts under `data/`.
 #
-# ⚠ `numpy<2.2` IS LOAD-BEARING and the list does not install without it. Unconstrained,
-# numpy resolves to 2.2+, which no numba supports, so the resolver walks numba back to
-# 0.53.1 — a 2021 release that cannot build on Python 3.12 — and the failure surfaces as a
-# LIBROSA build error that never mentions numpy.
+# ⚠ `numpy<2.5` IS LOAD-BEARING, and the reason is NOT the one an earlier version of this
+# comment gave. It is not that "no numba supports numpy 2.2+" — numba 0.66 declares
+# `numpy<2.5,>=1.22`, so 2.2 through 2.4 are fine and `<2.2` was needlessly tight.
+# The real mechanism, measured with uv on 2026-08-11: newest numpy is **2.5.2**, uv picks it,
+# numba 0.66 excludes it, and uv then backtracks **numba** to **0.53.1** — a 2021 release
+# with no numpy ceiling in its metadata — instead of backtracking numpy to 2.4. 0.53.1 cannot
+# build on Python 3.12, and the failure surfaces as a LIBROSA build error that never mentions
+# numpy or numba. Verified unconstrained: `numpy==2.5.2 + numba==0.53.1`.
+# ⚠ So do NOT remove the pin on the grounds that numba supports 2.2 — it does, and the
+# install still breaks. Raise the ceiling as numba does, do not drop it.
 # ⚠ `pysbd` is imported INSIDE a function in `synth_common.py`, so the `importorskip`
 # guards in tests/test_acquisition_lane.py do not cover it: without it three tests FAIL
 # rather than skip.
@@ -123,7 +133,8 @@ dev = ["pytest", "pre-commit", "fastapi", "pysbd"]
 test = [
   "pytest",
   "pyyaml",
-  "numpy<2.2",
+  "numpy<2.5",  # see the note above — a CEILING, tracking numba's
+
   "scipy",
   "librosa",
   "soundfile",
