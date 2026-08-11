@@ -7,18 +7,6 @@ are kept where they appear so the git-history record stays joinable.
 Sequencing lives in [quality-gap-plan.md](quality-gap-plan.md); this is the item list, not
 the plan.
 
-## 0 · Owned follow-ups, blocked on sequencing
-
-- [ ] **`derive_a_channel_stats.py`: `{e:+.0f}` collapses two design cells into one column
-      heading.** On the `{−1, 0, +0.5, +1}` energy design, `+0.5` and `0` both print as `A=+0`,
-      so the section shows two adjacent cell-mean columns with identical headings — unreadable
-      rather than merely ugly. Found by the review lane on PR #62 and deliberately left
-      unfixed there: pre-existing, and outside that PR's reviewed range.
-      **Owner: the lab-manager session. UNBLOCKED** — #62 merged (`18ba407`), so
-      `scripts/derive_a_channel_stats.py` is on `main` and the same-file collision this was
-      deferred to avoid can no longer occur. Sonora's developer will rebase their five-file
-      follow-up onto this fix, so it goes first.
-
 ## 1 · Before the next training run
 
 - [ ] **Score it on the holdout, not on `loss/val_epoch`.** A standing rule, listed here
