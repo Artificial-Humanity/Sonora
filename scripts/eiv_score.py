@@ -156,12 +156,29 @@ def main():
                 state[row["wav"]] = not (
                     stamp is not None and os.path.isfile(row["wav"])
                     and os.path.getmtime(row["wav"]) > stamp + 1e-6)
+    # ⚠ SCOPED TO THIS RUN'S INPUTS, because the arrow in the message is a promise about
+    # THIS RUN. `state` covers the whole output file while `todo` is drawn from `wavs`, so a
+    # run under `--limit`, `--sample`, or pointed at one engine directory while `--out`
+    # accumulates across several, announced "N re-rendered -> re-scoring" about clips it
+    # would never open: 500 rows, 50 stale, `--limit 10` => "50 re-rendered -> re-scoring"
+    # and zero of them re-scored. The 50 stay stale and the next narrow run says the same
+    # thing. Same failure the rows-vs-clips fix above was written about, reached through the
+    # input set instead of through duplicate rows.
+    wanted = set(wavs)
     done = {w for w, fresh in state.items() if fresh}
-    rescored = len(state) - len(done)
+    stale = {w for w, fresh in state.items() if not fresh}
+    rescored = len(stale & wanted)
     if os.path.exists(args.out):
-        print(f"resuming: {len(done)} already scored"
-              + (f"; {rescored} re-rendered since they were scored -> re-scoring"
-                 if rescored else ""))
+        msg = f"resuming: {len(done)} already scored"
+        if rescored:
+            msg += f"; {rescored} re-rendered since they were scored -> re-scoring"
+        # The file-wide backlog is a real fact about the corpus and worth keeping — as its
+        # own clause, so it cannot be read as a promise about this run. Without it, a narrow
+        # run looks like it cleared everything.
+        if len(stale) > rescored:
+            msg += (f"; {len(stale) - rescored} further re-rendered clip(s) are NOT in this "
+                    f"run's inputs and stay stale until a run covers them")
+        print(msg)
 
     max_samples = int(MAX_SECONDS * SR)
     todo = [w for w in wavs if w not in done]

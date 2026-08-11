@@ -452,7 +452,13 @@ def probe(rows):
     # own class: a lane sitting ON the reference is a real reading, not a rounding artefact
     # to be dropped out of an exhaustive-looking tally.
     level = [l for l, d in diffs.items() if d == 0.0]
-    agree = not level and (len(quieter) == len(diffs) or len(louder) == len(diffs))
+    # ⚠ A PARTITION, NOT A VETO. `not level and (...)` routed *perfect* agreement — every
+    # named lane sitting exactly on the reference — into a branch headed "THE NAMED LANES DO
+    # NOT AGREE IN DIRECTION", which is the same defect this guard was added to fix, one
+    # branch to the left. The question is how many of the three directions are occupied:
+    # one is agreement (whatever that direction is, including level), more than one is not.
+    occupied = sum(1 for g in (quieter, louder, level) if g)
+    agree = occupied == 1
     # ⚠ RANKED SEPARATELY, because they are two different quantities. These were one list of
     # (magnitude, se-ratio) pairs sorted on magnitude, so the se endpoints were whichever
     # ratios rode along on the smallest- and largest-|d| lanes — not the smallest and
@@ -464,7 +470,15 @@ def probe(rows):
     ses = sorted(abs(d) / diff_se[l] for l, d in diffs.items())
     span = (f"{mags[0]:.2f} to {mags[-1]:.2f} dB "
             f"({ses[0]:.1f} to {ses[-1]:.1f} se)")
-    if agree:
+    if agree and level:
+        # The third agreement case, which the veto used to swallow: every named lane
+        # measured EXACTLY at the reference. Said in its own words, because "all the same
+        # direction, by 0.00 to 0.00 dB" is a sentence that invites a reader to hunt for the
+        # bug rather than read the result.
+        print(f"\n  every named lane ({len(diffs)}) sits EXACTLY on `unknown` at A = 0 — "
+              f"zero displacement,\n    no direction to report. At this precision that is a "
+              f"tie, not a measurement of equality.")
+    elif agree:
         side = "quieter" if quieter else "louder"
         print(f"\n  every named lane ({len(diffs)}) is {side} than `unknown` at A = 0, "
               f"by {span}, all the same direction.")

@@ -793,11 +793,38 @@ def test_an_unreadable_label_on_an_unscored_clip_is_a_scoring_repair_first(
     out = capsys.readouterr().out
     assert "1 clip(s) are held out of keeps.jsonl on that alone" in out, \
         "the scored clip is the only one a label fix would bring back"
-    assert "1 further clip(s) carry an unreadable label AND have an UNMEASURED axis" in out
-    assert "SCORING repair before it is a labelling one" in out, \
+    assert "1 further clip(s) carry an unreadable label AND have NO EIV ROW" in out
+    assert "Run the SCORING pass over them first" in out, \
         "the operator is being sent to fix a label when the clip was never scored"
     assert "measured direction disagreement" not in out, \
         "an unmeasured axis is not a measured disagreement — issue #55, restated backwards"
+
+
+def test_a_scored_clip_with_no_phonation_is_not_sent_back_to_the_scoring_pass(
+        tmp_path, monkeypatch, capsys):
+    """`measured_z is None` has TWO causes and this module is emphatic they differ.
+
+    Both used to be told "score them first". For a clip stage 1 could not measure phonation
+    on, that instruction is a loop: re-run the scoring pass, get back the row it already
+    had, see no change. The run even says "were scored" about the same clip three lines
+    later — the bucket and the summary contradicting each other in one output.
+    """
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=1, scored=1, intended={"A": "angry"})
+    rows = [json.loads(l) for l in
+            (camp / "qc_measures.jsonl").read_text().splitlines() if l.strip()]
+    rows[0].pop("phonation")              # scored, but stage 1 measured no phonation
+    (camp / "qc_measures.jsonl").write_text(json.dumps(rows[0]) + "\n", encoding="utf-8")
+
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"))
+    out = capsys.readouterr().out
+    assert "were SCORED but carry no phonation measures from stage 1" in out
+    assert "Do NOT re-run the scoring pass" in out, \
+        "the remedy sends the operator round a loop that cannot terminate"
+    assert "Run the SCORING pass over them first" not in out, \
+        "this clip already has its EIV row — that is the other cause, with another repair"
 
 
 def test_the_anchor_is_held_to_the_same_standard_as_the_campaign_file(

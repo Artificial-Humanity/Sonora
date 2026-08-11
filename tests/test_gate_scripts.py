@@ -59,19 +59,30 @@ FAST = ["test_skill_files.py", "test_text_selection.py"]
 # `unreadable()` is the function the script itself uses; a second copy here is the fork this
 # repo keeps paying for (`_app_csv_fields` reads the app's CSV_FIELDS for the same reason).
 # Adding a fact for a new corpus now extends this automatically.
+#
+# ⚠ NO ENV-VAR OVERRIDE, because there is nothing to override. The first version of this
+# derived a `SONORA_ARTIFACT_*` name per path and a comment said it was "kept so a host can
+# point the gate at a corpus mounted elsewhere". `scripts/test_doc_claims.py` reads **no
+# environment variable at all** — `V5`, `V6`, `V4` and `HOLDOUT` are module constants — so
+# setting one moved this list and left the gate reading the original path, i.e. the skip
+# logic and the script would have disagreed about which corpus was present. The comment
+# described a capability that was never built. Prerequisites are now bare paths; if a real
+# override is ever wanted it belongs in the gate script first, and this list will follow it
+# for free.
+#
+# ⚠ LOADED UNDER A NAME OF ITS OWN, via the loader `tests/test_doc_claims_registry.py`
+# already owns. `import test_doc_claims` is the spelling that file's docstring explicitly
+# forbids — pytest would try to collect the gate script as a test module and run its
+# module-level code under a second identity — and doing it here was worse than the case it
+# warns about, because this runs at COLLECTION time rather than inside a test.
 def _registry_artifacts():
-    sys.path.insert(0, SCRIPTS)
-    import test_doc_claims                                    # noqa: E402
+    from test_doc_claims_registry import _load_gate           # noqa: E402
     seen, out = set(), []
-    for fact in test_doc_claims.FACTS:
+    for fact in _load_gate().FACTS:
         for p in fact["artifacts"]:
             if p not in seen:
                 seen.add(p)
-                # The env var is the artifact's own basename-derived override, kept so a
-                # host can point the gate at a corpus mounted elsewhere. Derived, so a new
-                # fact does not need one written by hand.
-                out.append(("SONORA_ARTIFACT_" + os.path.relpath(p, REPO)
-                            .replace(os.sep, "_").replace(".", "_").upper(), p))
+                out.append(p)
     return out
 
 
@@ -123,9 +134,10 @@ class PartialCoverage(Warning):
 @pytest.mark.parametrize("script,prereqs", DATA_GATED)
 def test_data_gated_gate(script, prereqs):
     present, missing = [], []
-    for env_var, default in prereqs:
-        target = os.environ.get(env_var, default)
-        (present if os.path.exists(target) else missing).append(f"{env_var} ({target})")
+    for target in prereqs:
+        # Named relative to the repo: the absolute paths are long enough that a skip message
+        # listing seven of them buries the one fact it is trying to convey.
+        (present if os.path.exists(target) else missing).append(os.path.relpath(target, REPO))
 
     if not present:
         # Nothing checkable. Name EVERY prerequisite, not just the first one found missing:
@@ -148,11 +160,19 @@ def test_data_gated_gate(script, prereqs):
 
 
 def _has_torch():
-    # Guarded for the same reason as `_run`: without the venv this raised
-    # `FileNotFoundError` from the skip CHECK itself, so the test could not even reach its
-    # own `pytest.skip`.
+    """-> True / False / None, where None means THERE IS NO INTERPRETER TO ASK.
+
+    Returning `False` for a missing venv collapsed two causes into one, and `test_slow_gate`
+    then printed the skip reason for the wrong one: "no torch in .../.venv/bin/python — run
+    inside the training container or the litert harness venv" names a remedy that cannot fix
+    an absent interpreter. The careful message `_run` carries never fired for these tests,
+    because `_has_torch()` is reached first and short-circuits past it.
+
+    Three-valued for the same reason `qc_verdict` is: an absent measurement and a negative
+    measurement are different facts, and the repair differs.
+    """
     if not os.path.exists(PY):
-        return False
+        return None
     r = subprocess.run([PY, "-c", "import torch"], capture_output=True)
     return r.returncode == 0
 
@@ -164,7 +184,13 @@ def test_slow_gate(script, env_var, default):
     # where torch is. The host venv deliberately does not carry it, so the
     # prerequisite to check is the interpreter's capability, not just the
     # data path.
-    if not _has_torch():
+    torch = _has_torch()
+    if torch is None:
+        # `is None`, not falsy: naming torch here would send someone to install a 2 GB wheel
+        # into an interpreter that does not exist.
+        pytest.skip(f"{script}: {PY} is absent — this checkout has no repo venv, so there "
+                    f"is no interpreter to ask about torch (run-mode rule, AGENTS.md).")
+    if torch is False:
         pytest.skip(f"{script}: no torch in {PY} — run inside the "
                     f"training container or the litert harness venv")
     target = os.environ.get(env_var, default)
@@ -248,3 +274,28 @@ def test_no_uv_run_in_python_docstrings():
     assert not offenders, (
         "`uv run` prescribed in host Python docs: " + ", ".join(offenders)
         + " — use `.venv/bin/python <path>` instead.")
+
+
+def test_a_missing_interpreter_is_not_reported_as_a_missing_torch(monkeypatch):
+    """`_has_torch()` returned `False` for an absent venv, collapsing two causes into one.
+
+    `test_slow_gate` reaches it before `_run`, so the careful "this checkout has no repo
+    venv" message never fired for these tests — they printed "no torch in .../.venv/bin/python
+    — run inside the training container", naming a remedy that cannot create an interpreter.
+    Three-valued for the same reason `qc_verdict` is: an absent measurement and a negative
+    one are different facts with different repairs.
+    """
+    monkeypatch.setattr(sys.modules[__name__], "PY", os.path.join(REPO, "no", "such", "python"))
+    assert _has_torch() is None, "an absent interpreter must not answer a question about torch"
+
+
+def test_the_data_gated_prerequisites_are_the_registry_s_own_artifacts():
+    """The list decides "is anything checkable here" under OR semantics, so a short one
+    silently narrows coverage (#52, reopened on the corpora a hand-written list forgot).
+    Derived, so it cannot drift; asserted here so the derivation cannot quietly return
+    nothing."""
+    from test_doc_claims_registry import _load_gate
+    expected = {p for fact in _load_gate().FACTS for p in fact["artifacts"]}
+    _script, prereqs = DATA_GATED[0]
+    assert set(prereqs) == expected and len(prereqs) == len(expected)
+    assert len(prereqs) >= 7, "the registry reads at least 7 artifacts; a shorter list is a hole"

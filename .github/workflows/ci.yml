@@ -61,38 +61,27 @@ jobs:
       # with a shorter list — no `fastapi`, no `pysbd` — which is why it reported one
       # failure it could not explain.)
       #
-      # THE LIST IS EXPLICIT AND NOT `-e '.[dev]'` ON PURPOSE: installing the project pulls
-      # `install_requires`, torch included, and builds matcha's Cython extension. So the
-      # `dev` extra's constraints do NOT reach this job at all — which is also why the
-      # `pytest>=9.1` floor is written below rather than left in that extra.
+      # NOT `-e '.[dev]'`: installing the PROJECT pulls `install_requires`, torch included,
+      # and builds matcha's Cython extension. A PEP 735 dependency GROUP is a different
+      # mechanism — `--group test` resolves on its own, with no project install — which is
+      # why the test set can live in one place after all.
       #
-      # ⚠ THIS STEP HAS A SUCCESSOR, so do not entrench it. The reasoning above is about the
-      # `dev` EXTRA; a PEP 735 dependency GROUP is a different mechanism — `uv pip install
-      # --group test` resolves without a project install, so no `install_requires` and no
-      # Cython build. #65 adds `[dependency-groups] test` carrying this same floor. Once it
-      # lands, replace this whole step with `--group test`: a floor declared somewhere the
-      # runner does not install from is not enforced, and this list and that group are two
-      # statements of one fact that nothing checks for agreement.
+      # ⚠ THIS STEP USED TO RESTATE THE LIST, AND THE FLOOR WITH IT. `pytest>=9.1` was
+      # written here as well as in `pyproject.toml`, deliberately, because at the time
+      # nothing the runner installed from carried it. #65 landed `[dependency-groups] test`,
+      # so that is no longer true and the duplication is now a fork waiting to happen: two
+      # statements of one fact that nothing checks for agreement. The group is the single
+      # declaration of what it takes to run this suite — extend it there, never here.
       #
-      # This is the non-torch import set of `tests/` and of the gate scripts they drive,
-      # derived by running the suite in a clean 3.11 venv and adding only what actually
-      # raised.
-      #   pytest>=9.1 the runner. THE FLOOR IS LOAD-BEARING, not hygiene: 9.1 narrowed
-      #               `importorskip`'s exception envelope, and an older resolution restores
-      #               the wide one — which silently turns the retirement guards in
-      #               tests/test_engine_allocation.py into skips. ⚠ This is the ONLY copy
-      #               of the floor on `main` until #65's `test` group lands; the `dev`
-      #               extra deliberately does not carry it, because nothing installs from
-      #               `dev` to run this suite.
-      #   fastapi     the `dev` extra — tests/ drives audition/app/main.py
-      #   numpy scipy librosa soundfile   scripts/ + matcha/ module-scope imports
-      #   pyyaml unidecode inflect        ditto
-      #   pysbd       scripts/synthesis' sentence splitter, reached from tests/
-      - name: Install the non-torch test dependencies
-        run: |
-          uv pip install --python .venv/bin/python \
-            'pytest>=9.1' fastapi numpy scipy librosa soundfile pyyaml unidecode inflect \
-            pysbd
+      # ⚠ The floor is enforced TWICE and the halves do different jobs, so do not remove
+      # either. `pytest>=9.1` in the group is a RESOLVER constraint and binds only this
+      # install path; `[tool.pytest.ini_options] minversion = "9.1"` is what refuses at RUN
+      # time, which is what catches an interpreter that got pytest from somewhere else. The
+      # floor is load-bearing rather than hygiene: 9.1 narrowed `importorskip`'s exception
+      # envelope, and the wide one silently turns the retirement guards in
+      # tests/test_engine_allocation.py into skips.
+      - name: Install the test dependency group
+        run: uv pip install --python .venv/bin/python --group test
 
       # ⚠ DATA-GATED TESTS WILL SKIP HERE AND THAT IS THE DESIGN. `/data` is ai-lab-0's
       # mount and `data/` is untracked (`.gitignore`), so the corpus artifacts do not exist
