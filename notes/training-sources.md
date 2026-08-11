@@ -89,15 +89,19 @@ important fact in this file.
   to append** (owner-scoped 2026-08-09 at 1,004 eligible; 158 duplicate-audio rows removed
   2026-08-10), still outside the training path.
 
-  ⚠ **Six sizes for this corpus circulate, and they are not contradictions — they are six
-  different filters.** In order:
+  ⚠ **Seven sizes for this corpus circulate, and they are not contradictions — they are
+  seven different filters.** In order:
   **1,279** total keeps → **1,189** delivery-labelled (the delivery-v1 campaign's own count)
   → **1,156** the *planned* close of +116 that the owner's scoping superseded → **1,071** an
   intermediate ear-certified count → **1,004 eligible before dedup**: 1,279 minus licence
   and standing-policy exclusions (VibeVoice/Dia 133 benched, moss85 83, longcat 45, higgs3 8
-  NC) → **832 appended**, the v6 scope: 1,004 minus 158 rows whose audio is already in v5,
-  minus 14 rows longer than `MAX_SECONDS`.
-  **Quote 832 for v6 and name the filter whenever another number is used.**
+  NC) → **832 rows staged**, the v6 scope: 1,004 minus 158 rows whose audio is already in
+  v5, minus 14 rows longer than `MAX_SECONDS` → **826 appended rows**, what the built
+  corpus actually holds: 832 minus the six D-M3 removed at merge time for carrying digits.
+  **Quote 832 for the v6 scope — the set that was staged, labelled and decided — and 826
+  for the corpus, and name the filter whenever another number is used.** The seventh was
+  added 2026-08-11: the staged figure was being quoted as the appended one in two places,
+  which is a fork about the size of a BUILT corpus (#50).
 
 So the order is deliberate — v5 asks "does volume move quality at all?" with material that
 costs no ear time, and #2 spends ear time only if the answer is yes.
