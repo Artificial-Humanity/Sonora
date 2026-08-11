@@ -348,7 +348,12 @@ def probe(rows):
 
     means = {k: float(np.mean(v)) for k, v in c15.items()}
     print("\n  cell means (LUFS):")
-    print(f"    {'lane':12s}" + "".join(f"{f'A={e:+.0f}':>12s}" for e in levels))
+    # `+.0f` COLLAPSES TWO DESIGN CELLS INTO ONE HEADING. On A ∈ {-1, 0, +0.5, +1} it rounds
+    # +0.5 to `A=+0`, so two adjacent cell-mean columns carry identical headings and the table
+    # cannot be read — the values are right and unattributable. `+g` keeps the sign, drops the
+    # trailing zeros that made `+.1f` noisy for the integers, and renders +0.5 as `A=+0.5`.
+    # Found by the review lane on #62 and deliberately deferred there as out of range.
+    print(f"    {'lane':12s}" + "".join(f"{f'A={e:+g}':>12s}" for e in levels))
     for lane in lanes:
         print(f"    {lane:12s}" + "".join(f"{means[(lane, e)]:12.3f}" for e in levels))
 
