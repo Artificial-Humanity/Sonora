@@ -193,9 +193,13 @@ case-insensitive macOS/Windows.
     finding from a run needing those modules was reasoned rather than executed. `ci.yml`
     (arriving with #62) carries a third copy. Both should point at this group; until they do,
     "declared once" describes the intent, not the state.
-    * ⚠ **The durable statement is qualitative, so state it that way:** *the review lane's own
-      suite fails on missing test dependencies, so any finding from a run that needed them was
-      reasoned rather than executed.* That survives every test anyone adds. A count does not —
+    * ⚠ **The durable statement is qualitative, so state it that way:** *the review lane cannot
+      run its own suite cleanly, so any finding from a run that needed the failing modules was
+      reasoned rather than executed.* ⚠ There are **two independent causes**, and fixing the
+      dependency list addresses only one: the missing `pysbd`/`fastapi` (which #66 fixes), and
+      the absent `.venv/bin/python` that `test_campaign_tooling.py` and `test_gate_scripts.py`
+      shell out to — **5 errors that survive #66**, because a CI checkout has no repo venv.
+      Do not read a green install step as a clean suite.* That survives every test anyone adds. A count does not —
       measured 2026-08-11 it was 8 on `main` and 11 on #62's tree (which adds
       fastapi-dependent tests), both correct, and it will be wrong again next week. If you do
       quote a number, name the tree; better, quote the property instead.

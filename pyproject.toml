@@ -114,21 +114,15 @@ dev = ["pytest", "pre-commit", "fastapi", "pysbd"]
 # replaces it is executable. Measured on ai-lab-0 2026-08-11: 510 passed / 6 failed /
 # 11 skipped in 1.6 s, the six being absent corpus artifacts under `data/`.
 #
-# ⚠ `numpy<2.5` IS LOAD-BEARING, and the reason is NOT the one an earlier version of this
-# comment gave. It is not that "no numba supports numpy 2.2+" — numba 0.66 declares
-# `numpy<2.5,>=1.22`, so 2.2 through 2.4 are fine and `<2.2` was needlessly tight.
-# The real mechanism, measured with uv 0.11.29 on 2026-08-11, and it is a THREE-package walk
-# rather than the two-step one an earlier version of this comment described: uv holds numpy at
-# the newest (2.5.2); numba 0.66 excludes it (`numpy<2.5`); numba therefore goes back to
-# 0.53.1, which has no numpy ceiling in its metadata; and since librosa 1.0.0 declares
-# `numba>=0.61.0`, librosa must ALSO be walked back — to 0.11.0 — for 0.53.1 to be seatable.
-# uv does all of that rather than moving numpy to 2.4. Verified unconstrained:
-# `numpy==2.5.2  numba==0.53.1  librosa==0.11.0`.
-# ⚠ So the pin is not only about the build: 0.53.1 cannot build on 3.12, but the same
-# resolution SILENTLY DOWNGRADES LIBROSA BY A MAJOR VERSION, and the build error it surfaces
-# as names neither numpy nor numba.
-# ⚠ So do NOT remove the pin on the grounds that numba supports 2.2 — it does, and the
-# install still breaks. Raise the ceiling as numba does, do not drop it.
+# ⚠ `numpy<2.5` is a CEILING TRACKING NUMBA'S OWN (`numba 0.66` declares `numpy<2.5,>=1.22`).
+# Raise it as numba raises theirs; do not drop it, and do not tighten it — an earlier `<2.2`
+# was needlessly tight and its stated reason was wrong.
+# WHAT UNCONSTRAINED ACTUALLY DOES, measured with uv 0.11.29 on 2026-08-11:
+#     numpy==2.5.2  numba==0.53.1  librosa==0.11.0
+# uv holds numpy at newest, so numba must fall below its own numpy ceiling, and librosa must
+# fall below its `numba>=0.61.0` floor to let it. The install then FAILS building numba 0.53.1
+# on 3.12 — surfacing as a librosa error naming neither numpy nor numba. The downgrades are
+# planned in the resolution and never installed; the pin prevents both.
 # ⚠ `pysbd` is imported INSIDE a function in `synth_common.py`, so the `importorskip`
 # guards in tests/test_acquisition_lane.py do not cover it: without it three tests FAIL
 # rather than skip.
@@ -140,10 +134,9 @@ test = [
   # `pytest.importorskip` decides what counts as "not available", and the retirement guards
   # depend on that envelope being narrow; unpinned, an older resolution silently restores the
   # wide one and the guards can go quiet with nobody editing a test.
-  # ⚠ This is the ONLY declaration of the floor. The `dev` extra below does NOT carry it — #62
-  # dropped its `dev`-line edit rather than merging a union, on the reasoning that a floor
-  # declared somewhere the test runner does not install from is not enforced at all. Do not
-  # read the two as belt-and-braces: remove this one and the floor is gone.
+  # ⚠ This is the ONLY declaration of the floor. The `dev` extra ABOVE does not carry it (#62
+  # dropped its `dev`-line edit rather than merging a union). Remove this and the floor is
+  # gone — the two are not belt-and-braces.
   "pytest>=9.1",
   "pyyaml",
   "numpy<2.5",  # see the note above — a CEILING, tracking numba's
