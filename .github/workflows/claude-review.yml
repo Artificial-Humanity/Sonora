@@ -35,6 +35,11 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      # Filing findings as issues needs WRITE; even reading the ledger needs READ. Without
+      # this the agent reports "I could not check for duplicates" and we read it as a
+      # limitation of the tool rather than a permission we withheld — exactly how
+      # "Python execution was blocked in this sandbox" was misread for two days.
+      issues: write
       id-token: write
 
     steps:
@@ -89,7 +94,7 @@ jobs:
           # models, so naming it buys nothing and risks failing on an unknown arg.
           claude_args: >-
             --model claude-opus-5
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(pip:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(pip:*),Bash(gh issue:*),Bash(gh search:*)"
 
           prompt: |
             REPO: ${{ github.repository }}
@@ -133,6 +138,81 @@ jobs:
             error as a defect. If the dependency install failed, say so plainly in the
             review and mark every finding as unverified — never imply you ran something
             you did not.
+
+            FINDINGS BECOME ISSUES, NOT BLOCKING COMMENTS (owner, 2026-08-10).
+
+            STEP 0 — BEFORE YOU READ THE DIFF, fetch the finding ledger ONCE:
+
+              gh issue list --repo ${{ github.repository }} --state all --limit 150 \
+                --label review-finding --json number,title,body,state,createdAt,updatedAt
+
+            One call, bodies included, and it is the ONLY time you query issues in this
+            run. HOLD IT IN CONTEXT for the whole review. Do NOT re-query — in particular,
+            never search for an issue you filed yourself this run: GitHub's search index
+            lags by seconds to minutes, so a re-query would miss it and you would file the
+            same finding twice. Track what you file in your own head instead.
+
+            ⚠ If that call returns the full 150, or errors, SAY SO IN YOUR SUMMARY and
+            mark the duplicate check as PARTIAL. "No duplicate found" must never mean
+            "I did not look far enough" — a dedup claim you cannot support is worse than
+            no dedup, because it gets trusted.
+
+            Read the ledger's titles first as a rough prior for what is already known,
+            then use the fingerprint for the actual decision.
+
+            FOR EACH FINDING, exactly one of three:
+
+            * **NEW** -> file an issue.
+                gh issue create --repo ${{ github.repository }} \
+                  --label review-finding --title "<the finding>" --body "..."
+              ⚠ THE TITLE IS THE FINDING, never your badge. An agent picking this up may
+              have no idea a PR exists, so the title has to carry the defect on its own:
+              "v6 carries three incompatible reference frames for the A channel" — not
+              "Janis review". Issues #16 and #17 in this repo are what the wrong way
+              looks like.
+              The body must stand alone WITHOUT the PR: what is wrong, the concrete
+              failure it causes, a permalink pinned to THIS commit
+              (https://github.com/${{ github.repository }}/blob/${{ github.event.pull_request.head.sha }}/<path>#L<n>),
+              and on its own line:
+                <!-- review-fingerprint: RF-<8 hex of path + normalised claim> -->
+
+            * **ALREADY OPEN in the ledger** -> do NOT file a second issue. Instead:
+                - one inline comment on the PR: this recurs, and a link to the issue;
+                - one line on the issue itself: `recurred in #<PR>`.
+              This is the most valuable thing you emit. A new finding is news about new
+              code; a RECURRENCE says a deferred issue is actively costing review time,
+              and nothing else in this lane produces that number. It is INFORMATIONAL —
+              it must not block, and it is not a reason to re-argue the deferral.
+
+            * **CLOSED in the ledger** -> this is a REGRESSION, not a recurrence, and it
+              is the loudest thing you can find: the defect was fixed and has come back.
+              Reopen the issue, say which PR reintroduced it, and call it out by name in
+              your summary.
+
+            END YOUR SUMMARY WITH THE LEDGER DIGEST — three lines, and they cost
+            nothing because step 0 already holds the whole ledger:
+
+              📒 **Finding ledger** — <N> open · <M> recurred more than once ·
+                 oldest open <D> days (#<num>) · dedup <complete|PARTIAL>
+
+            THIS IS THE FORCING FUNCTION, and it is the ONLY one left. Blocking used to
+            put the debt in front of the owner — crudely, but it did do it. Nothing else
+            in this design does, and "we will check the issues tab" is exactly the
+            intention that decays. Printing the number on every PR puts it where someone
+            is already reading, without anyone having to remember to look.
+
+            Report it even when it is boring. A digest that appears only when the count
+            is alarming teaches the reader that its absence means fine, and then a run
+            that failed to fetch the ledger reads as good news. If the dedup was partial
+            (see step 0), say **PARTIAL** here too — a debt number from an incomplete
+            ledger is a floor, not a count, and it must not be quoted as one.
+
+            NOTHING YOU FILE BLOCKS THIS PR. You are not a gate. Post ONE top-level
+            summary: counts by severity, links to what you filed, recurrences and
+            regressions named separately, and whether the dedup was complete or partial.
+            Inline comments are now RESERVED for recurrences and regressions — that
+            scarcity is deliberate, so an inline comment means exactly one thing: the
+            owner is paying for something already known.
 
             Use `gh pr comment` for top-level feedback.
             Use `mcp__github_inline_comment__create_inline_comment` (with
