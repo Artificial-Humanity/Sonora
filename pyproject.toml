@@ -78,9 +78,19 @@ vocalizer = ["gradio", "fastapi", "uvicorn", "starlette"]
 # source-string test cannot see. The app's own runtime pins live in
 # `audition/requirements.txt`; this is the test-time import only.
 # `pysbd` is likewise a TEST dependency: tests/test_acquisition_lane.py drives the dialogue
-# chunker, and without it three tests FAIL outright rather than skipping. Added 2026-08-11,
-# when a venv built from this extra came up red — this extra is supposed to be the answer to
-# "what do I install to run the suite", and it was wrong.
+# chunker through `synth_common.py`, which imports pysbd INSIDE the function — so the
+# `importorskip` guards at the top of that file do not cover it and three tests FAIL
+# outright rather than skipping. Added 2026-08-11.
+#
+# ⚠ THIS EXTRA STILL DOES NOT PRODUCE A RUNNABLE SUITE, and an earlier version of this
+# comment claimed it was meant to. `.[dev]` inherits `dependencies` above, which pins
+# nothing on numpy (so it resolves to 2.2+, which no numba supports, and the resolver
+# walks numba back to a 2021 release that cannot build on 3.12) and pulls **torch** —
+# ~2 GB, for exactly one test file that skips without it. The set MEASURED to work on a
+# host is the one in `scripts/fix_pr.sh`'s refusal message: pytest, pyyaml, "numpy<2.2",
+# scipy, librosa, soundfile, unidecode, inflect, fastapi, pysbd. Fixing that properly
+# means constraining numpy in `dependencies` or adding a torch-free test extra, and
+# neither is this PR's business.
 dev = ["pytest", "pre-commit", "fastapi", "pysbd"]
 
 [project.scripts]

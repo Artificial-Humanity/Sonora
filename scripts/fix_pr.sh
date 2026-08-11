@@ -39,7 +39,11 @@ for arg in "$@"; do
   case "$arg" in
     --no-tests) NO_TESTS=1 ;;
     --dry-run)  DRY_RUN=1 ;;
-    -h|--help)  sed -n '1,30p' "$0"; exit 0 ;;
+    # Print the header comment up to (not including) the first line of code. A fixed
+    # `sed -n '1,30p'` window went stale the moment the header grew — it ended by printing
+    # `set -euo pipefail` — and the previous review's finding was specifically that --help
+    # describes behaviour the script does not have. This cannot drift again.
+    -h|--help)  awk 'NR>1 && /^set -euo pipefail/{exit} NR>1' "$0"; exit 0 ;;
     -*)         die "unknown flag: $arg" ;;
     *)          [[ -n "$PR" ]] && die "give exactly one PR number (got '$PR' and '$arg')"
                 PR="$arg" ;;
@@ -106,13 +110,24 @@ say "      $(jq -r .title <<<"$PR_JSON")"
 # reproducing the CI defect it was built to escape.
 TEST_CMD=""
 PY="${SONORA_PY:-$REPO_ROOT/.venv/bin/python}"
-# An ARRAY, not a string later fed to `eval`. The interpreter path comes from $SONORA_PY —
-# operator input — and a path containing a space would have been word-split into a
-# different command, while `eval` on it is arbitrary shell execution for no benefit.
+# ⚠ REFUSE WHITESPACE IN THE INTERPRETER PATH rather than escaping it through three hops.
+# Making TEST_ARGV an array fixed only the hop inside this script. The same path also
+# reaches the AGENT — as the TEST COMMAND line in the prompt it is told to run — and
+# `--allowedTools` as `Bash(<path>:*)`. A space word-splits into a different command in
+# both, executed by a process holding `acceptEdits` and push rights. One up-front refusal
+# closes all three; escaping would have to be correct in all three.
+[[ "$PY" != *[[:space:]]* ]] || die "interpreter path contains whitespace, which cannot be passed safely to the agent or to --allowedTools: '$PY'"
 TEST_ARGV=()
 if [[ -x "$PY" ]] && "$PY" -c 'import pytest' >/dev/null 2>&1; then
-  TEST_ARGV=("$PY" -m pytest tests/ -q)
-  TEST_CMD="${TEST_ARGV[*]}"   # display only — never executed
+  # ⚠ `--color=no` IS LOAD-BEARING, NOT TIDINESS. `pyproject.toml` sets
+  # `addopts = ["--color=yes", …]` — FORCED, not `auto` — so pytest emits ANSI even when
+  # stdout is a file, and every short-summary line begins with an escape sequence instead
+  # of with `FAILED`. The anchored grep below therefore matched ZERO lines against real
+  # failures on every host; `${BASELINE_FAILURES:+…}` elided the block, and the agent got
+  # no test IDs at all. Silent, which is how it survived being written AND reviewed once.
+  # A CLI flag overrides addopts, so this wins.
+  TEST_ARGV=("$PY" -m pytest tests/ -q --color=no)
+  TEST_CMD="${TEST_ARGV[*]}"   # display AND the prompt — safe only because of the check above
   say "tests: $TEST_CMD"
 elif (( NO_TESTS )); then
   say "tests: UNAVAILABLE (--no-tests) — the agent will mark every edit UNVERIFIED"
@@ -273,7 +288,9 @@ if [[ -n "$TEST_CMD" ]]; then
   # version asserted "on this machine they are missing DATA artifacts" — true on ai-lab-0,
   # false on the CI runner, where the same block would have told the agent that missing
   # `pysbd`/`fastapi` and an absent `.venv` were corpus problems.
-  BASELINE_FAILURES="$(grep -E '^(FAILED|ERROR)' "$BASELINE_FILE" | sed 's/ - .*//' | head -40 || true)"
+  # The anchor tolerates a leading ANSI escape as well, so this keeps working if someone
+  # re-forces colour upstream or pipes a pre-coloured log in.
+  BASELINE_FAILURES="$(grep -E '^(\x1b\[[0-9;]*m)*(FAILED|ERROR)' "$BASELINE_FILE" | sed 's/ - .*//' | head -40 || true)"
 fi
 
 PROMPT="$PROMPT
@@ -309,8 +326,16 @@ Full output: \`$BASELINE_FILE\`
 PR branch, which already contains this PR's changes — so a failure here may be
 **pre-existing on \`main\` OR introduced by this PR**, and this file cannot tell you which.
 If a finding in your threads concerns one of these, or you can see the PR caused it, it is
-**in scope**. Check against \`main\` (\`git stash\` / \`git worktree add\` at the merge base) if
-you need to know which side a failure came from.
+**in scope**.
+
+To find out which side a failure came from, add a SECOND worktree at the merge base:
+\`git worktree add /tmp/base \$(git merge-base origin/main HEAD)\`. ⚠ Do NOT use \`git stash\`
+— it shelves changes and leaves you on the same commit, so it does not get you to
+\`main\` at all, and stashing mid-pass in a tree this script refuses to run dirty can
+discard your own fixes. ⚠ A fresh worktree has no \`.venv\` and no \`data/\` (both
+gitignored, so not shared), and WITHOUT THEM THE SUITE LOOKS GREEN — the data-gated
+failures become skips. Symlink both from the main checkout before believing anything it
+tells you.
 
 What the baseline is actually for is a **subtraction**: re-run the same command when you are
 done and confirm the failure set has **not GROWN**. Name any new failure in your summary,
@@ -319,8 +344,9 @@ test logs.
 
 ⚠ Do not \"fix\" a failure by editing a test or a registry so it stops reporting. Do not
 diagnose these from a cached assumption about why the suite is red on some other machine —
-**read the output.** The same six failures that are missing corpus directories on ai-lab-0
-are missing \`pysbd\`/\`fastapi\` and an absent \`.venv\` on a CI runner."
+**read the output.** How the suite is red is host-specific and the counts differ per host,
+so any sentence here naming a cause would be the very defect this block was rewritten to
+remove. The failing test IDs above are measured; a diagnosis is not."
 fi
 
 # ── Run the pass ─────────────────────────────────────────────────────────────────
