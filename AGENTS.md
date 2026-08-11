@@ -183,6 +183,19 @@ case-insensitive macOS/Windows.
   create it with `uv venv`, populate it with `uv pip install --python .venv/bin/python …` — so the
   standard above is intact; only the invocation changes. Container scripts are unaffected.
   `tests/test_gate_scripts.py` enforces this for both shell scripts and Python docs.
+* **The test set is a dependency GROUP, and it is the one answer to "what do I install to
+  run the suite"** (owner-approved 2026-08-11). `uv pip install --group test` — declared once
+  in `pyproject.toml` under `[dependency-groups]`, so nothing restates the list.
+  * ⚠ **Not an extra.** `[project.optional-dependencies]` is *additive* to
+    `[project.dependencies]`, so `.[dev]` drags **torch** in — ~2 GB for one test file
+    (`tests/test_gate_scripts.py`) that skips without it. A PEP 735 group installs on its own.
+    Measured: `--group test` resolves 43 packages and **zero** torch; `.[dev]` resolves torch.
+  * ⚠ **`numpy<2.2` in that group is load-bearing** and the list does not install without it.
+    Unconstrained, numpy resolves to 2.2+, which no numba supports, so the resolver walks
+    numba back to 0.53.1 — a 2021 release that cannot build on 3.12 — and the failure
+    surfaces as a **librosa** build error that never mentions numpy.
+  * The `dev` extra stays for what it is: `pre-commit`, plus test-time imports for anyone who
+    genuinely wants the project installed too. It is not the answer to the question above.
 * **New work must use uv from the start** — new scripts, containers, CI steps, and docs. Do not
   introduce new `pip install` invocations.
 * **Existing pip usage is legacy** and is being migrated; the catalog of migration points and their

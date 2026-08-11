@@ -152,21 +152,20 @@ else
 
 No runnable test suite: '$PY' is missing or has no pytest.
 
-AGENTS.md §3 runs host code through the repo venv. Create one with the set MEASURED to
-work on this host (2026-08-11: 510 passed / 6 failed / 11 skipped in 1.6s, the 6 being
-missing data artifacts) — and NO torch, which is ~2 GB for one file
-(tests/test_gate_scripts.py) that will simply skip:
+AGENTS.md §3 runs host code through the repo venv. The set is declared ONCE, as the
+\`test\` dependency group in pyproject.toml, so this message no longer carries a list that
+can drift out of step with it:
 
   uv venv
-  uv pip install --python .venv/bin/python \\
-    pytest pyyaml "numpy<2.2" scipy librosa soundfile unidecode inflect fastapi pysbd
+  uv pip install --python .venv/bin/python --group test
 
-⚠ BOTH PINS ARE LOAD-BEARING, and the version of this list without them does not
-install. Unconstrained \`numpy\` resolves to 2.2+, which no numba supports, so the
-resolver walks numba back to 0.53.1 — a 2021 release that cannot build on Python 3.12.
-The failure surfaces as a librosa/numba BUILD error and says nothing about numpy.
-\`pysbd\` is a real test dependency (tests/test_acquisition_lane.py) that is absent from
-the CI install list and from pyproject's dev extra.
+Measured on ai-lab-0 2026-08-11: 510 passed / 6 failed / 11 skipped in 1.6s, the six being
+absent corpus artifacts under data/. No torch — ~2 GB for one file
+(tests/test_gate_scripts.py) that simply skips without it.
+
+⚠ It is a dependency GROUP, not \`.[dev]\`. An extra is additive to [project.dependencies],
+so \`.[dev]\` drags torch in; a group installs on its own. Measured: \`--group test\`
+resolves 43 packages and zero torch, \`.[dev]\` resolves torch.
 
 Or point SONORA_PY at an interpreter that has pytest, or pass --no-tests to accept an
 UNVERIFIED pass.
