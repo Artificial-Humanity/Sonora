@@ -131,7 +131,13 @@ dev = ["pytest", "pre-commit", "fastapi", "pysbd"]
 # tests/test_ratings_transaction.py needs it — 5 failures on a runner that lacks it.
 [dependency-groups]
 test = [
-  "pytest",
+  # ⚠ `>=9.1` is a FLOOR ON AN EXCEPTION ENVELOPE, not a version bump (issue #47).
+  # `pytest.importorskip` decides what counts as "not available", and the retirement guards
+  # depend on that envelope being narrow; unpinned, an older resolution silently restores the
+  # wide one and the guards can go quiet with nobody editing a test. It lives HERE, in the
+  # group the suite is installed from, rather than only in the `dev` extra — a floor declared
+  # somewhere the test runner does not install from is not enforced.
+  "pytest>=9.1",
   "pyyaml",
   "numpy<2.5",  # see the note above — a CEILING, tracking numba's
 
