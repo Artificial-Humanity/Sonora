@@ -14,7 +14,7 @@ _Last updated: 2026-08-10._
 ## VAT corpus — train on v5
 
 > **Train on `data/libritts_r_emilia_vat_v5`.** Built 2026-08-08 — the first corpus here
-> that is not one dataset. **41,138 train / 1,304 val · 78.5 h · 2,500 speakers**, against
+> that is not one dataset. **v5 is 41,138 train / 1,304 val · 78.5 h · 2,500 speakers**, against
 > v4's 30,485 / 960 / 51.3 h / 247. It is v4's LibriTTS-R rows **byte-identical** plus
 > **10,997 Emilia-YODAS keeps**. Warm start `warmstart/vat5_init.ckpt` at **338 warm
 > (1 widened) / 0 fresh**, seam guards **30/30** in-container, smoke run trains to
