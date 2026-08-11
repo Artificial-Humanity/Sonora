@@ -176,10 +176,23 @@ def test_the_manifest_row_starts_from_the_bank_line(renderer):
 
 @pytest.fixture(scope="module")
 def rebuilt_bank(tmp_path_factory):
+    # SKIP, NOT ERROR, WHEN THE REPO VENV IS ABSENT. This shells out to `.venv/bin/python`
+    # per the run-mode rule, and on a checkout that has never had `uv venv` run in it — any
+    # CI runner, including the review lane's — it raised a bare `FileNotFoundError` from the
+    # fixture, which errors every test that depends on it. Module-scoped, so one missing
+    # interpreter took the whole B-M7 block down as ERRORs rather than skips, and an error
+    # in a fixture reads like a defect in `make_bulk_bank.py`.
+    #
+    # `tests/test_gate_scripts.py::test_python_is_the_repo_venv` still fails outright where
+    # the venv is genuinely required, so this skip cannot hide a host that lost its venv.
+    py = REPO / ".venv" / "bin" / "python"
+    if not py.exists():
+        pytest.skip(f"{py} is absent — this checkout has no repo venv, so the bank builder "
+                    f"cannot be run as specified (run-mode rule, AGENTS.md).")
     out = tmp_path_factory.mktemp("bulk") / "bulk_bank.json"
     import subprocess
     r = subprocess.run(
-        [str(REPO / ".venv" / "bin" / "python"), str(SYNTH / "make_bulk_bank.py"),
+        [str(py), str(SYNTH / "make_bulk_bank.py"),
          "--spec", str(SYNTH / "bulk_spec.json"), "--out", str(out)],
         capture_output=True, text=True, timeout=120)
     assert r.returncode == 0, r.stderr[-2000:]

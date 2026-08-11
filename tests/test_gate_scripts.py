@@ -71,6 +71,18 @@ SLOW = [
 
 
 def _run(script):
+    # SKIP, NOT ERROR, WHEN THE REPO VENV IS ABSENT. These shell out to `.venv/bin/python`
+    # per the run-mode rule, and a checkout that has never had `uv venv` run in it — every
+    # CI runner, including the review lane's — produced a bare `FileNotFoundError` here
+    # rather than a skip. "The interpreter these scripts are specified to run under is not
+    # on this machine" is the same class of fact as "the corpus is not on this machine",
+    # which the FAST/DATA split above already treats as a skip and not a finding.
+    #
+    # ⚠ It is NOT the same as `test_python_is_the_repo_venv`, which asserts the venv exists
+    # and must keep failing where that is a real defect. See the guard on that test.
+    if not os.path.exists(PY):
+        pytest.skip(f"{PY} is absent — this checkout has no repo venv, so the gate "
+                    f"scripts cannot be run as specified (run-mode rule, AGENTS.md).")
     return subprocess.run([PY, os.path.join(SCRIPTS, script)],
                           capture_output=True, text=True, timeout=900)
 
@@ -119,6 +131,11 @@ def test_data_gated_gate(script, prereqs):
 
 
 def _has_torch():
+    # Guarded for the same reason as `_run`: without the venv this raised
+    # `FileNotFoundError` from the skip CHECK itself, so the test could not even reach its
+    # own `pytest.skip`.
+    if not os.path.exists(PY):
+        return False
     r = subprocess.run([PY, "-c", "import torch"], capture_output=True)
     return r.returncode == 0
 
@@ -141,7 +158,20 @@ def test_slow_gate(script, env_var, default):
 
 
 def test_python_is_the_repo_venv():
-    """The run-mode rule (owner 2026-08-01): host scripts use .venv/bin/python."""
+    """The run-mode rule (owner 2026-08-01): host scripts use .venv/bin/python.
+
+    ⚠ THIS ONE IS NOT GUARDED, DELIBERATELY, AND IT IS THE REASON THE OTHERS CAN BE.
+    `_run` skips when the venv is absent because "the interpreter is not on this machine"
+    is not a finding about the code. That is only defensible while SOMETHING still says
+    the venv is required — otherwise a host that quietly lost its venv would go green
+    across the whole file, which is the failure mode the skip is one step away from.
+
+    It is a HOST assertion. It fails on a bare CI checkout by design, and the fix there is
+    to create the venv (this repo's own `ci.yml` does, before running anything) rather than
+    to soften the rule. A lane that cannot create one is a lane that cannot run the gate
+    scripts as specified, and should be told so once, here, instead of five times in
+    tracebacks that look like defects in the scripts.
+    """
     assert os.path.exists(PY), (
         f"{PY} is missing. Host scripts run the repo venv directly, not `uv run` "
         "(which binds to pyproject.toml and ignores inline PEP 723 blocks). "
