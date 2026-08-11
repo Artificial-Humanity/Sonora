@@ -183,50 +183,10 @@ case-insensitive macOS/Windows.
   create it with `uv venv`, populate it with `uv pip install --python .venv/bin/python …` — so the
   standard above is intact; only the invocation changes. Container scripts are unaffected.
   `tests/test_gate_scripts.py` enforces this for both shell scripts and Python docs.
-* **The test set is a dependency GROUP, and it is the one answer to "what do I install to
-  run the suite"** (owner-approved 2026-08-11):
-  `uv pip install --python .venv/bin/python --group test`, declared once in `pyproject.toml`
-  under `[dependency-groups]`. ⚠ Known-good uv: uv 0.11.29 (x86_64-unknown-linux-gnu); `--group` needs PEP 735 support.
-  * ⚠ **It is not yet the ONLY copy, and the other copy has already drifted.**
-    `.github/workflows/claude-review.yml` carries its own hand-written `pip install` line and
-    it lacks `pysbd` and `fastapi`, so **tests fail inside the review lane itself** and every
-    finding from a run needing those modules was reasoned rather than executed. `ci.yml`
-    (arriving with #62) carries a third copy. Both should point at this group; until they do,
-    "declared once" describes the intent, not the state.
-    * ⚠ **The durable statement is qualitative, so state it that way:** *the review lane cannot
-      run its own suite cleanly, so any finding from a run that needed the failing modules was
-      reasoned rather than executed.* ⚠ There are **two independent causes**, and fixing the
-      dependency list addresses only one: the missing `pysbd`/`fastapi` (which #66 fixes), and
-      the absent `.venv/bin/python` that `test_campaign_tooling.py` and `test_gate_scripts.py`
-      shell out to — **10 tests, not 5**, because a CI checkout has no repo venv: 5 errors in
-      `test_campaign_tooling.py` and 5 failures in `test_gate_scripts.py`. Do not read a green
-      install step as a clean suite.
-      * ⚠ The earlier "5 errors" here was an **`--ignore`d number adopted as a full-suite
-        figure** — this lane's own prompt tells the reviewer to skip `test_gate_scripts.py`, so
-        its 5 venv failures were excluded from the count and then quoted as the total. The file
-        **is** collectable without torch, so that blanket skip is right for the torch gates and
-        wrong as a whole-file exclusion, and nobody in this lane has been counting those 5.
-      * A count needs its tree named or it is wrong somewhere; the property does not. Measured
-        2026-08-11 the dependency half was 8 on `main` and 11 on #62's tree.
-    * ⚠ **The fix cannot be validated by its own pull request.** `claude-review.yml` is the
-      file §1's workflow-validation trap applies to: the action refuses to run when the PR's
-      copy differs from the default branch and reports the job **GREEN**. So that fix lands as
-      its own PR, its own review is skipped **by design**, and the proof is the *next* PR that
-      leaves the workflow alone. The failure mode is a green check, not a red one.
-  * ⚠ **Not an extra.** `[project.optional-dependencies]` is *additive* to
-    `[project.dependencies]`, so `.[dev]` drags **torch** in — ~2 GB for one test file
-    (`tests/test_gate_scripts.py`) that skips without it. A PEP 735 group installs on its own.
-    Measured: `--group test` resolves 43 packages and **zero** torch; `.[dev]` resolves torch.
-  * ⚠ **`numpy<2.5` in that group is load-bearing — and the reason lives in exactly ONE
-    place: the comment beside the pin in `pyproject.toml`.** It is not restated here on
-    purpose. This claim has now been corrected three times in one PR by editing one copy and
-    leaving the other, and after the third the two copies **contradicted each other**, which is
-    worse than both being wrong: nothing told a reader which one had lost. Enforcing "declared
-    once" on the package list while duplicating the prose about it was the defect.
-    ⚠ If you change that pin, the comment beside it is the same edit — and do not bring an
-    explanation of it back into this file.
-  * The `dev` extra stays for what it is: `pre-commit`, plus test-time imports for anyone who
-    genuinely wants the project installed too. It is not the answer to the question above.
+* **To run the test suite: `uv pip install --python .venv/bin/python --group test`.** The set
+  and the reasons for every pin live in `pyproject.toml` beside the group. ⚠ Deliberately not
+  restated here — the same claim in two files drifted three times in one pull request, and
+  after the third correction the two copies contradicted each other.
 * **New work must use uv from the start** — new scripts, containers, CI steps, and docs. Do not
   introduce new `pip install` invocations.
 * **Existing pip usage is legacy** and is being migrated; the catalog of migration points and their
