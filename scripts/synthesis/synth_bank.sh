@@ -238,7 +238,7 @@ fi
 # (ASR WER 0.72, 11 of 40 words) went straight to the owner, and a second clip that
 # lost 27 of its 47 words was scored 5 by ear because it ended cleanly mid-sentence.
 # Both are trivially machine-detectable. The gate is stage 1 only (measures + hard
-# gates); qc_verdict.py still owns the intended-vs-measured merge.
+# gates); qc_verdict.py owns the intended-vs-measured merge and runs right after it.
 # OWNER RULE 2026-07-31: the QC run FOLLOWS EVERY dataset-generation pass. It is not
 # advisory and it is not optional, so a failure here stops the pipeline rather than
 # quietly queueing ungated clips — an ungated batch is exactly how a 3.1 s truncation
@@ -276,6 +276,81 @@ if [ ! -s "$QC_MEASURES" ]; then
   echo "  !! NOT registering. Check that $CAMPAIGN_DIR is the campaign dir."
   exit 1
 fi
+
+# QC stage 2: the direction check — does the render point where the DIRECTOR said?
+#
+# Stage 1 above is nine hard gates and every one of them is intrinsic audio quality; not
+# one reads `intended{V,A,T}`, which sits unused in the same manifest row. qc_verdict.py
+# has existed for that since 2026-07-17 and nothing invoked it — the third instance in
+# this file of a written instrument nobody ran, after qc_gate itself and the defect
+# detectors below. 695 clips across five campaigns reached the ear with no direction
+# check at all.
+#
+# ADVISORY, AND DELIBERATELY NOT SHAPED LIKE THE GATE ABOVE. `keep` in qc_verdict is a
+# LABEL-CONFIRMATION verdict: it asks whether the measured affect points the same way as
+# the intended labels, not whether the clip sounds good. gate_calibration.py's own header
+# spells out the consequence — "a beautiful clip whose director-assigned labels were wrong
+# is a legitimate not-keep" — so wiring this fail-closed would DISCARD GOOD AUDIO because
+# Gemma mislabelled it. It runs on the qc_engine_defects pattern instead: always runs,
+# writes verdicts, appends axis failures to qc_flags.txt, never drops a clip, non-fatal
+# and announced when it fails.
+#
+# THE ORDER IS THE POINT. The verdicts must be frozen BEFORE register_audition puts these
+# clips in front of the ear. gate_calibration.py can only measure the instrument against
+# the ear when the instrument's verdict predates the rating — "afterwards there is nothing
+# to compare against and the round is spent", and dataset pipeline 1.0 (spot-checking
+# instead of auditing every clip) is gated on exactly that measurement. A backfill can
+# still measure the drift; it cannot un-spend a round.
+echo "== qc verdicts (direction: intended vs measured) =="
+# Real-audio banks carry no `intended` labels at all (librivox-v1: 664 rows), so there is
+# nothing to confirm and no reason to spend a GPU labelling pass. Ask the verdict script
+# rather than re-deriving "is this campaign directed?" here, where the two answers could
+# drift apart.
+DIRECTED="$("$PY" "$SONORA/scripts/synthesis/qc_verdict.py" \
+    --campaign-dir "$CAMPAIGN_DIR" --count-directed)" || DIRECTED="probe-failed"
+case "$DIRECTED" in
+  ''|*[!0-9]*)
+    # "The probe did not answer" is NOT "this bank has no labels", and collapsing the two
+    # would rebuild the hole this fix closes: a directed bank would sail past a message
+    # saying it was real audio. Announced, and the count is printed as it stands.
+    echo "  !! could not tell whether this campaign carries intended labels ($DIRECTED)."
+    echo "  !! Direction check SKIPPED for this bank — clips are gated and still queued."
+    echo "  !! Recover with: $PY $SONORA/scripts/synthesis/qc_verdict.py --campaign-dir $CAMPAIGN_DIR --count-directed"
+    ;;
+  0)
+    # Names the file it read, so "no labels" and "no measures" are told apart by whoever
+    # is reading the log rather than looking identical.
+    echo "  no intended V/A/T in $CAMPAIGN_DIR/qc_measures.jsonl (real-audio bank)"
+    echo "  — nothing to confirm; direction check skipped."
+    ;;
+  *)
+    echo "  $DIRECTED clip(s) carry intended V/A/T"
+    # The head set comes from qc_verdict itself: eiv_score.py's DEFAULT is four heads while
+    # V is a weighted combination of twelve, and the missing ones used to be silently
+    # substituted with 0.0 — which is a fixed offset, not a neutral value. That is what
+    # happened to revisit-v1, the last campaign this stage ever ran on.
+    EIV_SCORES="$CAMPAIGN_DIR/eiv_scores.jsonl"
+    EIV_HEADS="$("$PY" "$SONORA/scripts/synthesis/qc_verdict.py" --print-heads)" || EIV_HEADS=""
+    if [ -z "$EIV_HEADS" ]; then
+      echo "  !! could not read the EIV head set — NO direction verdicts for this bank."
+      echo "  !! Recover with: $PY $SONORA/scripts/synthesis/qc_verdict.py --print-heads"
+    # eiv_score.py APPENDS and resumes by wav path, so a re-run after an interruption is
+    # the intended recovery — but a clip RE-RENDERED in place keeps its path and is
+    # skipped. qc_verdict counts those (wav newer than the scores) and says so; the fix is
+    # to drop their rows, or the file, and re-run.
+    elif ! "$SONORA/scripts/eiv_score.sh" "$EIV_SCORES" "$CAMPAIGN_DIR/qc_filelist.txt" \
+          -- --heads "$EIV_HEADS"; then
+      echo "  !! eiv_score FAILED — NO direction verdicts for this bank. Clips are gated"
+      echo "  !! and will still be queued; the round is spent for gate_calibration."
+      echo "  !! Recover with: $SONORA/scripts/eiv_score.sh $EIV_SCORES $CAMPAIGN_DIR/qc_filelist.txt -- --heads \"$EIV_HEADS\""
+    elif ! "$PY" "$SONORA/scripts/synthesis/qc_verdict.py" --campaign-dir "$CAMPAIGN_DIR" \
+          --eiv "$EIV_SCORES" --append-flags; then
+      echo "  !! qc_verdict FAILED — no qc_verdicts.jsonl for this bank, so audit_sampler"
+      echo "  !! will skip it and gate_calibration has nothing frozen to compare."
+      echo "  !! Recover with: $PY $SONORA/scripts/synthesis/qc_verdict.py --campaign-dir $CAMPAIGN_DIR --eiv $EIV_SCORES --append-flags"
+    fi
+    ;;
+esac
 
 # Engine-specific defect detectors (radio timbre for moss_vg, leading gap for zonos).
 # ADVISORY — they never drop a clip; they append ids to qc_flags.txt, which
