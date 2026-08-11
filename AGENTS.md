@@ -155,6 +155,14 @@ case-insensitive macOS/Windows.
 * **Active Log Review**:
   * To inspect the training progress, check the container logs directly: `docker logs sonora_training` or `docker logs -f sonora_training`.
   * Local execution metrics, hydra configurations, checkpoints, and tensorboard events are output directly to `logs/`.
+  * ⚠ **`logs/` is NOT WRITABLE by a normal user on ai-lab-0** (`drwxr-sr-x root datashare`,
+    created by a container on 2026-07-14). Group `datashare` has `r-x` only, so **no non-root
+    process can write there — including `ai-mgr`, which the containers run as**. The directory
+    is empty, so nothing has ever used it and the real training artifacts land under `/data`.
+    Treat the line above as the intent, not the state: **probe before writing, and never
+    assume a repo-relative log path is writable** (`scripts/fix_pr.sh` is the worked example —
+    it probes `$FIX_PR_LOG_DIR`, then `logs/fix_pr`, then `$TMPDIR`, and prints its choice).
+    Fixing the ownership needs root and has not been done.
 * **Common Troubleshooting and Fixes**:
   * *Audio Decoding Failures (ROCm CUDA Mismatch)*: `torchaudio.load()` defaults to `torchcodec`, which fails inside the ROCm container due to missing CUDA dynamic libraries. Always use `soundfile.read(..., dtype='float32')` and convert to PyTorch tensors manually (see implementation in [matcha/data/text_mel_datamodule.py](matcha/data/text_mel_datamodule.py)).
   * *Matplotlib AttributeError in Validation*: Matplotlib 3.9+ removes `tostring_rgb()`. Use `np.asarray(fig.canvas.buffer_rgba())[:, :, :3]` instead (see implementation in [matcha/utils/utils.py](matcha/utils/utils.py)).
