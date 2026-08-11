@@ -66,6 +66,15 @@ jobs:
       # `dev` extra's constraints do NOT reach this job automatically and any floor that
       # matters here has to be repeated here — see `pytest>=9.1` below.
       #
+      # ⚠ THE DUPLICATION IS TEMPORARY AND HAS A SUCCESSOR, so do not entrench it. That
+      # reasoning is about the `dev` EXTRA; a PEP 735 dependency GROUP is a different
+      # mechanism — `uv pip install --group test` resolves without a project install, so no
+      # `install_requires` and no Cython build. #65 adds `[dependency-groups] test` carrying
+      # this floor. Once it lands, replace this whole step with `--group test` and delete
+      # the second copy of the constraint: a floor declared somewhere the runner does not
+      # install from is not enforced, and two copies that nothing checks is the weakness
+      # this comment currently only narrows.
+      #
       # This is the non-torch import set of `tests/` and of the gate scripts they drive,
       # derived by running the suite in a clean 3.11 venv and adding only what actually
       # raised.
