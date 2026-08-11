@@ -117,11 +117,18 @@ def sample_book(book: Path, pool_pct, combo_counts, rng, verbose=True):
     rows = [json.loads(l) for l in vpath.open() if l.strip()]
     picked = defaultdict(list)
 
-    # 1. disagreement-first: structurally sound, label-rejected
+    # 1. disagreement-first: structurally sound, label-rejected.
+    # `is False`, not falsy: qc_verdict scores an axis it could not measure as None, and a
+    # clip nobody scored is not a clip that disagreed. Sampling it as a disagreement sends
+    # the ear a finding that was never made — and `not r.get("keep")` is true of an
+    # unmeasured clip too, since unmeasured cannot confirm a keep.
     for r in rows:
         if r.get("hard_pass") and not r.get("keep"):
-            fails = [a for a, ok in (r.get("axis_checks") or {}).items() if not ok]
-            picked[r["id"]].append(f"axis-disagree:{'+'.join(fails) or '?'}")
+            checks = r.get("axis_checks") or {}
+            fails = [a for a, ok in checks.items() if ok is False]
+            if not fails:
+                continue
+            picked[r["id"]].append(f"axis-disagree:{'+'.join(fails)}")
 
     # 2. age-mismatch (priority): measured render F0 vs intended band
     for r in rows:

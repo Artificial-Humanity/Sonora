@@ -13,6 +13,7 @@ import math
 import os
 import pathlib
 import sys
+import time
 
 import pytest
 
@@ -414,13 +415,42 @@ def test_the_direction_check_is_advisory_and_the_quality_gate_is_not():
 
     The qc_gate half of the assertion is the control: without it this test would also pass
     against a file that had stopped stopping for anything at all.
+
+    THE WINDOW IS ANCHORED AT THE FIRST COMMAND OF STAGE 2, NOT ITS LAST (issue #57). It
+    used to start at the `--eiv` invocation — the stage's LAST command — so the guard saw
+    ten lines of a ~75-line block: the `--count-directed` probe, the whole `case`, and all
+    three skip/failure branches sat outside it. MEASURED 2026-08-11: an `exit 2` in the
+    real-audio branch, which stops every librivox bank before `register_audition`, left
+    this suite at 27 passed. The coverage assertions below are part of the fix — they
+    fail if the window is ever narrowed back onto a subset of the block.
     """
     cmds = list(_shell_commands(BANK))
+    probe = _first_line_with(BANK, "qc_verdict.py", extra="--count-directed")
     verdict = _first_line_with(BANK, "qc_verdict.py", extra="--eiv")
+    # Stage 3 (the engine defect detectors) is where stage 2 ends. Bounding at
+    # register_audition instead puts another stage's commands inside a window this test
+    # names stage 2 — and stage 3 is where a legitimate future `exit` would sit.
+    defects = _first_line_with(BANK, "qc_engine_defects.py")
     register = _first_line_with(BANK, "register_audition.py")
-    stage2 = [c for n, c in cmds if verdict is not None and verdict <= n < register]
-    assert stage2, "no stage-2 commands between the verdict and the queue — see the " \
+    assert None not in (probe, verdict, register), \
+        "stage 2 is not wired — see the wiring and ordering tests above"
+    # From the banner the stage announces itself with, so the lines BETWEEN the banner and
+    # the probe are inside too; the probe is the fallback if the banner is ever reworded.
+    banner = next((n for n, c in cmds if c.startswith("echo") and "qc verdicts" in c), None)
+    start = min(n for n in (banner, probe, verdict) if n is not None)
+    end = min(n for n in (defects, register) if n is not None and n > start)
+    stage2 = [c for n, c in cmds if start <= n < end]
+    assert stage2, "no stage-2 commands between the probe and the next stage — see the " \
                    "wiring and ordering tests above for which of the two is missing"
+
+    # The window covers the WHOLE block, proven against its landmarks rather than trusted:
+    # every one of these lines was outside the old window.
+    for landmark in ("--count-directed", "real-audio bank", "eiv_score.sh", "--eiv",
+                     "esac"):
+        assert any(landmark in c for c in stage2), \
+            (f"the stage-2 window stops short of `{landmark}` — an `exit` there would "
+             f"stop the bank unnoticed, which is exactly how #57 went green")
+
     offenders = [c for c in stage2 if c.split("#")[0].strip().startswith("exit")
                  or " exit " in c]
     assert not offenders, \
@@ -430,7 +460,7 @@ def test_the_direction_check_is_advisory_and_the_quality_gate_is_not():
         "a failed direction check is silent; it must be announced like the defect detectors"
 
     gate = _first_line_with(BANK, "qc_gate.py")
-    hard = [c for n, c in cmds if gate <= n < verdict and c.startswith("exit")]
+    hard = [c for n, c in cmds if gate <= n < start and c.startswith("exit")]
     assert hard, "qc_gate no longer stops the pipeline — it is not advisory and must"
 
 
@@ -471,3 +501,336 @@ def test_the_verdict_says_which_definition_of_A_it_used():
     assert "NOT" in a, "the divergence has to be stated, not implied"
     assert "delivery" in qv.MEASURED_FROM, \
         "contract v2 shipped a delivery channel; a row must say it went unchecked"
+
+
+# --- stage 2: what the instrument may and may not assert (#54-#58) --------------------
+#
+# These run qc_verdict end to end against a STUB anchor. The real one is 30,351 LibriTTS
+# rows on /data beside a corpus this checkout does not carry, and a verdict test that
+# skips wherever the corpus is absent is a verdict test that never runs in CI.
+
+ANCHOR_HEADS = ["Amusement", "Valence", "Sadness"]
+ANCHOR_WEIGHTS = [0.5, 0.3, -0.2]
+
+
+def _stub_anchor(tmp_path, qv, monkeypatch, weights=None, drop=()):
+    """Point qc_verdict's LibriTTS anchor at 40 stub rows. `drop` = heads to omit."""
+    root = tmp_path / "anchor"
+    root.mkdir(exist_ok=True)
+    meas, eiv = [], []
+    for i in range(40):
+        wav = f"/anchor/{i}.wav"
+        meas.append({"wav": wav, "alpha_db": 5.0 + i * 0.1, "cpp": 1.0 + i * 0.02,
+                     "h1h2": -13.0 + i * 0.05})
+        row = {"wav": wav, "Arousal": 0.2 * i, "Soft_vs._Harsh": -0.1 * i}
+        for k, h in enumerate(ANCHOR_HEADS):
+            if h not in drop:
+                row[h] = 0.05 * i + 0.1 * k
+        eiv.append(row)
+    for name, data in (("measures.jsonl", meas), ("eiv.jsonl", eiv)):
+        (root / name).write_text("".join(json.dumps(d) + "\n" for d in data),
+                                 encoding="utf-8")
+    (root / "fam.jsonl").write_text("", encoding="utf-8")
+    (root / "combo.json").write_text(json.dumps(
+        {"heads": ANCHOR_HEADS, "weights": list(weights or ANCHOR_WEIGHTS)}),
+        encoding="utf-8")
+    monkeypatch.setattr(qv, "LIB_MEASURES", str(root / "measures.jsonl"))
+    monkeypatch.setattr(qv, "LIB_EIV", str(root / "eiv.jsonl"))
+    monkeypatch.setattr(qv, "LIB_FAM", str(root / "fam.jsonl"))
+    monkeypatch.setattr(qv, "COMBO", str(root / "combo.json"))
+
+
+def _stub_campaign(tmp_path, n=4, scored=None, intended=None, stamp=True):
+    """A campaign dir: n directed clips, the first `scored` of them carrying an EIV row."""
+    camp = tmp_path / "campaign"
+    camp.mkdir(exist_ok=True)
+    scored = n if scored is None else scored
+    rows, eiv, files = [], [], []
+    for i in range(n):
+        wav = camp / f"clip{i}.wav"
+        wav.write_bytes(b"RIFF" + b"\0" * 40)
+        rows.append({"id": f"clip{i}", "engine": "qwen", "wav": wav.name,
+                     "wav_abs": str(wav), "hard_pass": True,
+                     "intended": dict(intended or {"V": -0.9, "A": 0.8, "T": 0.7}),
+                     "phonation": {"alpha_db": 6.0, "cpp": 1.1, "h1h2": -13.5}})
+        files.append(str(wav))
+        if i < scored:
+            row = {"wav": str(wav)}
+            if stamp:
+                row["wav_mtime"] = os.path.getmtime(wav)
+            for h in ANCHOR_HEADS + list(qv_extra_heads()):
+                row[h] = 0.2 + 0.01 * i
+            eiv.append(row)
+    (camp / "qc_measures.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    (camp / "eiv_scores.jsonl").write_text(
+        "".join(json.dumps(e) + "\n" for e in eiv), encoding="utf-8")
+    (camp / "qc_filelist.txt").write_text("\n".join(files) + "\n", encoding="utf-8")
+    return camp
+
+
+def qv_extra_heads():
+    sys.path.insert(0, str(SYNTH))
+    return pytest.importorskip("qc_verdict").EIV_EXTRA_HEADS
+
+
+def _run_verdict(camp, monkeypatch, qv, *extra):
+    monkeypatch.setattr(sys, "argv", ["qc_verdict.py", "--campaign-dir", str(camp),
+                                      *extra])
+    qv.main()
+
+
+def test_a_scoring_pass_that_produced_nothing_is_refused_not_reported_as_failure(
+        tmp_path, monkeypatch, capsys):
+    """The head guard iterates ROWS, so with zero rows it found nothing absent and passed
+    the file — and every axis of every clip then read as a direction failure.
+
+    MEASURED on 20713f1: an empty eiv_scores.jsonl gave `V:FAIL A:FAIL T:FAIL` on all four
+    clips, `0/4 keeps`, four ids in qc_flags.txt and exit 0. eiv_score.sh exits 0 whenever
+    the container came up, so an empty filelist, unreadable wavs or an OOM-skip reaches
+    this with nothing else looking wrong (issue #55).
+    """
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, scored=0)
+    with pytest.raises(SystemExit) as e:
+        _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"),
+                     "--append-flags")
+    assert "0 scored rows" in str(e.value)
+    assert not (camp / "keeps.jsonl").exists(), \
+        "a keeps file was written from scores that do not exist"
+    assert not (camp / "qc_flags.txt").exists(), \
+        "clips were sent to the ear on the strength of a measurement nobody made"
+
+
+def test_an_unscored_clip_is_unmeasured_not_a_direction_failure(
+        tmp_path, monkeypatch, capsys):
+    """Unmeasured and pointed-the-wrong-way used to produce identical output — the same
+    console line, the same by-axis tally, the same qc_flags.txt (issue #55). Unmeasured
+    still cannot keep, because nothing was confirmed; it simply is not evidence."""
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=4, scored=2)
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"),
+                 "--append-flags")
+    out = capsys.readouterr().out
+    verdicts = {json.loads(l)["id"]: json.loads(l)
+                for l in (camp / "qc_verdicts.jsonl").read_text().splitlines() if l.strip()}
+    assert verdicts["clip2"]["axis_checks"] == {"V": None, "A": None, "T": None}
+    assert verdicts["clip2"]["axes_unmeasured"] == ["A", "T", "V"]
+    assert verdicts["clip2"]["axes_checked"] == []
+    assert verdicts["clip2"]["keep"] is False, "unmeasured cannot confirm a keep either"
+    assert "unmeasured" in out and "NO EIV row" in out
+    assert "direction failures among hard-pass clips: 2 clip(s)" in out, \
+        "the unscored clips are being counted as engines ignoring direction"
+    flags = (camp / "qc_flags.txt").read_text().split()
+    assert flags == ["clip0", "clip1"], flags
+
+
+def test_a_reroll_is_still_caught_after_the_scores_file_is_appended_to(
+        tmp_path, monkeypatch, capsys):
+    """The guard compared each wav against the mtime of the whole scores FILE, and
+    eiv_score.sh appends to that file immediately before this runs — so one newly-scored
+    clip refreshed the clock for every other clip and the guard went silent (issue #56).
+    Here clip0 is re-rendered after scoring and an unrelated row is appended afterwards,
+    which is exactly the order synth_bank.sh produces."""
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=2, scored=2)
+    scores = camp / "eiv_scores.jsonl"
+    now = time.time()
+    os.utime(camp / "clip0.wav", (now + 10, now + 10))  # re-rendered in place
+    row = {"wav": str(camp / "unrelated.wav"), "wav_mtime": now + 20}
+    row.update({h: 0.3 for h in ANCHOR_HEADS + list(qv.EIV_EXTRA_HEADS)})
+    with scores.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row) + "\n")
+    os.utime(scores, (now + 30, now + 30))  # the file is now newer than every wav
+
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(scores))
+    out = capsys.readouterr().out
+    assert "RE-RENDERED" in out and "clip0" in out, \
+        "the reroll is judged on the previous take's scores and nothing says so"
+    assert os.path.getmtime(camp / "clip0.wav") < os.path.getmtime(scores), \
+        "the file-mtime clock this replaces would have seen nothing here"
+
+
+def test_a_numeric_string_is_a_label_and_a_word_is_a_complaint(tmp_path, monkeypatch,
+                                                               capsys):
+    """`--count-directed` printing 0 makes synth_bank.sh announce "(real-audio bank)" and
+    skip the stage, so 0 is a positive claim about the campaign. It must never be reached
+    by a label the reader could not parse (issue #58): book_ingest.py writes V/A/T straight
+    out of the LLM and validates only `register` and `engine`."""
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    assert qv.intended_labels({"intended": {"V": "0.7", "A": 0.2}}) == {"V": 0.7, "A": 0.2}
+    bad = []
+    assert qv.intended_labels({"id": "c0", "intended": {"V": "very sad", "A": True}},
+                              bad) == {}
+    assert [(i, ax) for i, ax, _ in bad] == [("c0", "V"), ("c0", "A")]
+    assert qv.intended_labels({"intended": {"V": None}}, bad := []) == {} and bad == [], \
+        "an explicit null is a writer saying `no label`, not a malformed one"
+
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=2, intended={"V": "-0.9", "A": "0.8"})
+    _run_verdict(camp, monkeypatch, qv, "--count-directed")
+    assert capsys.readouterr().out.strip() == "2", "a numerically-valued label IS a label"
+
+    camp = _stub_campaign(tmp_path, n=2, intended={"V": "very sad"})
+    with pytest.raises(SystemExit) as e:
+        _run_verdict(camp, monkeypatch, qv, "--count-directed")
+    assert "real-audio bank" in str(e.value), \
+        "a bank whose labels are unreadable must not be announced as one with no labels"
+
+
+def test_an_unreadable_intended_label_cannot_keep(tmp_path, monkeypatch, capsys):
+    """`intended_labels` DROPS an axis it cannot parse, so a row whose labels were all
+    gibberish reached `keep` with `checks == {}` — and `all(...)` over an empty dict is
+    True, so the clip was written to keeps.jsonl, which the module docstring defines as
+    "clips + CONFIRMED labels". Nothing was confirmed. It was also counted as `undirected`,
+    beneath a line saying those rows have nothing to confirm, which is exactly what a row
+    stating an unreadable direction does not get to claim.
+
+    `--count-directed` does not cover this: it refuses only when EVERY label in the bank is
+    unreadable, so the ordinary partial case — 99 good rows, 1 malformed — sails past the
+    pre-flight and lands here."""
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=2, intended={"V": "very sad", "A": "angry", "T": "x"})
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"))
+    out = capsys.readouterr().out
+    verdicts = [json.loads(l) for l in
+                (camp / "qc_verdicts.jsonl").read_text().splitlines() if l.strip()]
+    assert [v["keep"] for v in verdicts] == [False, False], \
+        "a clip whose stated direction nobody could read was confirmed as a keep"
+    assert (camp / "keeps.jsonl").read_text().strip() == ""
+    assert verdicts[0]["axis_checks"] == {"V": "unreadable", "A": "unreadable",
+                                          "T": "unreadable"}
+    assert verdicts[0]["axes_unreadable"] == ["A", "T", "V"]
+    assert verdicts[0]["axes_unmeasured"] == [], \
+        "an unparsable label is not a measurement we failed to take — different repair"
+    assert "row(s) carry NO intended V/A/T" not in out, \
+        "rows with unreadable labels are being reported as rows with no labels"
+
+
+def test_one_bad_axis_is_enough_to_hold_a_clip_out_of_keeps(tmp_path, monkeypatch, capsys):
+    """The partial case, decided by the owner 2026-08-11: an axis whose label is present
+    and unreadable confirmed nothing, so it blocks the keep on its own — the same doctrine
+    as NONE IS NOT FALSE, applied to the label side. The readable axis is still checked and
+    still reported; the bank's repair is to fix the label, not to re-score the clip.
+
+    ⚠ The intended V must CONFIRM here, and the first version of this test had it pointing
+    the wrong way. That made the clip a direction failure as well, so "held out on the label
+    alone" was false of it — and the assertion still passed, because the summary counted
+    every row with an unreadable axis rather than the rows the label actually held out.
+    Two defects agreeing. See the sibling test for the case this one must not cover.
+    """
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=1, intended={"V": -0.9, "A": "angry"})
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"))
+    out = capsys.readouterr().out
+    v = json.loads((camp / "qc_verdicts.jsonl").read_text().strip())
+    assert v["axis_checks"]["A"] == "unreadable" and v["axes_unreadable"] == ["A"]
+    assert v["axis_checks"]["V"] is True, \
+        "the readable axis must still be CHECKED and confirmed — the hold-out is the label"
+    assert v["keep"] is False
+    assert "1 clip(s) are held out of keeps.jsonl" in out, \
+        "the summary must say the hold-out happened; a silent one reads as a scoring gap"
+    assert "T" not in v["axis_checks"], \
+        "an axis with no label at all is still ABSENT, not unreadable"
+
+
+def test_only_the_clips_the_label_actually_held_out_are_reported_as_a_label_repair(
+        tmp_path, monkeypatch, capsys):
+    """"On that alone" is a claim, and it was counted as "has an unreadable axis".
+
+    That folds in clips rejected by the hard gate or by a real `False` direction verdict —
+    clips whose keep does NOT come back when the label is fixed. The operator was told the
+    opposite in the sentence's most emphatic clause, which is the same defect as the wide
+    `except ValueError` this branch narrowed in register_audition.py: two different reasons
+    for one outcome, reported as one.
+    """
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=2, intended={"V": -0.9, "A": "angry"})
+    rows = [json.loads(l) for l in
+            (camp / "qc_measures.jsonl").read_text().splitlines() if l.strip()]
+    rows[0]["hard_pass"] = False          # rejected for a reason the label cannot fix
+    (camp / "qc_measures.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"))
+    out = capsys.readouterr().out
+    assert "1 clip(s) are held out of keeps.jsonl on that alone" in out, \
+        "clip1 is the only one whose keep returns when the label is fixed"
+    assert "1 further clip(s) carry an unreadable label AND are rejected independently" in out
+    assert "Fixing their labels will NOT make them keep" in out
+
+
+def test_an_unreadable_label_on_an_unscored_clip_is_a_scoring_repair_first(
+        tmp_path, monkeypatch, capsys):
+    """The two-bucket split was wrong in BOTH directions, and this is the harder half.
+
+    `only_the_label` asked whether the READABLE axes confirmed. A row whose only intended
+    axis is the unreadable one has none, so `all(...)` ran over an empty set and returned
+    True — `hard_pass` alone put a clip with no EIV row at all into "would otherwise keep …
+    this is a LABELLING repair". Fixing that label cannot make it keep; there is nothing to
+    check the fixed label against. The mirror defect swept every UNMEASURED row into "hard
+    gate, or a measured direction disagreement", which is NONE IS NOT FALSE (issue #55)
+    stated backwards in the file whose docstring insists on it.
+    """
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=2, scored=1, intended={"A": "angry"})
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"))
+    out = capsys.readouterr().out
+    assert "1 clip(s) are held out of keeps.jsonl on that alone" in out, \
+        "the scored clip is the only one a label fix would bring back"
+    assert "1 further clip(s) carry an unreadable label AND have an UNMEASURED axis" in out
+    assert "SCORING repair before it is a labelling one" in out, \
+        "the operator is being sent to fix a label when the clip was never scored"
+    assert "measured direction disagreement" not in out, \
+        "an unmeasured axis is not a measured disagreement — issue #55, restated backwards"
+
+
+def test_the_anchor_is_held_to_the_same_standard_as_the_campaign_file(
+        tmp_path, monkeypatch, capsys):
+    """main() refuses a campaign eiv file missing a combo head; build_anchors filled the
+    same gap with 0.0, which collapses that head's std to the 1e-9 floor and turns its z
+    into `x * 1e9` inside the V dot product (issue #54).
+
+    MEASURED on the shipped anchor: the only two unanchored heads carry weight exactly
+    0.0, so V is unaffected today — bulk1 is min -2.755 / max 3.272 either way. The
+    asymmetry is what is fixed: one weight refit would otherwise turn that live silently.
+    """
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+
+    _stub_anchor(tmp_path, qv, monkeypatch, weights=[0.5, 0.3, 0.0], drop=("Sadness",))
+    anchor, heads, w = qv.build_anchors()
+    assert anchor["Sadness"] == (0.0, 1.0), \
+        "a zero-weight head must not be anchored on a 1e-9 std it could be refit into"
+    out = capsys.readouterr().out
+    assert "Sadness" in out and "0/40" in out and "weight" in out, \
+        "an unanchored head is filled silently, which is how it stays unanchored"
+
+    _stub_anchor(tmp_path, qv, monkeypatch, weights=[0.5, 0.3, -0.2], drop=("Sadness",))
+    with pytest.raises(SystemExit) as e:
+        qv.build_anchors()
+    assert "Sadness" in str(e.value) and "moves V" in str(e.value)
+
+
+def test_the_sampler_does_not_read_an_unmeasured_axis_as_a_disagreement():
+    """audit_sampler's disagreement-first pass took every falsy axis check as a fail, so
+    the None that now means UNMEASURED would have sent the ear a clip on a finding nobody
+    made — and `not keep` is true of an unmeasured clip too (issue #55)."""
+    src = _src("audit_sampler.py")
+    assert "if ok is False" in src, \
+        "unmeasured axes are being sampled as axis-disagree"

@@ -12,7 +12,9 @@ derive_vat_corpus.py --valence-json), and the tension recalibration
 vat-channels.md calibration status).
 
 Inputs: wav paths, dirs, or `path|...` filelists. Output: JSONL rows
-{"wav": ..., "<head>": score, ...}.
+{"wav": ..., "wav_mtime": ..., "<head>": score, ...} — `wav_mtime` is the mtime
+of the file that was actually scored, so a consumer can tell a score of THIS
+take from a score of the one before it (qc_verdict.py's reroll guard).
 
 Usage:
     python scripts/eiv_score.py --out scores.jsonl \
@@ -123,11 +125,43 @@ def main():
         heads[name] = Head(sd).to(device).eval()
         print(f"head {name}: proj {tuple(sd['proj.weight'].shape)}")
 
-    done = set()
+    # Resume is BY PATH, which is why every row carries the mtime of the wav it scored.
+    # A clip re-rendered in place keeps its path, so the resume skips it and its old
+    # scores stand for a take that no longer exists — the loudnorm reroll defect's shape
+    # (a sidecar keyed on a path that was rewritten underneath it). qc_verdict.py used to
+    # notice that by comparing wavs against the mtime of this whole FILE, which every
+    # append refreshed, so one newly-scored clip silenced the check for all of them
+    # (issue #56). A per-row stamp is a fact about the clip; a file mtime is a fact about
+    # the batch.
+    #
+    # A stamped row whose wav has moved on is dropped from `done`, i.e. RE-SCORED — which
+    # is the fix rather than the announcement. Rows written before the stamp existed
+    # resume exactly as they always did; nothing mass re-scores.
+    # ⚠ LAST ROW WINS, AND THE COUNT IS OF CLIPS, NOT ROWS. The output file is APPEND-ONLY,
+    # so this feature's own success used to poison its announcement: a re-rendered clip is
+    # dropped from `done`, re-scored, and a SECOND row for the same path is appended. Every
+    # later run then saw both — row 1 stale (`rescored += 1`), row 2 fresh (`done.add`) —
+    # so `done` came out right while `rescored` counted a repair that had already happened,
+    # for the rest of the file's life. The run announced "N re-rendered -> re-scoring" and
+    # re-scored nothing.
+    state = {}
     if os.path.exists(args.out):  # resumable
         with open(args.out, encoding="utf-8") as f:
-            done = {json.loads(line)["wav"] for line in f if line.strip()}
-        print(f"resuming: {len(done)} already scored")
+            for line in f:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                stamp = row.get("wav_mtime")
+                # A row with no stamp predates the stamp and resumes as it always did.
+                state[row["wav"]] = not (
+                    stamp is not None and os.path.isfile(row["wav"])
+                    and os.path.getmtime(row["wav"]) > stamp + 1e-6)
+    done = {w for w, fresh in state.items() if fresh}
+    rescored = len(state) - len(done)
+    if os.path.exists(args.out):
+        print(f"resuming: {len(done)} already scored"
+              + (f"; {rescored} re-rendered since they were scored -> re-scoring"
+                 if rescored else ""))
 
     max_samples = int(MAX_SECONDS * SR)
     todo = [w for w in wavs if w not in done]
@@ -135,8 +169,12 @@ def main():
     with open(args.out, "a", encoding="utf-8") as fout:
         for start in range(0, len(todo), args.batch_size):
             batch = todo[start:start + args.batch_size]
-            audio = []
+            audio, mtimes = [], []
             for w in batch:
+                # Read BEFORE the audio, so a wav rewritten mid-run stamps OLD and is
+                # re-scored next pass rather than carrying a stamp that vouches for
+                # content it never saw.
+                mtimes.append(os.path.getmtime(w))
                 y, _ = librosa.load(w, sr=SR, mono=True)
                 audio.append(y[:max_samples])
             feats = processor(audio, sampling_rate=SR, return_tensors="pt").input_features
@@ -149,7 +187,7 @@ def main():
                 scores = {name: h(emb).squeeze(-1).float().cpu().tolist()
                           for name, h in heads.items()}
             for i, w in enumerate(batch):
-                row = {"wav": w}
+                row = {"wav": w, "wav_mtime": mtimes[i]}
                 row.update({name: round(scores[name][i], 6) for name in heads})
                 fout.write(json.dumps(row) + "\n")
             fout.flush()

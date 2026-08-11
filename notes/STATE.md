@@ -310,10 +310,14 @@ headline; open items are in [todo.md](todo.md).
    both files (verified, not assumed) and v5's split reproduces under the shared hash, so
    rung 2's holdout stays comparable to rung 1's. Merged delivery: Dialogue 344 ·
    Neutral 328 · Newscaster 76 · Speech 68 · blank 10.
-   **6 of the 832 dropped on digits (D-M3)** — five correctly (the audio speaks £5,000,
-   43° 10′, 1801, 20–30 fathoms); the sixth is a Gutenberg footnote marker `{53}` the
-   reader does not say, costing a row from the 69-row **Speech** lane. Flagged, not
-   stripped.
+   **6 of the 832 dropped on digits (D-M3)** in the v6 append — five correctly (the audio
+   speaks £5,000, 43° 10′, 1801, 20–30 fathoms); the sixth is a Gutenberg footnote marker
+   `{53}` the reader does not say, costing a row from the 69-row **Speech** lane. Flagged,
+   not stripped.
+   <!-- "in the v6 append" is load-bearing: it is how scripts/test_doc_claims.py knows
+   which corpus the 6 and the 832 above belong to. The registry used to reach this line by
+   the rule id D-M3, which every v5 statement of the same rule carries too, so the v6
+   entries claimed v5 sentences (#48). Keep a corpus marker on this line. -->
    ⚠ **The licence wall REFUSED the first build** — the staged 24 kHz tree was undeclared.
    `sonora_expressive_registers` is now in `configs/data_licenses.yaml`, verified by path:
    **0 of the 832 clips resolve into `LibriTTS_R` or any `emilia*` tree.**

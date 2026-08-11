@@ -39,7 +39,7 @@ See [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-cor
 | **P0** | 0a — never-trained holdout | ✅ **DONE 2026-08-06** | — | [§ 0a](#0a--the-never-trained-holdout--done-and-it-reported-2026-08-06) |
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
-| | **rung 2 — v6, +expressive-registers (832 rows to append)** | 🔨 **labelled, NOT built** — all three prerequisites closed 2026-08-10; V/A/T in hand for 832/832 | **the build script, which does not exist.** The Qwen audition was **deferred** (owner 2026-08-09) and does not gate this; the 14 over-length rows were **dropped** (owner 2026-08-10) | ditto |
+| | **rung 2 — v6, +expressive-registers (826 rows appended, 832 staged)** | ✅ **DONE 2026-08-10/11** — built, trained 10 epochs, holdout-scored, **`ep008` selected** (`logs/train/vat6_finetune/SELECTED.md`); flat as pre-registered, and **the delivery block is live** | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) · ⚠ **do not select this run on `total`** and the A-frame question is **open**, not closed — [direction-contract-v3-proposal.md § 3b](direction-contract-v3-proposal.md) |
 | | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ **UNGATED — rung 1 passed.** ~**2.25 h/epoch, ~1 day** to convergence (measured 2026-08-09) | rung 1's holdout ✅ | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
@@ -224,7 +224,7 @@ as an architecture failure — it isn't one.
 **v6 scope: 1,004 eligible keeps before dedup → 846 appended (owner 2026-08-09; dedup
 2026-08-10).** The 1,004 — 902 delivery-labelled + 102 delivery-blank — is what survives
 the licence and standing-policy filter over 1,279 total keeps, all four exclusions honoured
-as written: VibeVoice/Dia 133 (benched), moss85 83 (un-SFT'd base), longcat 45 (benched),
+as written: VibeVoice/Dia 133 (benched), moss85 83 (un-SFT'd base), longcat 51 (benched),
 higgs3-NC 8 (**NC — never trains**). Per lane at that stage: Dialogue 402 · Neutral 270 ·
 Documentary 85 · Newscaster 76 · Speech 69. **158 of those rows duplicate audio already in
 v5** (three classes, § Rung 2 prerequisite 3), leaving 846 — less **14 over-length rows**

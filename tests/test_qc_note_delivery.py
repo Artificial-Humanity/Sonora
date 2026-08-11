@@ -155,6 +155,36 @@ def test_the_helper_is_still_reachable_with_a_note_map(tmp_path, monkeypatch):
     assert rows[0]["note"] == "QC: something to hear"
 
 
+def test_a_surplus_error_is_not_reported_as_a_retired_delivery_lane(tmp_path, monkeypatch,
+                                                                   capsys):
+    """`except ValueError` around `_build_row` was wider than the refusal it was catching.
+
+    Only `_assignable_delivery` is meant to land there, but `_build_row` also calls
+    `os.path.relpath` and `_predicted_gender`. Under `--dry-run` anything either of them
+    raised was counted as `retired` and reported as "N carrying a RETIRED delivery lane" —
+    a precise, confident, wrong diagnosis that sends an operator to rebuild a bank over an
+    error with nothing to do with delivery, with the real message surviving only in the
+    `! {e}` line above it. The write path re-raised, so only the survey lied.
+    """
+    mod = _register_module(tmp_path, monkeypatch)
+    audio, _ = _campaign(tmp_path)
+
+    def boom(*_a, **_kw):
+        raise ValueError("path is on mount 'C:' and DATA_ROOT is on 'D:'")
+
+    monkeypatch.setattr(mod.os.path, "relpath", boom)
+    refusals = []
+    with pytest.raises(ValueError, match="mount"):
+        mod.register_audio_dir(audio, "campaign-x", set(), mod.DEFAULT_FIELDS, False,
+                               refusals=refusals)
+    assert refusals == [], "an unrelated failure was filed as a delivery-lane refusal"
+    assert "RETIRED delivery lane" not in capsys.readouterr().out
+
+    # ...and the real refusal still counts, so the narrowing did not silence the guard.
+    assert issubclass(mod.RetiredLane, ValueError), \
+        "the write path and check_assignable's contract both depend on this"
+
+
 def test_main_passes_the_map_it_computes(tmp_path, monkeypatch):
     """The wiring itself, asserted directly: whatever `_qc_triage` returns is what
     `register_audio_dir` receives. `git log -S "qc=qc_map"` was empty for nine days."""

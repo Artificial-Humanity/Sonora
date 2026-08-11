@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import warnings
 
 import pytest
 
@@ -38,20 +39,43 @@ FAST = ["test_skill_files.py", "test_text_selection.py"]
 # here and a document disagrees with it" is. Putting this in FAST — which the first version
 # did — turned every laptop into a red build for a fact it had no way to check.
 #
-# ⚠ EVERY artifact the script reads has to be listed, not just the first one. The script
-# treats a fact whose source is missing as a FAILURE ("a fact whose source is missing is
-# not a passing fact"), so an unlisted prerequisite does not degrade to a skip — it goes
-# red on a machine that simply does not have that corpus. v6 was added 2026-08-11 when the
-# registry gained facts read from its derivation report.
-DATA_GATED = [
-    ("test_doc_claims.py", [
-        ("SONORA_CORPUS_V5",
-         os.path.join(REPO, "data", "libritts_r_emilia_vat_v5", "derivation_report.json")),
-        ("SONORA_CORPUS_V6",
-         os.path.join(REPO, "data", "libritts_r_emilia_expressive_vat_v6",
-                      "derivation_report.json")),
-    ]),
-]
+# ⚠ THE PREREQUISITES ARE A UNION, NOT AN INTERSECTION — and they were the wrong one.
+# `test_doc_claims.py` now carries the prerequisite PER FACT and skips-with-notice the facts
+# whose artifact is absent, so it is safe to run wherever ANY corpus is present. ANDing the
+# list here meant a host holding v5 and not v6 — a partial mount, a rollback, ai-lab-0
+# itself between the two merges — checked nothing at all and reported it as one skip naming
+# only the first missing path, discarding the ten v5 facts it could have enforced (#52).
+# Coverage was the intersection of every corpus the registry had ever read, and that shrinks
+# with every generation: at v7 the gate would run on one machine on a good day.
+#
+# ⚠ THE LIST HAS TO BE EXHAUSTIVE UNDER OR SEMANTICS, AND HAND-WRITTEN IT WAS NOT — it
+# named 2 of the 7 artifacts the registry reads (v5's report and v6's report; not v5's
+# train/val filelists, not v4's, not the holdout). With AND that was merely redundant, since
+# any missing entry made the whole thing skip. With OR it decides "is anything checkable
+# here", so a host holding only v4, or only the holdout, was told nothing is checkable and
+# skipped facts it could have enforced — #52 reappearing on the corpora the list forgot.
+#
+# READ FROM THE REGISTRY, NOT RESTATED. Every fact already carries its own `artifacts`, and
+# `unreadable()` is the function the script itself uses; a second copy here is the fork this
+# repo keeps paying for (`_app_csv_fields` reads the app's CSV_FIELDS for the same reason).
+# Adding a fact for a new corpus now extends this automatically.
+def _registry_artifacts():
+    sys.path.insert(0, SCRIPTS)
+    import test_doc_claims                                    # noqa: E402
+    seen, out = set(), []
+    for fact in test_doc_claims.FACTS:
+        for p in fact["artifacts"]:
+            if p not in seen:
+                seen.add(p)
+                # The env var is the artifact's own basename-derived override, kept so a
+                # host can point the gate at a corpus mounted elsewhere. Derived, so a new
+                # fact does not need one written by hand.
+                out.append(("SONORA_ARTIFACT_" + os.path.relpath(p, REPO)
+                            .replace(os.sep, "_").replace(".", "_").upper(), p))
+    return out
+
+
+DATA_GATED = [("test_doc_claims.py", _registry_artifacts())]
 
 # (script, env var naming its prerequisite, default path to probe)
 SLOW = [
@@ -64,6 +88,18 @@ SLOW = [
 
 
 def _run(script):
+    # SKIP, NOT ERROR, WHEN THE REPO VENV IS ABSENT. These shell out to `.venv/bin/python`
+    # per the run-mode rule, and a checkout that has never had `uv venv` run in it — every
+    # CI runner, including the review lane's — produced a bare `FileNotFoundError` here
+    # rather than a skip. "The interpreter these scripts are specified to run under is not
+    # on this machine" is the same class of fact as "the corpus is not on this machine",
+    # which the FAST/DATA split above already treats as a skip and not a finding.
+    #
+    # ⚠ It is NOT the same as `test_python_is_the_repo_venv`, which asserts the venv exists
+    # and must keep failing where that is a real defect. See the guard on that test.
+    if not os.path.exists(PY):
+        pytest.skip(f"{PY} is absent — this checkout has no repo venv, so the gate "
+                    f"scripts cannot be run as specified (run-mode rule, AGENTS.md).")
     return subprocess.run([PY, os.path.join(SCRIPTS, script)],
                           capture_output=True, text=True, timeout=900)
 
@@ -74,19 +110,49 @@ def test_fast_gate(script):
     assert r.returncode == 0, f"{script} failed:\n{r.stdout[-4000:]}\n{r.stderr[-2000:]}"
 
 
+class PartialCoverage(Warning):
+    """Raised as a warning when a gate ran against only some of its artifacts.
+
+    Deliberately NOT a `UserWarning`: `pyproject.toml` sets `filterwarnings =
+    ["ignore::UserWarning", ...]`, so anything under that root would be swallowed — and a
+    coverage reduction nobody can see is the whole defect (#52). Subclassing `Warning`
+    directly keeps it in pytest's warnings summary without `-s`.
+    """
+
+
 @pytest.mark.parametrize("script,prereqs", DATA_GATED)
 def test_data_gated_gate(script, prereqs):
+    present, missing = [], []
     for env_var, default in prereqs:
         target = os.environ.get(env_var, default)
-        if not os.path.exists(target):
-            pytest.skip(f"{script}: {env_var} target not present ({target}) — the corpus "
-                        f"artifacts under data/ are untracked working files, present only "
-                        f"where the corpus was built")
+        (present if os.path.exists(target) else missing).append(f"{env_var} ({target})")
+
+    if not present:
+        # Nothing checkable. Name EVERY prerequisite, not just the first one found missing:
+        # the old message stopped at the first and read as "v6 is absent" on a host that was
+        # missing both, which is a different situation with a different remedy.
+        pytest.skip(f"{script}: none of its prerequisites is present — " +
+                    "; ".join(missing) + ". The corpus artifacts under data/ are untracked "
+                    "working files, present only where the corpus was built")
+    if missing:
+        # Ran, but not on everything. The script prints which FACTS it skipped; this says
+        # the run was partial at the level pytest reports, so a green suite cannot be read
+        # as full coverage.
+        warnings.warn(
+            f"{script} ran against a PARTIAL set of artifacts — absent: " +
+            "; ".join(missing) + ". The facts reading them were skipped and named in the "
+            "script's own output; every other fact was enforced.", PartialCoverage)
+
     r = _run(script)
     assert r.returncode == 0, f"{script} failed:\n{r.stdout[-4000:]}\n{r.stderr[-2000:]}"
 
 
 def _has_torch():
+    # Guarded for the same reason as `_run`: without the venv this raised
+    # `FileNotFoundError` from the skip CHECK itself, so the test could not even reach its
+    # own `pytest.skip`.
+    if not os.path.exists(PY):
+        return False
     r = subprocess.run([PY, "-c", "import torch"], capture_output=True)
     return r.returncode == 0
 
@@ -109,7 +175,20 @@ def test_slow_gate(script, env_var, default):
 
 
 def test_python_is_the_repo_venv():
-    """The run-mode rule (owner 2026-08-01): host scripts use .venv/bin/python."""
+    """The run-mode rule (owner 2026-08-01): host scripts use .venv/bin/python.
+
+    ⚠ THIS ONE IS NOT GUARDED, DELIBERATELY, AND IT IS THE REASON THE OTHERS CAN BE.
+    `_run` skips when the venv is absent because "the interpreter is not on this machine"
+    is not a finding about the code. That is only defensible while SOMETHING still says
+    the venv is required — otherwise a host that quietly lost its venv would go green
+    across the whole file, which is the failure mode the skip is one step away from.
+
+    It is a HOST assertion. It fails on a bare CI checkout by design, and the fix there is
+    to create the venv (this repo's own `ci.yml` does, before running anything) rather than
+    to soften the rule. A lane that cannot create one is a lane that cannot run the gate
+    scripts as specified, and should be told so once, here, instead of five times in
+    tracebacks that look like defects in the scripts.
+    """
     assert os.path.exists(PY), (
         f"{PY} is missing. Host scripts run the repo venv directly, not `uv run` "
         "(which binds to pyproject.toml and ignores inline PEP 723 blocks). "

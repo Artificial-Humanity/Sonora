@@ -26,11 +26,15 @@ Two conventions that surprise readers:
 
 _**Where the front is today** (2026-08-10): Phase 1 **rung 2** — `libritts_r_emilia_vat_v5`
 trained to `ep019` and rung 1's holdout gate **PASSED** (−0.0606, data-limited not
-capacity-limited), so the 10× proceeds. v6 (+expressive-registers, **832 rows appended** —
-1,004 eligible, less 158 duplicate-audio, less 14 over `MAX_SECONDS`) is **BUILT** as
-`libritts_r_emilia_expressive_vat_v6` (41,937 train / 1,331 val, n_spks 3,326); all three
-prerequisites closed, two in-container steps outstanding (`data_statistics`,
-`test_vat_dim_seams.py`)._
+capacity-limited), so the 10× proceeds. v6 (+expressive-registers) is **BUILT** as
+`libritts_r_emilia_expressive_vat_v6` (41,937 train / 1,331 val, n_spks 3,326): the append
+set is **832 rows staged, 826 appended rows** — 1,004 eligible, less 158 duplicate-audio,
+less 14 over `MAX_SECONDS`, less the six rows D-M3 dropped for carrying digits at merge
+time. ⚠ **Staged and kept are two numbers.** Until 2026-08-11 this cell gave the staged one
+under the kept one's name, beside the totals that refute it (41,937 + 1,331 − 42,442 = 826)
+— and the gate could not see it, because it checked the number the two READMEs agreed on
+and not the one they forked on (#50). Both are checked now. All three prerequisites closed,
+two in-container steps outstanding (`data_statistics`, `test_vat_dim_seams.py`)._
 
 _Answering a specific question? **"What are we training on"** → `training-sources.md`.
 **"May we use this dataset"** → `dataset-landscape.md`. **"How do I launch a run"** →

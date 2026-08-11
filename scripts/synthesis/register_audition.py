@@ -30,6 +30,7 @@ Run:
   .venv/bin/python scripts/synthesis/register_audition.py --audio-dir <out_dir> [--dry-run]
 """
 import argparse
+import ast
 import csv
 import json
 import os
@@ -55,9 +56,73 @@ RATINGS_CSV = RATINGS_DIR / "ratings.csv"
 BOOK_PROSE_ROOT = Path(os.environ.get(
     "BOOK_PROSE_ROOT", str(DATA_ROOT / "book-prose"))).resolve()
 
-# Fallback header if ratings.csv doesn't exist yet (matches app's CSV_FIELDS).
-DEFAULT_FIELDS = ["campaign", "id", "engine", "register",
-                  "gender", "score", "note", "status", "link"]
+APP_MAIN = Path(__file__).resolve().parents[2] / "audition" / "app" / "main.py"
+
+
+def _app_csv_fields():
+    """The audition app's `CSV_FIELDS`, READ from the app rather than restated here.
+
+    This is the header written when `ratings.csv` does not exist yet, so it decides the
+    schema of a brand-new sheet — and it was a second literal that had drifted (issue #41).
+    It said nine columns against the app's twelve: `age`, `accent` and `delivery` were
+    missing, and since `_build_row` ends `{k: full.get(k, "") for k in fields}`, the lane
+    this script goes to the trouble of validating with `check_assignable` was computed,
+    accepted, and then silently dropped on the way to disk. The app's `_header_for` re-adds
+    the column on the auditor's first save, but every row registered before that save has
+    already lost its pre-filled value — and the pre-fill is the whole point of the
+    verify-don't-enter standard the column exists for.
+
+    Read as a PARSE TREE rather than imported: `audition/app/main.py` imports fastapi and
+    pydantic, which the synthesis venv has no reason to carry, and `ast.literal_eval` of
+    one assignment needs neither. Read from the app rather than mirrored INTO it because
+    ratings.csv is the app's file — the app rewrites it whole on every save — so the app
+    owns its schema and this script is a secondary writer.
+
+    RAISES rather than falling back to a literal, for the reason
+    `audition/app/main.py:_load_delivery_contract` gives about the delivery vocabulary: a
+    fallback copy of a schema is the exact defect this function exists to delete, and a
+    loud failure naming the file beats a fresh sheet that silently loses three columns of
+    ear metadata. Code executes from the repo checkout, where this file is tracked.
+    """
+    try:
+        tree = ast.parse(APP_MAIN.read_text(encoding="utf-8"))
+    except OSError as e:
+        raise RuntimeError(
+            f"cannot read the audition app's ratings schema from {APP_MAIN}: {e}. "
+            "This script does not carry its own copy of the header on purpose (issue "
+            "#41: the copy drifted three columns behind and silently dropped the "
+            "delivery lane from every new sheet). Run from the repo checkout."
+        ) from e
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == "CSV_FIELDS" for t in node.targets):
+            # THE THIRD FAILURE MODE, AND THE LIKELIEST ONE. This function names the file
+            # when it cannot be read and names the symbol when the assignment is gone, then
+            # left `literal_eval` to raise unattributed on the edit most likely to actually
+            # happen: `CSV_FIELDS` ceasing to be a literal. The schema is growing, so
+            # `BASE + [...]` or `tuple(...)` is the natural next spelling, and it surfaces
+            # as `ValueError: malformed node or string on line 1: <ast.Name object ...>`
+            # at IMPORT of a synthesis script, naming neither this reader nor the app.
+            try:
+                return list(ast.literal_eval(node.value))
+            except (ValueError, SyntaxError) as e:
+                raise RuntimeError(
+                    f"{APP_MAIN}'s `CSV_FIELDS` is no longer a plain literal, so this "
+                    f"reader cannot evaluate it without executing the app ({e}). The "
+                    f"schema is READ from the app on purpose — a second spelling of the "
+                    f"columns here is the fork this guard exists to prevent (issue #41) — "
+                    f"so keep the assignment a literal, or teach this reader the new "
+                    f"form deliberately. Do not restate the columns."
+                ) from e
+    raise RuntimeError(
+        f"{APP_MAIN} has no module-level `CSV_FIELDS` assignment — the ratings schema "
+        "moved or was renamed. Point this reader at its new home rather than restating "
+        "the columns here.")
+
+
+# Header for a ratings.csv that does not exist yet. IS the app's CSV_FIELDS, not a
+# second spelling of it.
+DEFAULT_FIELDS = _app_csv_fields()
 
 
 def _read_header_and_ids():
@@ -119,6 +184,19 @@ def _predicted_gender(rec) -> str:
     return ""
 
 
+class RetiredLane(ValueError):
+    """The refusal `_assignable_delivery` raises, and the ONLY thing the dry-run counts.
+
+    A ValueError subclass on purpose: the write path re-raises it and `check_assignable`'s
+    contract is a ValueError, so every existing caller and test reads it unchanged. What it
+    buys is the narrowing at the catch site — `_build_row` also calls `os.path.relpath` and
+    `_predicted_gender`, and a bare `except ValueError` swallowed anything either of them
+    raised, counted it as `retired`, and reported "N clip(s) carry a delivery lane that may
+    no longer be assigned". A precise, confident, wrong diagnosis, with the real error text
+    surviving only in the `! {e}` line above it.
+    """
+
+
 def _assignable_delivery(rec, book_slug: str) -> str:
     """The record's intended lane, REFUSED here if it may no longer be assigned.
 
@@ -132,13 +210,21 @@ def _assignable_delivery(rec, book_slug: str) -> str:
 
     Raising rather than blanking, for the reason `check_assignable` gives: a retired lane
     means the METADATA SOURCE is stale — rebuild the bank, do not reassign the lane at the
-    queue. Nothing is written when it raises, because `append_guarded` runs only after
-    every row of every target has been built.
+    queue.
+
+    NOTHING IS APPENDED TO ratings.csv when it raises — `append_guarded` runs only after
+    every row of every target has been built — but that is a claim about the SHEET, not
+    about the run (issue #43): with `--qc`, `qc_flags.txt` is written earlier in `main()`
+    and will already exist. That write is append-deduped, so a re-run is safe.
+
+    Under `--dry-run` this is not raised at all. `register_audio_dir` collects the
+    refusals instead and reports every one of them, because a read-only survey that dies
+    on the first stale clip is a survey that never happened — see `main()`.
     """
     try:
         return check_assignable(rec.get("intended_delivery", ""))
     except ValueError as e:
-        raise ValueError(
+        raise RetiredLane(
             f"{rec.get('id') or '<no id>'} ({book_slug}): {e} The lane came from the "
             f"bank builder's own lane table, so rebuild the bank rather than editing "
             f"the queued row."
@@ -368,10 +454,28 @@ def _qc_triage(qc_path):
 
 
 def register_audio_dir(audio: Path, slug: str, existing_ids, fields, dry_run: bool,
-                       qc=None):
-    """Return list of new row-dicts for one manifests dir; reports skips/missing."""
+                       qc=None, refusals=None):
+    """Return list of new row-dicts for one manifests dir; reports skips/missing.
+
+    `refusals`, when a list is passed, collects one message per record whose delivery lane
+    may no longer be assigned INSTEAD of letting the refusal propagate. That is the
+    `--dry-run` mode (issue #43): the refusal used to be raised out of `_build_row`, which
+    runs for every target before `main()` reaches its dry-run branch, so the operator's
+    read-only "what would be added" path died with an unhandled ValueError naming ONE
+    clip. Measured against the closed `delivery-v1-narration-r2` round: 50 Documentary
+    records across five engine manifests, and the survey reported none of the other 152
+    records — not the offenders, and not the clips that ARE registerable. Every other
+    per-record failure here (no id, missing wav, outside DATA_ROOT) skips, counts and
+    continues to a summary; a stale lane was the only one that aborted, so an operator
+    with N of them discovered them one rebuild-and-re-run at a time. Under `--all`, one
+    stale book blocked registration for every other book in BOOK_PROSE_ROOT.
+
+    The WRITE path passes no list and still raises on the first, because there the refusal
+    is meant to cost the run: a partial registration of a stale bank is the outcome the
+    guard exists to prevent, and `--dry-run` is now how you get the whole picture first.
+    """
     new_rows, seen = [], set(existing_ids)
-    added = skipped = missing = outside = qc_noted = 0
+    added = skipped = missing = outside = qc_noted = retired = 0
     for rec, wav in _manifest_rows(audio):
         cid = rec.get("id", "")
         if not cid:
@@ -392,7 +496,21 @@ def register_audio_dir(audio: Path, slug: str, existing_ids, fields, dry_run: bo
                   file=sys.stderr)
             outside += 1
             continue
-        row = _build_row(rec, wav, slug, fields)
+        try:
+            row = _build_row(rec, wav, slug, fields)
+        except RetiredLane as e:
+            # NARROW, not `except ValueError`. `_build_row` also calls `os.path.relpath`
+            # and `_predicted_gender`; a surplus ValueError from either was counted as
+            # `retired` and reported as a stale delivery lane, which sends an operator to
+            # rebuild a bank over an error that had nothing to do with delivery. Two
+            # different failures must not be reported as one — the same distinction
+            # `qc_verdict` draws between `is False` and `is None`.
+            if refusals is None:      # the write path: refuse on the first, cost the run
+                raise
+            print(f"  ! {e}", file=sys.stderr)
+            refusals.append(str(e))
+            retired += 1
+            continue
         if qc and cid in qc:
             # Note only — status stays `unaudited`. The finding guides the ear; it
             # never decides for it (owner rule, see _qc_triage).
@@ -405,6 +523,7 @@ def register_audio_dir(audio: Path, slug: str, existing_ids, fields, dry_run: bo
     verb = "would add" if dry_run else "queued"
     extra = "".join([f", {missing} missing-wav" if missing else "",
                      f", {outside} outside-data-root" if outside else "",
+                     f", {retired} carrying a RETIRED delivery lane" if retired else "",
                      f", {qc_noted} carrying a QC finding" if qc_noted else ""])
     print(f"  {slug}: {verb} {added} for the ear ({gendered} gender-prefilled), "
           f"skipped {skipped} (already present){extra}")
@@ -476,13 +595,30 @@ def main():
     print(f"ratings.csv: {RATINGS_CSV} ({len(existing_ids)} existing ids, "
           f"{len(fields)}-col header)")
 
+    # A DRY RUN SURVEYS; IT DOES NOT ABORT (issue #43). The list is passed only under
+    # --dry-run, and that is the whole switch: with it, a stale delivery lane skips the
+    # record and is collected; without it, `register_audio_dir` re-raises on the first and
+    # the run costs nothing but itself.
     all_new = []
+    refusals = [] if args.dry_run else None
     for audio, slug in targets:
         if not audio.is_dir():
             print(f"  ! {audio} is not a dir; skipped", file=sys.stderr)
             continue
         all_new += register_audio_dir(audio, slug, existing_ids, fields, args.dry_run,
-                                      qc=qc_map)
+                                      qc=qc_map, refusals=refusals)
+
+    if refusals:
+        # Reported in full, and BEFORE the "nothing to add" exit, because a survey that
+        # found only stale clips is the most informative outcome this path has.
+        print(f"\n[dry-run] {len(refusals)} clip(s) carry a delivery lane that may no "
+              f"longer be assigned:", file=sys.stderr)
+        for msg in refusals:
+            print(f"  - {msg}", file=sys.stderr)
+        print("Rebuild the bank(s) — the lane came from the bank builder's lane table, "
+              "not from the queue. Nothing was written.", file=sys.stderr)
+        print(f"[dry-run] {len(all_new)} other row(s) would be appended to ratings.csv")
+        sys.exit(1)
 
     if not all_new:
         print("nothing to add.")

@@ -1,0 +1,110 @@
+name: CI — tests
+
+# WHY THIS EXISTS (2026-08-11, owner decision on issue #49)
+#
+# There was NO workflow that ran the suite. `.github/` held only `claude-review.yml` (and,
+# until #59 retired it, `claude-fix.yml`), and the only mention of pytest in either was
+# inside the agent's `--allowedTools` — a permission to run tests, not a job that runs
+# them. So ~500
+# host-independent tests, including every regex in the doc-claims registry, were guarded by
+# nothing but whoever remembered to type `pytest` before pushing. The registry's own history
+# is the argument: a hole in it was found by hand, fixed, and the probe that found it was
+# never committed, so re-opening it would have been silent on every machine.
+#
+# This job is the floor. It is not a substitute for ai-lab-0 — see the two exclusions below.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A PR that is pushed three times should be tested once. `main` is PR-only under branch
+# protection, so the push trigger fires on merge and is worth keeping un-cancelled per SHA.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # uv, not pip and not `python -m venv` — the repo standardised on it (owner,
+      # 2026-08-01) and `tests/test_gate_scripts.py::test_no_uv_run_in_*` polices only the
+      # `uv run` INVOCATION style, which stays retired. Creating and populating the venv is
+      # exactly what uv is still for.
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # ⚠ THE VENV PATH IS LOAD-BEARING, NOT A PREFERENCE. Five tests fail on a tree with no
+      # `.venv` for no reason but its absence: `test_python_is_the_repo_venv` asserts it
+      # directly, and every gate in `tests/test_gate_scripts.py` runs its script as a
+      # subprocess of `.venv/bin/python`, so a missing interpreter is a FileNotFoundError
+      # rather than a skip. A CI job that installed into the system Python would have gone
+      # red for a reason that has nothing to do with the change under review, which is how a
+      # check gets ignored and then removed.
+      - name: Create the repo venv
+        run: uv venv --python 3.11 .venv
+
+      # ⚠ TORCH IS DELIBERATELY ABSENT — ~2 GB of wheel for the handful of tests that
+      # `pytest.importorskip` past without it. It also keeps CI's shape equal to the HOST
+      # venv's, which carries no torch either, so a green run here means the same thing a
+      # developer's `make test` means instead of exercising a different set of tests from
+      # everyone who will read the result. (The retired `claude-fix.yml` made the same call
+      # with a shorter list — no `fastapi`, no `pysbd` — which is why it reported one
+      # failure it could not explain.)
+      #
+      # THE LIST IS EXPLICIT AND NOT `-e '.[dev]'` ON PURPOSE: installing the project pulls
+      # `install_requires`, torch included, and builds matcha's Cython extension. So the
+      # `dev` extra's constraints do NOT reach this job at all — which is also why the
+      # `pytest>=9.1` floor is written below rather than left in that extra.
+      #
+      # ⚠ THIS STEP HAS A SUCCESSOR, so do not entrench it. The reasoning above is about the
+      # `dev` EXTRA; a PEP 735 dependency GROUP is a different mechanism — `uv pip install
+      # --group test` resolves without a project install, so no `install_requires` and no
+      # Cython build. #65 adds `[dependency-groups] test` carrying this same floor. Once it
+      # lands, replace this whole step with `--group test`: a floor declared somewhere the
+      # runner does not install from is not enforced, and this list and that group are two
+      # statements of one fact that nothing checks for agreement.
+      #
+      # This is the non-torch import set of `tests/` and of the gate scripts they drive,
+      # derived by running the suite in a clean 3.11 venv and adding only what actually
+      # raised.
+      #   pytest>=9.1 the runner. THE FLOOR IS LOAD-BEARING, not hygiene: 9.1 narrowed
+      #               `importorskip`'s exception envelope, and an older resolution restores
+      #               the wide one — which silently turns the retirement guards in
+      #               tests/test_engine_allocation.py into skips. ⚠ This is the ONLY copy
+      #               of the floor on `main` until #65's `test` group lands; the `dev`
+      #               extra deliberately does not carry it, because nothing installs from
+      #               `dev` to run this suite.
+      #   fastapi     the `dev` extra — tests/ drives audition/app/main.py
+      #   numpy scipy librosa soundfile   scripts/ + matcha/ module-scope imports
+      #   pyyaml unidecode inflect        ditto
+      #   pysbd       scripts/synthesis' sentence splitter, reached from tests/
+      - name: Install the non-torch test dependencies
+        run: |
+          uv pip install --python .venv/bin/python \
+            'pytest>=9.1' fastapi numpy scipy librosa soundfile pyyaml unidecode inflect \
+            pysbd
+
+      # ⚠ DATA-GATED TESTS WILL SKIP HERE AND THAT IS THE DESIGN. `/data` is ai-lab-0's
+      # mount and `data/` is untracked (`.gitignore`), so the corpus artifacts do not exist
+      # on a runner. `test_data_gated_gate` skips when none of its prerequisites is present
+      # — "the corpus is not on this machine" is not a finding. ⚠ Note what that means for
+      # the gate script itself: `pyproject.toml`'s `testpaths = "tests/"` does not collect
+      # `scripts/test_doc_claims.py`, and the one test that would run it as a subprocess
+      # skips here, so ITS per-fact skip machinery never executes in this job. Do not read
+      # a green run as having exercised it. What this job guards is the
+      # ~500 host-independent tests, including `tests/test_doc_claims_registry.py`, which is
+      # the entire doc-claims REGISTRY exercised in both directions with no artifacts at all.
+      #
+      # -rs prints the skip reasons: a job whose coverage quietly shrinks is worse than none.
+      - name: Run the suite
+        run: .venv/bin/python -m pytest -q -rs
