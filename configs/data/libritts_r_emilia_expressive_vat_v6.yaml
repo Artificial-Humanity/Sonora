@@ -49,13 +49,30 @@
 # the Emilia half's 53.6%. Read that before the holdout number, not after — the v5 config
 # writes down the failure signature to watch for, and this rung does not carry it.
 #
-# DELIVERY: Dialogue 344 · Neutral 328 · Newscaster 76 · Speech 68 · blank 10.
+# DELIVERY: Dialogue 344 · Neutral 328 · Newscaster 76 · Speech 68 · blank 10 — the **826
+# rows this config LOADS**, not the 832 staged.
+#
+# ⚠ THREE POPULATIONS SHARE THE PHRASE "THIS APPEND SET" AND THEY DIFFER BY THE SIX D-M3
+# DROPS. Every number below names its own: 154 = the whole rated bank in `ratings.csv`;
+# 832 = staged, labelled and decided; 826 = built, which is what trains.
+#
 # `Documentary` was RETIRED into Neutral (owner, 2026-08-10) — **154 rows in `ratings.csv`,
-# all 154 reassigned to Neutral**, of which 82 were in this append set. All were synthetic,
-# so the lane was a property of the brief rather than of any audio. ⚠ Corrected 2026-08-11:
-# this read "its 82 rows split bimodally toward Neutral and Newscaster". Nothing split —
-# the lane table above is the proof, Newscaster is 76 on BOTH sides of the retirement while
-# Neutral goes 251 → 328 (333 less the five it lost to digits).
+# all 154 reassigned to Neutral**. **82 of those 154 were in the 832-row staged set, and 78
+# of the 82 reached the 826 rows here** — four of the six digit drops are
+# Documentary-origin (`voyage-of-the-beagle_r2_0023_ZON`, `_0025_ZON`, `_0041_ORP`,
+# `_0042_ORP`). Counted 2026-08-11 against `ratings.csv.bak-20260810-documentary-retire`,
+# the pre-retirement snapshot, which is the only record of which side a row came from:
+# `labels_v6.jsonl` carries the POST-retirement lane, so after the merge every one of them
+# reads `Neutral` and the origin is not recoverable from the corpus alone. This comment
+# asserted 82 — a count over the staged 832 — as a property of the 826 rows loaded here
+# (#53), and the residual was stated nowhere.
+#
+# All were synthetic, so the lane was a property of the brief rather than of any audio.
+# ⚠ Corrected 2026-08-11: this read "its 82 rows split bimodally toward Neutral and
+# Newscaster". Nothing split — the lane table above is the proof, Newscaster is 76 on BOTH
+# sides of the retirement while Neutral goes 251 → 328: 251 + 82 = 333, less the five
+# Neutral-lane rows lost to digits (the four ex-Documentary above and one that was always
+# Neutral, `wuthering-heights_nar_0030_neu_CHA`). The sixth drop is the Speech row, 69 → 68.
 #
 # The lane stays in `DELIVERY_LANES`
 # because channel position is the wire format; `RETIRED_LANES` + `check_assignable()` are
