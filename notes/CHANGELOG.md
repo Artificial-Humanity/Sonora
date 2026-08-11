@@ -19,50 +19,6 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-11
 
-### Fixed — the review lane's first real run found seven defects in the fix lane, one HIGH
-
-The first review to actually execute under the new prompt (PR #60, 7m55s, 7 inline comments
-plus a summary, `janis-reviewed` marker written) reviewed the tooling that had just been
-built to answer it. All seven findings were real; the two that mattered:
-
-**HIGH — `set -euo pipefail` plus a non-matching `grep` killed the run, after the checkout.**
-`BASELINE_SUMMARY="$(grep … | tail -1)"` exits 1 when nothing matches: `pipefail` propagates
-it through the pipe, and **the exit status of a plain assignment is the status of its command
-substitution**, so `set -e` aborted the script — with the fallback on the very next line
-unreachable in exactly the case it was written for. Worse, this fired *after*
-`gh pr checkout`, so it left the operator's working branch reassigned. Reproduced before
-fixing; now `|| true` on both the grep and the fallback, with a third literal default.
-
-**MED-HIGH — the baseline laundered the PR's own regressions.** It is measured on the PR
-branch, which already contains the PR's changes, and the prompt then told the agent these
-failures "already existed", were "not yours", and must not be reported. A regression the PR
-itself introduced was therefore handed over as someone else's problem. The prompt now states
-plainly that a baseline failure may be pre-existing **or** PR-caused, that it cannot tell
-which, and how to find out (`git worktree` at the merge base).
-
-Also: the prompt no longer asserts a **host-specific diagnosis as universal** — it passes the
-failing test IDs instead of the claim "these are missing DATA artifacts", which is true on
-ai-lab-0 and false on the CI runner, where the same six are absent `pysbd`/`fastapi` and no
-`.venv`; the baseline block is no longer emitted under `--no-tests` (it claimed a measurement
-that never ran, pointing at a file that was never created); `eval "$TEST_CMD"` became an
-argv **array**, since the interpreter path is operator input and a space in it silently became
-a different command; and `--help` plus the protocol file no longer describe behaviour the
-last change removed (`--dry-run` printing the prompt, `logs/fix_pr/` as a fixed location).
-
-### Fixed — `pysbd` was missing from the `dev` extra, and `logs/` is not writable
-
-**`pysbd` is a test dependency** — `tests/test_acquisition_lane.py` drives the dialogue
-chunker and three tests FAIL without it, rather than skipping. It was absent from
-pyproject's `dev` extra, which is supposed to be the answer to "what do I install to run the
-suite". Found by building a venv from that extra and getting a red suite.
-
-⚠ **AGENTS.md §2 documented `logs/` as where local run artifacts land, and on ai-lab-0 it is
-root-owned** (`drwxr-sr-x root datashare`, container-created 2026-07-14): group `datashare`
-has `r-x` only, so no non-root process can write there — **including `ai-mgr`, which the
-containers run as**. The directory is empty, so nothing ever used it. Documented rather than
-fixed; correcting the ownership needs root.
-
-
 ### Documented — a workflow-editing PR is never reviewed, and the check still goes green
 
 ⚠ **`claude-code-action` validates that the workflow file is byte-identical to the version
