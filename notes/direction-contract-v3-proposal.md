@@ -253,12 +253,27 @@ channels are named, instrument-measured and independently verifiable is what mak
 frame is A in?" answerable per channel instead of per corpus generation. The single
 squashed A is what allows three frames to hide inside one number.
 
-### RESOLVED 2026-08-11 — the table has been read
+### 2026-08-11 — the table has been read. The centring is confirmed; the frame question is NOT
+
+⚠ **This section was headed "RESOLVED" until the numbers were re-derived on 2026-08-11.** Two
+different questions were being answered as one. *Does per-campaign centring eat real lane
+structure?* — **yes, read and confirmed below.** *Do the three frames disagree about what
+`A = 0` means?* — **still open**, and the evidence once cited as falsifying it measures a
+different quantity (§ "What A *means* at inference"). v6 still ships as built; the reason is
+cost, not resolution.
 
 The `bb76085` diagnostic ran when v6 was built, but its output is stdout-only and was lost
 when an OOM crash-loop killed the terminal. It was reconstructed read-only from
-`expressive_registers_measures/labels_v6.jsonl`, measured on LUFS rather than on A so
-`clamp2` pinning is not credited to the centring.
+`/data/model-training/sonora/expressive_registers_measures/labels_v6.jsonl`, measured on LUFS
+rather than on A so `clamp2` pinning is not credited to the centring.
+
+📐 **Every number in this section regenerates from
+`scripts/derive_a_channel_stats.py`** (read-only; `.venv/bin/python
+scripts/derive_a_channel_stats.py`). Writing the numbers into a note is not the same as
+committing the derivation, and the first version of this section did only the former — so
+the next challenge to any of them would have cost what the first recovery cost. The script
+is the method, written down; it is not a gate and asserts nothing, because its inputs live
+under `/data` and a clean checkout does not have them.
 
 **The concern was real and is confirmed.** Per-campaign centring removes **94.3%** of the
 between-lane loudness structure:
@@ -270,18 +285,42 @@ between-lane loudness structure:
 | between-lane structure surviving | **5.7%** |
 
 The mechanism is that **campaign is a near-perfect proxy for lane**: 13 of the 20 campaigns
-with n ≥ 10 are ≥90% one delivery lane, and two lanes are *entirely* one campaign —
-`newscaster-v1` is 100% of Newscaster (76 rows), `book-librivox-speech-v1` is 100% of Speech.
-Centring per campaign therefore subtracts each lane's own mean by construction. Newscaster's
-A is consequently a **constant**: mean −0.0000, sd **0.0094**, range [−0.040, +0.052]. Two
-causes worth keeping apart — the *between*-lane offset was removed by the centring, but the
-*within*-lane variance was never there, because `newscaster-v1`'s native LUFS sd is 0.035 dB.
-The whole campaign was rendered to one loudness target, and A is loudness-derived.
+with n ≥ 10 are ≥90% one delivery lane, and **one** lane/campaign pair is one-to-one in both
+directions — `newscaster-v1` is 100% of Newscaster *and* Newscaster is 100% of
+`newscaster-v1`, 76 rows either way. Centring per campaign therefore subtracts that lane's
+own mean by construction. Newscaster's A is consequently a **constant**: mean −0.0000, sd
+**0.0094**, range [−0.040, +0.052]. Two causes worth keeping apart — the *between*-lane
+offset was removed by the centring, but the *within*-lane variance was never there, because
+`newscaster-v1`'s native LUFS sd is 0.035 dB. The whole campaign was rendered to one
+loudness target, and A is loudness-derived.
 
-**Four centres, not three.** `MIN_CAMPAIGN_N = 10` sends 25 rows across 8 campaigns to the
-bank-wide offset instead, so `labels_v6.jsonl` carries 21 distinct offsets. And the campaign
-supplies only the **centre** — the global anchor still supplies the **scale**, deliberately
-un-rescaled. §3b's table above is therefore conservative on both counts.
+⚠ **Only Newscaster, and this note said "two lanes" until 2026-08-11.** Speech is the near
+miss and the direction of the miss matters: `book-librivox-speech-v1` is 100% *Speech*, but
+Speech is **not** 100% *that campaign* — it draws 61 of its 69 rows from it (**88.4%**), plus
+`stress-v2` 7 and `delivery-v1-narration` 1. A proxy claim has two directions and only one of
+them was checked. The 94.3% figure above is unaffected — it is measured on lane means, not on
+this crosstab — but the mechanism is one clean case and a set of strong tendencies, not two
+clean cases.
+
+**Two refinements to the table above, and they point in opposite directions.**
+
+1. **Four centres, not three — the table understates the fragmentation.**
+   `MIN_CAMPAIGN_N = 10` sends 25 rows across 8 campaigns to the bank-wide offset instead of
+   their own, so `labels_v6.jsonl` carries **21 distinct offsets** (20 campaign offsets + 1
+   bank offset over 28 campaigns). More frames than three are in play. The table is
+   conservative here.
+
+2. **The campaign supplies only the *centre* — and that makes the divergence smaller, not
+   larger.** The global anchor still supplies the **scale**, deliberately un-rescaled. §3b's
+   table says the append rows are "z-scored against the mean of the rendering campaign",
+   which reads as the campaign supplying the whole reference; it does not. The append rows
+   and the Emilia rows therefore **share a frame component**, so the two frames diverge
+   *less* than the table implies. This is a **clarification, not a widening**, and the
+   earlier claim that the table was "conservative on both counts" was wrong on this one.
+
+What survives is narrower and stranger than "more frames": the append rows sit in a frame
+that is **not one of the three listed at all** — a centre from the campaign, a scale from the
+anchor. The table undercounts the *mixing* while overstating the *distance*.
 
 ### What A *means* at inference
 
@@ -292,13 +331,97 @@ population?"*, and none of them ever meant absolute dB. So the Director supplyin
 absolute A is not incoherent: it requests a **relative displacement**, which the trunk applies
 against whatever reference the speaker embedding and delivery one-hot place the clip in.
 
-**That is measured, not argued.** Probing `vat6_ep010` — 90 renders, 2 texts × 5 lanes ×
-A ∈ {−1, 0, +1} × 3 repeats, true LUFS, pooled within-cell noise floor 0.554 dB — the A dial
-moves output loudness **+4.68 dB for Newscaster**, the lane whose training A is a constant,
-against +4.40 to +5.58 dB for every other lane. **The lane whose A carried no variance still
-obeys the dial**, because A's meaning is carried by the ~42,000 rows that do vary; the 832
-append rows do not have to re-teach it. That is why the frames can coexist today, and it is
-the falsification of the feared consequence.
+**Part of that is measured. The load-bearing part is not, and this section claimed otherwise
+until 2026-08-11.** The probe establishes **dial gain — a slope — and nothing else.**
+
+#### Why an ep010 probe is quoted for ep008's dial
+
+`ep008` is the selected checkpoint (`logs/train/vat6_finetune/SELECTED.md`, owner
+2026-08-11); the probe was rendered on **`ep010`**, two epochs later, before the selection was
+made. The gap is not nothing and is stated rather than smoothed over: on the holdout the two
+differ by 0.0098 on `total` and by 0.0012 on `diff`, and ep010 is the run's **best** `diff`
+checkpoint while ep008 is its best `total`. Neither term is loudness. Nothing in the run
+touched the A pathway between the two — `loss/val_epoch` was a flat basin from epoch 0 and
+both curves had flattened by ep6 — so the dial gain measured at ep010 is taken to describe
+ep008's, and that is an **inference from run flatness, not a measurement of ep008**. Re-running
+the probe on ep008 is cheap (90 renders, no training) and is the honest way to close it.
+
+#### What the probe measured: SLOPE
+
+90 renders, 2 texts × 5 lanes × A ∈ {−1, 0, +1} × 3 repeats, true LUFS. Moving A from −1 to
++1, output loudness moves:
+
+| lane | Δ LUFS | 95% CI |
+|---|---|---|
+| Dialogue | +4.96 | [+3.99, +5.94] |
+| **Newscaster** | **+4.68** | **[+3.71, +5.65]** |
+| Neutral | +4.41 | [+3.44, +5.39] |
+| Speech | +5.58 | [+4.61, +6.55] |
+| `unknown` | +4.40 | [+3.43, +5.37] |
+
+**The lane whose training A carried no variance still obeys the dial**, and its interval
+excludes zero comfortably. A's meaning is carried by the ~42,000 v5 rows that do vary; the 832
+append rows do not have to re-teach it. That much stands.
+
+⚠ **The noise floor was misreported.** This section quoted "pooled within-cell noise floor
+**0.554 dB**". That number is **not pooled** — it is the *mean of the 30 per-cell population
+sds* (ddof = 0, n = 3), which is biased low twice. The pooled within-cell sd over the same 30
+(text, lane, A) cells is **0.7616 dB** (ddof = 1, df = 60). Comparisons *between* cell means
+need the (lane, A) pooling instead — 15 cells of 6, **0.8457 dB**, df = 75 — giving
+**se = 0.4883 dB** for a difference of two 6-render means. Every CI above uses that se.
+
+The correction does **not** rescue the "every lane obeys the dial equally" reading, and it
+does not condemn it either. The 1.18 dB spread between the fastest lane (Speech +5.58) and
+the slowest (`unknown` +4.40) is a difference of two *slopes*, i.e. of four cell means, whose
+se is **0.6905 dB** — so the spread is **1.71 se, p ≈ 0.09**. Not distinguishable from noise
+at this n, and not excluded either. (Comparing that 1.18 against a *per-render* sd, as an
+earlier reading of this table did, is the wrong denominator: it asks whether the spread
+exceeds single-render noise, when the quantities being differenced are six-render means.) The
+supportable claim is **"nonzero gain in every lane"**. "Equal gain" is not established.
+
+#### What the probe did NOT measure: INTERCEPT — and the data leans the other way
+
+The three-frames concern is about **intercept**: whether `A = 0` denotes the same absolute
+loudness in two lanes trained under different reference frames. A slope measured *inside* a
+lane cannot answer that. The `A = 0` cells the probe already holds say this.
+
+**And the lane axis happens to be close to the frame axis, which is what makes the comparison
+worth reading at all.** The named lanes live almost entirely in the 832-row append set — the
+campaign-centred frame. `unknown` is LibriTTS-R and Emilia — per-speaker z and the global
+anchor. So "named lane vs `unknown` at `A = 0`" is, to a first approximation, "the third frame
+vs the first two". It is also precisely why the confound below bites so hard: the same split
+separates the frames *and* separates expressive-register renders from audiobook narration.
+
+| lane at A = 0 | LUFS | vs `unknown` | in se |
+|---|---|---|---|
+| `unknown` | −28.51 | — | — |
+| Speech | −30.37 | **−1.86** | 3.8 |
+| Newscaster | −30.99 | **−2.49** | 5.1 |
+| Neutral | −31.55 | **−3.04** | 6.2 |
+| Dialogue | −32.08 | **−3.57** | 7.3 |
+
+At `A = 0` every named lane renders **1.86 to 3.57 dB quieter than `unknown`** — 3.8 to 7.3
+se, **all four the same direction** — and the named lanes differ from **each other** by
+**1.71 dB**. That is the shape of the feared intercept displacement, and it **leans against
+the previous conclusion rather than for it**.
+
+⚠ **It is not proof either, because it is confounded.** A named lane rendering quieter at
+`A = 0` is exactly what a *working* delivery block should also produce: Newscaster and
+narration genuinely are quieter deliveries than an unconditioned average. This probe cannot
+separate "the frames disagree about zero" from "the lanes really are quieter", because it has
+no term for the second. **The confound is unresolved.**
+
+**The outstanding test, stated so it can be run.** Compare rendered `A = 0` loudness per lane
+against **that lane's training-set mean loudness**, on the same clips' speakers. If the render
+tracks the training mean, the lanes are simply quieter and the frames agree; if it departs by
+lane in the direction of that lane's *frame*, the frames disagree about zero. The renders
+exist; the training means are one pass over `labels_v6.jsonl`. Until that is run, the correct
+statement is: **the dial works, and what `A = 0` means across frames is untested.**
+
+⚠ **Retracted:** this section previously called the probe "**the falsification of the feared
+consequence**", and the ship decision below rested on that. It is withdrawn. A slope
+measurement cannot falsify an intercept claim, and the intercept data that does exist points
+the wrong way for it.
 
 ### Which frame wins in v7: a declared `loudness_target`, not `campaign` and not the anchor
 
@@ -315,27 +438,111 @@ offset into a corpus-wide one; it does not make A a measurement.
 
 **So v7 replaces `campaign` with a declared `loudness_target` / recording-chain id** — the
 same arithmetic, keyed on something with acoustic meaning rather than on which batch a clip
-happened to be in. The bank has three known targets (−23.0, −20.4, and −26.3..−27.1), and
-they are a property of how a clip was produced, which is precisely the thing `campaign` was
-standing in for. This keeps the anchor as the *scale* while giving the *centre* a declared,
+happened to be in. This keeps the anchor as the *scale* while giving the *centre* a declared,
 inference-supplyable meaning.
 
-**What it costs.** A-only relabelling of ~41,138 v5 rows plus 832 append rows — arithmetic on
-stored LUFS, not a re-measure. But it re-rolls every A, which breaks the rung-over-rung
-holdout comparison the merge discipline protects (`merge_expressive_registers.py:12` keeps v5
-rows byte-identical for exactly this reason). **It therefore belongs at a version bump with
-its own before/after, never as a patch.** The 104 rows with recoverable pre-loudnorm LUFS
-(`v1/audio/loudnorm.jsonl`) are the only slice where real performance loudness could be
-restored; backfilling that sidecar bank-wide is the one change that would make A on the
-append set a measurement rather than a convention.
+#### The chain set, derived rather than enumerated
 
-### v6 ships as built
+`label_expressive_registers.py:44` says the bank holds "**at least THREE** loudness targets"
+and lists −23.0, −20.4 and −26.3..−27.1. That hedge is deliberate and this section closed it
+to "three known targets" until 2026-08-11. **The hedge was right and the data is blunter than
+either reading**: measured on `lufs_native` over all 832 rows,
 
-Owner call, 2026-08-11. Nothing above is a v6 defect: the ep010 probe says the dial works,
-`ep008` is already the selected checkpoint, and re-cutting now would re-roll every A and cost
-the rung-2 comparison for no measured gain. The pre-commitment to re-cut was conditioned on
-the centring eating real lane structure, which it does — but it was aimed at a consequence
-that has since been measured and falsified.
+| candidate | rows within 0.05 dB | verdict |
+|---|---|---|
+| **−23.0 LUFS** | **625 / 832 (75.1%)** | a real declared target — loudnorm |
+| −20.4 LUFS | **2 / 832 (0.2%)** | **not a target.** Two rows is a coincidence |
+| −26.3..−27.1 | 28 inside the literal band | **not a target** — a *range*, and the campaigns behind it (`book-librivox-*`) are simply un-normalised: sd 0.8–1.6 dB, and 0–3.3% of their rows sit at their own median |
+
+**147 of 832 rows (17.7%) fall outside all three** even when the third is generously widened
+by ±0.5 dB — 177 (21.3%) on the literal band. Cutting the same question per campaign, using
+the modal test (*does most of the campaign sit on one value?*) rather than dispersion, the
+28 campaigns split cleanly with nothing between 33% and 73%:
+
+- **16 campaigns / 682 rows (82.0%)** — normalised to **−23.0 LUFS**
+- **10 campaigns / 148 rows (17.8%)** — **un-normalised**; their LUFS is a *measurement*
+- 2 campaigns / 2 rows — n = 1, undecidable
+
+(The 147 and the 148 are two different cuts that land one row apart, not a typo: the first is
+row-level against the three named values, the second is campaign-level against each
+campaign's own mode.)
+
+**So the bank has ONE loudness target, not three** — and roughly a sixth of it has no target
+at all. That changes the v7 design rather than merely restating it:
+
+1. **`loudness_target` must be nullable, and "un-normalised" must be a first-class declared
+   value**, not a nearest-target rounding. Forcing the 148 un-normalised rows onto −23.0 or
+   onto a fictional −26.7 reintroduces exactly the defect the key exists to remove: a
+   convention wearing the costume of a measurement.
+2. **For the un-normalised rows the honest centre is the anchor itself**, because their LUFS
+   *is* real performance loudness — which is the one slice where A can carry signal today.
+3. The cardinality worry that motivated the check resolves in the safe direction: the set is
+   **smaller** than three, not larger, so the key is cheap to declare. The expensive part was
+   never the count — it was assuming every row has a target.
+
+**What it costs.** A-only relabelling of **~42,442 v5 rows (41,138 train + 1,304 val)** plus
+832 append rows — arithmetic on stored LUFS, not a re-measure. Re-rolling every A breaks the
+rung-over-rung holdout comparison the merge discipline protects
+(`merge_expressive_registers.py:12` keeps v5 rows byte-identical for exactly this reason).
+**It therefore belongs at a version bump with its own before/after, never as a patch.**
+
+⚠ **This line quoted `~41,138 v5 rows` until 2026-08-11 — that is v5's TRAIN split, not v5.**
+It under-scoped the relabel by the **1,304 val rows** and paired a train-only figure with an
+append count that is train+val, in one sentence. An A-only relabel re-rolls A on *every* row
+that has one, so **the val split is in scope** — and the val split is precisely what carries
+the rung-over-rung comparability this paragraph argues must be protected, so it is the worst
+possible split to lose track of. `notes/training-sources.md:44` carries the standing warning
+(**"ALWAYS SAY WHICH SPLIT"**) and `scripts/test_doc_claims.py` registers v5 TRAIN, VAL and
+TOTAL as three separate facts for this reason; the phrasing `~41,138 v5 rows` matched none of
+the gate's patterns, so it was a silent miss rather than a caught one.
+
+The 104 rows with recoverable pre-loudnorm LUFS (`v1/audio/loudnorm.jsonl`) are the only
+slice where real performance loudness could be restored; backfilling that sidecar bank-wide
+is the one change that would make A on the append set a measurement rather than a convention.
+Note this now has a second beneficiary: the **148 un-normalised rows** above already carry
+real performance loudness and need no sidecar at all.
+
+### v6 ships as built — a pre-commitment met and deliberately overridden
+
+**The pre-commitment, verbatim, as it stood before this section replaced it** (`66f8709`,
+§3b's closing paragraph):
+
+> **Not resolved here, deliberately.** The `bb76085` diagnostic prints per-campaign mean LUFS
+> with dominant lane and lane share, plus the per-lane sd of lane means before and after
+> centring — measured on LUFS, not on A, so `clamp2` pinning is not credited to the centring.
+> If that table shows the centring is eating real lane structure, re-cutting v6 with
+> target-clustered offsets is its own commit with its own before/after. **Read the table
+> before taking a position**; that is the same discipline the T-saturation prediction block
+> gets.
+
+**Its condition was met.** The table was read and the centring is eating real lane structure:
+94.3% of the between-lane loudness structure is gone. The trigger was a plain conditional on
+the table's contents, and the table's contents fired it.
+
+**Its consequence was not carried out. Owner call, 2026-08-11: v6 ships as built.** The
+reason is cost against evidence, not a re-reading of the trigger:
+
+- re-cutting re-rolls every A, which **destroys the rung-2 holdout comparison** the merge
+  discipline exists to protect — the ladder's one lever per rung;
+- **`ep008` is already selected and trained** (`logs/train/vat6_finetune/SELECTED.md`), so
+  the re-cut is a re-cut *and* a re-run;
+- the dial demonstrably works at inference (nonzero gain in all five lanes), so there is no
+  *measured* inference defect to buy with that cost.
+
+⚠ **This override is weaker than the version first written here, and the weakening is the
+point.** That version said the pre-commitment "was aimed at a consequence that has since been
+measured and falsified". Two things were wrong with it. The trigger was written as a
+condition on *lane structure*, not on a consequence — the re-description was doing contested
+work. And nothing was falsified: the probe measured **slope**, the concern is **intercept**,
+and the intercept data that exists (§ above) leans *against* the frames agreeing. The
+override therefore rests on **cost and the absence of a demonstrated inference defect**, not
+on the concern having been answered. **It has not been answered.**
+
+**What the override buys and what it defers.** It buys rung 2's comparability. It defers the
+intercept test, which is cheap (90 renders, no training) and belongs before v7's
+`loudness_target` re-key is designed on top of an untested premise. Recorded here so the
+declined pre-commitment is readable beside its trigger, rather than reachable only through
+git history.
 
 ---
 
