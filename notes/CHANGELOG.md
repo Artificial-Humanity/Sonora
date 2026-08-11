@@ -19,10 +19,59 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-11
 
+### Fixed — a fourth silent trap in the review lane: a workflow-editing PR is never reviewed
+
+⚠ **`claude-code-action` validates that the workflow file is byte-identical to the version
+on the default branch, and when it is not, SKIPS the review and exits
+`conclusion: success`.** Measured on PR #59 (2026-08-11): the run took **37 seconds against
+the usual 11–14 minutes**, logged `Skipping action due to workflow validation`, posted
+nothing, and showed a green check. #59 — which rewrote that very workflow — was merged
+unreviewed on the strength of that check.
+
+So **the green check means "skipped", not "clean"**, on any PR touching
+`.github/workflows/claude-review.yml`, and a fix to this lane can never be validated by the
+PR that introduces it — only by the next PR that leaves the workflow alone. Recorded in
+AGENTS.md §1 rather than as a comment in the workflow itself, because editing that file to
+document the trap would trip it again and leave the documenting PR unreviewed too.
+
+### Fixed — four defects in the new local fix lane, found by running it rather than reading it
+
+Landed in `82034ff`, all four found while exercising `scripts/fix_pr.sh` end to end:
+
+**Trust gated the wrong thing, and would have made every fix pass a silent no-op.** Measured
+against PR #22: Janis's own review comments carry **`authorAssociation: NONE`** — the
+reviewer posts as an app, which GitHub associates with nobody. The rule inherited from the
+CI prompt said an untrusted comment is never sufficient grounds for a change, which taken
+literally rejects **every finding the pass exists to address**, while still looking like it
+ran correctly. Now split explicitly: an **argument** is judged on technical merit whoever
+raised it; a **decision** still requires OWNER/MEMBER/COLLABORATOR.
+
+**The brief had nowhere to go.** `logs/` on ai-lab-0 is root-owned (`drwxr-sr-x root
+datashare`, created by a container on 2026-07-14), so **no non-root user can write into it —
+including `ai-mgr`, which the containers run as**. `mkdir` failed with a bare "Permission
+denied" and no ABORT line. The script now probes `$FIX_PR_LOG_DIR` → `logs/fix_pr` →
+`$TMPDIR`, dies if none work, and always prints which it chose. ⚠ AGENTS.md §2 still
+documents `logs/` as where local run artifacts land; on this host that is not writable.
+
+**The agent would have been handed a red suite with no baseline.** A clean checkout here runs
+**510 passed / 6 failed / 11 skipped**, and all 6 failures are missing DATA artifacts
+(`data/libritts_r_vat_v4/`, `data/libritts_r_holdout_devclean/`), not code defects — the
+doc-claims gate among them, failing with "cannot read the artifact" rather than a
+disagreement. An agent that runs the suite cold sees red and either chases corpus files it
+cannot rebuild or edits a registry to silence the gate. The script now baselines on the PR
+branch before the agent starts, so "did I break anything" is answered by subtraction.
+
+**The remediation command the script printed did not work.** Unconstrained `numpy` resolves
+to 2.2+, which no numba supports, so the resolver walks numba back to **0.53.1** — a 2021
+release that cannot build on Python 3.12 — and the failure surfaces as a *librosa* build
+error that never mentions numpy. Needs `numpy<2.2`. Also `pysbd`, a real test dependency of
+`tests/test_acquisition_lane.py` that is **absent from both the CI install list and
+pyproject's `dev` extra**.
+
 ### Changed — review findings are resolved in the PR again, and the fix pass moved off CI
 
-Landed in `b16a23e`. Two practices retired in one change (owner, 2026-08-11), because they
-compounded into a loop that ran unattended:
+Landed in `b16a23e` (merged as `a898d13`). Two practices retired in one change (owner,
+2026-08-11), because they compounded into a loop that ran unattended:
 
 **Findings are no longer filed as issues.** The reviewer used to open one issue per
 finding against a `review-finding` ledger. Each review therefore produced a backlog, the

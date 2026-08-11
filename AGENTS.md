@@ -126,6 +126,17 @@ case-insensitive macOS/Windows.
     small incremental read of the fix itself, and each lap is smaller than the last. This is
     deliberately identity-agnostic: it keeps working when agents commit under their own
     GitHub identity rather than a human's.
+  * ⚠ **A PR THAT EDITS `.github/workflows/claude-review.yml` IS NOT REVIEWED, AND THE CHECK
+    STILL GOES GREEN** (measured 2026-08-11 on PR #59). `claude-code-action` validates that
+    the workflow file is byte-identical to the version on the default branch and, when it is
+    not, logs `Skipping action due to workflow validation` and exits with
+    `conclusion: success`. The run takes ~37 seconds instead of the usual 11–14 minutes and
+    posts nothing at all. **The green check means "skipped", not "clean"** — and PR #59 was
+    merged unreviewed on the strength of it. When a PR changes that workflow: review it by
+    hand or in a session, say in the PR body that the automated review was structurally
+    skipped, and keep unrelated changes out of it so that only the workflow edit goes
+    unreviewed. The corollary is that a fix to this lane cannot be validated by the PR that
+    introduces it — only by the next PR that does not touch it.
   * **The human invocation is the turn token.** Nothing polls and there is no label. One
     invocation, one pass, then it hands back: whatever the pass could not settle alone is
     left as an OPEN thread with a question in it, the owner answers there, and re-running
