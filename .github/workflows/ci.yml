@@ -63,17 +63,16 @@ jobs:
       #
       # THE LIST IS EXPLICIT AND NOT `-e '.[dev]'` ON PURPOSE: installing the project pulls
       # `install_requires`, torch included, and builds matcha's Cython extension. So the
-      # `dev` extra's constraints do NOT reach this job automatically and any floor that
-      # matters here has to be repeated here — see `pytest>=9.1` below.
+      # `dev` extra's constraints do NOT reach this job at all — which is also why the
+      # `pytest>=9.1` floor is written below rather than left in that extra.
       #
-      # ⚠ THE DUPLICATION IS TEMPORARY AND HAS A SUCCESSOR, so do not entrench it. That
-      # reasoning is about the `dev` EXTRA; a PEP 735 dependency GROUP is a different
-      # mechanism — `uv pip install --group test` resolves without a project install, so no
-      # `install_requires` and no Cython build. #65 adds `[dependency-groups] test` carrying
-      # this floor. Once it lands, replace this whole step with `--group test` and delete
-      # the second copy of the constraint: a floor declared somewhere the runner does not
-      # install from is not enforced, and two copies that nothing checks is the weakness
-      # this comment currently only narrows.
+      # ⚠ THIS STEP HAS A SUCCESSOR, so do not entrench it. The reasoning above is about the
+      # `dev` EXTRA; a PEP 735 dependency GROUP is a different mechanism — `uv pip install
+      # --group test` resolves without a project install, so no `install_requires` and no
+      # Cython build. #65 adds `[dependency-groups] test` carrying this same floor. Once it
+      # lands, replace this whole step with `--group test`: a floor declared somewhere the
+      # runner does not install from is not enforced, and this list and that group are two
+      # statements of one fact that nothing checks for agreement.
       #
       # This is the non-torch import set of `tests/` and of the gate scripts they drive,
       # derived by running the suite in a clean 3.11 venv and adding only what actually
@@ -81,8 +80,10 @@ jobs:
       #   pytest>=9.1 the runner. THE FLOOR IS LOAD-BEARING, not hygiene: 9.1 narrowed
       #               `importorskip`'s exception envelope, and an older resolution restores
       #               the wide one — which silently turns the retirement guards in
-      #               tests/test_engine_allocation.py into skips. Keep in step with
-      #               pyproject.toml's `dev` extra; nothing checks that they agree.
+      #               tests/test_engine_allocation.py into skips. ⚠ This is the ONLY copy
+      #               of the floor on `main` until #65's `test` group lands; the `dev`
+      #               extra deliberately does not carry it, because nothing installs from
+      #               `dev` to run this suite.
       #   fastapi     the `dev` extra — tests/ drives audition/app/main.py
       #   numpy scipy librosa soundfile   scripts/ + matcha/ module-scope imports
       #   pyyaml unidecode inflect        ditto
