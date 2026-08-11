@@ -75,6 +75,13 @@ sample_rate = 22050
 # — so the delivery dial is driven by what THIS checkpoint accepts, not by the contract.
 ckpt_vat_dim = 0
 
+# UI-only label for DELIVERY_UNKNOWN. The contract spells "no lane" as the empty string,
+# which a dropdown cannot display or let you re-select, so the UI shows this word and
+# `on_synth` maps it back. It is deliberately NOT a member of the lane vocabulary —
+# `delivery_index` would refuse it, which is the correct behaviour if it ever leaks past
+# the mapping instead of silently rendering an unconditioned clip.
+UNKNOWN_UI = "unknown"
+
 
 def get_checkpoints():
     # Scan for all ckpt files in checkpoints subfolders without doing a full recursive search
@@ -372,11 +379,19 @@ def main():
                     # A DROPDOWN, not a slider: delivery is categorical. A slider would
                     # invite interpolating between Newscaster and Dialogue, which has no
                     # meaning and which `lane_of_vector` refuses outright.
+                    #
+                    # FLAT STRING choices, and they have to be. `(label, value)` tuple
+                    # choices are a Gradio 4 feature; this runs 3.43.2, where the tuple
+                    # itself becomes the value — so every lane pick reached
+                    # `delivery_index` as "('Newscaster', 'Newscaster')" and the closed
+                    # vocabulary raised, making the dial unusable for ALL five lanes
+                    # while the HTTP lane (which passes plain strings) stayed fine.
+                    # `UNKNOWN_UI` is a display label only; `on_synth` maps it back to
+                    # DELIVERY_UNKNOWN, since "" cannot be shown in a dropdown.
                     delivery_lane = gr.Dropdown(
-                        label="Delivery lane (contract v2; blank = unknown ≡ v1)",
-                        choices=[("unknown", "")] + [(ln, ln)
-                                                     for ln in delivery.DELIVERY_LANES],
-                        value="", interactive=True)
+                        label="Delivery lane (contract v2; 'unknown' ≡ v1)",
+                        choices=[UNKNOWN_UI] + list(delivery.DELIVERY_LANES),
+                        value=UNKNOWN_UI, interactive=True)
 
                 synth_btn = gr.Button("🔊 Synthesize Speech", variant="primary")
                 error_box = gr.Textbox(label="Error Status", visible=False)
@@ -389,6 +404,14 @@ def main():
         refresh_btn.click(fn=refresh_checkpoints, outputs=checkpoint_dropdown)
 
         def on_synth(checkpoint, text, steps, temp, length, spk, v, a, t, s, d):
+            # Tolerate a tuple as well as the sentinel: if this is ever run on Gradio 4,
+            # tuple choices become legal again and would arrive as (label, value). Taking
+            # the last element is correct for both, so a version bump cannot silently
+            # re-break the dial the way the 4-vs-3 mismatch did.
+            if isinstance(d, (tuple, list)):
+                d = d[-1]
+            if d == UNKNOWN_UI:
+                d = delivery.DELIVERY_UNKNOWN
             err, audio, mel, info = synthesize(checkpoint, text, steps, temp,
                                                length, spk, v, a, t, s, d)
             if err:
