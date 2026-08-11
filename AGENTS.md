@@ -284,6 +284,22 @@ that would have falsified it and stopped reading once the answer looked settled.
 
 **A cheap falsifier that is not run is not evidence.**
 
+⚠ **A THIRD DISARM MODE, AND THE ONLY ONE READING CANNOT FIND: a test whose PREMISE and whose
+SUBJECT are wrong in the same direction passes.** Found 2026-08-11 in
+`test_one_bad_axis_is_enough_to_hold_a_clip_out_of_keeps`: the fixture set an intended `V: 0.9`
+against a stub measuring `−0.79`, so V actually FAILED and the clip was a direction failure
+too — "held out on the label alone" was false of it. **The assertion passed anyway, because the
+count it asserted on was the buggy one.** Two defects agreeing, a green test between them, and
+neither visible from the other.
+
+* **The tell is that it cannot be found by reading either the test or the code** — only by
+  running the case and looking at what the subject actually did, rather than at whether the
+  number came out as expected.
+* So when a guard's own test is the evidence that the guard works, **check the fixture states
+  what you think it states.** A passing assertion proves the two sides agree; it does not prove
+  either is right.
+* Same family as the other two: the green result is indistinguishable from the correct one.
+
 ### 6. Execute From The Repo — `/data` Holds Data
 
 **Owner principle (2026-08-06): code executes from the repo checkout; `/data` holds what
