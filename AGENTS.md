@@ -300,6 +300,23 @@ neither visible from the other.
   either is right.
 * Same family as the other two: the green result is indistinguishable from the correct one.
 
+⚠ **A FOURTH MODE, AND THE ONLY ONE WITH NO MISSING MEASUREMENT: a claim can be internally
+incoherent and still survive two readers, when both like the story it tells.** Found
+2026-08-11, in this repo's own review lane. The claim was *"numba 0.53.1 cannot build on 3.12,
+**but** the same resolution silently downgrades librosa by a major version"* — offered as the
+stronger argument for a version pin, agreed with by a second agent in the same terms, and
+**impossible**: if the build fails nothing is installed, so nothing is lived with. The
+downgrade is planned in the resolution and never installed.
+
+* **The resolution had been measured.** So "run the falsifier" would not have caught it — the
+  numbers were right and the conclusion drawn from them was not.
+* **The check that does catch it: state the END STATE, singular.** What does the machine
+  actually end up in? One install has one outcome, and naming it forces the incompatible
+  halves into the same sentence where they cannot both stand.
+* ⚠ **A second reader agreeing is not verification** — it is likelier to be two people liking
+  the same story. The agreement arrived one round after a review had already corrected the
+  previous version of the same sentence.
+
 ### 6. Execute From The Repo — `/data` Holds Data
 
 **Owner principle (2026-08-06): code executes from the repo checkout; `/data` holds what
