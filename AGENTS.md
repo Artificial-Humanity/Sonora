@@ -229,6 +229,15 @@ case-insensitive macOS/Windows.
 * **A review is a report, not a fix pass.** This survives the retirement and applies to any
   agent asked to review anything: the deliverable is the findings. Take on fixes only when
   the owner explicitly asks, never as a rider on the review itself.
+* ⚠ **REVIEW THE INSTRUCTION, NOT ONLY THE CLASSIFICATION — they fail independently, and the
+  second is where the defects hide.** Six instances across four rounds on 2026-08-11: in every
+  one the code decided *correctly* and the instruction attached to it was wrong or impossible.
+  A remedy naming a fix that cannot address the cause; a bucket telling the reader to "score
+  them first" about clips already scored; a comment claiming an override the tool never had.
+  * *"Is this line true?"* is easy to read for. *"What would someone DO on reading this line?"*
+    is a different question and almost never asked. Ask it of every message, comment, docstring
+    and suggested remedy — including the ones a review itself writes, since a `suggestion`
+    block is committed in one click and gets far less scrutiny than the finding it hangs off.
 * **Scope: code work only.** Source, configs and dependency manifests. Docs-only changes need
   no review, and the review workflow is told to post nothing when a PR's new range touches
   only `*.md` or `notes/`.
@@ -316,6 +325,14 @@ downgrade is planned in the resolution and never installed.
 * ⚠ **A second reader agreeing is not verification** — it is likelier to be two people liking
   the same story. The agreement arrived one round after a review had already corrected the
   previous version of the same sentence.
+
+⚠ **MODE 5, the inverse of mode 4: "the number is unchanged" is itself a claim, and it has to
+be re-derived rather than inferred from the fix looking conservative.** Mode 4 is a measured
+number with an unmeasured conclusion; this is an unmeasured number that a narrow-looking change
+invites you to assume still holds. Found 2026-08-11 when a `ge90` change left "13 of the 20
+campaigns" unregenerated — it was re-run and is still 13, so the note was right, which is
+exactly why the habit is dangerous: being right this time costs nothing and teaches the wrong
+lesson. **If a fix touches an input to a stated number, re-derive the number.**
 
 ### 6. Execute From The Repo — `/data` Holds Data
 
