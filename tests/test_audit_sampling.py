@@ -13,6 +13,7 @@ import math
 import os
 import pathlib
 import sys
+import time
 
 import pytest
 
@@ -500,3 +501,221 @@ def test_the_verdict_says_which_definition_of_A_it_used():
     assert "NOT" in a, "the divergence has to be stated, not implied"
     assert "delivery" in qv.MEASURED_FROM, \
         "contract v2 shipped a delivery channel; a row must say it went unchecked"
+
+
+# --- stage 2: what the instrument may and may not assert (#54-#58) --------------------
+#
+# These run qc_verdict end to end against a STUB anchor. The real one is 30,351 LibriTTS
+# rows on /data beside a corpus this checkout does not carry, and a verdict test that
+# skips wherever the corpus is absent is a verdict test that never runs in CI.
+
+ANCHOR_HEADS = ["Amusement", "Valence", "Sadness"]
+ANCHOR_WEIGHTS = [0.5, 0.3, -0.2]
+
+
+def _stub_anchor(tmp_path, qv, monkeypatch, weights=None, drop=()):
+    """Point qc_verdict's LibriTTS anchor at 40 stub rows. `drop` = heads to omit."""
+    root = tmp_path / "anchor"
+    root.mkdir(exist_ok=True)
+    meas, eiv = [], []
+    for i in range(40):
+        wav = f"/anchor/{i}.wav"
+        meas.append({"wav": wav, "alpha_db": 5.0 + i * 0.1, "cpp": 1.0 + i * 0.02,
+                     "h1h2": -13.0 + i * 0.05})
+        row = {"wav": wav, "Arousal": 0.2 * i, "Soft_vs._Harsh": -0.1 * i}
+        for k, h in enumerate(ANCHOR_HEADS):
+            if h not in drop:
+                row[h] = 0.05 * i + 0.1 * k
+        eiv.append(row)
+    for name, data in (("measures.jsonl", meas), ("eiv.jsonl", eiv)):
+        (root / name).write_text("".join(json.dumps(d) + "\n" for d in data),
+                                 encoding="utf-8")
+    (root / "fam.jsonl").write_text("", encoding="utf-8")
+    (root / "combo.json").write_text(json.dumps(
+        {"heads": ANCHOR_HEADS, "weights": list(weights or ANCHOR_WEIGHTS)}),
+        encoding="utf-8")
+    monkeypatch.setattr(qv, "LIB_MEASURES", str(root / "measures.jsonl"))
+    monkeypatch.setattr(qv, "LIB_EIV", str(root / "eiv.jsonl"))
+    monkeypatch.setattr(qv, "LIB_FAM", str(root / "fam.jsonl"))
+    monkeypatch.setattr(qv, "COMBO", str(root / "combo.json"))
+
+
+def _stub_campaign(tmp_path, n=4, scored=None, intended=None, stamp=True):
+    """A campaign dir: n directed clips, the first `scored` of them carrying an EIV row."""
+    camp = tmp_path / "campaign"
+    camp.mkdir(exist_ok=True)
+    scored = n if scored is None else scored
+    rows, eiv, files = [], [], []
+    for i in range(n):
+        wav = camp / f"clip{i}.wav"
+        wav.write_bytes(b"RIFF" + b"\0" * 40)
+        rows.append({"id": f"clip{i}", "engine": "qwen", "wav": wav.name,
+                     "wav_abs": str(wav), "hard_pass": True,
+                     "intended": dict(intended or {"V": -0.9, "A": 0.8, "T": 0.7}),
+                     "phonation": {"alpha_db": 6.0, "cpp": 1.1, "h1h2": -13.5}})
+        files.append(str(wav))
+        if i < scored:
+            row = {"wav": str(wav)}
+            if stamp:
+                row["wav_mtime"] = os.path.getmtime(wav)
+            for h in ANCHOR_HEADS + list(qv_extra_heads()):
+                row[h] = 0.2 + 0.01 * i
+            eiv.append(row)
+    (camp / "qc_measures.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    (camp / "eiv_scores.jsonl").write_text(
+        "".join(json.dumps(e) + "\n" for e in eiv), encoding="utf-8")
+    (camp / "qc_filelist.txt").write_text("\n".join(files) + "\n", encoding="utf-8")
+    return camp
+
+
+def qv_extra_heads():
+    sys.path.insert(0, str(SYNTH))
+    return pytest.importorskip("qc_verdict").EIV_EXTRA_HEADS
+
+
+def _run_verdict(camp, monkeypatch, qv, *extra):
+    monkeypatch.setattr(sys, "argv", ["qc_verdict.py", "--campaign-dir", str(camp),
+                                      *extra])
+    qv.main()
+
+
+def test_a_scoring_pass_that_produced_nothing_is_refused_not_reported_as_failure(
+        tmp_path, monkeypatch, capsys):
+    """The head guard iterates ROWS, so with zero rows it found nothing absent and passed
+    the file — and every axis of every clip then read as a direction failure.
+
+    MEASURED on 20713f1: an empty eiv_scores.jsonl gave `V:FAIL A:FAIL T:FAIL` on all four
+    clips, `0/4 keeps`, four ids in qc_flags.txt and exit 0. eiv_score.sh exits 0 whenever
+    the container came up, so an empty filelist, unreadable wavs or an OOM-skip reaches
+    this with nothing else looking wrong (issue #55).
+    """
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, scored=0)
+    with pytest.raises(SystemExit) as e:
+        _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"),
+                     "--append-flags")
+    assert "0 scored rows" in str(e.value)
+    assert not (camp / "keeps.jsonl").exists(), \
+        "a keeps file was written from scores that do not exist"
+    assert not (camp / "qc_flags.txt").exists(), \
+        "clips were sent to the ear on the strength of a measurement nobody made"
+
+
+def test_an_unscored_clip_is_unmeasured_not_a_direction_failure(
+        tmp_path, monkeypatch, capsys):
+    """Unmeasured and pointed-the-wrong-way used to produce identical output — the same
+    console line, the same by-axis tally, the same qc_flags.txt (issue #55). Unmeasured
+    still cannot keep, because nothing was confirmed; it simply is not evidence."""
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=4, scored=2)
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"),
+                 "--append-flags")
+    out = capsys.readouterr().out
+    verdicts = {json.loads(l)["id"]: json.loads(l)
+                for l in (camp / "qc_verdicts.jsonl").read_text().splitlines() if l.strip()}
+    assert verdicts["clip2"]["axis_checks"] == {"V": None, "A": None, "T": None}
+    assert verdicts["clip2"]["axes_unmeasured"] == ["A", "T", "V"]
+    assert verdicts["clip2"]["axes_checked"] == []
+    assert verdicts["clip2"]["keep"] is False, "unmeasured cannot confirm a keep either"
+    assert "unmeasured" in out and "NO EIV row" in out
+    assert "direction failures among hard-pass clips: 2 clip(s)" in out, \
+        "the unscored clips are being counted as engines ignoring direction"
+    flags = (camp / "qc_flags.txt").read_text().split()
+    assert flags == ["clip0", "clip1"], flags
+
+
+def test_a_reroll_is_still_caught_after_the_scores_file_is_appended_to(
+        tmp_path, monkeypatch, capsys):
+    """The guard compared each wav against the mtime of the whole scores FILE, and
+    eiv_score.sh appends to that file immediately before this runs — so one newly-scored
+    clip refreshed the clock for every other clip and the guard went silent (issue #56).
+    Here clip0 is re-rendered after scoring and an unrelated row is appended afterwards,
+    which is exactly the order synth_bank.sh produces."""
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=2, scored=2)
+    scores = camp / "eiv_scores.jsonl"
+    now = time.time()
+    os.utime(camp / "clip0.wav", (now + 10, now + 10))  # re-rendered in place
+    row = {"wav": str(camp / "unrelated.wav"), "wav_mtime": now + 20}
+    row.update({h: 0.3 for h in ANCHOR_HEADS + list(qv.EIV_EXTRA_HEADS)})
+    with scores.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row) + "\n")
+    os.utime(scores, (now + 30, now + 30))  # the file is now newer than every wav
+
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(scores))
+    out = capsys.readouterr().out
+    assert "RE-RENDERED" in out and "clip0" in out, \
+        "the reroll is judged on the previous take's scores and nothing says so"
+    assert os.path.getmtime(camp / "clip0.wav") < os.path.getmtime(scores), \
+        "the file-mtime clock this replaces would have seen nothing here"
+
+
+def test_a_numeric_string_is_a_label_and_a_word_is_a_complaint(tmp_path, monkeypatch,
+                                                               capsys):
+    """`--count-directed` printing 0 makes synth_bank.sh announce "(real-audio bank)" and
+    skip the stage, so 0 is a positive claim about the campaign. It must never be reached
+    by a label the reader could not parse (issue #58): book_ingest.py writes V/A/T straight
+    out of the LLM and validates only `register` and `engine`."""
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    assert qv.intended_labels({"intended": {"V": "0.7", "A": 0.2}}) == {"V": 0.7, "A": 0.2}
+    bad = []
+    assert qv.intended_labels({"id": "c0", "intended": {"V": "very sad", "A": True}},
+                              bad) == {}
+    assert [(i, ax) for i, ax, _ in bad] == [("c0", "V"), ("c0", "A")]
+    assert qv.intended_labels({"intended": {"V": None}}, bad := []) == {} and bad == [], \
+        "an explicit null is a writer saying `no label`, not a malformed one"
+
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=2, intended={"V": "-0.9", "A": "0.8"})
+    _run_verdict(camp, monkeypatch, qv, "--count-directed")
+    assert capsys.readouterr().out.strip() == "2", "a numerically-valued label IS a label"
+
+    camp = _stub_campaign(tmp_path, n=2, intended={"V": "very sad"})
+    with pytest.raises(SystemExit) as e:
+        _run_verdict(camp, monkeypatch, qv, "--count-directed")
+    assert "real-audio bank" in str(e.value), \
+        "a bank whose labels are unreadable must not be announced as one with no labels"
+
+
+def test_the_anchor_is_held_to_the_same_standard_as_the_campaign_file(
+        tmp_path, monkeypatch, capsys):
+    """main() refuses a campaign eiv file missing a combo head; build_anchors filled the
+    same gap with 0.0, which collapses that head's std to the 1e-9 floor and turns its z
+    into `x * 1e9` inside the V dot product (issue #54).
+
+    MEASURED on the shipped anchor: the only two unanchored heads carry weight exactly
+    0.0, so V is unaffected today — bulk1 is min -2.755 / max 3.272 either way. The
+    asymmetry is what is fixed: one weight refit would otherwise turn that live silently.
+    """
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+
+    _stub_anchor(tmp_path, qv, monkeypatch, weights=[0.5, 0.3, 0.0], drop=("Sadness",))
+    anchor, heads, w = qv.build_anchors()
+    assert anchor["Sadness"] == (0.0, 1.0), \
+        "a zero-weight head must not be anchored on a 1e-9 std it could be refit into"
+    out = capsys.readouterr().out
+    assert "Sadness" in out and "0/40" in out and "weight" in out, \
+        "an unanchored head is filled silently, which is how it stays unanchored"
+
+    _stub_anchor(tmp_path, qv, monkeypatch, weights=[0.5, 0.3, -0.2], drop=("Sadness",))
+    with pytest.raises(SystemExit) as e:
+        qv.build_anchors()
+    assert "Sadness" in str(e.value) and "moves V" in str(e.value)
+
+
+def test_the_sampler_does_not_read_an_unmeasured_axis_as_a_disagreement():
+    """audit_sampler's disagreement-first pass took every falsy axis check as a fail, so
+    the None that now means UNMEASURED would have sent the ear a clip on a finding nobody
+    made — and `not keep` is true of an unmeasured clip too (issue #55)."""
+    src = _src("audit_sampler.py")
+    assert "if ok is False" in src, \
+        "unmeasured axes are being sampled as axis-disagree"
