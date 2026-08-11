@@ -112,8 +112,18 @@ FOLD_NOTE = "folded: staged unheard under group certification"
 # DIFFERENT ORDER — harmless while it only drove reports, and not harmless at all once
 # position carries meaning: adding a lane here and not there would silently reinterpret
 # every filelist. One definition, in matcha.delivery.
+#
+# THE ACTIVE SET, NOT THE FULL VOCABULARY (issue #45). Every surface in this file is
+# WRITE-shaped — `--mark-delivery` writes the ledger and staging writes ratings.csv — and
+# a write may only carry an ASSIGNABLE lane. Binding the full tuple here left
+# `--mark-delivery Documentary` an accepted argument after the retirement, which is the
+# same defect the audition app's picker already fixed (`main.py:206`). `DELIVERY_LANES`
+# is deliberately NOT bound: after the CLI moved to the active set it had no reader here,
+# and a binding kept alive only by a test assertion proves nothing about behaviour
+# (issue #17, the same call the app made when its picker moved).
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
-from matcha.delivery import DELIVERY_LANES as LANES  # noqa: E402
+from matcha.delivery import ACTIVE_DELIVERY_LANES as ACTIVE_LANES  # noqa: E402
+from matcha.delivery import check_assignable  # noqa: E402
 
 
 def ledger() -> dict:
@@ -159,6 +169,31 @@ def homogeneous_delivery(rec: dict, led: dict | None = None) -> str:
     """
     led = led if led is not None else ledger()
     return (led.get(ledger_key_for(rec, led)) or {}).get("delivery_homogeneous") or ""
+
+
+def _stageable_lane(lane: str, rec: dict, led: dict | None = None) -> str:
+    """A ledger-sourced lane, REFUSED here if it may no longer be assigned (issue #45).
+
+    Deliberately separate from `homogeneous_delivery`, which is a READ: two callers only
+    ask whether a title is marked at all, and a read of stale state has to keep working
+    for them to be able to report it. This is the WRITE, and the write refuses — the same
+    split `matcha.delivery` makes between `delivery_index` and `check_assignable`.
+
+    The message names the LEDGER KEY, because that is the file to fix. `check_assignable`
+    can only say the lane is retired; it cannot know the value came from
+    `books_ledger.json` rather than from a manifest or the ear.
+    """
+    try:
+        return check_assignable(lane)
+    except ValueError as e:
+        key = ledger_key_for(rec, led if led is not None else ledger())
+        raise ValueError(
+            f"{rec.get('id') or '<no id>'}: {e} It came from "
+            f"{LEDGER}, entry {key or '<unresolved>'}, field `delivery_homogeneous` — a "
+            f"title-level mark made when the lane was still assignable, which propagates "
+            f"to EVERY clip in the book. Re-mark the title (--mark-delivery) or clear the "
+            f"field; do not relabel the staged rows."
+        ) from e
 
 
 def load_pool(campaign_dir: pathlib.Path) -> list[dict]:
@@ -291,7 +326,7 @@ def main() -> int:
                     help="allow --mark-delivery below the coverage floor, for a title that "
                          "is homogeneous by construction (a speech collection). Recorded "
                          "in the ledger as thin_override so the exception is auditable.")
-    ap.add_argument("--mark-delivery", metavar="LANE", choices=LANES,
+    ap.add_argument("--mark-delivery", metavar="LANE", choices=ACTIVE_LANES,
                     help="mark every title in this campaign as delivery-homogeneous in "
                          "LANE, so staging propagates it. Refused unless the ear has "
                          "already said the same about a clip from that title.")
@@ -575,7 +610,25 @@ def main() -> int:
                 row.update({a: v for a, v in tags_of[rec["id"]].items() if a in hdr})
                 lane = homogeneous_delivery(rec, led_cache)
                 if lane and "delivery" in hdr:
-                    row["delivery"] = lane
+                    # CHECKED, not copied (issue #45). This lane comes from PERSISTENT
+                    # LEDGER STATE, and the mark propagates to EVERY clip in the book —
+                    # so an entry written before the 2026-08-10 retirement, when
+                    # `delivery_homogeneous: "Documentary"` was legal, silently stamps a
+                    # retired lane on every clip staged from that title today. Reproduced:
+                    # three folded keeps written with `delivery=Documentary` and no error
+                    # anywhere. They would then be refused by
+                    # `merge_expressive_registers.py:315` days later, with the audition
+                    # slots already spent — which is the sequence the retirement's write
+                    # guards exist to prevent. Restoring a pre-retirement `.bak` sheet
+                    # cannot help, because the stale value is in the ledger, not the sheet.
+                    #
+                    # Raising rather than blanking, for the reason `check_assignable`
+                    # gives: a retired lane means the SOURCE is stale. Fix the ledger
+                    # entry — the mark is an explicit owner call and re-making it is a
+                    # `--mark-delivery` run — rather than reassigning the lane here. The
+                    # raise happens inside `ratings_transaction`, which writes nothing on
+                    # an exception, so the refusal costs the run and not the sheet.
+                    row["delivery"] = _stageable_lane(lane, rec, led_cache)
             rows.append(row)
             added += 1
         if not added:

@@ -93,6 +93,58 @@ def test_a_retired_lane_has_no_mix_and_cannot_be_allocated(lane):
             rs.allocate_engines(10, lane=spelling)
 
 
+@pytest.mark.parametrize("lane", RETIRED_LANES)
+@pytest.mark.parametrize("pad", ["{} ", " {}", " {} ", "\t{}", "{}\t", "\n{}\n"])
+def test_a_padded_retired_lane_is_refused_in_both_spellings(lane, pad):
+    """Issue #46: the guard normalised differently from the contract, and fell OPEN.
+
+    `mix_for_lane` built its own lowercase table and never stripped, while
+    `matcha.delivery.check_assignable` — the function it defers to for the refusal and its
+    message — opens with `str(lane).strip()`. The two therefore disagreed on any lane with
+    surrounding whitespace, and the disagreement resolved toward allocating:
+    `mix_for_lane(" Documentary")` returned the flat ENGINE_MIX and
+    `allocate_engines(10, lane=" Documentary")` dealt {qwen 3, chatterbox 3, zonos 2,
+    orpheus 1, moss_vg 1} into the retired lane.
+
+    A padded lane is a realistic input, not an invented one: lanes arrive from JSON
+    manifests and CSV cells, and `stage_pool` strips `r.get("delivery")` for exactly this
+    reason. Both spellings are covered because the capitalised one reaches
+    `_RETIRED_LANES` directly while the lowercase one has to survive the table lookup
+    first, and only one normalisation step protects both.
+    """
+    for spelling in (pad.format(lane), pad.format(lane.lower())):
+        with pytest.raises(ValueError, match="RETIRED"):
+            rs.mix_for_lane(spelling)
+        with pytest.raises(ValueError, match="RETIRED"):
+            rs.allocate_engines(10, lane=spelling)
+
+
+@pytest.mark.parametrize("pad", ["{} ", " {}", " {} ", "\t{}", "{}\t"])
+def test_a_padded_live_lane_still_resolves_to_its_own_mix(pad):
+    """The other half of #46, and the reason the fix is a normalisation rather than a
+    second membership test: whitespace used to send a LIVE lane to the flat mix too.
+
+    ` Newscaster` missed the lowercase table, missed `ENGINE_MIX_BY_LANE`, and fell back —
+    silently rendering the lane with the flat mix instead of its measured one, which is a
+    render-mix defect with no error and no symptom until someone compares the manifest to
+    the weights. Whitespace-only stays `unknown`, which is the flat mix by contract.
+    """
+    for lane in ("Newscaster", "Dialogue", "Neutral"):
+        for spelling in (pad.format(lane), pad.format(lane.lower())):
+            assert rs.mix_for_lane(spelling) is rs.ENGINE_MIX_BY_LANE[lane]
+    assert rs.mix_for_lane("   ") is rs.ENGINE_MIX
+
+
+def test_the_lane_table_is_derived_from_the_vocabulary():
+    """#46's latent half. The five-entry lowercase table was another restatement of the
+    delivery vocabulary in the repo whose stated core defect class is a forked one — and
+    it fails in the direction that matters: a lane appended to `DELIVERY_LANES` and later
+    retired would not be in the table, would therefore not match `_RETIRED_LANES` after
+    the lookup, and would fall silently back to the flat mix instead of raising."""
+    from matcha.delivery import DELIVERY_LANES
+    assert rs._LANE_BY_LOWER == {ln.lower(): ln for ln in DELIVERY_LANES}
+
+
 def test_lane_names_resolve_both_conventions():
     """`lane="dialogue"` is the pre-2026-08-02 caller convention and must survive."""
     assert rs.mix_for_lane("dialogue") is rs.ENGINE_MIX_BY_LANE["Dialogue"]
