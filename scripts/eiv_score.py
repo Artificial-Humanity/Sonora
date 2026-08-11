@@ -137,7 +137,14 @@ def main():
     # A stamped row whose wav has moved on is dropped from `done`, i.e. RE-SCORED — which
     # is the fix rather than the announcement. Rows written before the stamp existed
     # resume exactly as they always did; nothing mass re-scores.
-    done, rescored = set(), 0
+    # ⚠ LAST ROW WINS, AND THE COUNT IS OF CLIPS, NOT ROWS. The output file is APPEND-ONLY,
+    # so this feature's own success used to poison its announcement: a re-rendered clip is
+    # dropped from `done`, re-scored, and a SECOND row for the same path is appended. Every
+    # later run then saw both — row 1 stale (`rescored += 1`), row 2 fresh (`done.add`) —
+    # so `done` came out right while `rescored` counted a repair that had already happened,
+    # for the rest of the file's life. The run announced "N re-rendered -> re-scoring" and
+    # re-scored nothing.
+    state = {}
     if os.path.exists(args.out):  # resumable
         with open(args.out, encoding="utf-8") as f:
             for line in f:
@@ -145,12 +152,13 @@ def main():
                     continue
                 row = json.loads(line)
                 stamp = row.get("wav_mtime")
-                if (stamp is not None and os.path.isfile(row["wav"])
-                        and os.path.getmtime(row["wav"]) > stamp + 1e-6):
-                    rescored += 1
-                    done.discard(row["wav"])
-                    continue
-                done.add(row["wav"])
+                # A row with no stamp predates the stamp and resumes as it always did.
+                state[row["wav"]] = not (
+                    stamp is not None and os.path.isfile(row["wav"])
+                    and os.path.getmtime(row["wav"]) > stamp + 1e-6)
+    done = {w for w, fresh in state.items() if fresh}
+    rescored = len(state) - len(done)
+    if os.path.exists(args.out):
         print(f"resuming: {len(done)} already scored"
               + (f"; {rescored} re-rendered since they were scored -> re-scoring"
                  if rescored else ""))

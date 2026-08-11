@@ -96,7 +96,24 @@ def _app_csv_fields():
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
                 isinstance(t, ast.Name) and t.id == "CSV_FIELDS" for t in node.targets):
-            return list(ast.literal_eval(node.value))
+            # THE THIRD FAILURE MODE, AND THE LIKELIEST ONE. This function names the file
+            # when it cannot be read and names the symbol when the assignment is gone, then
+            # left `literal_eval` to raise unattributed on the edit most likely to actually
+            # happen: `CSV_FIELDS` ceasing to be a literal. The schema is growing, so
+            # `BASE + [...]` or `tuple(...)` is the natural next spelling, and it surfaces
+            # as `ValueError: malformed node or string on line 1: <ast.Name object ...>`
+            # at IMPORT of a synthesis script, naming neither this reader nor the app.
+            try:
+                return list(ast.literal_eval(node.value))
+            except (ValueError, SyntaxError) as e:
+                raise RuntimeError(
+                    f"{APP_MAIN}'s `CSV_FIELDS` is no longer a plain literal, so this "
+                    f"reader cannot evaluate it without executing the app ({e}). The "
+                    f"schema is READ from the app on purpose — a second spelling of the "
+                    f"columns here is the fork this guard exists to prevent (issue #41) — "
+                    f"so keep the assignment a literal, or teach this reader the new "
+                    f"form deliberately. Do not restate the columns."
+                ) from e
     raise RuntimeError(
         f"{APP_MAIN} has no module-level `CSV_FIELDS` assignment — the ratings schema "
         "moved or was renamed. Point this reader at its new home rather than restating "

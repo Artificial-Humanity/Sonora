@@ -48,17 +48,34 @@ FAST = ["test_skill_files.py", "test_text_selection.py"]
 # Coverage was the intersection of every corpus the registry had ever read, and that shrinks
 # with every generation: at v7 the gate would run on one machine on a good day.
 #
-# The list is still exhaustive, because it is now what decides "is anything checkable here"
-# and what the skip message names.
-DATA_GATED = [
-    ("test_doc_claims.py", [
-        ("SONORA_CORPUS_V5",
-         os.path.join(REPO, "data", "libritts_r_emilia_vat_v5", "derivation_report.json")),
-        ("SONORA_CORPUS_V6",
-         os.path.join(REPO, "data", "libritts_r_emilia_expressive_vat_v6",
-                      "derivation_report.json")),
-    ]),
-]
+# ⚠ THE LIST HAS TO BE EXHAUSTIVE UNDER OR SEMANTICS, AND HAND-WRITTEN IT WAS NOT — it
+# named 2 of the 7 artifacts the registry reads (v5's report and v6's report; not v5's
+# train/val filelists, not v4's, not the holdout). With AND that was merely redundant, since
+# any missing entry made the whole thing skip. With OR it decides "is anything checkable
+# here", so a host holding only v4, or only the holdout, was told nothing is checkable and
+# skipped facts it could have enforced — #52 reappearing on the corpora the list forgot.
+#
+# READ FROM THE REGISTRY, NOT RESTATED. Every fact already carries its own `artifacts`, and
+# `unreadable()` is the function the script itself uses; a second copy here is the fork this
+# repo keeps paying for (`_app_csv_fields` reads the app's CSV_FIELDS for the same reason).
+# Adding a fact for a new corpus now extends this automatically.
+def _registry_artifacts():
+    sys.path.insert(0, SCRIPTS)
+    import test_doc_claims                                    # noqa: E402
+    seen, out = set(), []
+    for fact in test_doc_claims.FACTS:
+        for p in fact["artifacts"]:
+            if p not in seen:
+                seen.add(p)
+                # The env var is the artifact's own basename-derived override, kept so a
+                # host can point the gate at a corpus mounted elsewhere. Derived, so a new
+                # fact does not need one written by hand.
+                out.append(("SONORA_ARTIFACT_" + os.path.relpath(p, REPO)
+                            .replace(os.sep, "_").replace(".", "_").upper(), p))
+    return out
+
+
+DATA_GATED = [("test_doc_claims.py", _registry_artifacts())]
 
 # (script, env var naming its prerequisite, default path to probe)
 SLOW = [

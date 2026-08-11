@@ -773,6 +773,33 @@ def test_only_the_clips_the_label_actually_held_out_are_reported_as_a_label_repa
     assert "Fixing their labels will NOT make them keep" in out
 
 
+def test_an_unreadable_label_on_an_unscored_clip_is_a_scoring_repair_first(
+        tmp_path, monkeypatch, capsys):
+    """The two-bucket split was wrong in BOTH directions, and this is the harder half.
+
+    `only_the_label` asked whether the READABLE axes confirmed. A row whose only intended
+    axis is the unreadable one has none, so `all(...)` ran over an empty set and returned
+    True — `hard_pass` alone put a clip with no EIV row at all into "would otherwise keep …
+    this is a LABELLING repair". Fixing that label cannot make it keep; there is nothing to
+    check the fixed label against. The mirror defect swept every UNMEASURED row into "hard
+    gate, or a measured direction disagreement", which is NONE IS NOT FALSE (issue #55)
+    stated backwards in the file whose docstring insists on it.
+    """
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=2, scored=1, intended={"A": "angry"})
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"))
+    out = capsys.readouterr().out
+    assert "1 clip(s) are held out of keeps.jsonl on that alone" in out, \
+        "the scored clip is the only one a label fix would bring back"
+    assert "1 further clip(s) carry an unreadable label AND have an UNMEASURED axis" in out
+    assert "SCORING repair before it is a labelling one" in out, \
+        "the operator is being sent to fix a label when the clip was never scored"
+    assert "measured direction disagreement" not in out, \
+        "an unmeasured axis is not a measured disagreement — issue #55, restated backwards"
+
+
 def test_the_anchor_is_held_to_the_same_standard_as_the_campaign_file(
         tmp_path, monkeypatch, capsys):
     """main() refuses a campaign eiv file missing a combo head; build_anchors filled the

@@ -114,8 +114,19 @@ def corpus(rows, manifest):
               f"   adjusted {after[lane]:8.3f}")
     print(f"\n  sd of lane-mean LUFS, before centring   {sd_b:.4f} dB")
     print(f"  sd of lane-mean LUFS, after  centring   {sd_a:.4f} dB")
-    print(f"  between-lane structure surviving        {100 * sd_a / sd_b:.1f}%"
-          f"   (removed {100 * (1 - sd_a / sd_b):.1f}%)")
+    if sd_b == 0.0:
+        # A DENOMINATOR WITH NO GUARD KILLED EVERY SECTION, not just this one: `corpus()` is
+        # the first thing `main()` calls, so a bare ZeroDivisionError here took §§ 2-8 with
+        # it. sd_b is 0 whenever the artifact carries one lane, or several whose native
+        # means coincide — an ordinary re-run on a single-lane bank, which is precisely the
+        # case this script's docstring says it exists to survive.
+        print("  between-lane structure surviving        UNDEFINED — the lane means do not "
+              "vary\n    before centring (sd = 0), so there is no between-lane structure "
+              "for centring to\n    remove. This is the expected reading on a single-lane "
+              "bank, not a failure.")
+    else:
+        print(f"  between-lane structure surviving        {100 * sd_a / sd_b:.1f}%"
+              f"   (removed {100 * (1 - sd_a / sd_b):.1f}%)")
 
     h("2. CAMPAIGN IS A NEAR-PERFECT PROXY FOR LANE — BUT ONLY ONE PAIR IS ONE-TO-ONE")
     by_camp = collections.defaultdict(collections.Counter)
@@ -124,8 +135,19 @@ def corpus(rows, manifest):
         by_camp[r["campaign"]][r["delivery"]] += 1
         by_lane[r["delivery"]][r["campaign"]] += 1
     n10 = {k: v for k, v in by_camp.items() if sum(v.values()) >= 10}
-    ge90 = [k for k, v in n10.items() if max(v.values()) / sum(v.values()) >= 0.90]
-    print(f"  campaigns with n >= 10: {len(n10)};  of those, >= 90% one lane: {len(ge90)}")
+    # ⚠ THE UN-LANED REMAINDER IS EXCLUDED HERE TOO, and this is the number § 3b quotes
+    # ("13 of the 20 campaigns with n >= 10 are >=90% one delivery lane"). The `both` count
+    # further down was fixed first and this one was left, four lines above the comment
+    # explaining why it is wrong — so a campaign that is 100% un-laned still counted as
+    # ">= 90% one lane". `max()` over the named lanes only, and a campaign with no named
+    # rows at all cannot qualify.
+    def top_named(counter):
+        named = [n for lane, n in counter.items() if lane]
+        return max(named) if named else 0
+
+    ge90 = [k for k, v in n10.items() if top_named(v) / sum(v.values()) >= 0.90]
+    print(f"  campaigns with n >= 10: {len(n10)};  of those, >= 90% one NAMED lane: "
+          f"{len(ge90)}   (un-laned rows never qualify)")
 
     print("\n  per lane: how concentrated is it in its top campaign?")
     for lane, c in sorted(by_lane.items(), key=lambda kv: str(kv[0])):
@@ -159,12 +181,28 @@ def corpus(rows, manifest):
               f"{100 * sp.most_common(1)[0][1] / sum(sp.values()):.1f}% of the lane.")
 
     h("3. NEWSCASTER'S A IS A CONSTANT — AND THE VARIANCE WAS NEVER THERE TO REMOVE")
+    # ⚠ THIS SECTION NAMES A SPECIFIC LANE AND CAMPAIGN, so it is the one most likely to
+    # find nothing on a re-run. `np.mean([])` is a RuntimeWarning and a nan, `np.std(ddof=1)`
+    # over one row is another, and `min([])` is a ValueError — a section reporting `nan` as
+    # a measured constant is worse than one that says it had nothing to measure. Guarding
+    # § 1's `sd_b` alone would only have MOVED the single-lane failure here, which is what
+    # running the case showed: §§ 1 and 2 completed and § 3 died three lines in.
     a = [r["a"] for r in rows if r["delivery"] == "Newscaster"]
-    print(f"  Newscaster A       n={len(a)} mean {np.mean(a):+.4f}  sd {np.std(a, ddof=1):.4f}"
-          f"  range [{min(a):+.3f}, {max(a):+.3f}]")
+    if len(a) < 2:
+        print(f"  Newscaster A       n={len(a)} — fewer than 2 rows, so there is no mean, "
+              f"sd or range to report.\n    Not a finding: this artifact simply does not "
+              f"carry the lane this section is about.")
+    else:
+        print(f"  Newscaster A       n={len(a)} mean {np.mean(a):+.4f}  "
+              f"sd {np.std(a, ddof=1):.4f}  range [{min(a):+.3f}, {max(a):+.3f}]")
     nv = [r["lufs_native"] for r in rows if r["campaign"] == "newscaster-v1"]
-    print(f"  newscaster-v1 native LUFS  n={len(nv)} mean {np.mean(nv):.4f}"
-          f"  sd {np.std(nv, ddof=1):.4f} dB   <- the campaign was rendered to one target")
+    if len(nv) < 2:
+        print(f"  newscaster-v1 native LUFS  n={len(nv)} — no `newscaster-v1` campaign to "
+              f"read a loudness target off.")
+    else:
+        print(f"  newscaster-v1 native LUFS  n={len(nv)} mean {np.mean(nv):.4f}"
+              f"  sd {np.std(nv, ddof=1):.4f} dB   <- the campaign was rendered to one "
+              f"target")
 
     h("4. FOUR CENTRES, NOT THREE — THE MIN_CAMPAIGN_N FALLBACK")
     offs = {round(r["lufs_offset"], 9) for r in rows}
@@ -402,7 +440,14 @@ def probe(rows):
                  "have caught this already; if you are reading this, that guard was lost.")
     quieter = [l for l, d in diffs.items() if d < 0]
     louder = [l for l, d in diffs.items() if d > 0]
-    agree = len(quieter) == len(diffs) or len(louder) == len(diffs)
+    # A LANE AT EXACTLY ZERO IS IN NEITHER LIST, so the disagreement branch printed counts
+    # that did not sum to the lanes it was accounting for — "3 quieter, 0 louder" over four
+    # named lanes, with the parenthetical suppressed because `louder` is empty, i.e. a line
+    # asserting disagreement while naming nothing that disagrees. Counted and named as its
+    # own class: a lane sitting ON the reference is a real reading, not a rounding artefact
+    # to be dropped out of an exhaustive-looking tally.
+    level = [l for l, d in diffs.items() if d == 0.0]
+    agree = not level and (len(quieter) == len(diffs) or len(louder) == len(diffs))
     # ⚠ RANKED SEPARATELY, because they are two different quantities. These were one list of
     # (magnitude, se-ratio) pairs sorted on magnitude, so the se endpoints were whichever
     # ratios rode along on the smallest- and largest-|d| lanes — not the smallest and
@@ -419,9 +464,16 @@ def probe(rows):
         print(f"\n  every named lane ({len(diffs)}) is {side} than `unknown` at A = 0, "
               f"by {span}, all the same direction.")
     else:
-        print(f"\n  ⚠ THE NAMED LANES DO NOT AGREE IN DIRECTION at A = 0: "
-              f"{len(quieter)} quieter, {len(louder)} louder"
-              + (f" ({', '.join(sorted(map(str, louder)))})." if louder else ".")
+        # Every named lane appears in exactly one of the three counts, and they sum to
+        # `len(diffs)` by construction — the tally reads as exhaustive, so it has to be.
+        tally = (f"{len(quieter)} quieter, {len(louder)} louder, {len(level)} level"
+                 f" (of {len(diffs)})")
+        named_by = []
+        for label, group in (("louder", louder), ("level", level)):
+            if group:
+                named_by.append(f"{label}: {', '.join(sorted(map(str, group)))}")
+        print(f"\n  ⚠ THE NAMED LANES DO NOT AGREE IN DIRECTION at A = 0: {tally}"
+              + (f" — {'; '.join(named_by)}." if named_by else ".")
               + f"\n    Magnitudes {span}. There is no single intercept displacement"
                 "\n    to report — do not quote one.")
     named = [means[(l, zero)] for l in lanes if l != "unknown"]

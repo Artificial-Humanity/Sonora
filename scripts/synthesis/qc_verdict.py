@@ -52,6 +52,7 @@ Outputs: qc_verdicts.jsonl, keeps.jsonl (clips + confirmed labels), and a
 console summary table for the owner audit.
 """
 import argparse
+import collections
 import json
 import os
 import sys
@@ -629,34 +630,55 @@ def main():
         # Not folded into `undirected`: a row whose labels could not be read is not a row
         # without labels, and reading the second off the first is how a directed bank
         # comes to look like real audio (issue #58).
-        # "ON THAT ALONE" IS A CLAIM AND HAS TO BE TESTED. This was every row carrying an
-        # unreadable axis, which folds in clips that failed the hard gate or hold a real
-        # `False` direction verdict — clips whose keep does NOT come back when the label is
-        # fixed. The operator was told the opposite in the sentence's most emphatic clause.
-        # Same shape as the `except ValueError` narrowing in register_audition.py: two
-        # different reasons for one outcome, reported as one.
-        def only_the_label(v):
-            return (v["hard_pass"] and all(c is True for a, c in v["axis_checks"].items()
-                                           if a not in v["axes_unreadable"]))
+        # "ON THAT ALONE" IS A CLAIM AND HAS TO BE TESTED, AND IT TAKES THREE BUCKETS.
+        # It began as every row with an unreadable axis, which folded in clips rejected by
+        # the hard gate or by a real `False`. Splitting that in two was still wrong in both
+        # directions, because it asked only whether the READABLE axes confirmed:
+        #
+        #   * a row whose only intended axis is the unreadable one has no readable axes, so
+        #     `all(...)` ran over an empty set and returned True — `hard_pass` alone put a
+        #     clip with NO EIV ROW into "would otherwise keep". Fixing that label cannot
+        #     make it keep; there is nothing to check the fixed label against.
+        #   * `not only_the_label` then swept up every UNMEASURED row and reported it as
+        #     "hard gate, or a measured direction disagreement". It is neither, and NONE IS
+        #     NOT FALSE (issue #55) is this module's own doctrine — stating it backwards
+        #     here is the same defect at a new address.
+        #
+        # So the question "will fixing the label bring this clip back" has three answers,
+        # and each names the repair that would actually work.
+        def verdict_bucket(v):
+            if not v["hard_pass"]:
+                return "rejected"          # the hard gate; a label cannot reach it
+            readable = [c for a, c in v["axis_checks"].items()
+                        if a not in v["axes_unreadable"]]
+            if any(c is False for c in readable):
+                return "rejected"          # measured, and pointed the wrong way
+            if any(c is None for c in readable) or v["measured_z"] is None:
+                # Nothing was measured — for a readable axis, or (the empty-readable case)
+                # for the unreadable one itself. The repair is to SCORE the clip, and only
+                # then is the label worth fixing.
+                return "unmeasured"
+            return "label"                 # would keep but for the unreadable label
 
-        unreadable_rows = [v for v in verdicts if v["axes_unreadable"]]
-        blocked = [v["id"] for v in unreadable_rows if only_the_label(v)]
-        also_rejected = [v["id"] for v in unreadable_rows if not only_the_label(v)]
+        buckets = collections.defaultdict(list)
+        for v in verdicts:
+            if v["axes_unreadable"]:
+                buckets[verdict_bucket(v)].append(v["id"])
         print(f"  !! {len(unusable)} intended label(s) are present and NOT NUMERIC, so "
               f"those axes CANNOT KEEP: {describe_unusable(unusable)}")
-        if blocked:
-            print(f"  !! {len(blocked)} clip(s) are held out of keeps.jsonl on that alone "
-                  f"— they stated a direction nobody could read and would otherwise keep. "
-                  f"Fix the labels and re-run; this is a LABELLING repair, not a scoring "
-                  f"one.")
-        if also_rejected:
-            # Counted separately rather than dropped: they are still bad labels worth
-            # fixing, but fixing them will not move these clips into keeps.jsonl, and an
-            # operator who reads the line above as covering them will think the repair
-            # failed.
-            print(f"  !! {len(also_rejected)} further clip(s) carry an unreadable label "
-                  f"AND are rejected independently (hard gate, or a measured direction "
-                  f"disagreement). Fixing their labels will NOT make them keep.")
+        if buckets["label"]:
+            print(f"  !! {len(buckets['label'])} clip(s) are held out of keeps.jsonl on "
+                  f"that alone — they stated a direction nobody could read and would "
+                  f"otherwise keep. Fix the labels and re-run; this is a LABELLING repair.")
+        if buckets["unmeasured"]:
+            print(f"  !! {len(buckets['unmeasured'])} further clip(s) carry an unreadable "
+                  f"label AND have an UNMEASURED axis. Fixing the label alone will not "
+                  f"make them keep — there is nothing to check it against. Score them "
+                  f"first; this is a SCORING repair before it is a labelling one.")
+        if buckets["rejected"]:
+            print(f"  !! {len(buckets['rejected'])} further clip(s) carry an unreadable "
+                  f"label AND are rejected independently (hard gate, or a MEASURED "
+                  f"direction disagreement). Fixing their labels will NOT make them keep.")
 
     # UNMEASURED IS NOT FAILED (issue #55). These clips have no direction verdict at all;
     # counting them among the failures is what turned a container that scored nothing into

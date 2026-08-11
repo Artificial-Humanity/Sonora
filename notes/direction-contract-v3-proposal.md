@@ -372,9 +372,19 @@ need the (lane, A) pooling instead — 15 cells of 6, **0.8457 dB**, df = 75 —
 
 The correction does **not** rescue the "every lane obeys the dial equally" reading, and it
 does not condemn it either. The 1.18 dB spread between the fastest lane (Speech +5.58) and
-the slowest (`unknown` +4.40) is a difference of two *slopes*, i.e. of four cell means, whose
-se is **0.6905 dB** — so the spread is **1.71 se, p ≈ 0.09**. Not distinguishable from noise
-at this n, and not excluded either. (Comparing that 1.18 against a *per-render* sd, as an
+the slowest (`unknown` +4.40) is a **maximum over ten lane pairs**, not one chosen pair, so
+its null distribution is a studentised range and not a `t`: **q = 1.18 / 0.4883 = 2.42**
+(k = 5, df = 75), **p = 0.434**. Not distinguishable from noise at this n, and not excluded
+either.
+
+⚠ **This line read "1.71 se, p ≈ 0.09" until 2026-08-11, and that number was ~5× too small
+in the direction that matters.** It divided by the se of a *difference of two slopes*
+(0.6905 dB) and referred it to a two-sided `t(75)` — the null of one **pre-specified** pair.
+The spread is a max-minus-min, so that reference is far too narrow and the `p` overstated
+evidence *against* equal gain, which is exactly the reading the paragraph goes on to refuse.
+`derive_a_channel_stats.py` § 7 now computes the range statistic, so this sentence
+regenerates; the hedge below was right the whole time and the number is what disagreed
+with it. (Comparing that 1.18 against a *per-render* sd, as an
 earlier reading of this table did, is the wrong denominator: it asks whether the spread
 exceeds single-render noise, when the quantities being differenced are six-render means.) The
 supportable claim is **"nonzero gain in every lane"**. "Equal gain" is not established.
