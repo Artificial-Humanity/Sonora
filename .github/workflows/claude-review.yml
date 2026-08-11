@@ -183,10 +183,26 @@ jobs:
             * **No marker** → this is the PR's first review. Your range is the whole
               PR: `gh pr diff ${{ github.event.pull_request.number }}`.
 
-            **IF THE RANGE IS EMPTY, OR TOUCHES ONLY DOCS** (`*.md`, `notes/`), POST
-            NOTHING AT ALL AND STOP. Say it in your run log, not on the PR. A "no new
-            findings" comment on every push is how a PR accumulates twelve comments
-            that no one reads, and docs-only work is out of review scope (AGENTS.md §5).
+            **IF THE RANGE IS EMPTY, OR TOUCHES ONLY DOCS, POST NOTHING AT ALL AND STOP.**
+            Say it in your run log, not on the PR. A "no new findings" comment on every push
+            is how a PR accumulates twelve comments that no one reads, and docs-only work is
+            out of review scope (AGENTS.md §5).
+
+            "Docs" means `*.md` and `notes/` — **WITH THESE EXCEPTIONS, WHICH ARE ALWAYS IN
+            SCOPE NO MATTER THEIR EXTENSION:**
+
+              * `.claude/**` — agent instructions. `.claude/commands/*.md` is an EXECUTABLE
+                PROMPT: it tells an agent holding `acceptEdits` and push rights which `gh`
+                commands to run, which threads to resolve, and what to commit. It is closer
+                to a shell script than to a README.
+              * `AGENTS.md`, `CLAUDE.md` — the rules of record that every session loads.
+
+            ⚠ THIS EXCEPTION EXISTS BECAUSE THE EXEMPTION ATE THE MOST SENSITIVE FILE CLASS IN
+            THE REPO. PR #64 added `.claude/commands/pr-watch.md` and nothing else, so the
+            `*.md` rule skipped it entirely: a prompt instructing an agent to push commits
+            went in with **zero review** and a green check. A stale number in a rules file gets
+            propagated on purpose by the next reader; an unreviewed line in an agent prompt
+            gets executed. Neither is documentation in the sense this exemption meant.
 
             WHY THIS EXISTS, so you do not optimise it away: re-reviewing the whole PR
             after every fix push is a loop — review → fix → push → review → fix — and
