@@ -40,9 +40,9 @@ _Answering a specific question? **"What are we training on"** → `training-sour
 **"May we use this dataset"** → `dataset-landscape.md`. **"How do I launch a run"** →
 `training-operations.md`. **"Why is the model shaped like this"** → `model-decisions.md`._
 
-_Bookkeeping: [CHANGELOG.md](CHANGELOG.md) is the append-only change history (AGENTS.md §4,
-maintained since 2026-08-06), and `code-review-*.md` files are transient — only the latest
-survives, and [STATE.md](STATE.md) points at it (AGENTS.md §5)._
+_Bookkeeping: none to maintain here. The changelog and the `code-review-*.md` cycle were
+both retired 2026-08-11 (AGENTS.md §4) — a change is recorded by its commit message and its
+pull request, and review findings live in the PR that raised them._
 
 ## Data — what trains, and under what license
 

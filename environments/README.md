@@ -39,7 +39,7 @@ Container — re-run the compose prep chain against the base image and freeze th
 so the record stays a record rather than a guess. The exact chain is in the file's own
 header, and it is copied verbatim from `AI-Lab-AMD/docker-compose.yml`.
 
-Refresh both after any dependency change, and note in `notes/CHANGELOG.md` that you did —
+Refresh both after any dependency change, and say so in the commit message —
 a stale snapshot asserting the wrong versions is the failure mode these files exist to
 prevent.
 

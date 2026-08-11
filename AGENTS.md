@@ -49,7 +49,7 @@ in [notes/README.md](notes/README.md). Before starting work, read
 Names must be predictable so links resolve on case-sensitive systems (Linux/CI) as well as
 case-insensitive macOS/Windows.
 
-* **Canonical root marker files → `UPPERCASE`** (`SCREAMING_SNAKE_CASE` if multi-word): `README.md`, `LICENSE`, `CONTRIBUTING.md`, `CHANGELOG.md`, `ROADMAP.md`, `AGENTS.md`. Keep this set small and curated.
+* **Canonical root marker files → `UPPERCASE`** (`SCREAMING_SNAKE_CASE` if multi-word): `README.md`, `LICENSE`, `CONTRIBUTING.md`, `ROADMAP.md`, `AGENTS.md`. Keep this set small and curated.
 * **Top-level anchor docs → `UPPERCASE`, single word preferred:** `ARCHITECTURE.md`, `STATE.md`.
 * **All other docs & notes → `lowercase-kebab-case.md`:** e.g. `open-decisions.md`, `code-review-findings.md`. This is the rule for everything in `notes/`.
 * **Source code → the language's own convention:** Rust `snake_case.rs`, Swift `PascalCase.swift`, Kotlin `PascalCase.kt`.
@@ -199,24 +199,46 @@ case-insensitive macOS/Windows.
   uv's resolver speed materially shortens the recreate-reinstall cycle documented in this
   project's STATE ops notes.
 
-### 4. Changelog Maintenance Requirement
+### 4. The Record of Change — git history and the pull request
 
-* The project changelog lives at [notes/CHANGELOG.md](notes/CHANGELOG.md). Append a detailed chronological entry describing all technical modifications, refactoring milestones, and build-system changes **after committing** the corresponding work.
-* **Scope: code work only.** Changelog entries are required for source, config, and dependency-manifest changes (`matcha/`, `scripts/`, `configs/`, `tests/`, `sky/`, `vocalizer.py`, `audition/`, `Makefile`, `pyproject.toml`/`setup.py`/`environments/`). They are **not** required for docs-only commits (`notes/`, `notebooks/`, `*.md`, comments-only changes).
-* Every entry must be accompanied by the short 7-character commit SHA associated with the work.
-* **The changelog is append-only across a release cycle.** Do not prune, rewrite, or remove historical entries. Entries are pruned/rolled over **only** when we tag and release a new version of the overall project — at which point the released entries are collected under that version's heading and the working section is reset for the next cycle.
-* New entries go at the top under the current date, following the existing `Added` / `Changed` / `Fixed` / `Removed` structure.
+* **There is no changelog** (owner, 2026-08-11). `notes/CHANGELOG.md` was retired, along with
+  the review-document cycle that cross-referenced it, because both **predate this repo having
+  pull requests or review at all** and had become a third place for the same facts to drift.
+  The record of a change is now, in order of authority:
+  1. **the commit message** — WHY the previous state was wrong, not merely what moved;
+  2. **the pull request** — title, body, and the review threads, which hold the argument and
+     its resolution;
+  3. **`git log`** — which needs no maintenance to stay accurate.
+* ⚠ **Do not reintroduce a changelog, and do not resurrect it under another name** — a
+  `notes/changes-*.md`, a "release notes" file, a running summary in `STATE.md`. The failure
+  was structural, not cosmetic: a hand-maintained narrative of what changed is a copy of
+  information that already exists in two authoritative places, and the copy is the one that
+  goes stale. This repo has already paid for doc-vs-artifact drift repeatedly.
+* **What genuinely does not fit in a commit or a PR belongs in `notes/`** as a durable
+  document about the *current* state of something (`notes/STATE.md`, a design note), never as
+  a dated log of past events. If you catch yourself writing "on 2026-08-11 we changed X",
+  that belongs in the commit that changed X.
 
-### 5. Code Review Execution Standards
+### 5. Code Review Standards
 
-* **Scope: code work only.** Code reviews cover the same code changes that warrant changelog entries (see §4) — source, configs, and dependency manifests. Docs-only commits are out of scope and need no review.
-* **A review is a report, not a fix pass.** Assume the deliverable is the findings document alone: the reviewing agent takes on fixes only when the owner explicitly asks it to, never as a rider on the review itself.
-* **The review itself never warrants a changelog entry.** Review documents live in `notes/`, and writing, replacing, or deleting one is docs-only work under §4; the changelog material is the code commits that later close the findings.
-* When performing a code review, cross-reference the changelog and corresponding commits.
-* Create a review document matching the format `notes/code-review-[year][month][day]-[hhmmss].md`. Begin the document with the first evaluated short commit SHA, and end with the last evaluated commit SHA.
-* Determine the range of commits to review by starting with the commit immediately following the end SHA of the *previous* code review. If no prior review exists, use all commits from the previous and current day.
-* Once the new code review document has been written, delete the previous one to keep only the latest review active.
-* Repoint the **Latest code review** pointer in [notes/STATE.md](notes/STATE.md) to the new document (only the link target changes; the surrounding line is phrased generically) so a session can find the current review without globbing the folder.
+* **Review happens in the pull request.** `.github/workflows/claude-review.yml` reviews each
+  PR and posts findings inline; §1 covers how they are resolved. There is **no review
+  document, no SHA-range bookkeeping, and no pointer to maintain** — the reviewer bounds its
+  own range with the `<!-- janis-reviewed: <sha> -->` marker it writes into each summary, so
+  the thing §5 used to ask a human to track is now automatic and per-PR.
+* **A review is a report, not a fix pass.** This survives the retirement and applies to any
+  agent asked to review anything: the deliverable is the findings. Take on fixes only when
+  the owner explicitly asks, never as a rider on the review itself.
+* **Scope: code work only.** Source, configs and dependency manifests. Docs-only changes need
+  no review, and the review workflow is told to post nothing when a PR's new range touches
+  only `*.md` or `notes/`.
+* **Periodic wholesale review is a different altitude, and it is NOT this.** The owner keeps a
+  floating reviewer session for reading the codebase and the product direction as a whole,
+  on its own cadence. Per-PR review answers *"is this diff correct?"*; that one answers
+  *"is this still coherent?"* — and it must not be collapsed into the PR lane, because per-diff
+  volume will always crowd out the wider read. ⚠ **Where its output lands is an OPEN
+  QUESTION** (2026-08-11): the retired convention was a timestamped document in `notes/`, and
+  nothing has replaced it yet. Do not invent one silently — ask.
 
 ### 6. Execute From The Repo — `/data` Holds Data
 
@@ -237,7 +259,7 @@ Where a copy still exists, the rest of this section governs it. **The repo is
 authoritative in every case.**
 
 * **Never edit code under `/data`.** Change it in the repo, commit, then deploy. An edit made
-  on `/data` has no history, no diff, no review and no changelog entry, and no way for anyone
+  on `/data` has no history, no diff, no review and no pull request, and no way for anyone
   else to discover it happened.
 * **A `/data` file that is *newer* than its tracked original is not authoritative — it is
   unreviewed.** If that edit is the one you want, commit it in the repo and redeploy; do not
@@ -330,7 +352,7 @@ git commit …                                    # a dirty tree is REFUSED by d
 **Code is edited in the repo and deployed. It is never edited at the deploy target, and
 never copied back from one.** This is not a style preference and it has no exceptions:
 
-* An edit under `/data` has **no history, no diff, no review and no changelog entry**. A
+* An edit under `/data` has **no history, no diff, no review and no pull request**. A
   `/data` file that is *newer* than its tracked original is not authoritative — it is
   unrecorded, and it will be destroyed without ceremony by the next deploy, because
   `rsync --delete` leaves nothing to recover or diff.

@@ -35,7 +35,7 @@ pytestmark = pytest.mark.skipif(not DATA.is_dir(), reason="/data is not mounted 
 
 # (repo-relative source dir, /data working dir, glob) — the source of truth is ALWAYS the
 # repo. A /data copy that is newer is not authoritative, it is unreviewed: it has no
-# history, no diff and no changelog entry.
+# history, no diff and no pull request.
 # NOTE the LiteRT harness is deliberately absent. It no longer has a /data copy at all:
 # `SONORA_LITERT_WORK` split the data from the code on 2026-08-06, so the scripts execute
 # from the repo and only checkpoints, graphs, artifacts and the venv remain on /data. That
@@ -83,7 +83,7 @@ def test_data_copy_matches_the_repo(src, mirror):
         f"{mirror}\n  has drifted from the tracked original\n  {src}\n"
         "  The repo is authoritative. Diff them, decide which change is wanted, and if the\n"
         "  /data side is right then COMMIT it there rather than copying it back — an\n"
-        "  untracked edit has no history, no review and no changelog entry.\n"
+        "  untracked edit has no history, no review and no pull request.\n"
         "  This is exactly how convert_vat.py's detect_vat_dim guard failed to ship."
     )
 

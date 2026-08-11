@@ -193,8 +193,8 @@ Fix the findings, and stop. Do not refactor surrounding code, add features, or t
 unrelated files — an unrequested change is a new thing to review, which is how a fix
 pass becomes a second review cycle.
 
-Append a changelog entry only if AGENTS.md §4 requires one for the commits you made
-(source, configs and dependency manifests; docs-only work is exempt).
+**Do not write a changelog entry.** There is no changelog (AGENTS.md §4, retired
+2026-08-11) — your commit messages and your replies in the threads ARE the record.
 
 If there is no actionable review feedback on this PR, say so in a comment and make no
 commits.
