@@ -224,7 +224,7 @@ as an architecture failure — it isn't one.
 **v6 scope: 1,004 eligible keeps before dedup → 846 appended (owner 2026-08-09; dedup
 2026-08-10).** The 1,004 — 902 delivery-labelled + 102 delivery-blank — is what survives
 the licence and standing-policy filter over 1,279 total keeps, all four exclusions honoured
-as written: VibeVoice/Dia 133 (benched), moss85 83 (un-SFT'd base), longcat 45 (benched),
+as written: VibeVoice/Dia 133 (benched), moss85 83 (un-SFT'd base), longcat 51 (benched),
 higgs3-NC 8 (**NC — never trains**). Per lane at that stage: Dialogue 402 · Neutral 270 ·
 Documentary 85 · Newscaster 76 · Speech 69. **158 of those rows duplicate audio already in
 v5** (three classes, § Rung 2 prerequisite 3), leaving 846 — less **14 over-length rows**

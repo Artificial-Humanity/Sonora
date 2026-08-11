@@ -410,11 +410,31 @@ def unreadable(fact, exists=None):
 
 
 def docs():
+    """Every file whose corpus numbers this gate is allowed to see.
+
+    `configs/data/*.yaml` was added 2026-08-11 (owner). The v6 config's header block is the
+    densest set of corpus numbers in the repo — 826 / 832 / 154 / 82 / 78 / 251 -> 328 /
+    69 -> 68 — and it sat entirely outside the registry's field of view, so the same `826`
+    and `832` written one directory over in `notes/README.md` were checked in both
+    directions while these were not checked at all. That is the #50 failure ("the gate
+    could not see it, because it checked the number the two READMEs agreed on") relocated
+    rather than closed.
+
+    ⚠ Measured when it was added: this widens the FILE set, not the fact set. Scope alone
+    does not enrol a line — the number must also be written in a phrasing some FACT
+    recognises — so it moved 32 files / 36 recognised statements to 42 / 37. One statement
+    today; the point is that the next config line written in a recognised phrasing is
+    enforced without anyone remembering to come back here.
+    """
     out = []
     for name in sorted(os.listdir(NOTES)):
         if name.endswith(".md"):
             out.append(os.path.join(NOTES, name))
     out.append(os.path.join(REPO, "README.md"))
+    cfg = os.path.join(REPO, "configs", "data")
+    if os.path.isdir(cfg):
+        out += [os.path.join(cfg, n) for n in sorted(os.listdir(cfg))
+                if n.endswith((".yaml", ".yml"))]
     return out
 
 

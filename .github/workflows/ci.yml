@@ -2,9 +2,10 @@ name: CI — tests
 
 # WHY THIS EXISTS (2026-08-11, owner decision on issue #49)
 #
-# There was NO workflow that ran the suite. `.github/` held only `claude-review.yml` and
-# `claude-fix.yml`, and the only mention of pytest in either was inside the agent's
-# `--allowedTools` — a permission to run tests, not a job that runs them. So ~500
+# There was NO workflow that ran the suite. `.github/` held only `claude-review.yml` (and,
+# until #59 retired it, `claude-fix.yml`), and the only mention of pytest in either was
+# inside the agent's `--allowedTools` — a permission to run tests, not a job that runs
+# them. So ~500
 # host-independent tests, including every regex in the doc-claims registry, were guarded by
 # nothing but whoever remembered to type `pytest` before pushing. The registry's own history
 # is the argument: a hole in it was found by hand, fixed, and the probe that found it was
@@ -52,17 +53,27 @@ jobs:
       - name: Create the repo venv
         run: uv venv --python 3.11 .venv
 
-      # ⚠ TORCH IS DELIBERATELY ABSENT, and this is the same call `claude-fix.yml` documents:
-      # ~2 GB of wheel for the handful of tests that `pytest.importorskip` past without it.
-      # It also keeps CI's shape equal to the HOST venv's, which carries no torch either —
-      # so a green run here means the same thing a developer's `make test` means, instead of
-      # exercising a different set of tests from everyone who will read the result.
+      # ⚠ TORCH IS DELIBERATELY ABSENT — ~2 GB of wheel for the handful of tests that
+      # `pytest.importorskip` past without it. It also keeps CI's shape equal to the HOST
+      # venv's, which carries no torch either, so a green run here means the same thing a
+      # developer's `make test` means instead of exercising a different set of tests from
+      # everyone who will read the result. (The retired `claude-fix.yml` made the same call
+      # with a shorter list — no `fastapi`, no `pysbd` — which is why it reported one
+      # failure it could not explain.)
+      #
+      # THE LIST IS EXPLICIT AND NOT `-e '.[dev]'` ON PURPOSE: installing the project pulls
+      # `install_requires`, torch included, and builds matcha's Cython extension. So the
+      # `dev` extra's constraints do NOT reach this job automatically and any floor that
+      # matters here has to be repeated here — see `pytest>=9.1` below.
       #
       # This is the non-torch import set of `tests/` and of the gate scripts they drive,
       # derived by running the suite in a clean 3.11 venv and adding only what actually
-      # raised. `claude-fix.yml` carries the same list minus `fastapi` and `pysbd`, which is
-      # why it reported one failure it could not explain.
-      #   pytest      the runner (the `dev` extra)
+      # raised.
+      #   pytest>=9.1 the runner. THE FLOOR IS LOAD-BEARING, not hygiene: 9.1 narrowed
+      #               `importorskip`'s exception envelope, and an older resolution restores
+      #               the wide one — which silently turns the retirement guards in
+      #               tests/test_engine_allocation.py into skips. Keep in step with
+      #               pyproject.toml's `dev` extra; nothing checks that they agree.
       #   fastapi     the `dev` extra — tests/ drives audition/app/main.py
       #   numpy scipy librosa soundfile   scripts/ + matcha/ module-scope imports
       #   pyyaml unidecode inflect        ditto
@@ -70,13 +81,17 @@ jobs:
       - name: Install the non-torch test dependencies
         run: |
           uv pip install --python .venv/bin/python \
-            pytest fastapi numpy scipy librosa soundfile pyyaml unidecode inflect pysbd
+            'pytest>=9.1' fastapi numpy scipy librosa soundfile pyyaml unidecode inflect \
+            pysbd
 
       # ⚠ DATA-GATED TESTS WILL SKIP HERE AND THAT IS THE DESIGN. `/data` is ai-lab-0's
       # mount and `data/` is untracked (`.gitignore`), so the corpus artifacts do not exist
-      # on a runner. `scripts/test_doc_claims.py` skips per FACT and prints every one it
-      # skipped, and `test_data_gated_gate` skips when none of its prerequisites is present
-      # — "the corpus is not on this machine" is not a finding. What this job guards is the
+      # on a runner. `test_data_gated_gate` skips when none of its prerequisites is present
+      # — "the corpus is not on this machine" is not a finding. ⚠ Note what that means for
+      # the gate script itself: `pyproject.toml`'s `testpaths = "tests/"` does not collect
+      # `scripts/test_doc_claims.py`, and the one test that would run it as a subprocess
+      # skips here, so ITS per-fact skip machinery never executes in this job. Do not read
+      # a green run as having exercised it. What this job guards is the
       # ~500 host-independent tests, including `tests/test_doc_claims_registry.py`, which is
       # the entire doc-claims REGISTRY exercised in both directions with no artifacts at all.
       #
