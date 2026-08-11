@@ -49,7 +49,7 @@ in [notes/README.md](notes/README.md). Before starting work, read
 Names must be predictable so links resolve on case-sensitive systems (Linux/CI) as well as
 case-insensitive macOS/Windows.
 
-* **Canonical root marker files → `UPPERCASE`** (`SCREAMING_SNAKE_CASE` if multi-word): `README.md`, `LICENSE`, `CONTRIBUTING.md`, `CHANGELOG.md`, `ROADMAP.md`, `AGENTS.md`. Keep this set small and curated.
+* **Canonical root marker files → `UPPERCASE`** (`SCREAMING_SNAKE_CASE` if multi-word): `README.md`, `LICENSE`, `CONTRIBUTING.md`, `ROADMAP.md`, `AGENTS.md`. Keep this set small and curated.
 * **Top-level anchor docs → `UPPERCASE`, single word preferred:** `ARCHITECTURE.md`, `STATE.md`.
 * **All other docs & notes → `lowercase-kebab-case.md`:** e.g. `open-decisions.md`, `code-review-findings.md`. This is the rule for everything in `notes/`.
 * **Source code → the language's own convention:** Rust `snake_case.rs`, Swift `PascalCase.swift`, Kotlin `PascalCase.kt`.
@@ -199,24 +199,161 @@ case-insensitive macOS/Windows.
   uv's resolver speed materially shortens the recreate-reinstall cycle documented in this
   project's STATE ops notes.
 
-### 4. Changelog Maintenance Requirement
+### 4. The Record of Change — git history and the pull request
 
-* The project changelog lives at [notes/CHANGELOG.md](notes/CHANGELOG.md). Append a detailed chronological entry describing all technical modifications, refactoring milestones, and build-system changes **after committing** the corresponding work.
-* **Scope: code work only.** Changelog entries are required for source, config, and dependency-manifest changes (`matcha/`, `scripts/`, `configs/`, `tests/`, `sky/`, `vocalizer.py`, `audition/`, `Makefile`, `pyproject.toml`/`setup.py`/`environments/`). They are **not** required for docs-only commits (`notes/`, `notebooks/`, `*.md`, comments-only changes).
-* Every entry must be accompanied by the short 7-character commit SHA associated with the work.
-* **The changelog is append-only across a release cycle.** Do not prune, rewrite, or remove historical entries. Entries are pruned/rolled over **only** when we tag and release a new version of the overall project — at which point the released entries are collected under that version's heading and the working section is reset for the next cycle.
-* New entries go at the top under the current date, following the existing `Added` / `Changed` / `Fixed` / `Removed` structure.
+* **There is no changelog** (owner, 2026-08-11). `notes/CHANGELOG.md` was retired, along with
+  the review-document cycle that cross-referenced it, because both **predate this repo having
+  pull requests or review at all** and had become a third place for the same facts to drift.
+  The record of a change is now, in order of authority:
+  1. **the commit message** — WHY the previous state was wrong, not merely what moved;
+  2. **the pull request** — title, body, and the review threads, which hold the argument and
+     its resolution;
+  3. **`git log`** — which needs no maintenance to stay accurate.
+* ⚠ **Do not reintroduce a changelog, and do not resurrect it under another name** — a
+  `notes/changes-*.md`, a "release notes" file, a running summary in `STATE.md`. The failure
+  was structural, not cosmetic: a hand-maintained narrative of what changed is a copy of
+  information that already exists in two authoritative places, and the copy is the one that
+  goes stale. This repo has already paid for doc-vs-artifact drift repeatedly.
+* **What genuinely does not fit in a commit or a PR belongs in `notes/`** as a durable
+  document about the *current* state of something (`notes/STATE.md`, a design note), never as
+  a dated log of past events. If you catch yourself writing "on 2026-08-11 we changed X",
+  that belongs in the commit that changed X.
 
-### 5. Code Review Execution Standards
+### 5. Code Review Standards
 
-* **Scope: code work only.** Code reviews cover the same code changes that warrant changelog entries (see §4) — source, configs, and dependency manifests. Docs-only commits are out of scope and need no review.
-* **A review is a report, not a fix pass.** Assume the deliverable is the findings document alone: the reviewing agent takes on fixes only when the owner explicitly asks it to, never as a rider on the review itself.
-* **The review itself never warrants a changelog entry.** Review documents live in `notes/`, and writing, replacing, or deleting one is docs-only work under §4; the changelog material is the code commits that later close the findings.
-* When performing a code review, cross-reference the changelog and corresponding commits.
-* Create a review document matching the format `notes/code-review-[year][month][day]-[hhmmss].md`. Begin the document with the first evaluated short commit SHA, and end with the last evaluated commit SHA.
-* Determine the range of commits to review by starting with the commit immediately following the end SHA of the *previous* code review. If no prior review exists, use all commits from the previous and current day.
-* Once the new code review document has been written, delete the previous one to keep only the latest review active.
-* Repoint the **Latest code review** pointer in [notes/STATE.md](notes/STATE.md) to the new document (only the link target changes; the surrounding line is phrased generically) so a session can find the current review without globbing the folder.
+* **Review happens in the pull request.** `.github/workflows/claude-review.yml` reviews each
+  PR and posts findings inline; §1 covers how they are resolved. There is **no review
+  document and no pointer to maintain** — the reviewer bounds its own range with the
+  `<!-- janis-reviewed: <sha> -->` marker it writes into each summary, so the thing §5 used to
+  ask a human to track is now automatic and per-PR.
+  * ⚠ **The marker bounds a range only while the branch's history is APPEND-ONLY. A rebase or
+    force-push invalidates it and costs a full re-review.** Measured on this PR: **one**
+    force-push invalidated **two** markers at once. The previous marker stopped being an
+    ancestor of HEAD (`compare` reports *diverged*),
+    and the reviewer correctly fell back to reading everything. The prompt handles that and says
+    so — but the cost is real, **tidying a branch's history is not free**, and an earlier version
+    of this bullet claimed there was no SHA bookkeeping at all.
+* **A review is a report, not a fix pass.** This survives the retirement and applies to any
+  agent asked to review anything: the deliverable is the findings. Take on fixes only when
+  the owner explicitly asks, never as a rider on the review itself.
+* ⚠ **REVIEW THE INSTRUCTION, NOT ONLY THE CLASSIFICATION — they fail independently, and the
+  second is where the defects hide.** Six instances across four rounds on 2026-08-11: in every
+  one the code decided *correctly* and the instruction attached to it was wrong or impossible.
+  A remedy naming a fix that cannot address the cause; a bucket telling the reader to "score
+  them first" about clips already scored; a comment claiming an override the tool never had.
+  * *"Is this line true?"* is easy to read for. *"What would someone DO on reading this line?"*
+    is a different question and almost never asked. Ask it of every message, comment, docstring
+    and suggested remedy — including the ones a review itself writes, since a `suggestion`
+    block is committed in one click and gets far less scrutiny than the finding it hangs off.
+* **Scope: code work only.** Source, configs and dependency manifests. Docs-only changes need
+  no review, and the review workflow posts nothing when a PR's new range touches only `*.md`
+  or `notes/`. ⚠ **With exceptions that are ALWAYS in scope regardless of extension:
+  `.claude/**`, `AGENTS.md`, `CLAUDE.md`.** `.claude/commands/*.md` is an executable prompt —
+  it tells an agent holding push rights what to run — so it is closer to a shell script than
+  to a README. The unqualified version of this sentence let #64 merge with **zero review**;
+  narrowed in #66.
+* **Periodic wholesale review is a different altitude, and it is NOT this.** The owner keeps a
+  floating reviewer session for reading the codebase and the product direction as a whole,
+  on its own cadence. Per-PR review answers *"is this diff correct?"*; that one answers
+  *"is this still coherent?"* — and it must not be collapsed into the PR lane, because per-diff
+  volume will always crowd out the wider read. ⚠ **Where its output lands is an OPEN
+  QUESTION** (2026-08-11): the retired convention was a timestamped document in `notes/`, and
+  nothing has replaced it yet. Do not invent one silently — ask.
+
+### 5b. The doc-claims gate can stop enforcing WITHOUT going red
+
+`scripts/test_doc_claims.py` compares documented numbers against the artifacts on disk. It
+has **five silent-disarm modes** — **four observed on 2026-08-11, and one reasoned from the
+mechanism** (mode 2, see its own correction) — none of which was written down
+anywhere until now — which is the same reason the workflow-validation trap in §1 cost the
+same hour twice.
+
+* ⚠ **A registry fact may only guard a STATIC artifact.** `audit-*/ratings.csv` is written
+  **live** by the Auditions app, so a count taken from it (the 1,279 keeps, say) moves as the
+  audit continues, and a fact guarding it would go **red on correct work**. A gate that fails
+  when nothing is wrong gets switched off, which costs every other fact in the registry.
+* ⚠ **A fact enforced only in a file some convention DELETES is one deletion from being
+  disarmed** — because the checker reports only a *disagreement*, so a fact matching no
+  document simply passes.
+  * ⚠ **CORRECTED: `v5 speakers` is NOT an example of this, and an earlier version of this
+    bullet said it was.** Measured against the merge base: it had **two** enforced lines, in a
+    `notes/code-review-*.md` and in `configs/data/…_v6.yaml:8` — the latter in scope since
+    `configs/data/*.yaml` was added to the scan. Deleting the review document took it **2 → 1**,
+    never to zero, so it was never disarmed. The hazard is real as a class; this was not an
+    instance of it, and the claim was made by measuring on a tree that predated the config
+    scan.
+  * ⚠ **The same-line rule — real, and the reason mode 2 looked instantiated:**
+    `notes/STATE.md` already stated v5's 2,500 speakers, but `scope` is
+    matched **per line** and the scope token sat on the line above, so the fact never matched
+    there. **Check that a fact's scope and its number are on the SAME LINE.**
+  * ✅ **This class is now ENFORCED IN CODE, not by vigilance.** #62 added
+    `tests/test_doc_claims_registry.py::test_every_fact_recognises_at_least_one_live_statement`
+    — *"a fact no document states is a fact nobody is checking."* An earlier version of this
+    bullet said nobody had swept for other facts in this position; that was true when written
+    and #62 made it false. Do not re-add a manual sweep: assert on the registry instead.
+* The general form of both: **a fact that matches zero lines is indistinguishable from a fact
+  that passes.** When you add or move an enforced sentence, count the lines it matches — do
+  not infer enforcement from a green gate.
+
+⚠ **AND THE SAME SHAPE OUTSIDE THIS GATE: a tool's FAILURE is easily mistaken for its
+NEGATIVE RESULT.** Four instances on 2026-08-11, three of them within an hour, each costing a
+wrong answer stated confidently:
+
+| Instrument | Failed because | Read as |
+|---|---|---|
+| `test_doc_claims.py` | fact matched no document | fact passes |
+| `gh pr diff N -- path` | takes one arg; errored to **stderr** | empty diff, file untouched |
+| `git merge-tree` | prints conflict to **stdout**, grepped stderr | no conflict |
+| `git merge <ref>` | branch name misspelled, ref missing | merge conflict |
+
+**Before believing a negative result, check that the instrument ran.** Non-zero exit, an empty
+list where a real answer prints something, output on the stream you are not reading — all
+produce a confident nothing. Two of the four above were caught only because another agent
+contradicted the claim, and in both of those cases the person had *already run* the command
+that would have falsified it and stopped reading once the answer looked settled.
+
+**A cheap falsifier that is not run is not evidence.**
+
+⚠ **A THIRD DISARM MODE, AND THE ONLY ONE READING CANNOT FIND: a test whose PREMISE and whose
+SUBJECT are wrong in the same direction passes.** Found 2026-08-11 in
+`test_one_bad_axis_is_enough_to_hold_a_clip_out_of_keeps`: the fixture set an intended `V: 0.9`
+against a stub measuring `−0.79`, so V actually FAILED and the clip was a direction failure
+too — "held out on the label alone" was false of it. **The assertion passed anyway, because the
+count it asserted on was the buggy one.** Two defects agreeing, a green test between them, and
+neither visible from the other.
+
+* **The tell is that it cannot be found by reading either the test or the code** — only by
+  running the case and looking at what the subject actually did, rather than at whether the
+  number came out as expected.
+* So when a guard's own test is the evidence that the guard works, **check the fixture states
+  what you think it states.** A passing assertion proves the two sides agree; it does not prove
+  either is right.
+* Same family as the other two: the green result is indistinguishable from the correct one.
+
+⚠ **A FOURTH MODE, AND THE ONLY ONE WITH NO MISSING MEASUREMENT: a claim can be internally
+incoherent and still survive two readers, when both like the story it tells.** Found
+2026-08-11, in this repo's own review lane. The claim was *"numba 0.53.1 cannot build on 3.12,
+**but** the same resolution silently downgrades librosa by a major version"* — offered as the
+stronger argument for a version pin, agreed with by a second agent in the same terms, and
+**impossible**: if the build fails nothing is installed, so nothing is lived with. The
+downgrade is planned in the resolution and never installed.
+
+* **The resolution had been measured.** So "run the falsifier" would not have caught it — the
+  numbers were right and the conclusion drawn from them was not.
+* **The check that does catch it: state the END STATE, singular.** What does the machine
+  actually end up in? One install has one outcome, and naming it forces the incompatible
+  halves into the same sentence where they cannot both stand.
+* ⚠ **A second reader agreeing is not verification** — it is likelier to be two people liking
+  the same story. The agreement arrived one round after a review had already corrected the
+  previous version of the same sentence.
+
+⚠ **MODE 5, the inverse of mode 4: "the number is unchanged" is itself a claim, and it has to
+be re-derived rather than inferred from the fix looking conservative.** Mode 4 is a measured
+number with an unmeasured conclusion; this is an unmeasured number that a narrow-looking change
+invites you to assume still holds. Found 2026-08-11 when a `ge90` change left "13 of the 20
+campaigns" unregenerated — it was re-run and is still 13, so the note was right, which is
+exactly why the habit is dangerous: being right this time costs nothing and teaches the wrong
+lesson. **If a fix touches an input to a stated number, re-derive the number.**
 
 ### 6. Execute From The Repo — `/data` Holds Data
 
@@ -237,7 +374,7 @@ Where a copy still exists, the rest of this section governs it. **The repo is
 authoritative in every case.**
 
 * **Never edit code under `/data`.** Change it in the repo, commit, then deploy. An edit made
-  on `/data` has no history, no diff, no review and no changelog entry, and no way for anyone
+  on `/data` has no history, no diff, no review and no pull request, and no way for anyone
   else to discover it happened.
 * **A `/data` file that is *newer* than its tracked original is not authoritative — it is
   unreviewed.** If that edit is the one you want, commit it in the repo and redeploy; do not
@@ -330,7 +467,7 @@ git commit …                                    # a dirty tree is REFUSED by d
 **Code is edited in the repo and deployed. It is never edited at the deploy target, and
 never copied back from one.** This is not a style preference and it has no exceptions:
 
-* An edit under `/data` has **no history, no diff, no review and no changelog entry**. A
+* An edit under `/data` has **no history, no diff, no review and no pull request**. A
   `/data` file that is *newer* than its tracked original is not authoritative — it is
   unrecorded, and it will be destroyed without ceremony by the next deploy, because
   `rsync --delete` leaves nothing to recover or diff.

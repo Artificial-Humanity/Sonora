@@ -14,7 +14,7 @@ _Last updated: 2026-08-10._
 ## VAT corpus — train on v5
 
 > **Train on `data/libritts_r_emilia_vat_v5`.** Built 2026-08-08 — the first corpus here
-> that is not one dataset. **41,138 train / 1,304 val · 78.5 h · 2,500 speakers**, against
+> that is not one dataset. **v5 is 41,138 train / 1,304 val · 78.5 h · 2,500 speakers**, against
 > v4's 30,485 / 960 / 51.3 h / 247. It is v4's LibriTTS-R rows **byte-identical** plus
 > **10,997 Emilia-YODAS keeps**. Warm start `warmstart/vat5_init.ckpt` at **338 warm
 > (1 widened) / 0 fresh**, seam guards **30/30** in-container, smoke run trains to
@@ -249,7 +249,7 @@ BEFORE it renders — three of five demonstrated bad vectors were previously acc
 silently. Gates gained G3b/G3c (gain and normalised-RMSE: correlation is scale-invariant,
 so `0.5 × reference` scored **1.000000**) and G6 (the delivery lanes must be mutually
 distinguishable). The referee, the tensor renamer and `kotlin_replica` are all fixed —
-see [CHANGELOG.md](CHANGELOG.md).
+see `git log` for the commits.
 
 **The text front end joined the gates on 2026-08-07 (G7).** Everything above certifies the
 GRAPH; nothing asked whether the text reaching it matches the text the model trained on,
@@ -336,7 +336,9 @@ headline; open items are in [todo.md](todo.md).
 
 ## Pointers
 
-- Change history — [CHANGELOG.md](CHANGELOG.md) (maintained per AGENTS.md §4 since 2026-08-06)
+- Change history — `git log`, the commit messages, and the pull requests. **There is no
+  changelog**: `CHANGELOG.md` was retired 2026-08-11 (AGENTS.md §4), together with the
+  review-document cycle that cross-referenced it.
 - Review sweep — 47 open items down to **9**, with **all three §1/§3 corpus decisions
   taken** on 2026-08-07 and only their execution left. §2's QC/audit/staging block closed
   on 2026-08-07 (`1ebd14a`, `0a505d3`, `a4b6ec5`, `97c14b4`): C-M5, C-M8 and C-L4 done,
@@ -362,21 +364,8 @@ headline; open items are in [todo.md](todo.md).
   risk is **drift**, and it had already bitten: the running export harness was three weeks
   stale and missing a seam guard the repo recorded as landed. `tests/test_data_mirrors.py`
   fails on any divergence. **The repo is authoritative; `/data` is a working copy.**
-- Latest code review — [code-review-20260809-040409.md](code-review-20260809-040409.md).
-  **Every code finding is closed** (QC, training and changelog lanes; see its Resolution
-  table). What it found worth carrying forward is a pattern, not a bug: **the two High
-  findings were both enforcement code that existed and was never wired in, and both sat
-  under tests that grepped for source strings rather than exercising behaviour.** A grep
-  test cannot see reachability — QC-H2's requeue branch was unreachable for two days under
-  a test asserting its exact source lines. Where the suite is behavioural it is genuinely
-  strong; control flow is where it must be. **PR-H1 is closed by owner decision: `ep019`
-  is the pick and the designation** — the rung-2 recipe and `SELECTED.md` both said `ep009`
-  against a Step 0 record written seven minutes earlier, so the SSOT instructed two
-  different warm starts for a day. The remaining PR-* findings are open: document-state lag
-  in the entry-point docs (PR-H2/M1/L1), the unread T-saturation prediction (PR-H3), and
-  four sequencing calls (PR-M2…M5) — **all now closed as well.** Two carried findings worth
-  keeping: the T prediction's leg (a) did **not** land (no T-specific regression, CI
-  straddles zero — the saturation shortcut did not form, and C-soft is not triggered), and
-  **rung 3 projects to ~1 day of GPU**, not multi-week, so the local-vs-cloud decision does
-  not have to precede the v7 build. Both were computable from artifacts that had been
-  sitting on disk since the run finished.
+- Review findings live in the pull request that raised them (AGENTS.md §1/§5); the
+  timestamped review documents were retired 2026-08-11. ⚠ The pattern the final sweep
+  found is worth carrying regardless of where findings get recorded: **both High findings
+  were enforcement code that existed and was never wired in** — written, reviewed,
+  committed, never called. Check that a guard is INVOKED, not merely present.

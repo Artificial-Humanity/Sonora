@@ -212,12 +212,16 @@ def test_no_digit_sentence_is_ever_claimed_by_both_corpora():
     always will be. What must never happen again is two entries CAPTURING from one sentence,
     which is two facts claiming one number, and a red gate on prose that is right.
 
-    `notes/CHANGELOG.md` is the one file allowed ZERO readers. It is append-only history and
-    it QUOTES prior wordings verbatim — the 2026-08-11 entry quotes the pre-#48
-    `notes/STATE.md` sentence, which named no corpus and so had nothing for the registry to
-    attribute it to. Editing a past entry to satisfy a checker would falsify the record it
-    exists to keep; everywhere else, a digit sentence with no reader is lost coverage and
-    fails here.
+    There is NO carve-out. `notes/CHANGELOG.md` used to be the one file allowed zero readers
+    — append-only history quoting prior wordings verbatim, which a checker must not force
+    anyone to edit. **There is no changelog** (AGENTS.md §4), so the exemption has nothing
+    left to exempt. Every **digit-drop sentence** in a scanned file must now have a reader.
+    ⚠ NOT every digit sentence: this loop only examines lines matching the idiom compiled below
+    — 3 lines across 40 scanned files. `notes/STATE.md`'s "2,500 speakers" is a digit sentence in
+    a scanned file and nothing here looks at it. Do not read this as a guarantee that a new digit
+    claim would be caught; that is what the registry's own per-fact reader test is for.
+    ⚠ If an append-only quoting document is ever reintroduced, the carve-out comes back WITH
+    it; do not add one speculatively.
     """
     # BOTH idioms, deliberately. Restricted to "N of the M", this test passed while the
     # bare word `digit` was back in the v5 scope — because the collision that mutation
@@ -227,7 +231,6 @@ def test_no_digit_sentence_is_ever_claimed_by_both_corpora():
         r"(?<![\d,])\d[\d,]*(?: of the [\d,]+)? (?:rows |keeps )?dropped on digits")
     for path in gate.docs():
         rel = os.path.relpath(path, REPO)
-        historical = rel == os.path.join("notes", "CHANGELOG.md")
         with open(path, encoding="utf-8") as fh:
             for lineno, line in enumerate(fh, 1):
                 if not idiom.search(line):
@@ -236,9 +239,12 @@ def test_no_digit_sentence_is_ever_claimed_by_both_corpora():
                 assert len(readers) <= 1, (
                     f"{rel}:{lineno} is claimed by BOTH {readers} — one sentence, two "
                     f"facts, and one of them must be wrong about it:\n  {line.strip()}")
-                assert readers or historical, (
+                assert readers, (
                     f"{rel}:{lineno} states a digit drop that NO fact reads — it names no "
-                    f"corpus, so nothing checks it:\n  {line.strip()}")
+                    f"corpus, so nothing checks it:\n  {line.strip()}\n"
+                    "  If this file is append-only history that QUOTES prior wordings, the "
+                    "answer is a carve-out (see this test's docstring) rather than editing the "
+                    "quote — falsifying the record to satisfy a checker is the worse trade.")
 
 
 # --- #49: a corrupt value must never delete its own check -----------------------------

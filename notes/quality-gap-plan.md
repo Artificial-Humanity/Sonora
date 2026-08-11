@@ -315,7 +315,10 @@ is defined by the 1,004 − 158 line above regardless.
    live under the expressive-registers tree — they join **new** groups, so they cannot
    move an existing clip's mean or sd. That output is what the script prints whether or
    not the new scores are sane. Nor does it meet D-L2's precedent on its own terms:
-   ≤0.0008 was a per-row **maximum** (CHANGELOG line 476), while `mean shift` is
+   ≤0.0008 was a per-row **maximum** (D-L2's own entry, in the retired changelog — recover
+   the text with `git show "$(git rev-list -1 HEAD -- notes/CHANGELOG.md)^:notes/CHANGELOG.md"`,
+   which resolves the deleting commit itself and so survives a squash merge), while
+   `mean shift` is
    `np.abs(a - b).mean()` over ~30k clips (line 138). To claim the precedent, record
    `np.abs(a - b).max()`; to show the 846 are on-scale, record the new-clip valence
    mean/sd vs corpus that the script already prints at lines 141-147.
