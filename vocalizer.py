@@ -404,11 +404,24 @@ def main():
         refresh_btn.click(fn=refresh_checkpoints, outputs=checkpoint_dropdown)
 
         def on_synth(checkpoint, text, steps, temp, length, spk, v, a, t, s, d):
-            # Tolerate a tuple as well as the sentinel: if this is ever run on Gradio 4,
-            # tuple choices become legal again and would arrive as (label, value). Taking
-            # the last element is correct for both, so a version bump cannot silently
-            # re-break the dial the way the 4-vs-3 mismatch did.
-            if isinstance(d, (tuple, list)):
+            # Belt and braces for the bug this file just fixed, and ONLY for that: on
+            # Gradio 3 a `(label, value)` choice arrives here as the tuple itself, so if
+            # tuple choices are ever reintroduced above, unwrap rather than hand
+            # `delivery_index` something it will refuse. This is NOT protection against a
+            # Gradio 4 bump — 4 supports tuple choices and resolves them to the value, so
+            # `d` is already a plain string there and this never fires. What guards the
+            # tuple form coming back is `tests/test_delivery_channel.py`, which reads the
+            # `choices=` expression and fails if a tuple appears in it.
+            #
+            # Exactly a 2-element pair, deliberately. A longer sequence is what
+            # `multiselect=True` would produce, and there is no correct single lane to
+            # pick out of it — `d[-1]` would render a confident clip in a lane the
+            # listener did not choose. Passed through untouched it reaches
+            # `delivery_index` inside `synthesize`'s try/except and is refused into the
+            # error box, which is the loud failure this channel is built around. (An
+            # empty selection would also have raised IndexError here, outside that
+            # try/except, surfacing as a raw traceback instead.)
+            if isinstance(d, (tuple, list)) and len(d) == 2:
                 d = d[-1]
             if d == UNKNOWN_UI:
                 d = delivery.DELIVERY_UNKNOWN
