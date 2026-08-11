@@ -265,6 +265,25 @@ same hour twice.
   that passes.** When you add or move an enforced sentence, count the lines it matches — do
   not infer enforcement from a green gate.
 
+⚠ **AND THE SAME SHAPE OUTSIDE THIS GATE: a tool's FAILURE is easily mistaken for its
+NEGATIVE RESULT.** Four instances on 2026-08-11, three of them within an hour, each costing a
+wrong answer stated confidently:
+
+| Instrument | Failed because | Read as |
+|---|---|---|
+| `test_doc_claims.py` | fact matched no document | fact passes |
+| `gh pr diff N -- path` | takes one arg; errored to **stderr** | empty diff, file untouched |
+| `git merge-tree` | prints conflict to **stdout**, grepped stderr | no conflict |
+| `git merge <ref>` | branch name misspelled, ref missing | merge conflict |
+
+**Before believing a negative result, check that the instrument ran.** Non-zero exit, an empty
+list where a real answer prints something, output on the stream you are not reading — all
+produce a confident nothing. Two of the four above were caught only because another agent
+contradicted the claim, and in both of those cases the person had *already run* the command
+that would have falsified it and stopped reading once the answer looked settled.
+
+**A cheap falsifier that is not run is not evidence.**
+
 ### 6. Execute From The Repo — `/data` Holds Data
 
 **Owner principle (2026-08-06): code executes from the repo checkout; `/data` holds what
