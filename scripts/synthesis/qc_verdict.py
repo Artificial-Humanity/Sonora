@@ -629,12 +629,34 @@ def main():
         # Not folded into `undirected`: a row whose labels could not be read is not a row
         # without labels, and reading the second off the first is how a directed bank
         # comes to look like real audio (issue #58).
-        blocked = [v["id"] for v in verdicts if v["axes_unreadable"]]
+        # "ON THAT ALONE" IS A CLAIM AND HAS TO BE TESTED. This was every row carrying an
+        # unreadable axis, which folds in clips that failed the hard gate or hold a real
+        # `False` direction verdict — clips whose keep does NOT come back when the label is
+        # fixed. The operator was told the opposite in the sentence's most emphatic clause.
+        # Same shape as the `except ValueError` narrowing in register_audition.py: two
+        # different reasons for one outcome, reported as one.
+        def only_the_label(v):
+            return (v["hard_pass"] and all(c is True for a, c in v["axis_checks"].items()
+                                           if a not in v["axes_unreadable"]))
+
+        unreadable_rows = [v for v in verdicts if v["axes_unreadable"]]
+        blocked = [v["id"] for v in unreadable_rows if only_the_label(v)]
+        also_rejected = [v["id"] for v in unreadable_rows if not only_the_label(v)]
         print(f"  !! {len(unusable)} intended label(s) are present and NOT NUMERIC, so "
               f"those axes CANNOT KEEP: {describe_unusable(unusable)}")
-        print(f"  !! {len(blocked)} clip(s) are held out of keeps.jsonl on that alone — "
-              f"they stated a direction nobody could read. Fix the labels and re-run; "
-              f"this is a LABELLING repair, not a scoring one.")
+        if blocked:
+            print(f"  !! {len(blocked)} clip(s) are held out of keeps.jsonl on that alone "
+                  f"— they stated a direction nobody could read and would otherwise keep. "
+                  f"Fix the labels and re-run; this is a LABELLING repair, not a scoring "
+                  f"one.")
+        if also_rejected:
+            # Counted separately rather than dropped: they are still bad labels worth
+            # fixing, but fixing them will not move these clips into keeps.jsonl, and an
+            # operator who reads the line above as covering them will think the repair
+            # failed.
+            print(f"  !! {len(also_rejected)} further clip(s) carry an unreadable label "
+                  f"AND are rejected independently (hard gate, or a measured direction "
+                  f"disagreement). Fixing their labels will NOT make them keep.")
 
     # UNMEASURED IS NOT FAILED (issue #55). These clips have no direction verdict at all;
     # counting them among the failures is what turned a container that scored nothing into

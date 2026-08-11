@@ -720,22 +720,57 @@ def test_one_bad_axis_is_enough_to_hold_a_clip_out_of_keeps(tmp_path, monkeypatc
     """The partial case, decided by the owner 2026-08-11: an axis whose label is present
     and unreadable confirmed nothing, so it blocks the keep on its own — the same doctrine
     as NONE IS NOT FALSE, applied to the label side. The readable axis is still checked and
-    still reported; the bank's repair is to fix the label, not to re-score the clip."""
+    still reported; the bank's repair is to fix the label, not to re-score the clip.
+
+    ⚠ The intended V must CONFIRM here, and the first version of this test had it pointing
+    the wrong way. That made the clip a direction failure as well, so "held out on the label
+    alone" was false of it — and the assertion still passed, because the summary counted
+    every row with an unreadable axis rather than the rows the label actually held out.
+    Two defects agreeing. See the sibling test for the case this one must not cover.
+    """
     sys.path.insert(0, str(SYNTH))
     qv = pytest.importorskip("qc_verdict")
     _stub_anchor(tmp_path, qv, monkeypatch)
-    camp = _stub_campaign(tmp_path, n=1, intended={"V": 0.9, "A": "angry"})
+    camp = _stub_campaign(tmp_path, n=1, intended={"V": -0.9, "A": "angry"})
     _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"))
     out = capsys.readouterr().out
     v = json.loads((camp / "qc_verdicts.jsonl").read_text().strip())
     assert v["axis_checks"]["A"] == "unreadable" and v["axes_unreadable"] == ["A"]
-    assert "V" in v["axis_checks"] and v["axis_checks"]["V"] is not None, \
-        "the readable axis must still be checked — one bad label is not a whole bad row"
+    assert v["axis_checks"]["V"] is True, \
+        "the readable axis must still be CHECKED and confirmed — the hold-out is the label"
     assert v["keep"] is False
     assert "1 clip(s) are held out of keeps.jsonl" in out, \
         "the summary must say the hold-out happened; a silent one reads as a scoring gap"
     assert "T" not in v["axis_checks"], \
         "an axis with no label at all is still ABSENT, not unreadable"
+
+
+def test_only_the_clips_the_label_actually_held_out_are_reported_as_a_label_repair(
+        tmp_path, monkeypatch, capsys):
+    """"On that alone" is a claim, and it was counted as "has an unreadable axis".
+
+    That folds in clips rejected by the hard gate or by a real `False` direction verdict —
+    clips whose keep does NOT come back when the label is fixed. The operator was told the
+    opposite in the sentence's most emphatic clause, which is the same defect as the wide
+    `except ValueError` this branch narrowed in register_audition.py: two different reasons
+    for one outcome, reported as one.
+    """
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=2, intended={"V": -0.9, "A": "angry"})
+    rows = [json.loads(l) for l in
+            (camp / "qc_measures.jsonl").read_text().splitlines() if l.strip()]
+    rows[0]["hard_pass"] = False          # rejected for a reason the label cannot fix
+    (camp / "qc_measures.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"))
+    out = capsys.readouterr().out
+    assert "1 clip(s) are held out of keeps.jsonl on that alone" in out, \
+        "clip1 is the only one whose keep returns when the label is fixed"
+    assert "1 further clip(s) carry an unreadable label AND are rejected independently" in out
+    assert "Fixing their labels will NOT make them keep" in out
 
 
 def test_the_anchor_is_held_to_the_same_standard_as_the_campaign_file(

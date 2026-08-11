@@ -139,11 +139,19 @@ def corpus(rows, manifest):
     # in the file whose entire purpose is that § 3b's numbers regenerate. Same class of
     # defect as the § 8 conclusion below: a sentence that cannot be re-derived sits beside
     # numbers that can, and it is the sentence that gets quoted.
+    # ⚠ THE UN-LANED REMAINDER IS EXCLUDED, DELIBERATELY, AND SAYS SO. The blank lane is a
+    # key of `by_lane` like any other, so it was silently counted here and then rendered as
+    # an empty string in the parenthetical — `(, Newscaster)`, which is the line that gets
+    # pasted into § 3b. This section's claim is "campaign is a proxy for LANE", and a
+    # campaign that is 100% un-laned says nothing about lane structure: it is the absence of
+    # a lane, not a fifth one. The `(blank)` row two blocks up still shows its concentration,
+    # so excluding it here hides nothing.
     both = [lane for lane, c in by_lane.items()
-            if c and c.most_common(1)[0][1] == sum(c.values())
+            if lane and c and c.most_common(1)[0][1] == sum(c.values())
             and c.most_common(1)[0][1] == sum(by_camp[c.most_common(1)[0][0]].values())]
     print(f"\n  ⚠ {len(both)} lane/campaign pair(s) are 100% in BOTH directions"
-          + (f" ({', '.join(sorted(map(str, both)))})." if both else "."))
+          + (f" ({', '.join(sorted(map(str, both)))})." if both else ".")
+          + "  (the un-laned remainder is not a lane for this claim and is excluded)")
     sp = by_lane.get("Speech", collections.Counter())
     if sp:
         print("    Speech draws from " + ", ".join(f"`{k}` {v}" for k, v in sp.most_common())
@@ -330,6 +338,13 @@ def probe(rows):
     # ⚠ The denominator is the se of ONE SLOPE, not of a difference of two. Tukey's q is
     # (max - min) / se(group mean), and the "groups" here are lane slopes; using `se_ss`
     # would divide by an extra sqrt(2) and understate q. Same trap in the other direction.
+    # `studentized_range` is undefined for k < 2 and returns `nan`. A nan p printed beside
+    # "EQUAL gain is NOT established" in a script whose output is pasted into § 3b is worth
+    # refusing rather than emitting — there is no range across one lane.
+    if len(slopes) < 2:
+        sys.exit(f"DERIVE-FAIL: the probe carries {len(slopes)} lane(s) — a range across "
+                 f"lanes needs at least 2.\n  § 7's spread and § 8's between-lane "
+                 f"differences are both undefined here.")
     q = spread / se_slope
     p = float(stats.studentized_range.sf(q, k=len(slopes), df=df15))
     print(f"  range across lanes: {min(slopes.values()):+.2f} to {max(slopes.values()):+.2f}"
@@ -348,14 +363,16 @@ def probe(rows):
     print("    AND ALL OF THIS IS A SLOPE. It says nothing about where A = 0 sits.")
 
     h("8. INTERCEPT — where A = 0 actually lands, BETWEEN lanes (issue #33)")
-    zero = levels[len(levels) // 2]
-    # `sys.exit`, not `assert`: asserts vanish under `python -O`, and this one is the only
-    # thing standing between a design without an A = 0 level and § 8 silently reporting its
-    # "intercept" at whatever `levels[len // 2]` happened to be. Every other refusal on this
-    # branch is a named exit; this was the odd one out.
-    if zero != 0.0:
+    # SELECTED BY VALUE, NOT BY POSITION. `levels[len(levels) // 2]` is the positional
+    # midpoint, which is A = 0 only on a symmetric odd design. On A ∈ {-1, 0, +0.5, +1} the
+    # midpoint is +0.5, and the guard below then exited claiming there is no A = 0 while
+    # printing a level list whose second entry is 0.0 — a refusal pointing away from its own
+    # condition, which is worse than the `assert` it replaced. `sys.exit` rather than
+    # `assert` for the original reason: asserts vanish under `python -O`.
+    if 0.0 not in levels:
         sys.exit(f"DERIVE-FAIL: the probe's A levels are {levels} — no A = 0 to take an "
                  f"intercept at.\n  § 8 is defined at A = 0 and nowhere else.")
+    zero = 0.0
     if ("unknown", zero) not in c15:
         sys.exit("DERIVE-FAIL: the probe carries no `unknown` lane, which is § 8's "
                  "reference.\n  Every difference in this section is measured against it; "
@@ -376,24 +393,37 @@ def probe(rows):
     # specifically to stop § 3b's conclusions being claims. On a probe where three of four
     # lanes were LOUDER it printed the same sentence, with a descending range, and that
     # output is copied into the note as-is.
+    if not diffs:
+        # Unreachable while § 7's k < 2 refusal stands, and stated rather than assumed: the
+        # `else` branch below indexes `mags[0]`, so an empty `diffs` was a bare IndexError
+        # in the section this file hardened specifically to replace bare tracebacks.
+        sys.exit("DERIVE-FAIL: the probe carries no lane other than `unknown` — § 8's "
+                 "between-lane differences are undefined.\n  § 7's k < 2 refusal should "
+                 "have caught this already; if you are reading this, that guard was lost.")
     quieter = [l for l, d in diffs.items() if d < 0]
     louder = [l for l, d in diffs.items() if d > 0]
-    agree = bool(diffs) and (len(quieter) == len(diffs) or len(louder) == len(diffs))
-    # Sorted ASCENDING and printed low-to-high, so the range cannot read backwards the way
-    # `abs(hi)` to `abs(lo)` did the moment a diff came out positive.
-    mags = sorted((abs(d), abs(d) / diff_se[l]) for l, d in diffs.items())
+    agree = len(quieter) == len(diffs) or len(louder) == len(diffs)
+    # ⚠ RANKED SEPARATELY, because they are two different quantities. These were one list of
+    # (magnitude, se-ratio) pairs sorted on magnitude, so the se endpoints were whichever
+    # ratios rode along on the smallest- and largest-|d| lanes — not the smallest and
+    # largest se. With the old constant `se` the two orderings coincided and the line was
+    # right by construction; per-comparison `se_of` broke that, and the strongest
+    # displacement in the section could sit outside a span a reader quotes as its maximum.
+    # Both are sorted ASCENDING and printed low-to-high, so neither can read backwards.
+    mags = sorted(abs(d) for d in diffs.values())
+    ses = sorted(abs(d) / diff_se[l] for l, d in diffs.items())
+    span = (f"{mags[0]:.2f} to {mags[-1]:.2f} dB "
+            f"({ses[0]:.1f} to {ses[-1]:.1f} se)")
     if agree:
         side = "quieter" if quieter else "louder"
-        print(f"\n  every named lane ({len(diffs)}) is {side} than `unknown` at A = 0, by "
-              f"{mags[0][0]:.2f} to {mags[-1][0]:.2f} dB "
-              f"({mags[0][1]:.1f} to {mags[-1][1]:.1f} se), all the same direction.")
+        print(f"\n  every named lane ({len(diffs)}) is {side} than `unknown` at A = 0, "
+              f"by {span}, all the same direction.")
     else:
         print(f"\n  ⚠ THE NAMED LANES DO NOT AGREE IN DIRECTION at A = 0: "
               f"{len(quieter)} quieter, {len(louder)} louder"
               + (f" ({', '.join(sorted(map(str, louder)))})." if louder else ".")
-              + f"\n    Magnitudes {mags[0][0]:.2f} to {mags[-1][0]:.2f} dB "
-                f"({mags[0][1]:.1f} to {mags[-1][1]:.1f} se). There is no single"
-                " intercept displacement\n    to report — do not quote one.")
+              + f"\n    Magnitudes {span}. There is no single intercept displacement"
+                "\n    to report — do not quote one.")
     named = [means[(l, zero)] for l in lanes if l != "unknown"]
     print(f"  named lanes differ from EACH OTHER at A = 0 by {max(named) - min(named):.2f} dB.")
     print("\n  ⚠ THIS IS NOT A CLEAN INTERCEPT TEST. It is confounded: the named lanes may")
