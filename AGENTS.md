@@ -239,8 +239,12 @@ case-insensitive macOS/Windows.
     and suggested remedy — including the ones a review itself writes, since a `suggestion`
     block is committed in one click and gets far less scrutiny than the finding it hangs off.
 * **Scope: code work only.** Source, configs and dependency manifests. Docs-only changes need
-  no review, and the review workflow is told to post nothing when a PR's new range touches
-  only `*.md` or `notes/`.
+  no review, and the review workflow posts nothing when a PR's new range touches only `*.md`
+  or `notes/`. ⚠ **With exceptions that are ALWAYS in scope regardless of extension:
+  `.claude/**`, `AGENTS.md`, `CLAUDE.md`.** `.claude/commands/*.md` is an executable prompt —
+  it tells an agent holding push rights what to run — so it is closer to a shell script than
+  to a README. The unqualified version of this sentence let #64 merge with **zero review**;
+  narrowed in #66.
 * **Periodic wholesale review is a different altitude, and it is NOT this.** The owner keeps a
   floating reviewer session for reading the codebase and the product direction as a whole,
   on its own cadence. Per-PR review answers *"is this diff correct?"*; that one answers
@@ -252,7 +256,7 @@ case-insensitive macOS/Windows.
 ### 5b. The doc-claims gate can stop enforcing WITHOUT going red
 
 `scripts/test_doc_claims.py` compares documented numbers against the artifacts on disk. It
-has **two silent-disarm modes**, both found on 2026-08-11, and neither was written down
+has **five silent-disarm modes**, all found on 2026-08-11, none of which was written down
 anywhere until now — which is the same reason the workflow-validation trap in §1 cost the
 same hour twice.
 
@@ -268,8 +272,11 @@ same hour twice.
   * The near-miss underneath it: `notes/STATE.md` already stated the number, but `scope` is
     matched **per line** and the scope token sat on the line above, so the fact never matched
     there. **Check that a fact's scope and its number are on the SAME LINE.**
-  * ⚠ **Nobody has swept for other facts in this position.** If a fact's only enforced line is
-    in a transient or generated document, it is enforcing nothing.
+  * ✅ **This class is now ENFORCED IN CODE, not by vigilance.** #62 added
+    `tests/test_doc_claims_registry.py::test_every_fact_recognises_at_least_one_live_statement`
+    — *"a fact no document states is a fact nobody is checking."* An earlier version of this
+    bullet said nobody had swept for other facts in this position; that was true when written
+    and #62 made it false. Do not re-add a manual sweep: assert on the registry instead.
 * The general form of both: **a fact that matches zero lines is indistinguishable from a fact
   that passes.** When you add or move an enforced sentence, count the lines it matches — do
   not infer enforcement from a green gate.

@@ -14,10 +14,10 @@ the plan.
       so the section shows two adjacent cell-mean columns with identical headings — unreadable
       rather than merely ugly. Found by the review lane on PR #62 and deliberately left
       unfixed there: pre-existing, and outside that PR's reviewed range.
-      **Owner: the lab-manager session. Blocked until #62 merges** — that PR is currently the
-      sole editor of the file, and a concurrent edit re-creates the same-file collision class
-      that cost two rounds on `pyproject.toml`. The defect is unreachable on the artifact
-      anyone runs, so waiting costs nothing.
+      **Owner: the lab-manager session. UNBLOCKED** — #62 merged (`18ba407`), so
+      `scripts/derive_a_channel_stats.py` is on `main` and the same-file collision this was
+      deferred to avoid can no longer occur. Sonora's developer will rebase their five-file
+      follow-up onto this fix, so it goes first.
 
 ## 1 · Before the next training run
 
