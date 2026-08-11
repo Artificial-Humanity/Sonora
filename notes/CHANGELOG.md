@@ -17,6 +17,93 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ---
 
+## 2026-08-11
+
+### Fixed — the doc-claims gate was red on clean `main`, because the CHECKER conflated two facts
+
+`scripts/test_doc_claims.py` reported two disagreements and **both documents were right.**
+The registry entry "Emilia rows dropped on digits" owned the phrase *dropped on digits*
+outright, and v6 introduced a second, legitimately different digit drop stated in the same
+words. So the entry claimed both:
+
+- `README.md:75` — the v6 append's own count, **6**, was read as a wrong Emilia count.
+  (This changelog is itself scanned, so that phrase is described rather than quoted here —
+  restating it verbatim on a line that also says *Emilia* re-creates the collision.)
+- `notes/STATE.md:313` — on *"**6 of the 832 dropped on digits (D-M3)**"* the capture group
+  took the nearest preceding number, **832**, which is the staged total and not what that
+  sentence claims.
+
+**A gate that cannot be turned green is the same failure as a detector nobody trusts** —
+this repo has been bitten by that before (`gate_calibration.parse_score` silently dropping
+88% of ear rejections; the E610 NIC crash-looping 2,077× unnoticed). A permanently-red
+check gets routed around, and then it is not checking anything.
+
+The two facts are now separate entries, kept apart on both axes:
+
+- **Scope.** The v5 entry carries Emilia's own markers (`Emilia|13,141|digit rows|D-M3`);
+  the bare word `digit`, which is what swallowed v6, is gone. The v6 entries carry v6's
+  (`v6|expressive|append|D-M3|clips resolve`) and deliberately not `Emilia`.
+- **Capture.** Anchored to the number being claimed. `(?<!of the )` refuses the *"N of the
+  M"* idiom in the v5 entry, and `(?<![\d,])` stops a capture starting **inside** a longer
+  number — without it a lookbehind is trivially evaded, matching `3,141` one digit to the
+  right of `of the 13,141`.
+
+Anchoring the v6 digit capture onto the `6` would have retired the only check the `832` in
+that sentence was getting, so **`expressive.candidates` gets its own entry** and the
+sentence now verifies both of its numbers. Coverage went **up**, not down: 19 recognised
+statements → 29 across the documents that existed before this entry (31 with it), and the
+v5 digit fact went from 2 enforced lines to 5 — it never recognised the `carry digits`
+phrasing. Both directions proven — the gate passes, and corrupting either figure in either
+document fails it with the right message.
+
+⚠ **The RED direction found a second hole, and only the RED direction could have.** The
+v6 entries were first scoped `v6|expressive|append|832` — and corrupting the `832` on
+`notes/STATE.md:313` made the gate go **GREEN**, because the number under test was that
+line's only scope marker, so a wrong value deleted its own check. Scope markers are now
+phrases (`D-M3`, `clips resolve`), never the value being checked. **Proving a gate passes
+proves nothing; prove it fails.**
+
+`tests/test_gate_scripts.py` now gates the script on **both** derivation reports
+(`SONORA_CORPUS_V5`, `SONORA_CORPUS_V6`). A fact whose artifact is missing is still a
+failure, so a machine holding v5 and not v6 would otherwise have gone red for a fact it
+had no way to check — the exact thing the DATA_GATED split exists to prevent.
+
+### Fixed — `Documentary` was 154 clips, not 82, and they did not split
+
+Verified against `ratings.csv.bak-20260810-documentary-retire` (pre-sweep) and
+`ratings.csv`, keyed on `(campaign, id)`: the lane held **154** rows and **exactly 154 rows
+changed — every one of them `Documentary` → `Neutral`.** Neutral 524 → 678; Newscaster
+**87 before and after**; no other lane moved. v6's derivation report agrees from the other
+side: Newscaster is 76 on both sides of the retirement while Neutral goes 251 → 328.
+
+So the recorded rationale — *"its 82 rows split bimodally toward Neutral and Newscaster
+with an empty middle"* — was wrong twice over. **82 is the lane's share of the v6 append
+set**, a subset, and was being quoted as the size of the lane; and nothing split. The
+78/22 that backed the Newscaster half was an acoustic *mixture* reading against two
+centroids — where the audio sits, not where the labels went — and it was never differenced
+against the file it described.
+
+Corrected in `matcha/delivery.py` (`RETIRED_LANES`),
+`configs/data/libritts_r_emilia_expressive_vat_v6.yaml`, `audition/app/main.py` and
+`notes/direction-contract-v3-proposal.md` § 0, which now states the measured outcome and
+keeps 82 only where it is true (the append set). `notes/quality-gap-plan.md:289`'s
+`Documentary 82` was already correct — it is the append-set lane table — and is untouched.
+
+⚠ **Not caught by a gate.** The evidence lives in `ratings.csv` and its backups on `/data`,
+outside the `data/` artifacts `test_doc_claims.py` reads, so the delivery-lane counts are
+still checkable only by hand. Wiring them in is open.
+
+⚠ **`audition/app/main.py` is DEPLOY-COUPLED — run `deploy.sh audition` after this merges.**
+`test_data_mirrors.py::test_data_copy_matches_the_repo[main.py]` compares the repo byte for
+byte against `/data/services/audition/app/main.py`, so it reads RED from the moment the
+file is committed until the deploy runs — AGENTS.md §7's documented state between step 2
+and step 3, not a broken gate. It could not be cleared from here: `deploy_audition` rsyncs
+from `${SONORA_REPO}` (the main checkout, which does not carry this branch), needs sudo,
+and ends in `docker restart audition` on a live rating app. It is skipped anywhere `/data`
+is absent, which is every CI runner.
+
+---
+
 ## 2026-08-10
 
 ### Fixed — the vat_dim seam suite was silently truncated, and had been since it was written

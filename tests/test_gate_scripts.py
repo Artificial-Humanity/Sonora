@@ -37,9 +37,20 @@ FAST = ["test_skill_files.py", "test_text_selection.py"]
 # the point: "the corpus is not on this machine" is not a finding, while "the corpus is
 # here and a document disagrees with it" is. Putting this in FAST — which the first version
 # did — turned every laptop into a red build for a fact it had no way to check.
+#
+# ⚠ EVERY artifact the script reads has to be listed, not just the first one. The script
+# treats a fact whose source is missing as a FAILURE ("a fact whose source is missing is
+# not a passing fact"), so an unlisted prerequisite does not degrade to a skip — it goes
+# red on a machine that simply does not have that corpus. v6 was added 2026-08-11 when the
+# registry gained facts read from its derivation report.
 DATA_GATED = [
-    ("test_doc_claims.py", "SONORA_CORPUS_V5",
-     os.path.join(REPO, "data", "libritts_r_emilia_vat_v5", "derivation_report.json")),
+    ("test_doc_claims.py", [
+        ("SONORA_CORPUS_V5",
+         os.path.join(REPO, "data", "libritts_r_emilia_vat_v5", "derivation_report.json")),
+        ("SONORA_CORPUS_V6",
+         os.path.join(REPO, "data", "libritts_r_emilia_expressive_vat_v6",
+                      "derivation_report.json")),
+    ]),
 ]
 
 # (script, env var naming its prerequisite, default path to probe)
@@ -63,13 +74,14 @@ def test_fast_gate(script):
     assert r.returncode == 0, f"{script} failed:\n{r.stdout[-4000:]}\n{r.stderr[-2000:]}"
 
 
-@pytest.mark.parametrize("script,env_var,default", DATA_GATED)
-def test_data_gated_gate(script, env_var, default):
-    target = os.environ.get(env_var, default)
-    if not os.path.exists(target):
-        pytest.skip(f"{script}: {env_var} target not present ({target}) — the corpus "
-                    f"artifacts under data/ are untracked working files, present only "
-                    f"where the corpus was built")
+@pytest.mark.parametrize("script,prereqs", DATA_GATED)
+def test_data_gated_gate(script, prereqs):
+    for env_var, default in prereqs:
+        target = os.environ.get(env_var, default)
+        if not os.path.exists(target):
+            pytest.skip(f"{script}: {env_var} target not present ({target}) — the corpus "
+                        f"artifacts under data/ are untracked working files, present only "
+                        f"where the corpus was built")
     r = _run(script)
     assert r.returncode == 0, f"{script} failed:\n{r.stdout[-4000:]}\n{r.stderr[-2000:]}"
 

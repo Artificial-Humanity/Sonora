@@ -487,9 +487,12 @@ def clips(filter: str = "todo", register: str | None = None,
         if campaign and r.get("campaign") != campaign:
             continue
         # delivery filter: added 2026-08-10 to work a single lane end-to-end. The
-        # case in hand is Documentary, which is being retired — its 82 clips split
-        # bimodally toward Neutral and Newscaster and each needs reassigning on the
-        # ear. Without this you cannot reach a lane except by remembering which
+        # case in hand is Documentary, which is being retired — 154 clips, each
+        # reassigned on the ear, and all 154 landed on Neutral (Newscaster is 87
+        # before and after). ⚠ Corrected 2026-08-11: this said "82 clips split
+        # bimodally toward Neutral and Newscaster" — 82 is the lane's share of the v6
+        # append set, not the lane, and the sweep was not a split.
+        # Without this you cannot reach a lane except by remembering which
         # campaigns fed it. `_none` matches delivery-blank clips, which are otherwise
         # unreachable: blank is a legitimate value (embodiment clips are blank BY
         # RULE), so "has no delivery" is a real query, not an empty filter.
