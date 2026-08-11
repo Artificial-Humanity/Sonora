@@ -24,6 +24,59 @@ def _src(name):
     return (SYNTH / name).read_text(encoding="utf-8")
 
 
+BANK = "scripts/synthesis/synth_bank.sh"
+
+
+def _shell_commands(rel):
+    """(lineno, command) for each shell command in `rel`: comments dropped, `\\`-joined.
+
+    A pipeline stage is WIRED or it is merely WRITTEN ABOUT, and `synth_bank.sh` documents
+    every stage at length — so a substring searched over the whole file cannot tell the
+    two apart, and a guard that a comment can satisfy is how this file came to name a
+    stage it never ran (issue #24). `_code_lines` is imported rather than copied: it is
+    `test_container_env.py`'s definition of "a code line", and having one is the point.
+
+    Continuations are joined because the invocations under test span several lines, so a
+    per-line search would see `--append-flags` and the script it belongs to as unrelated
+    facts.
+    """
+    # pylint: disable=import-outside-toplevel
+    from test_container_env import _code_lines
+
+    start, parts = None, []
+    for n, line in _code_lines(rel):
+        if start is None:
+            start = n
+        if line.endswith("\\"):
+            parts.append(line[:-1].strip())
+            continue
+        parts.append(line)
+        yield start, " ".join(parts)
+        start, parts = None, []
+    if parts:
+        yield start, " ".join(parts)
+
+
+def _invocations(rel):
+    """`_shell_commands` minus the `echo`es.
+
+    Every stage in `synth_bank.sh` prints the command to run by hand when it fails, so the
+    recovery hints name the very scripts these tests are checking are RUN. An `echo` that
+    mentions `qc_verdict.py` is one more way to describe a stage without invoking it, and
+    is exactly what would keep a wiring test green after the invocation was removed.
+    """
+    for n, cmd in _shell_commands(rel):
+        if cmd.split(maxsplit=1)[0] not in ("echo", "printf"):
+            yield n, cmd
+
+
+def _first_line_with(rel, needle, extra=None):
+    for n, cmd in _invocations(rel):
+        if needle in cmd and (extra is None or extra in cmd):
+            return n
+    return None
+
+
 # --- C-L6: the trusted tier's tail sample rounded to zero -----------------------------
 
 
@@ -219,11 +272,15 @@ def test_an_engine_with_a_detector_has_the_detector_wired():
     instrumentation". Until 2026-08-08 it was a MANUAL step, so the trade was not real —
     a detector nobody runs trades nothing. If an engine is off scrutinized on the strength
     of a detector, the detector has to fire on every bank.
+
+    Comment-blind since 2026-08-11: this asserted two substrings over the whole FILE, and
+    `synth_bank.sh` describes the detector step in a nine-line comment — so commenting the
+    real invocation out left it green. That is the same blindness that let `qc_verdict` be
+    named in a comment and never run (issue #24).
     """
-    bank = _src("synth_bank.sh")
-    assert "qc_engine_defects.py" in bank, \
-        "the defect detectors are not wired into the bank pipeline"
-    assert "--append-flags" in bank, \
+    cmds = [c for _, c in _invocations(BANK) if "qc_engine_defects.py" in c]
+    assert cmds, "the defect detectors are not INVOKED by the bank pipeline"
+    assert any("--append-flags" in c for c in cmds), \
         "detectors run but their flags never reach qc_flags.txt / the ear"
 
     defects = _src("qc_engine_defects.py")
@@ -294,3 +351,123 @@ def test_a_recategorized_row_is_still_the_keep_it_was():
     sys.path.insert(0, str(SYNTH))
     gc = pytest.importorskip("gate_calibration")
     assert [gc.parse_score(f"x{n}") for n in range(1, 6)] == [1, 2, 3, 4, 5]
+
+
+# --- QC stage 2 was written and never invoked (issue #24, 2026-08-11) ------------------
+#
+# `qc_verdict.py` is the intended-vs-measured direction check. `synth_bank.sh` NAMED it in
+# a comment for three weeks and never ran it, so 695 directed clips across five campaigns
+# reached the ear with nine intrinsic-quality gates and no direction check at all — the
+# third time a written instrument in this file turned out to be un-invoked.
+
+def test_the_direction_check_actually_runs_rather_than_being_described():
+    """The failure this closes is not "the check is wrong", it is "the check never ran".
+
+    Deliberately comment-blind, and that is not a detail. The detector guard above used to
+    assert a substring over the whole file, and `synth_bank.sh` explains every stage at
+    length in prose — so commenting the real invocation out left it GREEN. A wiring test a
+    comment can satisfy cannot tell `wired` from `written about`, which is the exact
+    confusion that produced this issue: the file named `qc_verdict.py` and ran nothing.
+    """
+    cmds = [c for _, c in _invocations(BANK) if "qc_verdict.py" in c]
+    assert cmds, "qc_verdict.py is not INVOKED by synth_bank.sh (a comment is not a call)"
+    assert any("--eiv" in c for c in cmds), \
+        "no invocation writes verdicts — --eiv is what merges EIV scores into qc_verdicts"
+    assert any("--append-flags" in c for c in cmds), \
+        "verdicts are written but axis failures never reach qc_flags.txt / the ear"
+    assert any("--count-directed" in c for c in cmds), \
+        ("no skip path: real-audio banks carry no `intended` labels, and running the "
+         "stage on them spends a GPU labelling pass to confirm nothing")
+    assert any("eiv_score.sh" in c for _, c in _invocations(BANK)), \
+        "qc_verdict has no scores to merge — eiv_score.sh is not run over qc_filelist.txt"
+
+
+def test_the_verdicts_are_frozen_before_the_ear_is_shown_the_clips():
+    """Ordering is the load-bearing part, and it is invisible at runtime.
+
+    `gate_calibration.py`: "Every full-coverage round is a free opportunity to measure it,
+    but only if the instrument verdicts are frozen BEFORE the owner rates. Afterwards
+    there is nothing to compare against and the round is spent." Dataset pipeline 1.0 —
+    the owner spot-checking instead of auditing every clip — is gated on that measurement,
+    so a stage-2 run that lands after `register_audition` produces a file that looks
+    identical and is worth nothing to the calibration.
+    """
+    gate = _first_line_with(BANK, "qc_gate.py")
+    eiv = _first_line_with(BANK, "eiv_score.sh")
+    verdict = _first_line_with(BANK, "qc_verdict.py", extra="--eiv")
+    register = _first_line_with(BANK, "register_audition.py")
+    assert None not in (gate, eiv, verdict, register)
+    assert gate < eiv < verdict, "the verdict must merge the gate's filelist and its scores"
+    assert verdict < register, \
+        ("the verdicts are written AFTER the clips are queued for audition — the round "
+         "is spent and gate_calibration has nothing frozen to compare against")
+
+
+def test_the_direction_check_is_advisory_and_the_quality_gate_is_not():
+    """The two stages must be wired differently, and the difference is the whole fix.
+
+    `keep` in qc_verdict is a LABEL-CONFIRMATION verdict — `gate_calibration.py`: "A
+    beautiful clip whose director-assigned labels were wrong is a legitimate not-keep." So
+    copying the qc_gate wiring, which exits without registering, would discard good audio
+    because Gemma mislabelled it. Stage 2 belongs on the qc_engine_defects pattern: it
+    announces failure and carries on.
+
+    The qc_gate half of the assertion is the control: without it this test would also pass
+    against a file that had stopped stopping for anything at all.
+    """
+    cmds = list(_shell_commands(BANK))
+    verdict = _first_line_with(BANK, "qc_verdict.py", extra="--eiv")
+    register = _first_line_with(BANK, "register_audition.py")
+    stage2 = [c for n, c in cmds if verdict is not None and verdict <= n < register]
+    assert stage2, "no stage-2 commands between the verdict and the queue — see the " \
+                   "wiring and ordering tests above for which of the two is missing"
+    offenders = [c for c in stage2 if c.split("#")[0].strip().startswith("exit")
+                 or " exit " in c]
+    assert not offenders, \
+        ("the direction check can stop the bank: " + " | ".join(offenders) + " — it is "
+         "advisory, and a mislabelled clip must not be pulled out of the queue")
+    assert any("!!" in c and "qc_verdict" in c for c in stage2), \
+        "a failed direction check is silent; it must be announced like the defect detectors"
+
+    gate = _first_line_with(BANK, "qc_gate.py")
+    hard = [c for n, c in cmds if gate <= n < verdict and c.startswith("exit")]
+    assert hard, "qc_gate no longer stops the pipeline — it is not advisory and must"
+
+
+def test_a_bank_with_no_intended_labels_is_a_clean_no_op():
+    """`want = r["intended"][axis]` was unguarded, and real audio has no `intended` at all
+    (librivox-v1: 664 rows, librivox-v2: 1,366). The first row would have taken the whole
+    campaign down with a KeyError — so the stage could not simply be run everywhere.
+
+    An unlabelled axis is ABSENT from the checks rather than False: `keep` is
+    `all(checks.values())`, and there is no claim to fail. `all({})` is True, so an
+    undirected clip's verdict is exactly its hard_pass.
+    """
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    librivox_row = {"id": "uneasy-money_lv002_0199", "hard_pass": True, "engine": "librivox"}
+    assert qv.intended_labels(librivox_row) == {}
+    checks, notes = qv.axis_verdicts(qv.intended_labels(librivox_row),
+                                     {"V": 2.0, "A": -1.0, "T": 0.4}, 0.25, 0.3)
+    assert checks == {} and notes == []
+    assert bool(librivox_row["hard_pass"] and all(checks.values())) is True
+
+    # ...and a row that carries only SOME of the axes constrains only those.
+    partial = qv.intended_labels({"intended": {"V": 0.9, "A": None}})
+    assert partial == {"V": 0.9}
+    checks, _ = qv.axis_verdicts(partial, {"V": -1.0}, 0.25, 0.3)
+    assert checks == {"V": False}, "a directed axis pointing the wrong way still fails"
+
+
+def test_the_verdict_says_which_definition_of_A_it_used():
+    """The synth lane's A is the EIV Arousal head; the LibriTTS corpus lane's A is the
+    per-speaker z-score of integrated loudness (`normalize_loudness.py` documents why the
+    two disagree on purpose). A clip can satisfy one and fail the other, so a verdict that
+    does not name its own definition is a number two lanes will read differently."""
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    a = qv.MEASURED_FROM["A"]
+    assert "Arousal" in a and "LUFS" in a, a
+    assert "NOT" in a, "the divergence has to be stated, not implied"
+    assert "delivery" in qv.MEASURED_FROM, \
+        "contract v2 shipped a delivery channel; a row must say it went unchecked"
