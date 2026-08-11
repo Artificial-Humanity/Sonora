@@ -242,13 +242,89 @@ channels are named, instrument-measured and independently verifiable is what mak
 frame is A in?" answerable per channel instead of per corpus generation. The single
 squashed A is what allows three frames to hide inside one number.
 
-**Not resolved here, deliberately.** The `bb76085` diagnostic prints per-campaign mean LUFS
-with dominant lane and lane share, plus the per-lane sd of lane means before and after
-centring — measured on LUFS, not on A, so `clamp2` pinning is not credited to the centring.
-If that table shows the centring is eating real lane structure, re-cutting v6 with
-target-clustered offsets is its own commit with its own before/after. **Read the table
-before taking a position**; that is the same discipline the T-saturation prediction block
-gets.
+### RESOLVED 2026-08-11 — the table has been read
+
+The `bb76085` diagnostic ran when v6 was built, but its output is stdout-only and was lost
+when an OOM crash-loop killed the terminal. It was reconstructed read-only from
+`expressive_registers_measures/labels_v6.jsonl`, measured on LUFS rather than on A so
+`clamp2` pinning is not credited to the centring.
+
+**The concern was real and is confirmed.** Per-campaign centring removes **94.3%** of the
+between-lane loudness structure:
+
+| | value |
+|---|---|
+| sd of lane-mean LUFS, before centring | **1.4065 dB** |
+| sd of lane-mean LUFS, after centring | **0.0807 dB** |
+| between-lane structure surviving | **5.7%** |
+
+The mechanism is that **campaign is a near-perfect proxy for lane**: 13 of the 20 campaigns
+with n ≥ 10 are ≥90% one delivery lane, and two lanes are *entirely* one campaign —
+`newscaster-v1` is 100% of Newscaster (76 rows), `book-librivox-speech-v1` is 100% of Speech.
+Centring per campaign therefore subtracts each lane's own mean by construction. Newscaster's
+A is consequently a **constant**: mean −0.0000, sd **0.0094**, range [−0.040, +0.052]. Two
+causes worth keeping apart — the *between*-lane offset was removed by the centring, but the
+*within*-lane variance was never there, because `newscaster-v1`'s native LUFS sd is 0.035 dB.
+The whole campaign was rendered to one loudness target, and A is loudness-derived.
+
+**Four centres, not three.** `MIN_CAMPAIGN_N = 10` sends 25 rows across 8 campaigns to the
+bank-wide offset instead, so `labels_v6.jsonl` carries 21 distinct offsets. And the campaign
+supplies only the **centre** — the global anchor still supplies the **scale**, deliberately
+un-rescaled. §3b's table above is therefore conservative on both counts.
+
+### What A *means* at inference
+
+**A is within-source relative loudness, in all three frames.** They differ only in what
+"source" denotes — the speaker, the corpus, or the recording chain proxied by the campaign.
+Every frame answers the same question, *"louder or quieter than this clip's own reference
+population?"*, and none of them ever meant absolute dB. So the Director supplying one
+absolute A is not incoherent: it requests a **relative displacement**, which the trunk applies
+against whatever reference the speaker embedding and delivery one-hot place the clip in.
+
+**That is measured, not argued.** Probing `vat6_ep010` — 90 renders, 2 texts × 5 lanes ×
+A ∈ {−1, 0, +1} × 3 repeats, true LUFS, pooled within-cell noise floor 0.554 dB — the A dial
+moves output loudness **+4.68 dB for Newscaster**, the lane whose training A is a constant,
+against +4.40 to +5.58 dB for every other lane. **The lane whose A carried no variance still
+obeys the dial**, because A's meaning is carried by the ~42,000 rows that do vary; the 832
+append rows do not have to re-teach it. That is why the frames can coexist today, and it is
+the falsification of the feared consequence.
+
+### Which frame wins in v7: a declared `loudness_target`, not `campaign` and not the anchor
+
+The obvious answer is the global anchor — the only frame whose reference population is a
+fixed, re-derivable artifact (`libritts_anchor` over v4's 31,445 clips, LUFS mean −18.156 /
+sd 1.862), where per-speaker z cannot survive a median of 3 clips per speaker and `campaign`
+cannot be supplied at inference at all.
+
+**The obvious answer is wrong on its own, because unification RENAMES the offset rather than
+deleting it.** The expressive bank is loudnorm'd to −23 LUFS and the anchor is not, so
+re-anchoring the append set reintroduces exactly the artefact the centring was introduced to
+remove: A pinned at −1 on **94.4%** of those rows. Anchoring alone converts a batch-identifier
+offset into a corpus-wide one; it does not make A a measurement.
+
+**So v7 replaces `campaign` with a declared `loudness_target` / recording-chain id** — the
+same arithmetic, keyed on something with acoustic meaning rather than on which batch a clip
+happened to be in. The bank has three known targets (−23.0, −20.4, and −26.3..−27.1), and
+they are a property of how a clip was produced, which is precisely the thing `campaign` was
+standing in for. This keeps the anchor as the *scale* while giving the *centre* a declared,
+inference-supplyable meaning.
+
+**What it costs.** A-only relabelling of ~41,138 v5 rows plus 832 append rows — arithmetic on
+stored LUFS, not a re-measure. But it re-rolls every A, which breaks the rung-over-rung
+holdout comparison the merge discipline protects (`merge_expressive_registers.py:12` keeps v5
+rows byte-identical for exactly this reason). **It therefore belongs at a version bump with
+its own before/after, never as a patch.** The 104 rows with recoverable pre-loudnorm LUFS
+(`v1/audio/loudnorm.jsonl`) are the only slice where real performance loudness could be
+restored; backfilling that sidecar bank-wide is the one change that would make A on the
+append set a measurement rather than a convention.
+
+### v6 ships as built
+
+Owner call, 2026-08-11. Nothing above is a v6 defect: the ep010 probe says the dial works,
+`ep008` is already the selected checkpoint, and re-cutting now would re-roll every A and cost
+the rung-2 comparison for no measured gain. The pre-commitment to re-cut was conditioned on
+the centring eating real lane structure, which it does — but it was aimed at a consequence
+that has since been measured and falsified.
 
 ---
 
