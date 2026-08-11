@@ -11,6 +11,7 @@ and `seed_delivery.py` records that they do not — Dialogue vs Neutral is a pro
 TEXT, Newscaster vs Documentary a property of the RENDER.
 """
 
+import ast
 import pathlib
 import re
 import sys
@@ -180,6 +181,105 @@ def test_the_vocalizer_ships_a_dial_in_the_same_phase():
     src = (REPO / "vocalizer.py").read_text(encoding="utf-8")
     assert "delivery.DELIVERY_LANES" in src, "the dial builds its own lane list"
     assert "delivery.vat_vector(" in src, "the dial builds its own conditioning vector"
+
+
+#: `vocalizer.py` cannot be imported here — it pulls in torch and gradio, neither of which
+#: the host has — so the dial is guarded by reading it. As the AST, NOT as text: the two
+#: findings this file has already lost to text matching (#17, #27) were both assertions
+#: that stayed green on a line that no longer said what they were checking. A parse tree
+#: cannot be satisfied by a comment, a docstring, or a substring that happens to survive.
+def _vocalizer_ast():
+    return ast.parse((REPO / "vocalizer.py").read_text(encoding="utf-8"))
+
+
+def _assigned_call(tree, target, attr):
+    """The `target = <mod>.attr(...)` call node, or None."""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == target for t in node.targets):
+            continue
+        func = node.value.func
+        if isinstance(func, ast.Attribute) and func.attr == attr:
+            return node.value
+    return None
+
+
+def test_the_delivery_dials_choices_are_flat_strings():
+    """The bug that reached the owner mid-ep010: `(label, value)` tuple choices are a
+    Gradio 4 feature, the container runs 3.43.2, and there the tuple ITSELF becomes the
+    value — so every one of the five lanes arrived at `delivery_index` as
+    `"('Newscaster', 'Newscaster')"` and the closed vocabulary refused it. The dial was
+    unusable for every lane while `/v1/audio/speech`, which passes plain strings, was fine.
+
+    Nothing pinned that. Restoring the tuple-choices line verbatim left the whole suite
+    green, because the existing guards ask whether `delivery.DELIVERY_LANES` is mentioned
+    and both forms mention it. This asks the question that actually distinguishes them:
+    is there a tuple anywhere in the `choices=` expression?
+    """
+    call = _assigned_call(_vocalizer_ast(), "delivery_lane", "Dropdown")
+    assert call is not None, "the delivery dial is no longer a `gr.Dropdown` assignment"
+    choices = [kw.value for kw in call.keywords if kw.arg == "choices"]
+    assert len(choices) == 1, "the dial's choices are not a single `choices=` keyword"
+    offenders = [ast.unparse(n) for n in ast.walk(choices[0]) if isinstance(n, ast.Tuple)]
+    assert not offenders, (
+        "tuple choices are back in the delivery dial and Gradio 3 will pass the tuple "
+        "through as the value: " + ", ".join(offenders))
+    built = ast.unparse(choices[0])
+    assert "delivery.DELIVERY_LANES" in built, "the dial builds its own lane list"
+    assert "UNKNOWN_UI" in built, "the dial spells the unknown label itself"
+
+
+def test_on_synth_maps_the_display_sentinel_back_to_the_contracts_unknown():
+    """`DELIVERY_UNKNOWN` is `""`, which a dropdown can neither display nor let you
+    re-select, so the picker shows `UNKNOWN_UI` and `on_synth` maps it back. Delete that
+    mapping and the DEFAULT selection raises `unknown delivery lane 'unknown'` on every
+    render — the dial broken again, from the other end. That mutation also left the suite
+    green before this test."""
+    fn = next((n for n in ast.walk(_vocalizer_ast())
+               if isinstance(n, ast.FunctionDef) and n.name == "on_synth"), None)
+    assert fn is not None, "`on_synth` is gone; the mapping has nowhere to live"
+    mapped = any(
+        "UNKNOWN_UI" in ast.unparse(node.test)
+        and any("delivery.DELIVERY_UNKNOWN" in ast.unparse(s) for s in node.body)
+        for node in ast.walk(fn) if isinstance(node, ast.If))
+    assert mapped, ("`on_synth` no longer maps UNKNOWN_UI back to "
+                    "delivery.DELIVERY_UNKNOWN; the default selection now raises")
+
+
+def test_the_uis_unknown_label_is_spelled_once_and_is_not_a_real_lane():
+    """Two halves of the same hazard, both latent on today's vocabulary.
+
+    The label must not collide with a lane. `on_synth` rewrites `d == UNKNOWN_UI` to `""`,
+    so a lane that ever spells itself `"unknown"` would be silently downgraded to an
+    UNCONDITIONED render — the precise failure `delivery_index` was written to make loud by
+    refusing typos. That vocabulary change would be made in `matcha/delivery.py`, by
+    someone with no reason to open `vocalizer.py`; this is the line that would tell them.
+
+    And it must be spelled once. The info line under the audio reports the same state, and
+    its job is to name the lane that ACTUALLY ran. Spelled from a second literal, renaming
+    the label to something clearer leaves the picker saying `— none —` while the readout
+    says `delivery=unknown`, with nothing telling a listener they are the same state.
+    """
+    tree = _vocalizer_ast()
+    assign = next((n for n in tree.body
+                   if isinstance(n, ast.Assign)
+                   and any(isinstance(t, ast.Name) and t.id == "UNKNOWN_UI"
+                           for t in n.targets)), None)
+    assert assign is not None, "UNKNOWN_UI is no longer a module-level constant"
+    label = ast.literal_eval(assign.value)
+
+    assert label not in delivery.DELIVERY_LANES, (
+        f"the UI's unknown label {label!r} is now a real delivery lane; on_synth would "
+        "rewrite that lane to DELIVERY_UNKNOWN and render it unconditioned")
+    assert label != delivery.DELIVERY_UNKNOWN, "the sentinel is the thing it stands in for"
+
+    echoes = [n.lineno for n in ast.walk(tree)
+              if isinstance(n, ast.Constant) and n.value == label
+              and n.lineno != assign.value.lineno]
+    assert not echoes, (f"{label!r} is spelled again outside UNKNOWN_UI at line(s) "
+                        f"{echoes}; use the constant so the picker and the info line "
+                        "cannot drift apart")
 
 
 def test_the_vocalizer_still_renders_a_pre_v2_checkpoint():

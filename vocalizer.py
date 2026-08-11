@@ -75,6 +75,13 @@ sample_rate = 22050
 # — so the delivery dial is driven by what THIS checkpoint accepts, not by the contract.
 ckpt_vat_dim = 0
 
+# UI-only label for DELIVERY_UNKNOWN. The contract spells "no lane" as the empty string,
+# which a dropdown cannot display or let you re-select, so the UI shows this word and
+# `on_synth` maps it back. It is deliberately NOT a member of the lane vocabulary —
+# `delivery_index` would refuse it, which is the correct behaviour if it ever leaks past
+# the mapping instead of silently rendering an unconditioned clip.
+UNKNOWN_UI = "unknown"
+
 
 def get_checkpoints():
     # Scan for all ckpt files in checkpoints subfolders without doing a full recursive search
@@ -274,7 +281,7 @@ def synthesize(checkpoint_path, text, n_timesteps, temperature, length_scale,
                      f"{ckpt_vat_dim}-channel, predating contract v2) · "
                      "guidance >1 wants ≥25 ODE steps")
         else:
-            extra = (f" · V/A/T active · delivery={delivery_lane or 'unknown'} · "
+            extra = (f" · V/A/T active · delivery={delivery_lane or UNKNOWN_UI} · "
                      "guidance >1 wants ≥25 ODE steps")
         info = f"lane={lane} · {sample_rate} Hz · speakers={n_spks}" + extra
         return None, fp.name, mel_plot, info
@@ -372,11 +379,19 @@ def main():
                     # A DROPDOWN, not a slider: delivery is categorical. A slider would
                     # invite interpolating between Newscaster and Dialogue, which has no
                     # meaning and which `lane_of_vector` refuses outright.
+                    #
+                    # FLAT STRING choices, and they have to be. `(label, value)` tuple
+                    # choices are a Gradio 4 feature; this runs 3.43.2, where the tuple
+                    # itself becomes the value — so every lane pick reached
+                    # `delivery_index` as "('Newscaster', 'Newscaster')" and the closed
+                    # vocabulary raised, making the dial unusable for ALL five lanes
+                    # while the HTTP lane (which passes plain strings) stayed fine.
+                    # `UNKNOWN_UI` is a display label only; `on_synth` maps it back to
+                    # DELIVERY_UNKNOWN, since "" cannot be shown in a dropdown.
                     delivery_lane = gr.Dropdown(
-                        label="Delivery lane (contract v2; blank = unknown ≡ v1)",
-                        choices=[("unknown", "")] + [(ln, ln)
-                                                     for ln in delivery.DELIVERY_LANES],
-                        value="", interactive=True)
+                        label="Delivery lane (contract v2; 'unknown' ≡ v1)",
+                        choices=[UNKNOWN_UI] + list(delivery.DELIVERY_LANES),
+                        value=UNKNOWN_UI, interactive=True)
 
                 synth_btn = gr.Button("🔊 Synthesize Speech", variant="primary")
                 error_box = gr.Textbox(label="Error Status", visible=False)
@@ -389,6 +404,27 @@ def main():
         refresh_btn.click(fn=refresh_checkpoints, outputs=checkpoint_dropdown)
 
         def on_synth(checkpoint, text, steps, temp, length, spk, v, a, t, s, d):
+            # Belt and braces for the bug this file just fixed, and ONLY for that: on
+            # Gradio 3 a `(label, value)` choice arrives here as the tuple itself, so if
+            # tuple choices are ever reintroduced above, unwrap rather than hand
+            # `delivery_index` something it will refuse. This is NOT protection against a
+            # Gradio 4 bump — 4 supports tuple choices and resolves them to the value, so
+            # `d` is already a plain string there and this never fires. What guards the
+            # tuple form coming back is `tests/test_delivery_channel.py`, which reads the
+            # `choices=` expression and fails if a tuple appears in it.
+            #
+            # Exactly a 2-element pair, deliberately. A longer sequence is what
+            # `multiselect=True` would produce, and there is no correct single lane to
+            # pick out of it — `d[-1]` would render a confident clip in a lane the
+            # listener did not choose. Passed through untouched it reaches
+            # `delivery_index` inside `synthesize`'s try/except and is refused into the
+            # error box, which is the loud failure this channel is built around. (An
+            # empty selection would also have raised IndexError here, outside that
+            # try/except, surfacing as a raw traceback instead.)
+            if isinstance(d, (tuple, list)) and len(d) == 2:
+                d = d[-1]
+            if d == UNKNOWN_UI:
+                d = delivery.DELIVERY_UNKNOWN
             err, audio, mel, info = synthesize(checkpoint, text, steps, temp,
                                                length, spk, v, a, t, s, d)
             if err:
