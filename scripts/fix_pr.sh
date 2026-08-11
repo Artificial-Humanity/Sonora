@@ -43,7 +43,7 @@ for arg in "$@"; do
     # `sed -n '1,30p'` window went stale the moment the header grew — it ended by printing
     # `set -euo pipefail` — and the previous review's finding was specifically that --help
     # describes behaviour the script does not have. This cannot drift again.
-    -h|--help)  awk 'NR>1 && /^set -euo pipefail/{exit} NR>1' "$0"; exit 0 ;;
+    -h|--help)  awk 'NR>1 && /^set /{exit} NR>1' "$0"; exit 0 ;;
     -*)         die "unknown flag: $arg" ;;
     *)          [[ -n "$PR" ]] && die "give exactly one PR number (got '$PR' and '$arg')"
                 PR="$arg" ;;
@@ -116,9 +116,20 @@ PY="${SONORA_PY:-$REPO_ROOT/.venv/bin/python}"
 # `--allowedTools` as `Bash(<path>:*)`. A space word-splits into a different command in
 # both, executed by a process holding `acceptEdits` and push rights. One up-front refusal
 # closes all three; escaping would have to be correct in all three.
-[[ "$PY" != *[[:space:]]* ]] || die "interpreter path contains whitespace, which cannot be passed safely to the agent or to --allowedTools: '$PY'"
+# ⚠ WARN AND DISABLE, DO NOT `die`. An abort here fired ABOVE the `--no-tests` and
+# `--dry-run` branches below, killing the two escape hatches this script argues for
+# elsewhere. Marking the path unusable lets those branches work while a real run still
+# refuses, through the ordinary "no runnable test suite" message.
+# Commas matter as much as spaces: `--allowedTools` is a COMMA-separated list, so a comma in
+# the path silently splits it into bogus entries — which the previous comment claimed was
+# closed when only whitespace was checked.
+PY_USABLE=1
+if [[ "$PY" == *[[:space:],]* ]]; then
+  PY_USABLE=0
+  say "⚠ interpreter path holds whitespace or a comma and cannot be passed safely to the agent or to --allowedTools; treating the suite as unavailable: '$PY'"
+fi
 TEST_ARGV=()
-if [[ -x "$PY" ]] && "$PY" -c 'import pytest' >/dev/null 2>&1; then
+if (( PY_USABLE )) && [[ -x "$PY" ]] && "$PY" -c 'import pytest' >/dev/null 2>&1; then
   # ⚠ `--color=no` IS LOAD-BEARING, NOT TIDINESS. `pyproject.toml` sets
   # `addopts = ["--color=yes", …]` — FORCED, not `auto` — so pytest emits ANSI even when
   # stdout is a file, and every short-summary line begins with an escape sequence instead
@@ -288,9 +299,12 @@ if [[ -n "$TEST_CMD" ]]; then
   # version asserted "on this machine they are missing DATA artifacts" — true on ai-lab-0,
   # false on the CI runner, where the same block would have told the agent that missing
   # `pysbd`/`fastapi` and an absent `.venv` were corpus problems.
-  # The anchor tolerates a leading ANSI escape as well, so this keeps working if someone
-  # re-forces colour upstream or pipes a pre-coloured log in.
-  BASELINE_FAILURES="$(grep -E '^(\x1b\[[0-9;]*m)*(FAILED|ERROR)' "$BASELINE_FILE" | sed 's/ - .*//' | head -40 || true)"
+  # ⚠ THE ESCAPE BYTE IS BUILT WITH printf, NOT WRITTEN AS `\x1b`. `\x` is NOT an ERE escape:
+  # GNU grep (both target hosts) matches the LITERAL characters `x1b`, so the previous version
+  # advertised ANSI tolerance it did not have. It looked correct only because this dev image
+  # ships ugrep, which DOES implement `\x` — a portability trap one host cannot reveal.
+  ESC="$(printf '\033')"
+  BASELINE_FAILURES="$(grep -E "^(${ESC}\[[0-9;]*m)*(FAILED|ERROR)" "$BASELINE_FILE" | sed 's/ - .*//' | head -40 || true)"
 fi
 
 PROMPT="$PROMPT
@@ -328,14 +342,32 @@ PR branch, which already contains this PR's changes — so a failure here may be
 If a finding in your threads concerns one of these, or you can see the PR caused it, it is
 **in scope**.
 
-To find out which side a failure came from, add a SECOND worktree at the merge base:
-\`git worktree add /tmp/base \$(git merge-base origin/main HEAD)\`. ⚠ Do NOT use \`git stash\`
-— it shelves changes and leaves you on the same commit, so it does not get you to
-\`main\` at all, and stashing mid-pass in a tree this script refuses to run dirty can
-discard your own fixes. ⚠ A fresh worktree has no \`.venv\` and no \`data/\` (both
-gitignored, so not shared), and WITHOUT THEM THE SUITE LOOKS GREEN — the data-gated
-failures become skips. Symlink both from the main checkout before believing anything it
-tells you.
+To find out which side a failure came from, compare against the merge base in a SEPARATE
+worktree — never by moving this one. Run these in order and STOP if a step fails:
+
+\`\`\`
+git fetch origin main                     # NOT already fetched — the script fetches only this PR's branch
+BASE=\$(git merge-base origin/main HEAD)
+test -n "\$BASE" || echo "NO MERGE BASE — stop here, do not guess"
+WT=\$(mktemp -d)/base && git worktree add "\$WT" "\$BASE"
+ln -s $REPO_ROOT/.venv "\$WT/.venv" && ln -s $REPO_ROOT/data "\$WT/data"
+( cd "\$WT" && .venv/bin/python -m pytest tests/ -q --color=no )
+git worktree remove --force "\$WT"
+\`\`\`
+
+⚠ **If \`\$BASE\` is empty, \`git worktree add\` creates a branch at HEAD instead** — you would
+compare the PR against ITSELF and call every failure pre-existing. The \`test -n\` line is
+what prevents that; \`mktemp -d\` is what stops a second run colliding with a leftover
+directory.
+
+⚠ **THE TWO SYMLINKS ARE NOT OPTIONAL.** \`.venv\` and \`data/\` are gitignored, so a fresh
+worktree has neither, and WITHOUT THEM THE SUITE LOOKS GREEN — the data-gated failures become
+skips (measured: 509 passed / 18 skipped / 0 failed, against 510 / 6 / 11). An unpopulated
+worktree tells you the merge base is clean and the PR broke six things it never touched.
+
+⚠ Do NOT use \`git stash\` for this. It shelves changes and leaves you on the same commit, so
+it does not reach \`main\` at all, and stashing mid-pass in a tree this script refuses to run
+dirty can discard your own fixes.
 
 What the baseline is actually for is a **subtraction**: re-run the same command when you are
 done and confirm the failure set has **not GROWN**. Name any new failure in your summary,
@@ -359,7 +391,7 @@ say ""
 claude -p "$PROMPT" \
   --model "${FIX_PR_MODEL:-claude-opus-5}" \
   --permission-mode acceptEdits \
-  --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(gh:*),Bash(${PY}:*),Bash(pytest:*),Bash(uv:*)" \
+  --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(gh:*),Bash(${PY}:*),Bash(pytest:*),Bash(uv:*),Bash(ln:*),Bash(mktemp:*),Bash(test:*)" \
   2>&1 | tee "$LOG"
 
 say ""

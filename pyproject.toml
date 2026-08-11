@@ -86,7 +86,11 @@ vocalizer = ["gradio", "fastapi", "uvicorn", "starlette"]
 # comment claimed it was meant to. `.[dev]` inherits `dependencies` above, which pins
 # nothing on numpy (so it resolves to 2.2+, which no numba supports, and the resolver
 # walks numba back to a 2021 release that cannot build on 3.12) and pulls **torch** —
-# ~2 GB, for exactly one test file that skips without it. The set MEASURED to work on a
+# ~2 GB. ⚠ NOT for "one test file": torch gates `tests/test_cli_lanes.py` and
+# `tests/test_training_seams.py` by module-scope importorskip, plus
+# `tests/test_gate_scripts.py`, which shells out to a torch-importing script — ~20 tests
+# across three modules. That is the number the no-torch decision actually rests on, so
+# quoting it as one file understated what is being given up. The set MEASURED to work on a
 # host is the one in `scripts/fix_pr.sh`'s refusal message: pytest, pyyaml, "numpy<2.2",
 # scipy, librosa, soundfile, unidecode, inflect, fastapi, pysbd. Fixing that properly
 # means constraining numpy in `dependencies` or adding a torch-free test extra, and
