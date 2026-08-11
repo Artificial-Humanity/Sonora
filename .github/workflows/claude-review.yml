@@ -13,17 +13,20 @@ concurrency:
 
 jobs:
   review:
-    # Skip bot-initiated runs — CLEANLY, rather than letting the action refuse them.
+    # Skip non-human actors CLEANLY, rather than letting the action refuse them.
     #
-    # `synchronize` fires on every push to an open PR, and the fix pass pushes. So
-    # Quincy's commits re-trigger this review, the action sees a non-human actor and
-    # fails the job: "Workflow initiated by non-human actor ... Add bot to allowed_bots".
-    # Taking that suggestion would re-enable exactly the oscillation the fix lane is
-    # label-gated to prevent (fix pushes -> review -> fix -> ...), billed in full each
-    # lap. Skipping is also the intended design: Quincy answers and resolves each
-    # finding in its own thread, so a whole-PR re-review after a fix pass was never
-    # wanted. A red X for working-as-designed is noise that trains you to ignore the
-    # check.
+    # This is a VENDOR-MECHANISM guard, not a statement about who is allowed to
+    # write code here. `claude-code-action` refuses a run initiated by a non-human
+    # actor — "Workflow initiated by non-human actor ... Add bot to allowed_bots" —
+    # and a red X for working-as-designed is noise that trains you to ignore the
+    # check, so we skip instead of failing.
+    #
+    # ⚠ WHEN AGENTS GET THEIR OWN GITHUB IDENTITY, THIS LINE IS THE ONE TO CHANGE
+    # (together with the action's `allowed_bots` input). An agent pushing as itself
+    # is a `Bot` sender, so leaving this as-is would silently stop reviewing exactly
+    # the commits most worth reviewing. Nothing else in this workflow keys on who
+    # pushed — the review's scope is bounded by the COMMIT RANGE (step 0 of the
+    # prompt), which is identity-agnostic on purpose.
     if: github.event.sender.type != 'Bot'
     runs-on: ubuntu-latest
 
@@ -32,35 +35,51 @@ jobs:
     # without this block the review runs to completion, bills the tokens, and
     # then cannot post a single comment. The failure is silent in the sense that
     # the analysis succeeds; only the delivery fails.
+    #
+    # ⚠ `issues: write` IS DELIBERATELY ABSENT (owner, 2026-08-11). Findings are
+    # resolved IN THE PR now; the reviewer no longer files them as issues. This
+    # missing permission is the ENFORCEMENT of that, not a decoration of it — the
+    # lesson of AGENTS.md §1 is that a rule in a prompt is not a mechanism. Do not
+    # add it back to "let the agent check the issue ledger": there is no ledger in
+    # this design. `pull-requests: write` is what carries PR comments, including the
+    # top-level summary that `gh pr comment` posts.
     permissions:
       contents: read
       pull-requests: write
-      # Filing findings as issues needs WRITE; even reading the ledger needs READ. Without
-      # this the agent reports "I could not check for duplicates" and we read it as a
-      # limitation of the tool rather than a permission we withheld — exactly how
-      # "Python execution was blocked in this sandbox" was misread for two days.
-      issues: write
       id-token: write
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v6
         with:
-          fetch-depth: 1
+          # Check out the PR HEAD ITSELF, not the default `refs/pull/N/merge`
+          # commit. The prompt's step 0 diffs `<last-reviewed-sha>..HEAD`, and on
+          # the merge commit that range also drags in whatever landed on the base
+          # branch — findings against code this PR never touched.
+          ref: ${{ github.event.pull_request.head.sha }}
+          # Full history: an incremental review needs the previously-reviewed
+          # commit to still be in the clone. A depth-1 clone cannot diff a range,
+          # and the failure looks like "the reviewer reviewed everything again".
+          fetch-depth: 0
 
       - name: Set up Python for verification
-        # WITHOUT THIS THE AGENTS CANNOT CHECK THEIR OWN WORK. Both of them reported
+        # WITHOUT THIS THE AGENT CANNOT CHECK ITS OWN WORK. It once reported
         # "Python execution was blocked in this sandbox" and inferred a sandbox limit;
         # it was not. GitHub runners ship Python — what was missing was the tool grant
-        # below, and the deps. So every finding either agent made was reasoned from
-        # READING, and the fix pass shipped 11 unverified edits on PR #10 (one of which
-        # left a latent defect that only surfaced when the tests were run by hand).
+        # below, and the deps. So every finding was reasoned from READING, and the fix
+        # pass shipped 11 unverified edits on PR #10 (one of which left a latent defect
+        # that only surfaced when the tests were run by hand).
         #
         # TORCH IS DELIBERATELY NOT INSTALLED. It is ~2 GB for exactly ONE test file
         # (tests/test_gate_scripts.py). Measured 2026-08-10 without it:
         #   516 passed · 9 skipped · 1 failed (env-gated doc check) — in 3.2 seconds.
         # So ~98% of the suite is verifiable for about a minute of CI, and the last 2%
         # costs more than the whole review does.
+        #
+        # The FIX pass no longer runs here at all (owner, 2026-08-11) — it runs on the
+        # submitting machine via `scripts/fix_pr.sh`, where torch, the ROCm stack, the
+        # repo `.venv` and `/data` are all present. That asymmetry is the point: the
+        # cheap 98% gates the review, the full env does the repair.
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -89,44 +108,108 @@ jobs:
           # second half of the permissions problem above: permissions grant the
           # token the right, --allowedTools grants the agent the tool.
           #
+          # ⚠ `Bash(gh issue:*)` and `Bash(gh search:*)` ARE DELIBERATELY ABSENT
+          # (owner, 2026-08-11) — see the permissions block. The reviewer has no
+          # business touching the issue tracker.
+          #
+          # `Bash(git:*)` is what makes the incremental range in step 0 possible.
+          #
           # `--effort` is deliberately absent: it is not a documented claude_args
           # flag, and Claude Code already defaults to xhigh effort on capable
           # models, so naming it buys nothing and risks failing on an unknown arg.
           claude_args: >-
             --model claude-opus-5
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(pip:*),Bash(gh issue:*),Bash(gh search:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(pip:*)"
 
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
+            HEAD SHA: ${{ github.event.pull_request.head.sha }}
 
             You are an elite, pedantic Senior Code Reviewer. Review this pull
-            request's diff thoroughly, focusing on architectural flaws,
-            edge-case logic bugs, security vulnerabilities, and performance
-            bottlenecks.
+            request thoroughly, focusing on architectural flaws, edge-case logic
+            bugs, security vulnerabilities, and performance bottlenecks.
+
+            The PR branch is already checked out in the working directory, at the
+            HEAD SHA above, with full history.
 
 
-            IDENTITY — you are **Janis**, the reviewer. Both agents post from the same
-            `claude[bot]` GitHub account, so the ONLY way a reader can tell your voice
-            from the fixer's is that you label it. Begin every comment you post — the
-            top-level review and every inline comment — with exactly:
+            IDENTITY — you are **Janis**, the reviewer. Begin every comment you post —
+            the top-level summary and every inline comment — with exactly:
 
               🔍 **Janis** · review
 
-            on its own line, then a blank line, then the content. Never omit it, and
-            never use Quincy's badge: a misattributed comment is worse than an unlabelled
-            one, because it sends the reader to the wrong agent's reasoning.
+            on its own line, then a blank line, then the content. The fix pass now runs
+            on the submitting machine rather than in CI, so its replies arrive under a
+            different account than yours; the badge is still what tells a reader which
+            voice is which within a thread. Never omit it.
 
-            Report every issue that could cause incorrect behavior, a test
-            failure, a security weakness, or a misleading result — including
-            findings you are uncertain about. Give each one an explicit
-            severity so it can be triaged. Only omit pure nits: formatting,
-            naming preferences, and style that no reader would act on.
-            Do not filter beyond that bar — a qualitative instruction like
-            "only report important issues" is followed literally and silently
-            drops real bugs.
 
-            The PR branch is already checked out in the working directory.
+            ═══════════════════════════════════════════════════════════════════
+            STEP 0 — ESTABLISH YOUR RANGE. DO THIS BEFORE YOU READ ANY CODE.
+            ═══════════════════════════════════════════════════════════════════
+
+            You review WHAT HAS NOT BEEN REVIEWED YET, not the whole PR every time.
+            Every summary you post ends with a machine-readable marker naming the
+            commit you reviewed up to; find the last one you left here:
+
+              gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} \
+                --json comments --jq '.comments[].body' \
+                | grep -o 'janis-reviewed: [0-9a-f]\{40\}' | tail -1
+
+            * **A marker exists** → that sha is your BASE. Confirm it is still an
+              ancestor of HEAD (a rebase or force-push invalidates it):
+                git merge-base --is-ancestor <BASE> HEAD
+              If it IS an ancestor, your range is `<BASE>..HEAD` — read it with
+              `git diff <BASE>..HEAD` and `git log --oneline <BASE>..HEAD`.
+              If it is NOT (rebased/force-pushed), fall back to the full PR and SAY SO.
+
+            * **No marker** → this is the PR's first review. Your range is the whole
+              PR: `gh pr diff ${{ github.event.pull_request.number }}`.
+
+            **IF THE RANGE IS EMPTY, OR TOUCHES ONLY DOCS** (`*.md`, `notes/`), POST
+            NOTHING AT ALL AND STOP. Say it in your run log, not on the PR. A "no new
+            findings" comment on every push is how a PR accumulates twelve comments
+            that no one reads, and docs-only work is out of review scope (AGENTS.md §5).
+
+            WHY THIS EXISTS, so you do not optimise it away: re-reviewing the whole PR
+            after every fix push is a loop — review → fix → push → review → fix — and
+            on 2026-08-11 it turned a handful of findings into 25 filed issues in three
+            bursts inside half an hour. The range is what makes each lap smaller than
+            the last, until there is nothing left and you post nothing.
+
+            ═══════════════════════════════════════════════════════════════════
+
+            DO NOT RE-RAISE WHAT IS ALREADY ON THIS PR. Fetch the existing inline
+            comments ONCE and hold them in context:
+
+              gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/comments \
+                --jq '.[] | {path, line, body}'
+
+            If a finding you are about to make is already posted — even against a
+            different line of the same defect — say nothing new about it. A repeat is
+            worse than a miss: the reader has to re-read the thread to discover you
+            said nothing new.
+
+            Read `gh pr view --comments` too. **A reply from the owner, a member or a
+            collaborator that overrules a finding IS THE DECISION.** Do not re-argue a
+            settled point in a fresh comment; that is the loop wearing a different hat.
+
+            FINDINGS ARE RESOLVED IN THIS PULL REQUEST (owner, 2026-08-11). Post them
+            as inline comments on the lines they concern, with an explicit severity, and
+            let the fix pass answer them in the thread. **DO NOT FILE ISSUES.** You have
+            neither the permission nor the tool, so an attempt will simply fail and
+            waste the run. The previous practice — every finding becomes a tracked
+            issue — is retired: it converted each review into a backlog that generated
+            the next PR, which generated the next review.
+
+            Report every issue that could cause incorrect behavior, a test failure, a
+            security weakness, or a misleading result — including findings you are
+            uncertain about, marked as uncertain. Give each one an explicit severity so
+            it can be triaged. Only omit pure nits: formatting, naming preferences, and
+            style that no reader would act on. Do not filter beyond that bar — a
+            qualitative instruction like "only report important issues" is followed
+            literally and silently drops real bugs.
 
             VERIFY, DO NOT ONLY REASON. Python and the non-torch test dependencies are
             installed for you — `pytest tests/ -q` runs ~516 tests in about 3 seconds.
@@ -139,82 +222,24 @@ jobs:
             review and mark every finding as unverified — never imply you ran something
             you did not.
 
-            FINDINGS BECOME ISSUES, NOT BLOCKING COMMENTS (owner, 2026-08-10).
+            NOTHING YOU POST BLOCKS THIS PR. You are not a gate. Post ONE top-level
+            summary with `gh pr comment`, containing:
 
-            STEP 0 — BEFORE YOU READ THE DIFF, fetch the finding ledger ONCE:
+              * what range you reviewed — `<BASE>..HEAD` or "full PR (first review)"
+                or "full PR (previous marker no longer an ancestor)";
+              * counts by severity, and whether findings are verified or unverified;
+              * the handoff line, verbatim:
+                  Resolve locally: `scripts/fix_pr.sh ${{ github.event.pull_request.number }}`
+                  (or `/fix-pr ${{ github.event.pull_request.number }}` in a Claude Code session).
+              * and on its own line, LAST, the marker — full 40-character sha:
+                  <!-- janis-reviewed: ${{ github.event.pull_request.head.sha }} -->
 
-              gh issue list --repo ${{ github.repository }} --state all --limit 150 \
-                --label review-finding --json number,title,body,state,createdAt,updatedAt
+            ⚠ THE MARKER IS LOAD-BEARING. Omit it and your next run re-reviews the
+            entire PR from scratch, billed in full, and re-raises everything you just
+            said. It must be the literal HEAD SHA above, in an HTML comment so it is
+            invisible in the rendered thread. Write it even when you found nothing (as
+            long as the range was non-empty) — a clean range still counts as reviewed.
 
-            One call, bodies included, and it is the ONLY time you query issues in this
-            run. HOLD IT IN CONTEXT for the whole review. Do NOT re-query — in particular,
-            never search for an issue you filed yourself this run: GitHub's search index
-            lags by seconds to minutes, so a re-query would miss it and you would file the
-            same finding twice. Track what you file in your own head instead.
-
-            ⚠ If that call returns the full 150, or errors, SAY SO IN YOUR SUMMARY and
-            mark the duplicate check as PARTIAL. "No duplicate found" must never mean
-            "I did not look far enough" — a dedup claim you cannot support is worse than
-            no dedup, because it gets trusted.
-
-            Read the ledger's titles first as a rough prior for what is already known,
-            then use the fingerprint for the actual decision.
-
-            FOR EACH FINDING, exactly one of three:
-
-            * **NEW** -> file an issue.
-                gh issue create --repo ${{ github.repository }} \
-                  --label review-finding --title "<the finding>" --body "..."
-              ⚠ THE TITLE IS THE FINDING, never your badge. An agent picking this up may
-              have no idea a PR exists, so the title has to carry the defect on its own:
-              "v6 carries three incompatible reference frames for the A channel" — not
-              "Janis review". Issues #16 and #17 in this repo are what the wrong way
-              looks like.
-              The body must stand alone WITHOUT the PR: what is wrong, the concrete
-              failure it causes, a permalink pinned to THIS commit
-              (https://github.com/${{ github.repository }}/blob/${{ github.event.pull_request.head.sha }}/<path>#L<n>),
-              and on its own line:
-                <!-- review-fingerprint: RF-<8 hex of path + normalised claim> -->
-
-            * **ALREADY OPEN in the ledger** -> do NOT file a second issue. Instead:
-                - one inline comment on the PR: this recurs, and a link to the issue;
-                - one line on the issue itself: `recurred in #<PR>`.
-              This is the most valuable thing you emit. A new finding is news about new
-              code; a RECURRENCE says a deferred issue is actively costing review time,
-              and nothing else in this lane produces that number. It is INFORMATIONAL —
-              it must not block, and it is not a reason to re-argue the deferral.
-
-            * **CLOSED in the ledger** -> this is a REGRESSION, not a recurrence, and it
-              is the loudest thing you can find: the defect was fixed and has come back.
-              Reopen the issue, say which PR reintroduced it, and call it out by name in
-              your summary.
-
-            END YOUR SUMMARY WITH THE LEDGER DIGEST — three lines, and they cost
-            nothing because step 0 already holds the whole ledger:
-
-              📒 **Finding ledger** — <N> open · <M> recurred more than once ·
-                 oldest open <D> days (#<num>) · dedup <complete|PARTIAL>
-
-            THIS IS THE FORCING FUNCTION, and it is the ONLY one left. Blocking used to
-            put the debt in front of the owner — crudely, but it did do it. Nothing else
-            in this design does, and "we will check the issues tab" is exactly the
-            intention that decays. Printing the number on every PR puts it where someone
-            is already reading, without anyone having to remember to look.
-
-            Report it even when it is boring. A digest that appears only when the count
-            is alarming teaches the reader that its absence means fine, and then a run
-            that failed to fetch the ledger reads as good news. If the dedup was partial
-            (see step 0), say **PARTIAL** here too — a debt number from an incomplete
-            ledger is a floor, not a count, and it must not be quoted as one.
-
-            NOTHING YOU FILE BLOCKS THIS PR. You are not a gate. Post ONE top-level
-            summary: counts by severity, links to what you filed, recurrences and
-            regressions named separately, and whether the dedup was complete or partial.
-            Inline comments are now RESERVED for recurrences and regressions — that
-            scarcity is deliberate, so an inline comment means exactly one thing: the
-            owner is paying for something already known.
-
-            Use `gh pr comment` for top-level feedback.
             Use `mcp__github_inline_comment__create_inline_comment` (with
             `confirmed: true`) for findings anchored to specific lines.
             Only post GitHub comments — do not return the review as a chat
