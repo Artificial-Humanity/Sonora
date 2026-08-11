@@ -117,11 +117,16 @@ dev = ["pytest", "pre-commit", "fastapi", "pysbd"]
 # ⚠ `numpy<2.5` IS LOAD-BEARING, and the reason is NOT the one an earlier version of this
 # comment gave. It is not that "no numba supports numpy 2.2+" — numba 0.66 declares
 # `numpy<2.5,>=1.22`, so 2.2 through 2.4 are fine and `<2.2` was needlessly tight.
-# The real mechanism, measured with uv on 2026-08-11: newest numpy is **2.5.2**, uv picks it,
-# numba 0.66 excludes it, and uv then backtracks **numba** to **0.53.1** — a 2021 release
-# with no numpy ceiling in its metadata — instead of backtracking numpy to 2.4. 0.53.1 cannot
-# build on Python 3.12, and the failure surfaces as a LIBROSA build error that never mentions
-# numpy or numba. Verified unconstrained: `numpy==2.5.2 + numba==0.53.1`.
+# The real mechanism, measured with uv 0.11.29 on 2026-08-11, and it is a THREE-package walk
+# rather than the two-step one an earlier version of this comment described: uv holds numpy at
+# the newest (2.5.2); numba 0.66 excludes it (`numpy<2.5`); numba therefore goes back to
+# 0.53.1, which has no numpy ceiling in its metadata; and since librosa 1.0.0 declares
+# `numba>=0.61.0`, librosa must ALSO be walked back — to 0.11.0 — for 0.53.1 to be seatable.
+# uv does all of that rather than moving numpy to 2.4. Verified unconstrained:
+# `numpy==2.5.2  numba==0.53.1  librosa==0.11.0`.
+# ⚠ So the pin is not only about the build: 0.53.1 cannot build on 3.12, but the same
+# resolution SILENTLY DOWNGRADES LIBROSA BY A MAJOR VERSION, and the build error it surfaces
+# as names neither numpy nor numba.
 # ⚠ So do NOT remove the pin on the grounds that numba supports 2.2 — it does, and the
 # install still breaks. Raise the ceiling as numba does, do not drop it.
 # ⚠ `pysbd` is imported INSIDE a function in `synth_common.py`, so the `importorskip`
@@ -134,9 +139,11 @@ test = [
   # ⚠ `>=9.1` is a FLOOR ON AN EXCEPTION ENVELOPE, not a version bump (issue #47).
   # `pytest.importorskip` decides what counts as "not available", and the retirement guards
   # depend on that envelope being narrow; unpinned, an older resolution silently restores the
-  # wide one and the guards can go quiet with nobody editing a test. It lives HERE, in the
-  # group the suite is installed from, rather than only in the `dev` extra — a floor declared
-  # somewhere the test runner does not install from is not enforced.
+  # wide one and the guards can go quiet with nobody editing a test.
+  # ⚠ This is the ONLY declaration of the floor. The `dev` extra below does NOT carry it — #62
+  # dropped its `dev`-line edit rather than merging a union, on the reasoning that a floor
+  # declared somewhere the test runner does not install from is not enforced at all. Do not
+  # read the two as belt-and-braces: remove this one and the floor is gone.
   "pytest>=9.1",
   "pyyaml",
   "numpy<2.5",  # see the note above — a CEILING, tracking numba's

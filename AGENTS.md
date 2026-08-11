@@ -208,10 +208,14 @@ case-insensitive macOS/Windows.
     `[project.dependencies]`, so `.[dev]` drags **torch** in — ~2 GB for one test file
     (`tests/test_gate_scripts.py`) that skips without it. A PEP 735 group installs on its own.
     Measured: `--group test` resolves 43 packages and **zero** torch; `.[dev]` resolves torch.
-  * ⚠ **`numpy<2.2` in that group is load-bearing** and the list does not install without it.
-    Unconstrained, uv picks numpy **2.5.2**, which numba 0.66 excludes (`numpy<2.5`), and uv
-    backtracks **numba** to **0.53.1** — a 2021 release that cannot build on 3.12 — rather
-    than backtracking numpy. The failure surfaces as a **librosa** build error that mentions
+  * ⚠ **`numpy<2.5` in that group is load-bearing** and the list does not install without it.
+    Unconstrained, uv holds numpy at the newest (**2.5.2**), which numba 0.66 excludes
+    (`numpy<2.5`), and walks **two** other packages back instead of walking numpy back: numba
+    to **0.53.1** (2021, no numpy ceiling in its metadata, cannot build on 3.12) and — because
+    librosa 1.0.0 declares `numba>=0.61.0` and would otherwise block that — **librosa from
+    1.0.0 down to 0.11.0**. Verified: unconstrained resolves
+    `numpy==2.5.2 numba==0.53.1 librosa==0.11.0`. ⚠ So the pin prevents a **silent
+    major-version downgrade of librosa**, not merely a build failure. The failure surfaces as a **librosa** build error that mentions
     neither numpy nor numba. ⚠ It is a CEILING tracking numba's, not a claim that numba caps
     at 2.2; raise it as numba does, and do not drop it on the grounds that numba supports
     2.2, because the install still breaks.
