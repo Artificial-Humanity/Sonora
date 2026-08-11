@@ -193,11 +193,12 @@ case-insensitive macOS/Windows.
     finding from a run needing those modules was reasoned rather than executed. `ci.yml`
     (arriving with #62) carries a third copy. Both should point at this group; until they do,
     "declared once" describes the intent, not the state.
-    * ⚠ **A failure count here needs its TREE named, or it is wrong somewhere.** Measured
-      2026-08-11: **8** on `main` (3 `pysbd` in `test_acquisition_lane.py`, 5 `fastapi` in
-      `test_ratings_transaction.py`) and **11** on #62's tree, which adds fastapi-dependent
-      tests. Both are correct for their own tree, and the number moves as tests are added — so
-      quote it with the tree or do not quote it.
+    * ⚠ **The durable statement is qualitative, so state it that way:** *the review lane's own
+      suite fails on missing test dependencies, so any finding from a run that needed them was
+      reasoned rather than executed.* That survives every test anyone adds. A count does not —
+      measured 2026-08-11 it was 8 on `main` and 11 on #62's tree (which adds
+      fastapi-dependent tests), both correct, and it will be wrong again next week. If you do
+      quote a number, name the tree; better, quote the property instead.
     * ⚠ **The fix cannot be validated by its own pull request.** `claude-review.yml` is the
       file §1's workflow-validation trap applies to: the action refuses to run when the PR's
       copy differs from the default branch and reports the job **GREEN**. So that fix lands as
