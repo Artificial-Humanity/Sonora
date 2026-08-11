@@ -77,7 +77,11 @@ vocalizer = ["gradio", "fastapi", "uvicorn", "starlette"]
 # QC-M5 — the app silently overwriting a script's commit — is exactly the kind of defect a
 # source-string test cannot see. The app's own runtime pins live in
 # `audition/requirements.txt`; this is the test-time import only.
-dev = ["pytest", "pre-commit", "fastapi"]
+# `pysbd` is likewise a TEST dependency: tests/test_acquisition_lane.py drives the dialogue
+# chunker, and without it three tests FAIL outright rather than skipping. Added 2026-08-11,
+# when a venv built from this extra came up red — this extra is supposed to be the answer to
+# "what do I install to run the suite", and it was wrong.
+dev = ["pytest", "pre-commit", "fastapi", "pysbd"]
 
 [project.scripts]
 matcha-data-stats = "matcha.utils.generate_data_statistics:main"

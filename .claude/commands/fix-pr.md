@@ -35,11 +35,17 @@ to Janis, not speaking as her.
 
 ## 0. Verify your own work
 
-`scripts/fix_pr.sh` writes a brief to `logs/fix_pr/pr-$ARGUMENTS-<timestamp>/` and
-tells you the path, along with the test command it verified as runnable. **Run the
-suite BEFORE you change anything and again AFTER, and put both results in your
-summary.** A fix pass that cannot say whether it broke something is asking the owner
-to be the test suite.
+`scripts/fix_pr.sh` writes a brief to an artifact directory and **tells you the path** —
+do not assume where it is. `logs/` is not writable on every host (on ai-lab-0 it is
+root-owned), so the script probes and prints its choice. The same block gives you the
+test command it verified as runnable, and a **baseline** of the suite taken before you
+touched anything.
+
+**Run the suite BEFORE you change anything and again AFTER, and put both results in your
+summary.** A fix pass that cannot say whether it broke something is asking the owner to
+be the test suite. ⚠ The baseline was measured on the PR branch, so a failure in it may
+be pre-existing **or** caused by this PR — it cannot tell you which, and neither should
+you claim to know without checking.
 
 ⚠ If the brief says tests are UNAVAILABLE (`--no-tests`), say so in the summary and
 mark every edit UNVERIFIED. Never imply you ran something you did not. Reasoning is

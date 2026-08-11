@@ -19,10 +19,14 @@
 #
 # Usage:  scripts/fix_pr.sh <pr-number> [--no-tests] [--dry-run]
 #   --no-tests   proceed with no runnable test suite; the agent marks edits UNVERIFIED
-#   --dry-run    assemble the brief and print the prompt; call no model, change nothing
+#   --dry-run    gather the brief, report what WOULD run, then stop. Calls no model, makes
+#                no commits, and does NOT switch branches or run the suite. It DOES write
+#                the brief and the raw GraphQL response to the artifact directory, so it is
+#                not side-effect free — it is decision-free.
 #
-# Env:  SONORA_PY     python interpreter to test with (default: .venv/bin/python)
-#       FIX_PR_MODEL  model override (default: claude-opus-5)
+# Env:  SONORA_PY        python interpreter to test with (default: .venv/bin/python)
+#       FIX_PR_MODEL     model override (default: claude-opus-5)
+#       FIX_PR_LOG_DIR   artifact directory override (default: probe logs/fix_pr, then TMPDIR)
 set -euo pipefail
 
 die() { printf '\nABORT: %s\n' "$*" >&2; exit 1; }
@@ -102,8 +106,13 @@ say "      $(jq -r .title <<<"$PR_JSON")"
 # reproducing the CI defect it was built to escape.
 TEST_CMD=""
 PY="${SONORA_PY:-$REPO_ROOT/.venv/bin/python}"
+# An ARRAY, not a string later fed to `eval`. The interpreter path comes from $SONORA_PY —
+# operator input — and a path containing a space would have been word-split into a
+# different command, while `eval` on it is arbitrary shell execution for no benefit.
+TEST_ARGV=()
 if [[ -x "$PY" ]] && "$PY" -c 'import pytest' >/dev/null 2>&1; then
-  TEST_CMD="$PY -m pytest tests/ -q"
+  TEST_ARGV=("$PY" -m pytest tests/ -q)
+  TEST_CMD="${TEST_ARGV[*]}"   # display only — never executed
   say "tests: $TEST_CMD"
 elif (( NO_TESTS )); then
   say "tests: UNAVAILABLE (--no-tests) — the agent will mark every edit UNVERIFIED"
@@ -229,22 +238,42 @@ gh pr checkout "$PR" || die "could not check out PR #$PR"
 # ── Baseline the suite BEFORE the agent touches anything ─────────────────────────
 # Measured on the PR branch, so it describes the code the agent is about to edit.
 #
-# ⚠ THIS IS NOT BOOKKEEPING. On ai-lab-0, 2026-08-11, a clean checkout of this repo runs
-# 510 passed / 6 failed / 11 skipped, and every one of those 6 failures is a MISSING DATA
-# ARTIFACT (`data/libritts_r_vat_v4/`, `data/libritts_r_holdout_devclean/`) rather than a
-# defect in the code. An agent that runs the suite cold, finds red, and starts "fixing"
-# goes hunting corpus files it cannot rebuild — or, worse, edits a doc-claims registry to
-# silence the gate. Handing over the before-picture is what makes "did I break anything?"
-# answerable by SUBTRACTION instead of by judgement.
+# ⚠ THIS IS NOT BOOKKEEPING. The suite is RED on a clean checkout, and how it is red depends
+# on the host: on ai-lab-0 (2026-08-11) 510 passed / 6 failed / 11 skipped, all six missing
+# corpus directories; on a CI runner the same checkout gave 443 passed / 8 failed / 5 errors,
+# from absent `pysbd`/`fastapi` and no `.venv`. An agent that runs the suite cold, finds red,
+# and starts "fixing" goes hunting artifacts it cannot rebuild — or edits a registry to
+# silence a gate. Handing over the before-picture makes "did I break anything?" answerable by
+# SUBTRACTION instead of by judgement.
+#
+# ⚠ But the baseline is measured HERE, on the PR branch, so it cannot distinguish a failure
+# pre-existing on `main` from one this PR introduced. The prompt below must say so: the first
+# version of this block asserted these failures "already existed" and were "not yours", which
+# launders a regression the PR caused into someone else's problem.
 BASELINE_FILE="$BRIEF_DIR/baseline.txt"
 BASELINE_SUMMARY="not run"
+BASELINE_FAILURES=""
 if [[ -n "$TEST_CMD" ]]; then
   say "baselining the suite on '$PR_BRANCH' …"
   # `|| true`: a red baseline is the expected case here, not an error.
-  eval "$TEST_CMD" > "$BASELINE_FILE" 2>&1 || true
-  BASELINE_SUMMARY="$(grep -E '^[0-9]+ (passed|failed)|[0-9]+ (passed|failed).*(in [0-9.]+s)' "$BASELINE_FILE" | tail -1)"
-  [[ -n "$BASELINE_SUMMARY" ]] || BASELINE_SUMMARY="$(tail -1 "$BASELINE_FILE")"
+  "${TEST_ARGV[@]}" > "$BASELINE_FILE" 2>&1 || true
+
+  # ⚠ `|| true` ON THE GREP IS LOAD-BEARING UNDER `set -euo pipefail`. A non-matching grep
+  # exits 1; `pipefail` propagates that through `| tail`; and the exit status of a plain
+  # assignment IS the status of its command substitution — so `set -e` killed the script
+  # here, AFTER `gh pr checkout` had already reassigned the operator's working branch. The
+  # fallback on the next line was unreachable in precisely the case it was written for.
+  # Found by the review lane on PR #60 and reproduced before fixing.
+  BASELINE_SUMMARY="$(grep -E '[0-9]+ (passed|failed|error)' "$BASELINE_FILE" | tail -1 || true)"
+  [[ -n "$BASELINE_SUMMARY" ]] || BASELINE_SUMMARY="$(tail -1 "$BASELINE_FILE" || true)"
+  [[ -n "$BASELINE_SUMMARY" ]] || BASELINE_SUMMARY="(the suite produced no parseable summary — read $BASELINE_FILE)"
   say "baseline: $BASELINE_SUMMARY"
+
+  # Hand over the failing test IDS, not a prose theory about why they fail. The previous
+  # version asserted "on this machine they are missing DATA artifacts" — true on ai-lab-0,
+  # false on the CI runner, where the same block would have told the agent that missing
+  # `pysbd`/`fastapi` and an absent `.venv` were corpus problems.
+  BASELINE_FAILURES="$(grep -E '^(FAILED|ERROR)' "$BASELINE_FILE" | sed 's/ - .*//' | head -40 || true)"
 fi
 
 PROMPT="$PROMPT
@@ -258,23 +287,41 @@ PROMPT="$PROMPT
 * UNRESOLVED THREADS: $THREADS — the full conversations, with \`authorAssociation\` on
   every comment, are in \`$BRIEF\`. READ THAT FILE FIRST.
 * TEST COMMAND: ${TEST_CMD:-NONE — tests are UNAVAILABLE, mark every edit UNVERIFIED}
-* Working directory: $REPO_ROOT
+* Working directory: $REPO_ROOT"
 
-### Test baseline — measured for you, before you changed anything
+if [[ -n "$TEST_CMD" ]]; then
+PROMPT="$PROMPT
+
+### Test baseline — measured on this PR's code, before you edited anything
 
 \`\`\`
 $BASELINE_SUMMARY
 \`\`\`
 
+${BASELINE_FAILURES:+Failing/erroring tests:
+\`\`\`
+$BASELINE_FAILURES
+\`\`\`
+}
 Full output: \`$BASELINE_FILE\`
 
-⚠ **THESE FAILURES ALREADY EXISTED. THEY ARE NOT YOURS AND THEY ARE NOT YOUR JOB.** On
-this machine they are missing DATA artifacts, not code defects — the corpus directories
-they read are not present in this checkout. Do not try to fix them, do not edit a registry
-or a test to silence them, and do not report them as regressions. Your obligation is
-narrower and checkable: **re-run the same command when you are done and confirm the
-failure set has not GROWN.** Name any new failure in your summary; if you cannot make it
-go away, say so plainly rather than leaving the owner to diff two test logs."
+⚠ **THIS IS NOT A LIST OF THINGS THAT ARE SOMEONE ELSE'S PROBLEM.** It was measured on the
+PR branch, which already contains this PR's changes — so a failure here may be
+**pre-existing on \`main\` OR introduced by this PR**, and this file cannot tell you which.
+If a finding in your threads concerns one of these, or you can see the PR caused it, it is
+**in scope**. Check against \`main\` (\`git stash\` / \`git worktree add\` at the merge base) if
+you need to know which side a failure came from.
+
+What the baseline is actually for is a **subtraction**: re-run the same command when you are
+done and confirm the failure set has **not GROWN**. Name any new failure in your summary,
+and if you cannot make it go away, say so plainly rather than leaving the owner to diff two
+test logs.
+
+⚠ Do not \"fix\" a failure by editing a test or a registry so it stops reporting. Do not
+diagnose these from a cached assumption about why the suite is red on some other machine —
+**read the output.** The same six failures that are missing corpus directories on ai-lab-0
+are missing \`pysbd\`/\`fastapi\` and an absent \`.venv\` on a CI runner."
+fi
 
 # ── Run the pass ─────────────────────────────────────────────────────────────────
 # `acceptEdits` plus an explicit allowlist rather than --dangerously-skip-permissions:
