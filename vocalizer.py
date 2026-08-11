@@ -281,7 +281,7 @@ def synthesize(checkpoint_path, text, n_timesteps, temperature, length_scale,
                      f"{ckpt_vat_dim}-channel, predating contract v2) · "
                      "guidance >1 wants ≥25 ODE steps")
         else:
-            extra = (f" · V/A/T active · delivery={delivery_lane or 'unknown'} · "
+            extra = (f" · V/A/T active · delivery={delivery_lane or UNKNOWN_UI} · "
                      "guidance >1 wants ≥25 ODE steps")
         info = f"lane={lane} · {sample_rate} Hz · speakers={n_spks}" + extra
         return None, fp.name, mel_plot, info
