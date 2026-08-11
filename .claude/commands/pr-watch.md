@@ -76,15 +76,45 @@ stop. **Do not merge.** Merging is the owner's, and on a draft it is not even po
    to you or a decision in progress, that thread is a conversation, not a work item.
    Answer it if you can answer it; otherwise leave it and report that the owner has the ball.
    **Never resolve a thread the owner is still talking in.**
-2. **Have you already had two passes at this?** Count your own fix-pass summaries:
+2. **Is the review CONVERGING?** Count the findings each round produced, oldest to newest:
 
    ```
-   gh pr view <N> --json comments --jq '[.comments[] | select(.body | contains("Quincy") and contains("fix pass"))] | length'
+   gh pr view <N> --json comments --jq '.comments[] | select(.body|contains("janis-reviewed")) | .body' | grep -oE '[0-9]+ finding'
    ```
 
-   **At 2 or more, STOP and escalate.** Report the PR, what is still open, and what you would
-   do — then leave it for the owner. Two rounds that did not converge is a disagreement or a
-   missing decision, and a third lap is the loop this whole design exists to prevent.
+   **If the newest round is not SMALLER than the one before it, stop — the diff is not
+   converging, and another fix pass will not change that.**
+
+   ⚠ **A COUNT OF PASSES IS THE WRONG TRIGGER, measured 2026-08-11.** This rule used to say
+   "at 2 or more passes, escalate", and both of that day's long PRs show why it fails in both
+   directions:
+
+   * **#62** needed four rounds of legitimate repair across 25 files. A hard cap at two would
+     have blocked real work.
+   * **#65** ran `4 → 3 → 3 → 4 → 3` — flat over five rounds, every finding in the *prose*
+     rather than the substance, which had been correct since the first commit. A cap at two
+     was overridden twice with reasoning, once on the explicit claim that "this remedy is
+     structural and will end the loop". It did not: the next round showed the fix had removed
+     the explanation and kept the one token that was actually drifting.
+
+   **Flatness has a mechanism, which is why it is the better signal: each fix lands in code the
+   next review then reads.** So a large or prose-heavy diff never converges by being corrected —
+   only by getting smaller. "My next fix is different" is a prediction; the round sizes are a
+   measurement.
+
+3. **ESCALATION IS AN ACTION YOU TAKE, NOT A MESSAGE YOU SEND.** Do not stop and wait. Do all
+   of this yourself, then report it:
+
+   * **Leave every unresolved thread OPEN.** An open thread means outstanding work; resolving
+     one to look tidy records it as fixed.
+   * **Shrink the diff.** Either delete the surface generating the findings — if they are all in
+     prose or comments, the fix is deletion, not another correction — or carry the remainder
+     into a small follow-up PR off `main`, never a stacked branch showing the whole diff.
+   * **Say the rate in your report**, not just the lap count: `4 → 3 → 3 → 4 → 3, flat`. That
+     is what tells the owner whether to merge and defer.
+
+   Only a genuine disagreement or a decision the owner has to make needs to wait for them —
+   which is the same bar as filing an issue.
 
 Otherwise: run the fix pass, in this session, so the context that wrote the code is the
 context that answers for it:
