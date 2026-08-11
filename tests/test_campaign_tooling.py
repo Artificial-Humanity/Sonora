@@ -341,3 +341,54 @@ def test_an_unfillable_line_does_not_take_the_bank_with_it():
     src = _src("make_v3d_bank.py")
     assert "if not cands:" in src
     assert "no eligible reference" in src
+
+
+# --- issue #44: the folded target did not reproduce the round it claimed to --------------
+
+
+def test_the_narration_round_reproduces_the_bank_it_closed():
+    """`delivery-v1-narration-r2` is rendered, audited and closed (2026-08-04), so this
+    builder's numbers exist to REPRODUCE it, not to size a new campaign — and after the
+    Documentary retirement they did not.
+
+    The target is not consumed as a lane total; it is divided across the lane's books
+    (`each = want // len(books)`), and `len(books)` went 1 + 4 -> 5 when
+    `voyage-of-the-beagle` moved into Neutral. `{"Neutral": 141}` therefore selected 140
+    lines — `141 // 5 * 5` — with beagle dropping 45 -> 28 and the other four rising
+    24 -> 28. Both halves are silent: nothing crashes, and the report prints whatever it
+    selected.
+
+    Asserted on the invariant the issue names — the per-book split sums to the lane total,
+    with no floor division between them — plus the composition the shipped bank actually
+    has (141 = 45 + 24 + 24 + 24 + 24, read off `bank.json`).
+    """
+    import make_narration_bank as mb
+
+    assert mb.PER_BOOK == {"voyage-of-the-beagle": 45, "conan-stories": 24,
+                           "up-from-slavery": 24, "franklin-autobiography": 24,
+                           "walden": 24}
+    assert sum(mb.PER_BOOK.values()) == 141
+    # No book is sized by a rule the lane table cannot see, and no lane total is a second
+    # literal that has to agree with the per-book one.
+    assert set(mb.PER_BOOK) == set(mb.LANES)
+    assert sum(mb.TARGETS.values()) == sum(mb.PER_BOOK.values())
+    # The arithmetic that replaced it, kept as the thing being guarded against: dividing
+    # the same total across the same five books loses a line AND reshuffles the split.
+    each = 141 // len(mb.LANES)
+    assert each * len(mb.LANES) == 140 and each != mb.PER_BOOK["voyage-of-the-beagle"]
+
+
+def test_the_builder_records_that_the_casting_cannot_be_reproduced():
+    """The text selection reproduces; the AUDIO does not, and that limit has to be stated
+    where the numbers are or the next reader will believe a re-run rebuilds the round.
+
+    Engines are dealt per LANE. The closed round dealt two lanes under two measured mixes
+    (Documentary 45 + Neutral 96, giving orpheus 4 + 14 and moss_vg 2 + 10); a re-run
+    deals one lane of 141 under Neutral's mix alone, so the engine split and every
+    per-(book, engine) frozen voice come out different. It is not recoverable in
+    principle either: `ENGINE_MIX_BY_LANE` carries no Documentary mix and
+    `ref_select.mix_for_lane` refuses the lane outright.
+    """
+    src = _src("make_narration_bank.py")
+    assert "THE CASTING CANNOT BE REPRODUCED" in src
+    assert "PER BOOK RATHER THAN PER LANE" in src

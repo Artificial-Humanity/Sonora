@@ -385,8 +385,17 @@ ENGINE_MIX_BY_LANE["Speech"] = ENGINE_MIX_BY_LANE["Dialogue"]
 # matcha.delivery because these two modules import each other, so neither can own it.
 import sys as _sys  # noqa: E402
 _sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from matcha.delivery import (NARRATION_LANES as _NARRATION_LANES,  # noqa: E402
+from matcha.delivery import (DELIVERY_LANES as _DELIVERY_LANES,  # noqa: E402
+                            NARRATION_LANES as _NARRATION_LANES,
                             RETIRED_LANES as _RETIRED_LANES, check_assignable)
+
+# The pre-2026-08-02 caller convention was lowercase lane names, and it still has to
+# resolve. DERIVED from the vocabulary rather than typed out as a five-entry table, for
+# the reason the contract module exists (issue #46): a hand-written copy is a second
+# delivery vocabulary, and it fails in the direction that matters — a lane appended to
+# DELIVERY_LANES and later retired would miss the table, therefore miss _RETIRED_LANES,
+# and fall silently back to the flat mix instead of raising.
+_LANE_BY_LOWER = {ln.lower(): ln for ln in _DELIVERY_LANES}
 
 
 def mix_for_lane(lane):
@@ -400,12 +409,18 @@ def mix_for_lane(lane):
     assignment refuses (matcha.delivery.check_assignable). Deleting the lane's weight
     table alone would have made the failure quieter, not louder.
     """
+    # NORMALISE EXACTLY AS THE CONTRACT DOES (issue #46). `check_assignable`, the function
+    # this defers to for the refusal and its message, opens with `str(lane).strip()`. A
+    # guard that normalises differently from the function it defers to disagrees with it,
+    # and this disagreement fell OPEN: `mix_for_lane(" Documentary")` returned the flat mix
+    # and `allocate_engines(10, lane=" Documentary")` dealt five engines into the retired
+    # lane — the exact outcome the refusal below exists to prevent, reached by a leading
+    # space. Lanes arrive from JSON manifests and CSV cells (`stage_pool` strips
+    # `r.get("delivery")` for precisely this reason), so a padded lane is a real input.
+    lane = "" if lane is None else str(lane).strip()
     if not lane:
         return ENGINE_MIX
-    # "dialogue" (lowercase) is the pre-2026-08-02 caller convention; keep it working.
-    key = {"dialogue": "Dialogue", "speech": "Speech", "neutral": "Neutral",
-           "documentary": "Documentary", "newscaster": "Newscaster"}.get(
-               str(lane).lower(), lane)
+    key = _LANE_BY_LOWER.get(lane.lower(), lane)
     # The lowercase spelling is normalised FIRST, so `lane="documentary"` is refused too.
     if key in _RETIRED_LANES:
         check_assignable(key)          # raises, with the one contract message

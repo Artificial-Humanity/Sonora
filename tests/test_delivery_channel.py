@@ -13,6 +13,7 @@ TEXT, Newscaster vs Documentary a property of the RENDER.
 
 import ast
 import csv
+import importlib
 import json
 import pathlib
 import re
@@ -145,7 +146,14 @@ def test_the_narration_subset_also_has_one_definition():
     ref_select = pytest.importorskip("ref_select")
     stage_pool = pytest.importorskip("stage_pool")
     assert ref_select._NARRATION_LANES is book_ingest.NARRATION_LANES
-    assert stage_pool.LANES is delivery.DELIVERY_LANES
+    # `stage_pool` used to bind `DELIVERY_LANES as LANES` and this line pinned it. Every
+    # lane surface in that file is WRITE-shaped, so it moved to the ACTIVE set (issue
+    # #45) — and the binding it actually uses is the one worth pinning, exactly the call
+    # the audition app made when its picker moved (`main.py:99-105`, issue #17). Pinning
+    # a binding with no readers proves nothing about behaviour.
+    assert stage_pool.ACTIVE_LANES is delivery.ACTIVE_DELIVERY_LANES
+    assert not hasattr(stage_pool, "LANES"), (
+        "stage_pool bound the full vocabulary again; its surfaces are all writes")
     assert set(book_ingest.NARRATION_LANES) <= set(delivery.DELIVERY_LANES)
 
 
@@ -170,11 +178,16 @@ def test_no_narration_lane_is_retired():
 # --- the consumers ---------------------------------------------------------------------
 
 
-def _one_clip_campaign(tmp_path, lane):
+def _one_clip_campaign(tmp_path, lane, header=(
+        "campaign,id,engine,register,gender,delivery,score,note,status,link\n")):
     """A rendered one-clip bank whose manifest claims `lane`, and an empty ratings.csv.
 
     The CSV carries the app's real header on purpose: `_build_row` filters to the header
     actually on disk, so the `delivery` column only survives if the sheet has one.
+
+    `header=None` creates NO ratings.csv, which is the path issue #41 lived on: the writer
+    then falls back to `DEFAULT_FIELDS` and decides the schema of the new sheet itself.
+    Always pre-writing the header is why the existing tests could not see that defect.
     """
     audio = tmp_path / "campaign-x" / "audio"
     audio.mkdir(parents=True)
@@ -185,25 +198,34 @@ def _one_clip_campaign(tmp_path, lane):
         encoding="utf-8")
     ratings = tmp_path / "ratings"
     ratings.mkdir(parents=True)
-    (ratings / "ratings.csv").write_text(
-        "campaign,id,engine,register,gender,delivery,score,note,status,link\n",
-        encoding="utf-8")
+    if header is not None:
+        (ratings / "ratings.csv").write_text(header, encoding="utf-8")
     return audio, ratings / "ratings.csv"
 
 
-def _register_audition(tmp_path, monkeypatch, lane):
+def _register_audition(tmp_path, monkeypatch, lane, header=(
+        "campaign,id,engine,register,gender,delivery,score,note,status,link\n")):
     """-> (run, rows) for the synthesis pipeline's ratings.csv writer.
 
     Imported inside the test rather than at module scope because it resolves DATA_ROOT and
     RATINGS_DIR from the environment at IMPORT time.
+
+    A HARD IMPORT, not `importorskip` (issue #47, owner call). `register_audition` is the
+    SUBJECT of the guard tests below, not a dependency of them, and a subject that cannot
+    be imported is a failing test — `importorskip` turned exactly that into a green run,
+    which is the same failure shape as having no guard test at all (issue #27), arriving
+    silently after the test was written. Delete the `from matcha.delivery import
+    check_assignable` line, or break either `sys.path.insert`, and these tests must go RED.
+    The other `importorskip` calls in this file are consumers being checked for
+    consistency and are left alone.
     """
     monkeypatch.setenv("AUDITION_DATA_ROOT", str(tmp_path))
     monkeypatch.setenv("AUDITION_RATINGS_DIR", str(tmp_path / "ratings"))
     monkeypatch.setenv("BOOK_PROSE_ROOT", str(tmp_path / "book-prose"))
     sys.path.insert(0, str(REPO / "scripts" / "synthesis"))
     sys.modules.pop("register_audition", None)
-    mod = pytest.importorskip("register_audition")
-    audio, csv_path = _one_clip_campaign(tmp_path, lane)
+    mod = importlib.import_module("register_audition")
+    audio, csv_path = _one_clip_campaign(tmp_path, lane, header)
     monkeypatch.setattr(sys, "argv", ["register_audition", "--audio-dir", str(audio)])
 
     def rows():
@@ -246,6 +268,208 @@ def test_the_synthesis_writer_still_pre_fills_an_assignable_lane(tmp_path, monke
     run, rows = _register_audition(tmp_path, monkeypatch, lane)
     run()
     assert [(r["id"], r["delivery"]) for r in rows()] == [("lane-0001", lane)]
+
+
+def _mixed_campaign(tmp_path, monkeypatch, lanes):
+    """-> (run, rows) over a campaign whose manifest states `lanes`, one record each.
+
+    The single-clip fixture above cannot see issue #43 at all: with one record there is no
+    difference between "aborts on the first" and "surveys them all".
+    """
+    monkeypatch.setenv("AUDITION_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUDITION_RATINGS_DIR", str(tmp_path / "ratings"))
+    monkeypatch.setenv("BOOK_PROSE_ROOT", str(tmp_path / "book-prose"))
+    sys.path.insert(0, str(REPO / "scripts" / "synthesis"))
+    sys.modules.pop("register_audition", None)
+    mod = importlib.import_module("register_audition")   # the subject: hard import (#47)
+
+    audio = tmp_path / "campaign-x" / "audio"
+    audio.mkdir(parents=True)
+    (audio / "clip.wav").write_bytes(b"RIFF")
+    (audio / "bank_manifest.jsonl").write_text("".join(
+        json.dumps({"id": f"clip-{i:04d}", "wav": "clip.wav", "engine": "qwen",
+                    "campaign": "campaign-x", "register": "neutral_narration",
+                    "intended_delivery": lane}) + "\n"
+        for i, lane in enumerate(lanes)), encoding="utf-8")
+    ratings = tmp_path / "ratings"
+    ratings.mkdir(parents=True)
+    csv_path = ratings / "ratings.csv"
+    csv_path.write_text(
+        "campaign,id,engine,register,gender,delivery,score,note,status,link\n",
+        encoding="utf-8")
+
+    def rows():
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            return list(csv.DictReader(f))
+
+    return mod, rows
+
+
+def test_a_dry_run_surveys_every_stale_clip_instead_of_dying_on_the_first(
+        tmp_path, monkeypatch, capsys):
+    """Issue #43. The refusal is evaluated inside `_build_row`, which `register_audio_dir`
+    calls for every target BEFORE `main()` reaches its `--dry-run` branch — so the
+    operator's read-only "what would be added" path died with an unhandled ValueError
+    carrying exactly one clip id.
+
+    Reproduced against the closed `delivery-v1-narration-r2` round, which is reachable
+    today: its bank was built when `voyage-of-the-beagle` mapped to Documentary, so 50 of
+    its 153 manifest records carry the retired lane across five engine manifests. The dry
+    run named one of them and surveyed none of the other 152 — not the offenders, and not
+    the clips that ARE registerable. Every other per-record failure in that loop skips,
+    counts and continues.
+
+    A dry run must therefore be COMPLETE: every offender named, the registerable count
+    still reported, nothing written, and a non-zero exit so a script cannot read the
+    survey as success.
+    """
+    mod, rows = _mixed_campaign(
+        tmp_path, monkeypatch,
+        ["Neutral", "Documentary", "Documentary", "Newscaster", "Documentary"])
+    monkeypatch.setattr(sys, "argv", ["register_audition", "--audio-dir",
+                                      str(tmp_path / "campaign-x" / "audio"),
+                                      "--dry-run"])
+    with pytest.raises(SystemExit) as excinfo:
+        mod.main()
+    assert excinfo.value.code != 0, "a survey that found stale clips exited 0"
+    out, err = capsys.readouterr()
+    for cid in ("clip-0001", "clip-0002", "clip-0004"):
+        assert cid in err, f"{cid} was never named — the survey stopped early"
+    assert "3 clip(s) carry a delivery lane" in err
+    # The registerable half is reported too: a survey that only lists failures does not
+    # tell the operator what the run would actually have done.
+    assert "2 other row(s) would be appended" in out
+    assert rows() == [], "a dry run wrote to ratings.csv"
+
+
+def test_the_write_path_still_refuses_on_the_first_stale_clip(tmp_path, monkeypatch):
+    """The other half of #43, and the property that must NOT change: outside `--dry-run` a
+    stale lane costs the run. Registering half a stale bank — some rows queued, some
+    refused — is the outcome the guard exists to prevent, and `--dry-run` is now how the
+    whole picture is obtained first.
+    """
+    mod, rows = _mixed_campaign(tmp_path, monkeypatch,
+                                ["Neutral", "Documentary", "Neutral"])
+    monkeypatch.setattr(sys, "argv", ["register_audition", "--audio-dir",
+                                      str(tmp_path / "campaign-x" / "audio")])
+    with pytest.raises(ValueError, match="RETIRED"):
+        mod.main()
+    assert rows() == [], "rows reached the sheet despite the refusal"
+
+
+def _stage_pool():
+    sys.path.insert(0, str(REPO / "scripts" / "synthesis"))
+    import stage_pool                                                 # noqa: E402
+    return stage_pool
+
+
+@pytest.mark.parametrize("lane", delivery.RETIRED_LANES)
+def test_the_staging_cli_does_not_offer_a_retired_lane(monkeypatch, capsys, lane):
+    """Issue #45, part 1. `--mark-delivery` writes `delivery_homogeneous` into the ledger,
+    and that mark propagates to EVERY clip in the book — the most write-shaped surface in
+    the file. It took `choices=DELIVERY_LANES`, the full vocabulary, so
+    `--mark-delivery Documentary` was an accepted argument after the retirement. This is
+    the same defect the audition app already fixed for its picker (`main.py:206`).
+
+    Driven through argparse rather than asserted on the constant, because `choices` is
+    where the refusal actually happens — and it happens before `main()` touches any path,
+    so no fixture is needed.
+    """
+    sp = _stage_pool()
+    monkeypatch.setattr(sys, "argv",
+                        ["stage_pool", "--campaign", "x", "--mark-delivery", lane])
+    with pytest.raises(SystemExit) as excinfo:
+        sp.main()
+    assert excinfo.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+    # The live lanes are still all offered — a guard that also refused them would be a
+    # different defect wearing the same shape.
+    assert set(sp.ACTIVE_LANES) == set(delivery.ACTIVE_DELIVERY_LANES)
+
+
+def test_the_staging_write_refuses_a_retired_lane_from_the_ledger(tmp_path):
+    """Issue #45, part 2 — the half the issue could not verify, because the ledger lives
+    on `/data`. Reproduced here instead: a ledger entry carrying
+    `delivery_homogeneous: "Documentary"`, written before the 2026-08-10 retirement when
+    the mark was legal, stamped `delivery=Documentary` on all three staged rows as
+    machine-folded keeps, with no error anywhere. They would be refused by
+    `merge_expressive_registers` days later with the audition slots already spent.
+
+    `--mark-delivery` being closed (part 1) is not enough on its own: the stale value is
+    in the LEDGER, not in `ratings.csv`, so no relabelling of the sheet and no restore of
+    a `.bak` can reach it. Only the write site can.
+    """
+    sp = _stage_pool()
+    rec = {"id": "sp-0001", "librivox_url": "https://librivox.org/x/"}
+    led = {"lv:x": {"url": "https://librivox.org/x/",
+                    "delivery_homogeneous": "Documentary"}}
+    # The READ still works — two callers only ask whether a title is marked at all, and a
+    # read that raised could not report stale state.
+    assert sp.homogeneous_delivery(rec, led) == "Documentary"
+    with pytest.raises(ValueError, match="RETIRED") as excinfo:
+        sp._stageable_lane("Documentary", rec, led)
+    # The message has to name the ledger, or the operator relabels the sheet and the next
+    # staging run writes it straight back.
+    assert "delivery_homogeneous" in str(excinfo.value)
+    assert "lv:x" in str(excinfo.value)
+    # And it must pass what it should.
+    assert sp._stageable_lane("Newscaster", rec, led) == "Newscaster"
+
+
+def _app_csv_fields(tmp_path, monkeypatch):
+    """The audition app's own `CSV_FIELDS`, from the running module.
+
+    Imported rather than read as text so this test asserts against the list the app
+    actually writes with, not against a third spelling of it.
+    """
+    import importlib
+    monkeypatch.setenv("AUDITION_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUDITION_RATINGS_DIR", str(tmp_path))
+    sys.path.insert(0, str(REPO / "audition"))
+    sys.modules.pop("app.main", None)
+    return list(importlib.import_module("app.main").CSV_FIELDS)
+
+
+def test_the_fresh_sheet_header_is_the_apps_schema(tmp_path, monkeypatch):
+    """Issue #41. `DEFAULT_FIELDS` is the header written when `ratings.csv` does not exist
+    yet, and its comment claimed it matched the app's `CSV_FIELDS`. It did not: nine
+    columns against twelve, missing `age`, `accent` and `delivery`.
+
+    Asserted against the app's list rather than against a literal, because a literal here
+    would be the third copy of the same schema and would drift the same way.
+    """
+    sys.path.insert(0, str(REPO / "scripts" / "synthesis"))
+    sys.modules.pop("register_audition", None)
+    import register_audition                                          # noqa: E402
+    assert register_audition.DEFAULT_FIELDS == _app_csv_fields(tmp_path, monkeypatch)
+
+
+@pytest.mark.parametrize("lane", ["Newscaster", "Neutral", ""])
+def test_a_brand_new_sheet_keeps_the_lane_the_writer_just_validated(tmp_path, monkeypatch,
+                                                                    lane):
+    """Issue #41's concrete failure: on a sheet that does not exist yet, the lane was
+    computed, passed `check_assignable`, and then DROPPED.
+
+    `_build_row` ends `{k: full.get(k, "") for k in fields}`, so a column absent from
+    `fields` is discarded silently — and `fields` is `DEFAULT_FIELDS` exactly when there is
+    no header on disk to read. The retired-lane guard therefore had no effect on the value
+    that reached disk in this path: it could still refuse a retired lane, but it could not
+    deliver an accepted one. The app's `_header_for` re-adds the column on the auditor's
+    first save, which repairs the SHEET while leaving every row registered before that save
+    permanently blank — and a pre-filled lane the auditor never sees is the
+    verify-don't-enter standard failing silently, plus `seed_delivery.py` exiting
+    "ratings.csv has no delivery column" against such a file.
+
+    Every other test in this file pre-writes the header, which is why none of them could
+    see it.
+    """
+    run, rows = _register_audition(tmp_path, monkeypatch, lane, header=None)
+    run()
+    written = rows()
+    assert [(r["id"], r["delivery"]) for r in written] == [("lane-0001", lane)]
+    # age and accent went missing by the same mechanism and are the same standard.
+    for column in ("age", "accent"):
+        assert column in written[0], f"a fresh sheet has no {column} column"
 
 
 def test_the_cli_names_the_lane_rather_than_asking_for_five_zeros():

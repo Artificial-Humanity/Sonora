@@ -77,7 +77,15 @@ vocalizer = ["gradio", "fastapi", "uvicorn", "starlette"]
 # QC-M5 — the app silently overwriting a script's commit — is exactly the kind of defect a
 # source-string test cannot see. The app's own runtime pins live in
 # `audition/requirements.txt`; this is the test-time import only.
-dev = ["pytest", "pre-commit", "fastapi"]
+# `pytest>=9.1` is a FLOOR ON AN EXCEPTION ENVELOPE, not a routine version bump (issue
+# #47). `pytest.importorskip` decides what counts as "not available", and this suite uses
+# it for genuinely optional consumers. Up to pytest 9.0 it skipped on ANY `ImportError`,
+# so a module that imports fine but whose `from X import name` no longer resolves — a
+# renamed contract function, a moved path insert — turned a guard test GREEN by skipping
+# it. 9.1 narrowed the default to `ModuleNotFoundError`: the module has to be genuinely
+# absent. Unpinned, `uv sync` on an older resolution silently restores the wide envelope
+# and the retirement guards can go quiet again without anyone editing a test.
+dev = ["pytest>=9.1", "pre-commit", "fastapi"]
 
 [project.scripts]
 matcha-data-stats = "matcha.utils.generate_data_statistics:main"

@@ -61,15 +61,48 @@ LANES = {
     "walden":                  "Neutral",       # first-person recollection
 }
 
-# Renders per lane, sized from the measured gaps at ~90% keep with a little headroom.
-# The retired lane's target FOLDED IN rather than vanishing: `Documentary: 45` (for a +35
-# gap) plus `Neutral: 96` (for +81) = 141, because retiring the lane changed where those
-# clips are LABELLED, not whether the corpus wants them — the gap they were sized against
-# is now part of Neutral's. Dropping the entry and leaving 96 would have quietly shrunk a
-# re-run of this round by a third; the whole round is already rendered and audited
-# (delivery-v1-narration-r2 closed 2026-08-04), so this is the arithmetic a re-run needs
-# to reproduce it, not a new campaign.
-TARGETS = {"Neutral": 141}
+# Renders PER BOOK, sized from the measured gaps at ~90% keep with a little headroom.
+#
+# The retired lane's target FOLDED IN rather than vanishing: the round wanted 45 lines for
+# the Documentary gap (+35) and 96 for the Neutral one (+81), and retiring the lane changed
+# where those clips are LABELLED, not whether the corpus wants them. The whole round is
+# already rendered and audited (delivery-v1-narration-r2 closed 2026-08-04), so these
+# numbers exist to REPRODUCE it, not to size a new campaign.
+#
+# PER BOOK RATHER THAN PER LANE, because that is how the target is consumed (issue #44).
+# The selection below divides the lane total across the lane's books — `each = want //
+# len(books)` — and `len(books)` went from 1 (Documentary) and 4 (Neutral) to 5 when
+# `voyage-of-the-beagle` moved into Neutral. A single `{"Neutral": 141}` therefore did NOT
+# reproduce the round, in two ways, both silent:
+#   * 141 // 5 == 28 and 28 * 5 == 140 — the floor division loses a line the two-lane
+#     split did not lose, so the comment's own headline number was never reached;
+#   * every book's share changed. beagle 45 -> 28 and the other four 24 -> 28, which is a
+#     materially different corpus from the one the ear actually closed.
+# Verified against the shipped bank: 141 lines, beagle 45, conan/up-from-slavery/
+# franklin/walden 24 each. These numbers ARE that split.
+#
+# ⚠ THE CASTING CANNOT BE REPRODUCED, and no arithmetic here can fix that. Engines are
+# allocated per LANE (`allocate_engines(n, lane=lane)`), and the closed round dealt two
+# lanes under two different measured mixes — Documentary's 45 and Neutral's 96, giving
+# e.g. orpheus 4 + 14 and moss_vg 2 + 10. A re-run deals ONE lane of 141 under Neutral's
+# mix alone, so the engine split, and with it every per-(book, engine) frozen voice, comes
+# out different. `ENGINE_MIX_BY_LANE` carries no Documentary mix any more and
+# `ref_select.mix_for_lane` refuses the lane outright, so the old deal is not recoverable
+# even in principle. What re-runs reproduces is the TEXT SELECTION; the audio it casts is
+# a new draw. The rendered round on disk stays the artifact of record.
+PER_BOOK = {
+    "voyage-of-the-beagle":    45,      # the round's Documentary target, now Neutral
+    "conan-stories":           24,
+    "up-from-slavery":         24,
+    "franklin-autobiography":  24,
+    "walden":                  24,
+}
+
+# Lane totals, DERIVED from the per-book split rather than restated beside it — a second
+# number that has to agree with a first is how the 141/140 disagreement got in. Only
+# `allocate_engines` reads this, and it is handed the count actually selected.
+TARGETS = {lane: sum(n for slug, n in PER_BOOK.items() if LANES[slug] == lane)
+           for lane in dict.fromkeys(LANES.values())}
 
 # References must be narration-shaped. A dialogue reference drags the read toward
 # performance, which is the opposite of what these lanes want.
@@ -110,8 +143,8 @@ def main():
 
     selected = []
     for lane, books in per_lane.items():
-        want = TARGETS[lane]
-        each = max(1, want // len(books))
+        # Sized per book (PER_BOOK), not by dividing a lane total — see the table's
+        # comment for why the division did not reproduce the closed round.
         # INTERLEAVE the books round-robin before the engines are dealt over this
         # list. Concatenating them instead put each book in one contiguous block,
         # and since the engine queue is also blocked by engine, every book came out
@@ -120,7 +153,9 @@ def main():
         # text perfectly: if pulpy adventure prose keeps at 100% and dense 19th-c
         # philosophical prose at 70%, nothing in the result can say which caused it.
         # It is the same confound that made moss_vg's newscaster 20/20 unreadable.
-        picked = [[(lane, slug, l) for l in spread(lines, min(each, args.limit or each))]
+        picked = [[(lane, slug, l)
+                   for l in spread(lines, min(PER_BOOK[slug],
+                                              args.limit or PER_BOOK[slug]))]
                   for slug, lines in books]
         for idx in range(max(len(p) for p in picked)):
             selected.extend(p[idx] for p in picked if idx < len(p))
