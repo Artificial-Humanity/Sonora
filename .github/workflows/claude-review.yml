@@ -90,7 +90,23 @@ jobs:
         # rather than claim verification it did not do.
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pyyaml numpy scipy librosa soundfile unidecode inflect \
+          # ⚠ `pysbd` AND `fastapi` ARE NOT OPTIONAL, and their absence was invisible for the
+          # lane's whole life. Without them 8 tests FAIL rather than skip on this tree — 3
+          # `pysbd` in tests/test_acquisition_lane.py (imported inside a function in
+          # synth_common.py, so the module-level importorskip guards do not reach it) and 5
+          # `fastapi` in tests/test_ratings_transaction.py. On PR #62's tree it is 11, because
+          # that branch adds fastapi-dependent tests.
+          #
+          # The cost is not the red tests. It is that the reviewer opens a suite showing
+          # failures unrelated to the diff it was asked to read, and the rational response to
+          # an untrustworthy suite is to stop running it and reason instead — which is exactly
+          # the failure this install step exists to prevent, and the mechanism behind three
+          # wrong remedies on 2026-08-11.
+          #
+          # `numpy` is deliberately left unconstrained HERE: pip resolves it fine in this job,
+          # and the `numpy<2.5` ceiling that `[dependency-groups].test` carries is a **uv**
+          # backtracking problem. Do not add a pin to a resolver that does not need one.
+          pip install pytest pyyaml numpy scipy librosa soundfile unidecode inflect pysbd fastapi \
             || echo "DEP INSTALL FAILED — the agent must report findings as unverified"
 
       - name: Run Claude Review Agent
