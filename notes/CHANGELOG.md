@@ -19,20 +19,21 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-11
 
-### Fixed — a fourth silent trap in the review lane: a workflow-editing PR is never reviewed
+### Documented — a workflow-editing PR is never reviewed, and the check still goes green
 
 ⚠ **`claude-code-action` validates that the workflow file is byte-identical to the version
 on the default branch, and when it is not, SKIPS the review and exits
-`conclusion: success`.** Measured on PR #59 (2026-08-11): the run took **37 seconds against
-the usual 11–14 minutes**, logged `Skipping action due to workflow validation`, posted
-nothing, and showed a green check. #59 — which rewrote that very workflow — was merged
-unreviewed on the strength of that check.
+`conclusion: success`.** Measured again on PR #59 (2026-08-11): **37 seconds against the
+usual 11–14 minutes**, log line `Skipping action due to workflow validation`, zero comments,
+green check. #59 rewrote that very workflow, so it was merged unreviewed on the strength of
+that check. A deliberate vendor security control, not a bug.
 
-So **the green check means "skipped", not "clean"**, on any PR touching
-`.github/workflows/claude-review.yml`, and a fix to this lane can never be validated by the
-PR that introduces it — only by the next PR that leaves the workflow alone. Recorded in
-AGENTS.md §1 rather than as a comment in the workflow itself, because editing that file to
-document the trap would trip it again and leave the documenting PR unreviewed too.
+**This was already known when the lane was built on 2026-08-10 — and that is the real
+finding.** It was diagnosed then (instrumentation must land on `main` first) but recorded
+only in an agent's session memory, never in this repository, so it protected nobody and cost
+the same hour twice. **A trap that is not in the repo is not known.** Now in AGENTS.md §1 —
+deliberately not as a comment in the workflow itself, since editing that file to document
+the trap trips it again and leaves the documenting PR unreviewed too.
 
 ### Fixed — four defects in the new local fix lane, found by running it rather than reading it
 
