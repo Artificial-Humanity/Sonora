@@ -121,7 +121,8 @@ dev = ["pytest", "pre-commit", "fastapi", "pysbd"]
 #     numpy==2.5.2  numba==0.53.1  librosa==0.11.0
 # uv holds numpy at newest, so numba must fall below its own numpy ceiling, and librosa must
 # fall below its `numba>=0.61.0` floor to let it. The install then FAILS building numba 0.53.1
-# on 3.12 — surfacing as a librosa error naming neither numpy nor numba. The downgrades are
+# on 3.12 — a numba build error, reached only because librosa was walked back far enough to
+# permit that numba. The downgrades are
 # planned in the resolution and never installed; the pin prevents both.
 # ⚠ `pysbd` is imported INSIDE a function in `synth_common.py`, so the `importorskip`
 # guards in tests/test_acquisition_lane.py do not cover it: without it three tests FAIL
