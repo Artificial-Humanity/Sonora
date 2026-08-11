@@ -188,11 +188,21 @@ case-insensitive macOS/Windows.
   `uv pip install --python .venv/bin/python --group test`, declared once in `pyproject.toml`
   under `[dependency-groups]`. ⚠ Known-good uv: uv 0.11.29 (x86_64-unknown-linux-gnu); `--group` needs PEP 735 support.
   * ⚠ **It is not yet the ONLY copy, and the other copy has already drifted.**
-    `.github/workflows/claude-review.yml` carries its own hand-written `pip install` line, and
-    it lacks `pysbd` and `fastapi` — **8 tests fail in the review lane for want of them**, so
-    every finding from a run that needed those modules was reasoned rather than executed.
-    `ci.yml` (arriving with #62) carries a third copy. Both should point at this group; until
-    they do, "declared once" describes the intent, not the state.
+    `.github/workflows/claude-review.yml` carries its own hand-written `pip install` line and
+    it lacks `pysbd` and `fastapi`, so **tests fail inside the review lane itself** and every
+    finding from a run needing those modules was reasoned rather than executed. `ci.yml`
+    (arriving with #62) carries a third copy. Both should point at this group; until they do,
+    "declared once" describes the intent, not the state.
+    * ⚠ **A failure count here needs its TREE named, or it is wrong somewhere.** Measured
+      2026-08-11: **8** on `main` (3 `pysbd` in `test_acquisition_lane.py`, 5 `fastapi` in
+      `test_ratings_transaction.py`) and **11** on #62's tree, which adds fastapi-dependent
+      tests. Both are correct for their own tree, and the number moves as tests are added — so
+      quote it with the tree or do not quote it.
+    * ⚠ **The fix cannot be validated by its own pull request.** `claude-review.yml` is the
+      file §1's workflow-validation trap applies to: the action refuses to run when the PR's
+      copy differs from the default branch and reports the job **GREEN**. So that fix lands as
+      its own PR, its own review is skipped **by design**, and the proof is the *next* PR that
+      leaves the workflow alone. The failure mode is a green check, not a red one.
   * ⚠ **Not an extra.** `[project.optional-dependencies]` is *additive* to
     `[project.dependencies]`, so `.[dev]` drags **torch** in — ~2 GB for one test file
     (`tests/test_gate_scripts.py`) that skips without it. A PEP 735 group installs on its own.
