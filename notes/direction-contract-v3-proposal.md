@@ -14,19 +14,30 @@ one-hot delivery block. `vat_dim` 8.
 
 ## 0. What Documentary cost, and the rule it buys
 
-82 append rows carried a lane that no engine renders distinctly. They split
+**154 rated clips** carried a lane that no engine renders distinctly — 82 of them in
+the v6 append set. Every one of them is synthetic, so this is a property of the
+**brief**, not of any audio: the direction was authored, rendered, audited and
+labelled before anyone asked whether it named a distinct render.
+
+⚠ **Corrected 2026-08-11.** This paragraph read "82 append rows … they split
 **bimodally** toward Neutral and Newscaster with an empty middle — 78/22 by mixture
-against the two reference lanes — and every one of them is synthetic, so this is a
-property of the **brief**, not of any audio. The direction was authored, rendered,
-audited and labelled before anyone asked whether it named a distinct render.
+against the two reference lanes". **It did not split.** Reassigned on the ear, **all
+154 went to `Neutral`**: against `ratings.csv.bak-20260810-documentary-retire`,
+Neutral goes 524 → 678 (+154) and **Newscaster is 87 before and after**. v6's
+derivation report says the same from the other side — Newscaster is 76 on both sides
+of the retirement while Neutral goes 251 → 328. The 78/22 was an acoustic *mixture*
+reading against two centroids, which says where the audio sits, not where the labels
+went; it never supported the Newscaster half and is not carried forward. A rationale
+for a vocabulary change that nobody differenced against the file it describes is the
+argument for the bar below, not a counterexample to it.
 
 > **STANDING BAR (proposed): a direction that no engine renders distinctly is not a
-> direction.** Test it before it enters a campaign, not after 82 clips exist.
+> direction.** Test it before it enters a campaign, not after 154 clips exist.
 
-At rung-2 scale that error cost 82 rows and one afternoon. At Phase 1S scale — mass
-synthesis against a direction vocabulary — the same error is thousands of clips, and
-they will all be *self-consistently* mislabelled, which is the kind of error a
-holdout cannot see.
+At rung-2 scale that error cost 154 rated clips (82 of them in the append set) and one
+afternoon. At Phase 1S scale — mass synthesis against a direction vocabulary — the
+same error is thousands of clips, and they will all be *self-consistently*
+mislabelled, which is the kind of error a holdout cannot see.
 
 ---
 

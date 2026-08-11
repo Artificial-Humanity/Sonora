@@ -69,9 +69,16 @@ Vocabulary changes are contract changes and require an owner call.
 DELIVERY_LANES = ("Dialogue", "Neutral", "Documentary", "Newscaster", "Speech")
 
 # Lanes that keep their CHANNEL but may no longer be ASSIGNED. `Documentary` was retired
-# into `Neutral` (owner, 2026-08-10): its 82 clips split bimodally toward Neutral and
-# Newscaster with an empty middle, and every one of them was synthetic — so the split is a
-# property of the render brief, not of a manner of speaking.
+# into `Neutral` (owner, 2026-08-10): **154 clips in `ratings.csv`, and all 154 went to
+# `Neutral`** — Newscaster is 87 before and after. Every one of them was synthetic, so the
+# lane was a property of the render brief, not of a manner of speaking.
+#
+# ⚠ Corrected 2026-08-11. This comment used to say "82 clips split bimodally toward
+# Neutral and Newscaster". Both halves were wrong: 82 is the lane's share of the v6 APPEND
+# SET (a subset), not the lane, and nothing split — measured against
+# `ratings.csv.bak-20260810-documentary-retire`, Neutral goes 524 → 678 (+154) and every
+# other lane is unchanged. v6's derivation report says the same from the other side:
+# Newscaster stays 76 across the retirement while Neutral goes 251 → 328.
 #
 # It stays inside `DELIVERY_LANES` because ORDER IS THE WIRE FORMAT. Removing it would
 # renumber Newscaster and Speech and silently reinterpret every filelist and every
