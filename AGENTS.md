@@ -227,8 +227,9 @@ case-insensitive macOS/Windows.
   `<!-- janis-reviewed: <sha> -->` marker it writes into each summary, so the thing §5 used to
   ask a human to track is now automatic and per-PR.
   * ⚠ **The marker bounds a range only while the branch's history is APPEND-ONLY. A rebase or
-    force-push invalidates it and costs a full re-review.** Measured on this PR: it was rebased
-    twice, the previous marker stopped being an ancestor of HEAD (`compare` reports *diverged*),
+    force-push invalidates it and costs a full re-review.** Measured on this PR: **one**
+    force-push invalidated **two** markers at once. The previous marker stopped being an
+    ancestor of HEAD (`compare` reports *diverged*),
     and the reviewer correctly fell back to reading everything. The prompt handles that and says
     so — but the cost is real, **tidying a branch's history is not free**, and an earlier version
     of this bullet claimed there was no SHA bookkeeping at all.
@@ -262,7 +263,8 @@ case-insensitive macOS/Windows.
 ### 5b. The doc-claims gate can stop enforcing WITHOUT going red
 
 `scripts/test_doc_claims.py` compares documented numbers against the artifacts on disk. It
-has **five silent-disarm modes**, all found on 2026-08-11, none of which was written down
+has **five silent-disarm modes** — **four observed on 2026-08-11, and one reasoned from the
+mechanism** (mode 2, see its own correction) — none of which was written down
 anywhere until now — which is the same reason the workflow-validation trap in §1 cost the
 same hour twice.
 
@@ -280,7 +282,8 @@ same hour twice.
     never to zero, so it was never disarmed. The hazard is real as a class; this was not an
     instance of it, and the claim was made by measuring on a tree that predated the config
     scan.
-  * The near-miss underneath it: `notes/STATE.md` already stated the number, but `scope` is
+  * ⚠ **The same-line rule — real, and the reason mode 2 looked instantiated:**
+    `notes/STATE.md` already stated v5's 2,500 speakers, but `scope` is
     matched **per line** and the scope token sat on the line above, so the fact never matched
     there. **Check that a fact's scope and its number are on the SAME LINE.**
   * ✅ **This class is now ENFORCED IN CODE, not by vigilance.** #62 added

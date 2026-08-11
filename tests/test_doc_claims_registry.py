@@ -214,8 +214,12 @@ def test_no_digit_sentence_is_ever_claimed_by_both_corpora():
 
     There is NO carve-out. `notes/CHANGELOG.md` used to be the one file allowed zero readers
     — append-only history quoting prior wordings verbatim, which a checker must not force
-    anyone to edit — and the changelog was retired in this PR, so the exemption has nothing
-    left to exempt. Every scanned file must now have a reader for every digit sentence.
+    anyone to edit. **There is no changelog** (AGENTS.md §4), so the exemption has nothing
+    left to exempt. Every **digit-drop sentence** in a scanned file must now have a reader.
+    ⚠ NOT every digit sentence: this loop only examines lines matching the idiom compiled below
+    — 3 lines across 40 scanned files. `notes/STATE.md`'s "2,500 speakers" is a digit sentence in
+    a scanned file and nothing here looks at it. Do not read this as a guarantee that a new digit
+    claim would be caught; that is what the registry's own per-fact reader test is for.
     ⚠ If an append-only quoting document is ever reintroduced, the carve-out comes back WITH
     it; do not add one speculatively.
     """
@@ -237,7 +241,10 @@ def test_no_digit_sentence_is_ever_claimed_by_both_corpora():
                     f"facts, and one of them must be wrong about it:\n  {line.strip()}")
                 assert readers, (
                     f"{rel}:{lineno} states a digit drop that NO fact reads — it names no "
-                    f"corpus, so nothing checks it:\n  {line.strip()}")
+                    f"corpus, so nothing checks it:\n  {line.strip()}\n"
+                    "  If this file is append-only history that QUOTES prior wordings, the "
+                    "answer is a carve-out (see this test's docstring) rather than editing the "
+                    "quote — falsifying the record to satisfy a checker is the worse trade.")
 
 
 # --- #49: a corrupt value must never delete its own check -----------------------------
