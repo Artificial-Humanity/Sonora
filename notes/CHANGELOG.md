@@ -19,6 +19,48 @@ for Project Sonora (the training pipeline and the teacher-synthesis lane).
 
 ## 2026-08-11
 
+### Changed — review findings are resolved in the PR again, and the fix pass moved off CI
+
+Landed in `b16a23e`. Two practices retired in one change (owner, 2026-08-11), because they
+compounded into a loop that ran unattended:
+
+**Findings are no longer filed as issues.** The reviewer used to open one issue per
+finding against a `review-finding` ledger. Each review therefore produced a backlog, the
+backlog produced the next PR, and that PR produced the next review — **25 issues in three
+bursts inside half an hour** on the morning of 2026-08-11 (#31–#38, #41–#47, #48–#58).
+Findings now go back to inline PR comments, resolved in the thread. `issues: write` and
+`Bash(gh issue:*)` were **removed from the review workflow**, not merely unused: AGENTS.md
+§1's own lesson is that a rule in a prompt is not an enforcement mechanism. Issues filed
+before this date are live work and stay open.
+
+**The `claude-fix` label and `.github/workflows/claude-fix.yml` are deleted.** That lane
+failed environmentally, not logically: the GitHub runner image never carried what a repair
+needs (torch, the ROCm stack, `/data`, the repo venv), and shipping that into CI cost more
+than the lane was worth. Replaced by `scripts/fix_pr.sh <pr>` on the submitting machine,
+with `/fix-pr <pr>` as the in-session entry point. ⚠ **Both read their protocol from the
+same file** (`.claude/commands/fix-pr.md`) — the script strips its frontmatter and feeds
+the body to `claude -p` — so the two entry points cannot drift into two different
+protocols. Billing is unchanged: a local `claude -p` draws on the same subscription the
+review lane already draws through `CLAUDE_OAUTH_TOKEN`.
+
+⚠ **`fix_pr.sh` refuses to run when it cannot execute the test suite** (override:
+`--no-tests`, which forces the agent to mark every edit UNVERIFIED). Without that refusal
+the new lane would reproduce, on a different machine, the exact defect that killed the old
+one — a fix pass that reasons instead of verifying. This repo has already paid for the
+confusion once: 11 unverified edits on PR #10, one leaving a latent defect that surfaced
+only when the tests were finally run by hand. The check is real, and it fired on the first
+run: **this machine has no `.venv` and its system Python has no pytest**, so the local
+environment was *not* in fact ready, and the script says so instead of proceeding.
+
+**What bounds the loop is now the commit range, not the pusher's identity.** The reviewer
+ends each summary with `<!-- janis-reviewed: <sha> -->` and reviews only `<sha>..HEAD`
+next time, posting nothing at all when that range is empty or docs-only. A fix push
+therefore buys a small incremental read of the fix, and each lap is strictly smaller than
+the last. Deliberately identity-agnostic, so it survives agents committing under their own
+GitHub identity instead of a human's; that also required checking the review workflow out
+at `pull_request.head.sha` with `fetch-depth: 0`, since a depth-1 clone of the merge commit
+can neither diff a range nor tell base-branch changes from this PR's.
+
 ### Fixed — the doc-claims gate was red on clean `main`, because the CHECKER conflated two facts
 
 `scripts/test_doc_claims.py` reported two disagreements and **both documents were right.**

@@ -99,14 +99,39 @@ case-insensitive macOS/Windows.
   authority is the branch protection on `main`, and this section only explains it. If a direct
   push to `main` ever *succeeds*, the protection is missing or was bypassed — report that
   rather than taking it as permission.
-* **Review feedback is closed with the `claude-fix` label, not by hand-waving.** The review
-  workflow only comments; `.github/workflows/claude-fix.yml` is what acts on those comments.
-  Add the `claude-fix` label to the PR and the fix agent reads the inline comments, commits
-  the fixes, replies, and removes the label. It is label-gated deliberately: firing it
-  automatically on every submitted review oscillates (fix pushes → `synchronize` → new review
-  → fix pushes), and the vendor ships no loop guard. One label, one pass; re-label to run it
-  again. A review comment is an argument, not an order — the fix agent is expected to push
-  back in a reply where a finding is wrong, rather than making a change it believes is wrong.
+* **Review findings are resolved IN THE PULL REQUEST, by the machine that submitted it**
+  (owner, 2026-08-11). The review workflow only comments; the repair runs here, via
+  `scripts/fix_pr.sh <pr>` — or `/fix-pr <pr>` in a Claude Code session, which runs the same
+  protocol from the same file (`.claude/commands/fix-pr.md`). It reads the unresolved threads,
+  fixes what is genuinely wrong, replies in each thread, and pushes to the PR branch. A
+  review comment is an argument, not an order: the fix pass is expected to push back in a
+  reply where a finding is wrong, rather than making a change it believes is wrong.
+  * **Two practices were retired to get here, and neither should be reintroduced casually.**
+    * **The `claude-fix` label and `.github/workflows/claude-fix.yml` are gone.** The lane
+      failed for an environmental reason, not a logical one: the runner image never carried
+      what a real repair needs (torch, the ROCm stack, `/data`, the repo venv), and shipping
+      that into CI cost more than the lane was worth. The submitting machine already has all
+      of it. ⚠ `scripts/fix_pr.sh` refuses to run when it cannot execute the test suite —
+      that refusal is the guard against rebuilding the same defect at a new address.
+    * **Findings are no longer filed as issues.** On 2026-08-11 that practice turned a
+      handful of findings into 25 issues in three bursts inside half an hour: each review
+      produced a backlog, the backlog produced the next PR, and the PR produced the next
+      review. The reviewer now holds neither `issues: write` nor `Bash(gh issue:*)`, because
+      §1's own lesson is that a rule in a prompt is not a mechanism. Issues opened *before*
+      that date are live work and stay open; `fix_pr.sh` checks them read-only so a fix pass
+      does not collide with whoever owns one.
+  * **What bounds the loop now is the commit range, not anyone's identity.** The reviewer
+    ends each summary with `<!-- janis-reviewed: <sha> -->` and reviews only `<sha>..HEAD` on
+    the next run, posting nothing when that range is empty or docs-only. So a fix push buys a
+    small incremental read of the fix itself, and each lap is smaller than the last. This is
+    deliberately identity-agnostic: it keeps working when agents commit under their own
+    GitHub identity rather than a human's.
+  * **The human invocation is the turn token.** Nothing polls and there is no label. One
+    invocation, one pass, then it hands back: whatever the pass could not settle alone is
+    left as an OPEN thread with a question in it, the owner answers there, and re-running
+    `fix_pr.sh` starts the next pass by reading those answers. Replies therefore go into the
+    threads, not only into the summary — the summary is for the human, the threads are what
+    the next pass reads.
 
 ### 2. Training & Troubleshooting Mandates
 
