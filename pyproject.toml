@@ -82,19 +82,11 @@ vocalizer = ["gradio", "fastapi", "uvicorn", "starlette"]
 # `importorskip` guards at the top of that file do not cover it and three tests FAIL
 # outright rather than skipping. Added 2026-08-11.
 #
-# ⚠ THIS EXTRA STILL DOES NOT PRODUCE A RUNNABLE SUITE, and an earlier version of this
-# comment claimed it was meant to. `.[dev]` inherits `dependencies` above, which pins
-# nothing on numpy (so it resolves to 2.2+, which no numba supports, and the resolver
-# walks numba back to a 2021 release that cannot build on 3.12) and pulls **torch** —
-# ~2 GB. ⚠ NOT for "one test file": torch gates `tests/test_cli_lanes.py` and
-# `tests/test_training_seams.py` by module-scope importorskip, plus
-# `tests/test_gate_scripts.py`, which shells out to a torch-importing script — ~20 tests
-# across three modules. That is the number the no-torch decision actually rests on, so
-# quoting it as one file understated what is being given up. The set MEASURED to work on a
-# host is the one in `scripts/fix_pr.sh`'s refusal message: pytest, pyyaml, "numpy<2.2",
-# scipy, librosa, soundfile, unidecode, inflect, fastapi, pysbd. Fixing that properly
-# means constraining numpy in `dependencies` or adding a torch-free test extra, and
-# neither is this PR's business.
+# ⚠ THIS EXTRA DOES NOT PRODUCE A RUNNABLE SUITE — it inherits `dependencies` above, so it
+# pulls torch and an unconstrained numpy. **To run the suite use the `test` dependency group
+# below**, which is the single declaration of the set and of why each pin is there. Nothing
+# about that is restated here: three earlier copies of it drifted, and the copy in this
+# comment was the RETRACTED version while the group had the corrected one.
 dev = ["pytest", "pre-commit", "fastapi", "pysbd"]
 
 # ── The test set ──────────────────────────────────────────────────────────────────────
@@ -207,7 +199,13 @@ log_cli = "True"
 markers = [
   "slow: slow tests",
 ]
-minversion = "6.0"
+# RAISED FROM 6.0 (2026-08-11). `pytest>=9.1` in the `test` group is a RESOLVER constraint —
+# it binds only an install that goes through that group, so any other interpreter with an
+# older pytest ran the suite happily. `minversion` is the mechanism that actually enforces a
+# floor at run time, and the floor matters: 9.1 changed `importorskip`'s default `exc_type` to
+# ModuleNotFoundError, and the retirement guards depend on that narrow envelope. Below 9.1 they
+# skip on any ImportError and go quiet with nobody editing a test.
+minversion = "9.1"
 testpaths = "tests/"
 
 [tool.coverage.report]
