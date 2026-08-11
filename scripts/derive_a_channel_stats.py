@@ -135,11 +135,20 @@ def corpus(rows, manifest):
         print(f"    {str(lane) or '(blank)':12s} n={tot:4d} from {len(c):2d} campaign(s); "
               f"top `{camp}` = {n}/{tot} ({100 * n / tot:.1f}% of the lane) and that "
               f"campaign is {n}/{camp_tot} ({100 * n / camp_tot:.1f}%) this lane")
-    print("\n  ⚠ ONE lane/campaign pair is 100% in BOTH directions (Newscaster), not two.")
+    # COUNTED, not asserted. This line used to name Newscaster and the number 1 in prose,
+    # in the file whose entire purpose is that § 3b's numbers regenerate. Same class of
+    # defect as the § 8 conclusion below: a sentence that cannot be re-derived sits beside
+    # numbers that can, and it is the sentence that gets quoted.
+    both = [lane for lane, c in by_lane.items()
+            if c and c.most_common(1)[0][1] == sum(c.values())
+            and c.most_common(1)[0][1] == sum(by_camp[c.most_common(1)[0][0]].values())]
+    print(f"\n  ⚠ {len(both)} lane/campaign pair(s) are 100% in BOTH directions"
+          + (f" ({', '.join(sorted(map(str, both)))})." if both else "."))
     sp = by_lane.get("Speech", collections.Counter())
-    print("    Speech draws from " + ", ".join(f"`{k}` {v}" for k, v in sp.most_common())
-          + f" = {sum(sp.values())}; its top campaign is "
-          f"{100 * sp.most_common(1)[0][1] / sum(sp.values()):.1f}% of the lane.")
+    if sp:
+        print("    Speech draws from " + ", ".join(f"`{k}` {v}" for k, v in sp.most_common())
+              + f" = {sum(sp.values())}; its top campaign is "
+              f"{100 * sp.most_common(1)[0][1] / sum(sp.values()):.1f}% of the lane.")
 
     h("3. NEWSCASTER'S A IS A CONSTANT — AND THE VARIANCE WAS NEVER THERE TO REMOVE")
     a = [r["a"] for r in rows if r["delivery"] == "Newscaster"]
@@ -227,8 +236,15 @@ def loudness_targets(rows):
         print(f"    {label:28s} {len(camps):2d} campaign(s), "
               f"{sum(n for _, n in camps):4d} rows "
               f"({100 * sum(n for _, n in camps) / n_rows:.1f}%)")
-    print("    => ONE declared loudness target in this bank, not three. Everything else is")
-    print("       un-normalised material whose LUFS is a measurement, and 2 rows are n = 1.")
+    # READ OFF `buckets`, not restated. "ONE declared target ... and 2 rows are n = 1" was
+    # printed unconditionally directly beneath the block that derives both counts, so a run
+    # on a different artifact contradicted itself two lines apart.
+    declared = sorted(k for k in buckets if k.startswith("normalised to "))
+    n1 = sum(n for _, n in buckets.get("n = 1", []))
+    targets = ", ".join(k.replace("normalised to ", "") for k in declared) or "none"
+    print(f"    => {len(declared)} declared loudness target(s) in this bank ({targets}).")
+    print(f"       Everything else is un-normalised material whose LUFS is a measurement,")
+    print(f"       and {n1} row(s) are n = 1 (undecidable either way).")
 
 
 # --- part 2: the probe side, from measures.csv ---------------------------------------
@@ -244,15 +260,42 @@ def probe(rows):
     for r in rows:
         c30[(r["text"], r["lane"], r["energy"])].append(r["lufs"])
         c15[(r["lane"], r["energy"])].append(r["lufs"])
+    # EVERY (lane, A) CELL THE REST OF THIS FUNCTION READS, CHECKED HERE. `means[(lane, e)]`
+    # and `means[("unknown", zero)]` used to raise a bare KeyError on an absent cell — a
+    # traceback where a read-only diagnostic owes a named refusal, and the same failure mode
+    # `qc_verdict.build_anchors` was hardened against on this branch.
+    absent = [(lane, e) for lane in lanes for e in levels if (lane, e) not in c15]
+    if absent:
+        sys.exit("DERIVE-FAIL: the probe is missing " + str(len(absent)) + " design cell(s): "
+                 + ", ".join(f"({l}, A={e:+g})" for l, e in absent[:6])
+                 + (" ..." if len(absent) > 6 else "")
+                 + "\n  Sections 7 and 8 read every (lane, A) cell; there is nothing to "
+                   "derive from a hole.")
+
     sd30, df30 = pooled_sd(c30)
     sd15, df15 = pooled_sd(c15)
     mean_of_sds = float(np.mean([np.std(v, ddof=0) for v in c30.values()]))
-    se = sd15 * np.sqrt(2 / 6)
-    print(f"  renders {len(rows)};  {len(c30)} cells of 3 (text, lane, A);"
-          f"  {len(c15)} cells of 6 (lane, A)")
+    # DERIVED FROM THE CELL SIZES, NOT THE LITERAL 6 THE DESIGN INTENDED. One wav that
+    # failed to render, one row dropped in post, and `sqrt(2/6)` leaves every se too small
+    # and every CI below too tight — silently, because `pooled_sd` already tolerates
+    # unequal n and nothing else looks wrong.
+    def se_of(a, b):
+        return sd15 * float(np.sqrt(1 / len(c15[a]) + 1 / len(c15[b])))
+
+    sizes = sorted({len(v) for v in c15.values()})
+    balanced = len(sizes) == 1
+    se = sd15 * float(np.sqrt(2 / sizes[-1]))   # the nominal, for the header line only
+    print(f"  renders {len(rows)};  {len(c30)} cells of {sorted({len(v) for v in c30.values()})}"
+          f" (text, lane, A);  {len(c15)} cells of {sizes} (lane, A)")
     print(f"  pooled within-cell sd, (text, lane, A)   {sd30:.4f} dB   df={df30}")
     print(f"  pooled within-cell sd, (lane, A)         {sd15:.4f} dB   df={df15}")
-    print(f"  se of a difference of two 6-render means {se:.4f} dB")
+    if balanced:
+        print(f"  se of a difference of two {sizes[0]}-render means {se:.4f} dB")
+    else:
+        print(f"  ⚠ THE DESIGN IS NOT BALANCED — cell sizes {sizes}. Every se below is "
+              f"computed\n    per comparison from its own two cells, so they differ; the "
+              f"single figure this\n    line used to print would have been wrong for most "
+              f"of them.")
     print(f"\n  ⚠ mean of the {len(c30)} per-cell POPULATION sds (ddof=0) = {mean_of_sds:.4f} dB"
           " — this is the\n    number § 3b once called a 'pooled noise floor'. It is neither"
           " pooled nor a floor.")
@@ -265,43 +308,92 @@ def probe(rows):
 
     h("7. SLOPE — dB of output movement across the dial, WITHIN each lane")
     tcrit = float(stats.t.ppf(0.975, df15))
-    print(f"  A = +1 minus A = -1, per lane;  95% CI = d +- t({df15}) x se"
-          f" = d +- {tcrit * se:.3f} dB")
-    slopes = {}
+    print(f"  A = {levels[-1]:+g} minus A = {levels[0]:+g}, per lane;"
+          f"  95% CI = d +- t({df15}) x se, se per lane from its own two cells")
+    slopes, slope_se = {}, {}
     for lane in lanes:
         d = means[(lane, levels[-1])] - means[(lane, levels[0])]
-        slopes[lane] = d
-        print(f"    {lane:12s} {d:+7.3f}   95% CI [{d - tcrit * se:+.2f}, {d + tcrit * se:+.2f}]"
+        s = se_of((lane, levels[-1]), (lane, levels[0]))
+        slopes[lane], slope_se[lane] = d, s
+        print(f"    {lane:12s} {d:+7.3f}   95% CI [{d - tcrit * s:+.2f}, {d + tcrit * s:+.2f}]"
               + ("   <- training A is a constant here" if lane == "Newscaster" else ""))
     spread = max(slopes.values()) - min(slopes.values())
-    se_ss = sd15 * np.sqrt(4 / 6)   # a slope is a difference of 2 means; two slopes = 4
-    p = 2 * (1 - float(stats.t.cdf(spread / se_ss, df15)))
+    # The most conservative slope se in the set, so an unbalanced design cannot manufacture
+    # a large q out of the one lane that happens to have the smallest denominator.
+    se_slope = max(slope_se.values())
+    se_ss = se_slope * np.sqrt(2)   # a difference of two slopes = 4 cell means
+    # A STUDENTISED RANGE, NOT A t. `spread` is max-minus-min over 5 lanes — a maximum over
+    # 10 pairs — and it was tested against the null distribution of ONE pre-specified pair.
+    # That reference is far too narrow, so the p came out biased LOW: it overstated evidence
+    # against equal gain, in the exact direction the prose below is careful about.
+    #
+    # ⚠ The denominator is the se of ONE SLOPE, not of a difference of two. Tukey's q is
+    # (max - min) / se(group mean), and the "groups" here are lane slopes; using `se_ss`
+    # would divide by an extra sqrt(2) and understate q. Same trap in the other direction.
+    q = spread / se_slope
+    p = float(stats.studentized_range.sf(q, k=len(slopes), df=df15))
     print(f"  range across lanes: {min(slopes.values()):+.2f} to {max(slopes.values()):+.2f}"
           f"  (spread {spread:.2f} dB)")
-    print(f"  se of a DIFFERENCE OF TWO SLOPES (4 cell means) = {se_ss:.4f} dB"
-          f"  =>  spread = {spread / se_ss:.2f} se,  p = {p:.3f}")
-    print("  ⇒ nonzero gain in every lane, including the constant-A one. EQUAL gain is NOT")
-    print("    established — nor excluded — at this n. ⚠ Comparing the spread against a")
-    print("    per-render sd is the wrong denominator; these are six-render means.")
+    print(f"  se of ONE slope = {se_slope:.4f} dB;  of a DIFFERENCE of two = {se_ss:.4f} dB")
+    print(f"  studentised range q = spread / se(slope) = {q:.2f}"
+          f"  (k = {len(slopes)}, df = {df15})  =>  p = {p:.3f}")
+    print("  ⚠ p is a RANGE statistic over all lane pairs, not a chosen pair's t. Testing")
+    print("    a max-minus-min as if it were one contrast is how equal gain gets rejected")
+    print("    on a spread that five noisy slopes produce on their own.")
+    nonzero = [l for l, d in slopes.items() if abs(d) > tcrit * slope_se[l]]
+    print(f"  ⇒ {len(nonzero)} of {len(slopes)} lane(s) have a gain distinguishable from"
+          f" zero at 95%. EQUAL gain\n    is NOT established — nor excluded — at this n."
+          f" ⚠ Comparing the spread against a\n    per-render sd is the wrong denominator;"
+          f" these are {sizes[0] if balanced else 'multi'}-render means.")
     print("    AND ALL OF THIS IS A SLOPE. It says nothing about where A = 0 sits.")
 
     h("8. INTERCEPT — where A = 0 actually lands, BETWEEN lanes (issue #33)")
     zero = levels[len(levels) // 2]
-    assert zero == 0.0, "expected an A = 0 level in the design"
+    # `sys.exit`, not `assert`: asserts vanish under `python -O`, and this one is the only
+    # thing standing between a design without an A = 0 level and § 8 silently reporting its
+    # "intercept" at whatever `levels[len // 2]` happened to be. Every other refusal on this
+    # branch is a named exit; this was the odd one out.
+    if zero != 0.0:
+        sys.exit(f"DERIVE-FAIL: the probe's A levels are {levels} — no A = 0 to take an "
+                 f"intercept at.\n  § 8 is defined at A = 0 and nowhere else.")
+    if ("unknown", zero) not in c15:
+        sys.exit("DERIVE-FAIL: the probe carries no `unknown` lane, which is § 8's "
+                 "reference.\n  Every difference in this section is measured against it; "
+                 "there is no substitute.")
     base = means[("unknown", zero)]
     print(f"  reference: `unknown` at A = 0 = {base:.3f} LUFS")
-    diffs = {}
+    diffs, diff_se = {}, {}
     for lane in lanes:
         if lane == "unknown":
             continue
         d = means[(lane, zero)] - base
-        diffs[lane] = d
+        s = se_of((lane, zero), ("unknown", zero))
+        diffs[lane], diff_se[lane] = d, s
         print(f"    {lane:12s} {means[(lane, zero)]:8.3f}   {d:+7.3f} dB vs unknown"
-              f"   = {abs(d) / se:.1f} se")
-    lo, hi = min(diffs.values()), max(diffs.values())
-    print(f"\n  every named lane is quieter than `unknown` at A = 0, by "
-          f"{abs(hi):.2f} to {abs(lo):.2f} dB ({abs(hi) / se:.1f} to {abs(lo) / se:.1f} se),"
-          " all four the same direction.")
+              f"   = {abs(d) / s:.1f} se")
+    # DERIVED, not asserted. This sentence was a hardcoded string — "every named lane is
+    # quieter than `unknown` … all four the same direction" — in the script written
+    # specifically to stop § 3b's conclusions being claims. On a probe where three of four
+    # lanes were LOUDER it printed the same sentence, with a descending range, and that
+    # output is copied into the note as-is.
+    quieter = [l for l, d in diffs.items() if d < 0]
+    louder = [l for l, d in diffs.items() if d > 0]
+    agree = bool(diffs) and (len(quieter) == len(diffs) or len(louder) == len(diffs))
+    # Sorted ASCENDING and printed low-to-high, so the range cannot read backwards the way
+    # `abs(hi)` to `abs(lo)` did the moment a diff came out positive.
+    mags = sorted((abs(d), abs(d) / diff_se[l]) for l, d in diffs.items())
+    if agree:
+        side = "quieter" if quieter else "louder"
+        print(f"\n  every named lane ({len(diffs)}) is {side} than `unknown` at A = 0, by "
+              f"{mags[0][0]:.2f} to {mags[-1][0]:.2f} dB "
+              f"({mags[0][1]:.1f} to {mags[-1][1]:.1f} se), all the same direction.")
+    else:
+        print(f"\n  ⚠ THE NAMED LANES DO NOT AGREE IN DIRECTION at A = 0: "
+              f"{len(quieter)} quieter, {len(louder)} louder"
+              + (f" ({', '.join(sorted(map(str, louder)))})." if louder else ".")
+              + f"\n    Magnitudes {mags[0][0]:.2f} to {mags[-1][0]:.2f} dB "
+                f"({mags[0][1]:.1f} to {mags[-1][1]:.1f} se). There is no single"
+                " intercept displacement\n    to report — do not quote one.")
     named = [means[(l, zero)] for l in lanes if l != "unknown"]
     print(f"  named lanes differ from EACH OTHER at A = 0 by {max(named) - min(named):.2f} dB.")
     print("\n  ⚠ THIS IS NOT A CLEAN INTERCEPT TEST. It is confounded: the named lanes may")
