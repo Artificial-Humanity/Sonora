@@ -82,20 +82,66 @@ vocalizer = ["gradio", "fastapi", "uvicorn", "starlette"]
 # `importorskip` guards at the top of that file do not cover it and three tests FAIL
 # outright rather than skipping. Added 2026-08-11.
 #
-# ⚠ THIS EXTRA STILL DOES NOT PRODUCE A RUNNABLE SUITE, and an earlier version of this
-# comment claimed it was meant to. `.[dev]` inherits `dependencies` above, which pins
-# nothing on numpy (so it resolves to 2.2+, which no numba supports, and the resolver
-# walks numba back to a 2021 release that cannot build on 3.12) and pulls **torch** —
-# ~2 GB. ⚠ NOT for "one test file": torch gates `tests/test_cli_lanes.py` and
-# `tests/test_training_seams.py` by module-scope importorskip, plus
-# `tests/test_gate_scripts.py`, which shells out to a torch-importing script — ~20 tests
-# across three modules. That is the number the no-torch decision actually rests on, so
-# quoting it as one file understated what is being given up. The set MEASURED to work on a
-# host is the one in `scripts/fix_pr.sh`'s refusal message: pytest, pyyaml, "numpy<2.2",
-# scipy, librosa, soundfile, unidecode, inflect, fastapi, pysbd. Fixing that properly
-# means constraining numpy in `dependencies` or adding a torch-free test extra, and
-# neither is this PR's business.
+# ⚠ THIS EXTRA DOES NOT PRODUCE A RUNNABLE SUITE — it inherits `dependencies` above, so it
+# pulls torch and an unconstrained numpy. **To run the suite use the `test` dependency group
+# below**, which is the single declaration of the set and of why each pin is there. Nothing
+# about that is restated here: three earlier copies of it drifted, and the copy in this
+# comment was the RETRACTED version while the group had the corrected one.
 dev = ["pytest", "pre-commit", "fastapi", "pysbd"]
+
+# ── The test set ──────────────────────────────────────────────────────────────────────
+# PEP 735 dependency GROUP, deliberately not a `[project.optional-dependencies]` extra
+# (owner approved "a test extra", 2026-08-11; the mechanism had to change, the intent did
+# not). An extra is ADDITIVE to `[project.dependencies]`, so `pip install '.[test]'` would
+# still drag **torch** — ~2 GB for one test file that skips without it — which is the exact
+# thing the set exists to avoid. A dependency group installs on its own:
+#
+#     uv venv
+#     uv pip install --python .venv/bin/python --group test
+#
+# ⚠ Needs a uv new enough to implement PEP 735 groups. Known-good: uv 0.11.29 (x86_64-unknown-linux-gnu). If `--group` is
+# rejected as an unknown flag, upgrade uv rather than reaching for the `dev` extra.
+#
+# THIS IS THE ONE ANSWER TO "WHAT DO I INSTALL TO RUN THE SUITE", and unlike the prose it
+# replaces it is executable. Measured on ai-lab-0 2026-08-11: 510 passed / 6 failed /
+# 11 skipped in 1.6 s, the six being absent corpus artifacts under `data/`.
+#
+# ⚠ `numpy<2.5` is a CEILING TRACKING NUMBA'S OWN (`numba 0.66` declares `numpy<2.5,>=1.22`).
+# Raise it as numba raises theirs; do not drop it, and do not tighten it — an earlier `<2.2`
+# was needlessly tight and its stated reason was wrong.
+# WHAT UNCONSTRAINED ACTUALLY DOES, measured with uv 0.11.29 on 2026-08-11:
+#     numpy==2.5.2  numba==0.53.1  librosa==0.11.0
+# uv holds numpy at newest, so numba must fall below its own numpy ceiling, and librosa must
+# fall below its `numba>=0.61.0` floor to let it. The install then FAILS building numba 0.53.1
+# on 3.12 — a numba build error, reached only because librosa was walked back far enough to
+# permit that numba. The downgrades are
+# planned in the resolution and never installed; the pin prevents both.
+# ⚠ `pysbd` is imported INSIDE a function in `synth_common.py`, so the `importorskip`
+# guards in tests/test_acquisition_lane.py do not cover it: without it three tests FAIL
+# rather than skip.
+# ⚠ `fastapi` is the audition app's test-time import (see the `dev` extra), and
+# tests/test_ratings_transaction.py needs it — 5 failures on a runner that lacks it.
+[dependency-groups]
+test = [
+  # ⚠ `>=9.1` is a FLOOR ON AN EXCEPTION ENVELOPE, not a version bump (issue #47).
+  # `pytest.importorskip` decides what counts as "not available", and the retirement guards
+  # depend on that envelope being narrow; unpinned, an older resolution silently restores the
+  # wide one and the guards can go quiet with nobody editing a test.
+  # ⚠ This is the ONLY declaration of the floor. The `dev` extra ABOVE does not carry it (#62
+  # dropped its `dev`-line edit rather than merging a union). Remove this and the floor is
+  # gone — the two are not belt-and-braces.
+  "pytest>=9.1",
+  "pyyaml",
+  "numpy<2.5",  # see the note above — a CEILING, tracking numba's
+
+  "scipy",
+  "librosa",
+  "soundfile",
+  "unidecode",
+  "inflect",
+  "fastapi",
+  "pysbd",
+]
 
 [project.scripts]
 matcha-data-stats = "matcha.utils.generate_data_statistics:main"
@@ -153,7 +199,13 @@ log_cli = "True"
 markers = [
   "slow: slow tests",
 ]
-minversion = "6.0"
+# RAISED FROM 6.0 (2026-08-11). `pytest>=9.1` in the `test` group is a RESOLVER constraint —
+# it binds only an install that goes through that group, so any other interpreter with an
+# older pytest ran the suite happily. `minversion` is the mechanism that actually enforces a
+# floor at run time, and the floor matters: 9.1 changed `importorskip`'s default `exc_type` to
+# ModuleNotFoundError, and the retirement guards depend on that narrow envelope. Below 9.1 they
+# skip on any ImportError and go quiet with nobody editing a test.
+minversion = "9.1"
 testpaths = "tests/"
 
 [tool.coverage.report]

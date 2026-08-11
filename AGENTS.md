@@ -183,6 +183,10 @@ case-insensitive macOS/Windows.
   create it with `uv venv`, populate it with `uv pip install --python .venv/bin/python …` — so the
   standard above is intact; only the invocation changes. Container scripts are unaffected.
   `tests/test_gate_scripts.py` enforces this for both shell scripts and Python docs.
+* **To run the test suite: `uv pip install --python .venv/bin/python --group test`.** The set
+  and the reasons for every pin live in `pyproject.toml` beside the group. ⚠ Deliberately not
+  restated here — the same claim in two files drifted three times in one pull request, and
+  after the third correction the two copies contradicted each other.
 * **New work must use uv from the start** — new scripts, containers, CI steps, and docs. Do not
   introduce new `pip install` invocations.
 * **Existing pip usage is legacy** and is being migrated; the catalog of migration points and their
