@@ -110,6 +110,86 @@ the last. Deliberately identity-agnostic, so it survives agents committing under
 GitHub identity instead of a human's; that also required checking the review workflow out
 at `pull_request.head.sha` with `fetch-depth: 0`, since a depth-1 clone of the merge commit
 can neither diff a range nor tell base-branch changes from this PR's.
+### Fixed — `957b099`, the doc-claims gate went red on correct edits, and had nothing testing it
+
+Six review findings against the entry below and the numbers it checks (#48, #49, #50, #51,
+#52, #53). Two of them turn the gate RED on prose and on corpora that are **right**, which
+is the same failure the entry below was written to end, arriving one wording and one rebuild
+to the left.
+
+- **`scripts/test_doc_claims.py` — the v6 entries were scoped on the bare rule id `D-M3`
+  (#48).** That is not a v6 marker: it is the RULE, and every v5 statement of the v5 digit
+  drop carries it too. The entry below argued the overlap was "harmless BY CONSTRUCTION
+  rather than by luck — none of them is written in the *N of the M* form these patterns
+  require", and that was a claim about the CURRENT WORDING with nothing holding it.
+  Regularising the two halves of one sentence in `training-sources.md` — where the
+  neighbouring fact is *already* written in that idiom — produced two false failures on a
+  correct v5 line, while the entry that owns the v5 fact could not see it at all, because
+  `(?<!of the )` refuses that idiom outright. Both halves are closed: `D-M3` is out of the
+  v6 scopes, and the v5 entry accepts the idiom when the second number is **anchored on
+  `13,141`**, Emilia's own candidate count, which v6's staged total can never satisfy.
+  ⚠ **Dropping `D-M3` reopens the hole the entry below found by hand**, because
+  `notes/STATE.md:313` named no corpus and would then have been matched by nothing —
+  corrupting BOTH its numbers passed. **That line was given a corpus marker in the same
+  commit.** The fix for a sentence with no handle is to give the SENTENCE a handle, never to
+  hand the registry a rule id that spans two corpus generations.
+- **The gate went red on a correct REBUILD (#51).** Both merge scripts serialise their drop
+  tally as `dict(collections.Counter())`, and a Counter has no key for a reason that never
+  fired. Rebuild from inputs carrying no digits — *the state D-M3 exists to produce* — and
+  the key vanishes, the reader raised `KeyError`, and `main()` reported "cannot read the
+  artifact" about an artifact that is present and simply says zero. The rule's own success
+  condition failed the check. `drop_count()` now defaults the **final hop only**: a missing
+  report still raises `OSError`, a missing `dropped` map still raises `KeyError`.
+- **A live doc fork the gate stepped around (#50).** `notes/README.md` gave the STAGED count
+  under the appended one's name, beside the arithmetic that refutes it, while the root
+  `README.md` gave the built one — and the registry checked only the figure the two agreed
+  on. Staged and kept are now **two facts**, `expressive.candidates` and `expressive.kept`,
+  both from the same builder. `training-sources.md`'s filter ladder gains its seventh rung.
+  The historical 846 in `quality-gap-plan.md` is left alone, exempted as well as unmatched.
+  ⚠ The kept patterns anchor on `(\d[\d,]*)` and not `([\d,]+)`, which matches a **bare
+  comma** — the first draft read a comma in `CHANGELOG.md` as a v6 count.
+- **Coverage vanished silently (#52).** `tests/test_gate_scripts.py` ANDed the prerequisites,
+  so a host with v5 and not v6 — a partial mount, a rollback, ai-lab-0 between the two
+  merges — checked **nothing** and reported one skip naming only the first missing path. Ten
+  enforceable facts discarded to protect three that were not, and the reduction invisible at
+  the point it happened. The prerequisite is now **per fact**: such a host checks 10 of 13
+  and PRINTS every fact it skipped; the harness runs whenever any prerequisite is present
+  and names them all when none is.
+- **`configs/data/libritts_r_emilia_expressive_vat_v6.yaml` — a staged count inside a
+  built-population header (#53).** The `Documentary` retirement note asserted 82 as a
+  property of "this append set" in a comment whose lane table sums to the built total. 82 is
+  a count over the staged set; the built figure is **78**, and the residual was stated
+  nowhere. Established from `ratings.csv.bak-20260810-documentary-retire` (read-only, the
+  only record of which side a row came from — after the merge every one of them reads
+  `Neutral`): **four of the six digit drops are Documentary-origin.** All three populations
+  are now named at every number.
+
+### Added — `957b099`, a CI job that runs the suite, and 33 tests for the registry itself
+
+**There was no workflow that ran the tests (#49).** `.github/workflows/` held the review and
+fix agents, and the only mention of pytest in either was inside the agent's `--allowedTools`
+— a permission to run tests, not a job that runs them. `.github/workflows/ci.yml` runs the
+suite on pull requests, on pushes to `main`, and on demand. It creates the repo `.venv` with
+uv, because **five tests fail on a tree without one for no reason but its absence**
+(`test_python_is_the_repo_venv`, plus every gate that runs its script as a subprocess of
+`.venv/bin/python`, where a missing interpreter is a `FileNotFoundError` rather than a
+skip). Torch stays out, matching the host venv, so a green run there means what a
+developer's `make test` means. Data-gated tests skip, which is the design.
+
+**`tests/test_doc_claims_registry.py` — the registry as regex, with no artifacts at all.**
+The gate is two things in one file: a set of artifact reads, rightly data-gated and skipped
+off ai-lab-0, and a body of subtle regex that needs no artifacts and was guarded **nowhere**
+— nothing in the repo imported `FACTS`. The entry below records a hole found only by running
+the RED direction by hand, and **nothing was committed that re-runs it**. Now 33 cases do,
+and each was verified to FAIL when its hole is re-opened: the staged total put back in a v6
+scope, `(?<![\d,])` deleted, the bare word `digit` back in the v5 scope, `D-M3` back in v6,
+the kept pattern loosened, the zero-default removed, one fact's artifact list emptied, and
+the corpus marker stripped from `notes/STATE.md`. **Proving a gate passes proves nothing.**
+
+⚠ One line lost coverage on purpose: the entry below quotes the pre-#48
+`notes/STATE.md` sentence verbatim, and that sentence named no corpus. It is append-only
+history, so it keeps its wording and the registry no longer reads it; the sweep test allows
+zero readers in this file and nowhere else.
 
 ### Fixed — the doc-claims gate was red on clean `main`, because the CHECKER conflated two facts
 

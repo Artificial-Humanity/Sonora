@@ -213,10 +213,11 @@ def test_no_digit_sentence_is_ever_claimed_by_both_corpora():
     which is two facts claiming one number, and a red gate on prose that is right.
 
     `notes/CHANGELOG.md` is the one file allowed ZERO readers. It is append-only history and
-    it QUOTES prior wordings verbatim (line 32 quotes the pre-#48 `notes/STATE.md` sentence,
-    which named no corpus and therefore had nothing for the registry to attribute it to).
-    Editing a past entry to satisfy a checker would falsify the record it exists to keep;
-    everywhere else, a digit sentence with no reader is lost coverage and fails here.
+    it QUOTES prior wordings verbatim — the 2026-08-11 entry quotes the pre-#48
+    `notes/STATE.md` sentence, which named no corpus and so had nothing for the registry to
+    attribute it to. Editing a past entry to satisfy a checker would falsify the record it
+    exists to keep; everywhere else, a digit sentence with no reader is lost coverage and
+    fails here.
     """
     # BOTH idioms, deliberately. Restricted to "N of the M", this test passed while the
     # bare word `digit` was back in the v5 scope — because the collision that mutation
