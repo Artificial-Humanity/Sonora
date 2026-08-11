@@ -240,6 +240,31 @@ case-insensitive macOS/Windows.
   QUESTION** (2026-08-11): the retired convention was a timestamped document in `notes/`, and
   nothing has replaced it yet. Do not invent one silently — ask.
 
+### 5b. The doc-claims gate can stop enforcing WITHOUT going red
+
+`scripts/test_doc_claims.py` compares documented numbers against the artifacts on disk. It
+has **two silent-disarm modes**, both found on 2026-08-11, and neither was written down
+anywhere until now — which is the same reason the workflow-validation trap in §1 cost the
+same hour twice.
+
+* ⚠ **A registry fact may only guard a STATIC artifact.** `audit-*/ratings.csv` is written
+  **live** by the Auditions app, so a count taken from it (the 1,279 keeps, say) moves as the
+  audit continues, and a fact guarding it would go **red on correct work**. A gate that fails
+  when nothing is wrong gets switched off, which costs every other fact in the registry.
+* ⚠ **A fact whose only enforced line lives in a file some convention DELETES is already
+  disarmed.** `v5 speakers` had exactly one enforced line in the whole repo, inside a
+  `notes/code-review-*.md` — a file the retired review cycle replaced every few days. Deleting
+  that document dropped the fact to **zero** enforced lines, and nothing went red, because the
+  checker only reports a *disagreement*: a fact matching no document simply passes.
+  * The near-miss underneath it: `notes/STATE.md` already stated the number, but `scope` is
+    matched **per line** and the scope token sat on the line above, so the fact never matched
+    there. **Check that a fact's scope and its number are on the SAME LINE.**
+  * ⚠ **Nobody has swept for other facts in this position.** If a fact's only enforced line is
+    in a transient or generated document, it is enforcing nothing.
+* The general form of both: **a fact that matches zero lines is indistinguishable from a fact
+  that passes.** When you add or move an enforced sentence, count the lines it matches — do
+  not infer enforcement from a green gate.
+
 ### 6. Execute From The Repo — `/data` Holds Data
 
 **Owner principle (2026-08-06): code executes from the repo checkout; `/data` holds what
