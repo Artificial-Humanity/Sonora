@@ -14,11 +14,17 @@ import sys
 import pytest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO)
 sys.path.insert(0, os.path.join(REPO, "scripts", "synthesis"))
 
 import ref_select as rs  # noqa: E402
+# TAKEN FROM THE CONTRACT, not restated. This file carried its own literal copy until
+# 2026-08-11, and when `Documentary` was retired out of `NARRATION_LANES` the copy went on
+# parametrizing the narration guards over a lane no builder may target — asserting that a
+# mix exists for exactly the lane that must not have one. A test with its own vocabulary
+# fails on the change instead of on the defect.
+from matcha.delivery import NARRATION_LANES, RETIRED_LANES  # noqa: E402
 
-NARRATION_LANES = ("Neutral", "Documentary", "Newscaster")
 ALL_LANES = NARRATION_LANES + ("Dialogue", "Speech")
 
 
@@ -51,7 +57,9 @@ def test_no_narration_lane_collapses_to_one_voice(lane):
 @pytest.mark.parametrize("lane", NARRATION_LANES)
 def test_every_surviving_engine_keeps_a_share(lane):
     """Thin cells are how a lane earns evidence; 0% can never produce the data
-    that would raise it. moss_vg on Documentary (56%) is the deliberate case."""
+    that would raise it. orpheus on Newscaster (5%, no data at all) is the deliberate
+    case — a floor share placed TO generate the verdicts that would move it. It used to
+    be named as moss_vg on Documentary (56%), a lane this test no longer covers."""
     alloc = rs.allocate_engines(100, lane=lane)
     for engine in rs.ENGINE_MIX:
         if engine in rs.SET_ASIDE:
@@ -64,6 +72,25 @@ def test_set_aside_engines_never_allocated():
         alloc = rs.allocate_engines(1000, lane=lane)
         for engine in rs.SET_ASIDE:
             assert alloc.get(engine, 0) == 0
+
+
+@pytest.mark.parametrize("lane", RETIRED_LANES)
+def test_a_retired_lane_has_no_mix_and_cannot_be_allocated(lane):
+    """Retirement has to reach the ALLOCATOR, not just the label (issue #12).
+
+    Deleting `ENGINE_MIX_BY_LANE["Documentary"]` on its own would have made this quieter
+    rather than safer: `mix_for_lane` falls back to the flat ENGINE_MIX for any key it
+    does not know, so a stale campaign builder would have kept dealing five engines into
+    a lane no row may be labelled with, and the failure would have surfaced at the corpus
+    merge with the renders already bought. The refusal is the guard; the missing table is
+    only bookkeeping.
+    """
+    assert lane not in rs.ENGINE_MIX_BY_LANE
+    for spelling in (lane, lane.lower()):
+        with pytest.raises(ValueError, match="RETIRED"):
+            rs.mix_for_lane(spelling)
+        with pytest.raises(ValueError, match="RETIRED"):
+            rs.allocate_engines(10, lane=spelling)
 
 
 def test_lane_names_resolve_both_conventions():

@@ -353,16 +353,14 @@ ENGINE_MIX_BY_LANE = {
         "orpheus":    0.15,   # 95% but n=19; mid share until the n grows
         "moss_vg":    0.10,   # 74% (35) — the weakest here, held at low share
     },
-    # moss_vg's documented weak lane; zonos and qwen both perfect.
-    "Documentary": {
-        "qwen":       0.30,   # 100% (19)
-        "zonos":      0.30,   # 100% (14) with emotion off
-        "chatterbox": 0.25,   # 100% but n=7 — real, thin
-        "orpheus":    0.10,   # no data in this lane; share exists to get some
-        "moss_vg":    0.05,   # 56% (18). Floor, not zero — the failure is
-                              # characterised, not mysterious, so a small share
-                              # still tells us whether a skill file fixes it.
-    },
+    # NO `Documentary` ENTRY, deliberately (2026-08-11, issue #12). The lane is RETIRED
+    # (matcha.delivery.RETIRED_LANES): its channel stays in the wire format so old
+    # filelists decode, but no new row may be labelled with it — so there is nothing for
+    # a mix to allocate. Its measured weights are not lost; they are in the keep-rate
+    # table above, which is a record of what was heard and stays true. Removing the block
+    # is not the whole guard: falling back to the flat ENGINE_MIX would let a stale bank
+    # builder keep dealing engines into the lane, so `mix_for_lane` refuses it by name.
+    #
     # moss_vg's STRONG lane, and the clearest case for lane-conditioning at all.
     "Newscaster": {
         "qwen":       0.30,   # 100% (27)
@@ -387,17 +385,30 @@ ENGINE_MIX_BY_LANE["Speech"] = ENGINE_MIX_BY_LANE["Dialogue"]
 # matcha.delivery because these two modules import each other, so neither can own it.
 import sys as _sys  # noqa: E402
 _sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from matcha.delivery import NARRATION_LANES as _NARRATION_LANES  # noqa: E402
+from matcha.delivery import (NARRATION_LANES as _NARRATION_LANES,  # noqa: E402
+                            RETIRED_LANES as _RETIRED_LANES, check_assignable)
 
 
 def mix_for_lane(lane):
-    """Resolve a delivery lane to its mix. Unknown lanes fall back to ENGINE_MIX."""
+    """Resolve a delivery lane to its mix. Unknown lanes fall back to ENGINE_MIX;
+    a RETIRED lane raises.
+
+    The fallback is for a TYPO: a bank builder that misspells a lane should render with
+    the flat mix rather than crash mid-campaign. A retired lane is not a typo — it is a
+    lane we know about and know no new row may carry, so falling back would deal engines
+    into it and buy renders that nothing may then label. Allocation is an ASSIGNMENT, and
+    assignment refuses (matcha.delivery.check_assignable). Deleting the lane's weight
+    table alone would have made the failure quieter, not louder.
+    """
     if not lane:
         return ENGINE_MIX
     # "dialogue" (lowercase) is the pre-2026-08-02 caller convention; keep it working.
     key = {"dialogue": "Dialogue", "speech": "Speech", "neutral": "Neutral",
            "documentary": "Documentary", "newscaster": "Newscaster"}.get(
                str(lane).lower(), lane)
+    # The lowercase spelling is normalised FIRST, so `lane="documentary"` is refused too.
+    if key in _RETIRED_LANES:
+        check_assignable(key)          # raises, with the one contract message
     return ENGINE_MIX_BY_LANE.get(key, ENGINE_MIX)
 
 
@@ -487,8 +498,11 @@ def allocate_engines(n_lines, mix=None, lane=None):
     """Split n_lines across engines by a mix. Returns {engine: count}.
 
     `lane` selects a measured per-delivery-lane mix (see ENGINE_MIX_BY_LANE);
-    "dialogue" and the five delivery names all resolve. An explicit `mix` still
-    wins, so callers can override either.
+    "dialogue" and the ASSIGNABLE delivery names all resolve — a retired lane raises,
+    because dealing engines into one buys renders no row may be labelled with. An
+    explicit `mix` still wins, so callers can override either; a caller that states the
+    weights itself is not asking this function to resolve a lane at all, and skips that
+    refusal with it.
 
     Largest-remainder, so the counts always sum to exactly n_lines rather than
     drifting by a clip or two per lane the way independent rounding does.

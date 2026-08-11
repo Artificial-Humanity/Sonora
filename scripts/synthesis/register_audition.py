@@ -40,6 +40,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import synth_common  # noqa: E402
 
+# The delivery vocabulary is contract (ARCHITECTURE §1), and this script WRITES it — see
+# `_assignable_delivery`. Imported, never restated: a second copy of "which lanes may be
+# assigned" is the defect class the contract module exists to close.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from matcha.delivery import check_assignable  # noqa: E402
+
 # Mirror the audition app's path resolution (same env overrides).
 DATA_ROOT = Path(os.environ.get(
     "AUDITION_DATA_ROOT", "/data/model-training/datasets")).resolve()
@@ -113,6 +119,32 @@ def _predicted_gender(rec) -> str:
     return ""
 
 
+def _assignable_delivery(rec, book_slug: str) -> str:
+    """The record's intended lane, REFUSED here if it may no longer be assigned.
+
+    This is the synthesis pipeline's write site for `delivery` (issue #12): a row appended
+    from here is what the auditor sees and what `merge_expressive_registers` later reads,
+    and nothing between the bank builder and the corpus merge used to notice a RETIRED
+    lane — `rec.get("intended_delivery", "")` copied whatever the manifest said. The lane
+    would then be ear-certified in ratings.csv, and the merge's `check_assignable` would
+    refuse it days later, with the render already paid for and the auditor's verdict
+    attached to a label that cannot be kept.
+
+    Raising rather than blanking, for the reason `check_assignable` gives: a retired lane
+    means the METADATA SOURCE is stale — rebuild the bank, do not reassign the lane at the
+    queue. Nothing is written when it raises, because `append_guarded` runs only after
+    every row of every target has been built.
+    """
+    try:
+        return check_assignable(rec.get("intended_delivery", ""))
+    except ValueError as e:
+        raise ValueError(
+            f"{rec.get('id') or '<no id>'} ({book_slug}): {e} The lane came from the "
+            f"bank builder's own lane table, so rebuild the bank rather than editing "
+            f"the queued row."
+        ) from e
+
+
 def _under_data_root(p: Path) -> bool:
     """True if p resolves inside DATA_ROOT (the app confines served audio to it)."""
     p = p.resolve()
@@ -132,7 +164,8 @@ def _build_row(rec, wav: Path, book_slug: str, fields):
         # states the lane it was DIRECTED toward (delivery-mix campaigns, 2026-07-30),
         # pre-fill it. The auditor's dropdown correction is then itself signal — a
         # Neutral-directed clip re-tagged Newscaster is an engine drifting broadcast.
-        "delivery": rec.get("intended_delivery", ""),
+        # CHECKED, not copied: see `_assignable_delivery`.
+        "delivery": _assignable_delivery(rec, book_slug),
         "score": "",
         "note": "",
         "status": "unaudited",  # -> lands in the `todo` filter
