@@ -10,12 +10,15 @@ Axis check: for any axis with |intended| >= 0.3, the measured z must point
 the same way with |z| >= --z-confirm. Near-neutral intents are unconstrained
 (sanity-bounded). keep = hard_pass AND all axis checks.
 
-THREE OUTCOMES, NOT TWO: an axis check is True, False, or None = UNMEASURED (no EIV row
-for the clip, or no phonation from stage 1). None never keeps — nothing was confirmed —
-and never counts as a direction failure, is never flagged for the ear, and says so on the
-row (`axes_unmeasured`) and in the summary. Collapsing it into False made a scoring pass
-that produced nothing report a 100% direction-failure rate, which is the same misreading
-the head guard below exists to end.
+FOUR OUTCOMES, NOT TWO: an axis check is True, False, None = UNMEASURED (no EIV row for
+the clip, or no phonation from stage 1), or `UNREADABLE` (the intended label is present and
+could not be parsed). Neither None nor `UNREADABLE` ever keeps — nothing was confirmed —
+and neither counts as a direction failure or is flagged for the ear; both say so on the row
+(`axes_unmeasured` / `axes_unreadable`) and in the summary. Collapsing None into False made
+a scoring pass that produced nothing report a 100% direction-failure rate, which is the
+same misreading the head guard below exists to end. Collapsing `UNREADABLE` into ABSENT was
+the mirror image and cost the other way: `all(...)` over no checks is True, so a clip whose
+labels were gibberish landed in keeps.jsonl as a confirmed keep.
 
 ADVISORY — IT NEVER DROPS A CLIP (wired into synth_bank.sh 2026-08-11)
 ---------------------------------------------------------------------
@@ -62,6 +65,17 @@ LIB_FAM = "/data/model-training/sonora/eiv_scores/corpus_families.jsonl"
 COMBO = "/data/model-training/sonora/eiv_scores/valence_combo_v1.json"
 
 AXES = ("V", "A", "T")
+
+# A FOURTH outcome, and the reason it is not None. An axis whose intended label is PRESENT
+# and unreadable ("A": "angry") confirmed nothing, exactly like an unmeasured one, so it
+# must not keep. But it is a different fact about the bank — None means *we* could not
+# measure the render, `UNREADABLE` means the DIRECTOR's label could not be parsed — and the
+# repair is different too (fix the labels, versus score the clips). Telling them apart is
+# the same discipline as None-is-not-False; collapsing them would report a labelling bug as
+# a scoring gap. It is a string, not a bool or None, so every `is True` / `is False` /
+# `is None` test downstream (audit_sampler, the by-axis tally, qc_flags) reads it correctly
+# without being taught about it: it keeps nothing, fails nothing, and flags nothing.
+UNREADABLE = "unreadable"
 
 # Which measurement each axis verdict is made against. Written onto every row because the
 # lanes genuinely disagree about A and a row travels away from this file: gate_calibration
@@ -165,8 +179,19 @@ def describe_unusable(unusable, limit=5):
     return shown + (f" ... (+{len(unusable) - limit} more)" if len(unusable) > limit else "")
 
 
-def axis_verdicts(intended, measured, z_confirm, neutral_band):
-    """-> (checks, notes) for one clip. Values are True, False, or None = UNMEASURED.
+def unreadable_axes(entries):
+    """-> the set of AXES named by one row's `unusable` entries.
+
+    `intended_labels` records a whole non-dict `intended` under the pseudo-axis
+    `"intended"`. That case names no axis because none could be read, so it stands for ALL
+    of them: the row asserted a direction and not one letter of it survived parsing.
+    """
+    axes = {ax for _id, ax, _v in entries if ax in AXES}
+    return set(AXES) if any(ax == "intended" for _id, ax, _v in entries) else axes
+
+
+def axis_verdicts(intended, measured, z_confirm, neutral_band, unreadable=()):
+    """-> (checks, notes) for one clip. True, False, None = UNMEASURED, `UNREADABLE`.
 
     An axis with no intended label is ABSENT from `checks` rather than False. `keep` is
     `all(...)` over the checks, and an unlabelled axis has not failed anything — an
@@ -181,12 +206,27 @@ def axis_verdicts(intended, measured, z_confirm, neutral_band):
     of it cost). Unmeasured still cannot KEEP — nothing was confirmed — but it is not a
     failure of the engine, and it is not evidence of anything.
 
+    AN UNREADABLE LABEL IS NOT AN ABSENT ONE. `intended_labels` drops an axis it cannot
+    parse, so a row whose every label was unreadable used to arrive here with `intended ==
+    {}` and leave with `checks == {}` — and `all(...)` over an empty dict is True, so
+    `keep` came out as the bare `hard_pass` and the clip was written to keeps.jsonl, which
+    the module docstring defines as "clips + CONFIRMED labels". Nothing was confirmed. The
+    axes named in `unreadable` are therefore scored `UNREADABLE` rather than omitted, which
+    also closes the partial case — 99 good rows and one malformed one, where the whole-row
+    guard in `--count-directed` never fires because not every label is bad.
+
     Every axis that is not `ok` gets a note. The near-neutral lane used to return silently
     in every case, so a clip rejected on its sanity bound (or never measured at all)
     printed an empty console line beside a `False` verdict.
     """
     checks, notes = {}, []
     for axis in AXES:
+        if axis in unreadable:
+            # Before the `intended` test: an unreadable axis is by construction absent from
+            # `intended`, so ordering these the other way round would drop it again.
+            checks[axis] = UNREADABLE
+            notes.append(f"{axis}:UNREADABLE")
+            continue
         if axis not in intended:
             continue
         want = intended[axis]
@@ -545,17 +585,29 @@ def main():
             # the gate could not measure phonation on. Both leave every axis unmeasured.
             (no_eiv if eiv_for(r) is None else no_phonation).append(r["id"])
 
+        # Sliced per row, not read off the end: `unusable` accumulates across the whole
+        # campaign, and this row's verdict may only be shaped by this row's bad labels.
+        seen_bad = len(unusable)
         intended = intended_labels(r, unusable)
-        if not intended:
+        bad_axes = unreadable_axes(unusable[seen_bad:])
+        if not intended and not bad_axes:
+            # "No labels" and "labels I could not read" are different facts, and the
+            # sentence printed about `undirected` rows below ("their keep is their
+            # hard_pass, unchanged") is false of the second. It used to count both.
             undirected += 1
         checks, notes = axis_verdicts(intended, measured, args.z_confirm,
-                                      args.neutral_band)
-        # `is True`, not truthiness: an unmeasured axis is None, and it must not KEEP
-        # (nothing was confirmed) any more than it may FAIL (nothing was measured).
+                                      args.neutral_band, bad_axes)
+        # `is True`, not truthiness: an unmeasured axis is None and an unreadable label is
+        # `UNREADABLE`, and neither may KEEP (nothing was confirmed) any more than either
+        # may FAIL (nothing was measured, nothing was even asked).
         keep = bool(r["hard_pass"] and all(c is True for c in checks.values()))
         v = {**r, "measured_z": measured or None, "axis_checks": checks, "keep": keep,
-             "axes_checked": sorted(a for a, c in checks.items() if c is not None),
+             "axes_checked": sorted(a for a, c in checks.items() if c is True or c is False),
              "axes_unmeasured": sorted(a for a, c in checks.items() if c is None),
+             # `==`, not `is`: these rows are written to JSONL and read back elsewhere, and
+             # a round-tripped string is a different object. `True == "unreadable"` is
+             # False, so equality is still exact here.
+             "axes_unreadable": sorted(a for a, c in checks.items() if c == UNREADABLE),
              "measured_from": MEASURED_FROM}
         verdicts.append(v)
         if keep:
@@ -577,8 +629,12 @@ def main():
         # Not folded into `undirected`: a row whose labels could not be read is not a row
         # without labels, and reading the second off the first is how a directed bank
         # comes to look like real audio (issue #58).
+        blocked = [v["id"] for v in verdicts if v["axes_unreadable"]]
         print(f"  !! {len(unusable)} intended label(s) are present and NOT NUMERIC, so "
-              f"those axes went unchecked: {describe_unusable(unusable)}")
+              f"those axes CANNOT KEEP: {describe_unusable(unusable)}")
+        print(f"  !! {len(blocked)} clip(s) are held out of keeps.jsonl on that alone — "
+              f"they stated a direction nobody could read. Fix the labels and re-run; "
+              f"this is a LABELLING repair, not a scoring one.")
 
     # UNMEASURED IS NOT FAILED (issue #55). These clips have no direction verdict at all;
     # counting them among the failures is what turned a container that scored nothing into

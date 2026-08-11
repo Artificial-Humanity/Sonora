@@ -685,6 +685,59 @@ def test_a_numeric_string_is_a_label_and_a_word_is_a_complaint(tmp_path, monkeyp
         "a bank whose labels are unreadable must not be announced as one with no labels"
 
 
+def test_an_unreadable_intended_label_cannot_keep(tmp_path, monkeypatch, capsys):
+    """`intended_labels` DROPS an axis it cannot parse, so a row whose labels were all
+    gibberish reached `keep` with `checks == {}` — and `all(...)` over an empty dict is
+    True, so the clip was written to keeps.jsonl, which the module docstring defines as
+    "clips + CONFIRMED labels". Nothing was confirmed. It was also counted as `undirected`,
+    beneath a line saying those rows have nothing to confirm, which is exactly what a row
+    stating an unreadable direction does not get to claim.
+
+    `--count-directed` does not cover this: it refuses only when EVERY label in the bank is
+    unreadable, so the ordinary partial case — 99 good rows, 1 malformed — sails past the
+    pre-flight and lands here."""
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=2, intended={"V": "very sad", "A": "angry", "T": "x"})
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"))
+    out = capsys.readouterr().out
+    verdicts = [json.loads(l) for l in
+                (camp / "qc_verdicts.jsonl").read_text().splitlines() if l.strip()]
+    assert [v["keep"] for v in verdicts] == [False, False], \
+        "a clip whose stated direction nobody could read was confirmed as a keep"
+    assert (camp / "keeps.jsonl").read_text().strip() == ""
+    assert verdicts[0]["axis_checks"] == {"V": "unreadable", "A": "unreadable",
+                                          "T": "unreadable"}
+    assert verdicts[0]["axes_unreadable"] == ["A", "T", "V"]
+    assert verdicts[0]["axes_unmeasured"] == [], \
+        "an unparsable label is not a measurement we failed to take — different repair"
+    assert "row(s) carry NO intended V/A/T" not in out, \
+        "rows with unreadable labels are being reported as rows with no labels"
+
+
+def test_one_bad_axis_is_enough_to_hold_a_clip_out_of_keeps(tmp_path, monkeypatch, capsys):
+    """The partial case, decided by the owner 2026-08-11: an axis whose label is present
+    and unreadable confirmed nothing, so it blocks the keep on its own — the same doctrine
+    as NONE IS NOT FALSE, applied to the label side. The readable axis is still checked and
+    still reported; the bank's repair is to fix the label, not to re-score the clip."""
+    sys.path.insert(0, str(SYNTH))
+    qv = pytest.importorskip("qc_verdict")
+    _stub_anchor(tmp_path, qv, monkeypatch)
+    camp = _stub_campaign(tmp_path, n=1, intended={"V": 0.9, "A": "angry"})
+    _run_verdict(camp, monkeypatch, qv, "--eiv", str(camp / "eiv_scores.jsonl"))
+    out = capsys.readouterr().out
+    v = json.loads((camp / "qc_verdicts.jsonl").read_text().strip())
+    assert v["axis_checks"]["A"] == "unreadable" and v["axes_unreadable"] == ["A"]
+    assert "V" in v["axis_checks"] and v["axis_checks"]["V"] is not None, \
+        "the readable axis must still be checked — one bad label is not a whole bad row"
+    assert v["keep"] is False
+    assert "1 clip(s) are held out of keeps.jsonl" in out, \
+        "the summary must say the hold-out happened; a silent one reads as a scoring gap"
+    assert "T" not in v["axis_checks"], \
+        "an axis with no label at all is still ABSENT, not unreadable"
+
+
 def test_the_anchor_is_held_to_the_same_standard_as_the_campaign_file(
         tmp_path, monkeypatch, capsys):
     """main() refuses a campaign eiv file missing a combo head; build_anchors filled the
