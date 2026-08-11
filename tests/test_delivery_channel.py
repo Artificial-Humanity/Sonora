@@ -12,6 +12,8 @@ TEXT, Newscaster vs Documentary a property of the RENDER.
 """
 
 import ast
+import csv
+import json
 import pathlib
 import re
 import sys
@@ -147,7 +149,103 @@ def test_the_narration_subset_also_has_one_definition():
     assert set(book_ingest.NARRATION_LANES) <= set(delivery.DELIVERY_LANES)
 
 
+def test_no_narration_lane_is_retired():
+    """A narration lane is one new lines are DIRECTED INTO, so it must be assignable.
+
+    Two live rules read `NARRATION_LANES` and neither can mean anything for a retired
+    lane: `ref_select.MAX_SHARE_NARRATION` caps a lane's per-engine share, and
+    `book_ingest.build_direction` forces zonos's emotion vector off and caps chatterbox's
+    exaggeration on one. Membership would be a rule that can only fire on a row nothing
+    may write — and, read the other way, a lane still counted as narration is a lane a
+    campaign builder may still be sizing renders for.
+
+    `matcha.delivery` derives the tuple by filtering `RETIRED_LANES` rather than restating
+    the names, so retiring a narration lane later cannot leave a stale member behind. This
+    asserts the property, not the spelling.
+    """
+    assert not set(delivery.NARRATION_LANES) & set(delivery.RETIRED_LANES)
+    assert set(delivery.NARRATION_LANES) <= set(delivery.ACTIVE_DELIVERY_LANES)
+
+
 # --- the consumers ---------------------------------------------------------------------
+
+
+def _one_clip_campaign(tmp_path, lane):
+    """A rendered one-clip bank whose manifest claims `lane`, and an empty ratings.csv.
+
+    The CSV carries the app's real header on purpose: `_build_row` filters to the header
+    actually on disk, so the `delivery` column only survives if the sheet has one.
+    """
+    audio = tmp_path / "campaign-x" / "audio"
+    audio.mkdir(parents=True)
+    (audio / "clip.wav").write_bytes(b"RIFF")          # only is_file() is checked
+    (audio / "bank_manifest.jsonl").write_text(json.dumps({
+        "id": "lane-0001", "wav": "clip.wav", "engine": "qwen", "campaign": "campaign-x",
+        "register": "neutral_narration", "intended_delivery": lane}) + "\n",
+        encoding="utf-8")
+    ratings = tmp_path / "ratings"
+    ratings.mkdir(parents=True)
+    (ratings / "ratings.csv").write_text(
+        "campaign,id,engine,register,gender,delivery,score,note,status,link\n",
+        encoding="utf-8")
+    return audio, ratings / "ratings.csv"
+
+
+def _register_audition(tmp_path, monkeypatch, lane):
+    """-> (run, rows) for the synthesis pipeline's ratings.csv writer.
+
+    Imported inside the test rather than at module scope because it resolves DATA_ROOT and
+    RATINGS_DIR from the environment at IMPORT time.
+    """
+    monkeypatch.setenv("AUDITION_DATA_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUDITION_RATINGS_DIR", str(tmp_path / "ratings"))
+    monkeypatch.setenv("BOOK_PROSE_ROOT", str(tmp_path / "book-prose"))
+    sys.path.insert(0, str(REPO / "scripts" / "synthesis"))
+    sys.modules.pop("register_audition", None)
+    mod = pytest.importorskip("register_audition")
+    audio, csv_path = _one_clip_campaign(tmp_path, lane)
+    monkeypatch.setattr(sys, "argv", ["register_audition", "--audio-dir", str(audio)])
+
+    def rows():
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            return list(csv.DictReader(f))
+
+    return mod.main, rows
+
+
+@pytest.mark.parametrize("lane", delivery.RETIRED_LANES)
+def test_the_synthesis_writer_refuses_a_retired_lane(tmp_path, monkeypatch, lane):
+    """The retirement has to hold where new rows are actually MADE (issue #12).
+
+    `register_audition` is the synthesis pipeline's write site for `delivery`: it turns a
+    rendered bank's manifests into `unaudited` ratings.csv rows, and it copied
+    `intended_delivery` through verbatim. `check_assignable` was called only by the corpus
+    builder, several days downstream — so a stale bank could queue a retired lane, the
+    auditor could certify it by ear, and the merge would refuse the row afterwards with
+    the render already bought and a verdict attached to a label that cannot be kept.
+
+    Nothing may be appended when it raises. `append_guarded` runs only after every row of
+    every target is built, so the refusal costs the run and not the sheet.
+    """
+    run, rows = _register_audition(tmp_path, monkeypatch, lane)
+    with pytest.raises(ValueError, match="RETIRED"):
+        run()
+    assert rows() == [], (
+        f"a {lane!r} row reached ratings.csv — the writer refused and appended anyway")
+
+
+@pytest.mark.parametrize("lane", ["Newscaster", "Neutral", ""])
+def test_the_synthesis_writer_still_pre_fills_an_assignable_lane(tmp_path, monkeypatch,
+                                                                 lane):
+    """The guard means something only if it passes what it should.
+
+    A blank is the commonest case by far — most banks state no lane at all — and blank is
+    the spelling of `unknown`, not an error. Refusing it, or blanking a live lane to make
+    the guard "safe", would break the verify-don't-enter standard the column exists for.
+    """
+    run, rows = _register_audition(tmp_path, monkeypatch, lane)
+    run()
+    assert [(r["id"], r["delivery"]) for r in rows()] == [("lane-0001", lane)]
 
 
 def test_the_cli_names_the_lane_rather_than_asking_for_five_zeros():

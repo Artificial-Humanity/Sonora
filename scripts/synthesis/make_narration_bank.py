@@ -5,6 +5,10 @@ Closes Neutral (+81) and Documentary (+35), the only gaps left in the ratified
 ingested 2026-08-02; labels (V/A/T + register) are inherited from their book banks,
 which pass 1 emits engine-agnostically on purpose.
 
+SINCE 2026-08-11 THE TWO LANES ARE ONE. `Documentary` was retired into `Neutral`
+(matcha.delivery.RETIRED_LANES) and the +35 it was sized for is now part of Neutral's
+gap, so this round's lane map and targets are Neutral-only — see LANES and TARGETS.
+
 WHAT MAKES THIS ROUND DIFFERENT, and why it is worth stating: the book banks route
 220 of 220 narration lines to zonos, because pass 1 lets the director pick an engine
 per line and it has a strong opinion about narration. Rendering that as-is would
@@ -40,11 +44,17 @@ BOOKS = pathlib.Path("/data/model-training/datasets/book-prose")
 CAMPAIGN = "delivery-v1-narration-r2"
 OUT_DEFAULT = pathlib.Path("/data/model-training/datasets") / CAMPAIGN
 
-# Lane per book. Documentary is a RENDER style over narration text, so the text only
-# has to INVITE it — third-person exposition does, first-person recollection does
-# not (owner, 2026-08-01: autobiography is "more narrative", i.e. Neutral).
+# Lane per book. EVERY BOOK IS NEUTRAL SINCE 2026-08-11 (issue #12).
+# `voyage-of-the-beagle` was this round's one Documentary pick, on the reading that
+# Documentary is a RENDER style over narration text so the text only has to INVITE it —
+# third-person natural history does, first-person recollection does not (owner,
+# 2026-08-01: autobiography is "more narrative", i.e. Neutral). That reading did not
+# survive the ear: Documentary was RETIRED into Neutral (owner, 2026-08-10), and every one
+# of the 154 Documentary rows in ratings.csv was relabelled Neutral, not Newscaster. So
+# this book's lane follows the rows, and the invitation the prose extends is one no label
+# now records.
 LANES = {
-    "voyage-of-the-beagle":    "Documentary",   # natural history + travel
+    "voyage-of-the-beagle":    "Neutral",       # was Documentary until the retirement
     "conan-stories":           "Neutral",
     "up-from-slavery":         "Neutral",       # autobiography
     "franklin-autobiography":  "Neutral",       # autobiography
@@ -52,7 +62,14 @@ LANES = {
 }
 
 # Renders per lane, sized from the measured gaps at ~90% keep with a little headroom.
-TARGETS = {"Documentary": 45, "Neutral": 96}
+# The retired lane's target FOLDED IN rather than vanishing: `Documentary: 45` (for a +35
+# gap) plus `Neutral: 96` (for +81) = 141, because retiring the lane changed where those
+# clips are LABELLED, not whether the corpus wants them — the gap they were sized against
+# is now part of Neutral's. Dropping the entry and leaving 96 would have quietly shrunk a
+# re-run of this round by a third; the whole round is already rendered and audited
+# (delivery-v1-narration-r2 closed 2026-08-04), so this is the arithmetic a re-run needs
+# to reproduce it, not a new campaign.
+TARGETS = {"Neutral": 141}
 
 # References must be narration-shaped. A dialogue reference drags the read toward
 # performance, which is the opposite of what these lanes want.
@@ -261,7 +278,8 @@ def main():
         "version": f"{CAMPAIGN}-1",
         "campaign": CAMPAIGN,
         "note": ("Round 2 of the narration push: Neutral +81 / Documentary +35, the last "
-                 "two open lanes. Engine allocation from ref_select.ENGINE_MIX_BY_LANE "
+                 "two open lanes — rebuilt as one Neutral lane after the Documentary "
+                 "retirement (2026-08-10). Engine allocation from ref_select.ENGINE_MIX_BY_LANE "
                  "(measured per lane, floored, capped) rather than pass-1's per-line "
                  "choice, which routed 220/220 narration lines to zonos. Pass 2 re-run "
                  "per assigned engine. One frozen voice per (book, engine). This is also "

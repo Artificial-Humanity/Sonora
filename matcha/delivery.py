@@ -97,7 +97,27 @@ DELIVERY_UNKNOWN = ""
 # property of the vocabulary rather than of any render mix. It lived in `book_ingest` and
 # again in `ref_select`; those two import each other, so neither could own it without a
 # cycle. It belongs here, where the vocabulary is.
-NARRATION_LANES = ("Neutral", "Documentary", "Newscaster")
+#
+# A RETIRED LANE FILTERS OUT OF IT (Documentary, 2026-08-11 — issue #12). Narration lanes
+# are lanes new lines are DIRECTED INTO, so a lane no new row may carry cannot be one, and
+# deriving the tuple rather than restating it means retiring a narration lane later cannot
+# leave a stale member behind.
+#
+# THIS IS AN ACCEPTED BEHAVIOUR CHANGE, not bookkeeping — owner call, and recorded here
+# because it is not a consequence the retirement forces on its own. Two live rules read
+# this tuple, and both stop applying to Documentary:
+#   * `ref_select.MAX_SHARE_NARRATION` — the 30% per-engine cap that stops a narration
+#     lane collapsing into one engine's timbre. Dropping a lane from the narration set
+#     therefore reshapes future campaign balance, which is a render-mix decision the
+#     retirement did not itself argue for.
+#   * `book_ingest.build_direction` — zonos's emotion vector is forced off and
+#     chatterbox's exaggeration capped only on a narration lane.
+# Both are now unreachable in practice: `ENGINE_MIX_BY_LANE` carries no Documentary mix,
+# `ref_select.mix_for_lane` refuses the lane outright, and no bank builder targets it. The
+# change is recorded rather than silent because a reader finding a narration rule that no
+# longer fires deserves to find the decision, not infer it.
+NARRATION_LANES = tuple(
+    ln for ln in ("Neutral", "Documentary", "Newscaster") if ln not in RETIRED_LANES)
 
 VAT_BASE_DIM = 3                                  # valence, energy, tension
 DELIVERY_DIM = len(DELIVERY_LANES)
