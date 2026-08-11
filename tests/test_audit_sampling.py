@@ -414,13 +414,42 @@ def test_the_direction_check_is_advisory_and_the_quality_gate_is_not():
 
     The qc_gate half of the assertion is the control: without it this test would also pass
     against a file that had stopped stopping for anything at all.
+
+    THE WINDOW IS ANCHORED AT THE FIRST COMMAND OF STAGE 2, NOT ITS LAST (issue #57). It
+    used to start at the `--eiv` invocation — the stage's LAST command — so the guard saw
+    ten lines of a ~75-line block: the `--count-directed` probe, the whole `case`, and all
+    three skip/failure branches sat outside it. MEASURED 2026-08-11: an `exit 2` in the
+    real-audio branch, which stops every librivox bank before `register_audition`, left
+    this suite at 27 passed. The coverage assertions below are part of the fix — they
+    fail if the window is ever narrowed back onto a subset of the block.
     """
     cmds = list(_shell_commands(BANK))
+    probe = _first_line_with(BANK, "qc_verdict.py", extra="--count-directed")
     verdict = _first_line_with(BANK, "qc_verdict.py", extra="--eiv")
+    # Stage 3 (the engine defect detectors) is where stage 2 ends. Bounding at
+    # register_audition instead puts another stage's commands inside a window this test
+    # names stage 2 — and stage 3 is where a legitimate future `exit` would sit.
+    defects = _first_line_with(BANK, "qc_engine_defects.py")
     register = _first_line_with(BANK, "register_audition.py")
-    stage2 = [c for n, c in cmds if verdict is not None and verdict <= n < register]
-    assert stage2, "no stage-2 commands between the verdict and the queue — see the " \
+    assert None not in (probe, verdict, register), \
+        "stage 2 is not wired — see the wiring and ordering tests above"
+    # From the banner the stage announces itself with, so the lines BETWEEN the banner and
+    # the probe are inside too; the probe is the fallback if the banner is ever reworded.
+    banner = next((n for n, c in cmds if c.startswith("echo") and "qc verdicts" in c), None)
+    start = min(n for n in (banner, probe, verdict) if n is not None)
+    end = min(n for n in (defects, register) if n is not None and n > start)
+    stage2 = [c for n, c in cmds if start <= n < end]
+    assert stage2, "no stage-2 commands between the probe and the next stage — see the " \
                    "wiring and ordering tests above for which of the two is missing"
+
+    # The window covers the WHOLE block, proven against its landmarks rather than trusted:
+    # every one of these lines was outside the old window.
+    for landmark in ("--count-directed", "real-audio bank", "eiv_score.sh", "--eiv",
+                     "esac"):
+        assert any(landmark in c for c in stage2), \
+            (f"the stage-2 window stops short of `{landmark}` — an `exit` there would "
+             f"stop the bank unnoticed, which is exactly how #57 went green")
+
     offenders = [c for c in stage2 if c.split("#")[0].strip().startswith("exit")
                  or " exit " in c]
     assert not offenders, \
@@ -430,7 +459,7 @@ def test_the_direction_check_is_advisory_and_the_quality_gate_is_not():
         "a failed direction check is silent; it must be announced like the defect detectors"
 
     gate = _first_line_with(BANK, "qc_gate.py")
-    hard = [c for n, c in cmds if gate <= n < verdict and c.startswith("exit")]
+    hard = [c for n, c in cmds if gate <= n < start and c.startswith("exit")]
     assert hard, "qc_gate no longer stops the pipeline — it is not advisory and must"
 
 
