@@ -167,6 +167,19 @@ def _predicted_gender(rec) -> str:
     return ""
 
 
+class RetiredLane(ValueError):
+    """The refusal `_assignable_delivery` raises, and the ONLY thing the dry-run counts.
+
+    A ValueError subclass on purpose: the write path re-raises it and `check_assignable`'s
+    contract is a ValueError, so every existing caller and test reads it unchanged. What it
+    buys is the narrowing at the catch site — `_build_row` also calls `os.path.relpath` and
+    `_predicted_gender`, and a bare `except ValueError` swallowed anything either of them
+    raised, counted it as `retired`, and reported "N clip(s) carry a delivery lane that may
+    no longer be assigned". A precise, confident, wrong diagnosis, with the real error text
+    surviving only in the `! {e}` line above it.
+    """
+
+
 def _assignable_delivery(rec, book_slug: str) -> str:
     """The record's intended lane, REFUSED here if it may no longer be assigned.
 
@@ -194,7 +207,7 @@ def _assignable_delivery(rec, book_slug: str) -> str:
     try:
         return check_assignable(rec.get("intended_delivery", ""))
     except ValueError as e:
-        raise ValueError(
+        raise RetiredLane(
             f"{rec.get('id') or '<no id>'} ({book_slug}): {e} The lane came from the "
             f"bank builder's own lane table, so rebuild the bank rather than editing "
             f"the queued row."
@@ -468,7 +481,13 @@ def register_audio_dir(audio: Path, slug: str, existing_ids, fields, dry_run: bo
             continue
         try:
             row = _build_row(rec, wav, slug, fields)
-        except ValueError as e:
+        except RetiredLane as e:
+            # NARROW, not `except ValueError`. `_build_row` also calls `os.path.relpath`
+            # and `_predicted_gender`; a surplus ValueError from either was counted as
+            # `retired` and reported as a stale delivery lane, which sends an operator to
+            # rebuild a bank over an error that had nothing to do with delivery. Two
+            # different failures must not be reported as one — the same distinction
+            # `qc_verdict` draws between `is False` and `is None`.
             if refusals is None:      # the write path: refuse on the first, cost the run
                 raise
             print(f"  ! {e}", file=sys.stderr)
