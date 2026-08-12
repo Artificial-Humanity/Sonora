@@ -28,6 +28,15 @@ def _src(name):
 BANK = "scripts/stages/synth_bank.sh"
 
 
+# What ENDS a word, and therefore what a comment-opening `#` may follow. ⚠ The first
+# version of this was `line[i-1].isspace()`, which is wrong: `;`, `&`, `|`, `(` and `)`
+# terminate a word too, so a `#` right after any of them opens a comment. Verified against
+# the shell that actually reads these files (`bash -c 'echo hi;# qc_verdict.py'` prints
+# `hi`), and the #24 shape walked through one punctuation mark to the left of where it had
+# just been closed.
+_WORD_END = " \t;&|()"
+
+
 def _strip_trailing_comment(line):
     """Drop an unquoted `#`-to-end-of-line. POSIX rule: `#` opens a comment only at the
     start of a word, so `${VAR#pat}`, `$#` and `sha#1` survive, and so does a `#` inside
@@ -53,7 +62,7 @@ def _strip_trailing_comment(line):
         elif c in "'\"":
             quote = c
             out.append(c)
-        elif c == "#" and (i == 0 or line[i - 1].isspace()):
+        elif c == "#" and (i == 0 or line[i - 1] in _WORD_END):
             break
         else:
             out.append(c)
@@ -63,7 +72,7 @@ def _strip_trailing_comment(line):
 
 # `echo`/`printf` possibly behind redirections, a brace/paren/`!`, or VAR= prefixes.
 _ECHO_HEAD = re.compile(
-    r"""(?:^|(?<=[;&|{(]|\s))                    # clause start
+    r"""(?:^|(?<=[;&|{(`]|\s))                   # clause start (backtick too: `echo …`)
         (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*   # prefixes
         (?:echo|printf)\b""",
     re.X,
@@ -191,6 +200,11 @@ def _first_line_with(rel, needle, extra=None):
     ('test $# -gt 0', 'test $# -gt 0'),
     # a whole-line comment reduces to nothing
     ('# comment naming qc_verdict.py', ''),
+    # ⚠ POSIX word delimiters, not just whitespace — `bash -c 'echo hi;# x'` prints `hi`
+    ('cd d;# qc_verdict.py', 'cd d;'),
+    ('( x )# qc_verdict.py', '( x )'),
+    ('run &# qc_verdict.py', 'run &'),
+    ('a|# qc_verdict.py', 'a|'),
 ])
 def test_a_trailing_comment_is_not_code(line, expected):
     """`_code_lines` only ever dropped lines STARTING with `#`. A trailing comment survived
@@ -207,6 +221,8 @@ def test_a_trailing_comment_is_not_code(line, expected):
     '[ -f x ] || { echo "run $PY $S/qc_verdict.py"; }',
     'if [ -z "$D" ]; then echo "see $S/qc_verdict.py"; fi',
     'LC_ALL=C echo "see $S/qc_verdict.py"',
+    '`echo run $S/qc_verdict.py`',          # backtick substitution is a clause start too
+    'X=$(echo "run $S/qc_verdict.py")',
 ])
 def test_printed_text_is_not_an_invocation(cmd):
     """The old filter tested the FIRST TOKEN only, so every spelling here counted as a

@@ -4,7 +4,8 @@ Three times now, a written instrument in this repo turned out never to run — m
 `qc_verdict.py`, named in a `synth_bank.sh` comment for a month while 695 directed clips
 went to the ear with no direction check (issue #24). Each time it was found by hand, and
 each time the reason it survived was the same: in `scripts/`, being uninvoked is the normal
-state for most of the 100 non-test files there, so an unwired *stage* is indistinguishable
+state for most of the 100 non-test `.py` files there (106 tracked, less the 6 gate
+scripts), so an unwired *stage* is indistinguishable
 from an operator tool that was never meant to be called.
 
 `tests/test_audit_sampling.py` already guards individual stages, and guards them more
@@ -281,16 +282,23 @@ def test_no_test_module_reaches_into_scripts_by_hand():
     assert len(files) >= 20, f"only {len(files)} test modules enumerated — is the listing working?"
     for rel in sorted(files):
         tree = ast.parse((REPO / rel).read_text(encoding="utf-8"), rel)
+        # ⚠ `insert`/`append` are not the only ways to mutate `sys.path`. Verified: the
+        # exact defect this test exists for walked past in three more spellings —
+        # `sys.path.extend([...])`, `sys.path += [...]` and `sys.path[:0] = [...]`.
         for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
-                continue
-            if node.func.attr not in ("insert", "append"):
-                continue
-            if "sys.path" not in ast.unparse(node.func):
-                continue
-            arg = ast.unparse(node).lower()
-            if "scripts" in arg:
-                offenders.append(f"{rel}:{node.lineno}: {ast.unparse(node)}")
+            rendered = None
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr in ("insert", "append", "extend") and \
+                        "sys.path" in ast.unparse(node.func):
+                    rendered = ast.unparse(node)
+            elif isinstance(node, ast.AugAssign):                      # sys.path += [...]
+                if "sys.path" in ast.unparse(node.target):
+                    rendered = ast.unparse(node)
+            elif isinstance(node, ast.Assign):                         # sys.path[:0] = [...]
+                if any("sys.path" in ast.unparse(t) for t in node.targets):
+                    rendered = ast.unparse(node)
+            if rendered and "scripts" in rendered.lower():
+                offenders.append(f"{rel}:{node.lineno}: {rendered}")
     assert not offenders, (
         "these test modules reach into scripts/ by hand instead of `SCRIPTS.on_path()`, so a "
         "layout change breaks them silently — the suite stays green on collection order alone:\n"
@@ -331,10 +339,24 @@ def test_nothing_outside_a_declared_orchestrator_runs_a_stage():
                 tree = ast.parse(text, rel)
             except SyntaxError:
                 continue
+            # Dotted (`subprocess.run`), bare (`from subprocess import run`) AND ALIASED
+            # (`... import run as _r`) — the alias is what a real evasion would use, and it
+            # is what walked past the first version of this fix. ⚠ RESIDUAL, stated: a name
+            # assembled at runtime (`_cmd = "scripts/stages/" + "qc_gate.py"`) is invisible
+            # to any static check, here and in the sibling guard above.
+            local = set()
             for node in ast.walk(tree):
-                if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                if isinstance(node, ast.ImportFrom) and node.module in ("subprocess", "os"):
+                    local |= {(a.asname or a.name) for a in node.names if a.name in LAUNCHERS}
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
                     continue
-                if node.func.attr not in LAUNCHERS:
+                if isinstance(node.func, ast.Attribute):
+                    fn = node.func.attr if node.func.attr in LAUNCHERS else None
+                else:
+                    name = getattr(node.func, "id", None)
+                    fn = name if name in LAUNCHERS or name in local else None
+                if fn is None:
                     continue
                 rendered = ast.unparse(node)
                 for stage in sorted(stage_names):

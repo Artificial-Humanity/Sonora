@@ -238,9 +238,15 @@ def test_the_guard_actually_asserts_something():
             if target.resolve() in here.parents:
                 continue                      # self-ancestor: true by construction
             falsifiable.append(f"{rel}:{lineno} {name}")
-    assert len(falsifiable) >= 12, (
-        f"only {len(falsifiable)} falsifiable asset paths found (expected the 13 measured on "
-        f"2026-08-12). If the evaluator stopped resolving a spelling, this is what notices:\n"
+    # ⚠ 24, RE-DERIVED. An earlier version of this said "the 13 measured on 2026-08-12"
+    # with a floor of 12 — a number carried over from a review comment written before the
+    # walk was extended to unnamed path expressions, and a floor that permitted losing HALF
+    # the coverage silently. The floor is the measurement: this is a ratchet, so any drop in
+    # falsifiable coverage is meant to be noticed, including a legitimate one.
+    assert len(falsifiable) >= 24, (
+        f"falsifiable asset paths dropped to {len(falsifiable)} from the 24 measured on\n"
+        f"2026-08-12. Either the evaluator stopped resolving a spelling, or coverage really\n"
+        f"shrank — if the latter, re-derive and lower this number deliberately:\n"
         + "\n".join(falsifiable)
     )
 
