@@ -468,6 +468,15 @@ because it is box tooling, but it deploys from whichever repo owns the code:
 | `dashboard` → `/data/services/dashboard` | `AI-Lab-AMD/dashboard` | `deploy.sh dashboard` |
 | `stack` → the compose services | `AI-Lab-AMD` | `deploy.sh stack` |
 
+⚠ **`SONORA_REPO` names the source checkout, and it defaults to `Sonora/github` — the
+caretaker's tree, which is usually on a feature branch.** An agent working in a linked
+worktree must pass it explicitly: `SONORA_REPO=$PWD deploy.sh audition`. Two things to check
+first, both cheap and both real: that no other branch has touched the target's directory
+since the deployed commit (`git log <deployed-sha>..origin/main -- audition/`), or the deploy
+reverts someone's work; and that the source tree is CLEAN, which `require_clean` enforces.
+`require_source` used to refuse a worktree outright — `.git` is a file there, not a directory
+— fixed in AI-Lab-AMD `882f620` (2026-08-12).
+
 **Deploying is idempotent and free to over-run** (2026-08-08). `deploy.sh audition` /
 `dashboard` diff the target first and do **nothing** when it already matches — no copy, no
 stamp rewrite, no container restart. So running a deploy at the outset of any work costs
