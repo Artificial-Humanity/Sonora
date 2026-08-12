@@ -12,6 +12,7 @@ container. The host `.venv` carries the synthesis lane only, so they skip there:
     docker compose run --rm --entrypoint pytest sonora_training tests/test_training_seams.py
 """
 
+import pathlib
 import pytest
 
 torch = pytest.importorskip("torch")
