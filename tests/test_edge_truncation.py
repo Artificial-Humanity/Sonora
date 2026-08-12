@@ -30,10 +30,10 @@ import pathlib
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
-SYNTH = pathlib.Path(__file__).resolve().parent.parent / "scripts" / "synthesis"
-sys.path.insert(0, str(SYNTH))
-
+SYNTH = SCRIPTS
+SCRIPTS.on_path()
 synth_common = pytest.importorskip("synth_common")
 edge_loss = synth_common.edge_loss
 
@@ -201,7 +201,7 @@ def test_an_apostrophe_is_still_part_of_its_word():
 
 def test_the_two_dash_classes_have_not_forked():
     """`op_g2p` cannot import `synth_common` (it runs in the training container, where
-    `scripts/synthesis` is not on the path) and `synth_common` must not import `matcha`
+    `scripts/stages/` is not on the path) and `synth_common` must not import `matcha`
     (the QC lane is stdlib-only by design). So the rule is deliberately written twice —
     the device-G2P arrangement — and this is the gate that keeps the copies honest.
 
@@ -501,12 +501,11 @@ def test_the_warmstart_widening_is_covered_by_the_mandatory_seam_gate():
     """The widening logic is torch-only, so it cannot run in the host suite — and a check
     that only ever skips protects nothing.
 
-    It lives in `scripts/test_vat_dim_seams.py`, which is mandatory pre-flight before any
+    It lives in `scripts/gates/test_vat_dim_seams.py`, which is mandatory pre-flight before any
     training run and already covers every other vat_dim seam. This test's whole job is to
     notice if it is removed from there, since nothing else on the host would.
     """
-    seams = (pathlib.Path(__file__).resolve().parent.parent
-             / "scripts" / "test_vat_dim_seams.py").read_text(encoding="utf-8")
+    seams = (SCRIPTS / "test_vat_dim_seams.py").read_text(encoding="utf-8")
     assert "import make_warmstart" in seams
     for name in ("the VAT trunk widens, new channels at zero",
                  "the speaker table is REFUSED without a proven index map",
@@ -526,8 +525,7 @@ def test_the_holdout_refusal_is_covered_by_the_mandatory_seam_gate():
     gate, which is mandatory pre-flight before any training run — the same argument as the
     widening check above, and for a guard whose failure costs the lineage's only
     never-trained measurement."""
-    seams = (pathlib.Path(__file__).resolve().parent.parent
-             / "scripts" / "test_vat_dim_seams.py").read_text(encoding="utf-8")
+    seams = (SCRIPTS / "test_vat_dim_seams.py").read_text(encoding="utf-8")
     for name in ("an 8-wide holdout filelist is refused as a TRAINING path",
                  "refused as a VAL path too",
                  "an ordinary corpus filelist still loads"):
@@ -564,8 +562,7 @@ def test_the_sanctioned_reader_is_not_caught_by_it():
     """`score_holdout.py` builds its dataset directly and never comes through the
     datamodule — which is the seam that makes this refusal cheap. If it ever started
     using `TextMelDataModule`, the instrument would refuse to score."""
-    src = (pathlib.Path(__file__).resolve().parent.parent
-           / "scripts" / "score_holdout.py").read_text(encoding="utf-8")
+    src = (SCRIPTS / "score_holdout.py").read_text(encoding="utf-8")
     assert "TextMelDataset" in src
     assert "TextMelDataModule" not in src
 
@@ -575,8 +572,7 @@ def test_scoring_without_a_contamination_check_is_refused():
     invocation that omitted it scored with NO disjointness check and produced numbers that
     look like holdout numbers and carry none of the guarantee. `score_holdout.sh` supplies
     no default either."""
-    src = (pathlib.Path(__file__).resolve().parent.parent
-           / "scripts" / "score_holdout.py").read_text(encoding="utf-8")
+    src = (SCRIPTS / "score_holdout.py").read_text(encoding="utf-8")
     assert "REFUSING to score with no contamination check" in src
     i = src.index("def assert_disjoint")
     j = src.index("REFUSING to score with no contamination check")

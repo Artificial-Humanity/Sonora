@@ -8,7 +8,7 @@ It deliberately does NOT try to attribute time *within* a training step. Async
 GPU execution makes that unreliable unless you synchronise every iteration,
 which perturbs the very thing you are measuring. Instead this records the one
 number that needs no attribution -- observed steps/sec -- and leaves the
-loader's ceiling to scripts/bench_loader.py. Comparing the two IS the
+loader's ceiling to scripts/tools/bench_loader.py. Comparing the two IS the
 diagnosis:
 
     loader ceiling >> observed rate   ->  GPU-bound. A faster GPU helps.
@@ -216,10 +216,10 @@ class ThroughputProbe(Callback):
             "step_s_synced_median": _pct([s for s in synced if s], 0.5) if synced else None,
             "note": (
                 "Compare steps_per_s_median against the loader ceiling from "
-                "scripts/bench_loader.py. Ceiling much higher => GPU-bound => a "
+                "scripts/tools/bench_loader.py. Ceiling much higher => GPU-bound => a "
                 "faster rented GPU helps. Ceiling close => loader-bound => it "
                 "will not, and fewer pod vCPUs makes it worse. Feed both files "
-                "to scripts/project_pod_speedup.py."
+                "to scripts/tools/project_pod_speedup.py."
             ),
         }
         self._summary_path.write_text(json.dumps(summary, indent=2) + "\n")

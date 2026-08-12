@@ -13,12 +13,12 @@ in [notes/README.md](notes/README.md). Before starting work, read
 ## Core Stack Matrix
 
 * **Language Ecosystem:** Python-based ML training pipeline.
-* **Second lane — teacher synthesis (`scripts/synthesis/`):** five audited TTS engines
+* **Second lane — teacher synthesis (`scripts/stages/`):** five audited TTS engines
   (`chatterbox`, `qwen`, `zonos`, `orpheus`, `moss_vg`; `vibevoice` + `dia` are set aside,
   reversible — `ref_select.SET_ASIDE`) driven by a two-pass Gemma director — per-line
   V/A/T + a register copied from the 47-label controlled lexicon
-  (`scripts/synthesis/register_lexicon.json`), then per-engine casting/delivery from
-  `scripts/synthesis/director_skills/<engine>.md`. Engine allocation is the three-layer
+  (`scripts/assets/register_lexicon.json`), then per-engine casting/delivery from
+  `scripts/assets/director_skills/<engine>.md`. Engine allocation is the three-layer
   `ref_select.ENGINE_MIX_BY_LANE` (capability veto · measured per-lane weights ·
   diversity floor). **`build_direction()` in `book_ingest.py` is the single source of
   truth for what each engine actually receives — never bypass it; unknown engines are fatal.**
@@ -266,7 +266,7 @@ case-insensitive macOS/Windows.
 
 ### 5b. The doc-claims gate can stop enforcing WITHOUT going red
 
-`scripts/test_doc_claims.py` compares documented numbers against the artifacts on disk. It
+`scripts/gates/test_doc_claims.py` compares documented numbers against the artifacts on disk. It
 has **five silent-disarm modes** — **four observed on 2026-08-11, and one reasoned from the
 mechanism** (mode 2, see its own correction) — none of which was written down
 anywhere until now — which is the same reason the workflow-validation trap in §1 cost the
@@ -359,6 +359,49 @@ campaigns" unregenerated — it was re-run and is still 13, so the note was righ
 exactly why the habit is dangerous: being right this time costs nothing and teaches the wrong
 lesson. **If a fix touches an input to a stated number, re-derive the number.**
 
+### 5c. A pipeline stage is WIRED, or it is merely WRITTEN ABOUT
+
+`scripts/` holds **100 non-test `.py` files** (106 tracked, less the 6 gate scripts) and
+most of them are *correctly* uninvoked — operator tools, finished campaign tooling. So "nothing calls this" carries no signal there, and a
+**stage** that stopped being called is indistinguishable from a tool that never was. That is
+how `qc_verdict.py` was named in a `synth_bank.sh` comment for a month and never ran, while
+695 directed clips reached the ear with no direction check (issue #24).
+
+* **The buckets say what a file IS; the manifest says whether it RUNS. Read
+  [scripts/README.md](scripts/README.md) before adding anything under `scripts/`.**
+  `stages/ lib/ tools/ gates/ assets/ teacher_audition/ litert_export/` (#26 step 3,
+  2026-08-12). Every file under `scripts/<bucket>/` is **exactly two levels down** on
+  purpose — one repo-root expression is then correct everywhere, which is what replaced 87
+  scattered `sys.path.insert(0, dirname(__file__))` calls and what makes the path guard
+  below possible.
+* ⚠ **Checked-in data a script reads goes in `scripts/assets/`, resolved from the repo root.**
+  `tests/test_asset_paths.py` asserts every in-repo path built from `__file__` points at the
+  thing it names. That class of bug does not fail at import — it fails when something READS
+  the path, which for the synthesis lane is hours into a GPU render, and for
+  `book_ingest`'s register lexicon does not fail at all: the load sits inside
+  `except Exception: return []`, so a wrong depth silently yields an empty controlled
+  vocabulary and every bank after it is built without one.
+
+* **`scripts/pipeline_manifest.py` declares every stage and which shell wires it**, and
+  `tests/test_stage_coverage.py` iterates it in both directions: a stage declared and not
+  invoked fails, a script invoked and not declared fails, and a `.sh` appearing under
+  `scripts/` in none of the three categories fails. **Wire a stage → declare it in the same
+  commit.** How to do that is in the manifest's docstring, which is the only copy.
+* ⚠ **Two things look like a call and are not.** A **comment** (the #24 failure verbatim) and
+  an **`echo`** — every stage in `synth_bank.sh` prints its own re-run command on failure, so
+  the recovery hints name the very scripts under test. `tests/test_audit_sampling.py::_invocations`
+  is this repo's one definition of "a call"; import it, never re-derive it. The guard that
+  predated it asserted a substring over the whole file, and commenting out the real invocation
+  left it **green**.
+* ⚠ **A ratchet never observed going red is not known to work.** This one was built by mutating
+  the tree eight ways — unwire a stage, demote it to an `echo`, add an undeclared stage, add a
+  new shell, reverse a recorded non-invocation, unwire the nested EIV lane, hardcode a target
+  into the dynamic-dispatch wrapper, empty the manifest — and recording which test caught each.
+  The last is the point: **every test there iterates the manifest, so an emptied manifest would
+  collect zero cases and report green.** That is §5b's mode 1 in a different file, and it is why
+  `test_the_manifest_declares_the_lanes_it_is_supposed_to_cover` exists. Do the same for the
+  next ratchet: a coverage test's own coverage is not self-evident.
+
 ### 6. Execute From The Repo — `/data` Holds Data
 
 **Owner principle (2026-08-06): code executes from the repo checkout; `/data` holds what
@@ -424,6 +467,57 @@ because it is box tooling, but it deploys from whichever repo owns the code:
 | `training-code` → `/data/repos/Sonora` | **this repo** (ff-pull; a real checkout) | `deploy.sh training-code` |
 | `dashboard` → `/data/services/dashboard` | `AI-Lab-AMD/dashboard` | `deploy.sh dashboard` |
 | `stack` → the compose services | `AI-Lab-AMD` | `deploy.sh stack` |
+
+⚠ **`deploy.sh` reads `SONORA_REPO` for the source checkout and defaults it to
+`Sonora/github` — the caretaker's tree, which is usually on a feature branch.** Scoped to
+`deploy.sh` on purpose: the same name has three *other* readers in this repo with different
+defaults (`scripts/litert_export/run.sh`, `convert_vat.py`, `scripts/stages/score_holdout.py`
+— the last falling back to the container path `/sonora`), so an unqualified "it defaults to
+`Sonora/github`" is false of every in-repo consumer.
+
+An agent working in a linked worktree passes it **per command**:
+
+```bash
+SONORA_REPO="$(git rev-parse --show-toplevel)" deploy.sh audition
+```
+
+* `--show-toplevel`, not `$PWD`: it is exact from any depth and returns the *linked
+  worktree's* root. `$PWD` means "wherever I happen to be standing", and an agent that
+  `cd`'d into `audition/` to make the change would hand `deploy.sh` a source root of
+  `<worktree>/audition`. ⚠ **An earlier version of this bullet said that root "inherits a
+  git dir from the worktree and passes `require_source`". It does not** —
+  `<worktree>/audition/.git` does not exist at all, so `require_source`'s `-e` test *refuses*
+  it. The advice is right and the reason was wrong, which contradicted the note eight lines
+  down about the same function. Use `--show-toplevel` because it is correct from any depth,
+  not because anything downstream fails to catch `$PWD`.
+* ⚠ **Prefix it; do not `export` it.** `scripts/litert_export/run.sh` honours an inherited
+  `SONORA_REPO` through `${SONORA_REPO:-…}`, so an export run later in the same session
+  would resolve `import matcha` out of the worktree instead of the caretaker tree.
+  `convert_vat.py`'s guard cannot see that — it only asserts `matcha/models/matcha_tts.py`
+  exists, which is true of any worktree — and its own comment names the stakes: *a wrong
+  export converts cleanly and its graphs run*.
+
+⚠ **THE CHECK THAT ANSWERS "will this deploy revert someone's work" IS AN ANCESTRY TEST, NOT
+A LOG RANGE.** `rsync --delete` replaces the target with *your tree*, so the question is
+whether your tree already contains everything the deployed copy has:
+
+```bash
+git fetch origin                                          # remote-tracking refs are SHARED
+                                                          # across worktrees and may be days old
+git merge-base --is-ancestor <deployed-sha> HEAD           # exit 0 ⇒ your tree is a superset
+git log --oneline HEAD..<deployed-sha> -- audition/        # non-empty ⇒ this deploy reverts work
+```
+
+An earlier version of this bullet said to run `git log <deployed-sha>..origin/main -- audition/`.
+**That cannot detect the failure it was written for**: it compares two refs, neither of which
+is the tree being rsynced, and whenever the deployed sha *is* main's tip the range is empty by
+construction — so it prints nothing and reads as "safe" while your branch, forked before a
+commit that touched `audition/`, is about to delete it. The 2026-08-12 deploy that prompted
+this was in fact safe (`20713f1` is an ancestor of that branch's HEAD), which is the danger:
+the wrong check agreed with the right one that once.
+
+`require_source` used to refuse a worktree outright — `.git` is a file there, not a directory
+— fixed in AI-Lab-AMD `882f620` (2026-08-12).
 
 **Deploying is idempotent and free to over-run** (2026-08-08). `deploy.sh audition` /
 `dashboard` diff the target first and do **nothing** when it already matches — no copy, no

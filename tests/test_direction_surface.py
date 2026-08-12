@@ -20,10 +20,10 @@ import sys
 import tokenize
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
-
+SCRIPTS.on_path()
 delivery = pytest.importorskip("matcha.delivery")
 direction = pytest.importorskip("matcha.direction")
 

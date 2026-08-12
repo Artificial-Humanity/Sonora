@@ -13,8 +13,9 @@ import tempfile
 
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent
-                       / "scripts" / "synthesis"))
+from scripts_layout import SCRIPTS  # noqa: E402
+
+SCRIPTS.on_path()
 
 import check_bank  # noqa: E402
 

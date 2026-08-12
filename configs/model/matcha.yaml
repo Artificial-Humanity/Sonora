@@ -24,7 +24,7 @@ use_vat: false
 # is `matcha/delivery.py` and nothing may spell it out a second time. THE SINGLE SOURCE OF
 # TRUTH FOR WIDTH: every data config interpolates `${model.vat_dim}`, so this line decides
 # what the filelist parse, the collate and the FiLM trunk all expect, and
-# `scripts/test_vat_dim_seams.py` is what makes a disagreement fail loudly at the filelist
+# `scripts/gates/test_vat_dim_seams.py` is what makes a disagreement fail loudly at the filelist
 # instead of quietly at the trunk.
 #
 # `unknown` delivery is all five lanes at zero, so a v1 (3-channel) corpus re-derived at

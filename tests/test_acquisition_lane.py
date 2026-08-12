@@ -14,11 +14,9 @@ import subprocess
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
-SYNTH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                     "scripts", "synthesis")
-sys.path.insert(0, SYNTH)
-
+SCRIPTS.on_path()
 synth_common = pytest.importorskip("synth_common")
 
 
@@ -241,10 +239,11 @@ def test_wrong_project_is_refused(tmp_path):
     """`api_book` matches on words with a prefix fallback, so a near-miss resolves to a
     real, wrong project — and `key` comes from the REQUESTED slug, so its audio lands in
     the right-looking directory. Run as a subprocess because the check lives in main()."""
-    script = os.path.join(SYNTH, "librivox_fetch.py")
+    script = SCRIPTS / "librivox_fetch.py"
+    lib = str(script.parent)   # the child gets a real path; it has no scripts_layout
     harness = f"""
 import sys, json
-sys.path.insert(0, {SYNTH!r})
+sys.path.insert(0, {lib!r})
 import librivox_fetch as lf
 lf.api_book = lambda url: {{
     "title": "Speeches Against Catilina",

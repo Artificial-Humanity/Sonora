@@ -30,7 +30,7 @@
 # Warm start from vat4's own run if it has one, else vat3-24k ep099 — NOT vat3c ep099,
 # which the holdout retired as a regression (quality-gap-plan § 0a).
 #
-#   python scripts/make_warmstart.py --experiment vat5_finetune \
+#   python scripts/lib/make_warmstart.py --experiment vat5_finetune \
 #       --donor /data/model-training/sonora/warmstart/vat4_init.ckpt \
 #       --donor-speakers data/libritts_r_vat_v4/speakers.json \
 #       --out /data/model-training/sonora/warmstart/vat5_init.ckpt
@@ -40,7 +40,7 @@
 # Pre-flight, all mandatory:
 #   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
 #     engines (Gemma director, synth_* renderers, Vocalizer), not just the trainer's.
-#   * scripts/test_vat_dim_seams.py — IN-CONTAINER (they need torch).
+#   * scripts/gates/test_vat_dim_seams.py — IN-CONTAINER (they need torch).
 #   * The corpus is licence-declared (configs/data_licenses.yaml, `merged_vat_corpora`).
 #     It is declared under its OWN entry rather than folded into `libritts_r`, because
 #     filing a merged corpus under one of its sources is how a future NC merge would
@@ -52,7 +52,7 @@
 #     construction, and inheriting would shift every normalised mel in the corpus silently.
 #
 # JUDGING THIS RUN: score it on the never-trained holdout
-# (scripts/score_holdout.sh, data/libritts_r_holdout_devclean), NOT on loss/val_epoch.
+# (scripts/stages/score_holdout.sh, data/libritts_r_holdout_devclean), NOT on loss/val_epoch.
 # That is doubly true here — v5's val set is 1,304 clips of which 344 are Emilia, so
 # val_epoch now mixes two domains and a change in it could be either. The holdout is 40
 # LibriTTS dev-clean speakers and does not move when the training mix does, which is

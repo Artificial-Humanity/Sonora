@@ -227,7 +227,7 @@ class OpenPhonemizerG2P:
         # Turning it on changes the phonemes of words the dictionary currently gets
         # wrong, which is a corpus change wherever it is applied — so it is the caller's
         # explicit choice, never a side effect of upgrading. Measure with
-        # scripts/measure_homographs.py before enabling it on a derivation.
+        # scripts/tools/measure_homographs.py before enabling it on a derivation.
         self.homographs = homographs
         self.assets_dir = os.path.abspath(
             assets_dir or os.environ.get("SONORA_G2P_ASSETS") or _default_assets()

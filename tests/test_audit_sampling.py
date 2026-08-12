@@ -11,21 +11,113 @@ import csv
 import json
 import math
 import os
+import re
 import pathlib
 import sys
 import time
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
-SYNTH = pathlib.Path(__file__).resolve().parent.parent / "scripts" / "synthesis"
-sys.path.insert(0, str(SYNTH))
-
-
+SYNTH = SCRIPTS
+SCRIPTS.on_path()
 def _src(name):
     return (SYNTH / name).read_text(encoding="utf-8")
 
 
-BANK = "scripts/synthesis/synth_bank.sh"
+BANK = "scripts/stages/synth_bank.sh"
+
+
+# What ENDS a word, and therefore what a comment-opening `#` may follow. ⚠ The first
+# version of this was `line[i-1].isspace()`, which is wrong: `;`, `&`, `|`, `(` and `)`
+# terminate a word too, so a `#` right after any of them opens a comment. Verified against
+# the shell that actually reads these files (`bash -c 'echo hi;# qc_verdict.py'` prints
+# `hi`), and the #24 shape walked through one punctuation mark to the left of where it had
+# just been closed.
+_WORD_END = " \t;&|()"
+
+
+def _strip_trailing_comment(line):
+    """Drop an unquoted `#`-to-end-of-line. POSIX rule: `#` opens a comment only at the
+    start of a word, so `${VAR#pat}`, `$#` and `sha#1` survive, and so does a `#` inside
+    quotes.
+
+    ⚠ Added 2026-08-12 because a WHOLE-LINE comment filter is not a comment filter.
+    `_code_lines` drops a line whose *first* character is `#`; a trailing comment stayed in
+    the joined command and satisfied every wiring assertion. Reproduced: every real
+    `qc_verdict.py` invocation removed from `synth_bank.sh` and the name left in a trailing
+    comment → the whole suite green. That is issue #24 verbatim, walking through the ratchet
+    built to stop it.
+    """
+    out, quote, i = [], None, 0
+    while i < len(line):
+        c = line[i]
+        if quote:
+            out.append(c)
+            if c == "\\" and quote == '"' and i + 1 < len(line):
+                i += 1
+                out.append(line[i])
+            elif c == quote:
+                quote = None
+        elif c in "'\"":
+            quote = c
+            out.append(c)
+        elif c == "#" and (i == 0 or line[i - 1] in _WORD_END):
+            break
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out).rstrip()
+
+
+# `echo`/`printf` possibly behind redirections, a brace/paren/`!`, or VAR= prefixes.
+_ECHO_HEAD = re.compile(
+    r"""(?:^|(?<=[;&|{(`]|\s))                   # clause start (backtick too: `echo …`)
+        (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*   # prefixes
+        (?:echo|printf)\b""",
+    re.X,
+)
+
+
+def _without_printed_text(cmd):
+    """`cmd` with every `echo`/`printf` and its arguments removed.
+
+    ⚠ Added 2026-08-12. The old filter tested `cmd.split()[0]`, so it only ever caught a
+    LEADING BARE `echo` — and these files are full of the other spellings:
+    `>&2 echo "…"`, `[ -f x ] || { echo "…"; }`, `case … *) echo "…" >&2;; esac`. Any of
+    them applied to a recovery hint left a stage fully unwired and the suite green
+    (reproduced on both forms). `librivox_align.sh`'s `stage_pool` line is a fixture for
+    the leading-bare form ONLY, which is why the redirected and braced forms get their own
+    assertions below.
+
+    Residual, and stated rather than hidden: a WRAPPER (`die "…run qc_verdict.py…"`) is not
+    an `echo` and is not removed. No such wrapper exists in any orchestrator today; if one
+    lands, it belongs in this pattern.
+    """
+    out, i = [], 0
+    while i < len(cmd):
+        m = _ECHO_HEAD.search(cmd, i)
+        if not m:
+            out.append(cmd[i:])
+            break
+        out.append(cmd[i:m.start()])
+        # skip to the end of this clause, respecting quotes
+        j, quote = m.end(), None
+        while j < len(cmd):
+            c = cmd[j]
+            if quote:
+                if c == "\\" and quote == '"':
+                    j += 1
+                elif c == quote:
+                    quote = None
+            elif c in "'\"":
+                quote = c
+            elif c in ";&|":
+                break
+            j += 1
+        out.append(" ")
+        i = j
+    return "".join(out)
 
 
 def _shell_commands(rel):
@@ -36,6 +128,8 @@ def _shell_commands(rel):
     two apart, and a guard that a comment can satisfy is how this file came to name a
     stage it never ran (issue #24). `_code_lines` is imported rather than copied: it is
     `test_container_env.py`'s definition of "a code line", and having one is the point.
+    TRAILING comments are stripped here rather than there, because `_code_lines`' other
+    callers want the whole line.
 
     Continuations are joined because the invocations under test span several lines, so a
     per-line search would see `--append-flags` and the script it belongs to as unrelated
@@ -46,6 +140,9 @@ def _shell_commands(rel):
 
     start, parts = None, []
     for n, line in _code_lines(rel):
+        line = _strip_trailing_comment(line)
+        if not line:
+            continue
         if start is None:
             start = n
         if line.endswith("\\"):
@@ -59,16 +156,20 @@ def _shell_commands(rel):
 
 
 def _invocations(rel):
-    """`_shell_commands` minus the `echo`es.
+    """`_shell_commands` minus everything that is merely PRINTED.
 
     Every stage in `synth_bank.sh` prints the command to run by hand when it fails, so the
     recovery hints name the very scripts these tests are checking are RUN. An `echo` that
     mentions `qc_verdict.py` is one more way to describe a stage without invoking it, and
     is exactly what would keep a wiring test green after the invocation was removed.
+
+    A command is no longer dropped wholesale — the printed CLAUSES are removed and the rest
+    of the command is kept, so `cmd && echo "hint"` still reports the `cmd`.
     """
     for n, cmd in _shell_commands(rel):
-        if cmd.split(maxsplit=1)[0] not in ("echo", "printf"):
-            yield n, cmd
+        kept = _without_printed_text(cmd).strip()
+        if kept:
+            yield n, kept
 
 
 def _first_line_with(rel, needle, extra=None):
@@ -76,6 +177,69 @@ def _first_line_with(rel, needle, extra=None):
         if needle in cmd and (extra is None or extra in cmd):
             return n
     return None
+
+
+# --- the parser is the guard, so the parser gets its own tests -------------------------
+#
+# Every wiring assertion in this repo reduces to "does `_invocations` report this script".
+# Until 2026-08-12 the answer was yes for two spellings that run nothing, and the reason it
+# went unnoticed is that the mutation battery only ever mutated CODE — never PROSE. These
+# are literals rather than file mutations so they cannot drift with the orchestrators.
+
+
+@pytest.mark.parametrize("line,expected", [
+    # the defect: a trailing comment naming a stage
+    ('"$PY" "$S/qc_gate.py" --dir "$D"  # then qc_verdict.py merges the axes',
+     '"$PY" "$S/qc_gate.py" --dir "$D"'),
+    # code with no comment is untouched
+    ('"$PY" "$S/qc_verdict.py" --eiv x', '"$PY" "$S/qc_verdict.py" --eiv x'),
+    # a `#` that does not START a word is not a comment — these must survive intact
+    ('grep "#" file', 'grep "#" file'),
+    ("echo '# literal'", "echo '# literal'"),
+    ('N="${VAR#prefix}"', 'N="${VAR#prefix}"'),
+    ('test $# -gt 0', 'test $# -gt 0'),
+    # a whole-line comment reduces to nothing
+    ('# comment naming qc_verdict.py', ''),
+    # ⚠ POSIX word delimiters, not just whitespace — `bash -c 'echo hi;# x'` prints `hi`
+    ('cd d;# qc_verdict.py', 'cd d;'),
+    ('( x )# qc_verdict.py', '( x )'),
+    ('run &# qc_verdict.py', 'run &'),
+    ('a|# qc_verdict.py', 'a|'),
+])
+def test_a_trailing_comment_is_not_code(line, expected):
+    """`_code_lines` only ever dropped lines STARTING with `#`. A trailing comment survived
+    into the joined command and satisfied the wiring assertions — issue #24's exact shape,
+    passing through the ratchet built for it. The `${VAR#pat}` and `$#` rows are the reason
+    this is a quote-aware scan and not `line.split("#")[0]`."""
+    assert _strip_trailing_comment(line) == expected
+
+
+@pytest.mark.parametrize("cmd", [
+    'echo "  !! Recover with: $PY $S/qc_verdict.py --eiv x"',
+    '>&2 echo "  !! Recover with: $PY $S/qc_verdict.py --eiv x"',
+    '2>&1 printf "%s\\n" "$PY $S/qc_verdict.py"',
+    '[ -f x ] || { echo "run $PY $S/qc_verdict.py"; }',
+    'if [ -z "$D" ]; then echo "see $S/qc_verdict.py"; fi',
+    'LC_ALL=C echo "see $S/qc_verdict.py"',
+    '`echo run $S/qc_verdict.py`',          # backtick substitution is a clause start too
+    'X=$(echo "run $S/qc_verdict.py")',
+])
+def test_printed_text_is_not_an_invocation(cmd):
+    """The old filter tested the FIRST TOKEN only, so every spelling here counted as a
+    call. `librivox_align.sh`'s `stage_pool` hint is a fixture for the leading bare form
+    alone — these are the ones it never covered."""
+    assert "qc_verdict.py" not in _without_printed_text(cmd), cmd
+
+
+@pytest.mark.parametrize("cmd", [
+    '"$PY" "$S/qc_verdict.py" --eiv x && echo "  ok, wrote verdicts"',
+    '"$PY" "$S/qc_verdict.py" --eiv x || { echo "  !! failed"; exit 1; }',
+])
+def test_a_real_invocation_survives_its_own_success_message(cmd):
+    """Dropping the whole command when it contains an `echo` would be the opposite defect:
+    every stage in `synth_bank.sh` reports what it did, and a filter that removed those
+    commands wholesale would report the pipeline as empty."""
+    assert "qc_verdict.py" in _without_printed_text(cmd), cmd
 
 
 # --- C-L6: the trusted tier's tail sample rounded to zero -----------------------------
@@ -319,7 +483,7 @@ def test_the_drop_marker_is_a_verdict_not_a_missing_score():
     0, not None: the downstream test is `score < keep_score`, and a drop has to compare
     as worse than any keep.
     """
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     gc = pytest.importorskip("gate_calibration")
     assert gc.parse_score("x") == 0
     assert gc.parse_score("X") == 0
@@ -337,7 +501,7 @@ def test_the_retake_marker_is_a_verdict_too():
     the row exactly as it had dropped the drops, for the remaining slice of rejections.
     34 rows on the live sheet, every one status `reroll`. Same failure, one marker over.
     """
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     gc = pytest.importorskip("gate_calibration")
     assert gc.parse_score("0") == 0
     assert gc.parse_score(" 0 ") == 0
@@ -349,7 +513,7 @@ def test_a_recategorized_row_is_still_the_keep_it_was():
     (status `relabeled`, retired 2026-07-26): the ear KEPT the clip at that score and
     re-labelled it, and `stage_pool` counts `relabeled` as a keep. 57 on the sheet. Widen
     the `x` test to "starts with x" and all 57 silently become rejections."""
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     gc = pytest.importorskip("gate_calibration")
     assert [gc.parse_score(f"x{n}") for n in range(1, 6)] == [1, 2, 3, 4, 5]
 
@@ -473,7 +637,7 @@ def test_a_bank_with_no_intended_labels_is_a_clean_no_op():
     `all(checks.values())`, and there is no claim to fail. `all({})` is True, so an
     undirected clip's verdict is exactly its hard_pass.
     """
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
     librivox_row = {"id": "uneasy-money_lv002_0199", "hard_pass": True, "engine": "librivox"}
     assert qv.intended_labels(librivox_row) == {}
@@ -494,7 +658,7 @@ def test_the_verdict_says_which_definition_of_A_it_used():
     per-speaker z-score of integrated loudness (`normalize_loudness.py` documents why the
     two disagree on purpose). A clip can satisfy one and fail the other, so a verdict that
     does not name its own definition is a number two lanes will read differently."""
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
     a = qv.MEASURED_FROM["A"]
     assert "Arousal" in a and "LUFS" in a, a
@@ -570,7 +734,7 @@ def _stub_campaign(tmp_path, n=4, scored=None, intended=None, stamp=True):
 
 
 def qv_extra_heads():
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     return pytest.importorskip("qc_verdict").EIV_EXTRA_HEADS
 
 
@@ -590,7 +754,7 @@ def test_a_scoring_pass_that_produced_nothing_is_refused_not_reported_as_failure
     the container came up, so an empty filelist, unreadable wavs or an OOM-skip reaches
     this with nothing else looking wrong (issue #55).
     """
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
     _stub_anchor(tmp_path, qv, monkeypatch)
     camp = _stub_campaign(tmp_path, scored=0)
@@ -609,7 +773,7 @@ def test_an_unscored_clip_is_unmeasured_not_a_direction_failure(
     """Unmeasured and pointed-the-wrong-way used to produce identical output — the same
     console line, the same by-axis tally, the same qc_flags.txt (issue #55). Unmeasured
     still cannot keep, because nothing was confirmed; it simply is not evidence."""
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
     _stub_anchor(tmp_path, qv, monkeypatch)
     camp = _stub_campaign(tmp_path, n=4, scored=2)
@@ -636,7 +800,7 @@ def test_a_reroll_is_still_caught_after_the_scores_file_is_appended_to(
     clip refreshed the clock for every other clip and the guard went silent (issue #56).
     Here clip0 is re-rendered after scoring and an unrelated row is appended afterwards,
     which is exactly the order synth_bank.sh produces."""
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
     _stub_anchor(tmp_path, qv, monkeypatch)
     camp = _stub_campaign(tmp_path, n=2, scored=2)
@@ -663,7 +827,7 @@ def test_a_numeric_string_is_a_label_and_a_word_is_a_complaint(tmp_path, monkeyp
     skip the stage, so 0 is a positive claim about the campaign. It must never be reached
     by a label the reader could not parse (issue #58): book_ingest.py writes V/A/T straight
     out of the LLM and validates only `register` and `engine`."""
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
     assert qv.intended_labels({"intended": {"V": "0.7", "A": 0.2}}) == {"V": 0.7, "A": 0.2}
     bad = []
@@ -696,7 +860,7 @@ def test_an_unreadable_intended_label_cannot_keep(tmp_path, monkeypatch, capsys)
     `--count-directed` does not cover this: it refuses only when EVERY label in the bank is
     unreadable, so the ordinary partial case — 99 good rows, 1 malformed — sails past the
     pre-flight and lands here."""
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
     _stub_anchor(tmp_path, qv, monkeypatch)
     camp = _stub_campaign(tmp_path, n=2, intended={"V": "very sad", "A": "angry", "T": "x"})
@@ -728,7 +892,7 @@ def test_one_bad_axis_is_enough_to_hold_a_clip_out_of_keeps(tmp_path, monkeypatc
     every row with an unreadable axis rather than the rows the label actually held out.
     Two defects agreeing. See the sibling test for the case this one must not cover.
     """
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
     _stub_anchor(tmp_path, qv, monkeypatch)
     camp = _stub_campaign(tmp_path, n=1, intended={"V": -0.9, "A": "angry"})
@@ -755,7 +919,7 @@ def test_only_the_clips_the_label_actually_held_out_are_reported_as_a_label_repa
     `except ValueError` this branch narrowed in register_audition.py: two different reasons
     for one outcome, reported as one.
     """
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
     _stub_anchor(tmp_path, qv, monkeypatch)
     camp = _stub_campaign(tmp_path, n=2, intended={"V": -0.9, "A": "angry"})
@@ -785,7 +949,7 @@ def test_an_unreadable_label_on_an_unscored_clip_is_a_scoring_repair_first(
     gate, or a measured direction disagreement", which is NONE IS NOT FALSE (issue #55)
     stated backwards in the file whose docstring insists on it.
     """
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
     _stub_anchor(tmp_path, qv, monkeypatch)
     camp = _stub_campaign(tmp_path, n=2, scored=1, intended={"A": "angry"})
@@ -809,7 +973,7 @@ def test_a_scored_clip_with_no_phonation_is_not_sent_back_to_the_scoring_pass(
     had, see no change. The run even says "were scored" about the same clip three lines
     later — the bucket and the summary contradicting each other in one output.
     """
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
     _stub_anchor(tmp_path, qv, monkeypatch)
     camp = _stub_campaign(tmp_path, n=1, scored=1, intended={"A": "angry"})
@@ -837,7 +1001,7 @@ def test_the_anchor_is_held_to_the_same_standard_as_the_campaign_file(
     0.0, so V is unaffected today — bulk1 is min -2.755 / max 3.272 either way. The
     asymmetry is what is fixed: one weight refit would otherwise turn that live silently.
     """
-    sys.path.insert(0, str(SYNTH))
+    SCRIPTS.on_path()
     qv = pytest.importorskip("qc_verdict")
 
     _stub_anchor(tmp_path, qv, monkeypatch, weights=[0.5, 0.3, 0.0], drop=("Sadness",))

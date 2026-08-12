@@ -13,10 +13,10 @@ import sys
 
 import pytest
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, REPO)
-sys.path.insert(0, os.path.join(REPO, "scripts", "synthesis"))
+from scripts_layout import SCRIPTS
 
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCRIPTS.on_path()
 import ref_select as rs  # noqa: E402
 # TAKEN FROM THE CONTRACT, not restated. This file carried its own literal copy until
 # 2026-08-11, and when `Documentary` was retired out of `NARRATION_LANES` the copy went on

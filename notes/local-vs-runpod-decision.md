@@ -83,7 +83,7 @@ loader go if the GPU were infinite?"
 
 ```
 AI-Lab-AMD/scripts/inference-engines.sh stop     # or you time contended cores
-.venv/bin/python scripts/bench_loader.py --experiment vat3c_finetune \
+.venv/bin/python scripts/tools/bench_loader.py --experiment vat3c_finetune \
     --workers 0,1,2,4,8,16 --batches 60 --out loader_bench.json
 ```
 
@@ -94,7 +94,7 @@ which is the extrapolation the projection leans on hardest.
 **3. After — the projection.**
 
 ```
-.venv/bin/python scripts/project_pod_speedup.py \
+.venv/bin/python scripts/tools/project_pod_speedup.py \
     --summary logs/train/vat3c_finetune/runs/<ts>/throughput_summary.json \
     --loader-bench loader_bench.json \
     --epochs 100 --pod-workers 4 --speedups 2,3,5 --price 0.99

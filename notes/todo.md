@@ -10,12 +10,12 @@ the plan.
 ## 1 · Before the next training run
 
 - [ ] **Score it on the holdout, not on `loss/val_epoch`.** A standing rule, listed here
-      because it is the step most easily skipped: `scripts/score_holdout.sh` against
+      because it is the step most easily skipped: `scripts/stages/score_holdout.sh` against
       `data/libritts_r_holdout_devclean`, ~100 min for eight checkpoints on an idle card.
       MLflow val is permanently unusable for cross-run comparison (historical split
       contamination), and there are **two** scale breaks in logged `diff_loss` — 2026-08-01
       bucketing and 2026-08-06 masking. Deciding a run by its curve is deciding it by an
-      artefact. Stratify by channel with `scripts/stratify_holdout_sweep.py`; the aggregate
+      artefact. Stratify by channel with `scripts/tools/stratify_holdout_sweep.py`; the aggregate
       hides a channel-specific regression.
 
 ## 2 · QC / audit / staging

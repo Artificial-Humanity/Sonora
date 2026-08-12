@@ -21,7 +21,7 @@
 # shape-mismatched tensors and reports them, and the zero-init FiLM path is what keeps the
 # warm start meaningful — the five new channels contribute nothing until they are trained.
 #
-#   python scripts/make_warmstart.py --experiment vat4_finetune \
+#   python scripts/lib/make_warmstart.py --experiment vat4_finetune \
 #       --donor /data/model-training/sonora/warmstart/vat3_ep099.ckpt \
 #       --out /data/model-training/sonora/warmstart/vat4_init.ckpt
 #   python -m matcha.train experiment=vat4_finetune \
@@ -30,14 +30,14 @@
 # Pre-flight, all mandatory:
 #   * AI-Lab-0/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
 #     engines (Gemma director, synth_* renderers, Vocalizer), not just the trainer's.
-#   * scripts/test_vat_dim_seams.py — the vat_dim guards, IN-CONTAINER (they need torch).
+#   * scripts/gates/test_vat_dim_seams.py — the vat_dim guards, IN-CONTAINER (they need torch).
 #     22 checks. This is the run they were written for: it is the first time the width
 #     actually changes, so a filelist/model disagreement is live rather than hypothetical.
 #   * The corpus is licence-declared (configs/data_licenses.yaml, libritts_r_vat_v4) —
 #     verified, because the wall is an allowlist and refuses what it cannot classify.
 #
 # JUDGING THIS RUN: score it on the never-trained holdout
-# (scripts/score_holdout.sh, data/libritts_r_holdout_devclean), NOT on loss/val_epoch.
+# (scripts/stages/score_holdout.sh, data/libritts_r_holdout_devclean), NOT on loss/val_epoch.
 # MLflow val is permanently unusable for cross-run comparison — historical split
 # contamination — and logged diff_loss carries two scale breaks (2026-08-01 bucketing,
 # 2026-08-06 masking). Deciding this run by its curve is deciding it by an artefact.

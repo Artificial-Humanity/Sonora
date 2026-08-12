@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # container_env.sh — the pinned container environment for every throwaway-container lane.
 #
-# Sourced by scripts/synthesis/synth_bank.sh, scripts/synthesis/librivox_align.sh and
-# scripts/eiv_score.sh. ONE copy on purpose: the review's recurring finding is two
+# Sourced by scripts/stages/synth_bank.sh, scripts/stages/librivox_align.sh and
+# scripts/stages/eiv_score.sh. ONE copy on purpose: the review's recurring finding is two
 # implementations of one rule drifting apart (B-L5's MAX_REF_EXCURSION written out three
 # times, D-L2's two disagreeing z-guards), and "which environment produced this clip" is
 # exactly the rule that must not fork across three scripts.

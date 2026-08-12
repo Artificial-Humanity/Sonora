@@ -140,7 +140,7 @@ v3c's val clips had been trained on. The contamination is historical and does no
 
 **The instrument: `data/libritts_r_holdout_devclean`** — LibriTTS-R dev-clean, 5,463 clips
 / 8.7 h / 40 speakers disjoint from the corpus. Score with `scripts/score_holdout.{py,sh}`,
-stratify by conditioning channel with `scripts/stratify_holdout_sweep.py`. **Score every
+stratify by conditioning channel with `scripts/tools/stratify_holdout_sweep.py`. **Score every
 retained checkpoint as a matter of course** — ~100 min for eight on an idle card.
 
 - **Resolution floor: −0.0111.** That is the smallest movement this instrument has
@@ -339,7 +339,7 @@ is defined by the 1,004 − 158 line above regardless.
    `derive_vat_corpus.py:536-546` hard-aborts with *"label sources do not cover every kept
    clip"* rather than writing zeros, so if that pass has not run the build fails at derive
    time.
-   ✅ **It had not run, and now has** (`scripts/measure_expressive_registers.py`, 2026-08-10
+   ✅ **It had not run, and now has** (`scripts/tools/measure_expressive_registers.py`, 2026-08-10
    → `expressive_registers_measures/probe_measures.jsonl` + manifest). Verified first that
    there was no third path: every `measures.jsonl` on disk is LibriTTS-R lineage, and
    Emilia's A/T come from `probe_measures.jsonl` written by the mining pass. Neither
@@ -624,7 +624,7 @@ zero). **The shortcut did not form; saturation is a non-issue at this mix.**
   rather than like tension? Not urgent, since a loss cannot settle it and it cannot
   trigger C-soft alone, but a "T sounds like a podcast" verdict would be its own finding.
 
-Stratify any rung's sweep by channel with `scripts/stratify_holdout_sweep.py` — the
+Stratify any rung's sweep by channel with `scripts/tools/stratify_holdout_sweep.py` — the
 aggregate hides exactly this question.
 
 ⚠ **Separately, and it IS a blocker: `n_spks`.** The model's speaker table is **247** rows
@@ -1008,7 +1008,7 @@ is that a number exists in advance, not that it is this number.
 
 - **A rung PASSES its holdout gate** when its `pick − init` mean Δtotal is negative and its
   95% bootstrap CI excludes zero, computed init-relative under that rung's own constants
-  (`scripts/stratify_holdout_sweep.py` reports both). **Init-relative is not a detail** —
+  (`scripts/tools/stratify_holdout_sweep.py` reports both). **Init-relative is not a detail** —
   SELECTED.md records that absolute holdout numbers do NOT compare across a
   normalization-constant change, and every rung re-measures `data_statistics`, so a gate
   written on absolutes would compare noise across rungs and read it as a result. What

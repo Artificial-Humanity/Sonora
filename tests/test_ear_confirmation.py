@@ -23,12 +23,11 @@ import pathlib
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-SYNTH = REPO / "scripts" / "synthesis"
-sys.path.insert(0, str(SYNTH))
-sys.path.insert(0, str(REPO))
-
+SYNTH = SCRIPTS
+SCRIPTS.on_path()
 rp = pytest.importorskip("reader_profile")
 
 FULL = {"gender": "female", "age": "adult", "accent": "american", "clips_seen": 4}

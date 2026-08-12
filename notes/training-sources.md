@@ -34,7 +34,7 @@ had been blurring into each other:
 |---|---|---|---|
 | **LJSpeech-1.1** | keithito, public domain. 13,100 clips / 24 h / 1 speaker / 22.05 kHz | **TRAINED** — Phase 0, `ljspeech` runs 2026-07-10 and 07-11 (ep199). The current v1 voice | None. Carries the contraction-poisoned IPA at ~1.2% of rows and was NOT rebuilt — it feeds the Phase-0 warm start, not the VAT lane. Rebuild only if Phase 0 is re-run |
 | **LibriTTS-R `train-clean-100`** | Google, CC-BY-4.0, quality-restored LibriTTS. 257 speaker dirs, 9.0 GB on disk → 31,445 rows / **51.3 h** | **TRAINED** — the only VAT source. `derisk_energy` (v1), `vat3_finetune` ep099 (v2), `vat3c_finetune` ep099 (v3c) | None outstanding. See § The VAT corpus lineage |
-| **LibriTTS-R `dev-clean`** | Same, CC-BY-4.0. 5,463 clips / **8.7 h** / 40 speakers | **NEVER TRAINED ON, DELIBERATELY, AND IT MUST STAY THAT WAY.** Pulled 2026-08-06 and derived scoring-only as `data/libritts_r_holdout_devclean`; its 40 speakers are disjoint from the corpus's 247 | Nothing. It is the standing instrument — score every new checkpoint with `scripts/score_holdout.sh` and normalise with the *training* corpus's `data_statistics`, never a re-measure. **Training on it destroys it permanently; there is no second dev-clean.** The wall declares it (so `enforce()` loads it) and therefore will *not* stop such a run — the deleted `train_op.txt`/`val_op.txt` and the directory README are the guard. Results: [quality-gap-plan.md § 0a](quality-gap-plan.md) |
+| **LibriTTS-R `dev-clean`** | Same, CC-BY-4.0. 5,463 clips / **8.7 h** / 40 speakers | **NEVER TRAINED ON, DELIBERATELY, AND IT MUST STAY THAT WAY.** Pulled 2026-08-06 and derived scoring-only as `data/libritts_r_holdout_devclean`; its 40 speakers are disjoint from the corpus's 247 | Nothing. It is the standing instrument — score every new checkpoint with `scripts/stages/score_holdout.sh` and normalise with the *training* corpus's `data_statistics`, never a re-measure. **Training on it destroys it permanently; there is no second dev-clean.** The wall declares it (so `enforce()` loads it) and therefore will *not* stop such a run — the deleted `train_op.txt`/`val_op.txt` and the directory README are the guard. Results: [quality-gap-plan.md § 0a](quality-gap-plan.md) |
 | **LibriTTS-R (the other 90%)** | Same, CC-BY-4.0. Full set ≈ 585 h / ~2,400 speakers | **NOT PULLED** — we hold `train-clean-100` only | **The 10×, and it is UNGATED as of 2026-08-09** — Emilia's **+36%** (not the planned +43%) moved the clean holdout by **−0.0606**, so the corpus is data-limited and rung 3 proceeds. It sequences after rung 2, not behind another gate — [quality-gap-plan.md § Phase 1](quality-gap-plan.md) |
 | **`parler-tts/libritts-r-filtered-speaker-descriptions`** | CC-BY-4.0. LibriTTS-R + per-utterance natural-language annotations (pace, pitch, expressivity, quality) | **NOT PULLED** | Evaluate against our derived V/A/T. Cleared as the "labeling shortcut" and we hand-built that substrate instead |
 | **`cdminix/libritts-r-aligned`** | CC-BY-4.0. LibriTTS-R + forced alignments and per-token pitch/energy/duration | **NOT PULLED** | Same evaluation. Its prosody measures overlap what `derive_vat_corpus.py` computes; worth knowing whether it is better |
@@ -131,13 +131,13 @@ labels, phonemes and split. **v5 is the first that adds audio.**
 | `_v4` | 31,445 | **8-wide** (V/A/T + one-hot delivery), D-L2's corrected z guard, D-M4 homographs ON | smoke only — superseded by v5 before it ran |
 | **`libritts_r_emilia_vat_v5`** | **42,442** | **+10,997 Emilia-YODAS keeps**; 247 → 2,500 speakers; 51.3 → 78.5 h | **YES — trained 2026-08-08/09.** `vat5_finetune`, 48 epochs, holdout-scored, **`ep019` selected** (converged by epoch 9). The warm-start donor for v6 |
 
-**v5 is a merge, not a derivation** (`scripts/merge_emilia_corpus.py`), and the two halves
+**v5 is a merge, not a derivation** (`scripts/tools/merge_emilia_corpus.py`), and the two halves
 carry labels on different scales *on purpose*. LibriTTS keeps its per-speaker z; Emilia
 gets a **global anchor** against v4's own distribution, because 2,408 speakers at a median
 of 3 clips have no per-speaker statistic and re-centring a tail-selected clip on its own
 mean would hand 756 one-clip speakers a label of exactly 0.0 — clips selected FOR being
 extreme, trained as neutral. Owner's option 1, 2026-08-08. The full argument is in
-`scripts/anchor_emilia_labels.py`; the semantic cost (a global anchor leaves some speaker
+`scripts/lib/anchor_emilia_labels.py`; the semantic cost (a global anchor leaves some speaker
 identity in the affect channels) is stated in the data config rather than hidden.
 
 2,144 of the 13,141 keeps did not make it: **1,676 carry digits** (D-M3 — the tokenizer
@@ -196,7 +196,7 @@ owner's. Nothing has trained on it either way.
 
 Synthesis needs text, and it comes from a different wall: **Standard Ebooks (CC0)**
 and **Project Gutenberg** (header stripped), routed by
-`scripts/synthesis/book_router.py` with `books_ledger.json` as the record of
+`scripts/tools/book_router.py` with `books_ledger.json` as the record of
 record. LibriVox URLs route to the force-align lane instead. Full lane docs:
 `book-prose-lane.md`.
 

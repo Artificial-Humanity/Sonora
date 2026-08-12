@@ -28,16 +28,16 @@ import re
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
-sys.path.insert(0, str(REPO / "scripts" / "litert_export"))
+SCRIPTS.on_path()
 
 device_g2p = pytest.importorskip("device_g2p")
 op_g2p = pytest.importorskip("matcha.text.op_g2p")
 
-CONVERTER = REPO / "scripts" / "litert_export" / "convert_vat.py"
-REPLICA = REPO / "scripts" / "litert_export" / "kotlin_replica.py"
+CONVERTER = SCRIPTS / "convert_vat.py"
+REPLICA = SCRIPTS / "kotlin_replica.py"
 
 _ASSETS = pathlib.Path(op_g2p._default_assets())
 needs_assets = pytest.mark.skipif(

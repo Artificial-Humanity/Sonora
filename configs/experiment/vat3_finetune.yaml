@@ -6,10 +6,10 @@
 # (independence gate PASS all pairs). Warm-start from the PROMOTED §7
 # de-risk checkpoint (Registry/Sonora/derisk-energy-24k, epoch 099) —
 # identical architecture, so every tensor warms; fresh optimizer.
-# Verdict via scripts/eval_harness.py across all three channels
+# Verdict via scripts/tools/eval_harness.py across all three channels
 # (energy->LUFS, tension->phonation, valence->eiv_valence measures).
 #
-# python scripts/make_warmstart.py --experiment vat3_finetune \
+# python scripts/lib/make_warmstart.py --experiment vat3_finetune \
 #     --donor /data/model-training/sonora/logs/train/derisk_energy/runs/2026-07-15_00-20-31/checkpoints/checkpoint_epoch=099.ckpt \
 #     --out /data/model-training/sonora/warmstart/vat3_init.ckpt
 # python -m matcha.train experiment=vat3_finetune ckpt_path=/data/model-training/sonora/warmstart/vat3_init.ckpt

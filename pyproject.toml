@@ -157,6 +157,12 @@ matcha-tts-get-durations = "matcha.utils.get_durations_from_trained_model:main"
 version = { file = "matcha/VERSION" }
 
 [tool.setuptools.packages.find]
+# `scripts*` STAYS EXCLUDED, and #26 step 3 proposed dropping it on a rationale that
+# does not hold: "so bucket 2 can be imported rather than path-hacked". Implicit
+# namespace packages already make `scripts.lib` importable whenever the repo root is on
+# sys.path — the exclude governs what a built WHEEL ships, and nothing installs this
+# repo. Dropping it would only add scripts/, scripts/assets/ and the rest to
+# packages.find's results. Measured 2026-08-12; see scripts/README.md.
 exclude = ["tests*", "examples*", "notes*", "scripts*", "configs*"]
 
 [tool.black]

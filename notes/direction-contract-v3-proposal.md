@@ -3,7 +3,7 @@
 **Status: PROPOSAL, 2026-08-10.** Nothing here is ratified and nothing here is built.
 It exists so the direction surface is decided *before* rung 2 trains and long before
 Phase 1S mass-produces clips against it — the owner's sequencing, and the right one.
-The governing rule from [`director_skills/sonora.md`](../scripts/synthesis/director_skills/sonora.md)
+The governing rule from [`director_skills/sonora.md`](../scripts/assets/director_skills/sonora.md)
 is unchanged and this proposal is subordinate to it: **if a field cannot be verified
 after the render, it does not belong in the contract.**
 
@@ -268,8 +268,8 @@ when an OOM crash-loop killed the terminal. It was reconstructed read-only from
 rather than on A so `clamp2` pinning is not credited to the centring.
 
 📐 **Every number in this section regenerates from
-`scripts/derive_a_channel_stats.py`** (read-only; `.venv/bin/python
-scripts/derive_a_channel_stats.py`). Writing the numbers into a note is not the same as
+`scripts/tools/derive_a_channel_stats.py`** (read-only; `.venv/bin/python
+scripts/tools/derive_a_channel_stats.py`). Writing the numbers into a note is not the same as
 committing the derivation, and the first version of this section did only the former — so
 the next challenge to any of them would have cost what the first recovery cost. The script
 is the method, written down; it is not a gate and asserts nothing, because its inputs live
@@ -423,7 +423,7 @@ no term for the second reading, so it cannot separate them.
 ## ✅ RUN 2026-08-12 — the confound is resolved, and it does NOT explain the displacement
 
 The outstanding test was: compare rendered `A = 0` loudness per lane against **that lane's
-training-set mean**. It is now `scripts/derive_a_channel_stats.py` **§ 9**, joining
+training-set mean**. It is now `scripts/tools/derive_a_channel_stats.py` **§ 9**, joining
 `labels_v6.jsonl` (corpus rows with |A| ≤ 0.25) to the same 90 renders. Both profiles are
 centred on their own named-lane mean, so the checkpoint's **−7.376 dB** global offset from
 the corpus cancels and only the between-lane *shape* is compared.
@@ -454,7 +454,7 @@ table.** That needed a second checkpoint, which is § 10.
 ## ✅ RUN 2026-08-12 — § 10, the discriminator: the cause is STRUCTURAL
 
 Three checkpoints of the same run, probed on **one design with one set of texts**
-(`scripts/probe_delivery_intercept.py` — the ep010 probe's own design was never recorded, so
+(`scripts/tools/probe_delivery_intercept.py` — the ep010 probe's own design was never recorded, so
 every checkpoint here was re-rendered rather than compared against it):
 
 | checkpoint | ρ | rendered spread | ÷ training spread | worst lane | worst deviation |
@@ -559,7 +559,7 @@ append count that is train+val, in one sentence. An A-only relabel re-rolls A on
 that has one, so **the val split is in scope** — and the val split is precisely what carries
 the rung-over-rung comparability this paragraph argues must be protected, so it is the worst
 possible split to lose track of. `notes/training-sources.md:44` carries the standing warning
-(**"ALWAYS SAY WHICH SPLIT"**) and `scripts/test_doc_claims.py` registers v5 TRAIN, VAL and
+(**"ALWAYS SAY WHICH SPLIT"**) and `scripts/gates/test_doc_claims.py` registers v5 TRAIN, VAL and
 TOTAL as three separate facts for this reason; the phrasing `~41,138 v5 rows` matched none of
 the gate's patterns, so it was a silent miss rather than a caught one.
 

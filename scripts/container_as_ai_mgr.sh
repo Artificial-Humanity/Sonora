@@ -1,0 +1,61 @@
+#!/bin/bash
+# container_as_ai_mgr.sh — run INSIDE a throwaway render container, as root,
+# after pip installs and before dropping privileges. Creates the lab's ai-mgr
+# identity (uid 105, host datashare gid 1002) so renders write group-owned,
+# group-writable files instead of root-owned ones (owner convention, extended
+# to ad-hoc containers 2026-07-24).
+#
+# Usage in a docker run bash -c string (repo mounted at /sonora):
+#   pip install ... ;
+#   bash /sonora/scripts/container_as_ai_mgr.sh &&
+#   runuser -u ai-mgr -- bash -c 'umask 002; python /sonora/scripts/...'
+#
+# Notes:
+# - umask 002 in the runuser shell is part of the contract: setgid dirs give
+#   new files the datashare group; 002 makes them group-writable.
+# - GPU access: ai-mgr is added to whatever groups own /dev/kfd and the DRI
+#   render nodes (host gids appear numerically inside the container).
+# - MIOpen find-db: symlinked to the persistent datashare-writable host cache
+#   (gfx1151 cold-db ≈1h fake-hang trap).
+set -u
+groupadd -g 1002 datashare 2>/dev/null
+getent group 109 >/dev/null || groupadd -g 109 ai-mgr
+useradd -u 105 -g 109 -G 1002 -m -s /bin/bash ai-mgr 2>/dev/null
+for d in /dev/kfd /dev/dri/renderD*; do
+  [ -e "$d" ] || continue
+  gid=$(stat -c %g "$d")
+  getent group "$gid" >/dev/null || groupadd -g "$gid" "hw$gid"
+  usermod -aG "$(getent group "$gid" | cut -d: -f1)" ai-mgr
+done
+mkdir -p /home/ai-mgr/.config
+# MIOpen's user find-db must be OWNED by the running user: it calls
+# std::filesystem::permissions() (chmod) on the .ufdb file, and chmod checks
+# ownership, not write bits. Pointing ai-mgr at the host-user-owned cache made
+# every render abort with "cannot set permissions: Operation not permitted"
+# mid-bank, even at mode 777 (owner finding 2026-07-25 — it killed 3 of 4 engines
+# in the teacher-ab-v1 run). ai-mgr therefore gets its OWN cache dir, seeded from
+# the shared one so it is not cold (the gfx1151 cold-db ≈1h fake-hang trap).
+ln -sfn /data/model-training/sonora/miopen-ai-mgr /home/ai-mgr/.config/miopen
+chown -R 105:109 /home/ai-mgr 2>/dev/null
+
+# B-L10. Every step above ends in `2>/dev/null` or `|| true`-shaped tolerance, which is
+# correct for the idempotent ones (a second run must not fail because the group exists)
+# and hides the one failure that matters: ai-mgr not being created at all. The script then
+# exited 0 — `echo` succeeds even when the substitution inside it does not — the caller's
+# `&&` proceeded, and `runuser -u ai-mgr` failed with an error about an unknown user,
+# several lines away from the cause. Worse in synth_bank.sh, where a failing engine is
+# non-fatal by design: the run would report "(engine failed — continuing)" for all five.
+#
+# So: assert the postcondition. Nothing above needs `set -e`; this needs to be true.
+if ! id ai-mgr >/dev/null 2>&1; then
+  echo "!! ai-mgr was not created — renders would run as root and write root-owned" >&2
+  echo "!! files into the campaign, or fail with 'unknown user' several lines from" >&2
+  echo "!! here. Refusing." >&2
+  exit 1
+fi
+if [ ! -d /home/ai-mgr ]; then
+  echo "!! /home/ai-mgr is missing — MIOpen has nowhere writable for its find-db," >&2
+  echo "!! which is the gfx1151 cold-db ~1h fake-hang trap. Refusing." >&2
+  exit 1
+fi
+echo "ai-mgr ready: $(id ai-mgr)"

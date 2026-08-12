@@ -21,10 +21,10 @@ import pathlib
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
-SYNTH = pathlib.Path(__file__).resolve().parent.parent / "scripts" / "synthesis"
-sys.path.insert(0, str(SYNTH))
-
+SYNTH = SCRIPTS
+SCRIPTS.on_path()
 PASSAGE = "the whole of that day he wandered by the river and did not come home at all"
 
 

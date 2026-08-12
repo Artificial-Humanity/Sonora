@@ -19,9 +19,10 @@ import sys
 import warnings
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPTS = os.path.join(REPO, "scripts")
+GATES = os.path.join(REPO, "scripts", "gates")
 PY = os.path.join(REPO, ".venv", "bin", "python")
 
 # Scripts that need nothing but the repo venv.
@@ -62,7 +63,7 @@ FAST = ["test_skill_files.py", "test_text_selection.py"]
 #
 # ⚠ NO ENV-VAR OVERRIDE, because there is nothing to override. The first version of this
 # derived a `SONORA_ARTIFACT_*` name per path and a comment said it was "kept so a host can
-# point the gate at a corpus mounted elsewhere". `scripts/test_doc_claims.py` reads **no
+# point the gate at a corpus mounted elsewhere". `scripts/gates/test_doc_claims.py` reads **no
 # environment variable at all** — `V5`, `V6`, `V4` and `HOLDOUT` are module constants — so
 # setting one moved this list and left the gate reading the original path, i.e. the skip
 # logic and the script would have disagreed about which corpus was present. The comment
@@ -111,7 +112,7 @@ def _run(script):
     if not os.path.exists(PY):
         pytest.skip(f"{PY} is absent — this checkout has no repo venv, so the gate "
                     f"scripts cannot be run as specified (run-mode rule, AGENTS.md).")
-    return subprocess.run([PY, os.path.join(SCRIPTS, script)],
+    return subprocess.run([PY, os.path.join(GATES, script)],
                           capture_output=True, text=True, timeout=900)
 
 
@@ -224,7 +225,7 @@ def test_python_is_the_repo_venv():
 def test_no_uv_run_in_host_shell_scripts():
     """`uv run` on the host is the retired invocation style; keep it retired."""
     offenders = []
-    for root, _dirs, files in os.walk(SCRIPTS):
+    for root, _dirs, files in os.walk(os.path.join(REPO, "scripts")):
         for name in files:
             if not name.endswith(".sh"):
                 continue
@@ -262,7 +263,7 @@ def test_no_uv_run_in_python_docstrings():
         r"^\s*(?:[Rr]un:|Usage:|\$|#)?\s*`?uv run"
         r"(?:\s+--\S+(?:\s+\S+)?)*\s+(?:python\b|[\w./-]+\.py)")
     offenders = []
-    for root, _dirs, files in os.walk(SCRIPTS):
+    for root, _dirs, files in os.walk(os.path.join(REPO, "scripts")):
         for name in files:
             if not name.endswith(".py"):
                 continue

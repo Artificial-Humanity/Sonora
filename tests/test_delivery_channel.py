@@ -1,7 +1,7 @@
 """The delivery channel, contract v2 (§1 of notes/todo.md, closed 2026-08-07).
 
 The migration's whole risk is that a WIDTH mistake and a MEANING mistake look identical
-from outside: both produce a model that renders fluent speech. `scripts/test_vat_dim_seams.py`
+from outside: both produce a model that renders fluent speech. `scripts/gates/test_vat_dim_seams.py`
 covers width (22 checks, run in the training container — it needs torch). This file covers
 meaning, and is torch-free so it runs on the host where `make test` runs.
 
@@ -20,10 +20,10 @@ import re
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
-
+SCRIPTS.on_path()
 delivery = pytest.importorskip("matcha.delivery")
 
 
@@ -141,7 +141,7 @@ def test_the_vocabulary_has_exactly_one_definition():
 def test_the_narration_subset_also_has_one_definition():
     """Same B-L5 shape one level down: one file gets a new narration lane, the other does
     not, and an engine is directed as narration in one and as dialogue in the next."""
-    sys.path.insert(0, str(REPO / "scripts" / "synthesis"))
+    SCRIPTS.on_path()
     book_ingest = pytest.importorskip("book_ingest")
     ref_select = pytest.importorskip("ref_select")
     stage_pool = pytest.importorskip("stage_pool")
@@ -222,7 +222,7 @@ def _register_audition(tmp_path, monkeypatch, lane, header=(
     monkeypatch.setenv("AUDITION_DATA_ROOT", str(tmp_path))
     monkeypatch.setenv("AUDITION_RATINGS_DIR", str(tmp_path / "ratings"))
     monkeypatch.setenv("BOOK_PROSE_ROOT", str(tmp_path / "book-prose"))
-    sys.path.insert(0, str(REPO / "scripts" / "synthesis"))
+    SCRIPTS.on_path()
     sys.modules.pop("register_audition", None)
     mod = importlib.import_module("register_audition")
     audio, csv_path = _one_clip_campaign(tmp_path, lane, header)
@@ -279,7 +279,7 @@ def _mixed_campaign(tmp_path, monkeypatch, lanes):
     monkeypatch.setenv("AUDITION_DATA_ROOT", str(tmp_path))
     monkeypatch.setenv("AUDITION_RATINGS_DIR", str(tmp_path / "ratings"))
     monkeypatch.setenv("BOOK_PROSE_ROOT", str(tmp_path / "book-prose"))
-    sys.path.insert(0, str(REPO / "scripts" / "synthesis"))
+    SCRIPTS.on_path()
     sys.modules.pop("register_audition", None)
     mod = importlib.import_module("register_audition")   # the subject: hard import (#47)
 
@@ -358,7 +358,7 @@ def test_the_write_path_still_refuses_on_the_first_stale_clip(tmp_path, monkeypa
 
 
 def _stage_pool():
-    sys.path.insert(0, str(REPO / "scripts" / "synthesis"))
+    SCRIPTS.on_path()
     import stage_pool                                                 # noqa: E402
     return stage_pool
 
@@ -438,7 +438,7 @@ def test_the_fresh_sheet_header_is_the_apps_schema(tmp_path, monkeypatch):
     Asserted against the app's list rather than against a literal, because a literal here
     would be the third copy of the same schema and would drift the same way.
     """
-    sys.path.insert(0, str(REPO / "scripts" / "synthesis"))
+    SCRIPTS.on_path()
     sys.modules.pop("register_audition", None)
     import register_audition                                          # noqa: E402
     assert register_audition.DEFAULT_FIELDS == _app_csv_fields(tmp_path, monkeypatch)
@@ -626,7 +626,7 @@ def test_the_corpus_derivation_joins_a_lane_rather_than_inventing_one():
     """Delivery is corpus metadata from the ear, not a measure — there is no signal in the
     audio to derive it from. Absent a source every clip is unknown, which is CORRECT for
     LibriTTS."""
-    src = (REPO / "scripts" / "derive_vat_corpus.py").read_text(encoding="utf-8")
+    src = (SCRIPTS / "derive_vat_corpus.py").read_text(encoding="utf-8")
     assert "--delivery-from" in src
     assert "from matcha.delivery import vat_vector" in src
     assert "def _load_delivery(path):" in src

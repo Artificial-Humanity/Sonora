@@ -18,7 +18,7 @@
 # that ~30k clips a model is already fit to has no 100 epochs' worth of signal
 # left in it, so the lever is corpus size, not epochs.
 #
-# Full result: notes/quality-gap-plan.md § 0a. Reproduce: scripts/score_holdout.sh.
+# Full result: notes/quality-gap-plan.md § 0a. Reproduce: scripts/stages/score_holdout.sh.
 # Kept (not deleted) because Phase 1's config will be derived from it, and because
 # the measurement must stay reproducible.
 # ============================================================================
@@ -38,7 +38,7 @@
 # shared clips), so a from-scratch retrain is not forced. Architecture is identical,
 # so every tensor warms.
 #
-#   python scripts/make_warmstart.py --experiment vat3c_finetune \
+#   python scripts/lib/make_warmstart.py --experiment vat3c_finetune \
 #       --donor <vat3-24k checkpoint_epoch=099.ckpt> \
 #       --out /data/model-training/sonora/warmstart/vat3c_init.ckpt
 #   python -m matcha.train experiment=vat3c_finetune \
@@ -47,7 +47,7 @@
 # Pre-flight, both mandatory:
 #   * AI-Lab-0/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
 #     engines (Gemma director, synth_* renderers, Vocalizer), not just the trainer's.
-#   * .venv/bin/python scripts/test_vat_dim_seams.py — the vat_dim guards. This run is
+#   * .venv/bin/python scripts/gates/test_vat_dim_seams.py — the vat_dim guards. This run is
 #     still 3-wide; the test is what keeps it honest when delivery makes it 4.
 #
 # Reading the loss curve: TWO discontinuities sit in logged diff_loss, neither of them a

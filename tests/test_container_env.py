@@ -22,9 +22,9 @@ import stat
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
 LANES = [
-    pathlib.Path("scripts/synthesis/synth_bank.sh"),
-    pathlib.Path("scripts/synthesis/librivox_align.sh"),
-    pathlib.Path("scripts/eiv_score.sh"),
+    pathlib.Path("scripts/stages/synth_bank.sh"),
+    pathlib.Path("scripts/stages/librivox_align.sh"),
+    pathlib.Path("scripts/stages/eiv_score.sh"),
 ]
 SHARED = pathlib.Path("scripts/container_env.sh")
 CAPTURE = pathlib.Path("scripts/capture_container_env.sh")

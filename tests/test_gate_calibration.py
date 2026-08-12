@@ -24,11 +24,11 @@ import pathlib
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-SYNTH = REPO / "scripts" / "synthesis"
-sys.path.insert(0, str(SYNTH))
-
+SYNTH = SCRIPTS
+SCRIPTS.on_path()
 gc = pytest.importorskip("gate_calibration")
 
 RATINGS_HEADER = ["campaign", "id", "engine", "score", "note", "status", "link"]

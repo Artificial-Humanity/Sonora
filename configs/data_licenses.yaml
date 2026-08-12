@@ -147,6 +147,10 @@ datasets:
     # sets the corpus bar at UNRESTRICTED OPEN REDISTRIBUTION and says explicitly that it
     # is stricter than the old commercial test. CC-BY-NC does not clear that bar. Nothing
     # has trained on it either way. See notes/training-sources.md, "The Expresso conflict".
+    # ⚠ STILL UNRESOLVED AS OF 2026-08-12, and do not read the missing fetcher as the answer:
+    # `scripts/download_expresso.py` was deleted that day under #26 step 2 as finished
+    # one-shot tooling, NOT as a licence ruling. The question above is still open; if it is
+    # ever answered yes, the fetcher is in git history.
     dirs: [expresso]
     license: CC-BY-NC-4.0
     class: nc
