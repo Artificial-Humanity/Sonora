@@ -593,8 +593,11 @@ reason is cost against evidence, not a re-reading of the trigger:
   discipline exists to protect — the ladder's one lever per rung;
 - **`ep008` is already selected and trained** (`logs/train/vat6_finetune/SELECTED.md`), so
   the re-cut is a re-cut *and* a re-run;
-- the dial demonstrably works at inference (nonzero gain in all five lanes), so there is no
-  *measured* inference defect to buy with that cost.
+- ~~the dial demonstrably works at inference (nonzero gain in all five lanes), so there is no
+  *measured* inference defect to buy with that cost.~~ ⚠ **STRUCK 2026-08-12. This leg is
+  false now** — §§ 9–10 measured the defect. It is struck rather than deleted because the
+  2026-08-11 decision was taken partly on it, and a reader comparing the two calls needs to
+  see that the ledger changed rather than that the owner changed their mind.
 
 ⚠ **This override is weaker than the version first written here, and the weakening is the
 point.** That version said the pre-commitment "was aimed at a consequence that has since been
@@ -610,6 +613,39 @@ intercept test, which is cheap (90 renders, no training) and belongs before v7's
 `loudness_target` re-key is designed on top of an untested premise. Recorded here so the
 declined pre-commitment is readable beside its trigger, rather than reachable only through
 git history.
+
+### ⚠ 2026-08-12 — the deferred test was run, it found the defect, and the re-cut is STILL declined. This is the cost.
+
+**Owner call, 2026-08-12: record the decline as cost.** Not as resolution. §§ 9–10 answered
+the question the 2026-08-11 override deferred, and answered it against v6: the frames do not
+agree about `A = 0`, the reason is not that the lanes are quieter, and it is structural rather
+than under-training. **The re-cut is declined anyway, on the two surviving reasons above.**
+
+**This decision is weaker-evidenced than the last one and must not be read as its equal.**
+The 2026-08-11 call rested on three legs, one of which was "there is no *measured* inference
+defect". There is now. What remains is cost: rung 2's comparability, and a selected,
+trained `ep008` that a re-cut would also re-run.
+
+**What is being bought, stated as a debt rather than a resolution:**
+
+- **`A = 0` does not denote the same loudness in two lanes, and nothing downstream knows
+  that.** A Director asking for `A = 0` in Speech and in Dialogue gets output whose
+  between-lane loudness matches *neither* lane's training distribution — it is inverted
+  relative to the corpus, at up to **3.49 dB (Speech)**.
+- **The delivery block carries no loudness intercept, and is converging on carrying none.**
+  Rendered between-lane spread fell 3.66 → 1.95 dB over training against a corpus spread of
+  3.48 dB. Whatever else the five channels encode, absolute level at `A = 0` is not in them.
+- **It will not resolve on this corpus.** The run stopped at ep010 on a flat basin, so the
+  trend cannot be extended by training longer; only a re-cut or a different corpus moves it.
+- **v7's `loudness_target` re-key is now knowingly designed on top of a measured defect**
+  rather than an untested premise. That is a smaller error than the one the 2026-08-11 note
+  warned about, but it is not zero, and the re-key should state which of its numbers depend
+  on `A = 0` meaning one thing.
+
+**What would reopen it.** A measured quality or ear consequence attributable to the intercept
+— not to the dial, which works. Nothing here demonstrates one; §§ 9–10 measure the label
+geometry reaching inference, not what a listener hears. **That gap is the honest limit of
+this decline: the defect is established, its audibility is not.**
 
 ---
 
