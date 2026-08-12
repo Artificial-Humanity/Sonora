@@ -163,11 +163,6 @@ NOT_ORCHESTRATORS = {
     "scripts/capture_container_env.sh": "sourced helper — records the resolved environment beside the artifacts (D-M2)",
     SYNTH + "container_as_ai_mgr.sh": "runs INSIDE the throwaway container to create the ai-mgr passwd entry",
     "scripts/fix_pr.sh": "developer tool — drives the local PR fix pass; not a data pass",
-    "scripts/schedule.sh": (
-        "DEAD. Vendored unchanged with the upstream Matcha training codebase (76aa6a6) and never "
-        "touched since: it runs `python src/train.py`, and this repo has no `src/`. Referenced by "
-        "nothing but its own usage comment. Deletion candidate — issue #26 step 2."
-    ),
     SYNTH + "teacher_audition/render_longcat.sh": (
         "Preserved audition provenance for rated clips, and an INTERFACE record for a benched "
         "engine (teacher_audition/README.md). Invokes a toolchain script outside this repo."

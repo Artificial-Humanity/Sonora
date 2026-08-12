@@ -27,8 +27,9 @@ gated subset we actually intend to render is a few hundred.
 
 MODEL COMPARISON. --model accepts any ollama tag and --compare runs two models over the
 same passages and reports their agreement, so "is 26b worth it over 4b" is measured
-rather than assumed. Precedent: make_director_bench.py already benchmarks g2/g4/g26 on
-identical inputs.
+rather than assumed. The precedent was `make_director_bench.py`, which benchmarked
+g2/g4/g26 on identical inputs; it was deleted 2026-08-12 as finished campaign tooling
+(#26 step 2) and is in git history, not on disk.
 
 ⚠ VALIDATE BEFORE TRUSTING. This judge has NOT been checked against the owner's ear. The
 lesson of the audio work is that a plausible instrument can be confidently wrong for days

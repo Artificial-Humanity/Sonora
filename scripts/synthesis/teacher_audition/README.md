@@ -4,6 +4,27 @@ One render script per candidate teacher TTS engine, all driven by the shared
 `stress_script.json` line set, used for the engine auditions that ratified the
 teacher-synthesis portfolio (2026-07-17) and the later quote-pilot benchmark passes.
 
+> ## 📌 THIS DIRECTORY IS PROVENANCE, NOT A LANE — and it is kept on purpose (owner, 2026-08-12)
+>
+> Nothing invokes these scripts and nothing should. **That is not evidence they are dead**, and
+> `scripts/`'s ordinary rule — superseded code is deleted, git history is the archive — does not
+> reach here. Two concrete reasons:
+>
+> 1. **Clips rendered by these files are still rated in `ratings.csv`.** `4e87241` exists for no
+>    other purpose than to preserve four of them (`render_orpheus_pt_v3d.py`,
+>    `render_vibevoice_{15b,q8,v3d}.py`, `realtime_05b_study.sh`) as *"provenance for rated
+>    clips"*. An ear verdict whose renderer is only in git history cannot be reproduced by
+>    anyone who does not already know to go looking for it.
+> 2. **The table below is the interface record, and its rows describe these files.** The
+>    per-engine facts — qwen's single merged `instruct` string with no `voice_description`
+>    parameter, Dia's temperature floor of 1.8, VibeVoice having no instruction slot at all —
+>    are what the next engine-onboarding pass reads. Deleting the subjects leaves a maintained
+>    document describing files that are gone.
+>
+> Issue #26 proposed deleting all 13 renderers as one-shot campaign tooling. **Declined**, and
+> recorded here so the question is not re-litigated at every audit. The two shells in this
+> directory carry the same note in `scripts/pipeline_manifest.py`.
+
 > ⚠️ **These are AUDITION scripts, not the production lane.** Production renders go through
 > `../synth_<engine>.py` + `synth_bank.sh`, which is where loudness normalisation, the QC gate
 > and manifest registration live. The "verdict" column below is a **pointer**, not the record:

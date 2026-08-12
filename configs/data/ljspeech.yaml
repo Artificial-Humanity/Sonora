@@ -1,3 +1,9 @@
+# Upstream's demo dataset, and the DEFAULTS BASE that `hi-fi_en-US_female.yaml` and
+# `vctk.yaml` inherit from — which is why it stays even though nothing trains on LJSpeech.
+# ⚠ The filelists below are no longer buildable by a script in this repo:
+# `scripts/prepare_ljspeech.py` split `metadata.csv` into them and was deleted 2026-08-12
+# (#26 step 2). It is 52 lines in git history. `phonemize_filelist.py` still produces the
+# `_op` variants that `ljspeech_op.yaml` reads, but it reads THESE as its input.
 _target_: matcha.data.text_mel_datamodule.TextMelDataModule
 name: ljspeech
 train_filelist_path: data/LJSpeech-1.1/train.txt
