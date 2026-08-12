@@ -27,7 +27,7 @@ _Last updated: 2026-08-10._
 > an order of magnitude past the −0.0111 that cleared gate 0a. **Data-limited, not
 > capacity-limited — the 10× proceeds.** ep019 is the warm-start donor for v6.
 >
-> **It is a merge, not a derivation** (`scripts/merge_emilia_corpus.py`), and the two halves
+> **It is a merge, not a derivation** (`scripts/tools/merge_emilia_corpus.py`), and the two halves
 > carry labels on deliberately different scales. LibriTTS keeps its per-speaker z; Emilia
 > gets a **global anchor** against v4's distribution, because 2,408 speakers at a median of
 > 3 clips have no per-speaker statistic and re-centring would hand 756 one-clip speakers a
@@ -66,7 +66,7 @@ _Last updated: 2026-08-10._
 > deliberate: rung 1 asks "does volume move quality at all?" for no ear time.
 >
 > Pre-flight is unchanged and non-negotiable: stop **all** inference engines first
-> ([spin-down rule](training-operations.md)), and run `scripts/test_vat_dim_seams.py`
+> ([spin-down rule](training-operations.md)), and run `scripts/gates/test_vat_dim_seams.py`
 > (30 checks). Residual review debt that touches training: [todo.md §1](todo.md).
 > The quality ladder, one table: **[quality-gap-plan.md § the pathway](quality-gap-plan.md)**
 > — the route to a model worth casting. Casting itself is **parked** with an
@@ -90,7 +90,7 @@ delivery labels reproduces v1 conditioning exactly. Owner call; ~1k extra parame
 The 2026-08-04 seam work is what made this safe to do: the four places that silently
 assumed 3 — FiLM trunk, filelist parse, collate, export converter — each refuse a
 mismatch, and the data configs interpolate `vat_dim: ${model.vat_dim}` so the model config
-is the single source of width. `scripts/test_vat_dim_seams.py` is now **35 checks** and
+is the single source of width. `scripts/gates/test_vat_dim_seams.py` is now **35 checks** and
 passes; it is the thing that makes a width disagreement fail loudly at the filelist
 instead of quietly at the trunk.
 
@@ -116,8 +116,8 @@ is what opened the directed teacher-synthesis lane
 ## Checkpoint lineage
 
 Every VAT checkpoint here has a never-trained holdout score. Score new ones with
-`scripts/score_holdout.sh` before quoting any curve; stratify with
-`scripts/stratify_holdout_sweep.py`.
+`scripts/stages/score_holdout.sh` before quoting any curve; stratify with
+`scripts/tools/stratify_holdout_sweep.py`.
 
 | checkpoint | trained on | standing |
 |---|---|---|
@@ -196,7 +196,14 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
   flood guard) and every other `.sh` under `scripts/`.
   `tests/test_stage_coverage.py` iterates it in both directions, so an unwired stage — the
   #24 shape — and an undeclared one both go red. Verified by mutating the tree eight ways;
-  AGENTS.md §5c. The scripts/ *layout* (buckets, moves, deletions) is still open on #26.
+  AGENTS.md §5c.
+- **`scripts/` has a layout** (2026-08-12, #26 steps 2–3): `stages/ lib/ tools/ gates/
+  assets/ teacher_audition/ litert_export/` — 115 files moved, 15 finished one-shots plus a
+  dead vendored shell deleted, and `teacher_audition/` kept with a standing note that it is
+  provenance rather than a lane. 87 sibling-directory `sys.path` hacks collapsed to one
+  repo-root anchor per entry point. `scripts/README.md` is the map;
+  `tests/test_asset_paths.py` guards the `__file__`-relative data paths, and found a gate
+  that had been comparing nothing since the audition app came in-repo.
 - **QC gate is mandatory and enforced**: `synth_bank.sh` exits without registering on
   failure, refuses an empty measures file, and `qc_gate` exits nonzero on zero
   manifests/records/passes (the empty-glob "0/0 hard-pass" hole is closed). Every QC
@@ -296,10 +303,10 @@ headline; open items are in [todo.md](todo.md).
    `corpus_valence_combo_v6.json` (31,197 entries = the v4 lineage + these 846, *not* the
    merged corpus).
    ✅ **All three prerequisites CLOSED 2026-08-10 — the 846 now carry V, A and T.** The
-   acoustic pass had genuinely never run (`scripts/measure_expressive_registers.py` is the
+   acoustic pass had genuinely never run (`scripts/tools/measure_expressive_registers.py` is the
    third measure producer, for the third corpus shape); **846/846 measured, 846/846
    labelled, 0 unmeasurable**. The lane is the **global anchor**, same as Emilia
-   (`scripts/label_expressive_registers.py`) — per-speaker z would hand every appended row
+   (`scripts/tools/label_expressive_registers.py`) — per-speaker z would hand every appended row
    exactly 0.000, since one id per clip means n = 1.
    ⚠ **A needed a loudness correction that V and T did not.** This bank is loudnorm'd
    (median exactly −23.00 LUFS), LibriTTS-R is not (−18.16), and a 2.8-sd gap pinned **A at
@@ -313,7 +320,7 @@ headline; open items are in [todo.md](todo.md).
    is untouched. The distribution did not move: V +0.005 / A +0.024 / T +0.261.
    ✅ **BUILT 2026-08-10 — `data/libritts_r_emilia_expressive_vat_v6`.**
    **41,937 train / 1,331 val · n_spks 3,326 · +826 rows · +2.08 h**, from
-   `scripts/merge_expressive_registers.py`. v5's rows pass through **byte-identical** on
+   `scripts/tools/merge_expressive_registers.py`. v5's rows pass through **byte-identical** on
    both files (verified, not assumed) and v5's split reproduces under the shared hash, so
    rung 2's holdout stays comparable to rung 1's. Merged delivery: Dialogue 344 ·
    Neutral 328 · Newscaster 76 · Speech 68 · blank 10.
@@ -321,7 +328,7 @@ headline; open items are in [todo.md](todo.md).
    speaks £5,000, 43° 10′, 1801, 20–30 fathoms); the sixth is a Gutenberg footnote marker
    `{53}` the reader does not say, costing a row from the 69-row **Speech** lane. Flagged,
    not stripped.
-   <!-- "in the v6 append" is load-bearing: it is how scripts/test_doc_claims.py knows
+   <!-- "in the v6 append" is load-bearing: it is how scripts/gates/test_doc_claims.py knows
    which corpus the 6 and the 832 above belong to. The registry used to reach this line by
    the rule id D-M3, which every v5 statement of the same rule carries too, so the v6
    entries claimed v5 sentences (#48). Keep a corpus marker on this line. -->
@@ -330,7 +337,7 @@ headline; open items are in [todo.md](todo.md).
    **0 of the 832 clips resolve into `LibriTTS_R` or any `emilia*` tree.**
    ⚠ **TWO IN-CONTAINER STEPS REMAIN, neither optional**: `data_statistics` must be
    **re-measured** (they cannot be inherited from v5 — this changes the audio set *and*
-   the split), and `scripts/test_vat_dim_seams.py` must pass. `vat_dim` is unchanged at 8,
+   the split), and `scripts/gates/test_vat_dim_seams.py` must pass. `vat_dim` is unchanged at 8,
    so **`ep019` warm-starts with no widening.**
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).

@@ -179,7 +179,7 @@ All use `rocm/pytorch:latest`, `/dev/kfd` + `/dev/dri`, and bootstrap deps via `
 |---|---|
 | Datasets (license classes: `Sonora/configs/data_licenses.yaml`) | `/data/model-training/datasets/` (`LJSpeech-1.1`, `LibriTTS_R/train-clean-100`, `expresso` — NC, de-risk only). Full inventory + state: [training-sources.md](training-sources.md) |
 | Matcha training logs/checkpoints | `/data/model-training/sonora/logs/train/<experiment>/runs/<stamp>/checkpoints/` (bound over `Sonora/logs`) |
-| Warm-start checkpoints | `/data/model-training/sonora/warmstart/` (`matcha_vctk.ckpt` donor — 22.05 kHz VCTK, so warm-starting from it is a **retrain**, not a fine-tune; `derisk_energy_init.ckpt` / `vat3c_init.ckpt` built by `scripts/make_warmstart.py`) |
+| Warm-start checkpoints | `/data/model-training/sonora/warmstart/` (`matcha_vctk.ckpt` donor — 22.05 kHz VCTK, so warm-starting from it is a **retrain**, not a fine-tune; `derisk_energy_init.ckpt` / `vat3c_init.ckpt` built by `scripts/lib/make_warmstart.py`) |
 | Auto-resume symlink | `/data/model-training/sonora/resume.ckpt` — re-pointed by the compose command at every start |
 | Vocoder workspace | `/data/model-training/vocoder/` (`hifi-gan/` clone with local patches, `filelist_{train,val}.txt`, `cp_hifigan_24k/` checkpoints, `copysynth*/` gate reports, `pretrained/` originals) |
 | Derived VAT filelists | `Sonora/data/libritts_r_vat_v3c/` (`{train,val}_op.txt`, `speakers.json`, `derivation_report.json`, `mel_statistics.json`) — and the `_v1`/`_v2`/`_v3`/`_v3b` siblings. ⚠ `Sonora/data` is an untracked symlink; a deploy clone needs the directory bound explicitly |
@@ -216,17 +216,17 @@ All use `rocm/pytorch:latest`, `/dev/kfd` + `/dev/dri`, and bootstrap deps via `
   checkpoint; only steps since the last save are lost.
 * **Matcha:** Lightning resume via `ckpt_path=`. For **shape-changing** warm starts (new
   speaker table, new FiLM tensors) build the init checkpoint first with
-  `Sonora/scripts/make_warmstart.py` (loads donor `strict=False`, drops shape mismatches,
+  `Sonora/scripts/lib/make_warmstart.py` (loads donor `strict=False`, drops shape mismatches,
   asserts only expected-fresh tensors, saves a resumable ckpt).
 
 ## Standing gates (run these, don't trust vibes)
 
 | Gate | Script (Sonora repo) | Verdict criteria |
 |---|---|---|
-| Vocoder copy-synthesis | `scripts/vocoder_copysynthesis.py --checkpoint <g_XXXXXXX>` | mel-L1 + WER vs the ASR floor on the same clips. **2026-07-14:** untuned baseline 0.659 / 0.323; ckpt 2,505,000 → 0.246 / 0.106; floor 0.064. Converged ≈ WER at floor + mel-L1 plateau (<5% between checkpoints) |
-| Directability / §7 verdict | `scripts/eval_harness.py` (manifest-driven) | pre-registered: Spearman ρ ≥ 0.9, ECAPA leakage ≤ 0.2 (vs real inter-speaker gap), WER Δ ≤ +0.10. **3-channel since 2026-07-16:** produced measures tension→phonation composite, valence→EIV head; plus cross-channel independence (X-sweep moves Y's measure ≤ 0.5× Y's own sweep; groups `clip::channel` via `render_vat_sweep.py --channels`). Should-fail tested against the derisk ckpt: energy PASS, inert V/T + independence correctly FAIL (`/data/model-training/sonora/gate3_shouldfail/report.json`) |
-| Warm-start identity | `scripts/test_vat_identity.py` | bit-identical synthesise at init for vat = 0/None/hot |
-| Export (FiLM ops) | `scripts/test_film_export_gate.py` | litert-torch conversion GPU-clean, corr ≈ 1.0 |
+| Vocoder copy-synthesis | `scripts/tools/vocoder_copysynthesis.py --checkpoint <g_XXXXXXX>` | mel-L1 + WER vs the ASR floor on the same clips. **2026-07-14:** untuned baseline 0.659 / 0.323; ckpt 2,505,000 → 0.246 / 0.106; floor 0.064. Converged ≈ WER at floor + mel-L1 plateau (<5% between checkpoints) |
+| Directability / §7 verdict | `scripts/tools/eval_harness.py` (manifest-driven) | pre-registered: Spearman ρ ≥ 0.9, ECAPA leakage ≤ 0.2 (vs real inter-speaker gap), WER Δ ≤ +0.10. **3-channel since 2026-07-16:** produced measures tension→phonation composite, valence→EIV head; plus cross-channel independence (X-sweep moves Y's measure ≤ 0.5× Y's own sweep; groups `clip::channel` via `render_vat_sweep.py --channels`). Should-fail tested against the derisk ckpt: energy PASS, inert V/T + independence correctly FAIL (`/data/model-training/sonora/gate3_shouldfail/report.json`) |
+| Warm-start identity | `scripts/gates/test_vat_identity.py` | bit-identical synthesise at init for vat = 0/None/hot |
+| Export (FiLM ops) | `scripts/gates/test_film_export_gate.py` | litert-torch conversion GPU-clean, corr ≈ 1.0 |
 | Export (checkpoints) | litert-conversion harness (`/data/toolchain/litert-conversion/`; `convert_final.py` = 22.05k baseline-ljspeech-22k, **`convert_vat.py` = 24k/multi-speaker/VAT**) | per-graph corr ≈ 1.0 — re-run after ANY fine-tune. ~~FiLM graphs need the `vat` wrapper input (open)~~ done 2026-07-16: `spk` + `vat` inputs wired, energy-monotonicity check included |
 
 ## Stop signal — automated convergence watcher (STANDARD for long fine-tunes)
@@ -257,7 +257,7 @@ verdict (logged warning only). Tested live 2026-07-16. Future watchers copy this
 
 | Piece | What |
 |---|---|
-| `Sonora/scripts/render_vat_sweep.py` | The generation half (lives in the training repo — it knows the model): CPU-loads the acoustic ckpt + the promoted 24k HiFi-GAN (`g_02510000`), renders val clips at energy ∈ {−1, −0.5, 0, +0.5, +1} (fixed seed; sweep rows differ only in vat), writes WAVs + `manifest.jsonl` + `speaker_refs.txt` + `render_meta.json`. |
+| `Sonora/scripts/tools/render_vat_sweep.py` | The generation half (lives in the training repo — it knows the model): CPU-loads the acoustic ckpt + the promoted 24k HiFi-GAN (`g_02510000`), renders val clips at energy ∈ {−1, −0.5, 0, +0.5, +1} (fixed seed; sweep rows differ only in vat), writes WAVs + `manifest.jsonl` + `speaker_refs.txt` + `render_meta.json`. |
 | `AI-Lab-AMD/scripts/derisk_gate_watch.sh` | Timer-driven: newest `checkpoint_epoch=*.ckpt` under `logs/train/derisk_energy` newer than `derisk_gate_watch/last_ckpt` → render sweep + `eval_harness.py` in a **throwaway CPU-only container** → postprocess. Repo mounts **rw** (unlike the vocoder gate): the render imports matcha, so the container does the `Cython + -e .` install dance. Sweep WAVs land in `/data/model-training/sonora/derisk_eval/<runstamp>_epochNNN/`. |
 | `AI-Lab-AMD/scripts/derisk_gate_postprocess.py` | Aggregates the harness's per-group verdicts: **CONVERGED = every sweep group passes \|ρ\| ≥ 0.9 AND leakage ≤ 0.2 AND WER Δ ≤ +0.10** (the pre-registered §7 thresholds, applied by the harness itself); appends `history.jsonl`; logs to MLflow **`derisk_energy_gate`** (`gate_rho_min_abs`, `gate_leakage_max`, `gate_wer_delta_max`, `gate_converged`); on convergence writes `derisk_gate_watch/CONVERGED`. |
 | `AI-Lab-AMD/scripts/derisk-gate-watch.{service,timer}` | systemd oneshot + half-hourly timer (`*:11/30`, offset from the vocoder watcher's `:04/30`), `User=lmcfarlin`, `TimeoutStartSec=120min` (render + whisper + ECAPA + install dance). Checkpoints land every 100 epochs (`every_n_epochs: 100`), so a 30 min poll is generous. |
@@ -308,8 +308,8 @@ rw mount for the matcha install).
 3. **License wall** — training refuses undeclared/NC data at datamodule setup. NC de-risk runs
    need `SONORA_LICENSE_WALL=derisk` and are TAINTED (never promote artifacts).
 4. **One GPU** — never run both trainers at once; the queued run waits.
-5. **Filelists are derived artifacts** — regenerate with `scripts/phonemize_filelist.py` /
-   `scripts/derive_vat_corpus.py`; don't hand-edit.
+5. **Filelists are derived artifacts** — regenerate with `scripts/tools/phonemize_filelist.py` /
+   `scripts/lib/derive_vat_corpus.py`; don't hand-edit.
 6. **The `/data/repos/Sonora` deploy clone is a bare `git clone`** — it has none of the
    machine-local derived data products that only exist in the dev tree's untracked `data/`
    subdirs (e.g. `data/libritts_r_vat/`, chore #11's motivating bug's sibling). Hit this
@@ -321,10 +321,10 @@ rw mount for the matcha install).
 7. **Spin down ALL inference before any training run** — the Gemma director, every `synth_*`
    renderer, and the Vocalizer. Standing ai-lab-0 rule, not a courtesy: they share the one GPU.
 8. **`qc_gate.py` needs Python ≤3.12** — newer hosts resolve a numba that refuses to build.
-   The repo `.venv` is 3.11: run it as `.venv/bin/python scripts/synthesis/qc_gate.py …`
+   The repo `.venv` is 3.11: run it as `.venv/bin/python scripts/stages/qc_gate.py …`
    (never `uv run` on the host — AGENTS §3).
 9. **Renders run as ai-mgr (105:109), not root**, in throwaway `rocm/pytorch` containers via
-   `scripts/synthesis/container_as_ai_mgr.sh` + `umask 002`. MIOpen's find-db must be **owned**
+   `scripts/container_as_ai_mgr.sh` + `umask 002`. MIOpen's find-db must be **owned**
    by that user — chmod checks ownership, not write bits — hence the separate `miopen-ai-mgr`
    cache. See the gotchas section of [tts-engine-onboarding.md](tts-engine-onboarding.md).
 

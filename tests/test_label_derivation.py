@@ -12,12 +12,10 @@ import pathlib
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
-sys.path.insert(0, SCRIPTS)
-sys.path.insert(0, str(REPO))
-
+SCRIPTS.on_path()
 np = pytest.importorskip("numpy")
 
 
@@ -210,8 +208,8 @@ def test_spread_alone_is_not_enough():
 # voice the model has learned. These check the corpus ON DISK rather than a stub: the merge
 # is a one-off derivation, and the artifact is what a run will read.
 
-MERGED = os.path.join(os.path.dirname(SCRIPTS), "data", "libritts_r_emilia_vat_v5")
-BASE = os.path.join(os.path.dirname(SCRIPTS), "data", "libritts_r_vat_v4")
+MERGED = os.path.join(REPO, "data", "libritts_r_emilia_vat_v5")
+BASE = os.path.join(REPO, "data", "libritts_r_vat_v4")
 
 pytestmark_merged = pytest.mark.skipif(
     not os.path.isdir(MERGED), reason="the merged corpus is not on this machine")
@@ -307,7 +305,7 @@ def test_the_digit_filter_asks_what_the_tokenizer_will_see():
 def test_the_old_spellings_are_gone_from_both_lanes():
     """One rule, one implementation — beside the tokenizer that does the deleting."""
     for name in ("merge_emilia_corpus.py", "derive_vat_corpus.py"):
-        src = (REPO / "scripts" / name).read_text(encoding="utf-8")
+        src = (SCRIPTS / name).read_text(encoding="utf-8")
         code = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
         assert "op_g2p.carries_digits(" in code, f"{name} does not use the shared rule"
         assert 'search(r"[0-9]"' not in code, f"{name} still carries its own spelling"
@@ -341,10 +339,10 @@ def test_one_wer_threshold_serves_both_lanes():
     """The corpus filter and the QC gate ask the same question of a transcript, and two
     copies of one threshold is the review's most repeated finding (B-L5, D-L2). `qc_gate`
     re-exports `synth_common`'s rather than declaring its own."""
-    sys.path.insert(0, os.path.join(SCRIPTS, "synthesis"))
+    sys.path.insert(0, str(SCRIPTS.dirs[0]))
     sc = pytest.importorskip("synth_common")
     assert isinstance(sc.ASR_MAX_WER, float)
-    gate = open(os.path.join(SCRIPTS, "synthesis", "qc_gate.py"), encoding="utf-8").read()
+    gate = open(str(SCRIPTS / "qc_gate.py"), encoding="utf-8").read()
     assert "ASR_MAX_WER = synth_common.ASR_MAX_WER" in gate, "the threshold forked again"
 
 
@@ -408,7 +406,7 @@ def test_a_missing_weighted_head_refuses_instead_of_biasing_v():
 
 def test_the_merge_drops_an_unlabelable_clip_rather_than_dying():
     """A corpus build is 13k clips long; one bad row must cost that row, not the run."""
-    src = (REPO / "scripts" / "merge_emilia_corpus.py").read_text(encoding="utf-8")
+    src = (SCRIPTS / "merge_emilia_corpus.py").read_text(encoding="utf-8")
     assert "except anchor_mod.LabelError" in src
     assert 'drop("unlabelable"' in src
 
@@ -418,7 +416,7 @@ def test_an_asr_error_row_names_the_clip_it_dropped():
     neither absent nor droppable by the `rec is None` test — `rec["wer"]` raised a bare
     `KeyError: 'wer'` late in a ~13k-clip run, naming no clip, from a script whose every
     other refusal says which clip and why."""
-    src = (REPO / "scripts" / "merge_emilia_corpus.py").read_text(encoding="utf-8")
+    src = (SCRIPTS / "merge_emilia_corpus.py").read_text(encoding="utf-8")
     assert 'if "wer" not in rec:' in src
     i, j = src.index('if "wer" not in rec:'), src.index('if rec["wer"] > ASR_MAX_WER')
     assert i < j, "the guard must precede the read it protects"

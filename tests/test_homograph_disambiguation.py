@@ -25,9 +25,10 @@ import sys
 
 import pytest
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
+from scripts_layout import SCRIPTS
 
+REPO = pathlib.Path(__file__).resolve().parent.parent
+SCRIPTS.on_path()
 from matcha.text.homographs import (  # noqa: E402
     ADJ,
     ATTRIBUTIVE,
@@ -39,6 +40,7 @@ from matcha.text.homographs import (  # noqa: E402
     is_homograph,
     resolve,
 )
+from scripts_layout import SCRIPTS  # noqa: E402
 
 
 # --- the table itself -----------------------------------------------------------------

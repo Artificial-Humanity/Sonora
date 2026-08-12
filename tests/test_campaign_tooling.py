@@ -20,12 +20,11 @@ import re
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-SYNTH = REPO / "scripts" / "synthesis"
-sys.path.insert(0, str(SYNTH))
-
-
+SYNTH = SCRIPTS
+SCRIPTS.on_path()
 def _src(name):
     return (SYNTH / name).read_text(encoding="utf-8")
 

@@ -1,5 +1,5 @@
 # LibriTTS-R train-clean-100 @ native 24 kHz, FULL 3-channel V/A/T labels
-# (scripts/derive_vat_corpus.py v2: V = EIV valence_combo_v1 per-speaker z,
+# (scripts/lib/derive_vat_corpus.py v2: V = EIV valence_combo_v1 per-speaker z,
 # A = LUFS z, T = phonation trio + soft-json harshness repair; independence
 # gate PASS all pairs — see data/libritts_r_vat_v2/derivation_report.json).
 # Same 29,441-clip audio split as libritts_r_vat, so mel statistics carry over.

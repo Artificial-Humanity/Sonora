@@ -1,9 +1,10 @@
 """Which pipeline stages a dataset-generation pass must run, and which shell wires each.
 
 This file exists because **"nothing invokes this script" is the normal, healthy state in
-`scripts/`** — 114 non-test files, 31,217 lines, four times the model package, most of them
-operator tools or finished campaign one-shots — so being uninvoked carried no signal, and a
-*stage* that stopped being invoked looked exactly like the ~80 files that never were.
+`scripts/`** — 99 non-test files after #26 step 2, most of them operator tools — so being
+uninvoked carried no signal, and a *stage* that stopped being invoked looked exactly like
+the ~70 files that never were. The buckets (`scripts/README.md`) now say what a file IS;
+this file is what makes a stage's WIRING checkable.
 `qc_verdict.py` sat in that fog for a month: named in `synth_bank.sh` inside a comment, and
 never run (issue #24). 695 directed clips reached the ear with no intended-vs-measured check.
 
@@ -63,7 +64,7 @@ class Stage(NamedTuple):
     role: str
 
 
-SYNTH = "scripts/synthesis/"
+STAGES = "scripts/stages/"
 
 # Shells an orchestrator may run without them being stages: two are `.`-sourced definition
 # files, and the third runs inside the throwaway container to create the ai-mgr passwd
@@ -78,46 +79,46 @@ STRUCTURAL_HELPERS = (
 # Statically wired orchestrators: every stage below must appear as a real invocation, and
 # every scripts/ file really invoked must appear below.
 ORCHESTRATORS = {
-    SYNTH + "synth_bank.sh": {
+    STAGES + "synth_bank.sh": {
         "purpose": "the synthetic-bank generation pass: render, normalise, gate, register",
         "stages": (
-            Stage(SYNTH + "check_bank.py", "refuses a malformed bank before any GPU time is spent"),
+            Stage(STAGES + "check_bank.py", "refuses a malformed bank before any GPU time is spent"),
             # One branch per engine. WHICH engines run is a runtime choice; that each engine
             # the script can select is actually reachable is not.
-            Stage(SYNTH + "synth_chatterbox.py", "engine render — chatterbox (live, trusted-provisional)"),
-            Stage(SYNTH + "synth_dia.py", "engine render — dia (benched; branch retained)"),
-            Stage(SYNTH + "synth_moss85.py", "engine render — moss85 (not a directed teacher; cloning candidate)"),
-            Stage(SYNTH + "synth_moss_vg.py", "engine render — moss_vg (live, scrutinized tier)"),
-            Stage(SYNTH + "synth_orpheus.py", "engine render — orpheus (live, normal tier)"),
-            Stage(SYNTH + "synth_qwen.py", "engine render — qwen (live, trusted tier)"),
-            Stage(SYNTH + "synth_vibevoice.py", "engine render — vibevoice (benched; branch retained)"),
-            Stage(SYNTH + "synth_zonos.py", "engine render — zonos (live, normal tier)"),
+            Stage(STAGES + "synth_chatterbox.py", "engine render — chatterbox (live, trusted-provisional)"),
+            Stage(STAGES + "synth_dia.py", "engine render — dia (benched; branch retained)"),
+            Stage(STAGES + "synth_moss85.py", "engine render — moss85 (not a directed teacher; cloning candidate)"),
+            Stage(STAGES + "synth_moss_vg.py", "engine render — moss_vg (live, scrutinized tier)"),
+            Stage(STAGES + "synth_orpheus.py", "engine render — orpheus (live, normal tier)"),
+            Stage(STAGES + "synth_qwen.py", "engine render — qwen (live, trusted tier)"),
+            Stage(STAGES + "synth_vibevoice.py", "engine render — vibevoice (benched; branch retained)"),
+            Stage(STAGES + "synth_zonos.py", "engine render — zonos (live, normal tier)"),
             Stage(
-                SYNTH + "normalize_loudness.py",
+                STAGES + "normalize_loudness.py",
                 "-23 LUFS, fatal on failure, and it must precede QC — the measures are level-sensitive",
             ),
-            Stage(SYNTH + "qc_gate.py", "QC stage 1 — measurable defects (mandatory after every pass)"),
-            Stage(SYNTH + "qc_verdict.py", "QC stage 2 — intended-vs-measured direction check (issue #24)"),
-            Stage(SYNTH + "qc_engine_defects.py", "per-engine defect roll-up across the campaign"),
-            Stage(SYNTH + "register_audition.py", "writes the campaign's clips into ratings.csv"),
+            Stage(STAGES + "qc_gate.py", "QC stage 1 — measurable defects (mandatory after every pass)"),
+            Stage(STAGES + "qc_verdict.py", "QC stage 2 — intended-vs-measured direction check (issue #24)"),
+            Stage(STAGES + "qc_engine_defects.py", "per-engine defect roll-up across the campaign"),
+            Stage(STAGES + "register_audition.py", "writes the campaign's clips into ratings.csv"),
         ),
         # A stage that is itself an orchestrator. Easy to miss in an audit that greps for
         # `.py`: the bank pass produces the EIV scores by running the EIV lane, and without
         # them `qc_verdict --eiv` has nothing to merge.
-        "invokes_orchestrators": ("scripts/eiv_score.sh",),
+        "invokes_orchestrators": ("scripts/stages/eiv_score.sh",),
         "non_stage_scripts": (),
         "deliberately_not_invoked": {},
     },
-    SYNTH + "librivox_align.sh": {
+    STAGES + "librivox_align.sh": {
         "purpose": "the real-audio force-align pass: segment a book into the clip pool",
         "stages": (
-            Stage(SYNTH + "librivox_align.py", "force-aligns canonical text to the reading and cuts clips"),
-            Stage(SYNTH + "qc_gate.py", "the QC gate follows EVERY dataset pass — real audio is not exempt"),
+            Stage(STAGES + "librivox_align.py", "force-aligns canonical text to the reading and cuts clips"),
+            Stage(STAGES + "qc_gate.py", "the QC gate follows EVERY dataset pass — real audio is not exempt"),
         ),
         "invokes_orchestrators": (),
         "non_stage_scripts": (),
         "deliberately_not_invoked": {
-            SYNTH + "stage_pool.py": (
+            STAGES + "stage_pool.py": (
                 "The aligner fills the POOL; the pool is not the audition queue. Registering here "
                 "auto-queued 652 unaudited rows off one book on 2026-08-01, which is the flood the "
                 "pool/staging split exists to prevent. The script is PRINTED as the next step and "
@@ -126,16 +127,16 @@ ORCHESTRATORS = {
             ),
         },
     },
-    "scripts/eiv_score.sh": {
+    "scripts/stages/eiv_score.sh": {
         "purpose": "the EIV labelling pass (LAION Empathic-Insight-Voice heads)",
-        "stages": (Stage("scripts/eiv_score.py", "scores wavs into an append-only, resumable jsonl"),),
+        "stages": (Stage("scripts/stages/eiv_score.py", "scores wavs into an append-only, resumable jsonl"),),
         "invokes_orchestrators": (),
         "non_stage_scripts": (),
         "deliberately_not_invoked": {},
     },
-    "scripts/score_holdout.sh": {
+    "scripts/stages/score_holdout.sh": {
         "purpose": "the holdout scorer — the SSOT for cross-run checkpoint comparison",
-        "stages": (Stage("scripts/score_holdout.py", "teacher-forced forward passes over the frozen holdout"),),
+        "stages": (Stage("scripts/stages/score_holdout.py", "teacher-forced forward passes over the frozen holdout"),),
         "invokes_orchestrators": (),
         # setup.py builds monotonic_align (Cython) in a /tmp copy of the package. A build
         # step, not a pipeline stage, and named here so it is allowed rather than ignored.
@@ -161,13 +162,13 @@ DYNAMIC_DISPATCH = {
 NOT_ORCHESTRATORS = {
     "scripts/container_env.sh": "sourced, not run — the shared pinned-image and uv bootstrap definitions",
     "scripts/capture_container_env.sh": "sourced helper — records the resolved environment beside the artifacts (D-M2)",
-    SYNTH + "container_as_ai_mgr.sh": "runs INSIDE the throwaway container to create the ai-mgr passwd entry",
+    "scripts/container_as_ai_mgr.sh": "runs INSIDE the throwaway container to create the ai-mgr passwd entry",
     "scripts/fix_pr.sh": "developer tool — drives the local PR fix pass; not a data pass",
-    SYNTH + "teacher_audition/render_longcat.sh": (
+    "scripts/teacher_audition/render_longcat.sh": (
         "Preserved audition provenance for rated clips, and an INTERFACE record for a benched "
         "engine (teacher_audition/README.md). Invokes a toolchain script outside this repo."
     ),
-    SYNTH + "teacher_audition/realtime_05b_study.sh": (
+    "scripts/teacher_audition/realtime_05b_study.sh": (
         "Preserved audition provenance — added for exactly that reason in 4e87241. Invokes a "
         "toolchain script outside this repo."
     ),

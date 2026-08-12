@@ -47,9 +47,9 @@ pytestmark = pytest.mark.skipif(not DATA.is_dir(), reason="/data is not mounted 
 # filed in a machine-blueprint repo. The dashboard hops remain cross-repo and correctly so —
 # a lab status page really is the box's.
 MIRRORS = [
-    (REPO / "scripts/synthesis/teacher_audition",
+    (REPO / "scripts/teacher_audition",
      DATA / "toolchain/teacher-audition", "*.py"),
-    (REPO / "scripts/synthesis/teacher_audition",
+    (REPO / "scripts/teacher_audition",
      DATA / "toolchain/teacher-audition", "*.sh"),
     (REPO / "audition/app",
      DATA / "services/audition/app", "*.py"),

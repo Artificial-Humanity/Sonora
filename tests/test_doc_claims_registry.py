@@ -2,7 +2,7 @@
 
 WHY THIS FILE EXISTS (2026-08-11, issue #49)
 --------------------------------------------
-`scripts/test_doc_claims.py` is two things in one file: a set of artifact reads, and a body
+`scripts/gates/test_doc_claims.py` is two things in one file: a set of artifact reads, and a body
 of subtle regex — lookbehinds, scope alternations, and an explicit rule ("never scope a fact
 on the value it checks") that was enforced by nothing. The artifact half is rightly
 data-gated and skips on every machine except ai-lab-0. The regex half needs no artifacts at
@@ -31,7 +31,7 @@ import re
 import pytest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GATE = os.path.join(REPO, "scripts", "test_doc_claims.py")
+GATE = os.path.join(REPO, "scripts", "gates", "test_doc_claims.py")
 
 
 def _load_gate():

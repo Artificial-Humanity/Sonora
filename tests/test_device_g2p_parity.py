@@ -28,9 +28,10 @@ import re
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
+SCRIPTS.on_path()
 sys.path.insert(0, str(REPO / "scripts" / "litert_export"))
 
 device_g2p = pytest.importorskip("device_g2p")

@@ -13,12 +13,12 @@ in [notes/README.md](notes/README.md). Before starting work, read
 ## Core Stack Matrix
 
 * **Language Ecosystem:** Python-based ML training pipeline.
-* **Second lane — teacher synthesis (`scripts/synthesis/`):** five audited TTS engines
+* **Second lane — teacher synthesis (`scripts/stages/`):** five audited TTS engines
   (`chatterbox`, `qwen`, `zonos`, `orpheus`, `moss_vg`; `vibevoice` + `dia` are set aside,
   reversible — `ref_select.SET_ASIDE`) driven by a two-pass Gemma director — per-line
   V/A/T + a register copied from the 47-label controlled lexicon
-  (`scripts/synthesis/register_lexicon.json`), then per-engine casting/delivery from
-  `scripts/synthesis/director_skills/<engine>.md`. Engine allocation is the three-layer
+  (`scripts/assets/register_lexicon.json`), then per-engine casting/delivery from
+  `scripts/assets/director_skills/<engine>.md`. Engine allocation is the three-layer
   `ref_select.ENGINE_MIX_BY_LANE` (capability veto · measured per-lane weights ·
   diversity floor). **`build_direction()` in `book_ingest.py` is the single source of
   truth for what each engine actually receives — never bypass it; unknown engines are fatal.**
@@ -266,7 +266,7 @@ case-insensitive macOS/Windows.
 
 ### 5b. The doc-claims gate can stop enforcing WITHOUT going red
 
-`scripts/test_doc_claims.py` compares documented numbers against the artifacts on disk. It
+`scripts/gates/test_doc_claims.py` compares documented numbers against the artifacts on disk. It
 has **five silent-disarm modes** — **four observed on 2026-08-11, and one reasoned from the
 mechanism** (mode 2, see its own correction) — none of which was written down
 anywhere until now — which is the same reason the workflow-validation trap in §1 cost the
@@ -361,11 +361,26 @@ lesson. **If a fix touches an input to a stated number, re-derive the number.**
 
 ### 5c. A pipeline stage is WIRED, or it is merely WRITTEN ABOUT
 
-`scripts/` holds 114 non-test files and most of them are *correctly* uninvoked — operator
-tools, finished campaign one-shots. So "nothing calls this" carries no signal there, and a
+`scripts/` holds 99 non-test files and most of them are *correctly* uninvoked — operator
+tools, finished campaign tooling. So "nothing calls this" carries no signal there, and a
 **stage** that stopped being called is indistinguishable from a tool that never was. That is
 how `qc_verdict.py` was named in a `synth_bank.sh` comment for a month and never ran, while
 695 directed clips reached the ear with no direction check (issue #24).
+
+* **The buckets say what a file IS; the manifest says whether it RUNS. Read
+  [scripts/README.md](scripts/README.md) before adding anything under `scripts/`.**
+  `stages/ lib/ tools/ gates/ assets/ teacher_audition/ litert_export/` (#26 step 3,
+  2026-08-12). Every file under `scripts/<bucket>/` is **exactly two levels down** on
+  purpose — one repo-root expression is then correct everywhere, which is what replaced 87
+  scattered `sys.path.insert(0, dirname(__file__))` calls and what makes the path guard
+  below possible.
+* ⚠ **Checked-in data a script reads goes in `scripts/assets/`, resolved from the repo root.**
+  `tests/test_asset_paths.py` asserts every in-repo path built from `__file__` points at the
+  thing it names. That class of bug does not fail at import — it fails when something READS
+  the path, which for the synthesis lane is hours into a GPU render, and for
+  `book_ingest`'s register lexicon does not fail at all: the load sits inside
+  `except Exception: return []`, so a wrong depth silently yields an empty controlled
+  vocabulary and every bank after it is built without one.
 
 * **`scripts/pipeline_manifest.py` declares every stage and which shell wires it**, and
   `tests/test_stage_coverage.py` iterates it in both directions: a stage declared and not

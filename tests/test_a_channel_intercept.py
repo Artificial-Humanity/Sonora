@@ -20,9 +20,10 @@ import os
 from contextlib import redirect_stdout
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "scripts", "derive_a_channel_stats.py")
+SCRIPT = str(SCRIPTS / "derive_a_channel_stats.py")
 
 LANES = ("Dialogue", "Neutral", "Newscaster", "Speech")
 

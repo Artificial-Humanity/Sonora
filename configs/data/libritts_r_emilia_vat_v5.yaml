@@ -7,13 +7,13 @@
 #   41,138 train / 1,304 val · 78.5 h · 2,500 speakers
 #   v4 was 30,485 / 960 · 51.3 h · 247 speakers — so +36% clips, +53% hours, 10× speakers.
 #
-# Built by `scripts/merge_emilia_corpus.py`, NOT by `derive_vat_corpus --root`, and the
+# Built by `scripts/tools/merge_emilia_corpus.py`, NOT by `derive_vat_corpus --root`, and the
 # reason is the labels. The derive lane computes V/A/T as a per-speaker z-score, which is
 # right for LibriTTS (247 speakers, ~127 clips each) and destroys Emilia (2,408 speakers,
 # median 3 clips): re-centring a TAIL-SELECTED clip on its own speaker's mean hands 756
 # one-clip speakers a label of exactly 0.0, and those clips were selected for being
 # extreme. Emilia is labelled on the GLOBAL anchor instead — owner's option 1, 2026-08-08,
-# `scripts/anchor_emilia_labels.py` — same composites, same clamp2, z-scored against v4's
+# `scripts/lib/anchor_emilia_labels.py` — same composites, same clamp2, z-scored against v4's
 # own distribution rather than against a speaker who has three clips.
 #
 # ⚠ THE TWO HALVES MEAN SLIGHTLY DIFFERENT THINGS, and it is written here rather than

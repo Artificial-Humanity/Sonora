@@ -50,7 +50,7 @@ onboarding pattern + interface gotchas: [tts-engine-onboarding.md](tts-engine-on
 | **Step-Audio-EditX** | Code Apache-2.0 but weights repo carries no license — unstated = fails the wall until StepFun clarifies |
 | **DramaBox** (Resemble, LTX-2 Community License) | Conditional (revenue cap, no-training clause, disclosure rider) — not CC-BY-4.0-or-freer. Owner: **on ice**; private-lineage-only if ever revisited |
 
-Watch list (deliberately deferred): `scripts/synthesis/teacher_audition/README.md` —
+Watch list (deliberately deferred): `scripts/teacher_audition/README.md` —
 GLM-TTS waits on its unreleased post-RL checkpoint (repo dormant since 2026-01);
 Kimi-Audio is an instrument candidate, not an actor. Revisit scope is **quality
 rejections only, never license rejections** ([tts-engine-onboarding.md](tts-engine-onboarding.md)).
@@ -59,7 +59,7 @@ rejections only, never license rejections** ([tts-engine-onboarding.md](tts-engi
 
 > No TTS model enters the portfolio without a studied interface — the actual renderer
 > call signature, verified at the call site — and a Gemma skill-file adapter in
-> `scripts/synthesis/director_skills/`. If we cannot say what reaches the model, we
+> `scripts/assets/director_skills/`. If we cannot say what reaches the model, we
 > cannot direct it, and we must not grade it.
 
 ## Measured standing
@@ -143,5 +143,5 @@ labels. Its 55 clips stay out of training corpora while benched (v6, 2026-08-09)
 > bench above is for something the model *is*, not something it failed to do.
 
 **Referenced from** (these point here, never restate a status):
-`scripts/synthesis/teacher_audition/README.md`, `notes/delivery-mix-campaign.md`,
-`scripts/synthesis/ref_select.py`.
+`scripts/teacher_audition/README.md`, `notes/delivery-mix-campaign.md`,
+`scripts/lib/ref_select.py`.

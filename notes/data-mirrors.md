@@ -29,7 +29,7 @@ Ours, and where the source of truth lives:
 | `/data` path | tracked in | status |
 |---|---|---|
 | `toolchain/litert-conversion/*.py`, `README.md` | `Sonora/github/scripts/litert_export/` | **copy RETIRED 2026-08-06** — executes from the repo now, see below |
-| `toolchain/teacher-audition/render_*.{py,sh}`, `coach_dia_threat.py` | `Sonora/github/scripts/synthesis/teacher_audition/` | in sync |
+| `toolchain/teacher-audition/render_*.{py,sh}`, `coach_dia_threat.py` | `Sonora/github/scripts/teacher_audition/` | in sync |
 | `services/audition/app/main.py` | `AI-Lab-AMD/audition/app/` | in sync |
 | `services/dashboard/index.html`, `scripts/update_status.sh` | `AI-Lab-AMD/dashboard/` | in sync |
 

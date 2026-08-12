@@ -45,8 +45,8 @@ prevent.
 
 ## The container lanes (D-M2, closed 2026-08-07)
 
-The three throwaway-container lanes — `scripts/synthesis/synth_bank.sh`,
-`scripts/synthesis/librivox_align.sh`, `scripts/eiv_score.sh` — now source one pin table,
+The three throwaway-container lanes — `scripts/stages/synth_bank.sh`,
+`scripts/stages/librivox_align.sh`, `scripts/stages/eiv_score.sh` — now source one pin table,
 [`scripts/container_env.sh`](../scripts/container_env.sh):
 
 * **The image is pinned by digest**, `rocm/pytorch@sha256:4449f856…`, the one every

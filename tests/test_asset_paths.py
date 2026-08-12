@@ -30,6 +30,7 @@ import pathlib
 import subprocess
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 

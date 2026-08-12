@@ -88,7 +88,7 @@ jobs:
       # on a runner. `test_data_gated_gate` skips when none of its prerequisites is present
       # — "the corpus is not on this machine" is not a finding. ⚠ Note what that means for
       # the gate script itself: `pyproject.toml`'s `testpaths = "tests/"` does not collect
-      # `scripts/test_doc_claims.py`, and the one test that would run it as a subprocess
+      # `scripts/gates/test_doc_claims.py`, and the one test that would run it as a subprocess
       # skips here, so ITS per-fact skip machinery never executes in this job. Do not read
       # a green run as having exercised it. What this job guards is the
       # ~500 host-independent tests, including `tests/test_doc_claims_registry.py`, which is

@@ -20,12 +20,12 @@
 # If the holdout barely moves, that is the expected result — rung 2 is a conditioning
 # rung, not a volume rung, and the volume lever is rung 3.
 #
-# Built by `scripts/merge_expressive_registers.py` — a THIRD merge script, because this is
+# Built by `scripts/tools/merge_expressive_registers.py` — a THIRD merge script, because this is
 # a third corpus shape: flat, keyed by `ratings.csv`, ear-certified, and labelled ahead of
 # time rather than during the merge.
 #
 # LABELS: the appended rows use the SAME global anchor as the Emilia half
-# (`scripts/label_expressive_registers.py`), for the same reason. One speaker id per clip
+# (`scripts/tools/label_expressive_registers.py`), for the same reason. One speaker id per clip
 # (owner 2026-08-09, identity is not recoverable) makes every appended row n = 1 under
 # per-speaker z, which returns exactly 0.000 on all three channels — a fabricated label
 # indistinguishable from a real one.

@@ -47,7 +47,7 @@ file_mounts:
   # #6: a fresh clone has no data/ dir). Must be shipped explicitly.
   ~/sky_workdir/data/libritts_r_vat_v2: /data/model-training/sonora/data/libritts_r_vat_v2
 
-  # 90 MB resumable epoch-0 checkpoint built by scripts/make_warmstart.py.
+  # 90 MB resumable epoch-0 checkpoint built by scripts/lib/make_warmstart.py.
   ~/warmstart/vat3_init.ckpt: /data/model-training/sonora/warmstart/vat3_init.ckpt
 
 setup: |

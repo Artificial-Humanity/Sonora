@@ -15,7 +15,7 @@ _Established by the Phase 0 (baseline-ljspeech-22k) and §7 de-risk (derisk-ener
 checkpoint on purpose, because a mobile host told nothing about the last five channels being
 categorical will interpolate them ([todo.md §1](todo.md)). Shipped on the training side is
 not shipped on the device.
-The seam assertions that make the width safe are proven to fire (`scripts/test_vat_dim_seams.py`).
+The seam assertions that make the width safe are proven to fire (`scripts/gates/test_vat_dim_seams.py`).
 Last updated: 2026-08-09._
 
 ---
@@ -84,7 +84,7 @@ Contract changes bump the version and require an owner call.
   in writing per source; record in the promotion README. Personally-acquired media never enters
   the public lineage; analysis/benchmark use and the private-lineage firewall are governed by
   [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (2026-07-17).
-* **Filelist format:** `path|spk|phonemes|v,a,t`, pre-phonemized (`scripts/phonemize_filelist.py`)
+* **Filelist format:** `path|spk|phonemes|v,a,t`, pre-phonemized (`scripts/tools/phonemize_filelist.py`)
   so training images need no G2P stack. Filelists are derived data: regenerable by script, never
   the source of truth.
 * **Label recipe (validated by the energy channel, ρ ≈ 1.000):** weak labels suffice. Continuous
@@ -109,8 +109,8 @@ Contract changes bump the version and require an owner call.
 * **Conditioning dropout `vat_cond_dropout=0.15`** — non-negotiable: it tolerates label noise AND
   keeps the unconditional mode alive for classifier-free-guidance-style amplification at
   inference (the "amp it up" lever — validated 2026-07-16, see contract §1 Amplification row and
-  `scripts/render_guidance_demo.py`).
-* **Warm-start** from the nearest prior checkpoint (`scripts/make_warmstart.py` pattern); never
+  `scripts/tools/render_guidance_demo.py`).
+* **Warm-start** from the nearest prior checkpoint (`scripts/lib/make_warmstart.py` pattern); never
   cold-start when a lineage checkpoint exists.
 * Vocoder per tier: fine-tune from a universal checkpoint at the contract mel config; gate by
   copy-synthesis (WER ≤ ASR floor + 0.02 AND |Δ mel-L1| < 5% between consecutive checkpoints).
@@ -145,7 +145,7 @@ Thresholds are written down before the run; overriding one requires a written re
 | Cross-channel independence | sweeping channel X at others=0 must not move the other channels' produced measures beyond their per-step effect |
 | Human audit | mandatory before any promotion — the harness qualifies, ears decide |
 
-Produced measures live in `scripts/eval_harness.py` `MEASURES` (energy→LUFS, duration→seconds,
+Produced measures live in `scripts/tools/eval_harness.py` `MEASURES` (energy→LUFS, duration→seconds,
 f0→pyin median; each new channel adds its measure — tension→phonation composite).
 
 The **Vocalizer** (`vocalizer.py`, `sonora-vocalizer.ai-lab-0.mcfarlin.family`) is the standing

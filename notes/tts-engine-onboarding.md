@@ -39,11 +39,11 @@ in two places so it cannot rot:
 
 - `AI-Lab-AMD/audition/app/main.py::RELAY` — so the audition card can strike
   through direction the engine never received, and we never score a model for it.
-- `scripts/synthesis/book_ingest.py::build_direction()` — the single source of
+- `scripts/lib/book_ingest.py::build_direction()` — the single source of
   truth for assembling each engine's payload.
 
 ### 3. Write the skill file — the Gemma adapter
-One markdown file per engine at `scripts/synthesis/director_skills/<engine>.md`,
+One markdown file per engine at `scripts/assets/director_skills/<engine>.md`,
 injected into the casting pass's system prompt. It must state:
 
 - What the engine actually accepts, and what it does **not**.
@@ -148,7 +148,7 @@ teachers, and explicitly out of scope here:
   independent verifier the whole label pipeline leans on.
 
 **Deliberately deferred, not un-auditioned —** the watch list in
-[`scripts/synthesis/teacher_audition/README.md`](../scripts/synthesis/teacher_audition/README.md)
+[`scripts/teacher_audition/README.md`](../scripts/teacher_audition/README.md)
 already governs these, and the reasoning is sound. Do not pull them forward:
 
 - **`zai-org/GLM-TTS`** (MIT, zero-shot cloning, EN supported / CN-primary) — **the
@@ -440,7 +440,7 @@ all 80 was zero.
 
 **`qc_gate.py` needs Python ≤3.12.** On newer hosts, librosa resolves a numba that
 refuses to build. The repo `.venv` is 3.11 — run it as
-`.venv/bin/python scripts/synthesis/qc_gate.py` (never `uv run` on the host — AGENTS §3).
+`.venv/bin/python scripts/stages/qc_gate.py` (never `uv run` on the host — AGENTS §3).
 
 **An ad-hoc render script must live where `ai-mgr` can read it.** Renders drop privileges
 to uid 105, and the session scratchpad under `/tmp/claude-*` is owned by the human user with

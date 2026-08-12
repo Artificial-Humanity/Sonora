@@ -68,7 +68,7 @@ text ─────────────────────────
 ```
 
 - **Measurement notation — utterance level CONSOLIDATED (2026-07-19):**
-  `scripts/derive_markup_measures.py` →
+  `scripts/tools/derive_markup_measures.py` →
   `/data/model-training/sonora/markup_prep/utterance_notation.jsonl` — **30,541 rows**, one
   per trusted text-adjoined clip: 30,351 LibriTTS-R v2 rows (transcript + V/A/T labels +
   LUFS/alpha/CPP/H1-H2 + all EIV heads + valence combo; zero gaps) + 190 owner-certified
@@ -141,7 +141,7 @@ DiffusionGemma serving analysis for a model that never became servable.
 | Inline tags vs sidecar JSON? | **Sidecar is canonical; inline is a rendered projection**, never authored, never parsed back. Ratified v0.1. | [markup-schema-brief.md §1](markup-schema-brief.md) |
 | Which corpus first? | The certified synthetic set — smaller, intended direction known, closes the loop fastest. Ran as the 100-clip spike: **PASS at 93%**, 89/96 kept. | [markup-schema-brief.md §5](markup-schema-brief.md) |
 | Does the Audience listener train from the same pairs now or later? | **Later.** Goal 6 is a parked vision note; nothing is scheduled. | [high-ambition-6](high-ambition-6-audience-conveyance-stt.md) |
-| Where does reverse-conveyance run? | `scripts/derive_markup_measures.py` is the notation half and exists (30,541 rows). ⚠ It is **frozen at v2 paths** and mis-keys the contiguous v2 index under `"speaker"` — a trap for the span-markup spike (D-L5). | [todo.md §8](todo.md) |
+| Where does reverse-conveyance run? | `scripts/tools/derive_markup_measures.py` is the notation half and exists (30,541 rows). ⚠ It is **frozen at v2 paths** and mis-keys the contiguous v2 index under `"speaker"` — a trap for the span-markup spike (D-L5). | [todo.md §8](todo.md) |
 
 **Still genuinely open**, and it is the one thing this brief did not solve: the **span
 decode layer**. Per-token pitch/energy/duration and pause structure do not exist in the

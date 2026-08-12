@@ -21,10 +21,10 @@ import pathlib
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
-SYNTH = pathlib.Path(__file__).resolve().parent.parent / "scripts" / "synthesis"
-sys.path.insert(0, str(SYNTH))
-
+SYNTH = SCRIPTS
+SCRIPTS.on_path()
 np = pytest.importorskip("numpy")
 sf = pytest.importorskip("soundfile")
 pytest.importorskip("pyloudnorm")

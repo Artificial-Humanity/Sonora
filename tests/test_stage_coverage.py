@@ -38,7 +38,8 @@ MANIFEST_PATH = REPO / "scripts" / "pipeline_manifest.py"
 
 
 def _load_manifest():
-    """`scripts/` is not a package (`pyproject.toml` excludes it), so load by path."""
+    """Loaded by path: `pyproject.toml` excludes `scripts*` from the package, deliberately
+    (see the comment there), so there is no import name to reach the manifest by."""
     spec = importlib.util.spec_from_file_location("sonora_pipeline_manifest", MANIFEST_PATH)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

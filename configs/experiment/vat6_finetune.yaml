@@ -61,7 +61,7 @@
 # Pre-flight, all mandatory:
 #   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
 #     engines (Gemma director, synth_* renderers, Vocalizer), not just the trainer's.
-#   * scripts/test_vat_dim_seams.py — IN-CONTAINER (they need torch). 35 checks.
+#   * scripts/gates/test_vat_dim_seams.py — IN-CONTAINER (they need torch). 35 checks.
 #     ⚠ Run it with a container that has real shm: the suite and the datamodule both use
 #     DataLoader workers, and `sonora_vocalizer` has Docker's default 64 MB /dev/shm,
 #     which DEADLOCKS them silently — 8 workers alive at 0.0% CPU, no error, forever. The
@@ -111,7 +111,7 @@
 #
 #   # donor: vat5_finetune's SELECTED ep019, under the run dir recorded in STATE.md
 #   # (/data/model-training/sonora/logs/train/vat5_finetune/runs/<stamp>/checkpoints/).
-#   python scripts/make_warmstart.py --experiment vat6_finetune \
+#   python scripts/lib/make_warmstart.py --experiment vat6_finetune \
 #       --donor <.../vat5_finetune/runs/<stamp>/checkpoints/checkpoint_019.ckpt> \
 #       --donor-speakers data/libritts_r_emilia_vat_v5/speakers.json \
 #       --out /data/model-training/sonora/warmstart/vat6_init.ckpt
@@ -126,7 +126,7 @@
 # speakers on random rows. The two `model_checkpoint` overrides are equally non-optional —
 # see the checkpointing block below for why `save_top_k=-1` is the one that bites.
 #
-# JUDGING THIS RUN: score on the never-trained holdout (scripts/score_holdout.sh,
+# JUDGING THIS RUN: score on the never-trained holdout (scripts/stages/score_holdout.sh,
 # data/libritts_r_holdout_devclean), NEVER on loss/val_epoch — v6's val set is 1,331 clips
 # spanning THREE domains now (LibriTTS, Emilia, expressive-registers), so a move in it
 # could be any of them.

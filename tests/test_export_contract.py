@@ -14,10 +14,10 @@ import re
 import sys
 
 import pytest
+from scripts_layout import SCRIPTS  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO))
-
+SCRIPTS.on_path()
 delivery = pytest.importorskip("matcha.delivery")
 CONVERTER = REPO / "scripts" / "litert_export" / "convert_vat.py"
 SRC = CONVERTER.read_text(encoding="utf-8")
@@ -162,7 +162,7 @@ def test_the_shipped_manifest_predates_the_contract_and_is_readable():
 
 # --- F-M1 / F-M5: the referee ---------------------------------------------------------
 
-REFEREE = REPO / "scripts" / "export_fidelity_referee.py"
+REFEREE = SCRIPTS / "export_fidelity_referee.py"
 REF_SRC = REFEREE.read_text(encoding="utf-8")
 
 
@@ -303,7 +303,7 @@ def test_the_converter_gained_the_same_scale_sensitive_gates():
 
 # --- F-M2: rename_tflite_tensors -------------------------------------------------------
 
-RENAMER = REPO / "scripts" / "rename_tflite_tensors.py"
+RENAMER = SCRIPTS / "rename_tflite_tensors.py"
 
 
 @pytest.fixture(scope="module")

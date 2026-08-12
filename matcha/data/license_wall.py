@@ -136,6 +136,6 @@ def refuse_holdout(filelist_paths):
             + "  The clean holdout is the lineage's only never-trained measurement and\n"
               "  there is no second dev-clean to replace it. One epoch over it and every\n"
               "  cross-rung comparison the plan depends on becomes meaningless.\n"
-              "  To SCORE a checkpoint on it, use scripts/score_holdout.py, which reads\n"
+              "  To SCORE a checkpoint on it, use scripts/stages/score_holdout.py, which reads\n"
               "  the filelist without ever putting it in front of an optimizer."
         )

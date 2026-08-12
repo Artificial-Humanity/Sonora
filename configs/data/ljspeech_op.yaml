@@ -1,5 +1,5 @@
 # LJSpeech with filelists pre-phonemized by the espeak-free G2P lane
-# (scripts/phonemize_filelist.py → matcha/text/op_g2p.py). Text in the
+# (scripts/tools/phonemize_filelist.py → matcha/text/op_g2p.py). Text in the
 # *_op filelists is already espeak-style IPA over the locked vocab, so the
 # only "cleaner" is the identity — the training container needs neither
 # espeak-ng nor the phonemizer package.
