@@ -16,8 +16,6 @@ import sys
 import pytest
 from scripts_layout import SCRIPTS  # noqa: E402
 
-SYNTH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                     "scripts", "synthesis")
 SCRIPTS.on_path()
 synth_common = pytest.importorskip("synth_common")
 

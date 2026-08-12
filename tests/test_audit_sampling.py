@@ -11,6 +11,7 @@ import csv
 import json
 import math
 import os
+import re
 import pathlib
 import sys
 import time
@@ -27,6 +28,89 @@ def _src(name):
 BANK = "scripts/stages/synth_bank.sh"
 
 
+def _strip_trailing_comment(line):
+    """Drop an unquoted `#`-to-end-of-line. POSIX rule: `#` opens a comment only at the
+    start of a word, so `${VAR#pat}`, `$#` and `sha#1` survive, and so does a `#` inside
+    quotes.
+
+    ⚠ Added 2026-08-12 because a WHOLE-LINE comment filter is not a comment filter.
+    `_code_lines` drops a line whose *first* character is `#`; a trailing comment stayed in
+    the joined command and satisfied every wiring assertion. Reproduced: every real
+    `qc_verdict.py` invocation removed from `synth_bank.sh` and the name left in a trailing
+    comment → the whole suite green. That is issue #24 verbatim, walking through the ratchet
+    built to stop it.
+    """
+    out, quote, i = [], None, 0
+    while i < len(line):
+        c = line[i]
+        if quote:
+            out.append(c)
+            if c == "\\" and quote == '"' and i + 1 < len(line):
+                i += 1
+                out.append(line[i])
+            elif c == quote:
+                quote = None
+        elif c in "'\"":
+            quote = c
+            out.append(c)
+        elif c == "#" and (i == 0 or line[i - 1].isspace()):
+            break
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out).rstrip()
+
+
+# `echo`/`printf` possibly behind redirections, a brace/paren/`!`, or VAR= prefixes.
+_ECHO_HEAD = re.compile(
+    r"""(?:^|(?<=[;&|{(]|\s))                    # clause start
+        (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*   # prefixes
+        (?:echo|printf)\b""",
+    re.X,
+)
+
+
+def _without_printed_text(cmd):
+    """`cmd` with every `echo`/`printf` and its arguments removed.
+
+    ⚠ Added 2026-08-12. The old filter tested `cmd.split()[0]`, so it only ever caught a
+    LEADING BARE `echo` — and these files are full of the other spellings:
+    `>&2 echo "…"`, `[ -f x ] || { echo "…"; }`, `case … *) echo "…" >&2;; esac`. Any of
+    them applied to a recovery hint left a stage fully unwired and the suite green
+    (reproduced on both forms). `librivox_align.sh`'s `stage_pool` line is a fixture for
+    the leading-bare form ONLY, which is why the redirected and braced forms get their own
+    assertions below.
+
+    Residual, and stated rather than hidden: a WRAPPER (`die "…run qc_verdict.py…"`) is not
+    an `echo` and is not removed. No such wrapper exists in any orchestrator today; if one
+    lands, it belongs in this pattern.
+    """
+    out, i = [], 0
+    while i < len(cmd):
+        m = _ECHO_HEAD.search(cmd, i)
+        if not m:
+            out.append(cmd[i:])
+            break
+        out.append(cmd[i:m.start()])
+        # skip to the end of this clause, respecting quotes
+        j, quote = m.end(), None
+        while j < len(cmd):
+            c = cmd[j]
+            if quote:
+                if c == "\\" and quote == '"':
+                    j += 1
+                elif c == quote:
+                    quote = None
+            elif c in "'\"":
+                quote = c
+            elif c in ";&|":
+                break
+            j += 1
+        out.append(" ")
+        i = j
+    return "".join(out)
+
+
 def _shell_commands(rel):
     """(lineno, command) for each shell command in `rel`: comments dropped, `\\`-joined.
 
@@ -35,6 +119,8 @@ def _shell_commands(rel):
     two apart, and a guard that a comment can satisfy is how this file came to name a
     stage it never ran (issue #24). `_code_lines` is imported rather than copied: it is
     `test_container_env.py`'s definition of "a code line", and having one is the point.
+    TRAILING comments are stripped here rather than there, because `_code_lines`' other
+    callers want the whole line.
 
     Continuations are joined because the invocations under test span several lines, so a
     per-line search would see `--append-flags` and the script it belongs to as unrelated
@@ -45,6 +131,9 @@ def _shell_commands(rel):
 
     start, parts = None, []
     for n, line in _code_lines(rel):
+        line = _strip_trailing_comment(line)
+        if not line:
+            continue
         if start is None:
             start = n
         if line.endswith("\\"):
@@ -58,16 +147,20 @@ def _shell_commands(rel):
 
 
 def _invocations(rel):
-    """`_shell_commands` minus the `echo`es.
+    """`_shell_commands` minus everything that is merely PRINTED.
 
     Every stage in `synth_bank.sh` prints the command to run by hand when it fails, so the
     recovery hints name the very scripts these tests are checking are RUN. An `echo` that
     mentions `qc_verdict.py` is one more way to describe a stage without invoking it, and
     is exactly what would keep a wiring test green after the invocation was removed.
+
+    A command is no longer dropped wholesale — the printed CLAUSES are removed and the rest
+    of the command is kept, so `cmd && echo "hint"` still reports the `cmd`.
     """
     for n, cmd in _shell_commands(rel):
-        if cmd.split(maxsplit=1)[0] not in ("echo", "printf"):
-            yield n, cmd
+        kept = _without_printed_text(cmd).strip()
+        if kept:
+            yield n, kept
 
 
 def _first_line_with(rel, needle, extra=None):
@@ -75,6 +168,62 @@ def _first_line_with(rel, needle, extra=None):
         if needle in cmd and (extra is None or extra in cmd):
             return n
     return None
+
+
+# --- the parser is the guard, so the parser gets its own tests -------------------------
+#
+# Every wiring assertion in this repo reduces to "does `_invocations` report this script".
+# Until 2026-08-12 the answer was yes for two spellings that run nothing, and the reason it
+# went unnoticed is that the mutation battery only ever mutated CODE — never PROSE. These
+# are literals rather than file mutations so they cannot drift with the orchestrators.
+
+
+@pytest.mark.parametrize("line,expected", [
+    # the defect: a trailing comment naming a stage
+    ('"$PY" "$S/qc_gate.py" --dir "$D"  # then qc_verdict.py merges the axes',
+     '"$PY" "$S/qc_gate.py" --dir "$D"'),
+    # code with no comment is untouched
+    ('"$PY" "$S/qc_verdict.py" --eiv x', '"$PY" "$S/qc_verdict.py" --eiv x'),
+    # a `#` that does not START a word is not a comment — these must survive intact
+    ('grep "#" file', 'grep "#" file'),
+    ("echo '# literal'", "echo '# literal'"),
+    ('N="${VAR#prefix}"', 'N="${VAR#prefix}"'),
+    ('test $# -gt 0', 'test $# -gt 0'),
+    # a whole-line comment reduces to nothing
+    ('# comment naming qc_verdict.py', ''),
+])
+def test_a_trailing_comment_is_not_code(line, expected):
+    """`_code_lines` only ever dropped lines STARTING with `#`. A trailing comment survived
+    into the joined command and satisfied the wiring assertions — issue #24's exact shape,
+    passing through the ratchet built for it. The `${VAR#pat}` and `$#` rows are the reason
+    this is a quote-aware scan and not `line.split("#")[0]`."""
+    assert _strip_trailing_comment(line) == expected
+
+
+@pytest.mark.parametrize("cmd", [
+    'echo "  !! Recover with: $PY $S/qc_verdict.py --eiv x"',
+    '>&2 echo "  !! Recover with: $PY $S/qc_verdict.py --eiv x"',
+    '2>&1 printf "%s\\n" "$PY $S/qc_verdict.py"',
+    '[ -f x ] || { echo "run $PY $S/qc_verdict.py"; }',
+    'if [ -z "$D" ]; then echo "see $S/qc_verdict.py"; fi',
+    'LC_ALL=C echo "see $S/qc_verdict.py"',
+])
+def test_printed_text_is_not_an_invocation(cmd):
+    """The old filter tested the FIRST TOKEN only, so every spelling here counted as a
+    call. `librivox_align.sh`'s `stage_pool` hint is a fixture for the leading bare form
+    alone — these are the ones it never covered."""
+    assert "qc_verdict.py" not in _without_printed_text(cmd), cmd
+
+
+@pytest.mark.parametrize("cmd", [
+    '"$PY" "$S/qc_verdict.py" --eiv x && echo "  ok, wrote verdicts"',
+    '"$PY" "$S/qc_verdict.py" --eiv x || { echo "  !! failed"; exit 1; }',
+])
+def test_a_real_invocation_survives_its_own_success_message(cmd):
+    """Dropping the whole command when it contains an `echo` would be the opposite defect:
+    every stage in `synth_bank.sh` reports what it did, and a filter that removed those
+    commands wholesale would report the pipeline as empty."""
+    assert "qc_verdict.py" in _without_printed_text(cmd), cmd
 
 
 # --- C-L6: the trusted tier's tail sample rounded to zero -----------------------------

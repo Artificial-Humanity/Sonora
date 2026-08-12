@@ -7,14 +7,16 @@ moves one directory deeper or shallower. It fails when something *reads* the pat
 for the synthesis lane is minutes to hours into a GPU render, and for `register_lexicon.json`
 is a bank built without the register vocabulary rather than a bank that failed to build.
 
-`director_skills/` is read from four future buckets' worth of modules and
-`register_lexicon.json` from eleven files including `audition/app/main.py`, so a layout
-change (#26 step 3) touches every one of these depths at once. Reading them is not
-verification: none of the lanes that consume them can run on the host — no torch — so
-"it looked right" is the whole of the evidence otherwise available.
+Measured 2026-08-12: **3 files build a path to `director_skills/`** and **4 to
+`register_lexicon.json`**, spread across `lib/`, `tools/` and `gates/` — so one layout change
+touches several different depths at once. (An earlier version of this docstring said
+"eleven files including `audition/app/main.py`". That was the count of files MENTIONING the
+name, most of them in prose, and `main.py` is not one of the readers at all — it derives the
+vocabulary and says so.)
 
-**What is asserted:** if a module-level path constant's final literal segment names
-something that exists somewhere in this repo, the path the code builds must resolve to it.
+**What is asserted:** if a path expression's final literal segment names something that
+exists somewhere in this repo, the path the code builds must resolve to it. Both named
+constants and paths used inline are checked.
 No allow-list, and nothing to keep in sync: a constant naming a runtime *output* has a tail
 that exists nowhere in the tree and is skipped, and a constant naming a repo asset cannot be
 skipped by accident because the tail is what selects it.
@@ -30,7 +32,9 @@ import pathlib
 import subprocess
 
 import pytest
-from scripts_layout import SCRIPTS  # noqa: E402
+# NOTE: this guard enumerates `scripts/**/*.py` ITSELF (see SCRIPTS below), not via
+# `scripts_layout.SCRIPTS` — different populations: that resolver knows seven bucket
+# directories, this needs every tracked .py. Importing it here only shadowed the name.
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
@@ -43,9 +47,11 @@ class Unresolvable(Exception):
 
 
 def _tracked_basenames():
-    out = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True, check=True)
+    # `-z`: `git ls-files` C-quotes non-ASCII and leaves a space unquoted, so splitting
+    # on newlines/whitespace shreds both into fragments that match nothing.
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, check=True)
     names = {}
-    for rel in out.stdout.splitlines():
+    for rel in out.stdout.split("\0"):
         if not rel:
             continue
         p = pathlib.PurePosixPath(rel)
@@ -94,10 +100,31 @@ def _eval(node, here, env):
             raise Unresolvable(f"{name}()")
         args = [_eval(a, here, env) for a in node.args]
         if name == "join":
+            if not args:
+                raise Unresolvable("join()")
             return os.path.join(*args)
-        if name in ("dirname",):
+        if name == "dirname":
+            if not args:
+                raise Unresolvable("dirname()")
             return os.path.dirname(args[0])
-        return args[0] if args else ""
+        # ⚠ `Path("a", "b")` is `a/b`, NOT `a`. Returning `args[0]` discarded the tail that
+        # SELECTS the asset, so `Path(parents[2], "director_skills")` resolved to
+        # `…/scripts/synthesis` — a tail that exists — and PASSED at a deliberately wrong
+        # depth. A false green on exactly the mutation this file exists to catch.
+        if name == "Path":
+            if not args:
+                raise Unresolvable("Path()")
+            return os.path.join(*args)
+        # abspath / realpath / normpath / expanduser: identity is right for ONE argument.
+        # As a zero-arg METHOD (`Path(x).expanduser()`) there are no `node.args` at all, and
+        # `args[0] if args else ""` returned "" — a RELATIVE result, so the guard reported
+        # "built at the wrong depth" about code that was correct. A guard that goes red on
+        # correct code gets switched off, which is the outcome this file's docstring is
+        # written to avoid. Raise instead: a skipped constant costs coverage, a wrong one
+        # costs the guard.
+        if len(args) != 1:
+            raise Unresolvable(f"{name}() with {len(args)} arg(s)")
+        return args[0]
     raise Unresolvable(type(node).__name__)
 
 
@@ -142,21 +169,80 @@ def _path_constants(rel):
 
     visit(tree.body)  # module level first, so later scopes can use its constants
     visit([n for n in ast.walk(tree) if not any(n is b for b in tree.body)])
+
+    # ⚠ A path that is USED rather than NAMED was invisible until 2026-08-12, and one of the
+    # two assets this file exists for was unguarded at one of its three sites because of it:
+    #
+    #   LEXICON = json.load(open(os.path.join(
+    #       os.path.dirname(os.path.abspath(__file__)), "register_lexicon.json")))["lexicon"]
+    #
+    # The `Assign` target is `LEXICON` and its value is a `json.load(...)` call →
+    # `Unresolvable("load()")` → skipped. `make_teacher_ab_bank.py`'s `SKILL_DIR` on the same
+    # file WAS caught, so the file looked covered. Verified: mutating that `dirname` to a
+    # wrong depth left the suite green. So every join/Path expression is evaluated wherever
+    # it appears, not only where it is bound to a name.
+    seen = {(lineno, value) for _, lineno, value in out}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        fname = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+        if fname not in ("join", "Path"):
+            continue
+        # Rooted directly OR through a name already resolved from `__file__` — the whole
+        # point is `os.path.join(_SONORA_REPO, "scripts", "assets", "x.json")`, whose own
+        # node never mentions `__file__`. Requiring it here is what left this site
+        # unguarded on the first attempt at this fix.
+        if not ("__file__" in ast.dump(node) or any(
+            isinstance(n, ast.Name) and n.id in env for n in ast.walk(node)
+        )):
+            continue
+        try:
+            value = _eval(node, here, env)
+        except (Unresolvable, IndexError, TypeError, AttributeError, KeyError):
+            continue
+        if (node.lineno, value) not in seen:
+            seen.add((node.lineno, value))
+            out.append((f"<{fname}() at line {node.lineno}>", node.lineno, value))
     return out
 
 
 SCRIPTS = sorted(
     p for p in subprocess.run(
-        ["git", "ls-files", "scripts/*.py", "scripts/**/*.py"],
+        ["git", "ls-files", "-z", "scripts/*.py", "scripts/**/*.py"],
         cwd=REPO, capture_output=True, text=True, check=True,
-    ).stdout.split()
+    ).stdout.split("\0") if p
 )
 
 
-def test_the_enumeration_is_not_empty():
-    """Every case below is parametrized off this list; an empty one reports green."""
-    assert len(SCRIPTS) >= 80, f"only {len(SCRIPTS)} scripts found — is the enumeration working?"
+def test_the_guard_actually_asserts_something():
+    """The floor has to count FALSIFIABLE assertions, not files enumerated.
+
+    `len(SCRIPTS)` was the wrong population: 107 green cases of which 93 assert nothing at
+    all, because most scripts build no in-repo path. Worse, six of the constants that ARE
+    asserted are self-ancestors — `HERE = dirname(abspath(__file__))` resolves to a
+    directory containing the file being parsed, so it exists by construction and can never
+    fail. Counting those as coverage is silent-disarm mode 1 wearing a number.
+    """
     assert TRACKED, "git ls-files returned nothing"
+    assert len(SCRIPTS) >= 80, f"only {len(SCRIPTS)} scripts enumerated — is the listing working?"
+
+    falsifiable = []
+    for rel in SCRIPTS:
+        here = (REPO / rel).resolve()
+        for name, lineno, value in _path_constants(rel):
+            if pathlib.PurePosixPath(value).name not in TRACKED:
+                continue                      # a runtime output, not an asset
+            target = pathlib.Path(value)
+            if not target.is_absolute():
+                target = REPO / target
+            if target.resolve() in here.parents:
+                continue                      # self-ancestor: true by construction
+            falsifiable.append(f"{rel}:{lineno} {name}")
+    assert len(falsifiable) >= 12, (
+        f"only {len(falsifiable)} falsifiable asset paths found (expected the 13 measured on "
+        f"2026-08-12). If the evaluator stopped resolving a spelling, this is what notices:\n"
+        + "\n".join(falsifiable)
+    )
 
 
 @pytest.mark.parametrize("rel", SCRIPTS, ids=SCRIPTS)

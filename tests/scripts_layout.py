@@ -34,15 +34,26 @@ class _Scripts:
     dirs = tuple(REPO / "scripts" / b for b in BUCKETS) + (REPO / "scripts",)
 
     def __truediv__(self, name):
-        for d in self.dirs:
-            candidate = d / name
-            if candidate.exists():
-                return candidate
-        raise FileNotFoundError(
-            f"no script named {name!r} under scripts/ — looked in "
-            f"{[d.name for d in self.dirs]}. If it was deleted, the test that names it "
-            f"should go too; if it moved out of these buckets, add the bucket here."
-        )
+        found = [d / name for d in self.dirs if (d / name).exists()]
+        if not found:
+            raise FileNotFoundError(
+                f"no script named {name!r} under scripts/ — looked in "
+                f"{[d.name for d in self.dirs]}. If it was deleted, the test that names it "
+                f"should go too; if it moved out of these buckets, add the bucket here."
+            )
+        # ⚠ AMBIGUITY RAISES TOO, since 2026-08-12. The safety property below was one-sided:
+        # a basename that exists ONCE cannot silently read nothing, but one that exists MORE
+        # than once resolved to whichever bucket sorts first in BUCKETS and said nothing at
+        # all. `SCRIPTS / "README.md"` returned `teacher_audition/README.md` out of three
+        # candidates — and not the one AGENTS.md §5c tells every reader to consult. A lookup
+        # whose whole premise is "no silent branch" must not have one.
+        if len(found) > 1:
+            raise FileNotFoundError(
+                f"{name!r} is ambiguous under scripts/ — "
+                f"{[str(p.relative_to(REPO)) for p in found]}. Name the bucket explicitly "
+                f"rather than letting BUCKETS order decide."
+            )
+        return found[0]
 
     def src(self, name):
         return (self / name).read_text(encoding="utf-8")

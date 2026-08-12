@@ -1,7 +1,8 @@
 """Which pipeline stages a dataset-generation pass must run, and which shell wires each.
 
 This file exists because **"nothing invokes this script" is the normal, healthy state in
-`scripts/`** — 99 non-test files after #26 step 2, most of them operator tools — so being
+`scripts/`** — 100 non-test `.py` files after #26 step 2 (106 tracked, less the 6 gate
+scripts), most of them operator tools — so being
 uninvoked carried no signal, and a *stage* that stopped being invoked looked exactly like
 the ~70 files that never were. The buckets (`scripts/README.md`) now say what a file IS;
 this file is what makes a stage's WIRING checkable.
@@ -50,8 +51,11 @@ spent). This manifest is the coverage half: it is what makes the *set* complete.
    comment-aware guard green.
 
 Both are handled by `tests/test_audit_sampling.py::_invocations`, which the coverage test
-imports rather than copies. `librivox_align.sh`'s `stage_pool` line is the live fixture for
-mechanism 2 — see `deliberately_not_invoked` below.
+imports rather than copies. ⚠ Both were only PARTLY closed until 2026-08-12: the comment
+filter dropped whole-line comments only, and the echo filter matched a LEADING BARE `echo`
+only — so a trailing comment and `>&2 echo "…"` each walked a fully unwired stage through
+the guard. `librivox_align.sh`'s `stage_pool` line is a live fixture for the leading-bare
+form; the other spellings are covered by literal fixtures in `test_audit_sampling.py`.
 """
 
 from typing import NamedTuple
@@ -118,12 +122,13 @@ ORCHESTRATORS = {
         "invokes_orchestrators": (),
         "non_stage_scripts": (),
         "deliberately_not_invoked": {
-            STAGES + "stage_pool.py": (
+            "scripts/tools/stage_pool.py": (
                 "The aligner fills the POOL; the pool is not the audition queue. Registering here "
                 "auto-queued 652 unaudited rows off one book on 2026-08-01, which is the flood the "
                 "pool/staging split exists to prevent. The script is PRINTED as the next step and "
                 "run by hand. It is also this manifest's only live fixture for the echo filter: if "
-                "the parser ever stopped dropping `echo`es, this entry is what fails."
+                "the parser ever stopped dropping a LEADING BARE `echo`, this entry is what fails — the "
+                "redirected and braced spellings have their own fixtures in test_audit_sampling.py."
             ),
         },
     },

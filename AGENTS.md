@@ -361,8 +361,8 @@ lesson. **If a fix touches an input to a stated number, re-derive the number.**
 
 ### 5c. A pipeline stage is WIRED, or it is merely WRITTEN ABOUT
 
-`scripts/` holds 99 non-test files and most of them are *correctly* uninvoked — operator
-tools, finished campaign tooling. So "nothing calls this" carries no signal there, and a
+`scripts/` holds **100 non-test `.py` files** (106 tracked, less the 6 gate scripts) and
+most of them are *correctly* uninvoked — operator tools, finished campaign tooling. So "nothing calls this" carries no signal there, and a
 **stage** that stopped being called is indistinguishable from a tool that never was. That is
 how `qc_verdict.py` was named in a `synth_bank.sh` comment for a month and never ran, while
 695 directed clips reached the ear with no direction check (issue #24).
@@ -468,12 +468,50 @@ because it is box tooling, but it deploys from whichever repo owns the code:
 | `dashboard` → `/data/services/dashboard` | `AI-Lab-AMD/dashboard` | `deploy.sh dashboard` |
 | `stack` → the compose services | `AI-Lab-AMD` | `deploy.sh stack` |
 
-⚠ **`SONORA_REPO` names the source checkout, and it defaults to `Sonora/github` — the
-caretaker's tree, which is usually on a feature branch.** An agent working in a linked
-worktree must pass it explicitly: `SONORA_REPO=$PWD deploy.sh audition`. Two things to check
-first, both cheap and both real: that no other branch has touched the target's directory
-since the deployed commit (`git log <deployed-sha>..origin/main -- audition/`), or the deploy
-reverts someone's work; and that the source tree is CLEAN, which `require_clean` enforces.
+⚠ **`deploy.sh` reads `SONORA_REPO` for the source checkout and defaults it to
+`Sonora/github` — the caretaker's tree, which is usually on a feature branch.** Scoped to
+`deploy.sh` on purpose: the same name has three *other* readers in this repo with different
+defaults (`scripts/litert_export/run.sh`, `convert_vat.py`, `scripts/stages/score_holdout.py`
+— the last falling back to the container path `/sonora`), so an unqualified "it defaults to
+`Sonora/github`" is false of every in-repo consumer.
+
+An agent working in a linked worktree passes it **per command**:
+
+```bash
+SONORA_REPO="$(git rev-parse --show-toplevel)" deploy.sh audition
+```
+
+* `--show-toplevel`, not `$PWD`: it is exact from any depth and returns the *linked
+  worktree's* root. `$PWD` means "wherever I happen to be standing", and an agent that
+  `cd`'d into `audition/` to make the change would hand `deploy.sh` a source root of
+  `<worktree>/audition` — which inherits a git dir from the worktree and passes
+  `require_source`.
+* ⚠ **Prefix it; do not `export` it.** `scripts/litert_export/run.sh` honours an inherited
+  `SONORA_REPO` through `${SONORA_REPO:-…}`, so an export run later in the same session
+  would resolve `import matcha` out of the worktree instead of the caretaker tree.
+  `convert_vat.py`'s guard cannot see that — it only asserts `matcha/models/matcha_tts.py`
+  exists, which is true of any worktree — and its own comment names the stakes: *a wrong
+  export converts cleanly and its graphs run*.
+
+⚠ **THE CHECK THAT ANSWERS "will this deploy revert someone's work" IS AN ANCESTRY TEST, NOT
+A LOG RANGE.** `rsync --delete` replaces the target with *your tree*, so the question is
+whether your tree already contains everything the deployed copy has:
+
+```bash
+git fetch origin                                          # remote-tracking refs are SHARED
+                                                          # across worktrees and may be days old
+git merge-base --is-ancestor <deployed-sha> HEAD           # exit 0 ⇒ your tree is a superset
+git log --oneline HEAD..<deployed-sha> -- audition/        # non-empty ⇒ this deploy reverts work
+```
+
+An earlier version of this bullet said to run `git log <deployed-sha>..origin/main -- audition/`.
+**That cannot detect the failure it was written for**: it compares two refs, neither of which
+is the tree being rsynced, and whenever the deployed sha *is* main's tip the range is empty by
+construction — so it prints nothing and reads as "safe" while your branch, forked before a
+commit that touched `audition/`, is about to delete it. The 2026-08-12 deploy that prompted
+this was in fact safe (`20713f1` is an ancestor of that branch's HEAD), which is the danger:
+the wrong check agreed with the right one that once.
+
 `require_source` used to refuse a worktree outright — `.git` is a file there, not a directory
 — fixed in AI-Lab-AMD `882f620` (2026-08-12).
 

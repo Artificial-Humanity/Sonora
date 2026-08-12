@@ -339,7 +339,7 @@ def test_one_wer_threshold_serves_both_lanes():
     """The corpus filter and the QC gate ask the same question of a transcript, and two
     copies of one threshold is the review's most repeated finding (B-L5, D-L2). `qc_gate`
     re-exports `synth_common`'s rather than declaring its own."""
-    sys.path.insert(0, str(SCRIPTS.dirs[0]))
+    SCRIPTS.on_path()   # `dirs[0]` is stages/; synth_common is in lib/
     sc = pytest.importorskip("synth_common")
     assert isinstance(sc.ASR_MAX_WER, float)
     gate = open(str(SCRIPTS / "qc_gate.py"), encoding="utf-8").read()

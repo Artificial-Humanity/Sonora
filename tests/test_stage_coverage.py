@@ -4,8 +4,8 @@ Three times now, a written instrument in this repo turned out never to run — m
 `qc_verdict.py`, named in a `synth_bank.sh` comment for a month while 695 directed clips
 went to the ear with no direction check (issue #24). Each time it was found by hand, and
 each time the reason it survived was the same: in `scripts/`, being uninvoked is the normal
-state for most of 112+ files, so an unwired *stage* is indistinguishable from an operator
-tool that was never meant to be called.
+state for most of the 100 non-test files there, so an unwired *stage* is indistinguishable
+from an operator tool that was never meant to be called.
 
 `tests/test_audit_sampling.py` already guards individual stages, and guards them more
 deeply than this file does — it checks the flags without which a stage runs and achieves
@@ -26,6 +26,7 @@ and `echo`es (mechanism 2), both of which name real scripts in these files.
 Source-level and torch-free, so it runs wherever `make test` runs.
 """
 
+import ast
 import importlib.util
 import pathlib
 import re
@@ -71,13 +72,19 @@ def _scripts_named(rel, invocations_only=True):
 
 
 def _tracked_shells():
-    """Tracked `.sh` under `scripts/`. `check=True` so a missing git fails loudly rather
-    than returning an empty list, which would make the completeness test pass by vacuum."""
+    """Every tracked `.sh` in the repo — not just under `scripts/`.
+
+    The glob was `scripts/*.sh` until 2026-08-12, so "no orchestrator can arrive unexamined"
+    was true only of shells in one directory; one written anywhere else was exempt by
+    construction. Every `.sh` in this repo happens to live under `scripts/` today, so this
+    widening changes no result — it removes the exemption. `check=True` so a missing git
+    fails loudly rather than returning an empty list, which would pass by vacuum.
+    """
     out = subprocess.run(
-        ["git", "ls-files", "scripts/*.sh", "scripts/**/*.sh"],
+        ["git", "ls-files", "-z", "*.sh"],
         cwd=REPO, capture_output=True, text=True, check=True,
     )
-    return sorted(set(out.stdout.split()))
+    return sorted({p for p in out.stdout.split("\0") if p})
 
 
 ALL_STAGES = [(orch, stage) for orch, spec in M.ORCHESTRATORS.items() for stage in spec["stages"]]
@@ -178,6 +185,14 @@ def test_a_deliberately_unwired_script_is_still_referenced_and_still_not_invoked
     someone reversed the decision without reading it — which for `stage_pool` is 652
     unaudited rows into the audition queue."""
     assert len(why) > 40, f"{script} is declared unwired without a usable reason"
+    # Declarations are checked against the TREE as well as the shell. Without this, deleting
+    # `stage_pool.py` while leaving the echo hint keeps 400 characters of reasoning about the
+    # 652-row flood pointing at nothing — and keeps
+    # `test_the_echo_filter_still_has_a_live_fixture` reporting the filter as covered.
+    assert (REPO / script).is_file(), (
+        f"{script} is declared deliberately-unwired but no longer exists; the reason recorded "
+        f"for it is now prose about a file the tree forgot"
+    )
     basename = pathlib.PurePosixPath(script).name
     assert basename in _scripts_named(orch, invocations_only=False), \
         f"{orch} no longer mentions {basename} at all — this entry now records nothing"
@@ -224,6 +239,99 @@ def test_every_shell_under_scripts_is_classified_exactly_once():
 @pytest.mark.parametrize("path", sorted(M.NOT_ORCHESTRATORS), ids=sorted(M.NOT_ORCHESTRATORS))
 def test_a_shell_declared_not_an_orchestrator_says_why(path):
     assert len(M.NOT_ORCHESTRATORS[path]) > 40, f"{path} is dismissed without a reason worth reading"
+
+
+def test_no_test_module_reaches_into_scripts_by_hand():
+    """`SCRIPTS.on_path()` mutates the PROCESS-GLOBAL `sys.path`, so once any module calls
+    it every later module inherits every bucket — and a module still inserting a path that
+    no longer exists becomes indistinguishable from a migrated one.
+
+    Not hypothetical: `tests/test_bank_consistency.py` was MISSED by #26 step 3 and kept
+    `sys.path.insert(0, REPO/"scripts"/"synthesis")` plus a hard `import check_bank`. The
+    full suite stayed green purely on **alphabetical collection order** —
+    `test_acquisition_lane.py` sorts earlier and left `scripts/stages` on the path for it.
+    Running that one file, which is how anyone would debug it, was a hard
+    `ModuleNotFoundError`, and a collection error aborts the WHOLE session rather than
+    failing one module. So the leakage is exactly what hid the miss.
+    """
+    # AST, not a text scan: a text scan matched this very docstring, which is the
+    # trailing-comment defect in miniature — prose about code is not code.
+    offenders = []
+    files = [r for r in subprocess.run(
+        ["git", "ls-files", "-z", "tests/*.py"], cwd=REPO, capture_output=True, text=True, check=True,
+    ).stdout.split("\0") if r]
+    assert len(files) >= 20, f"only {len(files)} test modules enumerated — is the listing working?"
+    for rel in sorted(files):
+        tree = ast.parse((REPO / rel).read_text(encoding="utf-8"), rel)
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                continue
+            if node.func.attr not in ("insert", "append"):
+                continue
+            if "sys.path" not in ast.unparse(node.func):
+                continue
+            arg = ast.unparse(node).lower()
+            if "scripts" in arg:
+                offenders.append(f"{rel}:{node.lineno}: {ast.unparse(node)}")
+    assert not offenders, (
+        "these test modules reach into scripts/ by hand instead of `SCRIPTS.on_path()`, so a "
+        "layout change breaks them silently — the suite stays green on collection order alone:\n"
+        + "\n".join(offenders)
+    )
+
+
+def test_nothing_outside_a_declared_orchestrator_runs_a_stage():
+    """A stage does not have to be launched from a shell, and the manifest only classifies
+    shells — so a Python file, a Makefile target or a workflow step could run one and be as
+    undeclared, and as unguarded, as before #24. Measured 2026-08-12: nothing does. This is
+    what keeps that true; the alternative was a paragraph saying it might not be.
+    """
+    stage_names = {pathlib.PurePosixPath(s.script).name
+                   for spec in M.ORCHESTRATORS.values() for s in spec["stages"]}
+    assert stage_names, "no stages declared — nothing to check"
+    declared = set(M.ORCHESTRATORS) | set(M.DYNAMIC_DISPATCH)
+
+    candidates = [r for r in subprocess.run(
+        ["git", "ls-files", "-z", "*.py", "Makefile", ".github/workflows/*.yml"],
+        cwd=REPO, capture_output=True, text=True, check=True,
+    ).stdout.split("\0") if r]
+    assert len(candidates) >= 50, f"only {len(candidates)} candidates — is the listing working?"
+
+    # AST for python, comment-stripped text for Makefile/workflows. A first attempt matched
+    # `python <stage>` anywhere in the file and reported SEVEN false positives — six were a
+    # stage's own usage docstring, and `stage_pool.py:265` is an error message telling the
+    # operator to run `qc_gate.py`. That is the printed-hint class again: prose about a
+    # command is not the command.
+    LAUNCHERS = ("run", "Popen", "call", "check_call", "check_output", "system", "execv", "execvp")
+    offenders = []
+    for rel in sorted(candidates):
+        if rel in declared or rel.startswith("tests/"):
+            continue
+        text = (REPO / rel).read_text(encoding="utf-8", errors="replace")
+        if rel.endswith(".py"):
+            try:
+                tree = ast.parse(text, rel)
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                    continue
+                if node.func.attr not in LAUNCHERS:
+                    continue
+                rendered = ast.unparse(node)
+                for stage in sorted(stage_names):
+                    if stage in rendered and not rel.endswith(stage):
+                        offenders.append(f"{rel}:{node.lineno}: {node.func.attr}(...) launches {stage}")
+        else:
+            for n, line in enumerate(text.splitlines(), 1):
+                bare = line.split("#", 1)[0]
+                for stage in sorted(stage_names):
+                    if stage in bare and re.search(r"(python|\$PY)\S*\s", bare):
+                        offenders.append(f"{rel}:{n}: {bare.strip()}")
+    assert not offenders, (
+        "these files launch a declared pipeline stage but are not declared orchestrators, so "
+        "nothing checks their wiring:\n" + "\n".join(offenders)
+    )
 
 
 @pytest.mark.parametrize("path", sorted(M.DYNAMIC_DISPATCH), ids=sorted(M.DYNAMIC_DISPATCH))
