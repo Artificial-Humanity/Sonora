@@ -655,10 +655,17 @@ def main():
                 return "rejected"          # measured, and pointed the wrong way
             if any(c is None for c in readable) or v["measured_z"] is None:
                 # Nothing was measured — for a readable axis, or (the empty-readable case)
-                # for the unreadable one itself. The repair is to SCORE the clip, and only
-                # then is the label worth fixing.
-                return "unmeasured"
+                # for the unreadable one itself. ⚠ TWO CAUSES, TWO REPAIRS, and this module
+                # is emphatic they are different (see the `no_eiv` / `no_phonation` split
+                # below): no EIV row at all means SCORE the clip; a scored clip stage 1
+                # could not measure phonation on means RE-MEASURE stage 1. Telling the
+                # second "score them first" sends an operator to re-run eiv_score.py, get
+                # back the row it already had, and conclude the bucket is lying — while the
+                # run says "were scored" about the same clip three lines later.
+                return "no_phonation" if v["id"] in phonation_ids else "unscored"
             return "label"                 # would keep but for the unreadable label
+
+        phonation_ids = set(no_phonation)
 
         buckets = collections.defaultdict(list)
         for v in verdicts:
@@ -670,11 +677,16 @@ def main():
             print(f"  !! {len(buckets['label'])} clip(s) are held out of keeps.jsonl on "
                   f"that alone — they stated a direction nobody could read and would "
                   f"otherwise keep. Fix the labels and re-run; this is a LABELLING repair.")
-        if buckets["unmeasured"]:
-            print(f"  !! {len(buckets['unmeasured'])} further clip(s) carry an unreadable "
-                  f"label AND have an UNMEASURED axis. Fixing the label alone will not "
-                  f"make them keep — there is nothing to check it against. Score them "
-                  f"first; this is a SCORING repair before it is a labelling one.")
+        if buckets["unscored"]:
+            print(f"  !! {len(buckets['unscored'])} further clip(s) carry an unreadable "
+                  f"label AND have NO EIV ROW. Fixing the label alone will not make them "
+                  f"keep — there is nothing to check it against. Run the SCORING pass over "
+                  f"them first; this is a scoring repair before it is a labelling one.")
+        if buckets["no_phonation"]:
+            print(f"  !! {len(buckets['no_phonation'])} further clip(s) carry an unreadable "
+                  f"label AND were SCORED but carry no phonation measures from stage 1. "
+                  f"Do NOT re-run the scoring pass — it will return the rows it already "
+                  f"has. Re-measure stage 1 for them, then fix the labels.")
         if buckets["rejected"]:
             print(f"  !! {len(buckets['rejected'])} further clip(s) carry an unreadable "
                   f"label AND are rejected independently (hard gate, or a MEASURED "
