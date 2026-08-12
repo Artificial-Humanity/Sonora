@@ -71,12 +71,21 @@ def _strip_trailing_comment(line):
 
 
 # `echo`/`printf` possibly behind redirections, a brace/paren/`!`, or VAR= prefixes.
+#
+# ⚠ MAKEFILE RECIPE PREFIXES (`@` silent, `-` ignore-errors, `+` always-run) ARE ANCHORED TO
+# THE START OF THE LINE, in a pattern of their own. They were briefly in the general prefix
+# class, which made them valid after ANY `;&|{(` or whitespace — i.e. everywhere in a shell
+# command — and that WIDENED the repo's core #24 filter rather than narrowing it. Measured:
+#
+#     find . -name x -printf "%p qc_verdict.py" -print
+#
+# had `qc_verdict.py` removed as printed text, because `-printf` matched `-` + `printf`. A
+# real script name vanishing from an invocation is the #24 failure with the sign flipped, so
+# the guard against describing-instead-of-running was made able to hide a run.
+_RECIPE_ECHO = re.compile(r"^\s*[@+-]+\s*(?:echo|printf)\b")
 _ECHO_HEAD = re.compile(
     r"""(?:^|(?<=[;&|{(`]|\s))                   # clause start (backtick too: `echo …`)
-        # prefixes: redirections, grouping, `!`, VAR=, and MAKEFILE RECIPE PREFIXES
-        # (`@` silent, `-` ignore-errors, `+` always-run). `@echo` is the commonest
-        # Makefile idiom there is and was counted as a launch without the `@` here.
-        (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!@+-]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*
+        (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*   # prefixes
         (?:echo|printf)\b""",
     re.X,
 )
@@ -100,6 +109,10 @@ def _without_printed_text(cmd):
     out, i = [], 0
     while i < len(cmd):
         m = _ECHO_HEAD.search(cmd, i)
+        if i == 0:
+            recipe = _RECIPE_ECHO.match(cmd)
+            if recipe and (m is None or recipe.start() <= m.start()):
+                m = recipe
         if not m:
             out.append(cmd[i:])
             break

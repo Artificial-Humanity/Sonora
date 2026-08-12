@@ -421,10 +421,21 @@ def _argv_runs_a_printer(node):
         head = str(first.value)
     else:
         return False
-    words = head.split()
-    if not words:
+    if not head.strip():
         return False
-    return pathlib.PurePosixPath(words[0]).name in ("echo", "printf")
+    # ⚠ NOT `head.split()[0]`. That treats a COMPOUND shell command as if it were argv[0],
+    # so a leading `echo` exempted everything after it — verified misses:
+    #     os.system("echo starting; SONORA_REPO=. python scripts/stages/qc_gate.py")
+    #     subprocess.run("echo hi && python .../qc_gate.py", shell=True)
+    # A new silent-disarm hole, opened by the commit that closed the previous one — and the
+    # fix is the function that same commit imported into the sibling text branch. Reusing it
+    # keeps ONE definition of "printed text" instead of a second, weaker one here.
+    # pylint: disable=import-outside-toplevel
+    from test_audit_sampling import _without_printed_text
+
+    remaining = _without_printed_text(head).strip()
+    # Wholly printed (`echo x`) -> exempt. Partly printed (`echo x; python stage`) -> not.
+    return not remaining
 
 
 def stage_launch_offenders(rel, text, stage_names):
@@ -538,9 +549,16 @@ def test_the_launch_guard_does_not_fire_on_prose(src):
     (".github/workflows/ci.yml", "        run: python scripts/stages/qc_gate.py"),
 ])
 def test_a_real_launch_in_a_makefile_or_workflow_is_reported(rel, line):
+    """⚠ The message assertion must not restate the detector's own append condition. The
+    text branch appends only when `stage in bare` and appends `bare.strip()`, so
+    `"qc_gate.py" in out[0]` held by construction once `assert out` passed — the
+    cannot-fail defect again, in the fixture written one commit after it was fixed in the
+    sibling. Assert the LOCATION and the launcher token instead, neither of which the
+    membership condition determines."""
     out = stage_launch_offenders(rel, line, {"qc_gate.py"})
     assert out, f"not detected in {rel}: {line!r}"
-    assert "qc_gate.py" in out[0], out
+    assert out[0].startswith(f"{rel}:1:"), f"wrong location: {out[0]!r}"
+    assert "python" in out[0], f"report does not show the launch: {out[0]!r}"
 
 
 @pytest.mark.parametrize("rel,line", [

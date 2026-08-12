@@ -532,9 +532,29 @@ Observed 2026-08-12 minutes after #74 merged: the audition target read
 STALE as drift and resolve it before editing — here there was nothing to resolve, and the
 fix is one idempotent re-run: `deploy.sh audition` diffs first, finds nothing to copy, and
 refreshes the stamp **without restarting**. So: **after a branch-sourced deploy is
-squash-merged, re-run the deploy once to re-stamp.** A target that reads STALE with a clean
-`test_data_mirrors` is this, not drift — and confirm it that way rather than assuming, since
-the two are indistinguishable from the stamp alone.
+squash-merged, re-run the deploy once to re-stamp.**
+
+⚠ **Settle "orphaned stamp vs. real drift" with the rsync dry-run, NOT with
+`test_data_mirrors`.** An earlier version of this note nominated that test, and it cannot
+make the distinction: `MIRRORS` registers `audition/app` with a NON-RECURSIVE `*.py` glob,
+which is `main.py` alone — one of the four tracked files under `audition/`. A green run
+therefore says nothing about `static/`, and reading it as "the bytes match" is the
+instrument-failure-mistaken-for-a-negative-result shape from §5b.
+
+What answers it is the dry-run **with `deploy.sh`'s own three excludes**, which is byte-exact
+over every file — an empty plan means the stamp drifted and the content did not:
+
+```bash
+sudo rsync -a --delete --checksum --dry-run --itemize-changes \
+  --exclude='__pycache__' --exclude='.deployed.json' --exclude='_contract/' \
+  audition/app/ /data/services/audition/app/
+```
+
+⚠ **The excludes are not optional**, and dropping them is the same mistake one rung down:
+`.deployed.json` and `_contract/` are written by `deploy.sh` AFTER the copy and exist in no
+commit, so a bare dry-run reports three deletions and reads as drift. ⚠ And `deploy.sh
+audition` is the one-step version of this only on a CLEAN tree — `require_clean` refuses a
+dirty one, correctly, so it is not available as a diagnostic mid-edit.
 
 **Deploying is idempotent and free to over-run** (2026-08-08). `deploy.sh audition` /
 `dashboard` diff the target first and do **nothing** when it already matches — no copy, no
