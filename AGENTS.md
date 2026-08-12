@@ -487,9 +487,14 @@ SONORA_REPO="$(git rev-parse --show-toplevel)" deploy.sh audition
   `<worktree>/audition`. ⚠ **An earlier version of this bullet said that root "inherits a
   git dir from the worktree and passes `require_source`". It does not** —
   `<worktree>/audition/.git` does not exist at all, so `require_source`'s `-e` test *refuses*
-  it. The advice is right and the reason was wrong, which contradicted the note eight lines
-  down about the same function. Use `--show-toplevel` because it is correct from any depth,
-  not because anything downstream fails to catch `$PWD`.
+  it. The advice is right and the reason was wrong, which contradicted the `require_source`
+  note below — and the errata itself then pointed at that note as "eight lines down" when it
+  is nearer thirty, a stale pointer inside a correction about stale claims. Its replacement
+  said "at the end of this subsection", which was *also* positional and *also* wrong (the
+  note sits about two-thirds through §7). **Positional cross-references rot — name the thing
+  and let the name carry it.** Use
+  `--show-toplevel` because it is correct from any depth, not because anything downstream
+  fails to catch `$PWD`.
 * ⚠ **Prefix it; do not `export` it.** `scripts/litert_export/run.sh` honours an inherited
   `SONORA_REPO` through `${SONORA_REPO:-…}`, so an export run later in the same session
   would resolve `import matcha` out of the worktree instead of the caretaker tree.
@@ -518,6 +523,18 @@ the wrong check agreed with the right one that once.
 
 `require_source` used to refuse a worktree outright — `.git` is a file there, not a directory
 — fixed in AI-Lab-AMD `882f620` (2026-08-12).
+
+⚠ **A SQUASH MERGE ORPHANS A DEPLOY STAMP MADE FROM THE BRANCH, AND `status` THEN LIES.**
+Observed 2026-08-12 minutes after #74 merged: the audition target read
+**`STALE — source changed since (7557aea)`** while its bytes were **byte-identical to
+`main`**. The stamp named the branch commit `c444f2c`, which the squash had replaced, so
+`stamp_is_current` compared against a commit no longer reachable. Step 0 tells you to treat
+STALE as drift and resolve it before editing — here there was nothing to resolve, and the
+fix is one idempotent re-run: `deploy.sh audition` diffs first, finds nothing to copy, and
+refreshes the stamp **without restarting**. So: **after a branch-sourced deploy is
+squash-merged, re-run the deploy once to re-stamp.** A target that reads STALE with a clean
+`test_data_mirrors` is this, not drift — and confirm it that way rather than assuming, since
+the two are indistinguishable from the stamp alone.
 
 **Deploying is idempotent and free to over-run** (2026-08-08). `deploy.sh audition` /
 `dashboard` diff the target first and do **nothing** when it already matches — no copy, no

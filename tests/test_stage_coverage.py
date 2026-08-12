@@ -260,6 +260,97 @@ def test_a_shell_declared_not_an_orchestrator_says_why(path):
     assert len(M.NOT_ORCHESTRATORS[path]) > 40, f"{path} is dismissed without a reason worth reading"
 
 
+def sys_path_offenders(rel, text):
+    """Sites in `text` that mutate `sys.path` to reach into `scripts/` by hand.
+
+    A FUNCTION, not an inline loop, so the fixtures below can call it on synthetic source
+    and assert on the MESSAGE. ⚠ That is the whole point: the previous round verified its
+    sibling guard by mutating a real file and reading pytest's `1 failed` as "caught" — but
+    the guard was raising `AttributeError` while catching, and a crash and a catch are the
+    same colour. Checking a guard's colour does not check the guard.
+
+    Covers four mutators (`insert`/`append`/`extend`, `+=`, slice-assignment) and resolves
+    IMPORT aliases both ways: `import sys as s` → `s.path.insert(…)` and `from sys import
+    path` → `path.insert(…)` each walked past when only the literal `sys.path` was matched.
+
+    ⚠ RESIDUAL, stated for the same reason its sibling states one: import aliases are the
+    only aliases resolved. A local rebinding (`p = sys.path; p.insert(…)`), an
+    `importlib`-mediated reference, or a path assembled at runtime is invisible — as is any
+    mutation performed by a helper this function does not follow into.
+    """
+    # ⚠ NOT `except SyntaxError: return []`. The inline version parsed unguarded, so an
+    # unparseable module under `tests/` was a loud error; the extraction quietly turned that
+    # into a pass, which is a guard losing coverage to a refactor. An unparseable test module
+    # is itself a finding.
+    try:
+        tree = ast.parse(text, rel)
+    except SyntaxError as exc:
+        return [f"{rel}:{exc.lineno}: does not parse ({exc.msg}) — cannot be checked"]
+    sys_aliases, path_aliases = {"sys"}, set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            sys_aliases |= {(a.asname or a.name) for a in node.names if a.name == "sys"}
+        elif isinstance(node, ast.ImportFrom) and node.module == "sys":
+            path_aliases |= {(a.asname or a.name) for a in node.names if a.name == "path"}
+    targets = {f"{a}.path" for a in sys_aliases} | path_aliases
+
+    def touches(expr):
+        return any(expr == t or expr.startswith(t + "[") or expr.startswith(t + ".")
+                   for t in targets)
+
+    found = []
+    for node in ast.walk(tree):
+        rendered = None
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr in ("insert", "append", "extend") and touches(ast.unparse(node.func.value)):
+                rendered = ast.unparse(node)
+        elif isinstance(node, ast.AugAssign):                       # path += [...]
+            if touches(ast.unparse(node.target)):
+                rendered = ast.unparse(node)
+        elif isinstance(node, ast.Assign):                          # path[:0] = [...]
+            if any(touches(ast.unparse(t)) for t in node.targets):
+                rendered = ast.unparse(node)
+        if rendered and "scripts" in rendered.lower():
+            found.append(f"{rel}:{node.lineno}: {rendered}")
+    return found
+
+
+@pytest.mark.parametrize("src,expect", [
+    ('import sys\nsys.path.insert(0, "scripts/synthesis")', "sys.path.insert(0,"),
+    ('import sys\nsys.path.append("scripts/synthesis")', "sys.path.append("),
+    ('import sys\nsys.path.extend(["scripts/synthesis"])', "sys.path.extend("),
+    ('import sys\nsys.path += ["scripts/synthesis"]', "sys.path +="),
+    ('import sys\nsys.path[:0] = ["scripts/synthesis"]', "sys.path[:0] ="),
+    ('import sys as s\ns.path.insert(0, "scripts/synthesis")', "s.path.insert(0,"),
+    ('from sys import path\npath.insert(0, "scripts/synthesis")', "path.insert(0,"),
+    ('from sys import path as p\np.extend(["scripts/synthesis"])', "p.extend("),
+])
+def test_every_sys_path_spelling_is_reported_by_name(src, expect):
+    """Asserts the OFFENDER STRING names the actual mutation.
+
+    ⚠ An earlier version asserted `"scripts" in out[0] and "t.py:" in out[0]` — both of
+    which are the function's own append condition and format string, so it could not fail
+    for any input and did not deliver the property its own docstring claimed. The expected
+    fragment is now per-spelling, so a guard that reported the wrong site would be caught.
+    """
+    out = sys_path_offenders("t.py", src)
+    assert out, f"not detected: {src!r}"
+    assert expect in out[0], f"reported {out[0]!r}, expected it to name {expect!r}"
+    assert out[0].startswith("t.py:2:"), f"wrong location: {out[0]!r}"
+
+
+@pytest.mark.parametrize("src", [
+    'import sys\nsys.path.insert(0, "/opt/other")',      # not scripts/
+    'import sys\nprint(sys.path)',                       # read, not mutate
+    'from scripts_layout import SCRIPTS\nSCRIPTS.on_path()',
+    '"""docstring mentioning sys.path.insert(0, "scripts/synthesis")"""',
+])
+def test_the_sys_path_guard_does_not_fire_on_innocent_code(src):
+    """A guard that goes red on correct code gets switched off. The last row is the one that
+    matters: a text scan matched this guard's own docstring."""
+    assert sys_path_offenders("t.py", src) == []
+
+
 def test_no_test_module_reaches_into_scripts_by_hand():
     """`SCRIPTS.on_path()` mutates the PROCESS-GLOBAL `sys.path`, so once any module calls
     it every later module inherits every bucket — and a module still inserting a path that
@@ -281,29 +372,190 @@ def test_no_test_module_reaches_into_scripts_by_hand():
     ).stdout.split("\0") if r]
     assert len(files) >= 20, f"only {len(files)} test modules enumerated — is the listing working?"
     for rel in sorted(files):
-        tree = ast.parse((REPO / rel).read_text(encoding="utf-8"), rel)
-        # ⚠ `insert`/`append` are not the only ways to mutate `sys.path`. Verified: the
-        # exact defect this test exists for walked past in three more spellings —
-        # `sys.path.extend([...])`, `sys.path += [...]` and `sys.path[:0] = [...]`.
-        for node in ast.walk(tree):
-            rendered = None
-            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-                if node.func.attr in ("insert", "append", "extend") and \
-                        "sys.path" in ast.unparse(node.func):
-                    rendered = ast.unparse(node)
-            elif isinstance(node, ast.AugAssign):                      # sys.path += [...]
-                if "sys.path" in ast.unparse(node.target):
-                    rendered = ast.unparse(node)
-            elif isinstance(node, ast.Assign):                         # sys.path[:0] = [...]
-                if any("sys.path" in ast.unparse(t) for t in node.targets):
-                    rendered = ast.unparse(node)
-            if rendered and "scripts" in rendered.lower():
-                offenders.append(f"{rel}:{node.lineno}: {rendered}")
+        offenders += sys_path_offenders(rel, (REPO / rel).read_text(encoding="utf-8"))
     assert not offenders, (
         "these test modules reach into scripts/ by hand instead of `SCRIPTS.on_path()`, so a "
         "layout change breaks them silently — the suite stays green on collection order alone:\n"
         + "\n".join(offenders)
     )
+
+
+# ⚠ The alias set is only as complete as this list, and it omitted the two easiest launchers
+# in the stdlib. `getoutput`/`getstatusoutput` and `popen`/`spawn*` all run a command line.
+LAUNCHERS = (
+    # subprocess
+    "run", "Popen", "call", "check_call", "check_output", "getoutput", "getstatusoutput",
+    # os — the exec/spawn families are CLOSED SETS, so they are completed mechanically
+    # rather than sampled. ⚠ The env-passing variants were the ones missing, and passing an
+    # environment is exactly what launching a stage looks like here
+    # (`SONORA_REPO=… python scripts/stages/…`).
+    "system", "popen",
+    "execv", "execve", "execvp", "execvpe", "execl", "execle", "execlp", "execlpe",
+    "spawnv", "spawnve", "spawnvp", "spawnvpe", "spawnl", "spawnle", "spawnlp", "spawnlpe",
+    "posix_spawn", "posix_spawnp",
+    # runpy — a different shape: in-process, no `python` on a command line at all, which
+    # makes it the most likely ACCIDENTAL spelling of "run the stage".
+    "run_path", "run_module",
+)
+# Receivers a launcher may be called on. ⚠ Without this, ANY attribute call whose final name
+# is in LAUNCHERS counted — `self.run(...)`, `client.call(...)` — and the first such method to
+# appear beside a stage name in a string would turn this guard red for nothing.
+LAUNCH_MODULES = ("subprocess", "os", "runpy")
+
+
+def _argv_runs_a_printer(node):
+    """True when a launcher's own argv is `echo`/`printf` — a printed hint, not a launch.
+
+    `subprocess.run(["echo", "docs at scripts/stages/qc_gate.py"])` is a real call to a real
+    launcher whose effect is to print prose about a stage. The AST rewrite retired the
+    docstring sub-case of the printed-hint class; this is the rest of it.
+    """
+    if not node.args:
+        return False
+    first = node.args[0]
+    if isinstance(first, (ast.List, ast.Tuple)):
+        if not first.elts or not isinstance(first.elts[0], ast.Constant):
+            return False
+        head = str(first.elts[0].value)
+    elif isinstance(first, ast.Constant):
+        head = str(first.value)
+    else:
+        return False
+    words = head.split()
+    if not words:
+        return False
+    return pathlib.PurePosixPath(words[0]).name in ("echo", "printf")
+
+
+def stage_launch_offenders(rel, text, stage_names):
+    """Sites in `text` that LAUNCH one of `stage_names` — as opposed to mentioning it.
+
+    Dotted (`subprocess.run`), bare (`from subprocess import run`) and ALIASED
+    (`import run as _r`) — the alias is what a real evasion uses, and it walked past the
+    first attempt. ⚠ RESIDUAL, stated rather than implied: a target assembled at runtime
+    (`_cmd = "scripts/stages/" + "qc_gate.py"`) is invisible to any static check.
+
+    Extracted so the fixtures can assert the MESSAGE. The inline version formatted its
+    report with `node.func.attr` while the alias branch admitted `ast.Name`, so it raised
+    `AttributeError` at the exact moment it caught an evasion — and the mutation check that
+    was supposed to prove it worked only ever read pytest's exit colour.
+    """
+    found = []
+    if rel.endswith(".py"):
+        try:
+            tree = ast.parse(text, rel)
+        except SyntaxError as exc:
+            return [f"{rel}:{exc.lineno}: does not parse ({exc.msg}) — cannot be checked"]
+        local, module_aliases = set(), set(LAUNCH_MODULES)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.module in LAUNCH_MODULES:
+                local |= {(a.asname or a.name) for a in node.names if a.name in LAUNCHERS}
+            elif isinstance(node, ast.Import):
+                module_aliases |= {(a.asname or a.name) for a in node.names
+                                   if a.name in LAUNCH_MODULES}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if isinstance(node.func, ast.Attribute):
+                # QUALIFIED by receiver: `subprocess.run`, not `self.run`.
+                recv = ast.unparse(node.func.value)
+                fn = node.func.attr if (node.func.attr in LAUNCHERS
+                                        and recv in module_aliases) else None
+            else:
+                # bare name only if it was actually IMPORTED from one of those modules
+                name = getattr(node.func, "id", None)
+                fn = name if name in local else None
+            if fn is None:
+                continue
+            rendered = ast.unparse(node)
+            # ⚠ A real launcher whose ARGV is prose is still a printed hint:
+            # `subprocess.run(["echo", "docs at scripts/stages/qc_gate.py"])`. The AST
+            # rewrite retired the docstring sub-case, not this one.
+            if _argv_runs_a_printer(node):
+                continue
+            for stage in sorted(stage_names):
+                if stage in rendered and not rel.endswith(stage):
+                    found.append(f"{rel}:{node.lineno}: {fn}(...) launches {stage}")
+    else:
+        # ⚠ Makefile / workflow lines. This branch had ZERO fixture coverage in either
+        # direction, and it still fired on prose: `run: echo "then run python
+        # scripts/stages/qc_gate.py"` was reported as a launch. The AST branch retired the
+        # printed-hint class for Python only. Reuse the repo's one definition of printed
+        # text rather than growing a second — `_without_printed_text` already handles
+        # `echo`, `printf`, redirections, braces and `VAR=` prefixes.
+        # pylint: disable=import-outside-toplevel
+        from test_audit_sampling import _strip_trailing_comment, _without_printed_text
+
+        for n, line in enumerate(text.splitlines(), 1):
+            bare = _without_printed_text(_strip_trailing_comment(line))
+            for stage in sorted(stage_names):
+                if stage in bare and re.search(r"(python|\$PY)\S*\s", bare):
+                    found.append(f"{rel}:{n}: {bare.strip()}")
+    return found
+
+
+@pytest.mark.parametrize("src", [
+    'import subprocess\nsubprocess.run(["python", "scripts/stages/qc_gate.py"])',
+    'import subprocess as _s\n_s.Popen(["python", "scripts/stages/qc_gate.py"])',
+    'from subprocess import run\nrun(["python", "scripts/stages/qc_gate.py"])',
+    'from subprocess import run as _r\n_r(["python", "scripts/stages/qc_gate.py"])',
+    'from os import system as _sy\n_sy("python scripts/stages/qc_gate.py")',
+    'import subprocess\nsubprocess.getoutput("python scripts/stages/qc_gate.py")',
+    'import os\nos.popen("python scripts/stages/qc_gate.py")',
+])
+def test_every_launcher_spelling_is_reported_by_name(src):
+    """Asserts the MESSAGE. The aliased and bare spellings each walked past a version of this
+    guard, and once it did catch them it raised `AttributeError` while formatting the
+    report — which pytest renders as the same `1 failed` as a real catch."""
+    out = stage_launch_offenders("scripts/tools/x.py", src, {"qc_gate.py"})
+    assert out, f"not detected: {src!r}"
+    assert "launches qc_gate.py" in out[0], out
+
+
+@pytest.mark.parametrize("src", [
+    '"""Usage: python scripts/stages/qc_gate.py --campaign-dir X"""',
+    'print("  Run:  .venv/bin/python scripts/stages/qc_gate.py")',
+    'import subprocess\nsubprocess.run(["ls"])',
+    # a REAL launcher whose argv is prose — the rest of the printed-hint class
+    'import subprocess\nsubprocess.run(["echo", "docs at scripts/stages/qc_gate.py"])',
+    # a launcher NAME on an unrelated receiver
+    'class C:\n    def go(self):\n        self.run("scripts/stages/qc_gate.py")',
+    'def run(x):\n    pass\nrun("see scripts/stages/qc_gate.py for docs")',
+])
+def test_the_launch_guard_does_not_fire_on_prose(src):
+    """The seven false positives an earlier text version produced were six usage docstrings
+    and one error message telling the operator to run the stage. The last three rows are the
+    ones the AST rewrite did NOT retire: a real launcher printing prose, and any object with
+    a `.run`/`.call` method."""
+    assert stage_launch_offenders("scripts/tools/x.py", src, {"qc_gate.py"}) == []
+
+
+# --- the Makefile / workflow branch, which had no fixtures at all ----------------------
+
+
+@pytest.mark.parametrize("rel,line", [
+    ("Makefile", "\tSONORA_REPO=. python scripts/stages/qc_gate.py --campaign-dir $(C)"),
+    (".github/workflows/ci.yml", "        run: python scripts/stages/qc_gate.py"),
+])
+def test_a_real_launch_in_a_makefile_or_workflow_is_reported(rel, line):
+    out = stage_launch_offenders(rel, line, {"qc_gate.py"})
+    assert out, f"not detected in {rel}: {line!r}"
+    assert "qc_gate.py" in out[0], out
+
+
+@pytest.mark.parametrize("rel,line", [
+    (".github/workflows/ci.yml", '        run: echo "then run python scripts/stages/qc_gate.py"'),
+    ("Makefile", '\t@echo "use python scripts/stages/qc_gate.py"'),
+    ("Makefile", "\t# python scripts/stages/qc_gate.py  (retired)"),
+    (".github/workflows/ci.yml", "        # see python scripts/stages/qc_gate.py"),
+])
+def test_the_text_branch_does_not_fire_on_printed_prose(rel, line):
+    """⚠ This branch had ZERO coverage in either direction and still fired on prose: the
+    AST rewrite retired the printed-hint class for PYTHON only. It now runs the line through
+    the repo's one definition of printed text (`_strip_trailing_comment` +
+    `_without_printed_text`) rather than growing a second one. `Makefile`,
+    `.github/workflows/ci.yml` and `claude-review.yml` all contain exactly these shapes."""
+    assert stage_launch_offenders(rel, line, {"qc_gate.py"}) == []
 
 
 def test_nothing_outside_a_declared_orchestrator_runs_a_stage():
@@ -328,46 +580,12 @@ def test_nothing_outside_a_declared_orchestrator_runs_a_stage():
     # stage's own usage docstring, and `stage_pool.py:265` is an error message telling the
     # operator to run `qc_gate.py`. That is the printed-hint class again: prose about a
     # command is not the command.
-    LAUNCHERS = ("run", "Popen", "call", "check_call", "check_output", "system", "execv", "execvp")
     offenders = []
     for rel in sorted(candidates):
         if rel in declared or rel.startswith("tests/"):
             continue
         text = (REPO / rel).read_text(encoding="utf-8", errors="replace")
-        if rel.endswith(".py"):
-            try:
-                tree = ast.parse(text, rel)
-            except SyntaxError:
-                continue
-            # Dotted (`subprocess.run`), bare (`from subprocess import run`) AND ALIASED
-            # (`... import run as _r`) — the alias is what a real evasion would use, and it
-            # is what walked past the first version of this fix. ⚠ RESIDUAL, stated: a name
-            # assembled at runtime (`_cmd = "scripts/stages/" + "qc_gate.py"`) is invisible
-            # to any static check, here and in the sibling guard above.
-            local = set()
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module in ("subprocess", "os"):
-                    local |= {(a.asname or a.name) for a in node.names if a.name in LAUNCHERS}
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Call):
-                    continue
-                if isinstance(node.func, ast.Attribute):
-                    fn = node.func.attr if node.func.attr in LAUNCHERS else None
-                else:
-                    name = getattr(node.func, "id", None)
-                    fn = name if name in LAUNCHERS or name in local else None
-                if fn is None:
-                    continue
-                rendered = ast.unparse(node)
-                for stage in sorted(stage_names):
-                    if stage in rendered and not rel.endswith(stage):
-                        offenders.append(f"{rel}:{node.lineno}: {node.func.attr}(...) launches {stage}")
-        else:
-            for n, line in enumerate(text.splitlines(), 1):
-                bare = line.split("#", 1)[0]
-                for stage in sorted(stage_names):
-                    if stage in bare and re.search(r"(python|\$PY)\S*\s", bare):
-                        offenders.append(f"{rel}:{n}: {bare.strip()}")
+        offenders += stage_launch_offenders(rel, text, stage_names)
     assert not offenders, (
         "these files launch a declared pipeline stage but are not declared orchestrators, so "
         "nothing checks their wiring:\n" + "\n".join(offenders)
