@@ -117,9 +117,15 @@ jobs:
       # from the list by construction) but `matcha/hifigan` is TRACKED and vendored, and the
       # measurement below was taken with it excluded — the pre-commit hook excludes it too.
       #
-      #   SCOPE: `git ls-files '*.py' ':!:matcha/hifigan/*'` = 185 files. Re-derived at that
-      #   exact scope on 2026-08-12 — a table that does not name its denominator cannot be
-      #   checked, which is how the previous version of these four numbers went stale.
+      #   SCOPE: `git ls-files '*.py' ':!:matcha/hifigan/*'` = 185 files, on **Python 3.11** —
+      #   the interpreter this job creates at line 54. Re-derived at that exact scope on
+      #   2026-08-12. A table that names neither its denominator nor its interpreter cannot be
+      #   checked, which is how the previous version of these numbers went stale twice.
+      #
+      # ⚠ THE E-COUNT IS INTERPRETER-DEPENDENT and the other three rows are not. Reported on
+      #   3.12 as 182 against the 170 recorded here; I did not reproduce the 3.12 figure, and
+      #   the 170 is the one that matters because it is what this job measures. If the venv
+      #   line above ever moves off 3.11, this row moves with it and the F-row does not.
       #
       #   pyflakes F-codes    0 findings   -> BLOCKING
       #   black --check     146 files would be reformatted -> advisory

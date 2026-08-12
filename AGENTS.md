@@ -547,10 +547,20 @@ over every file — an empty plan means the stamp drifted and the content did no
 ```bash
 sudo rsync -a --delete --checksum --dry-run --itemize-changes \
   --exclude='__pycache__' --exclude='.deployed.json' --exclude='_contract/' \
-  audition/app/ /data/services/audition/app/
+  audition/app/ /data/services/audition/app/ | grep -E '^[<>]fc'
 ```
 
-⚠ **The excludes are not optional**, and dropping them is the same mistake one rung down:
+⚠ **THE `grep` IS PART OF THE DIAGNOSTIC, not tidying.** `-a` is `-rlptgoD`, so it itemises
+differences in **time, perms, owner and group** as well as content — and `--checksum` changes
+only how rsync *decides to transfer*, not what it reports. So a bare run prints
+`.f..tp..... main.py` for a file whose bytes are identical and whose mtime differs, and the
+empty-plan rule above reads that as drift. Measured on a synthetic pair: identical content
+with a different mtime and mode → `.f..tp.....`; filtered on `^[<>]fc` → nothing. Real content
+drift → `>fc.tp.....`, which the filter keeps. **`c` in the third column is the content
+verdict; the rest is metadata.** An earlier version of this note omitted the filter and was
+therefore wrong in the direction an operator actually hits — non-empty output.
+
+⚠ **The excludes are not optional either**, and dropping them is the same mistake one rung down:
 `.deployed.json` and `_contract/` are written by `deploy.sh` AFTER the copy and exist in no
 commit, so a bare dry-run reports three deletions and reads as drift. ⚠ And `deploy.sh
 audition` is the one-step version of this only on a CLEAN tree — `require_clean` refuses a

@@ -433,6 +433,14 @@ def _argv_runs_a_printer(node):
     # pylint: disable=import-outside-toplevel
     from test_audit_sampling import _without_printed_text
 
+    # ⚠ Normalise a PATH-QUALIFIED verb first. The line this replaced ended
+    # `PurePosixPath(words[0]).name in ("echo", "printf")`, and the `.name` was doing real
+    # work — it exempted `/bin/echo`, `/usr/bin/printf`, `./echo`. `_without_printed_text`
+    # cannot see those, because `_ECHO_HEAD` requires a clause start before the verb and `/`
+    # is not one, so dropping `.name` turned every one of them into a reported launch.
+    words = head.split()
+    if words:
+        head = " ".join([pathlib.PurePosixPath(words[0]).name, *words[1:]])
     remaining = _without_printed_text(head).strip()
     # Wholly printed (`echo x`) -> exempt. Partly printed (`echo x; python stage`) -> not.
     return not remaining
@@ -498,7 +506,10 @@ def stage_launch_offenders(rel, text, stage_names):
         from test_audit_sampling import _strip_trailing_comment, _without_printed_text
 
         for n, line in enumerate(text.splitlines(), 1):
-            bare = _without_printed_text(_strip_trailing_comment(line))
+            # `recipe_prefixes` only where a recipe can exist: after a leading TAB. A shell
+            # command never has one, which is why the #24 filter must not enable it.
+            bare = _without_printed_text(_strip_trailing_comment(line),
+                                         recipe_prefixes=line.startswith("\t"))
             for stage in sorted(stage_names):
                 if stage in bare and re.search(r"(python|\$PY)\S*\s", bare):
                     found.append(f"{rel}:{n}: {bare.strip()}")
@@ -557,8 +568,13 @@ def test_a_real_launch_in_a_makefile_or_workflow_is_reported(rel, line):
     membership condition determines."""
     out = stage_launch_offenders(rel, line, {"qc_gate.py"})
     assert out, f"not detected in {rel}: {line!r}"
+    assert len(out) == 1, f"expected one finding, got {out}"
     assert out[0].startswith(f"{rel}:1:"), f"wrong location: {out[0]!r}"
-    assert "python" in out[0], f"report does not show the launch: {out[0]!r}"
+    # ⚠ The append is gated on a CONJUNCTION (`stage in bare` AND a python/$PY token), so
+    # asserting either conjunct against the string that conjunct selected cannot fail — the
+    # first version of this fix swapped one restatement for the other. The falsifiable check
+    # is a negative control: the same line WITHOUT the launcher must report nothing.
+    assert stage_launch_offenders(rel, line.replace("python", "cat"), {"qc_gate.py"}) == []
 
 
 @pytest.mark.parametrize("rel,line", [
