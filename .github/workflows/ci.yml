@@ -124,24 +124,44 @@ jobs:
       # measures a different tool: 79-char default, none of the ignores. That duplication is
       # a config-drift risk of exactly the kind #70 names; consolidating it is that issue's
       # option 2, not this step's job.
+      # ⚠ TARGET `git ls-files`, NEVER `.`. Two reasons, both cost a red first run:
+      #   * `--exclude` REPLACES flake8's defaults rather than adding to them (that is what
+      #     `--extend-exclude` is for) — and `.venv` was never in those defaults anyway;
+      #   * line 54 of this job creates `.venv` INSIDE the workspace and the lint step then
+      #     installs flake8 into it, so `.` walks `.venv/lib/python3.11/site-packages/**`
+      #     and lints third-party code. That is what happened: the gate went red on
+      #     `_pytest`, `cffi` and `anyio`.
+      # It passed locally only because `.venv` is a SYMLINK on the dev host and flake8 does
+      # not walk symlinks — a difference in the environment, not in the command. Listing
+      # tracked files removes the whole class: an untracked directory cannot appear.
+      #
+      # ⚠ `--select=E9,F`, NOT `--select=F`. flake8 reports a file that does not parse as
+      # `E999`, which is not an F-code — so `--select=F` passes an unparseable file SILENTLY
+      # and takes every genuine F-code in it along too. Verified: two broken files, exit 0.
+      # A gate that cannot see a syntax error is the wrong gate for a PR that exists because
+      # a SyntaxError shipped.
       - name: Lint — real-defect classes (blocking)
         run: |
           uv pip install --python .venv/bin/python 'flake8==7.0.0'
-          .venv/bin/python -m flake8 --select=F --extend-ignore=F401,F841 \
-            --max-line-length 120 --exclude 'logs,data,matcha/hifigan' .
+          git ls-files -z '*.py' | xargs -0 .venv/bin/python -m flake8 \
+            --select=E9,F --extend-ignore=F401,F841 --max-line-length 120
 
+      # `if: always()` — NOT just `continue-on-error`. That flag governs what happens when
+      # THIS step fails; a step with no `if:` is skipped when an EARLIER one already failed.
+      # So without this the drift report goes dark exactly when the blocking gate trips,
+      # which is the moment someone needs the numbers.
       - name: Lint — formatting and style (advisory)
+        if: always()
         continue-on-error: true
         run: |
           uv pip install --python .venv/bin/python 'black==23.12.1' 'isort==5.13.2'
           echo '::group::black'
-          .venv/bin/python -m black --check . || true
+          git ls-files -z '*.py' | xargs -0 .venv/bin/python -m black --check || true
           echo '::endgroup::'
           echo '::group::isort'
-          .venv/bin/python -m isort --check-only --profile black . || true
+          git ls-files -z '*.py' | xargs -0 .venv/bin/python -m isort --check-only --profile black || true
           echo '::endgroup::'
           echo '::group::flake8 style'
-          .venv/bin/python -m flake8 --max-line-length 120 \
-            --extend-ignore E203,E402,E501,F401,F841,RST2,RST301 \
-            --exclude 'logs,data,matcha/hifigan' . || true
+          git ls-files -z '*.py' | xargs -0 .venv/bin/python -m flake8 --max-line-length 120 \
+            --extend-ignore E203,E402,E501,F401,F841,RST2,RST301 || true
           echo '::endgroup::'

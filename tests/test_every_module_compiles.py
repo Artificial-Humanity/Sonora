@@ -53,7 +53,12 @@ def test_the_module_compiles(rel):
     the whole point of this file."""
     path = REPO / rel
     try:
-        compile(path.read_text(encoding="utf-8"), rel, "exec")
+        # ⚠ `utf-8-sig`, not `utf-8`: a UTF-8 BOM survives the latter as a leading
+        # U+FEFF and `compile()` rejects it, while Python's import machinery strips
+        # it and loads the file fine. No tracked file has one today, so plain
+        # `utf-8` would have been a trap, not a failure — the first file touched by
+        # an editor that writes one would fail a syntax check for not being one.
+        compile(path.read_text(encoding="utf-8-sig"), rel, "exec")
     except SyntaxError as exc:
         pytest.fail(f"{rel}:{exc.lineno}: {exc.msg}\n    {(exc.text or '').rstrip()}")
 
@@ -71,3 +76,19 @@ def test_ast_parse_would_not_have_caught_it():
     ast.parse(broken)                      # parses fine — this is the blind spot
     with pytest.raises(SyntaxError):
         compile(broken, "<probe>", "exec")  # and only compile() sees it
+
+
+def test_a_utf8_bom_does_not_read_as_a_syntax_error(tmp_path):
+    """The `utf-8-sig` choice above, asserted rather than trusted.
+
+    Python's import machinery strips a UTF-8 BOM and loads the file; `read_text("utf-8")`
+    keeps it as a leading U+FEFF and `compile()` then rejects it. So a guard reading plain
+    `utf-8` would report a SyntaxError about a file Python runs fine — a false red, which is
+    how a check gets switched off. No tracked file has a BOM today, which is exactly why this
+    is a fixture and not a finding.
+    """
+    f = tmp_path / "bom.py"
+    f.write_bytes(b"\xef\xbb\xbfx = 1\n")
+    with pytest.raises(SyntaxError):
+        compile(f.read_text(encoding="utf-8"), "bom.py", "exec")     # the trap
+    compile(f.read_text(encoding="utf-8-sig"), "bom.py", "exec")      # what this file does
