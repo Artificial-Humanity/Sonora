@@ -417,16 +417,73 @@ the previous conclusion rather than for it**.
 
 ⚠ **It is not proof either, because it is confounded.** A named lane rendering quieter at
 `A = 0` is exactly what a *working* delivery block should also produce: Newscaster and
-narration genuinely are quieter deliveries than an unconditioned average. This probe cannot
-separate "the frames disagree about zero" from "the lanes really are quieter", because it has
-no term for the second. **The confound is unresolved.**
+narration genuinely are quieter deliveries than an unconditioned average. **That probe** has
+no term for the second reading, so it cannot separate them.
 
-**The outstanding test, stated so it can be run.** Compare rendered `A = 0` loudness per lane
-against **that lane's training-set mean loudness**, on the same clips' speakers. If the render
-tracks the training mean, the lanes are simply quieter and the frames agree; if it departs by
-lane in the direction of that lane's *frame*, the frames disagree about zero. The renders
-exist; the training means are one pass over `labels_v6.jsonl`. Until that is run, the correct
-statement is: **the dial works, and what `A = 0` means across frames is untested.**
+## ✅ RUN 2026-08-12 — the confound is resolved, and it does NOT explain the displacement
+
+The outstanding test was: compare rendered `A = 0` loudness per lane against **that lane's
+training-set mean**. It is now `scripts/derive_a_channel_stats.py` **§ 9**, joining
+`labels_v6.jsonl` (corpus rows with |A| ≤ 0.25) to the same 90 renders. Both profiles are
+centred on their own named-lane mean, so the checkpoint's **−7.376 dB** global offset from
+the corpus cancels and only the between-lane *shape* is compared.
+
+| lane | n | train @ A≈0 | render @ A=0 | train dev | render dev | discrepancy |
+|---|---:|---:|---:|---:|---:|---:|
+| Dialogue | 312 | −22.920 | −32.081 | **+0.952** | **−0.833** | −1.785 (4.4 se) |
+| Neutral | 288 | −23.162 | −31.549 | +0.710 | −0.300 | −1.011 (2.4 se) |
+| Newscaster | 76 | −23.009 | −30.994 | +0.863 | +0.255 | −0.608 (1.5 se) |
+| Speech | 48 | −26.399 | −30.370 | **−2.526** | **+0.878** | **+3.404 (9.0 se)** |
+
+**The rendered profile is anti-correlated with the training profile: Spearman ρ = −0.80**,
+and the order is very nearly inverted — Speech is the corpus's quietest lane by 3.4 dB and
+renders as the *loudest* of the four. Training spread 3.48 dB, rendered spread 1.71 dB.
+⚠ **Insensitive to the band**: ρ = −0.80 at |A| ≤ 0.10, 0.25, 0.50, 1.00 and unbanded, with
+Speech's discrepancy between **+3.16 and +3.55 dB** throughout.
+
+**What that settles.** "The named lanes are genuinely quieter deliveries" predicts a
+*positive* correlation — quiet lanes render quiet. It comes out negative, so **that reading
+does not explain § 8's displacement** and the confound above is closed.
+
+⚠ **What § 9 alone does not settle.** A negative correlation is *consistent* with the
+three-frames mechanism — per-campaign centring removed the lane-specific part of `A`
+(§ 1: 94.3%), and `A` is a globally shared FiLM channel that cannot carry a per-lane
+intercept — but **"the model has not learned lane loudness at ep010" predicts the same
+table.** That needed a second checkpoint, which is § 10.
+
+## ✅ RUN 2026-08-12 — § 10, the discriminator: the cause is STRUCTURAL
+
+Three checkpoints of the same run, probed on **one design with one set of texts**
+(`scripts/probe_delivery_intercept.py` — the ep010 probe's own design was never recorded, so
+every checkpoint here was re-rendered rather than compared against it):
+
+| checkpoint | ρ | rendered spread | ÷ training spread | worst lane | worst deviation |
+|---|---:|---:|---:|---|---:|
+| ep002 | −1.00 | 3.66 dB | 1.05 | Speech | +4.43 dB |
+| ep008 | −0.80 | 2.19 dB | 0.63 | Speech | +3.82 dB |
+| ep010 | −0.80 | 1.95 dB | 0.56 | Speech | +3.49 dB |
+
+**The two readings predict opposite trends, and the data picks one.** "Not learned yet" needs
+the rendered spread to *grow toward* the corpus's 3.48 dB with ρ rising. Instead the spread
+**shrinks away from it** — 3.66 → 1.95 dB — while ρ stays negative throughout. At **ep002 the
+magnitude was already right (3.66 vs 3.48) and the order was exactly inverted (ρ = −1.00)**;
+training has since flattened it rather than reordered it.
+
+⇒ **The model is converging on lane-independent loudness at `A = 0`, not on the corpus's
+profile.** That is what a signal centred out of the labels looks like: there is nothing to
+learn, so the residual decays. **This is reading (a) — structural — and it is the condition
+[#14](https://github.com/Artificial-Humanity/Sonora/issues/14) pre-committed to re-cutting v6
+with target-clustered offsets on.**
+
+⚠ **Limits, and one that matters more than the others.** 3 checkpoints, **one training run**,
+4 lanes; ρ over 4 items moves only in steps of 0.2, so the spread column carries the weight.
+**The run stopped at ep010 on a flat basin, so "train longer" is not an option this corpus
+leaves open** — the trend cannot be extended by waiting, and a second run would be a
+different experiment rather than more of this one.
+
+The correct statement is now: **the dial works; `A = 0` does not mean the same thing across
+lanes; the reason is not that the lanes are quieter; and it is not going to resolve with more
+training on this corpus.**
 
 ⚠ **Retracted:** this section previously called the probe "**the falsification of the feared
 consequence**", and the ship decision below rested on that. It is withdrawn. A slope
@@ -536,8 +593,11 @@ reason is cost against evidence, not a re-reading of the trigger:
   discipline exists to protect — the ladder's one lever per rung;
 - **`ep008` is already selected and trained** (`logs/train/vat6_finetune/SELECTED.md`), so
   the re-cut is a re-cut *and* a re-run;
-- the dial demonstrably works at inference (nonzero gain in all five lanes), so there is no
-  *measured* inference defect to buy with that cost.
+- ~~the dial demonstrably works at inference (nonzero gain in all five lanes), so there is no
+  *measured* inference defect to buy with that cost.~~ ⚠ **STRUCK 2026-08-12. This leg is
+  false now** — §§ 9–10 measured the defect. It is struck rather than deleted because the
+  2026-08-11 decision was taken partly on it, and a reader comparing the two calls needs to
+  see that the ledger changed rather than that the owner changed their mind.
 
 ⚠ **This override is weaker than the version first written here, and the weakening is the
 point.** That version said the pre-commitment "was aimed at a consequence that has since been
@@ -553,6 +613,39 @@ intercept test, which is cheap (90 renders, no training) and belongs before v7's
 `loudness_target` re-key is designed on top of an untested premise. Recorded here so the
 declined pre-commitment is readable beside its trigger, rather than reachable only through
 git history.
+
+### ⚠ 2026-08-12 — the deferred test was run, it found the defect, and the re-cut is STILL declined. This is the cost.
+
+**Owner call, 2026-08-12: record the decline as cost.** Not as resolution. §§ 9–10 answered
+the question the 2026-08-11 override deferred, and answered it against v6: the frames do not
+agree about `A = 0`, the reason is not that the lanes are quieter, and it is structural rather
+than under-training. **The re-cut is declined anyway, on the two surviving reasons above.**
+
+**This decision is weaker-evidenced than the last one and must not be read as its equal.**
+The 2026-08-11 call rested on three legs, one of which was "there is no *measured* inference
+defect". There is now. What remains is cost: rung 2's comparability, and a selected,
+trained `ep008` that a re-cut would also re-run.
+
+**What is being bought, stated as a debt rather than a resolution:**
+
+- **`A = 0` does not denote the same loudness in two lanes, and nothing downstream knows
+  that.** A Director asking for `A = 0` in Speech and in Dialogue gets output whose
+  between-lane loudness matches *neither* lane's training distribution — it is inverted
+  relative to the corpus, at up to **3.49 dB (Speech)**.
+- **The delivery block carries no loudness intercept, and is converging on carrying none.**
+  Rendered between-lane spread fell 3.66 → 1.95 dB over training against a corpus spread of
+  3.48 dB. Whatever else the five channels encode, absolute level at `A = 0` is not in them.
+- **It will not resolve on this corpus.** The run stopped at ep010 on a flat basin, so the
+  trend cannot be extended by training longer; only a re-cut or a different corpus moves it.
+- **v7's `loudness_target` re-key is now knowingly designed on top of a measured defect**
+  rather than an untested premise. That is a smaller error than the one the 2026-08-11 note
+  warned about, but it is not zero, and the re-key should state which of its numbers depend
+  on `A = 0` meaning one thing.
+
+**What would reopen it.** A measured quality or ear consequence attributable to the intercept
+— not to the dial, which works. Nothing here demonstrates one; §§ 9–10 measure the label
+geometry reaching inference, not what a listener hears. **That gap is the honest limit of
+this decline: the defect is established, its audibility is not.**
 
 ---
 

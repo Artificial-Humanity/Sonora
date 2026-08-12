@@ -73,3 +73,64 @@ def test_every_design_level_gets_its_own_heading():
         "two design levels rendered the SAME column heading, so the cell-mean columns "
         f"are unattributable: {headings}"
     )
+
+
+def _rows_all_level():
+    """Every named lane sits EXACTLY on `unknown` at A = 0 — perfect agreement.
+
+    Deliberately the pathological input for the direction partition: `d == 0.0` puts a lane
+    in neither `quieter` nor `louder`, and the first guard for that made `level` a VETO,
+    so this design routed into the branch headed "THE NAMED LANES DO NOT AGREE IN
+    DIRECTION" — the defect the guard was added to fix, one branch to the left.
+    """
+    out = []
+    for lane in ("unknown", "Neutral", "Newscaster"):
+        for a in LEVELS:
+            for text in range(2):
+                for rep in range(3):
+                    # No lane offset at all: identical loudness in every lane.
+                    out.append({"lane": lane, "energy": a, "text": f"t{text}",
+                                "lufs": -20.0 + a + rep * 0.1})
+    return out
+
+
+def test_perfect_agreement_is_not_reported_as_disagreement():
+    """`not level` was a veto where a partition was wanted. Agreement is "exactly one of
+    the three directions is occupied" — and level is a direction, not a disqualification."""
+    mod = _load()
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        mod.probe(_rows_all_level())
+    out = buf.getvalue()
+
+    assert "DO NOT AGREE IN DIRECTION" not in out, (
+        "every named lane measured EXACTLY on the reference — the most complete agreement "
+        "the design admits — and it was reported as disagreement")
+    assert "sits EXACTLY on `unknown` at A = 0" in out, \
+        "the all-level case needs its own words; `all the same direction, by 0.00 dB` reads as a bug"
+    assert "0.00 to 0.00 dB" not in out
+
+
+def test_a_lane_at_zero_is_counted_and_named_when_others_differ():
+    """The mixed case: the tally reads as exhaustive, so the three counts must sum."""
+    mod = _load()
+    rows = []
+    off = {"unknown": 0.0, "Neutral": -0.5, "Newscaster": 0.0}
+    for lane, o in off.items():
+        for a in LEVELS:
+            for text in range(2):
+                for rep in range(3):
+                    rows.append({"lane": lane, "energy": a, "text": f"t{text}",
+                                 "lufs": -20.0 + o + a + rep * 0.1})
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        mod.probe(rows)
+    out = buf.getvalue()
+
+    line = next(l for l in out.splitlines() if "DO NOT AGREE IN DIRECTION" in l)
+    m = re.search(r"(\d+) quieter, (\d+) louder, (\d+) level \(of (\d+)\)", line)
+    assert m, f"the tally is no longer in the form this guard reads: {line}"
+    q, lo, lv, total = (int(x) for x in m.groups())
+    assert q + lo + lv == total, \
+        f"the tally reads as exhaustive and does not sum: {q}+{lo}+{lv} != {total}"
+    assert "level: Newscaster" in out, "a lane sitting on the reference must be NAMED"
