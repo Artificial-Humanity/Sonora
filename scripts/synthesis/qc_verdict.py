@@ -581,10 +581,19 @@ def main():
         st = eng_stats.get(r.get("engine"))
         if measured and st:
             measured = {ax: (measured[ax] - st[ax][0]) / st[ax][1] for ax in measured}
+        # Two different absences, told apart: no score row at all, versus a scored clip the
+        # gate could not measure phonation on. Both leave every axis unmeasured.
+        #
+        # ⚠ RECORDED ON THE ROW, not looked up by id afterwards. The summary needs to know
+        # which absence this row has, and keying that on `r["id"]` reintroduces exactly what
+        # L505-507 refuses: two engine dirs can hold the same clip id (`qc_gate.py` keys its
+        # jobs on `(eng_dir, id)` for that reason), so an id set would hand one row the
+        # other's cause and print the wrong repair for it. Positional by construction here,
+        # because it is decided in the same pass that builds the row.
+        cause = None
         if not raw:
-            # Two different absences, told apart: no score row at all, versus a scored clip
-            # the gate could not measure phonation on. Both leave every axis unmeasured.
-            (no_eiv if eiv_for(r) is None else no_phonation).append(r["id"])
+            cause = "no_eiv" if eiv_for(r) is None else "no_phonation"
+            (no_eiv if cause == "no_eiv" else no_phonation).append(r["id"])
 
         # Sliced per row, not read off the end: `unusable` accumulates across the whole
         # campaign, and this row's verdict may only be shaped by this row's bad labels.
@@ -609,6 +618,10 @@ def main():
              # a round-tripped string is a different object. `True == "unreadable"` is
              # False, so equality is still exact here.
              "axes_unreadable": sorted(a for a, c in checks.items() if c == UNREADABLE),
+             # Which ABSENCE this row has, when it has one: `no_eiv` (never scored) or
+             # `no_phonation` (scored, stage 1 measured nothing). None when measured. The
+             # repairs differ, so the summary reads this rather than re-deriving it.
+             "unmeasured_cause": cause,
              "measured_from": MEASURED_FROM}
         verdicts.append(v)
         if keep:
@@ -662,10 +675,13 @@ def main():
                 # second "score them first" sends an operator to re-run eiv_score.py, get
                 # back the row it already had, and conclude the bucket is lying — while the
                 # run says "were scored" about the same clip three lines later.
-                return "no_phonation" if v["id"] in phonation_ids else "unscored"
+                #
+                # Read off the row, NOT an id lookup — see `unmeasured_cause` at the build
+                # site. A readable axis can also be None while the row itself measured
+                # fine (no EIV row for that axis is impossible, but a future cause is not),
+                # so `no_eiv` is the default rather than an assertion.
+                return "no_phonation" if v["unmeasured_cause"] == "no_phonation" else "unscored"
             return "label"                 # would keep but for the unreadable label
-
-        phonation_ids = set(no_phonation)
 
         buckets = collections.defaultdict(list)
         for v in verdicts:

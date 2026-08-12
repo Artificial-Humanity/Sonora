@@ -417,16 +417,43 @@ the previous conclusion rather than for it**.
 
 ⚠ **It is not proof either, because it is confounded.** A named lane rendering quieter at
 `A = 0` is exactly what a *working* delivery block should also produce: Newscaster and
-narration genuinely are quieter deliveries than an unconditioned average. This probe cannot
-separate "the frames disagree about zero" from "the lanes really are quieter", because it has
-no term for the second. **The confound is unresolved.**
+narration genuinely are quieter deliveries than an unconditioned average. **That probe** has
+no term for the second reading, so it cannot separate them.
 
-**The outstanding test, stated so it can be run.** Compare rendered `A = 0` loudness per lane
-against **that lane's training-set mean loudness**, on the same clips' speakers. If the render
-tracks the training mean, the lanes are simply quieter and the frames agree; if it departs by
-lane in the direction of that lane's *frame*, the frames disagree about zero. The renders
-exist; the training means are one pass over `labels_v6.jsonl`. Until that is run, the correct
-statement is: **the dial works, and what `A = 0` means across frames is untested.**
+## ✅ RUN 2026-08-12 — the confound is resolved, and it does NOT explain the displacement
+
+The outstanding test was: compare rendered `A = 0` loudness per lane against **that lane's
+training-set mean**. It is now `scripts/derive_a_channel_stats.py` **§ 9**, joining
+`labels_v6.jsonl` (corpus rows with |A| ≤ 0.25) to the same 90 renders. Both profiles are
+centred on their own named-lane mean, so the checkpoint's **−7.376 dB** global offset from
+the corpus cancels and only the between-lane *shape* is compared.
+
+| lane | n | train @ A≈0 | render @ A=0 | train dev | render dev | discrepancy |
+|---|---:|---:|---:|---:|---:|---:|
+| Dialogue | 312 | −22.920 | −32.081 | **+0.952** | **−0.833** | −1.785 (4.4 se) |
+| Neutral | 288 | −23.162 | −31.549 | +0.710 | −0.300 | −1.011 (2.4 se) |
+| Newscaster | 76 | −23.009 | −30.994 | +0.863 | +0.255 | −0.608 (1.5 se) |
+| Speech | 48 | −26.399 | −30.370 | **−2.526** | **+0.878** | **+3.404 (9.0 se)** |
+
+**The rendered profile is anti-correlated with the training profile: Spearman ρ = −0.80**,
+and the order is very nearly inverted — Speech is the corpus's quietest lane by 3.4 dB and
+renders as the *loudest* of the four. Training spread 3.48 dB, rendered spread 1.71 dB.
+⚠ **Insensitive to the band**: ρ = −0.80 at |A| ≤ 0.10, 0.25, 0.50, 1.00 and unbanded, with
+Speech's discrepancy between **+3.16 and +3.55 dB** throughout.
+
+**What that settles.** "The named lanes are genuinely quieter deliveries" predicts a
+*positive* correlation — quiet lanes render quiet. It comes out negative, so **that reading
+does not explain § 8's displacement** and the confound above is closed.
+
+⚠ **What it does NOT settle, and must not be quoted as settling.** A negative correlation is
+*consistent* with the three-frames mechanism — per-campaign centring removed the lane-specific
+part of `A` (§ 1: 94.3%), and `A` is a globally shared FiLM channel that cannot carry a
+per-lane intercept — but **"the model has not learned lane loudness at ep010" predicts the
+same table.** Separating those needs a second checkpoint or a re-cut with target-clustered
+offsets. **Limits: 4 lanes, 2 texts, 6 renders per cell, one checkpoint.**
+
+The correct statement is now: **the dial works; `A = 0` does not mean the same thing across
+lanes; and the reason is not that the lanes are quieter.**
 
 ⚠ **Retracted:** this section previously called the probe "**the falsification of the feared
 consequence**", and the ship decision below rested on that. It is withdrawn. A slope

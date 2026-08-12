@@ -500,7 +500,119 @@ def probe(rows):
     print("\n  ⚠ THIS IS NOT A CLEAN INTERCEPT TEST. It is confounded: the named lanes may")
     print("    genuinely be quieter deliveries, which is what a working delivery block")
     print("    SHOULD produce. Separating the two needs rendered A = 0 loudness compared")
-    print("    against each lane's TRAINING-SET mean, which this probe does not carry.")
+    print("    against each lane's TRAINING-SET mean — which THIS probe does not carry, but")
+    print("    `labels_v6.jsonl` does. That join is § 9; read it before quoting this table.")
+
+
+# --- part 3: the join the two halves were always missing (issue #33) -----------------
+
+
+A0_BAND = 0.25    # "at A = 0" in the corpus; the result is insensitive to it (see § 9)
+
+
+def intercept(rows, probe_rows, band=A0_BAND):
+    """§ 9 — THE TEST ISSUE #33 ASKED FOR, and the one § 8 says it cannot perform.
+
+    § 8 compares the named lanes' rendered `A = 0` loudness against **`unknown`**, and
+    states its own confound: the named lanes may simply BE quieter deliveries, which is what
+    a working delivery block should produce. Separating that from an intercept displacement
+    needs the rendered `A = 0` compared against **each lane's own training-set mean**, which
+    § 8's probe does not carry — but `labels_v6.jsonl` does, and this function is that join.
+    It needs no `unknown` at all, which is the point: `unknown` at inference is not a lane in
+    the corpus, so any comparison against it was always going to be confounded.
+
+    THE PREDICTION EACH HYPOTHESIS MAKES, stated before the numbers:
+
+    * **"the lanes are genuinely quieter deliveries"** -> the rendered between-lane profile
+      TRACKS the training profile. Quiet lanes in the corpus render quiet.
+    * **"the reference frames disagree about what A = 0 means"** -> it does not, because the
+      lane-specific part of `A = 0` was centred away per campaign (§ 1: 94.3% of between-lane
+      structure removed) and A is a globally shared FiLM channel that cannot carry a
+      per-lane intercept.
+
+    Both profiles are centred on their OWN mean over the named lanes, so the ~7 dB global
+    offset between the checkpoint's absolute level and the corpus's cancels and only the
+    between-lane shape is compared. That offset is real and is printed, but it is not
+    evidence of anything: a vocoder has no obligation to match a corpus's absolute LUFS.
+    """
+    h("9. INTERCEPT, PROPERLY — RENDERED A = 0 vs EACH LANE'S OWN TRAINING MEAN (issue #33)")
+    tr = collections.defaultdict(list)
+    for r in rows:
+        if r["delivery"] and abs(r["a"]) <= band:
+            tr[r["delivery"]].append(r["lufs_native"])
+    rd = collections.defaultdict(list)
+    for r in probe_rows:
+        if r["energy"] == 0.0 and r["lane"] != "unknown":
+            rd[r["lane"]].append(r["lufs"])
+
+    lanes = sorted(set(tr) & set(rd))
+    if len(lanes) < 2:
+        # Named rather than crashed, like every other refusal in this file. Two lanes is the
+        # minimum for a "profile" to exist at all.
+        print(f"  only {len(lanes)} lane(s) appear in BOTH the corpus and the probe "
+              f"({sorted(set(tr) & set(rd))}) — there is no between-lane profile to "
+              f"compare.\n  § 9 needs a lane to be present on both sides.")
+        return
+
+    def mean_se(v):
+        return float(np.mean(v)), float(np.std(v, ddof=1) / np.sqrt(len(v)))
+
+    tm = {l: mean_se(tr[l]) for l in lanes}
+    rm = {l: mean_se(rd[l]) for l in lanes}
+    tc = float(np.mean([tm[l][0] for l in lanes]))
+    rc = float(np.mean([rm[l][0] for l in lanes]))
+
+    print(f"  corpus rows with |A| <= {band} (that is what 'at A = 0' means on the corpus "
+          f"side);\n  probe cells at A = 0. Both deviations are from their own named-lane "
+          f"mean.\n")
+    print(f"    {'lane':11s} {'n_tr':>5s} {'train@A~0':>10s} {'n_rd':>5s} {'render@A=0':>11s}"
+          f"  {'train dev':>10s} {'render dev':>11s} {'DISCREPANCY':>12s}")
+    disc = {}
+    for l in lanes:
+        td, rdv = tm[l][0] - tc, rm[l][0] - rc
+        se = float(np.sqrt(tm[l][1] ** 2 + rm[l][1] ** 2))
+        disc[l] = (rdv - td, se)
+        print(f"    {l:11s} {len(tr[l]):5d} {tm[l][0]:10.3f} {len(rd[l]):5d} "
+              f"{rm[l][0]:11.3f}  {td:+10.3f} {rdv:+11.3f} "
+              f"{rdv - td:+9.3f} ({abs(rdv - td) / se:.1f} se)")
+
+    print(f"\n  global offset render - corpus = {rc - tc:+.3f} dB — CANCELS in the "
+          f"deviations, and is\n    not evidence of anything: a checkpoint owes a corpus no "
+          f"absolute level.")
+    print(f"  spread across lanes:  training {max(t[0] for t in tm.values()) - min(t[0] for t in tm.values()):.2f} dB"
+          f"   rendered {max(r[0] for r in rm.values()) - min(r[0] for r in rm.values()):.2f} dB")
+
+    rho = float(stats.spearmanr([tm[l][0] for l in lanes], [rm[l][0] for l in lanes]).statistic)
+    print(f"\n  training order, quietest first:  {[l for l in sorted(lanes, key=lambda x: tm[x][0])]}")
+    print(f"  rendered order, quietest first:  {[l for l in sorted(lanes, key=lambda x: rm[x][0])]}")
+    print(f"  Spearman rank correlation of the two profiles: {rho:+.2f}"
+          f"   (n = {len(lanes)} lanes)")
+
+    worst = max(disc, key=lambda l: abs(disc[l][0]))
+    if rho > 0:
+        print(f"\n  ⇒ the rendered profile TRACKS the training profile (rho {rho:+.2f}). "
+              f"That is what\n    'the named lanes are genuinely quieter deliveries' "
+              f"predicts, and it is the reading\n    § 8 could not rule out.")
+    else:
+        print(f"\n  ⇒ THE RENDERED PROFILE DOES NOT TRACK THE TRAINING PROFILE "
+              f"(rho {rho:+.2f}).\n    The 'genuinely quieter deliveries' reading predicts "
+              f"the opposite sign, so it does\n    NOT explain § 8's displacement. Largest "
+              f"single disagreement: {worst} at "
+              f"{disc[worst][0]:+.2f} dB\n    ({abs(disc[worst][0]) / disc[worst][1]:.1f} se)"
+              f" — it is the {'quietest' if tm[worst][0] == min(t[0] for t in tm.values()) else 'loudest'}"
+              f" lane in the corpus and renders near the\n    other end.")
+
+    print("\n  ⚠ WHAT THIS DOES AND DOES NOT ESTABLISH.")
+    print("    IT DOES: refute the confound § 8 left open. A delivery block reproducing each")
+    print("    lane's characteristic loudness would produce a POSITIVE rank correlation.")
+    print("    IT DOES NOT: prove the three-reference-frames mechanism. A negative")
+    print("    correlation is consistent with it — per-campaign centring removed the")
+    print("    lane-specific part of A (§ 1), and a globally shared FiLM channel cannot")
+    print("    carry a per-lane intercept — but 'the model has not learned lane loudness at")
+    print("    this checkpoint' predicts the same table. Distinguishing those needs a second")
+    print("    checkpoint, or a re-cut with target-clustered offsets, and is not a")
+    print("    measurement this probe can make.")
+    print(f"    LIMITS: {len(lanes)} lanes, 2 texts, 6 renders per cell, one checkpoint.")
 
 
 def main():
@@ -532,6 +644,7 @@ def main():
         r["energy"] = float(r["energy"])
         r["lufs"] = float(r["lufs"])
     probe(pr)
+    intercept(rows, pr)
 
     print("\nread-only: nothing was written.")
     return 0

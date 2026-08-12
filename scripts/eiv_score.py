@@ -169,15 +169,23 @@ def main():
     stale = {w for w, fresh in state.items() if not fresh}
     rescored = len(stale & wanted)
     if os.path.exists(args.out):
-        msg = f"resuming: {len(done)} already scored"
+        # ⚠ EVERY NUMBER IN THIS LINE IS RUN-SCOPED, AND THE FILE-WIDE ONES SAY SO. Scoping
+        # `rescored` and leaving `len(done)` file-wide put two different scopes in one
+        # sentence with nothing marking the seam: `--limit 10` on a 500-row output read
+        # "resuming: 490 already scored" and then scored ten clips. The reader has no way to
+        # tell which half is about this run, and the argument for scoping the second clause
+        # — the arrow is a promise about THIS RUN — applies verbatim to the first.
+        skipped = len(done & wanted)
+        msg = f"resuming: {skipped} of this run's {len(wanted)} input(s) already scored"
         if rescored:
             msg += f"; {rescored} re-rendered since they were scored -> re-scoring"
-        # The file-wide backlog is a real fact about the corpus and worth keeping — as its
-        # own clause, so it cannot be read as a promise about this run. Without it, a narrow
-        # run looks like it cleared everything.
-        if len(stale) > rescored:
-            msg += (f"; {len(stale) - rescored} further re-rendered clip(s) are NOT in this "
-                    f"run's inputs and stay stale until a run covers them")
+        # The file-wide figures are real facts about the corpus and worth keeping — in their
+        # own clause, so they cannot be read as promises about this run. Without them a
+        # narrow run looks like it cleared everything.
+        if len(state) > len(wanted):
+            msg += (f"  [file-wide: {len(done)} scored, {len(stale)} stale of "
+                    f"{len(state)}; {len(stale) - rescored} stale clip(s) are outside this "
+                    f"run's inputs and stay stale until a run covers them]")
         print(msg)
 
     max_samples = int(MAX_SECONDS * SR)
