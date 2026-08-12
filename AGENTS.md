@@ -359,6 +359,34 @@ campaigns" unregenerated — it was re-run and is still 13, so the note was righ
 exactly why the habit is dangerous: being right this time costs nothing and teaches the wrong
 lesson. **If a fix touches an input to a stated number, re-derive the number.**
 
+### 5c. A pipeline stage is WIRED, or it is merely WRITTEN ABOUT
+
+`scripts/` holds 114 non-test files and most of them are *correctly* uninvoked — operator
+tools, finished campaign one-shots. So "nothing calls this" carries no signal there, and a
+**stage** that stopped being called is indistinguishable from a tool that never was. That is
+how `qc_verdict.py` was named in a `synth_bank.sh` comment for a month and never ran, while
+695 directed clips reached the ear with no direction check (issue #24).
+
+* **`scripts/pipeline_manifest.py` declares every stage and which shell wires it**, and
+  `tests/test_stage_coverage.py` iterates it in both directions: a stage declared and not
+  invoked fails, a script invoked and not declared fails, and a `.sh` appearing under
+  `scripts/` in none of the three categories fails. **Wire a stage → declare it in the same
+  commit.** How to do that is in the manifest's docstring, which is the only copy.
+* ⚠ **Two things look like a call and are not.** A **comment** (the #24 failure verbatim) and
+  an **`echo`** — every stage in `synth_bank.sh` prints its own re-run command on failure, so
+  the recovery hints name the very scripts under test. `tests/test_audit_sampling.py::_invocations`
+  is this repo's one definition of "a call"; import it, never re-derive it. The guard that
+  predated it asserted a substring over the whole file, and commenting out the real invocation
+  left it **green**.
+* ⚠ **A ratchet never observed going red is not known to work.** This one was built by mutating
+  the tree eight ways — unwire a stage, demote it to an `echo`, add an undeclared stage, add a
+  new shell, reverse a recorded non-invocation, unwire the nested EIV lane, hardcode a target
+  into the dynamic-dispatch wrapper, empty the manifest — and recording which test caught each.
+  The last is the point: **every test there iterates the manifest, so an emptied manifest would
+  collect zero cases and report green.** That is §5b's mode 1 in a different file, and it is why
+  `test_the_manifest_declares_the_lanes_it_is_supposed_to_cover` exists. Do the same for the
+  next ratchet: a coverage test's own coverage is not self-evident.
+
 ### 6. Execute From The Repo — `/data` Holds Data
 
 **Owner principle (2026-08-06): code executes from the repo checkout; `/data` holds what

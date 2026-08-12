@@ -190,6 +190,13 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
 
 ## Pipeline integrity (hardening rounds, 2026-07-31 → 08-02)
 
+- **Stage wiring is declared and enforced** (2026-08-12, issue #26 step 4):
+  `scripts/pipeline_manifest.py` names all 18 stage wirings across the four orchestrators,
+  plus the nested EIV lane, one deliberate non-invocation (`stage_pool`, the pool/queue
+  flood guard) and every other `.sh` under `scripts/`.
+  `tests/test_stage_coverage.py` iterates it in both directions, so an unwired stage — the
+  #24 shape — and an undeclared one both go red. Verified by mutating the tree eight ways;
+  AGENTS.md §5c. The scripts/ *layout* (buckets, moves, deletions) is still open on #26.
 - **QC gate is mandatory and enforced**: `synth_bank.sh` exits without registering on
   failure, refuses an empty measures file, and `qc_gate` exits nonzero on zero
   manifests/records/passes (the empty-glob "0/0 hard-pass" hole is closed). Every QC
