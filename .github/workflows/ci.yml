@@ -108,6 +108,15 @@ jobs:
       #
       # SPLIT INTO BLOCKING AND ADVISORY FROM MEASUREMENT, not taste (2026-08-12):
       #
+      # ⚠ `xargs -0 -r`, and the `-r` is load-bearing: GNU xargs runs the command ONCE even
+      # on empty input, and flake8 with zero file arguments falls back to `.` — which walks
+      # the in-workspace `.venv` and reopens the exact hole the file list closes. Verified
+      # both halves.
+      # ⚠ The `:!:matcha/hifigan/*` pathspec replaces the `--exclude` that the switch to
+      # `git ls-files` dropped. `logs/` and `data/` need no exclusion (untracked, so absent
+      # from the list by construction) but `matcha/hifigan` is TRACKED and vendored, and the
+      # measurement below was taken with it excluded — the pre-commit hook excludes it too.
+      #
       #   pyflakes F-codes    0 findings, after this PR's fixes  -> BLOCKING
       #   black --check     145 of 191 files would be reformatted -> advisory
       #   isort --check      92 files                             -> advisory
@@ -140,10 +149,15 @@ jobs:
       # and takes every genuine F-code in it along too. Verified: two broken files, exit 0.
       # A gate that cannot see a syntax error is the wrong gate for a PR that exists because
       # a SyntaxError shipped.
+      # `if: always()` here too. The same semantics this file explains for the advisory step
+      # apply one step higher: "Run the suite" precedes both lint steps, so a red suite
+      # skipped the blocking gate entirely — a lint regression would hide behind any test
+      # failure, and the gate would report nothing on exactly the run someone is debugging.
       - name: Lint — real-defect classes (blocking)
+        if: always()
         run: |
           uv pip install --python .venv/bin/python 'flake8==7.0.0'
-          git ls-files -z '*.py' | xargs -0 .venv/bin/python -m flake8 \
+          git ls-files -z '*.py' ':!:matcha/hifigan/*' | xargs -0 -r .venv/bin/python -m flake8 \
             --select=E9,F --extend-ignore=F401,F841 --max-line-length 120
 
       # `if: always()` — NOT just `continue-on-error`. That flag governs what happens when
@@ -156,12 +170,12 @@ jobs:
         run: |
           uv pip install --python .venv/bin/python 'black==23.12.1' 'isort==5.13.2'
           echo '::group::black'
-          git ls-files -z '*.py' | xargs -0 .venv/bin/python -m black --check || true
+          git ls-files -z '*.py' ':!:matcha/hifigan/*' | xargs -0 -r .venv/bin/python -m black --check || true
           echo '::endgroup::'
           echo '::group::isort'
-          git ls-files -z '*.py' | xargs -0 .venv/bin/python -m isort --check-only --profile black || true
+          git ls-files -z '*.py' ':!:matcha/hifigan/*' | xargs -0 -r .venv/bin/python -m isort --check-only --profile black || true
           echo '::endgroup::'
           echo '::group::flake8 style'
-          git ls-files -z '*.py' | xargs -0 .venv/bin/python -m flake8 --max-line-length 120 \
+          git ls-files -z '*.py' ':!:matcha/hifigan/*' | xargs -0 -r .venv/bin/python -m flake8 --max-line-length 120 \
             --extend-ignore E203,E402,E501,F401,F841,RST2,RST301 || true
           echo '::endgroup::'
