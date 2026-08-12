@@ -174,7 +174,7 @@ def main():
             tensors.append({"name": name, "shape": list(t.shape or []),
                             "type": t.type, "index": ti})
             present.add(name)
-        io_indices = set(int(i) for i in (list(sub.inputs or []) + list(sub.outputs or [])))
+        io_indices = {int(i) for i in (list(sub.inputs or []) + list(sub.outputs or []))}
         plan, problems = plan_renames(tensors, io_indices, renames)
         total_plan[si] = plan
         all_problems += problems

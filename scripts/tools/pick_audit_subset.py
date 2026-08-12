@@ -385,7 +385,7 @@ def cmd_select(args):
         by_group[(grp, eng)].append(r["id"])
     _warn_unmatched(unmatched, args.campaign)
 
-    keep_ids = set(i for i in flagged if any(i in ids for ids in by_group.values()))
+    keep_ids = {i for i in flagged if any(i in ids for ids in by_group.values())}
 
     # NEW-READER RULE (owner 2026-08-01): "if we have a set of clips from a new reader,
     # it would do us well to have me review at least one clip, always. The voice
@@ -444,7 +444,7 @@ def cmd_select(args):
             n = 1
         keep_ids.update(rng.sample(sorted(rest), min(n, len(rest))))
 
-    defer_ids = set(i for ids in by_group.values() for i in ids) - keep_ids
+    defer_ids = {i for ids in by_group.values() for i in ids} - keep_ids
 
     counts = {"deferred": 0, "requeued": 0}
 

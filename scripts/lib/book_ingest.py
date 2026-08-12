@@ -1288,7 +1288,7 @@ def chunk_key(chunk):
     checkpoint would then hand chunk 40's direction to chunk 37, which is worse than
     having no checkpoint at all because the bank still looks complete.
     """
-    blob = f"{chunk['chunk_type']}\x00{chunk['text']}".encode("utf-8")
+    blob = f"{chunk['chunk_type']}\x00{chunk['text']}".encode()
     return hashlib.sha1(blob).hexdigest()
 
 

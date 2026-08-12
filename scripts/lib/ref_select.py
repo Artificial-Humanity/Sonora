@@ -391,7 +391,6 @@ import sys as _sys  # noqa: E402
 # levels down, so this expression is the same everywhere and `tests/test_asset_paths.py`
 # can check it.
 import os as _os  # noqa: E402
-import sys as _sys  # noqa: E402
 
 _SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):

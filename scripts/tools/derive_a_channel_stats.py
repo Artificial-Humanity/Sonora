@@ -289,7 +289,7 @@ def loudness_targets(rows):
     n1 = sum(n for _, n in buckets.get("n = 1", []))
     targets = ", ".join(k.replace("normalised to ", "") for k in declared) or "none"
     print(f"    => {len(declared)} declared loudness target(s) in this bank ({targets}).")
-    print(f"       Everything else is un-normalised material whose LUFS is a measurement,")
+    print("       Everything else is un-normalised material whose LUFS is a measurement,")
     print(f"       and {n1} row(s) are n = 1 (undecidable either way).")
 
 
@@ -672,9 +672,9 @@ def epoch_trend(rows, series, band=A0_BAND):
     probe records — which is why that script re-renders every checkpoint it compares.
     """
     h("10. DOES THE DISAGREEMENT SHRINK WITH TRAINING? (issue #33's discriminator)")
-    print(f"  one row per checkpoint, same design, same texts. rho = Spearman rank")
+    print("  one row per checkpoint, same design, same texts. rho = Spearman rank")
     print(f"  correlation between each lane's TRAINING loudness at |A| <= {band} and its")
-    print(f"  RENDERED loudness at A = 0. Positive = the render tracks the corpus.\n")
+    print("  RENDERED loudness at A = 0. Positive = the render tracks the corpus.\n")
     # ⚠ RHO ALONE CANNOT SEPARATE THE TWO READINGS, and reporting only rho was this
     # section's first draft. A model converging on the training profile and a model
     # converging on NO profile both move rho about equally little at n = 4. The quantity

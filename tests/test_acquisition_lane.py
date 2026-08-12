@@ -39,7 +39,7 @@ def test_latin1_edition_decodes_without_replacement_characters(fetch_mod):
 
 
 def test_utf8_edition_is_unchanged(fetch_mod):
-    raw = "The café was full — she paused.".encode("utf-8")
+    raw = "The café was full — she paused.".encode()
     assert fetch_mod.decode_gutenberg(raw, "test://utf8") == "The café was full — she paused."
 
 
@@ -47,7 +47,7 @@ def test_source_that_already_contains_fffd_is_refused(fetch_mod):
     """We cannot repair an edition corrupt at source, but shipping it silently is the
     finding. Refusing lets the caller try another edition."""
     with pytest.raises(ValueError, match="U\\+FFFD"):
-        fetch_mod.decode_gutenberg("caf� was full".encode("utf-8"), "test://broken")
+        fetch_mod.decode_gutenberg("caf� was full".encode(), "test://broken")
 
 
 # --- A-M12: HTML error pages saved as .mp3 -------------------------------------------

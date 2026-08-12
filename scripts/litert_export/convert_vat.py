@@ -641,19 +641,18 @@ def g2p_parity_gate():
     this gate certified. The round trip is not decoration: the device reads JSON, so the
     thing under test has to be what JSON preserves, not the Python dict it came from.
     """
-# Sibling modules used to be reached with `sys.path.insert(0, dirname(__file__))`, which
-# worked only while every script lived in one directory. After #26 step 3 they are split
-# across scripts/{stages,lib,tools,gates}, so the anchor is the REPO ROOT and the search
-# path is explicit. Uniform on purpose: every file under scripts/<bucket>/ is exactly two
-# levels down, so this expression is the same everywhere and `tests/test_asset_paths.py`
-# can check it.
-import os as _os  # noqa: E402
-import sys as _sys  # noqa: E402
-
-_SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
-for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):
-    if _p not in _sys.path:
-        _sys.path.insert(0, _p)
+    # `device_g2p` is a SIBLING in scripts/litert_export/, which is not one of the buckets a
+    # repo-root prologue adds — and this directory is only on `sys.path` automatically when
+    # this file is run as a script, not when it is imported. So the insert stays, and stays
+    # INSIDE the function, exactly as before #26 step 3.
+    #
+    # ⚠ This is where that move broke the file. The prologue it inserted replaced this
+    # indented line with an unindented block, dedenting the whole function body and putting
+    # `return serialized` outside the function — `SyntaxError: 'return' outside function`,
+    # shipped in 7557aea. `ast.parse` does NOT catch that class (it is a symtable error, not
+    # a syntax-tree one), so the check that found the same breakage in `book_ingest.py`
+    # reported one broken file when there were two. Compile, do not just parse.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import device_g2p
 
     from matcha.text import op_g2p

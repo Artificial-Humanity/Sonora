@@ -14,7 +14,7 @@ import soundfile as sf
 import torch
 from qwen_tts import Qwen3TTSModel
 
-import sys as _sys
+import sys as _sys  # noqa: E402
 # Sibling modules used to be reached with `sys.path.insert(0, dirname(__file__))`, which
 # worked only while every script lived in one directory. After #26 step 3 they are split
 # across scripts/{stages,lib,tools,gates}, so the anchor is the REPO ROOT and the search
@@ -22,7 +22,6 @@ import sys as _sys
 # levels down, so this expression is the same everywhere and `tests/test_asset_paths.py`
 # can check it.
 import os as _os  # noqa: E402
-import sys as _sys  # noqa: E402
 
 _SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):
