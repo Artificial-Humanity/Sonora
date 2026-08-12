@@ -73,7 +73,10 @@ def _strip_trailing_comment(line):
 # `echo`/`printf` possibly behind redirections, a brace/paren/`!`, or VAR= prefixes.
 _ECHO_HEAD = re.compile(
     r"""(?:^|(?<=[;&|{(`]|\s))                   # clause start (backtick too: `echo …`)
-        (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*   # prefixes
+        # prefixes: redirections, grouping, `!`, VAR=, and MAKEFILE RECIPE PREFIXES
+        # (`@` silent, `-` ignore-errors, `+` always-run). `@echo` is the commonest
+        # Makefile idiom there is and was counted as a launch without the `@` here.
+        (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!@+-]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*
         (?:echo|printf)\b""",
     re.X,
 )
