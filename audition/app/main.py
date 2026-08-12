@@ -220,9 +220,12 @@ class _RatingsLock:
     The threading lock was here from the start and covers uvicorn's workers. It cannot see
     another PROCESS, and several scripts write this file constantly — `scripts/tools/`'s
     `stage_pool`, `pick_audit_subset` and `sweep_dropped`, plus `scripts/stages/`'s
-    `register_audition`. Those scripts protect themselves against the app
-    (`synth_common.ratings_transaction` re-checks the mtime inside its own lock and aborts
-    if the app moved the file), but nothing protected the
+    `register_audition`. Those scripts protect themselves against the app, by two DIFFERENT
+    mechanisms — the `scripts/tools/` three take `synth_common.ratings_transaction`, which
+    re-checks the mtime inside its own lock and aborts if the app moved the file, while
+    `register_audition` uses its own `append_guarded`: append, then read back and confirm the
+    ids are on disk, re-appending whatever went missing. Verification is the guard there;
+    checking mtime beforehand only narrows the window. Nothing protected the
     reverse direction: a script transaction committing inside this app's read -> replace
     window was silently overwritten. The window is milliseconds; the loss is a whole
     staging run's rows or a select pass's defers, with no error anywhere.

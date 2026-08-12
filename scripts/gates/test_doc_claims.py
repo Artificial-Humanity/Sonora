@@ -3,7 +3,7 @@
 
 WHY THIS EXISTS (2026-08-09, owner-commissioned)
 ------------------------------------------------
-This repo catches forked CODE constants and nothing else. `test_skill_files.py` verifies 92
+This repo catches forked CODE constants and nothing else. `test_skill_files.py` verifies 94
 claims against source; `test_vat_dim_seams.py` has 30+; there are parity tests for
 `DASH_RUN`, the delivery vocabulary and the device G2P tables, and `test_data_mirrors.py`
 for `/data` copies. **Every one of those exists because a value forked once.** Documentation

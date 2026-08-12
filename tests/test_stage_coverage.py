@@ -128,6 +128,18 @@ def test_every_declared_stage_is_actually_invoked(orch, stage):
         f"(a comment is not a call, and neither is an echo). Either wire it, or move it to "
         f"that orchestrator's `deliberately_not_invoked` with the reason."
     )
+    # The DIRECTORY too, not just the basename. Every comparison in this file collapses to a
+    # basename — the shells spell the same script three ways (`$SONORA/…`, `/sonora/…` inside
+    # the container, `/tmp/sonora/…` in the holdout build copy) so an absolute prefix cannot
+    # be matched. That made the manifest's repo-relative paths decoration: a declaration
+    # could name the wrong bucket and still pass. The bucket segment IS present in every
+    # spelling, so it is checkable.
+    bucket = pathlib.PurePosixPath(stage.script).parent.name
+    tail = f"{bucket}/{basename}"
+    assert any(tail in cmd for cmd in _commands(orch)), (
+        f"{orch} invokes {basename}, but not at the declared path {stage.script} — no "
+        f"invocation contains {tail!r}. The manifest names a bucket the shell does not use."
+    )
 
 
 @pytest.mark.parametrize("orch", sorted(M.ORCHESTRATORS), ids=sorted(M.ORCHESTRATORS))
@@ -152,6 +164,12 @@ def test_no_orchestrator_invokes_a_script_the_manifest_does_not_know_about(orch)
     spec = M.ORCHESTRATORS[orch]
     allowed = {pathlib.PurePosixPath(s.script).name for s in spec["stages"]}
     allowed |= {pathlib.PurePosixPath(s).name for s in spec["invokes_orchestrators"]}
+    for extra in spec["non_stage_scripts"]:
+        # `stages` entries are existence- and location-checked; these were not, so
+        # `"setup.py"` sat as a bare basename permanently whitelisting that name in this
+        # orchestrator regardless of which setup.py runs. It IS repo-relative (repo root),
+        # so hold it to the same standard.
+        assert (REPO / extra).is_file(), f"{orch} declares non-stage script {extra}, which does not exist"
     allowed |= {pathlib.PurePosixPath(s).name for s in spec["non_stage_scripts"]}
     allowed |= set(M.STRUCTURAL_HELPERS)
     allowed.add(pathlib.PurePosixPath(orch).name)  # its own usage string / self-reference

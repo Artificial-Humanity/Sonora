@@ -233,7 +233,12 @@ def test_relay_matrix_agrees():
     # the app was a separate repo and became a permanent skip when it stopped being one.
     # No fallback now, deliberately: the app is in this tree, so its absence is a failure.
     app = os.path.join(HERE, "..", "..", "audition", "app", "main.py")
-    check(os.path.exists(app), f"the audition app is not where this gate expects it: {app}")
+    # `check()` RECORDS and returns — it does not short-circuit — so without this the
+    # open below raises, `main()`'s `except Exception` logs the same fact a second time,
+    # and the two checks after it never run: the claim count would vary with the failure.
+    if not os.path.exists(app):
+        check(False, f"the audition app is not where this gate expects it: {app}")
+        return
     with open(app, encoding="utf-8") as f:
         src = f.read()
     block = re.search(r"^RELAY = \{(.*?)^\}", src, re.S | re.M)
