@@ -212,9 +212,15 @@ def test_relay_matrix_agrees():
     """
     from book_ingest import KNOWN_ENGINES
 
-    app = os.path.join(HERE, "..", "..", "..", "AI-Lab-AMD", "audition", "app", "main.py")
-    if not os.path.exists(app):
-        return   # sibling repo not checked out; nothing to compare against
+    # ⚠ This pointed at `../../../AI-Lab-AMD/audition/app/main.py` until 2026-08-12 — where
+    # the app lived BEFORE it came home in `2399aed`. The sibling path stopped existing that
+    # day, so `os.path.exists` was False and the check `return`ed on every run: a gate whose
+    # whole purpose is catching an engine that gets scored for direction it never received
+    # has been reporting success while comparing nothing. The escape hatch was right when
+    # the app was a separate repo and became a permanent skip when it stopped being one.
+    # No fallback now, deliberately: the app is in this tree, so its absence is a failure.
+    app = os.path.join(HERE, "..", "audition", "app", "main.py")
+    check(os.path.exists(app), f"the audition app is not where this gate expects it: {app}")
     with open(app, encoding="utf-8") as f:
         src = f.read()
     block = re.search(r"^RELAY = \{(.*?)^\}", src, re.S | re.M)
