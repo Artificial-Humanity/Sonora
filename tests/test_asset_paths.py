@@ -217,11 +217,24 @@ SCRIPTS = sorted(
 def test_the_guard_actually_asserts_something():
     """The floor has to count FALSIFIABLE assertions, not files enumerated.
 
-    `len(SCRIPTS)` was the wrong population: 107 green cases of which 93 assert nothing at
-    all, because most scripts build no in-repo path. Worse, six of the constants that ARE
-    asserted are self-ancestors — `HERE = dirname(abspath(__file__))` resolves to a
-    directory containing the file being parsed, so it exists by construction and can never
-    fail. Counting those as coverage is silent-disarm mode 1 wearing a number.
+    `len(SCRIPTS)` was the wrong population. Measured on 2026-08-12, all four numbers from
+    one run of this test's own body:
+
+        scripts enumerated                 106
+        constants resolving to a repo path  32
+        of which SELF-ANCESTOR              8   <- cannot fail, by construction
+        FALSIFIABLE                        24   <- what the floor below counts
+
+    Most scripts build no in-repo path at all, so a floor on the file count says nothing.
+    And a self-ancestor (`HERE = dirname(abspath(__file__))`) resolves to a directory that
+    contains the file being parsed — counting those as coverage is silent-disarm mode 1
+    wearing a number.
+
+    ⚠ These four were stale within a round: an earlier version said "107 green cases of
+    which 93 assert nothing" and "six … self-ancestors", written before the walk was
+    extended to unnamed path expressions. The floor was re-derived and the prose beside it
+    was not, so the two disagreed about the same measurement. If you change what is
+    counted, re-derive every number that describes the count — not just the assertion.
     """
     assert TRACKED, "git ls-files returned nothing"
     assert len(SCRIPTS) >= 80, f"only {len(SCRIPTS)} scripts enumerated — is the listing working?"

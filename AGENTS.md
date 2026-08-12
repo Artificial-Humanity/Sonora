@@ -487,9 +487,12 @@ SONORA_REPO="$(git rev-parse --show-toplevel)" deploy.sh audition
   `<worktree>/audition`. ⚠ **An earlier version of this bullet said that root "inherits a
   git dir from the worktree and passes `require_source`". It does not** —
   `<worktree>/audition/.git` does not exist at all, so `require_source`'s `-e` test *refuses*
-  it. The advice is right and the reason was wrong, which contradicted the note eight lines
-  down about the same function. Use `--show-toplevel` because it is correct from any depth,
-  not because anything downstream fails to catch `$PWD`.
+  it. The advice is right and the reason was wrong, which contradicted the `require_source`
+  note at the end of this subsection — and the errata itself then pointed at that note as
+  "eight lines down" when it is nearer thirty, a stale pointer inside a correction about
+  stale claims. **Positional cross-references rot; name the thing instead.** Use
+  `--show-toplevel` because it is correct from any depth, not because anything downstream
+  fails to catch `$PWD`.
 * ⚠ **Prefix it; do not `export` it.** `scripts/litert_export/run.sh` honours an inherited
   `SONORA_REPO` through `${SONORA_REPO:-…}`, so an export run later in the same session
   would resolve `import matcha` out of the worktree instead of the caretaker tree.
