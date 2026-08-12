@@ -615,11 +615,138 @@ def intercept(rows, probe_rows, band=A0_BAND):
     print(f"    LIMITS: {len(lanes)} lanes, 2 texts, 6 renders per cell, one checkpoint.")
 
 
+def read_probe(path):
+    """A probe csv, tolerating the `# key=value` provenance header.
+
+    `probe_delivery_intercept.py` writes the checkpoint, the sampler settings and the texts
+    above the header, because the probe this file was first written against recorded none of
+    them and therefore could not be repeated. `csv.DictReader` would read those lines as
+    data, so they are skipped here rather than not written there.
+    """
+    # A directory is the probe's own output shape, so accept it and take the csv inside —
+    # `--probe-series ep008=/path/to/intercept_ep008` is what anyone will type.
+    if os.path.isdir(path):
+        path = os.path.join(path, "measures.csv")
+    with open(path, encoding="utf-8") as fh:
+        lines = [ln for ln in fh if not ln.startswith("#")]
+    rows = list(csv.DictReader(lines))
+    for r in rows:
+        r["energy"] = float(r["energy"])
+        r["lufs"] = float(r["lufs"])
+    return rows
+
+
+def lane_profiles(rows, probe_rows, band=A0_BAND):
+    """-> (lanes, training means, rendered means) for the lanes present on BOTH sides."""
+    tr = collections.defaultdict(list)
+    for r in rows:
+        if r["delivery"] and abs(r["a"]) <= band:
+            tr[r["delivery"]].append(r["lufs_native"])
+    rd = collections.defaultdict(list)
+    for r in probe_rows:
+        if r["energy"] == 0.0 and r["lane"] != "unknown":
+            rd[r["lane"]].append(r["lufs"])
+    lanes = sorted(set(tr) & set(rd))
+    return (lanes,
+            {l: float(np.mean(tr[l])) for l in lanes},
+            {l: float(np.mean(rd[l])) for l in lanes})
+
+
+def epoch_trend(rows, series, band=A0_BAND):
+    """§ 10 — THE DISCRIMINATOR § 9 SAYS IT CANNOT BE (issue #33).
+
+    § 9 shows the rendered between-lane profile at A = 0 is anti-correlated with the
+    corpus's own, and says plainly that two explanations predict that:
+
+      (a) STRUCTURAL — the reference frames disagree about what A = 0 denotes;
+      (b) DEVELOPMENTAL — the model has not learned lane loudness at this checkpoint.
+
+    They differ in what happens ACROSS TRAINING. (b) predicts the disagreement shrinks as
+    the model learns; (a) predicts it does not, because per-campaign centring removed the
+    lane-specific part of A from the labels and no amount of training recovers a signal that
+    is not in the data.
+
+    ⚠ This reads a SERIES OF PROBES OF THE SAME DESIGN. Comparing a probe rendered by
+    `probe_delivery_intercept.py` against `delivery_ep010/measures.csv` would confound the
+    epoch with the texts, the speaker and the sampler settings, none of which the older
+    probe records — which is why that script re-renders every checkpoint it compares.
+    """
+    h("10. DOES THE DISAGREEMENT SHRINK WITH TRAINING? (issue #33's discriminator)")
+    print(f"  one row per checkpoint, same design, same texts. rho = Spearman rank")
+    print(f"  correlation between each lane's TRAINING loudness at |A| <= {band} and its")
+    print(f"  RENDERED loudness at A = 0. Positive = the render tracks the corpus.\n")
+    # ⚠ RHO ALONE CANNOT SEPARATE THE TWO READINGS, and reporting only rho was this
+    # section's first draft. A model converging on the training profile and a model
+    # converging on NO profile both move rho about equally little at n = 4. The quantity
+    # that tells them apart is where the RENDERED SPREAD is heading: toward the training
+    # spread (learning the lanes) or toward zero (learning nothing about them). It is
+    # continuous, so it moves when a 4-item rank correlation cannot.
+    print(f"    {'checkpoint':12s} {'rho':>6s} {'render spr':>11s} {'/train spr':>11s} "
+          f"{'worst lane':>11s} {'worst dev':>10s}")
+    trend = []
+    train_spread = None
+    for label, pr in series:
+        lanes, tm, rm = lane_profiles(rows, pr, band)
+        if len(lanes) < 2:
+            print(f"    {label:12s}   — too few shared lanes to correlate")
+            continue
+        train_spread = max(tm.values()) - min(tm.values())
+        tc = float(np.mean([tm[l] for l in lanes]))
+        rc = float(np.mean([rm[l] for l in lanes]))
+        disc = {l: (rm[l] - rc) - (tm[l] - tc) for l in lanes}
+        worst = max(disc, key=lambda l: abs(disc[l]))
+        rho = float(stats.spearmanr([tm[l] for l in lanes],
+                                    [rm[l] for l in lanes]).statistic)
+        spread = max(rm.values()) - min(rm.values())
+        trend.append((label, rho, spread, worst, disc[worst]))
+        print(f"    {label:12s} {rho:+6.2f} {spread:8.2f} dB {spread / train_spread:10.2f} "
+              f"{worst:>11s} {disc[worst]:+8.2f} dB")
+
+    if len(trend) < 2:
+        print("\n  ⇒ one checkpoint is not a trend. Render a second and re-run.")
+        return
+    first, last = trend[0], trend[-1]
+    print(f"\n  {first[0]} -> {last[0]}:  rho {first[1]:+.2f} -> {last[1]:+.2f}"
+          f"   |  rendered spread {first[2]:.2f} -> {last[2]:.2f} dB"
+          f"   (training spread {train_spread:.2f} dB, fixed)"
+          f"\n  worst lane deviation {first[4]:+.2f} -> {last[4]:+.2f} dB")
+
+    # ⚠ THE END STATE, NOT THE DIRECTION OF TRAVEL. The first version asked whether the
+    # spread got CLOSER to the corpus's, which is False when it was already right — a model
+    # that had the correct magnitude at both checkpoints and spent training fixing only the
+    # ORDER would have been read as "no clear pattern". The question is where it ended up:
+    # the right order (rho risen) AND roughly the right magnitude.
+    near_train = abs(last[2] - train_spread) <= 0.25 * train_spread
+    toward_training = last[1] > first[1] + 0.4 and near_train
+    toward_flat = last[2] < first[2] and last[1] <= 0 and not near_train
+    if toward_training:
+        print("\n  ⇒ CONVERGING ON THE TRAINING PROFILE — rho rising AND the rendered spread")
+        print("    approaching the corpus's. That is reading (b): the model is learning lane")
+        print("    loudness and had not finished. A re-cut is not indicated.")
+    elif toward_flat:
+        print("\n  ⇒ CONVERGING ON NO PROFILE, NOT ON THE TRAINING ONE. The rendered spread")
+        print("    is shrinking while rho stays negative, so the model is not learning the")
+        print("    lanes' loudness — it is flattening toward lane-independent output. That")
+        print("    is reading (a): the lane-specific signal was centred out of the labels,")
+        print("    so there is nothing to learn and the residual decays with training.")
+        print("    ⚠ Reading (b) predicts the OPPOSITE of this: it needs the spread to grow")
+        print("    toward the corpus's, not shrink away from it.")
+    else:
+        print("\n  ⇒ NEITHER PATTERN IS CLEAR at this n. Do not read a verdict off this.")
+    print(f"\n  ⚠ LIMITS: {len(trend)} checkpoints, ONE training run, {len(lanes)} lanes, and")
+    print("    the run itself stopped at ep010 on a flat basin — so 'more training' is not")
+    print("    an option this corpus leaves open, and the trend cannot be extended by")
+    print("    waiting. rho over 4 items moves only in steps of 0.2; the spread column is")
+    print("    the continuous one and should carry the weight.")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--labels", default=LABELS)
     ap.add_argument("--manifest", default=MANIFEST)
     ap.add_argument("--probe", default=PROBE)
+    ap.add_argument("--probe-series", nargs="*", metavar="LABEL=DIR_OR_CSV",
+                    help="probes of the SAME design, for the epoch trend (\u00a7 10)")
     args = ap.parse_args()
 
     missing = [p for p in (args.labels, args.manifest, args.probe) if not os.path.exists(p)]
@@ -638,13 +765,23 @@ def main():
     corpus(rows, manifest)
     loudness_targets(rows)
 
-    with open(args.probe, encoding="utf-8") as fh:
-        pr = list(csv.DictReader(fh))
-    for r in pr:
-        r["energy"] = float(r["energy"])
-        r["lufs"] = float(r["lufs"])
+    pr = read_probe(args.probe)
     probe(pr)
     intercept(rows, pr)
+
+    if args.probe_series:
+        # ⚠ SERIES ONLY COMPARES PROBES OF THE SAME DESIGN. `probe_delivery_intercept.py`
+        # writes its texts and sampler settings into the csv header for exactly this reason;
+        # the ep010 probe under `probes/delivery_ep010/` predates that script and records
+        # neither, so it is NOT interchangeable with one this script rendered.
+        series = []
+        for item in args.probe_series:
+            label, _, path = item.partition("=")
+            if not path or not os.path.exists(path):
+                print(f"missing probe in series: {item}", file=sys.stderr)
+                return 2
+            series.append((label, read_probe(path)))
+        epoch_trend(rows, series)
 
     print("\nread-only: nothing was written.")
     return 0

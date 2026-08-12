@@ -127,3 +127,50 @@ def test_a_lane_missing_from_either_side_is_refused_by_name():
     out = buf.getvalue()
     assert "there is no between-lane profile to" in out
     assert "Traceback" not in out
+
+
+def _series_run(corpus_lufs, probes):
+    """probes: [(label, {lane: rendered_lufs_at_A0})] -> § 10's output."""
+    mod = _load()
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        mod.epoch_trend(_corpus(corpus_lufs),
+                        [(label, _probe(p)) for label, p in probes])
+    return buf.getvalue()
+
+
+TRAIN = {"Dialogue": -22.0, "Neutral": -23.0, "Newscaster": -24.0, "Speech": -26.0}
+
+
+def test_converging_on_the_training_profile_is_read_as_developmental():
+    """Reading (b): the model is learning the lanes. rho rises AND the rendered spread
+    approaches the corpus's. A re-cut is not indicated by that."""
+    early = {"Dialogue": -34.0, "Neutral": -32.0, "Newscaster": -31.0, "Speech": -30.0}
+    late = {"Dialogue": -30.0, "Neutral": -31.0, "Newscaster": -32.0, "Speech": -34.0}
+    out = _series_run(TRAIN, [("ep002", early), ("ep010", late)])
+    assert "CONVERGING ON THE TRAINING PROFILE" in out
+    assert "A re-cut is not indicated" in out
+    assert "CONVERGING ON NO PROFILE" not in out
+
+
+def test_flattening_is_not_read_as_learning():
+    """Reading (a), and the distinction rho alone cannot make: the spread SHRINKS while the
+    order stays inverted, so the model is converging on lane-independent output rather than
+    on the corpus. The first draft of § 10 reported only rho and could not tell these apart.
+    """
+    early = {"Dialogue": -34.0, "Neutral": -32.0, "Newscaster": -31.0, "Speech": -30.0}
+    late = {"Dialogue": -32.0, "Neutral": -31.5, "Newscaster": -31.2, "Speech": -31.0}
+    out = _series_run(TRAIN, [("ep002", early), ("ep010", late)])
+    assert "CONVERGING ON NO PROFILE" in out
+    assert "not learning the" in out
+    assert "CONVERGING ON THE TRAINING PROFILE" not in out
+    # The claim that makes the branch worth having, stated in the output rather than left
+    # for a reader to infer.
+    assert "Reading (b) predicts the OPPOSITE" in out
+
+
+def test_one_checkpoint_is_refused_as_a_trend():
+    out = _series_run(TRAIN, [("ep010", {"Dialogue": -30.0, "Neutral": -31.0,
+                                         "Newscaster": -32.0, "Speech": -34.0})])
+    assert "one checkpoint is not a trend" in out
+    assert "CONVERGING" not in out

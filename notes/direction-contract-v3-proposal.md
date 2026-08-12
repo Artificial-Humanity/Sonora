@@ -445,15 +445,45 @@ Speech's discrepancy between **+3.16 and +3.55 dB** throughout.
 *positive* correlation — quiet lanes render quiet. It comes out negative, so **that reading
 does not explain § 8's displacement** and the confound above is closed.
 
-⚠ **What it does NOT settle, and must not be quoted as settling.** A negative correlation is
-*consistent* with the three-frames mechanism — per-campaign centring removed the lane-specific
-part of `A` (§ 1: 94.3%), and `A` is a globally shared FiLM channel that cannot carry a
-per-lane intercept — but **"the model has not learned lane loudness at ep010" predicts the
-same table.** Separating those needs a second checkpoint or a re-cut with target-clustered
-offsets. **Limits: 4 lanes, 2 texts, 6 renders per cell, one checkpoint.**
+⚠ **What § 9 alone does not settle.** A negative correlation is *consistent* with the
+three-frames mechanism — per-campaign centring removed the lane-specific part of `A`
+(§ 1: 94.3%), and `A` is a globally shared FiLM channel that cannot carry a per-lane
+intercept — but **"the model has not learned lane loudness at ep010" predicts the same
+table.** That needed a second checkpoint, which is § 10.
+
+## ✅ RUN 2026-08-12 — § 10, the discriminator: the cause is STRUCTURAL
+
+Three checkpoints of the same run, probed on **one design with one set of texts**
+(`scripts/probe_delivery_intercept.py` — the ep010 probe's own design was never recorded, so
+every checkpoint here was re-rendered rather than compared against it):
+
+| checkpoint | ρ | rendered spread | ÷ training spread | worst lane | worst deviation |
+|---|---:|---:|---:|---|---:|
+| ep002 | −1.00 | 3.66 dB | 1.05 | Speech | +4.43 dB |
+| ep008 | −0.80 | 2.19 dB | 0.63 | Speech | +3.82 dB |
+| ep010 | −0.80 | 1.95 dB | 0.56 | Speech | +3.49 dB |
+
+**The two readings predict opposite trends, and the data picks one.** "Not learned yet" needs
+the rendered spread to *grow toward* the corpus's 3.48 dB with ρ rising. Instead the spread
+**shrinks away from it** — 3.66 → 1.95 dB — while ρ stays negative throughout. At **ep002 the
+magnitude was already right (3.66 vs 3.48) and the order was exactly inverted (ρ = −1.00)**;
+training has since flattened it rather than reordered it.
+
+⇒ **The model is converging on lane-independent loudness at `A = 0`, not on the corpus's
+profile.** That is what a signal centred out of the labels looks like: there is nothing to
+learn, so the residual decays. **This is reading (a) — structural — and it is the condition
+[#14](https://github.com/Artificial-Humanity/Sonora/issues/14) pre-committed to re-cutting v6
+with target-clustered offsets on.**
+
+⚠ **Limits, and one that matters more than the others.** 3 checkpoints, **one training run**,
+4 lanes; ρ over 4 items moves only in steps of 0.2, so the spread column carries the weight.
+**The run stopped at ep010 on a flat basin, so "train longer" is not an option this corpus
+leaves open** — the trend cannot be extended by waiting, and a second run would be a
+different experiment rather than more of this one.
 
 The correct statement is now: **the dial works; `A = 0` does not mean the same thing across
-lanes; and the reason is not that the lanes are quieter.**
+lanes; the reason is not that the lanes are quieter; and it is not going to resolve with more
+training on this corpus.**
 
 ⚠ **Retracted:** this section previously called the probe "**the falsification of the feared
 consequence**", and the ship decision below rested on that. It is withdrawn. A slope
