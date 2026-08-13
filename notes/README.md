@@ -42,9 +42,8 @@ _Answering a specific question? **"What are we training on"** → `training-sour
 
 _Bookkeeping: none to maintain here. The changelog and the `code-review-*.md` cycle were
 both retired 2026-08-11 (AGENTS.md §4) — a change is recorded by its commit message, and a
-review finding that its cycle could not settle becomes a GitHub issue (AGENTS.md §1). The
-one exception is `reviews/`, which holds a transient handoff file per cycle and is emptied
-by the end of it._
+review finding that its cycle could not settle becomes a GitHub issue (AGENTS.md §1).
+`reviews/` holds a transient handoff file per cycle and is emptied by the end of it._
 
 ## Data — what trains, and under what license
 

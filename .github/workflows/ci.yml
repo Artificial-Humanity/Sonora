@@ -1,26 +1,19 @@
 name: CI — tests
 
-# WHY THIS EXISTS (2026-08-11, owner decision on issue #49)
+# WHY THIS EXISTS (owner decision on issue #49)
 #
-# There was NO workflow that ran the suite. `.github/` held only `claude-review.yml` (and,
-# until #59 retired it, `claude-fix.yml`), and the only mention of pytest in either was
-# inside the agent's `--allowedTools` — a permission to run tests, not a job that runs
-# them. So ~500
-# host-independent tests, including every regex in the doc-claims registry, were guarded by
-# nothing but whoever remembered to type `pytest` before pushing. The registry's own history
-# is the argument: a hole in it was found by hand, fixed, and the probe that found it was
-# never committed, so re-opening it would have been silent on every machine.
+# ~500 host-independent tests, including every regex in the doc-claims registry, were
+# guarded by nothing but whoever remembered to type `pytest` before pushing. The registry's
+# own history is the argument: a hole in it was found by hand, fixed, and the probe that
+# found it was never committed, so re-opening it would have been silent on every machine.
 #
 # This job is the floor. It is not a substitute for ai-lab-0 — see the two exclusions below.
-# ⚠ NO `pull_request` TRIGGER, and that is not an omission (2026-08-13). The repo stopped
-# using pull requests entirely: work is committed, reviewed by the `Reviewer` session, and
-# pushed straight to `main` (AGENTS.md §1). A `pull_request` trigger would simply never fire,
-# which is worse than absent — it reads as coverage that exists.
 #
-# ⚠ THE CONSEQUENCE IS REAL AND WORTH STATING: this job now runs only AFTER the code is on
-# `main`. Under the retired model it gated a merge; it cannot gate anything any more. A red
-# run here means `main` is already broken, not that a change was stopped. Whoever pushes is
-# the one who has to look — nothing else will.
+# ⚠ IT RUNS ON `push` ONLY, so it does not GATE anything — it reports. Work is reviewed
+# before the push (AGENTS.md §1) and lands on `main` directly, so a red run here means `main`
+# is already broken, not that a change was stopped. Whoever pushed is the only one who will
+# notice.
+#
 on:
   push:
     branches: [main]
