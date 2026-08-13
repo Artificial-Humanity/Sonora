@@ -542,7 +542,8 @@ therefore says nothing about `static/`, and reading it as "the bytes match" is t
 instrument-failure-mistaken-for-a-negative-result shape from §5b.
 
 What answers it is the dry-run **with `deploy.sh`'s own three excludes**, which is byte-exact
-over every file — an empty plan means the stamp drifted and the content did not:
+over every file — an empty plan means the stamp drifted and **the content** did not (content
+only; see the limit stated below the command):
 
 ```bash
 sudo rsync -rl --delete --checksum --dry-run --itemize-changes \
@@ -550,8 +551,19 @@ sudo rsync -rl --delete --checksum --dry-run --itemize-changes \
   audition/app/ /data/services/audition/app/
 ```
 
-⚠ **`-rl`, NOT `-a`, AND NO `grep`.** This is the third spelling of this command and the
-first one that is right in both directions; the reasoning matters more than the flags.
+⚠ **`-rl` ANSWERS ONE QUESTION: does the CONTENT match.** It cannot see **mode or ownership
+drift** — dropping `-p`, `-o`, `-g` retires those comparisons along with the time comparison,
+so a file deployed `0600` that should be `0644`, or owned by `root` where it should be the
+service user, is byte-identical under `-rl` and prints nothing. That is the intended trade:
+content drift is what this section exists to settle, and permission drift has other symptoms.
+But it means **an empty plan here is not a full clean bill of health**, and the empty-plan rule
+below is scoped to content only. (`-D` goes too, so a non-regular file is skipped with a
+warning on **stderr** rather than itemised on stdout — irrelevant for this tree today.)
+Stating the limit rather than implying its absence is the point: the two previous spellings
+were both replaced for inviting a reader to treat silence as clean.
+
+⚠ **`-rl`, NOT `-a`, AND NO `grep`.** This is the third spelling of this command; the
+reasoning matters more than the flags.
 
 `-a` is `-rlptgoD`, so it itemises differences in **time, perms, owner and group** as well as
 content, and `--checksum` changes only how rsync *decides to transfer*, not what it reports.
@@ -578,8 +590,9 @@ to read nothing as *no drift*. That is the §5b shape again — and one rung wor
 version it replaced, which at least erred loudly.
 
 Dropping `-ptgoD` fixes it at the source instead of filtering the symptom: rsync never
-compares time, perms, owner or group, so there is no metadata noise to suppress and **every**
-row above reports. Verified both directions — mtime-only skew across five files prints
+compares time, perms, owner or group, so **every row above reports** and there is nothing left
+to filter — at the cost of the mode/ownership comparison noted above, which is a narrowing of
+the question, not free. Verified both directions — mtime-only skew across five files prints
 nothing; content drift, a missing file, an extra file and a changed symlink all print.
 ⚠ It also removes an exit-code trap: `rsync … | grep` exits **1** when there is no drift, so
 the clean path was the failing path, which bites the first person to lift this into a

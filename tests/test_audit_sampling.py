@@ -95,13 +95,34 @@ _RECIPE_ECHO = re.compile(r"^\s*[@+-]+\s*(?:echo|printf)\b")
 # What ends a printed clause. Named because `is_wholly_printed` has to strip exactly this set
 # back off the remainder, and two hand-written copies of it would drift.
 _CLAUSE_END = ";&|\n"
+# Redirections, a brace/paren/`!`, or VAR= assignments, in any order, before the verb.
+# ⚠ THE ASSIGNMENT ALTERNATIVE ENDS IN `\s+`, NOT `\s*`. With `\s*` the greedy `\S*` simply
+# backtracks and hands the verb to itself: `FOO=echo python <stage>` parsed as assignment
+# `FOO=` + verb `echo`, the whole clause was skipped as printed text, and a real launch went
+# MISSED. Requiring whitespace after the assignment token means `FOO=echo` can only ever be
+# the assignment, never assignment-plus-verb.
+_ECHO_PREFIX = r"""(?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!])\s*|\s*[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*"""
 _ECHO_HEAD = re.compile(
-    r"""(?:^|(?<=[;&|{(`]|\s))                   # clause start (backtick too: `echo …`)
-        (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*   # prefixes
-        (?:[^\s;&|<>'"`(){}]*/)?                 # PATH-QUALIFIED verb: /bin/echo, ./printf
-        (?:echo|printf)\b""",
+    r"""(?:
+          # ── a TRUE clause start: string start, or after a shell operator. ONLY here may the
+          # verb be PATH-QUALIFIED, because only here is the next token argv[0].
+          (?:^|(?<=[;&|{(`]))\s*""" + _ECHO_PREFIX + r"""
+          (?:[^\s;&|<>'"`(){}]*/)?               # /bin/echo, /usr/bin/printf, ./echo
+          (?:echo|printf)\b
+        |
+          # ── mid-clause, after any whitespace: BARE verb only. Pre-PR behaviour, unchanged.
+          (?<=\s)""" + _ECHO_PREFIX + r"""(?:echo|printf)\b
+        )""",
     re.X,
 )
+# ⚠ THE TWO BRANCHES EXIST BECAUSE `\s` IS NOT A CLAUSE START. Spelled as one branch with
+# `(?:^|(?<=[;&|{(`]|\s))` in front of the path prefix, ANY whitespace-separated token ending
+# in `/echo` matched — argument position included — and the clause skip then ate the rest of
+# the line. Measured: `python scripts/echo/qc_gate.py` reduced to `'python  '`, so the
+# Makefile/workflow branch MISSED the launch and `_invocations` read a wired stage as unwired.
+# That is the `-printf` incident documented above, rebuilt at a new address: a real script name
+# vanishing from an invocation is #24 with the sign flipped. No path segment in this repo is
+# named `echo` today, so it was latent — which is exactly why it needs a fixture and not a note.
 # ⚠ THE PATH PREFIX IS WHY THIS PATTERN IS NOW THE ONLY DEFINITION. It landed 2026-08-13 to
 # retire a SECOND, weaker one. `_argv_runs_a_printer` used to basename argv[0] itself
 # (`PurePosixPath(words[0]).name`) before calling in here, because this pattern requires a
@@ -148,6 +169,13 @@ def _without_printed_text(cmd, recipe_prefixes=False):
         j, quote = m.end(), None
         while j < len(cmd):
             c = cmd[j]
+            # ⚠ COMMAND SUBSTITUTION ENDS THE PRINTED PART, and it does so INSIDE DOUBLE
+            # QUOTES TOO — `echo "Result: $(python <stage> --summary)"` runs the stage. Only a
+            # single quote makes it literal. Without this the substitution was swallowed whole
+            # as printed text and the launch inside it was exempted: the round-2 HIGH's
+            # silent-disarm shape reached through a different construct.
+            if quote != "'" and (cmd.startswith("$(", j) or c == "`"):
+                break
             if quote:
                 if c == "\\" and quote == '"':
                     j += 1
@@ -155,6 +183,14 @@ def _without_printed_text(cmd, recipe_prefixes=False):
                     quote = None
             elif c in "'\"":
                 quote = c
+            # ⚠ `&` IS NOT A CLAUSE END WHEN IT BELONGS TO A `>&`/`<&` REDIRECTION. It is the
+            # same terminator-debris defect `is_wholly_printed` was written for, one spelling
+            # further on: `echo "…" >&2` broke the scan mid-redirection, left `&2` behind, and
+            # `.strip()` removed the `&` but not the `2` — so a stderr recovery hint, the way
+            # such a hint is normally written, was reported as a stage LAUNCH. The LEADING
+            # redirection was always handled (it is in `_ECHO_PREFIX`); the trailing one was not.
+            elif c == "&" and j > 0 and cmd[j - 1] in "<>":
+                pass
             elif c in _CLAUSE_END:
                 # ⚠ `\n` IS a clause terminator. Without it an `echo` on the first line of a
                 # multi-line command string swallowed EVERYTHING after it, and the caller
@@ -331,6 +367,24 @@ def test_a_real_invocation_survives_its_own_success_message(cmd):
     ('/usr/bin/notecho "$S/qc_verdict.py"', False),   # prefix must end AT the `/`
     ('/path/echoserver "$S/qc_verdict.py"', False),   # the trailing `\b`
     ('/bin/echo a; "$PY" "$S/qc_verdict.py"', False),  # a real launch after a path printer
+    # ⚠ ARGUMENT POSITION. The path prefix is anchored to a TRUE clause start precisely so
+    # these do not match: spelled with `\s` in the lookbehind, any token ending in `/echo`
+    # matched wherever it appeared and the clause skip ate the rest of the line, so a real
+    # invocation lost its script name. Every row above puts the verb AT a clause start, so
+    # none of them can see this — which is how it shipped in the first place.
+    ('python scripts/echo/qc_gate.py', False),
+    ('python scripts/echo.py --run', False),
+    ('bash tools/printf.sh', False),
+    ('"$PY" "$S/echo/qc_verdict.py" --eiv x', False),
+    # a VAR= assignment may not hand the verb to itself (`\S*` used to backtrack)
+    ('FOO=echo "$PY" "$S/qc_verdict.py"', False),
+    ('LC_ALL=C echo "see $S/qc_verdict.py"', True),   # the legitimate assignment prefix
+    # TRAILING redirection — `&` belongs to `>&`, and is not a clause end. The leading form
+    # was always covered by `_ECHO_PREFIX`; this is how a stderr hint is actually written.
+    ('echo "see $S/qc_verdict.py" >&2', True),
+    ('echo "see $S/qc_verdict.py" 1>&2', True),
+    ('echo "see $S/qc_verdict.py" > /dev/null', True),
+    ('echo "x" >&2; "$PY" "$S/qc_verdict.py"', False),  # …but a launch after one still counts
 ])
 def test_a_path_qualified_printer_is_still_only_printing(cmd, printed_only):
     """Both directions of the path prefix, in the file that owns the pattern.

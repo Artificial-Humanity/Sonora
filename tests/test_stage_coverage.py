@@ -544,6 +544,14 @@ def stage_launch_offenders(rel, text, stage_names):
     # a launcher whose verb only LOOKS like a printer
     'import os\nos.system("/usr/bin/notecho scripts/stages/qc_gate.py")',
     'import os\nos.system("/path/echoserver scripts/stages/qc_gate.py")',
+    # ⚠ COMMAND SUBSTITUTION RUNS. The printed-clause skip used to swallow it whole, so a
+    # launch nested in a greeting was exempted — the round-2 HIGH's shape via a different
+    # construct. The double-quoted row is the plausible one; single quotes keep it literal.
+    'import os\nos.system("echo $(python scripts/stages/qc_gate.py)")',
+    'import os\nos.system("echo `python scripts/stages/qc_gate.py`")',
+    'import os\nos.system("echo \\"Result: $(python scripts/stages/qc_gate.py --summary)\\"")',
+    # a VAR= assignment handing the verb to itself: `FOO=echo` + `python <stage>` was MISSED
+    'import os\nos.system("FOO=echo python scripts/stages/qc_gate.py")',
 ])
 def test_every_launcher_spelling_is_reported_by_name(src):
     """Asserts the MESSAGE. The aliased and bare spellings each walked past a version of this
@@ -575,6 +583,12 @@ def test_every_launcher_spelling_is_reported_by_name(src):
     'import os\nos.system("echo step 1 failed; echo run scripts/stages/qc_gate.py")',
     'import os\nos.system("/bin/echo a; /bin/echo scripts/stages/qc_gate.py")',
     'import os\nos.system("echo a\\necho scripts/stages/qc_gate.py")',
+    # a stderr recovery hint — reported as a launch until 2026-08-13, because the scan broke
+    # inside `>&2` and left `&2` in the remainder
+    'import os\nos.system(\'echo "see scripts/stages/qc_gate.py" >&2\')',
+    'import os\nos.system(\'echo "see scripts/stages/qc_gate.py" 1>&2\')',
+    # single quotes make a substitution literal, so this one really is only printing
+    "import os\nos.system('echo \\'literal $(python scripts/stages/qc_gate.py)\\'')",
 ])
 def test_the_launch_guard_does_not_fire_on_prose(src):
     """The seven false positives an earlier text version produced were six usage docstrings
@@ -590,6 +604,13 @@ def test_the_launch_guard_does_not_fire_on_prose(src):
 @pytest.mark.parametrize("rel,line", [
     ("Makefile", "\tSONORA_REPO=. python scripts/stages/qc_gate.py --campaign-dir $(C)"),
     (".github/workflows/ci.yml", "        run: python scripts/stages/qc_gate.py"),
+    # ⚠ A PATH SEGMENT NAMED `echo`. This branch tests `stage in bare`, so an over-eager
+    # printed-text filter makes it a SILENT MISS — the dangerous direction. Reduced to
+    # `'python  '` for one round, latent only because no such path exists in the tree yet.
+    (".github/workflows/ci.yml", "        run: python scripts/echo/qc_gate.py"),
+    ("Makefile", "\tpython scripts/echo/qc_gate.py"),
+    # a VAR= assignment must not hand the verb to itself and exempt the line
+    ("Makefile", "\tFOO=echo python scripts/stages/qc_gate.py"),
 ])
 def test_a_real_launch_in_a_makefile_or_workflow_is_reported(rel, line):
     """⚠ The message assertion must not restate the detector's own append condition. The
