@@ -91,13 +91,107 @@ def _strip_trailing_comment(line):
 # `^\s*` because the caller passes the line with its leading TAB intact — that tab is
 # what licensed `recipe_prefixes` in the first place, so stripping it here would make
 # the flag unreachable. (It was briefly `^[@+-]+`, which never matched a real recipe.)
-_RECIPE_ECHO = re.compile(r"^\s*[@+-]+\s*(?:echo|printf)\b")
+_RECIPE_ECHO = re.compile(r"^\s*[@+-]+\s*(?:echo|printf)(?![\w/.-])")
+# What ends a printed clause. Named because `is_wholly_printed` has to strip exactly this set
+# back off the remainder, and two hand-written copies of it would drift.
+_CLAUSE_END = ";&|\n"
+# Redirections, a brace/paren/`!`, or VAR= assignments, in any order, before the verb.
+# ⚠ THE ASSIGNMENT ALTERNATIVE ENDS IN `\s+`, NOT `\s*`. With `\s*` the greedy `\S*` simply
+# backtracks and hands the verb to itself: `FOO=echo python <stage>` parsed as assignment
+# `FOO=` + verb `echo`, the whole clause was skipped as printed text, and a real launch went
+# MISSED. Requiring whitespace after the assignment token means `FOO=echo` can only ever be
+# the assignment, never assignment-plus-verb.
+# ⚠ ONE `\s*` OWNS THE WHITESPACE BEFORE THE VERB — at the END, not on both sides of the
+# `*`-quantified alternation. Spelled `(?:\s*(?:…)\s*|…)*`, the engine has two ways to assign
+# the space between consecutive prefix tokens (iteration k's trailing `\s*` vs k+1's leading
+# one), so a failing match tries every partition: ~4x per two characters, measured at 1.1 s for
+# `'a ' + '> ' * 22 + 'x'` and ~10 s at 24. Relocating it makes that 0.19 ms. Not reachable
+# from anything in the tree today (it needs ~20 alternating `> ` / `( ` / `! ` tokens on one
+# line with no verb after them) — but a scanned line that looks like a HANG rather than a
+# failure is worth a one-token fix.
+_ECHO_PREFIX = r"""(?:\s*(?:&[<>]{1,2}|[0-9]*[<>]&?[0-9-]*|[{(!])|\s*[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*\s*"""
+# ⚠ `(?![\w/.-])`, NOT `\b`. The verb has to be the LAST segment of argv[0], and `\b` does not
+# say that: the path prefix is free to stop at an INTERIOR `/`, so `scripts/echo/qc_gate.py`
+# parsed as prefix `scripts/` + verb `echo`, with `\b` satisfied by the following `/`. A real
+# launch of a stage under a directory named `echo` was therefore exempted as a printer — in all
+# three consumers, all in the silent-miss direction. The round-1 anchoring did NOT close this:
+# it restricted the path form to argv[0] position, and this defect IS at argv[0] position, so
+# the fixture written then (`"$S/echo/qc_verdict.py"` as an ARGUMENT) sits on the other side of
+# the fix. `.`/`-` are in the class for the same reason: `echo.py` and `echo-wrapper` are other
+# commands, not the printer.
+_VERB_END = r"""(?![\w/.-])"""
 _ECHO_HEAD = re.compile(
-    r"""(?:^|(?<=[;&|{(`]|\s))                   # clause start (backtick too: `echo …`)
-        (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*   # prefixes
-        (?:echo|printf)\b""",
+    r"""(?:
+          # ── a TRUE clause start: string start, or after a shell operator. ONLY here may the
+          # verb be PATH-QUALIFIED, because only here is the next token argv[0].
+          (?:^|(?<=[;&|{(`]))""" + _ECHO_PREFIX + r"""
+          (?:[^\s;&|<>'"`(){}]*/)?               # /bin/echo, /usr/bin/printf, ./echo
+          (?:echo|printf)""" + _VERB_END + r"""
+        |
+          # ── mid-clause, after any whitespace: BARE verb only. Pre-PR behaviour, unchanged.
+          (?<=\s)""" + _ECHO_PREFIX + r"""(?:echo|printf)""" + _VERB_END + r"""
+        )""",
     re.X,
 )
+# ⚠ THE TWO BRANCHES EXIST BECAUSE `\s` IS NOT A CLAUSE START. Spelled as one branch with
+# `(?:^|(?<=[;&|{(`]|\s))` in front of the path prefix, ANY whitespace-separated token ending
+# in `/echo` matched — argument position included — and the clause skip then ate the rest of
+# the line. Measured: `python scripts/echo/qc_gate.py` reduced to `'python  '`, so the
+# Makefile/workflow branch MISSED the launch and `_invocations` read a wired stage as unwired.
+# That is the `-printf` incident documented above, rebuilt at a new address: a real script name
+# vanishing from an invocation is #24 with the sign flipped. No path segment in this repo is
+# named `echo` today, so it was latent — which is exactly why it needs a fixture and not a note.
+# ⚠ THE PATH PREFIX IS WHY THIS PATTERN IS NOW THE ONLY DEFINITION. It landed 2026-08-13 to
+# retire a SECOND, weaker one. `_argv_runs_a_printer` used to basename argv[0] itself
+# (`PurePosixPath(words[0]).name`) before calling in here, because this pattern requires a
+# clause start before the verb and `/` is not one. That caller-side normalisation was
+# `head.split()` + `" ".join(...)` — which splits on ALL whitespace, including `\n`, and
+# rejoins with spaces. So it flattened the very newline that this function's clause-terminator
+# list had just been extended to see, and the HIGH the terminator was added for shipped INERT:
+# two fixes to two findings, in one commit, that cancelled each other out. `\n` looked like
+# live code and was unreachable for its only caller.
+# Handling the prefix HERE fixes both, and covers a case neither spelling could: a
+# path-qualified printer at a LATER clause (`/bin/echo a; /bin/echo <stage>`) is out of reach
+# of anything that only normalises argv[0].
+# Non-matches, asserted in the fixtures rather than assumed: `/usr/bin/notecho` (the prefix
+# has to end at `/`) and `/path/echoserver` (the trailing `\b`).
+
+
+def _substitution_body(cmd, start, closer):
+    """The body of a substitution opened just before `start`, plus the index after its close.
+
+    `closer` is `")"` for `$(…)` (nesting-aware, so `$(a $(b))` and `$((1+1))` both work) or
+    "`" for a backtick (no nesting — bash has none there either). An unterminated substitution
+    yields the rest of the string, which keeps the caller's scan monotonic rather than looping.
+    """
+    if closer == "`":
+        j = start
+        while j < len(cmd):
+            if cmd[j] == "\\":
+                j += 2
+                continue
+            if cmd[j] == "`":
+                return cmd[start:j], j + 1
+            j += 1
+        return cmd[start:], len(cmd)
+    depth, j, quote = 1, start, None
+    while j < len(cmd):
+        c = cmd[j]
+        if quote:
+            if c == "\\" and quote == '"':
+                j += 1
+            elif c == quote:
+                quote = None
+        elif c in "'\"":
+            quote = c
+        elif c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return cmd[start:j], j + 1
+        j += 1
+    return cmd[start:], len(cmd)
 
 
 def _without_printed_text(cmd, recipe_prefixes=False):
@@ -130,6 +224,46 @@ def _without_printed_text(cmd, recipe_prefixes=False):
         j, quote = m.end(), None
         while j < len(cmd):
             c = cmd[j]
+            # ⚠ A COMMAND SUBSTITUTION IS A NESTED COMMAND, NOT THE END OF THE PRINTED CLAUSE.
+            # It does run — and it runs inside DOUBLE quotes too (`echo "Result: $(python
+            # <stage>)"`), so only a single quote makes it literal. But the first spelling of
+            # this simply `break`ed at `$(`, which surrendered everything AFTER the substitution
+            # to the remainder and broke both directions at once:
+            #   * `_invocations` kept `'$(date) with … stage_pool.py --apply"'` from a pure
+            #     recovery hint, so the hint COUNTED AS AN INVOCATION and the wiring guard would
+            #     have stayed green with the real call deleted — the #24 failure this filter
+            #     exists to prevent, caused by the filter;
+            #   * `echo "at $(date) rerun python <stage>"` became a reported launch.
+            # It also changed a real line: `librivox_align.sh:67` stopped being wholly printed,
+            # harmless only because `stage_pool.py` happens to sit BEFORE its `$(`.
+            # So: scan the substitution to its matching delimiter, recurse (a launch inside
+            # still survives), and RESUME the printed clause after it.
+            if quote != "'" and cmd.startswith("$(", j):
+                # ⚠ NO CARVE-OUT FOR `$((` ARITHMETIC, DELIBERATELY — second spelling of this.
+                # Arithmetic expansion runs no command, so skipping the whole span looks correct;
+                # measured, it is strictly worse. `$(( $(python <stage>) + 1 ))` nests a real
+                # substitution inside arithmetic, and skipping MISSED it, while recursing costs
+                # nothing — an arithmetic body holds no script name, so it cannot false-positive.
+                # THE MUTATION BATTERY IS WHAT FOUND THIS: inverting the carve-out left the suite
+                # green, i.e. no fixture could tell the branch from its absence. An untested
+                # branch whose only measurable effect was a silent miss.
+                # A Makefile's `$(VAR)`/`$(shell …)` lands here too — a Make variable the shell
+                # never sees — and recursing on it is harmless for the same reason, whereas
+                # `break` made the first `@echo` help line naming a stage a false red in CI.
+                #
+                # ⚠ THE TRAILING SPACE IS LOAD-BEARING. Every other `out.append` in this function
+                # appends either a slice that carries its own boundaries or the explicit `" "`
+                # that ends a clause. These two are the only appends that can land BACK TO BACK,
+                # and adjacent `$( )$( )` then concatenated their survivors into a name present
+                # in NEITHER body: `echo "$(x scripts/stages/qc_)$(gate.py y)"` fabricated
+                # `qc_gate.py` and reported a launch.
+                body, j = _substitution_body(cmd, j + 2, ")")
+                out.append(_without_printed_text(body) + " ")
+                continue
+            if quote != "'" and c == "`":
+                body, j = _substitution_body(cmd, j + 1, "`")
+                out.append(_without_printed_text(body) + " ")
+                continue
             if quote:
                 if c == "\\" and quote == '"':
                     j += 1
@@ -137,7 +271,19 @@ def _without_printed_text(cmd, recipe_prefixes=False):
                     quote = None
             elif c in "'\"":
                 quote = c
-            elif c in ";&|\n":
+            # ⚠ `&` IS NOT A CLAUSE END WHEN IT BELONGS TO A REDIRECTION. It is the same
+            # terminator-debris defect `is_wholly_printed` was written for, one spelling
+            # further on: `echo "…" >&2` broke the scan mid-redirection, left `&2` behind, and
+            # `.strip()` removed the `&` but not the `2` — so a stderr recovery hint, the way
+            # such a hint is normally written, was reported as a stage LAUNCH. The LEADING
+            # redirection was always handled (it is in `_ECHO_PREFIX`); the trailing one was not.
+            # ⚠ BOTH ORDERS. `>&2` puts the operator before the `&`; bash's `&>file` / `&>>file`
+            # — the ordinary way to discard both streams — puts it after, so a check on the
+            # preceding character alone left that half open. `&&` is still a clause end: neither
+            # of its first `&`'s neighbours is a redirection operator.
+            elif c == "&" and ((j > 0 and cmd[j - 1] in "<>") or cmd[j + 1:j + 2] in ("<", ">")):
+                pass
+            elif c in _CLAUSE_END:
                 # ⚠ `\n` IS a clause terminator. Without it an `echo` on the first line of a
                 # multi-line command string swallowed EVERYTHING after it, and the caller
                 # read the empty remainder as "wholly printed, therefore exempt" — so a
@@ -149,6 +295,27 @@ def _without_printed_text(cmd, recipe_prefixes=False):
         out.append(" ")
         i = j
     return "".join(out)
+
+
+def is_wholly_printed(cmd, recipe_prefixes=False):
+    """True when `cmd` prints and does nothing else — the "is this only a hint?" question.
+
+    ⚠ THIS EXISTS BECAUSE `not _without_printed_text(cmd).strip()` IS THE WRONG TEST, and it
+    was the shipped one. The terminator that ended each printed clause is left in the
+    remainder, and `.strip()` removes whitespace but not punctuation — so two printers in a
+    row reduced to `';'`, which is non-empty, which read as "a command survives":
+
+        echo "step 1 failed"; echo "run scripts/stages/qc_verdict.py"   -> remaining ';'
+
+    i.e. a pure recovery hint reported as a stage LAUNCH. A false red on innocent code, and
+    the direction that gets a guard switched off rather than the direction that hides a bug.
+    Measured on `main` at 07edf39, so it predates the path-prefix work above and is not a
+    consequence of it; it stayed invisible because no real orchestrator writes that shape yet.
+
+    Stripping only the ENDS is what makes this safe: a real command word is not in
+    `_CLAUSE_END`, and an interior one cannot be reached by `strip()` at all.
+    """
+    return not _without_printed_text(cmd, recipe_prefixes).strip(_CLAUSE_END + " \t")
 
 
 def _shell_commands(rel):
@@ -254,6 +421,15 @@ def test_a_trailing_comment_is_not_code(line, expected):
     'LC_ALL=C echo "see $S/qc_verdict.py"',
     '`echo run $S/qc_verdict.py`',          # backtick substitution is a clause start too
     'X=$(echo "run $S/qc_verdict.py")',
+    # ⚠ A SUBSTITUTION BEFORE THE SCRIPT NAME. `break`ing at `$(` surrendered the rest of the
+    # clause, so this hint's remainder held `qc_verdict.py` and `_invocations` COUNTED IT AS AN
+    # INVOCATION — the wiring guard would have stayed green with the real call deleted, which is
+    # the #24 failure this filter exists to prevent, produced by the filter. Every fixture at
+    # the time put the substitution LAST, so none of them could see it.
+    'echo "hint: rerun at $(date) with $PY $S/qc_verdict.py --eiv x"',
+    'echo "at $(basename "$OUT") rerun $PY $S/qc_verdict.py"',      # nested quotes inside it
+    'echo "n=$(( 1 + 1 )) rerun $PY $S/qc_verdict.py"',             # arithmetic runs nothing
+    'echo "wall=$(echo "$a $b" | awk "{print}") $S/qc_verdict.py"',  # a printer INSIDE one
 ])
 def test_printed_text_is_not_an_invocation(cmd):
     """The old filter tested the FIRST TOKEN only, so every spelling here counted as a
@@ -265,12 +441,93 @@ def test_printed_text_is_not_an_invocation(cmd):
 @pytest.mark.parametrize("cmd", [
     '"$PY" "$S/qc_verdict.py" --eiv x && echo "  ok, wrote verdicts"',
     '"$PY" "$S/qc_verdict.py" --eiv x || { echo "  !! failed"; exit 1; }',
+    # ⚠ NEWLINE as the clause terminator. This row is the one the `\n` in `_CLAUSE_END`
+    # exists for, and until 2026-08-13 there was no such row: deleting `\n` from that set
+    # left the whole suite green (923 passed), so the fix and its absence were
+    # indistinguishable — which is precisely how it shipped inert for its only real caller.
+    'echo starting\n"$PY" "$S/qc_verdict.py" --eiv x',
+    # the same shape with the printer LAST, so the row cannot pass by position alone
+    'echo starting\n"$PY" "$S/qc_verdict.py" --eiv x\necho done',
+    # …and the other direction of the substitution fix: a stage RUN inside `$( )` is a run.
+    # The recursion is what keeps this true while the clause resumes after the `)`.
+    'echo "count: $("$PY" "$S/qc_verdict.py" --count)"',
+    'echo "at $(dirname $("$PY" "$S/qc_verdict.py"))"',     # nested two deep
+    'echo `"$PY" "$S/qc_verdict.py"`',
+    # ⚠ A PATH ENDING IN `/echo` AT ARGUMENT POSITION — the only thing the two-branch anchoring
+    # still does alone, and it had no fixture. The mutation battery surfaced that: putting `\s`
+    # back in the lookbehind left the suite GREEN, because `_VERB_END` independently closes the
+    # interior-segment case the other rows were written for.
+    # ⚠ AND IT BELONGS HERE, not beside the printed-only rows. The defect is ERASURE of the
+    # script name; `is_wholly_printed` is False either way (the leading verb survives), so an
+    # assertion on that predicate cannot see it. The first version of these two rows was written
+    # there and survived the mutation for exactly that reason — the right assertion matters as
+    # much as the right input.
+    'install /bin/echo "$S/qc_verdict.py"',
+    'cp /usr/bin/printf "$S/qc_verdict.py"',
 ])
 def test_a_real_invocation_survives_its_own_success_message(cmd):
     """Dropping the whole command when it contains an `echo` would be the opposite defect:
     every stage in `synth_bank.sh` reports what it did, and a filter that removed those
     commands wholesale would report the pipeline as empty."""
     assert "qc_verdict.py" in _without_printed_text(cmd), cmd
+
+
+@pytest.mark.parametrize("cmd,printed_only", [
+    # PATH-QUALIFIED printers — `_ECHO_HEAD`'s path prefix. Named in prose as the victims of a
+    # regression and asserted nowhere until now; `grep -rn "bin/echo" tests/` found only the
+    # comment describing the fix.
+    ('/bin/echo "run $S/qc_verdict.py"', True),
+    ('/usr/bin/printf "%s\\n" "$S/qc_verdict.py"', True),
+    ('./echo "run $S/qc_verdict.py"', True),
+    ('/bin/echo a; /bin/echo "run $S/qc_verdict.py"', True),
+    # …and the boundaries of that prefix, so it cannot quietly widen into a launcher exemption
+    ('/usr/bin/notecho "$S/qc_verdict.py"', False),   # prefix must end AT the `/`
+    ('/path/echoserver "$S/qc_verdict.py"', False),   # the trailing boundary
+    # ⚠ THE VERB MUST BE THE FINAL SEGMENT of argv[0]. With `\b` the prefix could stop at an
+    # INTERIOR `/`, so a real launch of a stage living under a directory called `echo` parsed as
+    # prefix `scripts/` + verb `echo` and was exempted as a printer — the silent-miss direction,
+    # in all three consumers. ⚠ These sit at argv[0], which the round-1 anchoring explicitly
+    # PERMITS, so that round's `"$S/echo/qc_verdict.py"` row (argument position) is on the other
+    # side of the fix and could never have caught this.
+    ('scripts/echo/qc_verdict.py --apply', False),
+    ('./echo/qc_verdict.py', False),
+    ('/usr/local/printf/qc_verdict.py', False),
+    ('echo.py "$S/qc_verdict.py"', False),           # a script named echo.py is not the printer
+    ('echo-wrapper "$S/qc_verdict.py"', False),
+    ('/bin/echo a; "$PY" "$S/qc_verdict.py"', False),  # a real launch after a path printer
+    # ⚠ ARGUMENT POSITION. The path prefix is anchored to a TRUE clause start precisely so
+    # these do not match: spelled with `\s` in the lookbehind, any token ending in `/echo`
+    # matched wherever it appeared and the clause skip ate the rest of the line, so a real
+    # invocation lost its script name. Every row above puts the verb AT a clause start, so
+    # none of them can see this — which is how it shipped in the first place.
+    ('python scripts/echo/qc_gate.py', False),
+    ('python scripts/echo.py --run', False),
+    ('bash tools/printf.sh', False),
+    ('"$PY" "$S/echo/qc_verdict.py" --eiv x', False),
+    # a VAR= assignment may not hand the verb to itself (`\S*` used to backtrack)
+    ('FOO=echo "$PY" "$S/qc_verdict.py"', False),
+    ('LC_ALL=C echo "see $S/qc_verdict.py"', True),   # the legitimate assignment prefix
+    # TRAILING redirection — `&` belongs to `>&`, and is not a clause end. The leading form
+    # was always covered by `_ECHO_PREFIX`; this is how a stderr hint is actually written.
+    ('echo "see $S/qc_verdict.py" >&2', True),
+    ('echo "see $S/qc_verdict.py" 1>&2', True),
+    ('echo "see $S/qc_verdict.py" > /dev/null', True),
+    ('echo "x" >&2; "$PY" "$S/qc_verdict.py"', False),  # …but a launch after one still counts
+    # bash's `&>` / `&>>` — the operator comes AFTER the `&`, so a check on the preceding
+    # character alone left the commoner spelling of "discard both streams" reading as a launch
+    ('echo "see $S/qc_verdict.py" &>/dev/null', True),
+    ('echo "see $S/qc_verdict.py" &>>run.log', True),
+    ('echo "x" &>/dev/null; "$PY" "$S/qc_verdict.py"', False),   # …and it still ends at the `;`
+    ('echo hi && "$PY" "$S/qc_verdict.py"', False),              # `&&` is still a clause end
+])
+def test_a_path_qualified_printer_is_still_only_printing(cmd, printed_only):
+    """Both directions of the path prefix, in the file that owns the pattern.
+
+    `is_wholly_printed` rather than `not _without_printed_text(...).strip()`: the leftover
+    clause terminator makes the naive spelling call row 4 a launch. That row is the reason the
+    predicate exists — two printers in sequence is what a recovery hint looks like.
+    """
+    assert is_wholly_printed(cmd) is printed_only, (cmd, _without_printed_text(cmd))
 
 
 # --- C-L6: the trusted tier's tail sample rounded to zero -----------------------------
