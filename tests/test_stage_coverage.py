@@ -403,26 +403,45 @@ LAUNCHERS = (
 LAUNCH_MODULES = ("subprocess", "os", "runpy")
 
 
-def _argv_runs_a_printer(node):
-    """True when a launcher's own argv is `echo`/`printf` — a printed hint, not a launch.
+def _argv_printed_filter(node):
+    """`(wholly_printed, survivors)` for a launcher's argv — the printed-hint test.
 
     `subprocess.run(["echo", "docs at scripts/stages/qc_gate.py"])` is a real call to a real
     launcher whose effect is to print prose about a stage. The AST rewrite retired the
     docstring sub-case of the printed-hint class; this is the rest of it.
+
+    ⚠ `survivors` IS THE HAYSTACK THE CALLER MUST SEARCH, and it is `None` when argv cannot be
+    localised. The two argv forms are different languages and conflating them costs accuracy in
+    both directions:
+
+    * a **string** argv is a shell command LINE, so the printed-text scan applies to all of it
+      and what survives is exactly where a launch could be;
+    * a **list** argv is already split, so only element 0 is the verb — the stage name normally
+      sits in a LATER element, which the scan of element 0 can never contain. Localising there
+      would miss every list-form launch, so the caller falls back to the whole unparsed call.
+
+    Before this split the caller always searched the unparsed call, which was fine until a
+    substitution's residue started surviving: `os.system('echo "at $(date) rerun python
+    <stage>"')` is not wholly printed (`date` runs), so the stage name in the *unparsed* text
+    made it a reported launch even though the stage is only ever printed. Searching `survivors`
+    puts the AST branch on the same rule the Makefile branch has always used.
     """
     if not node.args:
-        return False
+        return False, None
     first = node.args[0]
     if isinstance(first, (ast.List, ast.Tuple)):
         if not first.elts or not isinstance(first.elts[0], ast.Constant):
-            return False
+            return False, None
         head = str(first.elts[0].value)
-    elif isinstance(first, ast.Constant):
-        head = str(first.value)
-    else:
-        return False
+        if not head.strip():
+            return False, None
+        # element 0 alone decides; see the docstring on why `survivors` stays None here.
+        return pathlib.PurePosixPath(head).name in ("echo", "printf"), None
+    if not isinstance(first, ast.Constant):
+        return False, None
+    head = str(first.value)
     if not head.strip():
-        return False
+        return False, None
     # ⚠ NOT `head.split()[0]`. That treats a COMPOUND shell command as if it were argv[0],
     # so a leading `echo` exempted everything after it — verified misses:
     #     os.system("echo starting; SONORA_REPO=. python scripts/stages/qc_gate.py")
@@ -431,7 +450,7 @@ def _argv_runs_a_printer(node):
     # fix is the function that same commit imported into the sibling text branch. Reusing it
     # keeps ONE definition of "printed text" instead of a second, weaker one here.
     # pylint: disable=import-outside-toplevel
-    from test_audit_sampling import is_wholly_printed
+    from test_audit_sampling import _without_printed_text, is_wholly_printed
 
     # ⚠ `head` GOES IN UNTOUCHED — deliberately, and this is the third spelling of this line.
     # It briefly normalised a path-qualified verb here (`" ".join([PurePosixPath(words[0]).name,
@@ -448,7 +467,7 @@ def _argv_runs_a_printer(node):
     # The emptiness test lives in `is_wholly_printed` rather than here: spelled inline as
     # `not _without_printed_text(head).strip()` it read a leftover `;` as a surviving command
     # and reported `echo a; echo <stage>` — a two-line recovery hint — as a launch.
-    return is_wholly_printed(head)
+    return is_wholly_printed(head), _without_printed_text(head)
 
 
 def stage_launch_offenders(rel, text, stage_names):
@@ -495,10 +514,17 @@ def stage_launch_offenders(rel, text, stage_names):
             # ⚠ A real launcher whose ARGV is prose is still a printed hint:
             # `subprocess.run(["echo", "docs at scripts/stages/qc_gate.py"])`. The AST
             # rewrite retired the docstring sub-case, not this one.
-            if _argv_runs_a_printer(node):
+            printed, survivors = _argv_printed_filter(node)
+            if printed:
                 continue
+            # ⚠ SEARCH WHAT SURVIVED, not the whole call, whenever argv could be localised.
+            # A string argv is a shell line, so its printed clauses are exactly the places a
+            # stage name does NOT constitute a launch — `echo "at $(date) rerun python
+            # <stage>"` runs `date` and prints the rest. A list argv cannot be localised
+            # (the stage name lives in an element the verb scan never sees), so it falls back.
+            haystack = rendered if survivors is None else survivors
             for stage in sorted(stage_names):
-                if stage in rendered and not rel.endswith(stage):
+                if stage in haystack and not rel.endswith(stage):
                     found.append(f"{rel}:{node.lineno}: {fn}(...) launches {stage}")
     else:
         # ⚠ Makefile / workflow lines. This branch had ZERO fixture coverage in either
@@ -550,6 +576,11 @@ def stage_launch_offenders(rel, text, stage_names):
     'import os\nos.system("echo $(python scripts/stages/qc_gate.py)")',
     'import os\nos.system("echo `python scripts/stages/qc_gate.py`")',
     'import os\nos.system("echo \\"Result: $(python scripts/stages/qc_gate.py --summary)\\"")',
+    # nested two deep — the paren matcher has to count, not stop at the first `)`
+    'import os\nos.system("echo $(dirname $(python scripts/stages/qc_gate.py))")',
+    # ⚠ a substitution nested inside ARITHMETIC expansion. This row exists because a
+    # `$((`-skips-everything carve-out looked obviously right and was measurably a miss.
+    'import os\nos.system("echo \\"n=$(( $(python scripts/stages/qc_gate.py) + 1 ))\\"")',
     # a VAR= assignment handing the verb to itself: `FOO=echo` + `python <stage>` was MISSED
     'import os\nos.system("FOO=echo python scripts/stages/qc_gate.py")',
 ])
@@ -589,6 +620,14 @@ def test_every_launcher_spelling_is_reported_by_name(src):
     'import os\nos.system(\'echo "see scripts/stages/qc_gate.py" 1>&2\')',
     # single quotes make a substitution literal, so this one really is only printing
     "import os\nos.system('echo \\'literal $(python scripts/stages/qc_gate.py)\\'')",
+    # ⚠ A SUBSTITUTION BEFORE THE STAGE NAME. `break`ing at `$(` promoted the trailing printed
+    # text to "surviving command", so these became reported launches. Every substitution
+    # fixture written the round before put the substitution LAST — the same blind spot shape as
+    # the argument-position one: the rows all shared the ordering that hides the defect.
+    'import os\nos.system("echo \\"at $(date) rerun python scripts/stages/qc_gate.py\\"")',
+    'import os\nos.system("echo \\"n=$(( 1 + 1 )) rerun python scripts/stages/qc_gate.py\\"")',
+    'import os\nos.system(\'echo "see scripts/stages/qc_gate.py" &>/dev/null\')',
+    'import os\nos.system(\'echo "see scripts/stages/qc_gate.py" &>>run.log\')',
 ])
 def test_the_launch_guard_does_not_fire_on_prose(src):
     """The seven false positives an earlier text version produced were six usage docstrings
@@ -596,6 +635,47 @@ def test_the_launch_guard_does_not_fire_on_prose(src):
     ones the AST rewrite did NOT retire: a real launcher printing prose, and any object with
     a `.run`/`.call` method."""
     assert stage_launch_offenders("scripts/tools/x.py", src, {"qc_gate.py"}) == []
+
+
+@pytest.mark.parametrize("rel,line", [
+    # ⚠ A MAKE VARIABLE IS NOT A SHELL SUBSTITUTION. `$(PYTHON)` / `$(shell …)` never reach the
+    # shell as `$(…)` at all, and this branch is the one that scans Makefiles — so `break`ing at
+    # `$(` made the first `@echo` help line naming a stage after a `$(VAR)` a false red in CI.
+    ("Makefile", '\t@echo "run $(PYTHON) scripts/stages/qc_gate.py"'),
+    ("Makefile", '\techo "at $(shell date) rerun python scripts/stages/qc_gate.py"'),
+    (".github/workflows/ci.yml", '        run: echo "at $(date) rerun python scripts/stages/qc_gate.py"'),
+    (".github/workflows/ci.yml", '        run: echo "n=$(( 1 + 1 )) rerun python scripts/stages/qc_gate.py"'),
+])
+def test_the_text_branch_does_not_fire_on_a_substitution_before_a_stage_name(rel, line):
+    """The mirror of the rows above: substitution FIRST, stage name after it.
+
+    The fixture directly below this one is `--campaign-dir $(C)` — a real Make variable in a
+    real invocation — which is why a `$(`-means-shell-substitution rule was never safe in this
+    branch, and why the four rows here name Make's own spellings explicitly.
+    """
+    assert stage_launch_offenders(rel, line, {"qc_gate.py"}) == []
+
+
+def test_the_prefix_group_does_not_backtrack_exponentially():
+    """A HANG DETECTOR, not a benchmark — hence the very loose bound.
+
+    `_ECHO_PREFIX` had `\\s*` on both sides of a `*`-quantified alternation, so the engine tried
+    every way of splitting the whitespace between prefix tokens: ~4x per two characters, 1.1 s
+    at 22 tokens and ~10 s at 24, for all three token kinds (`> `, `( `, `! `). `_ECHO_HEAD` is
+    searched once per scanned line, so one such line reads as a HANG rather than a failure —
+    which is the only reason this is worth a test despite not being reachable from the tree.
+    One `\\s*` at the END of the group owns that whitespace now; the same inputs are ~0.2 ms.
+    """
+    import time  # pylint: disable=import-outside-toplevel
+
+    from test_audit_sampling import _ECHO_HEAD  # pylint: disable=import-outside-toplevel
+
+    for token in ("> ", "( ", "! "):
+        probe = "a " + token * 24 + "x"          # no verb at the end: the pathological case
+        started = time.perf_counter()
+        _ECHO_HEAD.search(probe)
+        elapsed = time.perf_counter() - started
+        assert elapsed < 1.0, f"{token!r} x24 took {elapsed:.2f}s — the prefix group is backtracking"
 
 
 # --- the Makefile / workflow branch, which had no fixtures at all ----------------------
