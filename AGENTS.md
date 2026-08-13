@@ -114,6 +114,13 @@ case-insensitive macOS/Windows.
     `claude-reviewer`), addressed by name with `SendMessage`; `ListAgents` confirms it is up.
     A listed peer is alive and will process the message — messages queue and drain on its next
     turn, so a reply may not be instant.
+    * ⚠ **The first send is REJECTED and that is not a failure.** A cross-session send to a
+      name the conversation has not used before comes back with
+      `'Reviewer' is not an agent in this conversation` and the ref to confirm with. Re-send
+      as `Reviewer [<ref>]`, taking the ref from that error or from `ListAgents` — never from
+      memory or from this file, because it changes when the session is restarted. Measured on
+      the first use of this rule; an agent that reads the rejection as "the Reviewer is down"
+      will skip the review and push, which is the one outcome this rule exists to prevent.
   * ⚠ **IT HAS NO SYSTEM PROMPT, SO THE REQUEST MUST CARRY ITS OWN BRIEF.** The `Reviewer`
     session holds no standing context about this repo, this file, or what a good review is
     here. A bare "please review my commit" gets a generic reading of unfamiliar code. Send:
@@ -141,6 +148,14 @@ case-insensitive macOS/Windows.
     in the PR body. A blocked push is worse than an unreviewed commit, and a silently skipped
     review is worse than both — the CI lane's green-check-means-skipped trap below is the same
     failure and it cost this repo an hour twice.
+  * ⚠ **NOTHING ENFORCES THIS RULE. It is a convention, and it is the weakest kind.** §1 opens
+    by saying a rule in this file is not an enforcement mechanism; the lane this replaces at
+    least had a workflow that ran whether or not anyone remembered it. This has no trigger, no
+    check and no artifact — a push that skipped the review is indistinguishable afterwards
+    from one that did not. Two consequences worth acting on rather than noting: **say in the
+    PR body that the review happened** (that is the only evidence there is), and treat "did
+    every commit on this branch get reviewed?" as a question the owner can only answer by
+    asking. If this holdover outlives its welcome, that gap is the reason to replace it.
 * **Review findings are resolved IN THE PULL REQUEST, by the machine that submitted it**
   (owner, 2026-08-11). ⚠ **The CI review lane this describes is DISABLED as of 2026-08-13**
   (owner) — `Janis — PR Review` is `disabled_manually` in GitHub Actions; the workflow file is
