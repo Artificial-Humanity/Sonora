@@ -68,9 +68,9 @@ case-insensitive macOS/Windows.
   * **The Mac and `ai-lab-0` (and their agent sessions) commit concurrently.** Direct pushes
     to a shared `main` are how two sessions silently interleave half-finished work; a branch
     is a place for work to be incomplete without being everyone's problem.
-  * **Nothing reviews a direct push.** `.github/workflows/claude-review.yml` triggers on
-    `pull_request`, so work that skips the PR skips the review entirely — the automation
-    cannot see a commit that was never proposed.
+  * **Nothing reviews a direct push.** The pre-push review below is requested by the
+    committing agent, and the PR is where the owner sees the result; work that skips the PR
+    skips the record of it entirely.
 * **Branch naming**: `<type>/<short-slug>` matching the commit type (`fix/`, `feat/`,
   `docs/`, `chore/`), e.g. `fix/holdout-filelist-width`.
 * **Work on the branch, commit and push liberally, open the PR only when the work is done**
@@ -81,10 +81,11 @@ case-insensitive macOS/Windows.
     achieving that goal IS the completion point — open the PR then, without being asked again.
   * **Otherwise the owner calls it.** With no goal set, work, push, and wait: the owner
     acknowledges the completion point and the PR follows from that.
-  * **This is also what makes it cheap.** `.github/workflows/claude-review.yml` fires when a
-    PR is opened AND on every push to an open one, so a PR opened at the *start* of the work
-    bills a full model-rate review of half-finished code on every intermediate push. Opening
-    at completion buys exactly one review, of work that is actually ready to be read.
+  * **This is also what makes it cheap.** Review effort now scales with the number of
+    *commits* (see the pre-push rule below), not with the age of the PR, but the same logic
+    holds one level down: a PR opened at the start of the work invites the owner to read
+    half-finished code repeatedly. Opening at completion buys one reading of work that is
+    actually ready.
 * **Pull before push, every time.** Run `git pull --rebase` as the first step of any
   commit-and-push sequence on your branch, and rebase on `main` before opening the PR. If the
   tree holds the owner's uncommitted local edits, fetch and check ahead/behind instead of
@@ -99,8 +100,54 @@ case-insensitive macOS/Windows.
   authority is the branch protection on `main`, and this section only explains it. If a direct
   push to `main` ever *succeeds*, the protection is missing or was bypassed — report that
   rather than taking it as permission.
+* ⚠ **UPON COMMIT, BEFORE PUSHING: REQUEST A REVIEW FROM THE `Reviewer` SESSION** (owner,
+  2026-08-13). Commit first, so there is a fixed thing to review; request the review; push
+  only after it comes back and you have acted on it.
+  * **⚠ THIS IS AN EXPLICITLY TEMPORARY HOLDOVER, and should be read as one.** The owner's
+    words: it *"will likely not be our permanent state but it will act as a holdover until I
+    settle on something that keeps our quality high without the level of friction and need for
+    manual user intervention of repeated PR cycles."* The CI review lane produced findings that
+    were consistently real and consistently worth fixing; what it did not do was converge —
+    see the retirement note below. Do not build tooling on top of this rule, and do not treat
+    its shape as settled.
+  * **How to reach it.** `Reviewer` is a peer Claude session on this host (tmux
+    `claude-reviewer`), addressed by name with `SendMessage`; `ListAgents` confirms it is up.
+    A listed peer is alive and will process the message — messages queue and drain on its next
+    turn, so a reply may not be instant.
+  * ⚠ **IT HAS NO SYSTEM PROMPT, SO THE REQUEST MUST CARRY ITS OWN BRIEF.** The `Reviewer`
+    session holds no standing context about this repo, this file, or what a good review is
+    here. A bare "please review my commit" gets a generic reading of unfamiliar code. Send:
+    the repo path and branch, the commit SHA and how to see the diff, what the change is
+    *for*, what you already verified, and the standard to apply (§5, and §5b/§5c where the
+    change touches doc claims or stage wiring). **The quality of the review is bounded by the
+    quality of the brief** — that is the whole difference between this and the CI lane, which
+    carried a tuned prompt.
+  * **A review is a report, not an instruction** (§5). Fix what is genuinely wrong; push back
+    in your reply where a finding is wrong, rather than making a change you believe is wrong.
+  * **Two passes, then STOP and file.** The committing agent gets one round of fixes and one
+    second pass. **Anything still unresolved after that second pass — whether you could not
+    fix it, or you disagree and the disagreement did not settle — is filed as a GitHub issue
+    for the owner**, and the push proceeds. Do not run a third lap.
+    * ⚠ **THIS IS A DELIBERATE, NARROW EXCEPTION TO "findings are no longer filed as issues"
+      below, and the distinction is what keeps the old failure from returning.** That rule
+      retired a lane where the reviewer filed *every* finding automatically, which turned a
+      handful into a backlog in an afternoon. Here the filter is the second pass: only what
+      survives two attempts by the agent that wrote the code reaches an issue, and a human
+      decides what happens next. If issues start arriving in bursts again, the second pass has
+      stopped doing its job — that is the signal to fix, not the issue count.
+    * File it with the reproduction *re-verified*, not relayed. A finding restated from a
+      review and never executed is how a wrong finding becomes a tracked task.
+  * **If the `Reviewer` is unreachable or does not answer, say so and push anyway.** Note it
+    in the PR body. A blocked push is worse than an unreviewed commit, and a silently skipped
+    review is worse than both — the CI lane's green-check-means-skipped trap below is the same
+    failure and it cost this repo an hour twice.
 * **Review findings are resolved IN THE PULL REQUEST, by the machine that submitted it**
-  (owner, 2026-08-11). The review workflow only comments; the repair runs here, via
+  (owner, 2026-08-11). ⚠ **The CI review lane this describes is DISABLED as of 2026-08-13**
+  (owner) — `Janis — PR Review` is `disabled_manually` in GitHub Actions; the workflow file is
+  untouched and `gh workflow enable 330746260` restores it. It is kept, rather than deleted,
+  because the owner is evaluating replacements and everything below is what that lane cost to
+  learn. **Read the rest of this bullet as history that is still true about the workflow, not
+  as a description of something currently running.** The repair still runs here, via
   `scripts/fix_pr.sh <pr>` — or `/fix-pr <pr>` in a Claude Code session, which runs the same
   protocol from the same file (`.claude/commands/fix-pr.md`). It reads the unresolved threads,
   fixes what is genuinely wrong, replies in each thread, and pushes to the PR branch. A
@@ -225,11 +272,13 @@ case-insensitive macOS/Windows.
 
 ### 5. Code Review Standards
 
-* **Review happens in the pull request.** `.github/workflows/claude-review.yml` reviews each
-  PR and posts findings inline; §1 covers how they are resolved. There is **no review
-  document and no pointer to maintain** — the reviewer bounds its own range with the
-  `<!-- janis-reviewed: <sha> -->` marker it writes into each summary, so the thing §5 used to
-  ask a human to track is now automatic and per-PR.
+* **Review happens BEFORE THE PUSH, and §1 has the mechanism** — request it from the
+  `Reviewer` session on each commit, act on it, then push. There is **no review document and
+  no pointer to maintain.**
+  * ⚠ **The `.github/workflows/claude-review.yml` lane that used to do this is DISABLED**
+    (owner, 2026-08-13). While it ran, it bounded its own range with a
+    `<!-- janis-reviewed: <sha> -->` marker; the sub-bullet below is retained because that
+    marker mechanic is the part worth copying into whatever replaces it.
   * ⚠ **The marker bounds a range only while the branch's history is APPEND-ONLY. A rebase or
     force-push invalidates it and costs a full re-review.** Measured on this PR: **one**
     force-push invalidated **two** markers at once. The previous marker stopped being an
