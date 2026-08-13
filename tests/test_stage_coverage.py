@@ -429,14 +429,21 @@ def _argv_printed_filter(node):
     if not node.args:
         return False, None
     first = node.args[0]
+    # pylint: disable=import-outside-toplevel
+    from test_audit_sampling import _without_printed_text, is_wholly_printed
+
     if isinstance(first, (ast.List, ast.Tuple)):
         if not first.elts or not isinstance(first.elts[0], ast.Constant):
             return False, None
         head = str(first.elts[0].value)
         if not head.strip():
             return False, None
-        # element 0 alone decides; see the docstring on why `survivors` stays None here.
-        return pathlib.PurePosixPath(head).name in ("echo", "printf"), None
+        # ⚠ `is_wholly_printed`, NOT a basename test on the verb. A basename test looks
+        # equivalent — and is, for every element 0 that is a plain verb — but element 0 of a
+        # `shell=True` list IS a whole command line (POSIX passes it to `/bin/sh -c`, the rest
+        # becoming `$0`/`$1`). `["echo see <stage>"]` is a printing line, and the basename test
+        # called it a launch. `survivors` still stays None here; see the docstring.
+        return is_wholly_printed(head), None
     if not isinstance(first, ast.Constant):
         return False, None
     head = str(first.value)
@@ -449,9 +456,7 @@ def _argv_printed_filter(node):
     # A new silent-disarm hole, opened by the commit that closed the previous one — and the
     # fix is the function that same commit imported into the sibling text branch. Reusing it
     # keeps ONE definition of "printed text" instead of a second, weaker one here.
-    # pylint: disable=import-outside-toplevel
-    from test_audit_sampling import _without_printed_text, is_wholly_printed
-
+    #
     # ⚠ `head` GOES IN UNTOUCHED — deliberately, and this is the third spelling of this line.
     # It briefly normalised a path-qualified verb here (`" ".join([PurePosixPath(words[0]).name,
     # *words[1:]])`) to restore an exemption for `/bin/echo` that `_ECHO_HEAD` could not see.
@@ -517,12 +522,20 @@ def stage_launch_offenders(rel, text, stage_names):
             printed, survivors = _argv_printed_filter(node)
             if printed:
                 continue
-            # ⚠ SEARCH WHAT SURVIVED, not the whole call, whenever argv could be localised.
-            # A string argv is a shell line, so its printed clauses are exactly the places a
-            # stage name does NOT constitute a launch — `echo "at $(date) rerun python
-            # <stage>"` runs `date` and prints the rest. A list argv cannot be localised
-            # (the stage name lives in an element the verb scan never sees), so it falls back.
-            haystack = rendered if survivors is None else survivors
+            # ⚠ `survivors` REPLACES `args[0]` AND NOTHING ELSE — it is unioned with every other
+            # argument, never substituted for the whole call. Spelled `haystack = survivors`,
+            # this blinded 10 of the 18 launchers `LAUNCHERS` enumerates: for `os.exec*` and
+            # `posix_spawn*`, `args[0]` is the EXECUTABLE (`/usr/bin/python`) and the stage name
+            # lives in `args[1]`, which a scan of `args[0]` can never contain. Every `input=` /
+            # `cwd=` argument went dark the same way. The `spawn*` half survived only by
+            # accident — `os.P_WAIT` is an `ast.Attribute`, so it failed the `Constant` test and
+            # fell back — and `os.spawnv(0, …)` with a literal mode went dark too. Nothing in
+            # the code intended that distinction, which is what made it worth measuring.
+            # The localisation is still right for what it covers: a string `args[0]` is a shell
+            # LINE, so its printed clauses are exactly where a stage name is not a launch.
+            rest = " ".join(ast.unparse(a) for a in
+                            list(node.args[1:]) + [k.value for k in node.keywords])
+            haystack = rendered if survivors is None else f"{survivors} {rest}"
             for stage in sorted(stage_names):
                 if stage in haystack and not rel.endswith(stage):
                     found.append(f"{rel}:{node.lineno}: {fn}(...) launches {stage}")
@@ -583,6 +596,31 @@ def stage_launch_offenders(rel, text, stage_names):
     'import os\nos.system("echo \\"n=$(( $(python scripts/stages/qc_gate.py) + 1 ))\\"")',
     # a VAR= assignment handing the verb to itself: `FOO=echo` + `python <stage>` was MISSED
     'import os\nos.system("FOO=echo python scripts/stages/qc_gate.py")',
+    # ⚠ THE STAGE NAME IS NOT IN `args[0]` IN ANY OF THESE. Every row above puts the whole
+    # command in `args[0]`, which is why narrowing the search to `args[0]`'s survivors blinded
+    # 10 of the 18 launchers this guard enumerates and nothing noticed. For `os.exec*` and
+    # `posix_spawn*`, `args[0]` is the EXECUTABLE — the command lives in `args[1]`.
+    'import os\nos.execv("/usr/bin/python", ["python", "scripts/stages/qc_gate.py"])',
+    'import os\nos.execve("/usr/bin/python", ["python", "scripts/stages/qc_gate.py"], {})',
+    'import os\nos.execvp("python", ["python", "scripts/stages/qc_gate.py"])',
+    'import os\nos.execvpe("python", ["python", "scripts/stages/qc_gate.py"], {})',
+    'import os\nos.execl("/usr/bin/python", "python", "scripts/stages/qc_gate.py")',
+    'import os\nos.execle("/usr/bin/python", "python", "scripts/stages/qc_gate.py", {})',
+    'import os\nos.execlp("python", "python", "scripts/stages/qc_gate.py")',
+    'import os\nos.execlpe("python", "python", "scripts/stages/qc_gate.py", {})',
+    'import os\nos.posix_spawn("/usr/bin/python", ["python", "scripts/stages/qc_gate.py"], {})',
+    'import os\nos.posix_spawnp("python", ["python", "scripts/stages/qc_gate.py"], {})',
+    # ⚠ `os.P_WAIT` is an `ast.Attribute`, so the `spawn*` family survived the narrowing BY
+    # ACCIDENT — it failed an `isinstance(..., ast.Constant)` test and fell back. A literal mode
+    # is a Constant and went dark. Both spellings are pinned so the accident cannot be relied on.
+    'import os\nos.spawnv(os.P_WAIT, "/usr/bin/python", ["python", "scripts/stages/qc_gate.py"])',
+    'import os\nos.spawnv(0, "/usr/bin/python", ["python", "scripts/stages/qc_gate.py"])',
+    # …and KEYWORD arguments, which the same narrowing dropped
+    'import subprocess\nsubprocess.run("bash", input="python scripts/stages/qc_gate.py", shell=True)',
+    'import subprocess\nsubprocess.Popen("python", cwd="scripts/stages/qc_gate.py")',
+    # argv[0] whose path has an INTERIOR segment named `echo` — exempted as a printer for a round
+    'import os\nos.system("scripts/echo/qc_gate.py --apply")',
+    'import os\nos.system("./echo/qc_gate.py")',
 ])
 def test_every_launcher_spelling_is_reported_by_name(src):
     """Asserts the MESSAGE. The aliased and bare spellings each walked past a version of this
@@ -628,6 +666,13 @@ def test_every_launcher_spelling_is_reported_by_name(src):
     'import os\nos.system("echo \\"n=$(( 1 + 1 )) rerun python scripts/stages/qc_gate.py\\"")',
     'import os\nos.system(\'echo "see scripts/stages/qc_gate.py" &>/dev/null\')',
     'import os\nos.system(\'echo "see scripts/stages/qc_gate.py" &>>run.log\')',
+    # ⚠ A ONE-ELEMENT `shell=True` LIST IS A COMMAND LINE, not a split argv — POSIX hands it to
+    # `/bin/sh -c` and the rest become `$0`/`$1`. A basename test on element 0 cannot see that,
+    # and briefly called this printing line a launch.
+    'import subprocess\nsubprocess.run(["echo see scripts/stages/qc_gate.py"], shell=True)',
+    # ⚠ ADJACENT substitutions: with no separator between the recursed bodies, their survivors
+    # concatenated into a name present in NEITHER — `qc_` + `gate.py` fabricated `qc_gate.py`.
+    'import os\nos.system(\'echo "$(x scripts/stages/qc_)$(gate.py y)"\')',
 ])
 def test_the_launch_guard_does_not_fire_on_prose(src):
     """The seven false positives an earlier text version produced were six usage docstrings
@@ -691,6 +736,14 @@ def test_the_prefix_group_does_not_backtrack_exponentially():
     ("Makefile", "\tpython scripts/echo/qc_gate.py"),
     # a VAR= assignment must not hand the verb to itself and exempt the line
     ("Makefile", "\tFOO=echo python scripts/stages/qc_gate.py"),
+    # ⚠ A STAGE UNDER A DIRECTORY NAMED `echo`, launched via python. This is the row that
+    # isolates the erasure defect from the branch's separate launcher-token rule: `\t./echo/
+    # qc_gate.py --apply` is missed here for a DIFFERENT and pre-existing reason (the branch
+    # requires a `python`/`$PY` token, so a directly-executed script is out of its scope at
+    # every commit including pre-PR main). Keeping a `python` token makes this row sensitive to
+    # the printed-text filter alone, which is what regressed.
+    ("Makefile", "\tpython scripts/echo/qc_gate.py --apply"),
+    (".github/workflows/ci.yml", "        run: $PY scripts/echo/qc_gate.py"),
 ])
 def test_a_real_launch_in_a_makefile_or_workflow_is_reported(rel, line):
     """⚠ The message assertion must not restate the detector's own append condition. The
@@ -707,7 +760,13 @@ def test_a_real_launch_in_a_makefile_or_workflow_is_reported(rel, line):
     # asserting either conjunct against the string that conjunct selected cannot fail — the
     # first version of this fix swapped one restatement for the other. The falsifiable check
     # is a negative control: the same line WITHOUT the launcher must report nothing.
-    assert stage_launch_offenders(rel, line.replace("python", "cat"), {"qc_gate.py"}) == []
+    # ⚠ AND THE CONTROL MUST BE CHECKED FOR HAVING RUN. It knew only how to neuter `python`,
+    # so the first `$PY` row added here left it a NO-OP: it re-ran the unmodified line, the
+    # line reported (correctly), and the test failed with what looked like a detector defect.
+    # A control that silently does nothing is the skipped-instrument shape one more time.
+    neutered = line.replace("python", "cat").replace("$PY", "$CAT")
+    assert neutered != line, f"negative control changed nothing — it cannot fail: {line!r}"
+    assert stage_launch_offenders(rel, neutered, {"qc_gate.py"}) == []
 
 
 @pytest.mark.parametrize("rel,line", [

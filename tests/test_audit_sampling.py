@@ -91,7 +91,7 @@ def _strip_trailing_comment(line):
 # `^\s*` because the caller passes the line with its leading TAB intact — that tab is
 # what licensed `recipe_prefixes` in the first place, so stripping it here would make
 # the flag unreachable. (It was briefly `^[@+-]+`, which never matched a real recipe.)
-_RECIPE_ECHO = re.compile(r"^\s*[@+-]+\s*(?:echo|printf)\b")
+_RECIPE_ECHO = re.compile(r"^\s*[@+-]+\s*(?:echo|printf)(?![\w/.-])")
 # What ends a printed clause. Named because `is_wholly_printed` has to strip exactly this set
 # back off the remainder, and two hand-written copies of it would drift.
 _CLAUSE_END = ";&|\n"
@@ -110,16 +110,26 @@ _CLAUSE_END = ";&|\n"
 # line with no verb after them) — but a scanned line that looks like a HANG rather than a
 # failure is worth a one-token fix.
 _ECHO_PREFIX = r"""(?:\s*(?:&[<>]{1,2}|[0-9]*[<>]&?[0-9-]*|[{(!])|\s*[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*\s*"""
+# ⚠ `(?![\w/.-])`, NOT `\b`. The verb has to be the LAST segment of argv[0], and `\b` does not
+# say that: the path prefix is free to stop at an INTERIOR `/`, so `scripts/echo/qc_gate.py`
+# parsed as prefix `scripts/` + verb `echo`, with `\b` satisfied by the following `/`. A real
+# launch of a stage under a directory named `echo` was therefore exempted as a printer — in all
+# three consumers, all in the silent-miss direction. The round-1 anchoring did NOT close this:
+# it restricted the path form to argv[0] position, and this defect IS at argv[0] position, so
+# the fixture written then (`"$S/echo/qc_verdict.py"` as an ARGUMENT) sits on the other side of
+# the fix. `.`/`-` are in the class for the same reason: `echo.py` and `echo-wrapper` are other
+# commands, not the printer.
+_VERB_END = r"""(?![\w/.-])"""
 _ECHO_HEAD = re.compile(
     r"""(?:
           # ── a TRUE clause start: string start, or after a shell operator. ONLY here may the
           # verb be PATH-QUALIFIED, because only here is the next token argv[0].
           (?:^|(?<=[;&|{(`]))""" + _ECHO_PREFIX + r"""
           (?:[^\s;&|<>'"`(){}]*/)?               # /bin/echo, /usr/bin/printf, ./echo
-          (?:echo|printf)\b
+          (?:echo|printf)""" + _VERB_END + r"""
         |
           # ── mid-clause, after any whitespace: BARE verb only. Pre-PR behaviour, unchanged.
-          (?<=\s)""" + _ECHO_PREFIX + r"""(?:echo|printf)\b
+          (?<=\s)""" + _ECHO_PREFIX + r"""(?:echo|printf)""" + _VERB_END + r"""
         )""",
     re.X,
 )
@@ -240,12 +250,19 @@ def _without_printed_text(cmd, recipe_prefixes=False):
                 # A Makefile's `$(VAR)`/`$(shell …)` lands here too — a Make variable the shell
                 # never sees — and recursing on it is harmless for the same reason, whereas
                 # `break` made the first `@echo` help line naming a stage a false red in CI.
+                #
+                # ⚠ THE TRAILING SPACE IS LOAD-BEARING. Every other `out.append` in this function
+                # appends either a slice that carries its own boundaries or the explicit `" "`
+                # that ends a clause. These two are the only appends that can land BACK TO BACK,
+                # and adjacent `$( )$( )` then concatenated their survivors into a name present
+                # in NEITHER body: `echo "$(x scripts/stages/qc_)$(gate.py y)"` fabricated
+                # `qc_gate.py` and reported a launch.
                 body, j = _substitution_body(cmd, j + 2, ")")
-                out.append(_without_printed_text(body))
+                out.append(_without_printed_text(body) + " ")
                 continue
             if quote != "'" and c == "`":
                 body, j = _substitution_body(cmd, j + 1, "`")
-                out.append(_without_printed_text(body))
+                out.append(_without_printed_text(body) + " ")
                 continue
             if quote:
                 if c == "\\" and quote == '"':
@@ -436,6 +453,17 @@ def test_printed_text_is_not_an_invocation(cmd):
     'echo "count: $("$PY" "$S/qc_verdict.py" --count)"',
     'echo "at $(dirname $("$PY" "$S/qc_verdict.py"))"',     # nested two deep
     'echo `"$PY" "$S/qc_verdict.py"`',
+    # ⚠ A PATH ENDING IN `/echo` AT ARGUMENT POSITION — the only thing the two-branch anchoring
+    # still does alone, and it had no fixture. The mutation battery surfaced that: putting `\s`
+    # back in the lookbehind left the suite GREEN, because `_VERB_END` independently closes the
+    # interior-segment case the other rows were written for.
+    # ⚠ AND IT BELONGS HERE, not beside the printed-only rows. The defect is ERASURE of the
+    # script name; `is_wholly_printed` is False either way (the leading verb survives), so an
+    # assertion on that predicate cannot see it. The first version of these two rows was written
+    # there and survived the mutation for exactly that reason — the right assertion matters as
+    # much as the right input.
+    'install /bin/echo "$S/qc_verdict.py"',
+    'cp /usr/bin/printf "$S/qc_verdict.py"',
 ])
 def test_a_real_invocation_survives_its_own_success_message(cmd):
     """Dropping the whole command when it contains an `echo` would be the opposite defect:
@@ -454,7 +482,18 @@ def test_a_real_invocation_survives_its_own_success_message(cmd):
     ('/bin/echo a; /bin/echo "run $S/qc_verdict.py"', True),
     # …and the boundaries of that prefix, so it cannot quietly widen into a launcher exemption
     ('/usr/bin/notecho "$S/qc_verdict.py"', False),   # prefix must end AT the `/`
-    ('/path/echoserver "$S/qc_verdict.py"', False),   # the trailing `\b`
+    ('/path/echoserver "$S/qc_verdict.py"', False),   # the trailing boundary
+    # ⚠ THE VERB MUST BE THE FINAL SEGMENT of argv[0]. With `\b` the prefix could stop at an
+    # INTERIOR `/`, so a real launch of a stage living under a directory called `echo` parsed as
+    # prefix `scripts/` + verb `echo` and was exempted as a printer — the silent-miss direction,
+    # in all three consumers. ⚠ These sit at argv[0], which the round-1 anchoring explicitly
+    # PERMITS, so that round's `"$S/echo/qc_verdict.py"` row (argument position) is on the other
+    # side of the fix and could never have caught this.
+    ('scripts/echo/qc_verdict.py --apply', False),
+    ('./echo/qc_verdict.py', False),
+    ('/usr/local/printf/qc_verdict.py', False),
+    ('echo.py "$S/qc_verdict.py"', False),           # a script named echo.py is not the printer
+    ('echo-wrapper "$S/qc_verdict.py"', False),
     ('/bin/echo a; "$PY" "$S/qc_verdict.py"', False),  # a real launch after a path printer
     # ⚠ ARGUMENT POSITION. The path prefix is anchored to a TRUE clause start precisely so
     # these do not match: spelled with `\s` in the lookbehind, any token ending in `/echo`
