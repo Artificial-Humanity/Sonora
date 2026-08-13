@@ -71,18 +71,36 @@ def _strip_trailing_comment(line):
 
 
 # `echo`/`printf` possibly behind redirections, a brace/paren/`!`, or VAR= prefixes.
+#
+# ⚠ MAKEFILE RECIPE PREFIXES (`@` silent, `-` ignore-errors, `+` always-run) ARE ANCHORED TO
+# THE START OF THE LINE, in a pattern of their own. They were briefly in the general prefix
+# class, which made them valid after ANY `;&|{(` or whitespace — i.e. everywhere in a shell
+# command — and that WIDENED the repo's core #24 filter rather than narrowing it. Measured:
+#
+#     find . -name x -printf "%p qc_verdict.py" -print
+#
+# had `qc_verdict.py` removed as printed text, because `-printf` matched `-` + `printf`. A
+# real script name vanishing from an invocation is the #24 failure with the sign flipped, so
+# the guard against describing-instead-of-running was made able to hide a run.
+# ⚠ OPT-IN, and only for a caller holding the RAW line. `[@+-]` cannot distinguish a Make
+# recipe prefix from an option: `-printf '%p x' -print` matched too, so anchoring the class
+# to column 0 relocated the erasure rather than closing it. A recipe prefix is only a recipe
+# prefix after the leading TAB of a recipe line, which is exactly what the Makefile/workflow
+# branch can check and what a shell command never has. Shell scripts — the #24 filter — never
+# enable this.
+# `^\s*` because the caller passes the line with its leading TAB intact — that tab is
+# what licensed `recipe_prefixes` in the first place, so stripping it here would make
+# the flag unreachable. (It was briefly `^[@+-]+`, which never matched a real recipe.)
+_RECIPE_ECHO = re.compile(r"^\s*[@+-]+\s*(?:echo|printf)\b")
 _ECHO_HEAD = re.compile(
     r"""(?:^|(?<=[;&|{(`]|\s))                   # clause start (backtick too: `echo …`)
-        # prefixes: redirections, grouping, `!`, VAR=, and MAKEFILE RECIPE PREFIXES
-        # (`@` silent, `-` ignore-errors, `+` always-run). `@echo` is the commonest
-        # Makefile idiom there is and was counted as a launch without the `@` here.
-        (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!@+-]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*
+        (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*   # prefixes
         (?:echo|printf)\b""",
     re.X,
 )
 
 
-def _without_printed_text(cmd):
+def _without_printed_text(cmd, recipe_prefixes=False):
     """`cmd` with every `echo`/`printf` and its arguments removed.
 
     ⚠ Added 2026-08-12. The old filter tested `cmd.split()[0]`, so it only ever caught a
@@ -100,6 +118,10 @@ def _without_printed_text(cmd):
     out, i = [], 0
     while i < len(cmd):
         m = _ECHO_HEAD.search(cmd, i)
+        if i == 0 and recipe_prefixes:
+            recipe = _RECIPE_ECHO.match(cmd)
+            if recipe and (m is None or recipe.start() <= m.start()):
+                m = recipe
         if not m:
             out.append(cmd[i:])
             break
@@ -115,7 +137,13 @@ def _without_printed_text(cmd):
                     quote = None
             elif c in "'\"":
                 quote = c
-            elif c in ";&|":
+            elif c in ";&|\n":
+                # ⚠ `\n` IS a clause terminator. Without it an `echo` on the first line of a
+                # multi-line command string swallowed EVERYTHING after it, and the caller
+                # read the empty remainder as "wholly printed, therefore exempt" — so a
+                # real launch on line 2 was exempted by a greeting on line 1. The
+                # `_shell_commands` path never hits this (it joins continuations with
+                # spaces); `stage_launch_offenders` passes raw source strings, which do.
                 break
             j += 1
         out.append(" ")

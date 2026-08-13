@@ -117,10 +117,28 @@ jobs:
       # from the list by construction) but `matcha/hifigan` is TRACKED and vendored, and the
       # measurement below was taken with it excluded — the pre-commit hook excludes it too.
       #
-      #   pyflakes F-codes    0 findings, after this PR's fixes  -> BLOCKING
-      #   black --check     145 of 191 files would be reformatted -> advisory
-      #   isort --check      92 files                             -> advisory
-      #   flake8 E-codes    191 findings (85 of them E741)        -> advisory
+      #   SCOPE: `git ls-files '*.py' ':!:matcha/hifigan/*'` = 185 files, on **Python 3.11** —
+      #   the interpreter this job creates at line 54. Re-derived at that exact scope on
+      #   2026-08-12. A table that names neither its denominator nor its interpreter cannot be
+      #   checked, which is how the previous version of these numbers went stale twice.
+      #
+      # ⚠ THE E-COUNT IS INTERPRETER-DEPENDENT and the other three rows are not. Reported on
+      #   3.12 as 182 against the 170 recorded here; I did not reproduce the 3.12 figure, and
+      #   the 170 is the one that matters because it is what this job measures. If the venv
+      #   line above ever moves off 3.11, this row moves with it and the F-row does not.
+      #
+      #   pyflakes F-codes    0 findings   -> BLOCKING
+      #   black --check     146 files would be reformatted -> advisory
+      #   isort --check      93 files                      -> advisory
+      #   flake8 E-codes    170 findings (E741 dominates)  -> advisory
+      #
+      # ⚠ An earlier version read "145 of 191 / 92 / 191" and a reply here claimed the
+      # hifigan exclusion would bring the command back into line with it. Measured, that is
+      # false twice over: excluding hifigan does not move black (146) or isort (93) AT ALL,
+      # and moves the E-count from 178 to 170 — FURTHER from the 191 recorded. The table was
+      # stale because the tree changed under it, not because of scope. The pathspec stays for
+      # the reason that actually holds: `matcha/hifigan` is tracked, vendored, and excluded
+      # by the pre-commit hook, so linting it here would report on code the repo does not own.
       #
       # Blocking the F-codes costs nothing today and would have caught, this week alone: an
       # `undefined name` in a test invisible behind a torch `importorskip`, six duplicate
