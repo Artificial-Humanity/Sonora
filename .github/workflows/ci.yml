@@ -12,16 +12,22 @@ name: CI — tests
 # never committed, so re-opening it would have been silent on every machine.
 #
 # This job is the floor. It is not a substitute for ai-lab-0 — see the two exclusions below.
+# ⚠ NO `pull_request` TRIGGER, and that is not an omission (2026-08-13). The repo stopped
+# using pull requests entirely: work is committed, reviewed by the `Reviewer` session, and
+# pushed straight to `main` (AGENTS.md §1). A `pull_request` trigger would simply never fire,
+# which is worse than absent — it reads as coverage that exists.
+#
+# ⚠ THE CONSEQUENCE IS REAL AND WORTH STATING: this job now runs only AFTER the code is on
+# `main`. Under the retired model it gated a merge; it cannot gate anything any more. A red
+# run here means `main` is already broken, not that a change was stopped. Whoever pushes is
+# the one who has to look — nothing else will.
 on:
-  pull_request:
   push:
     branches: [main]
   workflow_dispatch:
 
-# A PR that is pushed three times should be tested once. `main` is PR-only under branch
-# protection, so the push trigger fires on merge and is worth keeping un-cancelled per SHA.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ci-${{ github.workflow }}-${{ github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -104,7 +110,7 @@ jobs:
       # since before this job existed, and NOTHING enforced any of it: a local hook that
       # `--no-verify` skips and a fresh clone never installs. That is AGENTS.md §1's own
       # lesson about lint — *a rule is not an enforcement mechanism* — so the authority has
-      # to be the check on the pull request.
+      # to be a check that runs without anyone remembering it.
       #
       # SPLIT INTO BLOCKING AND ADVISORY FROM MEASUREMENT, not taste (2026-08-12):
       #
@@ -118,7 +124,7 @@ jobs:
       # measurement below was taken with it excluded — the pre-commit hook excludes it too.
       #
       #   SCOPE: `git ls-files '*.py' ':!:matcha/hifigan/*'` = 185 files, on **Python 3.11** —
-      #   the interpreter this job creates at line 54. Re-derived at that exact scope on
+      #   the interpreter the `Create the repo venv` step above makes. Re-derived at that scope on
       #   2026-08-12. A table that names neither its denominator nor its interpreter cannot be
       #   checked, which is how the previous version of these numbers went stale twice.
       #
@@ -154,7 +160,7 @@ jobs:
       # ⚠ TARGET `git ls-files`, NEVER `.`. Two reasons, both cost a red first run:
       #   * `--exclude` REPLACES flake8's defaults rather than adding to them (that is what
       #     `--extend-exclude` is for) — and `.venv` was never in those defaults anyway;
-      #   * line 54 of this job creates `.venv` INSIDE the workspace and the lint step then
+      #   * the `Create the repo venv` step makes `.venv` INSIDE the workspace and this step then
       #     installs flake8 into it, so `.` walks `.venv/lib/python3.11/site-packages/**`
       #     and lints third-party code. That is what happened: the gate went red on
       #     `_pytest`, `cffi` and `anyio`.
@@ -165,8 +171,8 @@ jobs:
       # ⚠ `--select=E9,F`, NOT `--select=F`. flake8 reports a file that does not parse as
       # `E999`, which is not an F-code — so `--select=F` passes an unparseable file SILENTLY
       # and takes every genuine F-code in it along too. Verified: two broken files, exit 0.
-      # A gate that cannot see a syntax error is the wrong gate for a PR that exists because
-      # a SyntaxError shipped.
+      # A gate that cannot see a syntax error is the wrong gate, and it was added because a
+      # SyntaxError had shipped to `main` behind one.
       # `if: always()` here too. The same semantics this file explains for the advisory step
       # apply one step higher: "Run the suite" precedes both lint steps, so a red suite
       # skipped the blocking gate entirely — a lint regression would hide behind any test
