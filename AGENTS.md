@@ -312,6 +312,36 @@ the simple version that holds until then. Do not build tooling on its shape.
     * A finding first raised on the last pass sits at `1` while the cycle is at `3`. That is
       correct and worth reading — it distinguishes *nobody has attempted this yet* from
       *three passes could not fix it*, which the cycle number alone cannot.
+  * **THE COUNT IS PER ISSUE, NOT PER REVIEW — deliberately** (owner, 2026-08-13: *"it allows
+    finer grained control"*). A single number for the whole cycle would force every finding to
+    share a fate: one stubborn issue would either drag the rest through extra passes or drop
+    them all at the same line. Per issue, a finding cleared on pass 1 stops there, a stubborn
+    one exhausts its three, and a late one is visibly untried — and the owner can re-arm
+    exactly one without touching the others.
+    * ⚠ **The per-issue cap does NOT bound the cycle on its own, and must not be read as
+      doing so.** If every review may file new issues and each new issue carries a fresh
+      three passes, the loop never has to end — which is the *exact* failure the cap exists
+      to prevent, re-entering through the door that was opened for granularity.
+      **So: the cycle still ends at the third review.** Whatever is open then is escalated,
+      including a finding at `agent_passes = 1` that nobody has attempted. Its low count is
+      the useful part — it tells the owner this is untried work rather than a hard problem,
+      and the decision being asked for is *"another cycle, or ship it as known?"*
+  * ⚠ **THE COUNTER IS THE OWNER'S DIAL, AND AGENTS DO NOT SECOND-GUESS IT** (owner,
+    2026-08-13). Putting the count on the record rather than in a brief means the owner can
+    edit it in the admin console — **setting `agent_passes` back to `0` re-arms the loop on
+    that issue for another three passes.**
+    * **Treat the stored value as authoritative, always.** If an issue you expected at `3`
+      reads `0`, the cap was reset on purpose; do not "correct" it, do not reason from what
+      you remember, and do not restore a value you think it should have had. **The record is
+      the count** — that is the entire reason it stopped living in the brief.
+    * **This is the return path out of escalation, and it is the only one.** An escalated
+      issue is not a dead end: the owner answers, clears `escalated`, and resets
+      `agent_passes` to `0`; the issue re-enters the loop with a fresh three passes and a
+      decision attached. **Without a reset it stays parked** — re-review skips escalated
+      issues, so clearing the flag alone gets it read again but on a spent counter.
+    * **Neither field is an agent's to reset.** A worker or reviewer zeroing a counter is
+      the cap deleting itself, which is precisely the failure the cap exists to prevent. If
+      an issue genuinely deserves more passes, that is a judgement the owner makes.
 
 * **ESCALATION — `escalated: true` means the owner has to decide.**
   * ⚠ **THE REVIEWER SETS IT. That is the normal path** (owner, 2026-08-13) — it flags what is
