@@ -2,38 +2,32 @@
 
 The `Reviewer` session drops its report here as **`review-<first 7 of the commit SHA>.md`**.
 
-**These files are deliberately not tracked.** `.gitignore` carries the pattern, for one
-reason: the review cycle ends with the file being **deleted**, and an untracked-but-visible
-file at the top of `git status` is one `git add -A` away from being committed to `main` by
-the very worker the review was for. Ignoring it removes the class.
+⚠ **The procedure lives in AGENTS.md §1 and only there.** This file used to restate the six
+steps, and the copy drifted from the original *inside the commit that created it* — losing the
+abort and the range fallback, both times in the direction of the copy being lossier. What
+follows is only what is local to this directory.
 
-## The lifecycle
+**`<sha7>` is the tip of the range at the time of the request.** A range has no single SHA, and
+"the interesting commit" is a judgement two agents make differently. A cycle normally leaves
+**two** files here, because the fix pass commits and moves the tip.
 
-1. Worker commits.
-2. Worker asks `Reviewer` for a review of **the whole range it is about to push**
-   (`@{push}..HEAD`), naming every commit in it. `Reviewer` writes `review-<sha7>.md` here,
-   where `<sha7>` is the **tip of that range at the time of the request**.
-3. Worker gets **one** pass at fixing what the review raised.
-4. `Reviewer` re-reviews the same range, re-briefed — it now includes the fix commits, so its
-   tip has moved and it gets its own `review-<sha7>.md`.
-5. Anything still unresolved becomes a **GitHub issue**, filed by the worker.
-6. Worker pushes to `main`, then **deletes every `review-*.md` from the cycle** — whether it
-   ended in issues or ended clean. Either ending closes it.
+⚠ **A review is delivered when the `Reviewer` says so, not when the file appears.** The file is
+the content; the message is the completion event. Do not read, act on, or delete one before the
+Reviewer has said it is complete — a file mid-write is indistinguishable from a finished one,
+and an entire second version of a report was once deleted unread because its presence on disk
+was taken as the signal.
 
-⚠ **A cycle normally leaves TWO files here** (step 2's and step 4's), because step 3 commits
-and moves the tip. Step 6 deletes both. "The review file", singular, was the first version of
-this sentence and it is why a file survived the first cycle.
+**These files are deliberately not tracked.** `.gitignore` carries the pattern, for one reason:
+the cycle ends with them being **deleted**, and an untracked-but-visible file at the top of
+`git status` is one `git add -A` away from being committed to `main` by the very worker the
+review was for. Ignoring it removes the class.
 
-⚠ **The file is a handoff, not a record.** Nothing here survives the cycle that produced it,
-so do not cite one from anywhere else in the repo, and do not treat this directory as review
-history — that is what the issues and the git log are for. If a finding is worth keeping, it
-is worth filing.
+⚠ **A handoff, not a record.** Nothing here survives the cycle that produced it, so do not cite
+one from anywhere else in the repo, and do not treat this directory as review history — that is
+what the issues and the git log are for. If a finding is worth keeping, it is worth filing.
 
-⚠ **An old `review-*.md` lying about means a cycle did not finish**, not that a review is
-pending. Check whether its SHA is already on `main` before acting on anything inside it.
-⚠ **That check gives the wrong answer after a rebase**, which is why AGENTS.md §1 no longer
-pulls before pushing and says to **merge, not rebase**, when integration is actually needed.
-A rebase rewrites local commits, so a reviewed SHA can cease to exist and will never appear on
-`main` — making a finished cycle look abandoned forever. A merge leaves the reviewed SHAs
-intact, so the cycle survives. If something does rebase the range, the cycle is over: delete
-these files and start again.
+⚠ **A stray `review-*.md` means a cycle did not finish.** Ask one question, which is correct in
+every case: **is its SHA anywhere in `git log origin/main..HEAD`, or on `main`?** If neither,
+the cycle was rebased away or abandoned — delete the file and start again on the current range.
+(The plain "is it on `main` yet?" version of this check answers *no* forever after a rebase,
+because a rebased-away SHA never lands.)

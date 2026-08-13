@@ -87,23 +87,31 @@ the simple version that holds until then. Do not build tooling on its shape.
   There is no branch protection, **force-push to `main` is unblocked**, there is no pre-push
   hook, and CI runs *after* a push rather than gating one. The abort above is the only thing
   in front of `main`, which is why it is a rule and not a preference.
-* **Do NOT pull before pushing.** Just push. If `main` has moved, git rejects the push as
-  non-fast-forward and tells you precisely when integration is needed — at no cost on the
-  pushes where it is not.
-  * ⚠ **WHEN YOU DO HAVE TO INTEGRATE, MERGE — DO NOT REBASE.** A rebase **rewrites your local
-    commits**, so the SHAs that were reviewed cease to exist: the handoff file names a commit
-    that is not in history, and `notes/reviews/`'s "is its SHA on `main` yet?" diagnostic then
-    answers *no* forever, making a finished cycle indistinguishable from an abandoned one. A
-    merge leaves your commits alone, so **the review survives integration.**
-  * **If you rebase anyway** — by choice, or because a tool did it for you — **the reviewed
-    range no longer exists and the cycle is over.** Start a fresh one on the rebased range.
+* **One session commits to this repo** (owner, 2026-08-13), so `main` does not move under you
+  and divergence is not an ordinary event. The repo is configured to match:
+  `push.default=upstream` and `pull.rebase=false`.
+  * **`git push` is the whole command.** No `HEAD:main`, no `-u`. Verified against this
+    worktree, whose branch name differs from `main`.
+  * **`origin/main..HEAD` is the range**, and `@{push}..HEAD` also resolves now — `push.default`
+    was what broke it (`fatal: cannot resolve 'simple' push to a single destination`). Prefer
+    `origin/main..HEAD`: it is correct under any config.
+  * ⚠ **IF `main` EVER HAS MOVED, MERGE — NEVER REBASE.** A rebase **rewrites your local
+    commits**, so the reviewed SHAs cease to exist and the cycle silently ends. `pull.rebase` is
+    set to `false`, so a bare `git pull` merges (verified: exit 0, local commit survives as a
+    parent). ⚠ **Do not take git's advice here.** With `pull.rebase` unset, `git pull` is
+    *fatal* on diverged branches and offers `git config pull.rebase true` as one of three
+    equal-looking remedies — measured, and it would silently end every future cycle. The
+    setting is what stands between the worker and that hint.
   * If the tree holds the owner's uncommitted local edits, fetch and check ahead/behind rather
     than integrating anything.
 * ⚠ **REVIEW THE RANGE YOU ARE ABOUT TO PUSH, NOT ONLY THE LAST COMMIT** — step 2 says this,
   and it is repeated here because the numbered list is what gets copied elsewhere. A push
   carries every unpushed commit, so a review scoped to one SHA leaves the rest unread, and
-  commits made while a review is in flight land in that gap. Measured on this loop's first
-  three cycles: the range grew after the brief **every time**.
+  commits made while a review is in flight land in that gap. Measured on every cycle this loop
+  has run so far: the range grew after the brief each time, twice from the worker's own commits
+  and twice from owner instructions arriving mid-cycle. ⚠ **Commits that arrive after the review
+  are a NEW CYCLE, not a third lap** — the cap forbids re-reviewing the same range, not
+  reviewing new work.
 * ⚠ **A rule in this file is not an enforcement mechanism, and this loop has no mechanism at
   all** — no trigger, no check, no artifact. A push that skipped the review is
   indistinguishable afterwards from one that did not. The project has learned the general
@@ -126,6 +134,11 @@ the simple version that holds until then. Do not build tooling on its shape.
     repo path, the commit range and how to diff it, what the change is *for*, what you already
     verified, and which standards apply (§5, plus §5b/§5c when the change touches doc claims
     or stage wiring). **The quality of the review is bounded by the quality of the brief.**
+  * ⚠ **A REVIEW IS DELIVERED WHEN THE `Reviewer` SAYS SO, NOT WHEN THE FILE APPEARS.** The
+    file is the content; the message is the completion event. **Do not read, act on, or delete
+    a `review-*.md` before the Reviewer has said it is complete** — a file being written is
+    indistinguishable on disk from a finished one, and a whole second version of a report was
+    once deleted unread because its existence was taken as the signal.
   * **The reviewer writes its report to `notes/reviews/review-<sha7>.md`**, where `<sha7>` is
     **the tip of the range at the time of the request** — the one unambiguous choice, since a
     range has no single SHA and "the interesting commit" is a judgement two agents will make

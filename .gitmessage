@@ -12,5 +12,5 @@
 #   * ⚠ traps and residuals a future reader needs, marked so they are skimmable
 #
 # `git commit -m "one line"` is insufficient by policy for anything non-trivial.
-#
-# Co-Authored-By: Ziggy <ziggy@artificialhumanity.io>
+
+Co-Authored-By: Ziggy <ziggy@artificialhumanity.io>
