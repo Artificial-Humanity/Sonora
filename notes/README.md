@@ -41,8 +41,10 @@ _Answering a specific question? **"What are we training on"** → `training-sour
 `training-operations.md`. **"Why is the model shaped like this"** → `model-decisions.md`._
 
 _Bookkeeping: none to maintain here. The changelog and the `code-review-*.md` cycle were
-both retired 2026-08-11 (AGENTS.md §4) — a change is recorded by its commit message and its
-pull request, and review findings live in the PR that raised them._
+both retired 2026-08-11 (AGENTS.md §4) — a change is recorded by its commit message, and a
+review finding that its cycle could not settle becomes a GitHub issue (AGENTS.md §1). The
+one exception is `reviews/`, which holds a transient handoff file per cycle and is emptied
+by the end of it._
 
 ## Data — what trains, and under what license
 

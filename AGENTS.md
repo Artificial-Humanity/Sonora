@@ -61,155 +61,85 @@ case-insensitive macOS/Windows.
 
 ### 1. Commit Hygiene
 
-* **`main` is PR-only. Do not push to it directly** (owner, 2026-08-10). Branch, push the
-  branch, open a PR, and let it merge. This applies to agent sessions exactly as it applies
-  to the owner — an agent that "just needs one small fix on main" is the case the rule exists
-  for. The two reasons it is a rule and not a preference:
-  * **The Mac and `ai-lab-0` (and their agent sessions) commit concurrently.** Direct pushes
-    to a shared `main` are how two sessions silently interleave half-finished work; a branch
-    is a place for work to be incomplete without being everyone's problem.
-  * **Nothing reviews a direct push.** The pre-push review below is requested by the
-    committing agent, and the PR is where the owner sees the result; work that skips the PR
-    skips the record of it entirely.
-* **Branch naming**: `<type>/<short-slug>` matching the commit type (`fix/`, `feat/`,
-  `docs/`, `chore/`), e.g. `fix/holdout-filelist-width`.
-* **Work on the branch, commit and push liberally, open the PR only when the work is done**
-  (owner, 2026-08-10). Pushing to your own branch is free and is the entire point of having
-  one: commit early, commit often, push whenever, and let the branch hold work that is not
-  yet finished. What is deliberate is the *timing of the PR*, not the timing of the commits.
-  * **When completion is defined, completion opens the PR.** If a `/goal` has been set,
-    achieving that goal IS the completion point — open the PR then, without being asked again.
-  * **Otherwise the owner calls it.** With no goal set, work, push, and wait: the owner
-    acknowledges the completion point and the PR follows from that.
-  * **This is also what makes it cheap.** Review effort now scales with the number of
-    *commits* (see the pre-push rule below), not with the age of the PR, but the same logic
-    holds one level down: a PR opened at the start of the work invites the owner to read
-    half-finished code repeatedly. Opening at completion buys one reading of work that is
-    actually ready.
-* **Pull before push, every time.** Run `git pull --rebase` as the first step of any
-  commit-and-push sequence on your branch, and rebase on `main` before opening the PR. If the
-  tree holds the owner's uncommitted local edits, fetch and check ahead/behind instead of
-  forcing a rebase.
-* **The exception is the owner's, not yours.** If the owner explicitly directs a direct push
-  to `main`, that is their call to make and it does not need re-litigating — say the rule
-  exists once, then do as asked. An agent never grants itself the exception.
-* ⚠ **A rule in this file is not an enforcement mechanism.** This project has already learned
-  that the expensive way — `deploy.sh`'s "deploy the stack only when a service change is
-  intended" was a header comment for weeks and then got ignored eleven hours into a live
-  training run, which is why it is now a hard refusal in code. Treat the same way here: the
-  authority is the branch protection on `main`, and this section only explains it. If a direct
-  push to `main` ever *succeeds*, the protection is missing or was bypassed — report that
-  rather than taking it as permission.
-* ⚠ **UPON COMMIT, BEFORE PUSHING: REQUEST A REVIEW FROM THE `Reviewer` SESSION** (owner,
-  2026-08-13). Commit first, so there is a fixed thing to review; request the review; push
-  only after it comes back and you have acted on it.
-  * **⚠ THIS IS AN EXPLICITLY TEMPORARY HOLDOVER, and should be read as one.** The owner's
-    words: it *"will likely not be our permanent state but it will act as a holdover until I
-    settle on something that keeps our quality high without the level of friction and need for
-    manual user intervention of repeated PR cycles."* The CI review lane produced findings that
-    were consistently real and consistently worth fixing; what it did not do was converge —
-    see the retirement note below. Do not build tooling on top of this rule, and do not treat
-    its shape as settled.
-  * **How to reach it.** `Reviewer` is a peer Claude session on this host (tmux
-    `claude-reviewer`), addressed by name with `SendMessage`; `ListAgents` confirms it is up.
-    A listed peer is alive and will process the message — messages queue and drain on its next
-    turn, so a reply may not be instant.
-    * ⚠ **The first send is REJECTED and that is not a failure.** A cross-session send to a
-      name the conversation has not used before comes back with
-      `'Reviewer' is not an agent in this conversation` and the ref to confirm with. Re-send
-      as `Reviewer [<ref>]`, taking the ref from that error or from `ListAgents` — never from
-      memory or from this file, because it changes when the session is restarted. Measured on
-      the first use of this rule; an agent that reads the rejection as "the Reviewer is down"
-      will skip the review and push, which is the one outcome this rule exists to prevent.
+**THE LOOP** (owner, 2026-08-13). Six steps. This *replaces* the pull-request model
+completely — there are no PRs, no review branches, and no branch protection requiring either.
+
+1. Worker commits.
+2. Worker requests a review from `Reviewer`, referencing that commit.
+3. Worker gets **one** pass at fixing the findings.
+4. `Reviewer` reviews again, after that pass.
+5. Anything still unresolved becomes a **GitHub issue**.
+6. Worker pushes to `main`.
+
+⚠ **THIS IS INTERIM.** The owner is working toward a more robust derivation of the
+actor–critic model, and this is the simple version that holds until then. The PR experiment
+before it is not being repeated: it *did* raise quality — the review/fix cycles were worth
+what they cost in output — but it needed constant manual intervention and it did not converge.
+Do not build tooling on this shape, and do not reintroduce PR steps because an older habit
+suggests them.
+
+* **Push to `main`.** Directly. The GitHub PR requirement was removed from the repository on
+  2026-08-13 to match, so nothing server-side stops you. Branches are still fine as a private
+  workspace, but they are no longer part of the protocol and nothing waits on one.
+* **Pull before push, every time.** `git pull --rebase` as the first step of any push
+  sequence — more important now, not less, because several sessions push to `main` directly.
+  If the tree holds the owner's uncommitted local edits, fetch and check ahead/behind instead
+  of forcing a rebase.
+* ⚠ **REVIEW THE RANGE YOU ARE ABOUT TO PUSH, NOT ONLY THE LAST COMMIT.** A push carries every
+  unpushed commit, so a review scoped to one SHA leaves the rest unread — and commits made
+  while a review is in flight land in that gap. Brief the reviewer on `@{push}..HEAD`
+  (`origin/main..HEAD` when the branch has no upstream) and name every commit in it. Measured
+  the first time this rule was used: three commits inside three minutes, of which the brief
+  covered one.
+* ⚠ **A rule in this file is not an enforcement mechanism**, and this loop has *no* mechanism
+  behind it at all — no trigger, no check, no artifact. A push that skipped the review is
+  indistinguishable afterwards from one that did not. That is a real weakness relative to the
+  CI lane it replaces, which ran whether or not anyone remembered it; it is accepted for now
+  because the loop is interim. The project has learned the general lesson expensively —
+  `deploy.sh`'s "deploy only when a service change is intended" was a header comment for weeks,
+  got ignored eleven hours into a live training run, and is now a hard refusal in code.
+* **Step 2 — requesting the review.** `Reviewer` is a peer Claude session on this host (tmux
+  `claude-reviewer`), addressed by name with `SendMessage`; `ListAgents` confirms it is up.
+  Messages queue and drain on the receiver's next turn, so a reply is not instant.
+  * ⚠ **THE FIRST SEND IS REJECTED, IN BOTH DIRECTIONS, AND THAT IS NOT A FAILURE.** A
+    cross-session send to a name the conversation has not used before returns
+    `'<name>' is not an agent in this conversation` plus the ref to confirm with; re-send as
+    `Reviewer [<ref>]`. Take the ref from that error or from `ListAgents`, **never from this
+    file** — it changes when a session restarts. ⚠ It bites the **reply** as well as the
+    request (measured from both ends), so a worker whose reviewer hit it and gave up sees a
+    review that simply never arrives. Expect one rejection at each end.
   * ⚠ **IT HAS NO SYSTEM PROMPT, SO THE REQUEST MUST CARRY ITS OWN BRIEF.** The `Reviewer`
     session holds no standing context about this repo, this file, or what a good review is
-    here. A bare "please review my commit" gets a generic reading of unfamiliar code. Send:
-    the repo path and branch, the commit SHA and how to see the diff, what the change is
-    *for*, what you already verified, and the standard to apply (§5, and §5b/§5c where the
-    change touches doc claims or stage wiring). **The quality of the review is bounded by the
-    quality of the brief** — that is the whole difference between this and the CI lane, which
-    carried a tuned prompt.
-  * **A review is a report, not an instruction** (§5). Fix what is genuinely wrong; push back
-    in your reply where a finding is wrong, rather than making a change you believe is wrong.
-  * **Two passes, then STOP and file.** The committing agent gets one round of fixes and one
-    second pass. **Anything still unresolved after that second pass — whether you could not
-    fix it, or you disagree and the disagreement did not settle — is filed as a GitHub issue
-    for the owner**, and the push proceeds. Do not run a third lap.
-    * ⚠ **THIS IS A DELIBERATE, NARROW EXCEPTION TO "findings are no longer filed as issues"
-      below, and the distinction is what keeps the old failure from returning.** That rule
-      retired a lane where the reviewer filed *every* finding automatically, which turned a
-      handful into a backlog in an afternoon. Here the filter is the second pass: only what
-      survives two attempts by the agent that wrote the code reaches an issue, and a human
-      decides what happens next. If issues start arriving in bursts again, the second pass has
-      stopped doing its job — that is the signal to fix, not the issue count.
-    * File it with the reproduction *re-verified*, not relayed. A finding restated from a
-      review and never executed is how a wrong finding becomes a tracked task.
-  * **If the `Reviewer` is unreachable or does not answer, say so and push anyway.** Note it
-    in the PR body. A blocked push is worse than an unreviewed commit, and a silently skipped
-    review is worse than both — the CI lane's green-check-means-skipped trap below is the same
-    failure and it cost this repo an hour twice.
-  * ⚠ **NOTHING ENFORCES THIS RULE. It is a convention, and it is the weakest kind.** §1 opens
-    by saying a rule in this file is not an enforcement mechanism; the lane this replaces at
-    least had a workflow that ran whether or not anyone remembered it. This has no trigger, no
-    check and no artifact — a push that skipped the review is indistinguishable afterwards
-    from one that did not. Two consequences worth acting on rather than noting: **say in the
-    PR body that the review happened** (that is the only evidence there is), and treat "did
-    every commit on this branch get reviewed?" as a question the owner can only answer by
-    asking. If this holdover outlives its welcome, that gap is the reason to replace it.
-* **Review findings are resolved IN THE PULL REQUEST, by the machine that submitted it**
-  (owner, 2026-08-11). ⚠ **The CI review lane this describes is DISABLED as of 2026-08-13**
-  (owner) — `Janis — PR Review` is `disabled_manually` in GitHub Actions; the workflow file is
-  untouched and `gh workflow enable 330746260` restores it. It is kept, rather than deleted,
-  because the owner is evaluating replacements and everything below is what that lane cost to
-  learn. **Read the rest of this bullet as history that is still true about the workflow, not
-  as a description of something currently running.** The repair still runs here, via
-  `scripts/fix_pr.sh <pr>` — or `/fix-pr <pr>` in a Claude Code session, which runs the same
-  protocol from the same file (`.claude/commands/fix-pr.md`). It reads the unresolved threads,
-  fixes what is genuinely wrong, replies in each thread, and pushes to the PR branch. A
-  review comment is an argument, not an order: the fix pass is expected to push back in a
-  reply where a finding is wrong, rather than making a change it believes is wrong.
-  * **Two practices were retired to get here, and neither should be reintroduced casually.**
-    * **The `claude-fix` label and `.github/workflows/claude-fix.yml` are gone.** The lane
-      failed for an environmental reason, not a logical one: the runner image never carried
-      what a real repair needs (torch, the ROCm stack, `/data`, the repo venv), and shipping
-      that into CI cost more than the lane was worth. The submitting machine already has all
-      of it. ⚠ `scripts/fix_pr.sh` refuses to run when it cannot execute the test suite —
-      that refusal is the guard against rebuilding the same defect at a new address.
-    * **Findings are no longer filed as issues.** On 2026-08-11 that practice turned a
-      handful of findings into 25 issues in three bursts inside half an hour: each review
-      produced a backlog, the backlog produced the next PR, and the PR produced the next
-      review. The reviewer now holds neither `issues: write` nor `Bash(gh issue:*)`, because
-      §1's own lesson is that a rule in a prompt is not a mechanism. Issues opened *before*
-      that date are live work and stay open; `fix_pr.sh` checks them read-only so a fix pass
-      does not collide with whoever owns one.
-  * **What bounds the loop now is the commit range, not anyone's identity.** The reviewer
-    ends each summary with `<!-- janis-reviewed: <sha> -->` and reviews only `<sha>..HEAD` on
-    the next run, posting nothing when that range is empty or docs-only. So a fix push buys a
-    small incremental read of the fix itself, and each lap is smaller than the last. This is
-    deliberately identity-agnostic: it keeps working when agents commit under their own
-    GitHub identity rather than a human's.
-  * ⚠ **A PR THAT EDITS `.github/workflows/claude-review.yml` IS NOT REVIEWED, AND THE CHECK
-    STILL GOES GREEN.** `claude-code-action` validates that the workflow file is
-    byte-identical to the version on the default branch and, when it is not, logs
-    `Skipping action due to workflow validation` and exits `conclusion: success`. The run
-    takes ~37 seconds instead of the usual 11–14 minutes and posts nothing. **The green check
-    means "skipped", not "clean"** — PR #59 rewrote that workflow and was merged unreviewed
-    on the strength of it. This is a deliberate vendor security control, not a bug.
-    * **This was already known, and that is the actual lesson.** It was identified during
-      the lane's setup on 2026-08-10 — instrumentation has to land on `main` first — but the
-      knowledge lived only in an agent's session memory and was never written into this
-      repo, so it protected nobody and cost the same hour twice. **A trap that is not in the
-      repo is not known.** That is why it is here now.
-    * When a PR changes that workflow: review it by hand or in a session, say in the PR body
-      that the automated review was structurally skipped, and keep unrelated changes out of
-      it so only the workflow edit goes unreviewed. A fix to this lane cannot be validated by
-      the PR that introduces it — only by the next PR that leaves the workflow alone.
-  * **The human invocation is the turn token.** Nothing polls and there is no label. One
-    invocation, one pass, then it hands back: whatever the pass could not settle alone is
-    left as an OPEN thread with a question in it, the owner answers there, and re-running
-    `fix_pr.sh` starts the next pass by reading those answers. Replies therefore go into the
-    threads, not only into the summary — the summary is for the human, the threads are what
-    the next pass reads.
+    here. A bare "please review my commit" gets a generic reading of unfamiliar code. Send the
+    repo path, the commit range and how to diff it, what the change is *for*, what you already
+    verified, and which standards apply (§5, plus §5b/§5c when the change touches doc claims
+    or stage wiring). **The quality of the review is bounded by the quality of the brief.**
+  * **The reviewer writes its report to `notes/reviews/review-<sha7>.md`** — see that
+    directory's README. The file is a handoff, not a record: it is deleted at the end of the
+    cycle, and it is gitignored so it cannot be swept into a commit by `git add -A`.
+* **Step 3 — ONE fix pass. One.** Fix what is genuinely wrong. **A review is a report, not an
+  order** (§5): where a finding is wrong, say so in your reply and leave the code alone rather
+  than making a change you believe is wrong — a rebutted finding is *resolved*, not skipped.
+* **Step 5 — what is still unresolved becomes an issue, and then you stop.**
+  * ⚠ **THE COMMITTING AGENT FILES THE ISSUES. THE `Reviewer` NEVER DOES.** It has full `gh`
+    access and no capability restriction, so nothing but this sentence prevents it — and the
+    practice that had a reviewer filing its own findings automatically is exactly what
+    produced a backlog of issues in a single afternoon and had to be retired.
+  * **File with the reproduction re-verified, not relayed.** A finding restated from a review
+    and never executed is how a wrong finding becomes a tracked task.
+  * ⚠ **What bounds this loop is the COUNT — one fix pass, one re-review — and nothing else.**
+    That hard cap is the whole mechanism, and it is deliberately not a judgement call: the
+    failure it exists to prevent is a *loop* (each review produces work, the work produces the
+    next review), not a volume. A third lap is never correct, however tempting the findings.
+  * ⚠ **Findings raised for the first time in step 4 are filed UNFIXED, by design.** The
+    worker has had no attempt at them, and that is the deliberate trade — the alternative is
+    fixing them with no review left to read the fix, which is worse. This matters more than it
+    looks: the fix passes measured on this repo produced *later-round findings that were mostly
+    regressions from the earlier rounds' own fixes*, so step 4 is precisely where that class
+    surfaces. Filing them is the point, not a shortfall.
+* **If `Reviewer` is unreachable or does not answer, say so and push anyway.** Say it in the
+  commit trail or to the owner. A blocked push is worse than an unreviewed commit; a *silently*
+  skipped review is worse than both.
 
 ### 2. Training & Troubleshooting Mandates
 
@@ -265,16 +195,20 @@ case-insensitive macOS/Windows.
   uv's resolver speed materially shortens the recreate-reinstall cycle documented in this
   project's STATE ops notes.
 
-### 4. The Record of Change — git history and the pull request
+### 4. The Record of Change — git history
 
 * **There is no changelog** (owner, 2026-08-11). `notes/CHANGELOG.md` was retired, along with
-  the review-document cycle that cross-referenced it, because both **predate this repo having
-  pull requests or review at all** and had become a third place for the same facts to drift.
-  The record of a change is now, in order of authority:
+  the review-document cycle that cross-referenced it, because both had become a third place
+  for the same facts to drift. The record of a change is now, in order of authority:
   1. **the commit message** — WHY the previous state was wrong, not merely what moved;
-  2. **the pull request** — title, body, and the review threads, which hold the argument and
-     its resolution;
-  3. **`git log`** — which needs no maintenance to stay accurate.
+  2. **`git log`** — which needs no maintenance to stay accurate;
+  3. **the issues filed out of a review** (§1 step 5) — which hold what a cycle could not
+     settle, and are the only durable artifact the review loop produces.
+* ⚠ **The commit message now carries weight it did not have to before.** Under the retired PR
+  model, a title, a body and the review threads sat alongside every change; there is no such
+  place any more. Whatever a reader would have needed from a PR description — the argument,
+  the alternatives rejected, what was verified — goes in the commit message or it does not
+  exist. `notes/reviews/` is not that place: those files are deleted at the end of each cycle.
 * ⚠ **Do not reintroduce a changelog, and do not resurrect it under another name** — a
   `notes/changes-*.md`, a "release notes" file, a running summary in `STATE.md`. The failure
   was structural, not cosmetic: a hand-maintained narrative of what changed is a copy of
@@ -287,20 +221,9 @@ case-insensitive macOS/Windows.
 
 ### 5. Code Review Standards
 
-* **Review happens BEFORE THE PUSH, and §1 has the mechanism** — request it from the
-  `Reviewer` session on each commit, act on it, then push. There is **no review document and
-  no pointer to maintain.**
-  * ⚠ **The `.github/workflows/claude-review.yml` lane that used to do this is DISABLED**
-    (owner, 2026-08-13). While it ran, it bounded its own range with a
-    `<!-- janis-reviewed: <sha> -->` marker; the sub-bullet below is retained because that
-    marker mechanic is the part worth copying into whatever replaces it.
-  * ⚠ **The marker bounds a range only while the branch's history is APPEND-ONLY. A rebase or
-    force-push invalidates it and costs a full re-review.** Measured on this PR: **one**
-    force-push invalidated **two** markers at once. The previous marker stopped being an
-    ancestor of HEAD (`compare` reports *diverged*),
-    and the reviewer correctly fell back to reading everything. The prompt handles that and says
-    so — but the cost is real, **tidying a branch's history is not free**, and an earlier version
-    of this bullet claimed there was no SHA bookkeeping at all.
+* **Review happens BEFORE THE PUSH, and §1 has the procedure** — commit, request a review of
+  the range you are about to push, one fix pass, one re-review, file the remainder, push.
+  §1 is a procedure and not a *mechanism*: nothing enforces it.
 * **A review is a report, not a fix pass.** This survives the retirement and applies to any
   agent asked to review anything: the deliverable is the findings. Take on fixes only when
   the owner explicitly asks, never as a rider on the review itself.
@@ -314,19 +237,26 @@ case-insensitive macOS/Windows.
     and suggested remedy — including the ones a review itself writes, since a `suggestion`
     block is committed in one click and gets far less scrutiny than the finding it hangs off.
 * **Scope: code work only.** Source, configs and dependency manifests. Docs-only changes need
-  no review, and the review workflow posts nothing when a PR's new range touches only `*.md`
-  or `notes/`. ⚠ **With exceptions that are ALWAYS in scope regardless of extension:
+  no review. ⚠ **With exceptions that are ALWAYS in scope regardless of extension:
   `.claude/**`, `AGENTS.md`, `CLAUDE.md`.** `.claude/commands/*.md` is an executable prompt —
   it tells an agent holding push rights what to run — so it is closer to a shell script than
-  to a README. The unqualified version of this sentence let #64 merge with **zero review**;
-  narrowed in #66.
-* **Periodic wholesale review is a different altitude, and it is NOT this.** The owner keeps a
-  floating reviewer session for reading the codebase and the product direction as a whole,
-  on its own cadence. Per-PR review answers *"is this diff correct?"*; that one answers
-  *"is this still coherent?"* — and it must not be collapsed into the PR lane, because per-diff
-  volume will always crowd out the wider read. ⚠ **Where its output lands is an OPEN
-  QUESTION** (2026-08-11): the retired convention was a timestamped document in `notes/`, and
-  nothing has replaced it yet. Do not invent one silently — ask.
+  to a README. The unqualified version of this sentence once let a change merge with **zero
+  review**.
+  * ⚠ **THIS IS NOW A JUDGEMENT THE WORKER MAKES ABOUT ITS OWN CHANGE, and it used to be a
+    mechanism.** The retired workflow simply declined to post on a docs-only range; the same
+    words now describe the committing agent deciding, before it asks for anything, that its
+    own diff does not need reading. Same sentence, different kind of rule — when in doubt on a
+    mixed diff, request the review.
+* ⚠ **Periodic wholesale review is a different altitude — and whether `Reviewer` is also the
+  session that does it is an OPEN QUESTION for the owner** (raised 2026-08-13). The owner
+  keeps a floating reviewer session for reading the codebase and the product direction as a
+  whole, on its own cadence: per-change review answers *"is this diff correct?"*, that one
+  answers *"is this still coherent?"*. The standing warning was that the two must not be
+  collapsed, because per-diff volume will always crowd out the wider read — and §1 now points
+  per-commit traffic at a session named `Reviewer`, which is either that same session or one
+  the file never names. **Do not resolve this by assumption in either direction; ask.** Where
+  a wholesale review's output lands is open for the same reason — `notes/reviews/` is for the
+  per-change loop and is deleted after each cycle, so it is not that home.
 
 ### 5b. The doc-claims gate can stop enforcing WITHOUT going red
 
@@ -485,7 +415,7 @@ Where a copy still exists, the rest of this section governs it. **The repo is
 authoritative in every case.**
 
 * **Never edit code under `/data`.** Change it in the repo, commit, then deploy. An edit made
-  on `/data` has no history, no diff, no review and no pull request, and no way for anyone
+  on `/data` has no history, no diff and no review, and no way for anyone
   else to discover it happened.
 * **A `/data` file that is *newer* than its tracked original is not authoritative — it is
   unreviewed.** If that edit is the one you want, commit it in the repo and redeploy; do not
@@ -722,7 +652,7 @@ git commit …                                    # a dirty tree is REFUSED by d
 **Code is edited in the repo and deployed. It is never edited at the deploy target, and
 never copied back from one.** This is not a style preference and it has no exceptions:
 
-* An edit under `/data` has **no history, no diff, no review and no pull request**. A
+* An edit under `/data` has **no history, no diff and no review**. A
   `/data` file that is *newer* than its tracked original is not authoritative — it is
   unrecorded, and it will be destroyed without ceremony by the next deploy, because
   `rsync --delete` leaves nothing to recover or diff.

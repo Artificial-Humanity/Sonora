@@ -51,7 +51,7 @@ Ratified as **[AGENTS.md](../AGENTS.md) §6**. In short:
 **The repo is authoritative. `/data` is a working copy, always.**
 
 A `/data` file that is *newer* than its tracked original is not authoritative — it is
-unreviewed. It has no history, no diff, no pull request, and no way for anyone else to
+unreviewed. It has no history, no diff, no review, and no way for anyone else to
 discover it changed. If an edit made on `/data` is the right one, commit it in the repo
 and redeploy; do not let the copy become the record.
 

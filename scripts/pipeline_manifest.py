@@ -73,7 +73,7 @@ STAGES = "scripts/stages/"
 # Shells an orchestrator may run without them being stages: two are `.`-sourced definition
 # files, and the third runs inside the throwaway container to create the ai-mgr passwd
 # entry. Named explicitly rather than by exempting everything in NOT_ORCHESTRATORS, so
-# wiring (say) `fix_pr.sh` into a data pass still has to be declared.
+# wiring (say) a developer tool into a data pass still has to be declared.
 STRUCTURAL_HELPERS = (
     "container_env.sh",
     "capture_container_env.sh",
@@ -168,7 +168,6 @@ NOT_ORCHESTRATORS = {
     "scripts/container_env.sh": "sourced, not run — the shared pinned-image and uv bootstrap definitions",
     "scripts/capture_container_env.sh": "sourced helper — records the resolved environment beside the artifacts (D-M2)",
     "scripts/container_as_ai_mgr.sh": "runs INSIDE the throwaway container to create the ai-mgr passwd entry",
-    "scripts/fix_pr.sh": "developer tool — drives the local PR fix pass; not a data pass",
     "scripts/teacher_audition/render_longcat.sh": (
         "Preserved audition provenance for rated clips, and an INTERFACE record for a benched "
         "engine (teacher_audition/README.md). Invokes a toolchain script outside this repo."

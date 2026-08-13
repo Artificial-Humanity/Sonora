@@ -350,9 +350,11 @@ headline; open items are in [todo.md](todo.md).
 
 ## Pointers
 
-- Change history — `git log`, the commit messages, and the pull requests. **There is no
-  changelog**: `CHANGELOG.md` was retired 2026-08-11 (AGENTS.md §4), together with the
-  review-document cycle that cross-referenced it.
+- Change history — `git log` and the commit messages. **There is no changelog**:
+  `CHANGELOG.md` was retired 2026-08-11 (AGENTS.md §4), together with the review-document
+  cycle that cross-referenced it. ⚠ **And no pull requests either, since 2026-08-13** — work
+  is committed, reviewed by the `Reviewer` session, then pushed straight to `main`, so the
+  commit message is the only prose that travels with a change.
 - Review sweep — 47 open items down to **9**, with **all three §1/§3 corpus decisions
   taken** on 2026-08-07 and only their execution left. §2's QC/audit/staging block closed
   on 2026-08-07 (`1ebd14a`, `0a505d3`, `a4b6ec5`, `97c14b4`): C-M5, C-M8 and C-L4 done,
@@ -378,8 +380,9 @@ headline; open items are in [todo.md](todo.md).
   risk is **drift**, and it had already bitten: the running export harness was three weeks
   stale and missing a seam guard the repo recorded as landed. `tests/test_data_mirrors.py`
   fails on any divergence. **The repo is authoritative; `/data` is a working copy.**
-- Review findings live in the pull request that raised them (AGENTS.md §1/§5); the
-  timestamped review documents were retired 2026-08-11. ⚠ The pattern the final sweep
+- Review findings are resolved before the push, and whatever a cycle cannot settle becomes a
+  GitHub issue (AGENTS.md §1); the timestamped review documents were retired 2026-08-11 and
+  the pull-request lane on 2026-08-13. ⚠ The pattern the final sweep
   found is worth carrying regardless of where findings get recorded: **both High findings
   were enforcement code that existed and was never wired in** — written, reviewed,
   committed, never called. Check that a guard is INVOKED, not merely present.
