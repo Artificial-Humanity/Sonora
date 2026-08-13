@@ -69,7 +69,7 @@ straight to `main`.
    `origin/main..HEAD` with no upstream — naming every commit in it.
 3. Worker gets **one** pass at fixing the findings.
 4. `Reviewer` reviews **the same range, re-briefed**, which now includes the fix commits.
-5. Anything still unresolved becomes a **GitHub issue**, filed by the worker.
+5. Anything still unresolved becomes a **PocketBase issue**, filed by the worker.
 6. Worker pushes to `main`, **then deletes the cycle's `notes/reviews/review-*.md`** —
    whether it ended in issues or ended clean. Either ending closes the cycle.
 
@@ -170,10 +170,24 @@ the simple version that holds until then. Do not build tooling on its shape.
   already settled — burning the one lap that exists to catch *regressions introduced by the fix
   pass*, which is the class this repo has actually measured and step 4's whole purpose.
 * **Step 5 — what is still unresolved becomes an issue, and then you stop.**
-  * ⚠ **THE COMMITTING AGENT FILES THE ISSUES. THE `Reviewer` NEVER DOES.** It has full `gh`
-    access and no capability restriction, so nothing but this sentence prevents it. A reviewer
-    that files its own findings turns every review into a backlog, and the backlog into the
-    next review's subject.
+  * **ISSUES LIVE IN POCKETBASE, NOT GITHUB** (owner, 2026-08-13). The tracker is the
+    `issues` collection at **https://board.ai-lab-0.mcfarlin.family/_/**, and the `pocketbase`
+    skill — machine-wide for Claude Code and Antigravity — carries the shape, the field list
+    and the number-allocation snippet. File with `repo: "Artificial-Humanity/Sonora"`.
+    * **This repo's GitHub issue tracker is empty by intent.** All 48 issues (#12–#89) were
+      replicated into PocketBase on 2026-08-13, byte-for-byte including comment bodies, and
+      their **numbers were preserved** — so a `#33` in a commit message still names the same
+      finding, it now resolves in the tracker rather than on GitHub. `gh issue create` against
+      this repo is a mistake, not an alternative route.
+    * ⚠ **The tracker is superuser-only and reachable only from ai-lab-0.** Port 8090 is
+      loopback-bound; there is no LAN-direct route and no anonymous read. A session that
+      cannot reach it cannot file — say so and hand the finding to the owner rather than
+      silently dropping it, which is the failure mode a second tracker was never able to have.
+  * ⚠ **THE COMMITTING AGENT FILES THE ISSUES. THE `Reviewer` NEVER DOES.** Both sessions now
+    reach the tracker through the same `pb_*` MCP tools, with no capability restriction on
+    either, so nothing but this sentence prevents it — exactly as when the risk was `gh`.
+    Moving the tracker changed the address, not the hazard: a reviewer that files its own
+    findings turns every review into a backlog, and the backlog into the next review's subject.
   * **File with the reproduction re-verified, not relayed.** A finding restated from a review
     and never executed is how a wrong finding becomes a tracked task.
   * ⚠ **What bounds this loop is the COUNT — one fix pass, one re-review — and nothing else.**
@@ -259,7 +273,10 @@ the simple version that holds until then. Do not build tooling on its shape.
   1. **the commit message** — WHY the previous state was wrong, not merely what moved;
   2. **`git log`** — which needs no maintenance to stay accurate;
   3. **the issues filed out of a review** (§1 step 5) — which hold what a cycle could not
-     settle, and are the only durable artifact the review loop produces.
+     settle, and are the only durable artifact the review loop produces. ⚠ **They are in
+     PocketBase, not GitHub, as of 2026-08-13**, which makes this third authority the only
+     one that does not travel with a `git clone`. The tracker is on ai-lab-0 and is
+     backed up nightly with the rest of `/data`; a clone alone no longer carries it.
 * ⚠ **THE COMMIT MESSAGE IS THE ONLY PROSE THAT TRAVELS WITH A CHANGE.** The argument, the
   alternatives rejected, and what was verified go there or they do not exist anywhere.
   `notes/reviews/` is not that place — those files are deleted at the end of each cycle.
