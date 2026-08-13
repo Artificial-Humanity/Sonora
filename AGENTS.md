@@ -94,7 +94,7 @@ Anything still open after the third review is **escalated** — see below.
 | **opens** issues | not as part of the loop | **yes — this is its output** |
 | **closes** issues | **never** | **yes — only it decides a finding is cleared** |
 | sets `escalated` | on an existing issue, only for "this needs a user decision" | **yes — the normal path** |
-| holds the count | yes — states which pass it is | no |
+| holds the count | no | **yes — sets `agent_passes` on the issue** |
 
 * ⚠ **THE WORKER NEVER CLOSES AN ISSUE** (owner, 2026-08-13). It fixes, or it argues, and it
   says so in the comments — but the issue stays open until a reviewer agrees it is cleared.
@@ -116,7 +116,9 @@ Anything still open after the third review is **escalated** — see below.
   rules out of it.
   * Practical consequence today: **a single-shot reviewer remembers nothing between passes**,
     so pass 2 and pass 3 must be briefed as completely as pass 1. Writing the briefs that way
-    now costs nothing and is what makes the swap a change of one bullet.
+    now costs nothing and is what makes the swap a change of one bullet. The one thing that
+    does *not* have to be re-briefed is the pass number — it is on the issue as
+    `agent_passes`, which is why it is there.
 
 ⚠ **THE LOOP HAS ONE EXIT THAT IS NOT A PUSH, and it is a human handoff.** If a finding is
 that the change **should not land at all** — it corrupts data, it ships a known-broken
@@ -265,6 +267,8 @@ the simple version that holds until then. Do not build tooling on its shape.
     introduced by the fix pass*, which is the class this repo has actually measured.
 * **Step 5 (resolving) — THE REVIEWER CLOSES WHAT IS CLEARED** (owner, 2026-08-13). Every pass
   ends here, not at step 4.
+  * **Increment `agent_passes` on every issue this review read**, including ones it closes —
+    the count is of passes *spent*, so a closed issue still records what it cost.
   * **Verify, then close.** A finding is cleared when the reviewer has *checked* the fix, not
     when the worker reports one. Closing on the strength of "fixed in abc1234" reintroduces
     the self-marking this split exists to prevent, one level up.
@@ -289,10 +293,25 @@ the simple version that holds until then. Do not build tooling on its shape.
     large diff ran 7→5→9→7 findings, with the later rounds mostly defects introduced by the
     earlier rounds' own fixes. **More passes stopped converging and started manufacturing
     work.** A fourth pass is not a judgement call.
-  * **Which pass you are on comes from the brief.** Nothing on the issue counts passes, so
-    both sessions must carry the number: *"this is pass 3 of 3."* ⚠ This is a convention, not
-    a mechanism, and §1 has already learned that a rule in a prompt is not one. If passes
-    start being miscounted, add a counter field to the issue rather than trying harder.
+  * **THE COUNT LIVES ON THE ISSUE: `agent_passes`** (owner, 2026-08-13). An integer,
+    defaulting to `0`, that the **reviewer** increments — this used to be a number carried in
+    the brief, which §1's own lesson says is a convention and not a mechanism.
+    * **The reviewer sets it to `1` when it files an issue**, and **increments it on every
+      later review that reads that issue.** The worker never touches it — same rule as
+      closing.
+    * ⚠ **The current pass is `max(agent_passes)` over the issues in play, not something a
+      session remembers.** This is the property that matters: a **single-shot `claude -p`
+      reviewer remembers nothing**, so a count held in conversation cannot survive the move
+      the owner intends. Held on the record, it survives a session that has never run before.
+    * **At `agent_passes = 3` the cycle is out of passes** — escalate what is still open and
+      stop. A fourth increment means the cap was broken.
+    * **An escalated issue stops incrementing**, because re-review skips it (step 5). Its
+      count therefore reads as *how many passes tried before it was parked*, which is the
+      useful number for the owner: 1 means "recognised immediately", 3 means "we spent the
+      whole cycle failing to settle it".
+    * A finding first raised on the last pass sits at `1` while the cycle is at `3`. That is
+      correct and worth reading — it distinguishes *nobody has attempted this yet* from
+      *three passes could not fix it*, which the cycle number alone cannot.
 
 * **ESCALATION — `escalated: true` means the owner has to decide.**
   * ⚠ **THE REVIEWER SETS IT. That is the normal path** (owner, 2026-08-13) — it flags what is
