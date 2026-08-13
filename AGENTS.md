@@ -61,19 +61,46 @@ case-insensitive macOS/Windows.
 
 ### 1. Commit Hygiene
 
-**THE LOOP** (owner, 2026-08-13). Work is committed, reviewed by a peer session, and pushed
+**THE LOOP** (owner, 2026-08-13). Work is committed, reviewed by a second session, and pushed
 straight to `main`.
 
-1. Worker commits.
-2. Worker requests a review of **the whole range it is about to push** — `@{push}..HEAD`, or
-   `origin/main..HEAD` with no upstream — naming every commit in it.
-3. Worker gets **one** pass at fixing the findings.
-4. `Reviewer` reviews **the same range, re-briefed**, which now includes the fix commits.
-5. Anything still unresolved becomes a **PocketBase issue**, filed by the worker.
-6. Worker pushes to `main`, **then deletes the cycle's `notes/reviews/review-*.md`** —
-   whether it ended in issues or ended clean. Either ending closes the cycle.
+1. **Worker commits and taps `Reviewer`**, naming **the whole range it is about to push** —
+   `@{push}..HEAD`, or `origin/main..HEAD` with no upstream — and every commit in it.
+2. **`Reviewer` reviews and files issues** straight into PocketBase, each carrying the
+   `review_id` of the review that produced it.
+3. **`Reviewer` taps the worker**, naming the `review_id`: *"issues are filed under
+   `<review_id>`."*
+4. **Worker addresses them** — closing what it fixes, closing what it rebuts with the
+   argument attached.
 
-⚠ **THE LOOP HAS ONE EXIT THAT IS NOT STEP 6, and it is a human handoff.** If a finding is
+**Repeat as needed, to a maximum of THREE passes** (owner, 2026-08-13), then the worker
+pushes to `main`. Anything still open after the third pass is **escalated** — see below.
+**There is no report file at any point**: the tracker is the report.
+
+**THE TWO ROLES.** Defined by responsibility, not by how either is spawned:
+
+| | **Worker** | **Reviewer** |
+|---|---|---|
+| owns | the change | the reading of it |
+| does | commits, addresses issues, pushes | reads the range, files issues, taps back |
+| writes to `main` | **yes — the only role that does** | **never** |
+| writes to the tracker | closes issues, comments, sets `escalated` | opens issues, sets `review_id`, may set `escalated` |
+| holds the count | yes — states which pass it is | no |
+
+* **One session is only ever one role for one change.** The worker does not review its own
+  range and the reviewer does not fix what it finds — that separation *is* the mechanism, and
+  it survives regardless of what the reviewer is made of.
+* ⚠ **DO NOT COUPLE THE PROTOCOL TO THE REVIEWER'S IMPLEMENTATION.** Today it is a persistent
+  peer session (below). The owner intends to move to **single-shot `claude -p` runs** and is
+  not building that yet. Everything above is written to survive that swap: it turns on *a
+  reviewer reads the range and files issues*, never on a session that remembers the last one.
+  The transport details in the next bullet are the part that will be replaced — keep new
+  rules out of it.
+  * Practical consequence today: **a single-shot reviewer remembers nothing between passes**,
+    so pass 2 and pass 3 must be briefed as completely as pass 1. Writing the briefs that way
+    now costs nothing and is what makes the swap a change of one bullet.
+
+⚠ **THE LOOP HAS ONE EXIT THAT IS NOT A PUSH, and it is a human handoff.** If a finding is
 that the change **should not land at all** — it corrupts data, it ships a known-broken
 training path, it cannot be safely reverted — the loop does not apply. **Do not push; take it
 to the owner.** Filing an issue and pushing anyway is right for a defect that can live on
@@ -134,7 +161,9 @@ the simple version that holds until then. Do not build tooling on its shape.
   lesson expensively: `deploy.sh`'s "deploy only when a service change is intended" was a
   header comment for weeks, got ignored eleven hours into a live training run, and is now a
   hard refusal in code.
-* **Step 2 — requesting the review.** `Reviewer` is a peer Claude session on this host (tmux
+* **Step 1 (tapping) — reaching the reviewer.** ⚠ **This bullet is the TRANSPORT, and it is
+  the part the `claude -p` move replaces.** Nothing above depends on it.
+  Today `Reviewer` is a peer Claude session on this host (tmux
   `claude-reviewer`), addressed by name with `SendMessage`; `ListAgents` confirms it is up.
   Messages queue and drain on the receiver's next turn, so a reply is not instant.
   * ⚠ **THE FIRST SEND IS REJECTED, IN BOTH DIRECTIONS, AND THAT IS NOT A FAILURE.** A
@@ -150,26 +179,26 @@ the simple version that holds until then. Do not build tooling on its shape.
     repo path, the commit range and how to diff it, what the change is *for*, what you already
     verified, and which standards apply (§5, plus §5b/§5c when the change touches doc claims
     or stage wiring). **The quality of the review is bounded by the quality of the brief.**
-  * ⚠ **A REVIEW IS DELIVERED WHEN THE `Reviewer` SAYS SO, NOT WHEN THE FILE APPEARS.** The
-    file is the content; the message is the completion event. **Do not read, act on, or delete
-    a `review-*.md` before the Reviewer has said it is complete** — a file being written is
-    indistinguishable on disk from a finished one, and a whole second version of a report was
-    once deleted unread because its existence was taken as the signal.
-  * **The reviewer writes its report to `notes/reviews/review-<sha7>.md`**, where `<sha7>` is
-    **the tip of the range at the time of the request** — the one unambiguous choice, since a
-    range has no single SHA and "the interesting commit" is a judgement two agents will make
-    differently. See that directory's README. The file is gitignored, so `git add -A` cannot
-    sweep it into a commit.
-* **Step 3 — ONE fix pass. One.** Fix what is genuinely wrong. **A review is a report, not an
-  order** (§5): where a finding is wrong, say so in your reply and leave the code alone rather
-  than making a change you believe is wrong — a rebutted finding is *resolved*, not skipped.
-* **Step 4 — re-brief the SAME range, and say what you did.** The fix pass adds commits, so
-  `@{push}..HEAD` has grown; re-brief all of it. ⚠ **The second brief has a job the first does
-  not: it must say which findings were fixed and how, and which were rebutted and why.**
-  Without that the re-review cannot tell a fix from an omission, and it will re-derive findings
-  already settled — burning the one lap that exists to catch *regressions introduced by the fix
-  pass*, which is the class this repo has actually measured and step 4's whole purpose.
-* **Step 5 — what is still unresolved becomes an issue, and then you stop.**
+  * ⚠ **A REVIEW IS DELIVERED WHEN THE `Reviewer` SAYS SO, NOT WHEN ISSUES APPEAR.** Issues
+    land one at a time, so a partially-filed review is indistinguishable from a finished one
+    by looking at the tracker. **Do not start the fix pass until the Reviewer has said it is
+    complete.** This outlived the report file it was written for: the same mistake once
+    deleted a whole second version of a report unread, because its existence on disk was
+    taken as the signal.
+* **Step 2 (filing) — THE `Reviewer` FILES ITS OWN FINDINGS, DIRECTLY.**
+  * **The old "the `Reviewer` never files" rule is retired, and it was never an owner mandate**
+    (owner, 2026-08-13: *"I never actually asked for a reviewer-never-files rule... reviewer
+    filing is fine and perhaps ideal"*). It was written here by agents after a real incident —
+    25 issues in one afternoon, each review producing a backlog and the backlog producing the
+    next review's subject — and it generalised that measurement into a prohibition the owner
+    had not asked for. **The measurement stands; the prohibition does not.** What holds the
+    hazard now is the **three-pass cap**, which bounds the loop directly instead of by
+    proxy. Keep the cap honest and reviewer-filing is safe; relax the cap and this is the
+    first thing to reconsider.
+  * **There is no report file.** The tracker *is* the report. `notes/reviews/` and its
+    `review-<sha7>.md` handoffs are retired, along with the whole "write a document, then
+    transcribe it into issues" step — the issues are local, immediate, and queryable, and the
+    intermediate document was a second place for the same findings to drift.
   * **ISSUES LIVE IN POCKETBASE, NOT GITHUB** (owner, 2026-08-13). The tracker is the
     `issues` collection at **https://board.ai-lab-0.mcfarlin.family/_/**, and the `pocketbase`
     skill — machine-wide for Claude Code and Antigravity — carries the shape, the field list
@@ -181,31 +210,71 @@ the simple version that holds until then. Do not build tooling on its shape.
       this repo is a mistake, not an alternative route.
     * ⚠ **The tracker is superuser-only and reachable only from ai-lab-0.** Port 8090 is
       loopback-bound; there is no LAN-direct route and no anonymous read. A session that
-      cannot reach it cannot file — say so and hand the finding to the owner rather than
-      silently dropping it, which is the failure mode a second tracker was never able to have.
-  * ⚠ **THE COMMITTING AGENT FILES THE ISSUES. THE `Reviewer` NEVER DOES.** Both sessions now
-    reach the tracker through the same `pb_*` MCP tools, with no capability restriction on
-    either, so nothing but this sentence prevents it — exactly as when the risk was `gh`.
-    Moving the tracker changed the address, not the hazard: a reviewer that files its own
-    findings turns every review into a backlog, and the backlog into the next review's subject.
-  * **File with the reproduction re-verified, not relayed.** A finding restated from a review
-    and never executed is how a wrong finding becomes a tracked task.
-  * ⚠ **What bounds this loop is the COUNT — one fix pass, one re-review — and nothing else.**
-    That hard cap is the whole mechanism, and it is deliberately not a judgement call: the
-    failure it exists to prevent is a *loop* (each review produces work, the work produces the
-    next review), not a volume. A third lap is never correct, however tempting the findings.
-  * ⚠ **Findings raised for the first time in step 4 are filed UNFIXED, by design.** The
-    worker has had no attempt at them, and that is the deliberate trade — the alternative is
-    fixing them with no review left to read the fix, which is worse. This matters more than it
-    looks: the fix passes measured on this repo produced *later-round findings that were mostly
-    regressions from the earlier rounds' own fixes*, so step 4 is precisely where that class
-    surfaces. Filing them is the point, not a shortfall.
-* **Step 6 — THE WORKER PUSHES, THEN THE WORKER DELETES THE REVIEW FILES.** Both of them, if
-  the cycle produced two (step 2's and step 4's tips differ, because step 3 commits) — delete
-  `notes/reviews/review-*.md` for the cycle, not "the review file", singular. ⚠ Named in the
-  active voice on purpose: the passive *"it is deleted at the end of the cycle"* left the actor
-  unstated and a file survived its cycle the first time this ran. The same passive-voice defect
-  was fixed for issue-filing one cycle earlier and came straight back twenty lines away.
+      cannot reach it cannot file — say so and hand the findings to the owner rather than
+      silently dropping them. With the report file gone this is the *only* copy, so an
+      unreachable tracker now loses the whole review rather than delaying its transcription.
+  * **`review_id` ties the issues to the review that produced them.** Set it on every issue a
+    review files.
+    * **Default: the tip SHA of the reviewed range**, at the time of the request — the one
+      unambiguous choice, since a range has no single SHA and "the interesting commit" is a
+      judgement two agents make differently. Full SHA or `sha7`, consistently within a review.
+    * ⚠ **This is a default, not a policy** (owner). A SHA can be rewritten by a rebase, and
+      not everything reviewed is a commit at all. **When there is no commit to name — a
+      review of a working tree, or of a directory with no git behind it — GENERATE one**
+      (`uuidgen`, or a timestamp-plus-noun); do not skip the field and do not invent a
+      plausible-looking SHA, which would read as a commit that never existed.
+    * **The requirement is only that it be unique to one review**, so that "what did this
+      review find?" is one query. The field is indexed and deliberately **not** unique —
+      a review yields many issues, which is the entire point.
+    * **One review_id per pass**, so a three-pass cycle leaves three of them. That is
+      expected, not a bug to normalise away: each names what was true when that pass read the
+      code, and the fix commits move the tip in between.
+  * **File with the reproduction re-verified, not relayed.** A finding never executed is how a
+    wrong finding becomes a tracked task. This gets *sharper* now that the reviewer files
+    directly: there is no longer a worker reading the report in between, so nothing else
+    stands between a speculative finding and a permanent record of it.
+* **Step 4 (addressing) — fix, or rebut, but CLOSE either way.** Fix what is genuinely wrong
+  and close the issue naming the commit. **A review is a report, not an order** (§5): where a
+  finding is wrong, say so **in that issue's comments** and leave the code alone rather than
+  making a change you believe is wrong — a rebutted finding is *resolved*, so close it with
+  the argument attached. An issue closed with no reasoning is indistinguishable from one
+  quietly dropped, and the tracker is now the only record that it happened at all.
+  * **Re-brief on the next pass, and say what you did.** The fix pass adds commits, so
+    `@{push}..HEAD` has grown; re-brief all of it. ⚠ **The later brief has a job the first
+    does not: it must say which findings were fixed and how, and which were rebutted and
+    why.** Without that the next review cannot tell a fix from an omission, and it will
+    re-derive findings already settled — burning a pass that exists to catch *regressions
+    introduced by the fix pass*, which is the class this repo has actually measured.
+
+* **THE CAP — AT MOST THREE PASSES** (owner, 2026-08-13). The number of passes is otherwise a
+  judgement call, not a fixed count; three is the ceiling, not a target. Stopping earlier
+  because the work is clean is the normal, good outcome.
+  * ⚠ **The cap is what bounds the loop, and it is the only thing that does.** The failure it
+    exists to prevent is a *loop* — each review produces work, the work produces the next
+    review — and this repo has measured that failure rather than theorised it: a fix pass on a
+    large diff ran 7→5→9→7 findings, with the later rounds mostly defects introduced by the
+    earlier rounds' own fixes. **More passes stopped converging and started manufacturing
+    work.** A fourth pass is not a judgement call.
+  * **Which pass you are on comes from the brief.** Nothing on the issue counts passes, so
+    both sessions must carry the number: *"this is pass 3 of 3."* ⚠ This is a convention, not
+    a mechanism, and §1 has already learned that a rule in a prompt is not one. If passes
+    start being miscounted, add a counter field to the issue rather than trying harder.
+
+* **ESCALATION — `escalated: true` means the owner has to decide.**
+  * **Two triggers, and the second is not a countdown:**
+    1. **Still open after the third pass.** The worker sets `escalated: true` on everything
+       left before it pushes.
+    2. ⚠ **At ANY point, on ANY pass, when the issue simply cannot be settled without a user
+       decision** (owner, 2026-08-13). Do not spend the remaining passes on it to satisfy the
+       count — an issue that needs a decision does not become decidable by being reviewed
+       again. Escalate it on pass 1 if that is when you know.
+  * **Escalation is a flag, not an exit.** The work still pushes; the flag says a human owes
+    an answer. This is *distinct* from the abort below, which stops the push entirely. The
+    test: escalation means **"this can live on `main` but I cannot choose"**; the abort means
+    **"this must not land."**
+  * **What the owner reads:** `escalated = true && state = "open"`. Filing something there
+    that merely looks hard, rather than genuinely needing a decision, is how that view stops
+    being read — the same way the 25-issue afternoon made a backlog nobody worked.
 * **If `Reviewer` is unreachable or does not answer, say so and push anyway.** Say it in the
   commit trail or to the owner. A blocked push is worse than an unreviewed commit; a *silently*
   skipped review is worse than both. ⚠ This does **not** override the abort above: unreachable
@@ -272,14 +341,15 @@ the simple version that holds until then. Do not build tooling on its shape.
   for the same facts to drift. The record of a change is now, in order of authority:
   1. **the commit message** — WHY the previous state was wrong, not merely what moved;
   2. **`git log`** — which needs no maintenance to stay accurate;
-  3. **the issues filed out of a review** (§1 step 5) — which hold what a cycle could not
+  3. **the issues filed out of a review** (§1 step 2) — which hold what a cycle could not
      settle, and are the only durable artifact the review loop produces. ⚠ **They are in
      PocketBase, not GitHub, as of 2026-08-13**, which makes this third authority the only
      one that does not travel with a `git clone`. The tracker is on ai-lab-0 and is
      backed up nightly with the rest of `/data`; a clone alone no longer carries it.
 * ⚠ **THE COMMIT MESSAGE IS THE ONLY PROSE THAT TRAVELS WITH A CHANGE.** The argument, the
   alternatives rejected, and what was verified go there or they do not exist anywhere.
-  `notes/reviews/` is not that place — those files are deleted at the end of each cycle.
+  The tracker is not that place either — an issue records what is still WRONG, not why a
+  landed change is right.
   * **`git commit -m "one line"` is insufficient by policy for any non-trivial change.** Stated
     outright rather than left to inference from the paragraph above.
   * **`.gitmessage` is the template — for a HUMAN committing interactively.**
@@ -339,8 +409,9 @@ the simple version that holds until then. Do not build tooling on its shape.
   collapsed, because per-diff volume will always crowd out the wider read — and §1 now points
   per-commit traffic at a session named `Reviewer`, which is either that same session or one
   the file never names. **Do not resolve this by assumption in either direction; ask.** Where
-  a wholesale review's output lands is open for the same reason — `notes/reviews/` is for the
-  per-change loop and is deleted after each cycle, so it is not that home.
+  a wholesale review's output lands is open for the same reason. It is **not** the per-change
+  tracker: §1's loop files issues scoped to one range under one `review_id`, and a wholesale
+  read has neither. Ask before inventing a home for it.
 
 ### 5b. The doc-claims gate can stop enforcing WITHOUT going red
 

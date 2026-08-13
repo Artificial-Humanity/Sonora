@@ -81,8 +81,3 @@ utterance_001.npy
 utterance_001.png
 utterance_001.wav
 *.onnx
-
-
-# Transient review handoffs (notes/reviews/README.md). Deleted at the end of each review
-# cycle; ignored so a worker running `git add -A` mid-cycle cannot commit one to main.
-/notes/reviews/review-*.md
