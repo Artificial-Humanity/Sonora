@@ -106,18 +106,24 @@ suggests them.
   for this — *"if a direct push to `main` ever succeeds, the protection is missing or was
   bypassed; report that rather than taking it as permission"* — which no longer applies, since
   succeeding is now the expected case. What replaces it is the abort above and nothing else.
-* **Pull before push, every time.** `git pull --rebase` as the first step of any push
-  sequence — more important now, not less, because several sessions push to `main` directly.
-  If the tree holds the owner's uncommitted local edits, fetch and check ahead/behind instead
-  of forcing a rebase.
-  * ⚠ **A REBASE BETWEEN THE REVIEW AND THE PUSH ENDS THE CYCLE.** Rebasing rewrites the local
-    commits, so the SHAs that were reviewed cease to exist: the handoff file names a commit
-    that is not in history, and `notes/reviews/`'s "is its SHA on `main` yet?" diagnostic then
-    answers *no* forever, making a finished cycle indistinguishable from an abandoned one.
-    **If the pull rebases anything, the reviewed range is gone — start a fresh cycle on the
-    rebased range.** The retired review lane taught this about its own marker and the note went
-    with it; the hazard did not, and it is *worse* now, because a force-push was occasional and
-    this rebase is mandatory on every push.
+* **Do NOT pull before pushing** (owner, 2026-08-13). Just push. The previous rule made
+  `git pull --rebase` the first step of every push sequence; it is gone, and nothing replaces
+  it as a routine step.
+  * **Push first, integrate only if git says you must.** If `main` has moved, the push is
+    rejected as non-fast-forward — git tells you, at no cost, exactly when integration is
+    needed. A routine pull paid that cost on every push to catch a case that arises on few of
+    them.
+  * ⚠ **WHEN YOU DO HAVE TO INTEGRATE, MERGE — DO NOT REBASE.** This is the whole reason the
+    routine rebase was worth removing rather than merely relaxing. A rebase **rewrites your
+    local commits**, so the SHAs that were reviewed cease to exist: the handoff file names a
+    commit that is not in history, and `notes/reviews/`'s "is its SHA on `main` yet?"
+    diagnostic then answers *no* forever, making a finished cycle indistinguishable from an
+    abandoned one. A merge leaves your commits alone, so **the review survives integration**.
+    The retired review lane learned the same thing about its own marker.
+  * **If you rebase anyway** — because you chose to, or a tool did it for you — **the reviewed
+    range no longer exists and the cycle is over.** Start a fresh one on the rebased range.
+  * If the tree holds the owner's uncommitted local edits, fetch and check ahead/behind rather
+    than integrating anything.
 * ⚠ **REVIEW THE RANGE YOU ARE ABOUT TO PUSH, NOT ONLY THE LAST COMMIT** — step 2 above says
   this, and it is repeated here because the numbered list is what gets copied. A push carries
   every unpushed commit, so a review scoped to one SHA leaves the rest unread, and commits made

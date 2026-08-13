@@ -31,8 +31,9 @@ is worth filing.
 
 ⚠ **An old `review-*.md` lying about means a cycle did not finish**, not that a review is
 pending. Check whether its SHA is already on `main` before acting on anything inside it.
-⚠ **That check gives the wrong answer after a rebase.** `git pull --rebase` is mandatory
-before every push (AGENTS.md §1) and rewrites local commits, so a reviewed SHA can cease to
-exist and will never appear on `main` — making a finished cycle look abandoned forever. A
-rebase between review and push ends the cycle: delete the files and start again on the
-rebased range.
+⚠ **That check gives the wrong answer after a rebase**, which is why AGENTS.md §1 no longer
+pulls before pushing and says to **merge, not rebase**, when integration is actually needed.
+A rebase rewrites local commits, so a reviewed SHA can cease to exist and will never appear on
+`main` — making a finished cycle look abandoned forever. A merge leaves the reviewed SHAs
+intact, so the cycle survives. If something does rebase the range, the cycle is over: delete
+these files and start again.
