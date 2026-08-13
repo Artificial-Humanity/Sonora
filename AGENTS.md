@@ -359,6 +359,31 @@ the simple version that holds until then. Do not build tooling on its shape.
   * ⚠ **THE REVIEWER SETS IT. That is the normal path** (owner, 2026-08-13) — it flags what is
     still open after the third review, as part of that review. The worker does not sweep the
     tracker before pushing; by then a reviewer has already read everything and marked it.
+  * ⚠ **THE RULE IS A QUERY, NOT A JUDGEMENT** (owner, 2026-08-13). Because the worker counts
+    its own attempts, the reviewer needs no memory of the cycle to know what to escalate —
+    the three fields say it outright:
+
+    ```
+    agent_passes = 3   AND   state = "open"   AND   escalated = false     →  escalate it
+    ```
+    ```bash
+    .../issues/records?filter=agent_passes%3D3%20%26%26%20state%3D%22open%22%20%26%26%20escalated%3Dfalse
+    ```
+
+    Each clause excludes a case that must not be escalated, and all four were checked against
+    the live tracker: `agent_passes = 2` still has an attempt left; `state = "closed"` was
+    resolved; `escalated = true` was already parked (re-flagging it would churn the owner's
+    queue and reset nothing). **Run the filter, escalate what it returns.**
+    * **This is what the counter bought.** A single-shot `claude -p` reviewer, with no
+      knowledge of which pass it is on or what happened before, reaches the same answer as a
+      session that watched the whole cycle. The decision moved out of memory and onto the
+      record — which is the property that makes the planned move safe rather than merely
+      possible.
+    * **No agent owns every part of this** (owner, 2026-08-13). The worker counts, the
+      reviewer resolves and escalates, the owner decides and re-arms. Each reads state the
+      others wrote and writes only its own field. **That is the design, not a division of
+      labour to tidy up later** — a role that could do all three could also undo the cap
+      by itself.
   * **The worker's one exception: an issue it can see needs a USER decision.** The worker may
     set `escalated: true` itself, at any point, on any pass — it is the role actually holding
     the change and is often first to know that no amount of reviewing will settle something.
