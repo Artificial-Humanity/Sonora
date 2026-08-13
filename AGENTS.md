@@ -250,7 +250,13 @@ the simple version that holds until then. Do not build tooling on its shape.
   * **`git commit -m "one line"` is insufficient by policy for any non-trivial change.** Stated
     outright rather than left to inference from the paragraph above.
   * **`.gitmessage` is the template.** Enable it per clone:
-    `git config commit.template .gitmessage`. ⚠ Local config,
+    `git config commit.template .gitmessage`.
+    * ⚠ **IT DOES NOTHING FOR AN AGENT.** `commit.template` applies only to an *interactive*
+      `git commit`; `-m` and `-F` bypass it, and every commit a session makes here uses `-F`.
+      **An agent must put the `Co-Authored-By` trailer in the message text itself** — CLAUDE.md
+      requires it, and nothing supplies it automatically. Measured: a commit written with `-F`
+      while `commit.template` was set came back with zero trailers.
+    * ⚠ Local config,
     so it does not travel with the repo and nothing enforces it; it prompts at the moment the
     message is written, which is the only moment the prompt is useful.
 * ⚠ **Do not reintroduce a changelog, and do not resurrect it under another name** — a
