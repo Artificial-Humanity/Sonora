@@ -431,19 +431,24 @@ def _argv_runs_a_printer(node):
     # fix is the function that same commit imported into the sibling text branch. Reusing it
     # keeps ONE definition of "printed text" instead of a second, weaker one here.
     # pylint: disable=import-outside-toplevel
-    from test_audit_sampling import _without_printed_text
+    from test_audit_sampling import is_wholly_printed
 
-    # ⚠ Normalise a PATH-QUALIFIED verb first. The line this replaced ended
-    # `PurePosixPath(words[0]).name in ("echo", "printf")`, and the `.name` was doing real
-    # work — it exempted `/bin/echo`, `/usr/bin/printf`, `./echo`. `_without_printed_text`
-    # cannot see those, because `_ECHO_HEAD` requires a clause start before the verb and `/`
-    # is not one, so dropping `.name` turned every one of them into a reported launch.
-    words = head.split()
-    if words:
-        head = " ".join([pathlib.PurePosixPath(words[0]).name, *words[1:]])
-    remaining = _without_printed_text(head).strip()
+    # ⚠ `head` GOES IN UNTOUCHED — deliberately, and this is the third spelling of this line.
+    # It briefly normalised a path-qualified verb here (`" ".join([PurePosixPath(words[0]).name,
+    # *words[1:]])`) to restore an exemption for `/bin/echo` that `_ECHO_HEAD` could not see.
+    # That `head.split()` splits on `\n` as readily as on a space and rejoined with spaces, so
+    # it destroyed the newline `_without_printed_text` had just been taught to treat as a clause
+    # terminator — and THIS is that terminator's only reachable caller (`_shell_commands` joins
+    # continuations with spaces; the text branch iterates `splitlines()`). Result: a fix and a
+    # fix landing together, one silently disarming the other.
+    # `_ECHO_HEAD` now carries the path prefix itself, so there is nothing left to normalise —
+    # and any pre-processing added here in future must preserve the string byte-for-byte.
+    #
     # Wholly printed (`echo x`) -> exempt. Partly printed (`echo x; python stage`) -> not.
-    return not remaining
+    # The emptiness test lives in `is_wholly_printed` rather than here: spelled inline as
+    # `not _without_printed_text(head).strip()` it read a leftover `;` as a surviving command
+    # and reported `echo a; echo <stage>` — a two-line recovery hint — as a launch.
+    return is_wholly_printed(head)
 
 
 def stage_launch_offenders(rel, text, stage_names):
@@ -524,6 +529,21 @@ def stage_launch_offenders(rel, text, stage_names):
     'from os import system as _sy\n_sy("python scripts/stages/qc_gate.py")',
     'import subprocess\nsubprocess.getoutput("python scripts/stages/qc_gate.py")',
     'import os\nos.popen("python scripts/stages/qc_gate.py")',
+    # ⚠ A NEWLINE-SEPARATED COMPOUND COMMAND — a greeting on line 1, a real launch on line 2.
+    # This is the round-2 HIGH, and it stayed open through round 3 because the fix for it (a
+    # `\n` clause terminator) was cancelled by the fix beside it (a `head.split()` that
+    # flattened newlines to spaces). NO ROW HERE HELD A MULTI-LINE ARGV, so nothing noticed.
+    'import subprocess\nsubprocess.run("""echo starting\npython scripts/stages/qc_gate.py""", shell=True)',
+    # ⚠ `\\n`, not `\n`: this string IS the source under test, so a real newline here lands
+    # inside a `"…"` literal and the fixture stops parsing (the guard says so, loudly — that
+    # is how this typo was caught). The escape is what puts a newline in the CONSTANT.
+    'import os\nos.system("/bin/echo hi\\npython scripts/stages/qc_gate.py")',
+    # a path-qualified printer must not exempt a LATER real launch
+    'import os\nos.system("/bin/echo hi; python scripts/stages/qc_gate.py")',
+    'import os\nos.system("echo a; echo b; python scripts/stages/qc_gate.py")',
+    # a launcher whose verb only LOOKS like a printer
+    'import os\nos.system("/usr/bin/notecho scripts/stages/qc_gate.py")',
+    'import os\nos.system("/path/echoserver scripts/stages/qc_gate.py")',
 ])
 def test_every_launcher_spelling_is_reported_by_name(src):
     """Asserts the MESSAGE. The aliased and bare spellings each walked past a version of this
@@ -543,6 +563,18 @@ def test_every_launcher_spelling_is_reported_by_name(src):
     # a launcher NAME on an unrelated receiver
     'class C:\n    def go(self):\n        self.run("scripts/stages/qc_gate.py")',
     'def run(x):\n    pass\nrun("see scripts/stages/qc_gate.py for docs")',
+    # PATH-QUALIFIED printers. The `.name` basename call that used to cover these was deleted
+    # (it was what flattened the newline); `_ECHO_HEAD` carries the path prefix instead, and
+    # these rows are what keeps that true. Named in prose as the regression's victims and
+    # asserted nowhere until 2026-08-13.
+    'import subprocess\nsubprocess.run(["/bin/echo", "docs at scripts/stages/qc_gate.py"])',
+    'import subprocess\nsubprocess.run(["/usr/bin/printf", "%s", "scripts/stages/qc_gate.py"])',
+    'import subprocess\nsubprocess.run(["./echo", "see scripts/stages/qc_gate.py"])',
+    # TWO printers in sequence — a recovery hint. Reported as a launch on `main` at 07edf39,
+    # because the leftover `;` read as a surviving command. A false red, hence a row.
+    'import os\nos.system("echo step 1 failed; echo run scripts/stages/qc_gate.py")',
+    'import os\nos.system("/bin/echo a; /bin/echo scripts/stages/qc_gate.py")',
+    'import os\nos.system("echo a\\necho scripts/stages/qc_gate.py")',
 ])
 def test_the_launch_guard_does_not_fire_on_prose(src):
     """The seven false positives an earlier text version produced were six usage docstrings

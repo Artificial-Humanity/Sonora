@@ -92,12 +92,30 @@ def _strip_trailing_comment(line):
 # what licensed `recipe_prefixes` in the first place, so stripping it here would make
 # the flag unreachable. (It was briefly `^[@+-]+`, which never matched a real recipe.)
 _RECIPE_ECHO = re.compile(r"^\s*[@+-]+\s*(?:echo|printf)\b")
+# What ends a printed clause. Named because `is_wholly_printed` has to strip exactly this set
+# back off the remainder, and two hand-written copies of it would drift.
+_CLAUSE_END = ";&|\n"
 _ECHO_HEAD = re.compile(
     r"""(?:^|(?<=[;&|{(`]|\s))                   # clause start (backtick too: `echo …`)
         (?:\s*(?:[0-9]*[<>]&?[0-9-]*|[{(!]|[A-Za-z_][A-Za-z0-9_]*=\S*)\s*)*   # prefixes
+        (?:[^\s;&|<>'"`(){}]*/)?                 # PATH-QUALIFIED verb: /bin/echo, ./printf
         (?:echo|printf)\b""",
     re.X,
 )
+# ⚠ THE PATH PREFIX IS WHY THIS PATTERN IS NOW THE ONLY DEFINITION. It landed 2026-08-13 to
+# retire a SECOND, weaker one. `_argv_runs_a_printer` used to basename argv[0] itself
+# (`PurePosixPath(words[0]).name`) before calling in here, because this pattern requires a
+# clause start before the verb and `/` is not one. That caller-side normalisation was
+# `head.split()` + `" ".join(...)` — which splits on ALL whitespace, including `\n`, and
+# rejoins with spaces. So it flattened the very newline that this function's clause-terminator
+# list had just been extended to see, and the HIGH the terminator was added for shipped INERT:
+# two fixes to two findings, in one commit, that cancelled each other out. `\n` looked like
+# live code and was unreachable for its only caller.
+# Handling the prefix HERE fixes both, and covers a case neither spelling could: a
+# path-qualified printer at a LATER clause (`/bin/echo a; /bin/echo <stage>`) is out of reach
+# of anything that only normalises argv[0].
+# Non-matches, asserted in the fixtures rather than assumed: `/usr/bin/notecho` (the prefix
+# has to end at `/`) and `/path/echoserver` (the trailing `\b`).
 
 
 def _without_printed_text(cmd, recipe_prefixes=False):
@@ -137,7 +155,7 @@ def _without_printed_text(cmd, recipe_prefixes=False):
                     quote = None
             elif c in "'\"":
                 quote = c
-            elif c in ";&|\n":
+            elif c in _CLAUSE_END:
                 # ⚠ `\n` IS a clause terminator. Without it an `echo` on the first line of a
                 # multi-line command string swallowed EVERYTHING after it, and the caller
                 # read the empty remainder as "wholly printed, therefore exempt" — so a
@@ -149,6 +167,27 @@ def _without_printed_text(cmd, recipe_prefixes=False):
         out.append(" ")
         i = j
     return "".join(out)
+
+
+def is_wholly_printed(cmd, recipe_prefixes=False):
+    """True when `cmd` prints and does nothing else — the "is this only a hint?" question.
+
+    ⚠ THIS EXISTS BECAUSE `not _without_printed_text(cmd).strip()` IS THE WRONG TEST, and it
+    was the shipped one. The terminator that ended each printed clause is left in the
+    remainder, and `.strip()` removes whitespace but not punctuation — so two printers in a
+    row reduced to `';'`, which is non-empty, which read as "a command survives":
+
+        echo "step 1 failed"; echo "run scripts/stages/qc_verdict.py"   -> remaining ';'
+
+    i.e. a pure recovery hint reported as a stage LAUNCH. A false red on innocent code, and
+    the direction that gets a guard switched off rather than the direction that hides a bug.
+    Measured on `main` at 07edf39, so it predates the path-prefix work above and is not a
+    consequence of it; it stayed invisible because no real orchestrator writes that shape yet.
+
+    Stripping only the ENDS is what makes this safe: a real command word is not in
+    `_CLAUSE_END`, and an interior one cannot be reached by `strip()` at all.
+    """
+    return not _without_printed_text(cmd, recipe_prefixes).strip(_CLAUSE_END + " \t")
 
 
 def _shell_commands(rel):
@@ -265,12 +304,42 @@ def test_printed_text_is_not_an_invocation(cmd):
 @pytest.mark.parametrize("cmd", [
     '"$PY" "$S/qc_verdict.py" --eiv x && echo "  ok, wrote verdicts"',
     '"$PY" "$S/qc_verdict.py" --eiv x || { echo "  !! failed"; exit 1; }',
+    # ⚠ NEWLINE as the clause terminator. This row is the one the `\n` in `_CLAUSE_END`
+    # exists for, and until 2026-08-13 there was no such row: deleting `\n` from that set
+    # left the whole suite green (923 passed), so the fix and its absence were
+    # indistinguishable — which is precisely how it shipped inert for its only real caller.
+    'echo starting\n"$PY" "$S/qc_verdict.py" --eiv x',
+    # the same shape with the printer LAST, so the row cannot pass by position alone
+    'echo starting\n"$PY" "$S/qc_verdict.py" --eiv x\necho done',
 ])
 def test_a_real_invocation_survives_its_own_success_message(cmd):
     """Dropping the whole command when it contains an `echo` would be the opposite defect:
     every stage in `synth_bank.sh` reports what it did, and a filter that removed those
     commands wholesale would report the pipeline as empty."""
     assert "qc_verdict.py" in _without_printed_text(cmd), cmd
+
+
+@pytest.mark.parametrize("cmd,printed_only", [
+    # PATH-QUALIFIED printers — `_ECHO_HEAD`'s path prefix. Named in prose as the victims of a
+    # regression and asserted nowhere until now; `grep -rn "bin/echo" tests/` found only the
+    # comment describing the fix.
+    ('/bin/echo "run $S/qc_verdict.py"', True),
+    ('/usr/bin/printf "%s\\n" "$S/qc_verdict.py"', True),
+    ('./echo "run $S/qc_verdict.py"', True),
+    ('/bin/echo a; /bin/echo "run $S/qc_verdict.py"', True),
+    # …and the boundaries of that prefix, so it cannot quietly widen into a launcher exemption
+    ('/usr/bin/notecho "$S/qc_verdict.py"', False),   # prefix must end AT the `/`
+    ('/path/echoserver "$S/qc_verdict.py"', False),   # the trailing `\b`
+    ('/bin/echo a; "$PY" "$S/qc_verdict.py"', False),  # a real launch after a path printer
+])
+def test_a_path_qualified_printer_is_still_only_printing(cmd, printed_only):
+    """Both directions of the path prefix, in the file that owns the pattern.
+
+    `is_wholly_printed` rather than `not _without_printed_text(...).strip()`: the leftover
+    clause terminator makes the naive spelling call row 4 a launch. That row is the reason the
+    predicate exists — two printers in sequence is what a recovery hint looks like.
+    """
+    assert is_wholly_printed(cmd) is printed_only, (cmd, _without_printed_text(cmd))
 
 
 # --- C-L6: the trusted tier's tail sample rounded to zero -----------------------------

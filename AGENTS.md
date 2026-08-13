@@ -545,24 +545,57 @@ What answers it is the dry-run **with `deploy.sh`'s own three excludes**, which 
 over every file — an empty plan means the stamp drifted and the content did not:
 
 ```bash
-sudo rsync -a --delete --checksum --dry-run --itemize-changes \
+sudo rsync -rl --delete --checksum --dry-run --itemize-changes \
   --exclude='__pycache__' --exclude='.deployed.json' --exclude='_contract/' \
-  audition/app/ /data/services/audition/app/ | grep -E '^[<>]fc'
+  audition/app/ /data/services/audition/app/
 ```
 
-⚠ **THE `grep` IS PART OF THE DIAGNOSTIC, not tidying.** `-a` is `-rlptgoD`, so it itemises
-differences in **time, perms, owner and group** as well as content — and `--checksum` changes
-only how rsync *decides to transfer*, not what it reports. So a bare run prints
-`.f..tp..... main.py` for a file whose bytes are identical and whose mtime differs, and the
-empty-plan rule above reads that as drift. Measured on a synthetic pair: identical content
-with a different mtime and mode → `.f..tp.....`; filtered on `^[<>]fc` → nothing. Real content
-drift → `>fc.tp.....`, which the filter keeps. **`c` in the third column is the content
-verdict; the rest is metadata.** An earlier version of this note omitted the filter and was
-therefore wrong in the direction an operator actually hits — non-empty output.
+⚠ **`-rl`, NOT `-a`, AND NO `grep`.** This is the third spelling of this command and the
+first one that is right in both directions; the reasoning matters more than the flags.
+
+`-a` is `-rlptgoD`, so it itemises differences in **time, perms, owner and group** as well as
+content, and `--checksum` changes only how rsync *decides to transfer*, not what it reports.
+A file with identical bytes and a skewed mtime prints `.f..t......`, and the empty-plan rule
+above reads that as drift. The previous fix for that was to keep `-a` and pipe through
+`grep -E '^[<>]fc'`, on the grounds that `c` in column 3 is the content verdict. **That
+filter was worse than the noise it removed**, because `c` only ever appears for an item that
+exists on BOTH sides. Measured on a synthetic pair (rsync 3.4.1):
+
+| situation | itemised as | survived `^[<>]fc`? |
+|---|---|---|
+| content differs | `>fc........` | ✅ |
+| identical bytes, skewed mtime | `.f..t......` | ✅ correctly dropped |
+| **file present in the repo, MISSING from the deployment** | `>f+++++++++` | ❌ **dropped** |
+| **file in the deployment, absent from the repo** | `*deleting   path` | ❌ **dropped** |
+| symlink whose target changed | `cLc........` | ❌ dropped |
+| directory not yet created | `cd+++++++++` | ❌ dropped |
+
+For a newly-created item rsync replaces **every** attribute letter with `+`, so the content
+column is `+` and never `c`; a deletion carries no update flags at all; and a changed symlink
+puts `c` in column 1, so `[<>]` misses it even though column 3 matches. Net effect: a
+deployment missing half of `static/` printed **nothing**, and the operator was told in bold
+to read nothing as *no drift*. That is the §5b shape again — and one rung worse than the
+version it replaced, which at least erred loudly.
+
+Dropping `-ptgoD` fixes it at the source instead of filtering the symptom: rsync never
+compares time, perms, owner or group, so there is no metadata noise to suppress and **every**
+row above reports. Verified both directions — mtime-only skew across five files prints
+nothing; content drift, a missing file, an extra file and a changed symlink all print.
+⚠ It also removes an exit-code trap: `rsync … | grep` exits **1** when there is no drift, so
+the clean path was the failing path, which bites the first person to lift this into a
+`set -e -o pipefail` script.
+
+⚠ **`-rl` IS FOR THIS DIAGNOSTIC ONLY — never deploy with it.** `deploy.sh` uses `-a`
+deliberately; a copy without `-ptgoD` would strip modes and ownership off a live service
+directory. `--dry-run` is spelled long here so that deleting it is a visible edit.
 
 ⚠ **The excludes are not optional either**, and dropping them is the same mistake one rung down:
 `.deployed.json` and `_contract/` are written by `deploy.sh` AFTER the copy and exist in no
-commit, so a bare dry-run reports three deletions and reads as drift. ⚠ And `deploy.sh
+commit, so a bare dry-run reports them as deletions and reads as drift. Measured just now:
+five `*deleting` lines, not the "three" an earlier version of this note claimed — `_contract/`
+contributes its own contents as well as itself, and the `__pycache__` count moves with
+whatever interpreters have run, so **the number is not worth stating**, only the shape.
+⚠ And `deploy.sh
 audition` is the one-step version of this only on a CLEAN tree — `require_clean` refuses a
 dirty one, correctly, so it is not available as a diagnostic mid-edit.
 
