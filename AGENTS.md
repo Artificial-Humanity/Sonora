@@ -70,7 +70,8 @@ straight to `main`.
 3. Worker gets **one** pass at fixing the findings.
 4. `Reviewer` reviews **the same range, re-briefed**, which now includes the fix commits.
 5. Anything still unresolved becomes a **GitHub issue**, filed by the worker.
-6. Worker pushes to `main`, **then deletes the cycle's `notes/reviews/review-*.md`**.
+6. Worker pushes to `main`, **then deletes the cycle's `notes/reviews/review-*.md`** —
+   whether it ended in issues or ended clean. Either ending closes the cycle.
 
 ⚠ **THE LOOP HAS ONE EXIT THAT IS NOT STEP 6, and it is a human handoff.** If a finding is
 that the change **should not land at all** — it corrupts data, it ships a known-broken
@@ -90,8 +91,23 @@ the simple version that holds until then. Do not build tooling on its shape.
 * **One session commits to this repo** (owner, 2026-08-13), so `main` does not move under you
   and divergence is not an ordinary event. The repo is configured to match:
   `push.default=upstream` and `pull.rebase=false`.
+  * ⚠ **`git config --local` WRITES THE SHARED CONFIG, WHICH EVERY WORKTREE READS.** This repo
+    has two — this one and `/data/repos/Sonora` — so a setting made here changes git's behaviour
+    in a checkout you are not looking at. "One committer, therefore harmless" is not the test:
+    `commit.template` was set `--local` and pointed at a `.gitmessage` that does not exist in the
+    other worktree, which makes an interactive `git commit` **fatal** there — it refuses and
+    creates nothing. **Check any new setting against both checkouts, and use `--worktree` for
+    anything that names a path.** `extensions.worktreeConfig` is enabled, so `--worktree` works.
   * **`git push` is the whole command.** No `HEAD:main`, no `-u`. Verified against this
     worktree, whose branch name differs from `main`.
+    * ⚠ **AND IT COST A GUARD, which is worth knowing before you cut a branch.** `simple` — the
+      default this replaced — *refuses* to push a branch whose name differs from its upstream,
+      and that refusal is the same `'simple'` fatal blamed for breaking `@{push}`. It was doing
+      two jobs and only one of them was in the way. Measured: with `upstream`,
+      `git checkout -b scratch origin/main` inherits `origin/main`, and a bare `git push` from
+      that scratch branch reports `scratch -> main`.
+    * **So cut scratch branches from a LOCAL ref, not from `origin/main`** — measured to fail
+      safely with `no upstream branch`, which is the refusal you want.
   * **`origin/main..HEAD` is the range**, and `@{push}..HEAD` also resolves now — `push.default`
     was what broke it (`fatal: cannot resolve 'simple' push to a single destination`). Prefer
     `origin/main..HEAD`: it is correct under any config.
@@ -249,13 +265,17 @@ the simple version that holds until then. Do not build tooling on its shape.
   `notes/reviews/` is not that place — those files are deleted at the end of each cycle.
   * **`git commit -m "one line"` is insufficient by policy for any non-trivial change.** Stated
     outright rather than left to inference from the paragraph above.
-  * **`.gitmessage` is the template.** Enable it per clone:
-    `git config commit.template .gitmessage`.
+  * **`.gitmessage` is the template — for a HUMAN committing interactively.**
     * ⚠ **IT DOES NOTHING FOR AN AGENT.** `commit.template` applies only to an *interactive*
       `git commit`; `-m` and `-F` bypass it, and every commit a session makes here uses `-F`.
       **An agent must put the `Co-Authored-By` trailer in the message text itself** — CLAUDE.md
       requires it, and nothing supplies it automatically. Measured: a commit written with `-F`
       while `commit.template` was set came back with zero trailers.
+    * **To enable it for interactive use:** `git config --worktree commit.template .gitmessage`.
+      ⚠ **`--worktree`, not `--local`.** `--local` writes the SHARED config, and a template path
+      that does not resolve in another worktree makes an interactive `git commit` **fatal**
+      there — it refuses the commit and creates nothing. That is not hypothetical: it happened
+      to `/data/repos/Sonora` for one cycle, from exactly this setting.
     * ⚠ Local config,
     so it does not travel with the repo and nothing enforces it; it prompts at the moment the
     message is written, which is the only moment the prompt is useful.

@@ -1,6 +1,6 @@
 # notes/reviews — transient review handoffs
 
-The `Reviewer` session drops its report here as **`review-<first 7 of the commit SHA>.md`**.
+The `Reviewer` session drops its report here as **`review-<sha7>.md`**, named by the rule below.
 
 ⚠ **The procedure lives in AGENTS.md §1 and only there.** This file used to restate the six
 steps, and the copy drifted from the original *inside the commit that created it* — losing the
