@@ -65,11 +65,22 @@ case-insensitive macOS/Windows.
 completely — there are no PRs, no review branches, and no branch protection requiring either.
 
 1. Worker commits.
-2. Worker requests a review from `Reviewer`, referencing that commit.
+2. Worker requests a review of **the whole range it is about to push** — `@{push}..HEAD`, or
+   `origin/main..HEAD` with no upstream — naming every commit in it.
 3. Worker gets **one** pass at fixing the findings.
-4. `Reviewer` reviews again, after that pass.
-5. Anything still unresolved becomes a **GitHub issue**.
-6. Worker pushes to `main`.
+4. `Reviewer` reviews **the same range, re-briefed**, which now includes the fix commits.
+5. Anything still unresolved becomes a **GitHub issue**, filed by the worker.
+6. Worker pushes to `main`, **then deletes the cycle's `notes/reviews/review-*.md`**.
+
+⚠ **THE LOOP HAS ONE EXIT THAT IS NOT STEP 6, and it is a human handoff.** If a finding is
+that the change **should not land at all** — it corrupts data, it ships a known-broken
+training path, it cannot be safely reverted — the loop does not apply. **Do not push; take it
+to the owner.** Filing an issue and pushing anyway is right for a defect that can live on
+`main` and be fixed later; it is wrong for one that cannot. This is a judgement call and is
+deliberately not a severity threshold: no automatic rule separated legitimate repair from
+churn when that was last tried. Note what it is standing in for — `main` has **no protection,
+no pre-push hook, and CI that runs after the fact** (see below), so this sentence is the only
+thing between a "this must not land" finding and `main`.
 
 ⚠ **THIS IS INTERIM.** The owner is working toward a more robust derivation of the
 actor–critic model, and this is the simple version that holds until then. The PR experiment
@@ -78,19 +89,41 @@ what they cost in output — but it needed constant manual intervention and it d
 Do not build tooling on this shape, and do not reintroduce PR steps because an older habit
 suggests them.
 
-* **Push to `main`.** Directly. The GitHub PR requirement was removed from the repository on
-  2026-08-13 to match, so nothing server-side stops you. Branches are still fine as a private
-  workspace, but they are no longer part of the protocol and nothing waits on one.
+* ⚠ **`main` HAS NO PROTECTION AT ALL — measured, not inferred** (2026-08-13):
+  `gh api repos/:owner/:repo/branches/main/protection` returns **404 Branch not protected**.
+  Do not read this as "the PR requirement was relaxed". Every guard went at once, including
+  ones nobody set out to remove:
+
+  | guard | before | now |
+  |---|---|---|
+  | branch protection | PR required, 0 approvals, no admin bypass | **none** |
+  | automated review | `claude-review.yml` on `pull_request` | deleted |
+  | CI as a gate | ran on PRs, could block a merge | runs **after** the push |
+  | force-push to `main` | blocked | **unblocked** |
+  | local pre-push hook | — | none |
+
+  So **nothing whatsoever stands between a session and `main`.** The old §1 carried a backstop
+  for this — *"if a direct push to `main` ever succeeds, the protection is missing or was
+  bypassed; report that rather than taking it as permission"* — which no longer applies, since
+  succeeding is now the expected case. What replaces it is the abort above and nothing else.
 * **Pull before push, every time.** `git pull --rebase` as the first step of any push
   sequence — more important now, not less, because several sessions push to `main` directly.
   If the tree holds the owner's uncommitted local edits, fetch and check ahead/behind instead
   of forcing a rebase.
-* ⚠ **REVIEW THE RANGE YOU ARE ABOUT TO PUSH, NOT ONLY THE LAST COMMIT.** A push carries every
-  unpushed commit, so a review scoped to one SHA leaves the rest unread — and commits made
-  while a review is in flight land in that gap. Brief the reviewer on `@{push}..HEAD`
-  (`origin/main..HEAD` when the branch has no upstream) and name every commit in it. Measured
-  the first time this rule was used: three commits inside three minutes, of which the brief
-  covered one.
+  * ⚠ **A REBASE BETWEEN THE REVIEW AND THE PUSH ENDS THE CYCLE.** Rebasing rewrites the local
+    commits, so the SHAs that were reviewed cease to exist: the handoff file names a commit
+    that is not in history, and `notes/reviews/`'s "is its SHA on `main` yet?" diagnostic then
+    answers *no* forever, making a finished cycle indistinguishable from an abandoned one.
+    **If the pull rebases anything, the reviewed range is gone — start a fresh cycle on the
+    rebased range.** The retired review lane taught this about its own marker and the note went
+    with it; the hazard did not, and it is *worse* now, because a force-push was occasional and
+    this rebase is mandatory on every push.
+* ⚠ **REVIEW THE RANGE YOU ARE ABOUT TO PUSH, NOT ONLY THE LAST COMMIT** — step 2 above says
+  this, and it is repeated here because the numbered list is what gets copied. A push carries
+  every unpushed commit, so a review scoped to one SHA leaves the rest unread, and commits made
+  while a review is in flight land in that gap. Measured on this rule's first two cycles: the
+  range grew after the brief **both times**, and the second time the commit that escaped was
+  the one removing CI's ability to gate anything.
 * ⚠ **A rule in this file is not an enforcement mechanism**, and this loop has *no* mechanism
   behind it at all — no trigger, no check, no artifact. A push that skipped the review is
   indistinguishable afterwards from one that did not. That is a real weakness relative to the
@@ -114,12 +147,20 @@ suggests them.
     repo path, the commit range and how to diff it, what the change is *for*, what you already
     verified, and which standards apply (§5, plus §5b/§5c when the change touches doc claims
     or stage wiring). **The quality of the review is bounded by the quality of the brief.**
-  * **The reviewer writes its report to `notes/reviews/review-<sha7>.md`** — see that
-    directory's README. The file is a handoff, not a record: it is deleted at the end of the
-    cycle, and it is gitignored so it cannot be swept into a commit by `git add -A`.
+  * **The reviewer writes its report to `notes/reviews/review-<sha7>.md`**, where `<sha7>` is
+    **the tip of the range at the time of the request** — the one unambiguous choice, since a
+    range has no single SHA and "the interesting commit" is a judgement two agents will make
+    differently. See that directory's README. The file is gitignored, so `git add -A` cannot
+    sweep it into a commit.
 * **Step 3 — ONE fix pass. One.** Fix what is genuinely wrong. **A review is a report, not an
   order** (§5): where a finding is wrong, say so in your reply and leave the code alone rather
   than making a change you believe is wrong — a rebutted finding is *resolved*, not skipped.
+* **Step 4 — re-brief the SAME range, and say what you did.** The fix pass adds commits, so
+  `@{push}..HEAD` has grown; re-brief all of it. ⚠ **The second brief has a job the first does
+  not: it must say which findings were fixed and how, and which were rebutted and why.**
+  Without that the re-review cannot tell a fix from an omission, and it will re-derive findings
+  already settled — burning the one lap that exists to catch *regressions introduced by the fix
+  pass*, which is the class this repo has actually measured and step 4's whole purpose.
 * **Step 5 — what is still unresolved becomes an issue, and then you stop.**
   * ⚠ **THE COMMITTING AGENT FILES THE ISSUES. THE `Reviewer` NEVER DOES.** It has full `gh`
     access and no capability restriction, so nothing but this sentence prevents it — and the
@@ -137,9 +178,16 @@ suggests them.
     looks: the fix passes measured on this repo produced *later-round findings that were mostly
     regressions from the earlier rounds' own fixes*, so step 4 is precisely where that class
     surfaces. Filing them is the point, not a shortfall.
+* **Step 6 — THE WORKER PUSHES, THEN THE WORKER DELETES THE REVIEW FILES.** Both of them, if
+  the cycle produced two (step 2's and step 4's tips differ, because step 3 commits) — delete
+  `notes/reviews/review-*.md` for the cycle, not "the review file", singular. ⚠ Named in the
+  active voice on purpose: the passive *"it is deleted at the end of the cycle"* left the actor
+  unstated and a file survived its cycle the first time this ran. The same passive-voice defect
+  was fixed for issue-filing one cycle earlier and came straight back twenty lines away.
 * **If `Reviewer` is unreachable or does not answer, say so and push anyway.** Say it in the
   commit trail or to the owner. A blocked push is worse than an unreviewed commit; a *silently*
-  skipped review is worse than both.
+  skipped review is worse than both. ⚠ This does **not** override the abort above: unreachable
+  means the review did not happen, not that a "must not land" finding was cleared.
 
 ### 2. Training & Troubleshooting Mandates
 
@@ -152,8 +200,9 @@ suggests them.
     process can write there — including `ai-mgr`, which the containers run as**. The directory
     is empty, so nothing has ever used it and the real training artifacts land under `/data`.
     Treat the line above as the intent, not the state: **probe before writing, and never
-    assume a repo-relative log path is writable** (`scripts/fix_pr.sh` is the worked example —
-    it probes `$FIX_PR_LOG_DIR`, then `logs/fix_pr`, then `$TMPDIR`, and prints its choice).
+    assume a repo-relative log path is writable** — probe an env override, then a repo-relative
+    dir, then `$TMPDIR`, and print which one you chose. (The worked example used to be named
+    here; it was `scripts/fix_pr.sh`, deleted with the PR lane. The pattern is the point.)
     Fixing the ownership needs root and has not been done.
 * **Common Troubleshooting and Fixes**:
   * *Audio Decoding Failures (ROCm CUDA Mismatch)*: `torchaudio.load()` defaults to `torchcodec`, which fails inside the ROCm container due to missing CUDA dynamic libraries. Always use `soundfile.read(..., dtype='float32')` and convert to PyTorch tensors manually (see implementation in [matcha/data/text_mel_datamodule.py](matcha/data/text_mel_datamodule.py)).
@@ -209,6 +258,13 @@ suggests them.
   place any more. Whatever a reader would have needed from a PR description — the argument,
   the alternatives rejected, what was verified — goes in the commit message or it does not
   exist. `notes/reviews/` is not that place: those files are deleted at the end of each cycle.
+  * **`git commit -m "one line"` is insufficient by policy for any non-trivial change.** Stated
+    outright rather than left to inference from the paragraph above.
+  * **`.gitmessage` is the template**, and it is the direct replacement for the deleted
+    `PULL_REQUEST_TEMPLATE.md` — the one deleted artifact in that change with an obvious
+    successor. Enable it per clone: `git config commit.template .gitmessage`. ⚠ Local config,
+    so it does not travel with the repo and nothing enforces it; it prompts at the moment the
+    message is written, which is the only moment the prompt is useful.
 * ⚠ **Do not reintroduce a changelog, and do not resurrect it under another name** — a
   `notes/changes-*.md`, a "release notes" file, a running summary in `STATE.md`. The failure
   was structural, not cosmetic: a hand-maintained narrative of what changed is a copy of

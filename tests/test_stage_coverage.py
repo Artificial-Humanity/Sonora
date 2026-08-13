@@ -780,7 +780,7 @@ def test_the_text_branch_does_not_fire_on_printed_prose(rel, line):
     AST rewrite retired the printed-hint class for PYTHON only. It now runs the line through
     the repo's one definition of printed text (`_strip_trailing_comment` +
     `_without_printed_text`) rather than growing a second one. `Makefile`,
-    `.github/workflows/ci.yml` and `claude-review.yml` all contain exactly these shapes."""
+    `.github/workflows/ci.yml` contains exactly these shapes."""
     assert stage_launch_offenders(rel, line, {"qc_gate.py"}) == []
 
 

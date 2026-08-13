@@ -10,13 +10,19 @@ the very worker the review was for. Ignoring it removes the class.
 ## The lifecycle
 
 1. Worker commits.
-2. Worker asks `Reviewer` for a review, naming the commit. `Reviewer` writes
-   `review-<sha7>.md` here.
+2. Worker asks `Reviewer` for a review of **the whole range it is about to push**
+   (`@{push}..HEAD`), naming every commit in it. `Reviewer` writes `review-<sha7>.md` here,
+   where `<sha7>` is the **tip of that range at the time of the request**.
 3. Worker gets **one** pass at fixing what the review raised.
-4. `Reviewer` reviews again, after that pass.
-5. Anything still unresolved becomes a **GitHub issue**.
-6. Worker pushes to `main`, then **deletes the review file** — whether the cycle ended in
-   issues or ended clean. Either ending closes it.
+4. `Reviewer` re-reviews the same range, re-briefed — it now includes the fix commits, so its
+   tip has moved and it gets its own `review-<sha7>.md`.
+5. Anything still unresolved becomes a **GitHub issue**, filed by the worker.
+6. Worker pushes to `main`, then **deletes every `review-*.md` from the cycle** — whether it
+   ended in issues or ended clean. Either ending closes it.
+
+⚠ **A cycle normally leaves TWO files here** (step 2's and step 4's), because step 3 commits
+and moves the tip. Step 6 deletes both. "The review file", singular, was the first version of
+this sentence and it is why a file survived the first cycle.
 
 ⚠ **The file is a handoff, not a record.** Nothing here survives the cycle that produced it,
 so do not cite one from anywhere else in the repo, and do not treat this directory as review
@@ -25,3 +31,8 @@ is worth filing.
 
 ⚠ **An old `review-*.md` lying about means a cycle did not finish**, not that a review is
 pending. Check whether its SHA is already on `main` before acting on anything inside it.
+⚠ **That check gives the wrong answer after a rebase.** `git pull --rebase` is mandatory
+before every push (AGENTS.md §1) and rewrites local commits, so a reviewed SHA can cease to
+exist and will never appear on `main` — making a finished cycle look abandoned forever. A
+rebase between review and push ends the cycle: delete the files and start again on the
+rebased range.

@@ -1,0 +1,16 @@
+# <type>(<scope>): <what changed, imperative, ~72 chars>
+#
+# WHY the previous state was wrong — not a restatement of the diff. This is the
+# paragraph a reader would have got from a pull-request description, and there is
+# no longer anywhere else for it to live (AGENTS.md §4).
+#
+# Cover, when they apply:
+#   * the argument — what was wrong, and why this is the right shape of fix
+#   * alternatives rejected, and what ruled them out
+#   * what you VERIFIED, with the numbers (suite counts, measurements, re-derived
+#     figures) — never "tests pass"
+#   * ⚠ traps and residuals a future reader needs, marked so they are skimmable
+#
+# `git commit -m "one line"` is insufficient by policy for anything non-trivial.
+#
+# Co-Authored-By: Ziggy <ziggy@artificialhumanity.io>
