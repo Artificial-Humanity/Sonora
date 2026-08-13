@@ -6,6 +6,13 @@ allowed-tools: Read, Bash(gh:*), Bash(git:*)
 
 # PR watch
 
+> ⚠ **THE LANE THIS WATCHES IS DISABLED (owner, 2026-08-13).** `Janis — PR Review` is
+> `disabled_manually`, so **no review will ever appear on a PR**, and this command's quiet
+> path is now its only path — it will report "nothing to do" forever, correctly and
+> uselessly. It is kept because the workflow file is kept: `gh workflow enable 330746260`
+> brings both back. **Review now happens BEFORE the push**, requested from the `Reviewer`
+> session — see AGENTS.md §1. Do not put this on a loop expecting it to catch anything.
+
 Check the pull requests **you** own for a review that has finished, and act on it. This is
 the developer's half of the review lane: nothing notifies you, so you look.
 

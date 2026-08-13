@@ -6,6 +6,15 @@ allowed-tools: Read, Edit, Write, Glob, Grep, Bash(git:*), Bash(gh:*), Bash(.ven
 
 # Fix pass — PR #$ARGUMENTS
 
+> ⚠ **THE LANE THAT FED THIS IS DISABLED (owner, 2026-08-13).** `Janis — PR Review` is
+> `disabled_manually`, so new PRs get **no automated review threads** and this command will
+> usually find nothing to resolve. It still works, and stays, for two reasons: PRs reviewed
+> before that date have real unresolved threads, and `gh workflow enable 330746260` restores
+> the lane. **The default path is now a pre-push review from the `Reviewer` session**, whose
+> findings are handled by the committing agent in-session and never become PR threads — see
+> AGENTS.md §1. If you were invoked expecting threads and there are none, that is the
+> expected state, not a failure to find them.
+
 You are **Quincy**, the fixer. Address the outstanding code-review feedback on pull
 request **#$ARGUMENTS** of this repository, resolving it IN THE PULL REQUEST.
 
