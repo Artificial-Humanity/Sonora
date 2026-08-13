@@ -70,8 +70,9 @@ straight to `main`.
    `review_id` of the review that produced it.
 3. **`Reviewer` taps the worker**, naming the `review_id`: *"issues are filed under
    `<review_id>`."*
-4. **Worker addresses them** — fixing what is wrong, rebutting what is not, **in the issue's
-   comments** — then taps `Reviewer` again.
+4. **Worker increments `agent_passes` on each issue it takes on — first, before any work —**
+   then addresses them: fixing what is wrong, rebutting what is not, **in the issue's
+   comments**. Then taps `Reviewer` again.
 5. **`Reviewer` re-reviews and RESOLVES**: closes what is genuinely cleared, leaves open what
    is not, files anything new under a **new** `review_id`, flags what needs the owner, and
    taps back.
@@ -88,13 +89,13 @@ Anything still open after the third review is **escalated** — see below.
 
 | | **Worker** | **Reviewer** |
 |---|---|---|
-| owns | the change | the reading of it, **and the state of every issue** |
+| owns | the change, **and the attempt count** | the reading of it, **and whether a finding is cleared** |
 | does | commits, fixes, rebuts, pushes | reads the range, files issues, **closes them**, taps back |
 | writes to `main` | **yes — the only role that does** | **never** |
 | **opens** issues | not as part of the loop | **yes — this is its output** |
 | **closes** issues | **never** | **yes — only it decides a finding is cleared** |
 | sets `escalated` | on an existing issue, only for "this needs a user decision" | **yes — the normal path** |
-| holds the count | no | **yes — sets `agent_passes` on the issue** |
+| holds the count | **yes — increments `agent_passes` first thing each pass** | no |
 
 * ⚠ **THE WORKER NEVER CLOSES AN ISSUE** (owner, 2026-08-13). It fixes, or it argues, and it
   says so in the comments — but the issue stays open until a reviewer agrees it is cleared.
@@ -253,7 +254,11 @@ the simple version that holds until then. Do not build tooling on its shape.
     wrong finding becomes a tracked task. This gets *sharper* now that the reviewer files
     directly: there is no longer a worker reading the report in between, so nothing else
     stands between a speculative finding and a permanent record of it.
-* **Step 4 (addressing) — fix, or rebut, and LEAVE IT OPEN.** Fix what is genuinely wrong and
+* **Step 4 (addressing) — INCREMENT FIRST, then fix or rebut, and LEAVE IT OPEN.**
+  ⚠ **Before anything else, `agent_passes += 1` on every open, un-escalated issue you are
+  taking on** — an attempt is counted when it starts, so a pass that dies halfway has still
+  spent one. Anything already at `3` is out of attempts: escalate it instead of picking it
+  up. Then: fix what is genuinely wrong and
   say so in the issue's comments, naming the commit. Where a finding is wrong, argue it there
   and leave the code alone rather than making a change you believe is wrong — **a review is a
   report, not an order** (§5). **Close nothing**: resolving is the reviewer's job (see the
@@ -267,8 +272,6 @@ the simple version that holds until then. Do not build tooling on its shape.
     introduced by the fix pass*, which is the class this repo has actually measured.
 * **Step 5 (resolving) — THE REVIEWER CLOSES WHAT IS CLEARED** (owner, 2026-08-13). Every pass
   ends here, not at step 4.
-  * **Increment `agent_passes` on every issue this review read**, including ones it closes —
-    the count is of passes *spent*, so a closed issue still records what it cost.
   * **Verify, then close.** A finding is cleared when the reviewer has *checked* the fix, not
     when the worker reports one. Closing on the strength of "fixed in abc1234" reintroduces
     the self-marking this split exists to prevent, one level up.
@@ -294,22 +297,30 @@ the simple version that holds until then. Do not build tooling on its shape.
     earlier rounds' own fixes. **More passes stopped converging and started manufacturing
     work.** A fourth pass is not a judgement call.
   * **THE COUNT LIVES ON THE ISSUE: `agent_passes`** (owner, 2026-08-13). An integer,
-    defaulting to `0`, that the **reviewer** increments — this used to be a number carried in
-    the brief, which §1's own lesson says is a convention and not a mechanism.
-    * **The reviewer sets it to `1` when it files an issue**, and **increments it on every
-      later review that reads that issue.** The worker never touches it — same rule as
-      closing.
+    defaulting to `0` — this used to be a number carried in the brief, which §1's own lesson
+    says is a convention and not a mechanism.
+    * ⚠ **THE WORKER INCREMENTS IT, AND DOES SO AS THE FIRST ACT OF ITS PASS** (owner,
+      2026-08-13) — before reading the issue, before touching any code. It counts **worker
+      attempts**, so the role making the attempt is the one that records it. An issue is
+      filed at `0` and becomes `1` when a worker picks it up, not when it is written.
+    * ⚠ **Incrementing FIRST is the point, not a detail.** A pass that is abandoned halfway —
+      the session dies, the context runs out, the worker gives up — **has still spent its
+      attempt**, because the count went up before the work started. Incrementing at the end
+      would make a failed pass free, and "retry until it works" is exactly the unbounded loop
+      the cap exists to prevent. **A crashed pass costs a pass.**
+    * **Increment only what you are actually taking on**: open, un-escalated issues in the
+      review you were tapped about. Not the whole tracker, not issues you are deferring.
     * ⚠ **The current pass is `max(agent_passes)` over the issues in play, not something a
       session remembers.** This is the property that matters: a **single-shot `claude -p`
       reviewer remembers nothing**, so a count held in conversation cannot survive the move
       the owner intends. Held on the record, it survives a session that has never run before.
-    * **At `agent_passes = 3` the cycle is out of passes** — escalate what is still open and
-      stop. A fourth increment means the cap was broken.
-    * **An escalated issue stops incrementing**, because re-review skips it (step 5). Its
-      count therefore reads as *how many passes tried before it was parked*, which is the
-      useful number for the owner: 1 means "recognised immediately", 3 means "we spent the
-      whole cycle failing to settle it".
-    * A finding first raised on the last pass sits at `1` while the cycle is at `3`. That is
+    * **At `agent_passes = 3` the issue is out of attempts** — it is escalated rather than
+      picked up a fourth time. A worker that increments a `3` to `4` has broken the cap.
+    * **An escalated issue stops incrementing**, because neither role picks it up: the
+      worker does not attempt it and re-review skips it (step 5). Its count therefore reads
+      as *how many attempts were made before it was parked* — 1 means "recognised
+      immediately", 3 means "we spent the whole cycle failing to settle it".
+    * A finding first raised on the last pass sits at `0` while others are at `3`. That is
       correct and worth reading — it distinguishes *nobody has attempted this yet* from
       *three passes could not fix it*, which the cycle number alone cannot.
   * **THE COUNT IS PER ISSUE, NOT PER REVIEW — deliberately** (owner, 2026-08-13: *"it allows
@@ -323,7 +334,7 @@ the simple version that holds until then. Do not build tooling on its shape.
       three passes, the loop never has to end — which is the *exact* failure the cap exists
       to prevent, re-entering through the door that was opened for granularity.
       **So: the cycle still ends at the third review.** Whatever is open then is escalated,
-      including a finding at `agent_passes = 1` that nobody has attempted. Its low count is
+      including a finding at `agent_passes = 0` that nobody has attempted. Its low count is
       the useful part — it tells the owner this is untried work rather than a hard problem,
       and the decision being asked for is *"another cycle, or ship it as known?"*
   * ⚠ **THE COUNTER IS THE OWNER'S DIAL, AND AGENTS DO NOT SECOND-GUESS IT** (owner,
@@ -339,9 +350,10 @@ the simple version that holds until then. Do not build tooling on its shape.
       `agent_passes` to `0`; the issue re-enters the loop with a fresh three passes and a
       decision attached. **Without a reset it stays parked** — re-review skips escalated
       issues, so clearing the flag alone gets it read again but on a spent counter.
-    * **Neither field is an agent's to reset.** A worker or reviewer zeroing a counter is
-      the cap deleting itself, which is precisely the failure the cap exists to prevent. If
-      an issue genuinely deserves more passes, that is a judgement the owner makes.
+    * **Incrementing is the worker's; RESETTING is only the owner's.** The distinction is
+      the whole guard: a worker that lowers a counter, or sets it to a value it thinks fair,
+      is the cap deleting itself. Move it in one direction, by one, at the start of a pass.
+      If an issue genuinely deserves more attempts, that is a judgement the owner makes.
 
 * **ESCALATION — `escalated: true` means the owner has to decide.**
   * ⚠ **THE REVIEWER SETS IT. That is the normal path** (owner, 2026-08-13) — it flags what is
