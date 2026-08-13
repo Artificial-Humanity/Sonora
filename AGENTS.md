@@ -70,23 +70,41 @@ straight to `main`.
    `review_id` of the review that produced it.
 3. **`Reviewer` taps the worker**, naming the `review_id`: *"issues are filed under
    `<review_id>`."*
-4. **Worker addresses them** — closing what it fixes, closing what it rebuts with the
-   argument attached.
+4. **Worker addresses them** — fixing what is wrong, rebutting what is not, **in the issue's
+   comments** — then taps `Reviewer` again.
+5. **`Reviewer` re-reviews and RESOLVES**: closes what is genuinely cleared, leaves open what
+   is not, files anything new under a **new** `review_id`, flags what needs the owner, and
+   taps back.
 
-**Repeat as needed, to a maximum of THREE passes** (owner, 2026-08-13), then the worker
-pushes to `main`. Anything still open after the third pass is **escalated** — see below.
+⚠ **EVERY PASS ENDS WITH A REVIEWER CALL** (owner, 2026-08-13). Steps 4→5 are one pass, and a
+pass is not over when the worker stops typing — it is over when a reviewer has read the
+result. There is no final worker pass that nobody reads.
+
+**Repeat to a maximum of THREE passes** (owner, 2026-08-13), then the worker pushes to `main`.
+Anything still open after the third review is **escalated** — see below.
 **There is no report file at any point**: the tracker is the report.
 
 **THE TWO ROLES.** Defined by responsibility, not by how either is spawned:
 
 | | **Worker** | **Reviewer** |
 |---|---|---|
-| owns | the change | the reading of it |
-| does | commits, addresses issues, pushes | reads the range, files issues, taps back |
+| owns | the change | the reading of it, **and the state of every issue** |
+| does | commits, fixes, rebuts, pushes | reads the range, files issues, **closes them**, taps back |
 | writes to `main` | **yes — the only role that does** | **never** |
-| writes to the tracker | closes issues, comments, sets `escalated` | opens issues, sets `review_id`, may set `escalated` |
+| **opens** issues | not as part of the loop | **yes — this is its output** |
+| **closes** issues | **never** | **yes — only it decides a finding is cleared** |
+| sets `escalated` | on an existing issue, only for "this needs a user decision" | **yes — the normal path** |
 | holds the count | yes — states which pass it is | no |
 
+* ⚠ **THE WORKER NEVER CLOSES AN ISSUE** (owner, 2026-08-13). It fixes, or it argues, and it
+  says so in the comments — but the issue stays open until a reviewer agrees it is cleared.
+  **A worker closing its own findings is marking its own homework**, and it defeats the one
+  thing the split exists to buy. This is the same reason the worker does not review its own
+  range, applied to the tracker instead of the diff.
+  * **A rebuttal is not a close either.** Argue it in the comments and leave it open; the
+    reviewer accepts the argument and closes, or does not and says why. **A review is a
+    report, not an order** (§5) — that still holds, and it now cuts both ways, since the
+    worker cannot end the argument unilaterally any more than the reviewer can.
 * **One session is only ever one role for one change.** The worker does not review its own
   range and the reviewer does not fix what it finds — that separation *is* the mechanism, and
   it survives regardless of what the reviewer is made of.
@@ -233,18 +251,34 @@ the simple version that holds until then. Do not build tooling on its shape.
     wrong finding becomes a tracked task. This gets *sharper* now that the reviewer files
     directly: there is no longer a worker reading the report in between, so nothing else
     stands between a speculative finding and a permanent record of it.
-* **Step 4 (addressing) — fix, or rebut, but CLOSE either way.** Fix what is genuinely wrong
-  and close the issue naming the commit. **A review is a report, not an order** (§5): where a
-  finding is wrong, say so **in that issue's comments** and leave the code alone rather than
-  making a change you believe is wrong — a rebutted finding is *resolved*, so close it with
-  the argument attached. An issue closed with no reasoning is indistinguishable from one
-  quietly dropped, and the tracker is now the only record that it happened at all.
+* **Step 4 (addressing) — fix, or rebut, and LEAVE IT OPEN.** Fix what is genuinely wrong and
+  say so in the issue's comments, naming the commit. Where a finding is wrong, argue it there
+  and leave the code alone rather than making a change you believe is wrong — **a review is a
+  report, not an order** (§5). **Close nothing**: resolving is the reviewer's job (see the
+  role table), and a comment with no reasoning is indistinguishable from a finding quietly
+  dropped, now that the tracker is the only record it happened at all.
   * **Re-brief on the next pass, and say what you did.** The fix pass adds commits, so
     `@{push}..HEAD` has grown; re-brief all of it. ⚠ **The later brief has a job the first
     does not: it must say which findings were fixed and how, and which were rebutted and
     why.** Without that the next review cannot tell a fix from an omission, and it will
     re-derive findings already settled — burning a pass that exists to catch *regressions
     introduced by the fix pass*, which is the class this repo has actually measured.
+* **Step 5 (resolving) — THE REVIEWER CLOSES WHAT IS CLEARED** (owner, 2026-08-13). Every pass
+  ends here, not at step 4.
+  * **Verify, then close.** A finding is cleared when the reviewer has *checked* the fix, not
+    when the worker reports one. Closing on the strength of "fixed in abc1234" reintroduces
+    the self-marking this split exists to prevent, one level up.
+  * **Closing is per-issue and explicit.** Leave open what is not cleared, and say in the
+    comment why — "the fix addresses the symptom, the cause in §3 is untouched" is a review
+    finding, not a re-file. **Do not close in bulk at the end of a pass.**
+  * **Accept or refuse a rebuttal, out loud.** The worker cannot close its own argument, so
+    an unanswered rebuttal is a finding left hanging with no one owning it. Close it if the
+    argument holds; if it does not, say why and leave it open.
+  * ⚠ **SKIP THE ISSUES THE WORKER ESCALATED.** An issue the worker flagged
+    `escalated: true` as needing a user decision is **out of scope for re-review** — do not
+    re-derive it, do not argue it, do not close it. It is waiting on the owner, and a
+    reviewer re-litigating it burns a pass on something no pass can settle. Filter them out:
+    `filter=review_id="<id>" && escalated=false`.
 
 * **THE CAP — AT MOST THREE PASSES** (owner, 2026-08-13). The number of passes is otherwise a
   judgement call, not a fixed count; three is the ceiling, not a target. Stopping earlier
@@ -261,13 +295,18 @@ the simple version that holds until then. Do not build tooling on its shape.
     start being miscounted, add a counter field to the issue rather than trying harder.
 
 * **ESCALATION — `escalated: true` means the owner has to decide.**
-  * **Two triggers, and the second is not a countdown:**
-    1. **Still open after the third pass.** The worker sets `escalated: true` on everything
-       left before it pushes.
-    2. ⚠ **At ANY point, on ANY pass, when the issue simply cannot be settled without a user
-       decision** (owner, 2026-08-13). Do not spend the remaining passes on it to satisfy the
-       count — an issue that needs a decision does not become decidable by being reviewed
-       again. Escalate it on pass 1 if that is when you know.
+  * ⚠ **THE REVIEWER SETS IT. That is the normal path** (owner, 2026-08-13) — it flags what is
+    still open after the third review, as part of that review. The worker does not sweep the
+    tracker before pushing; by then a reviewer has already read everything and marked it.
+  * **The worker's one exception: an issue it can see needs a USER decision.** The worker may
+    set `escalated: true` itself, at any point, on any pass — it is the role actually holding
+    the change and is often first to know that no amount of reviewing will settle something.
+    * ⚠ **A worker escalation takes the issue OUT of re-review** (step 5). That is the point:
+      it stops the remaining passes being spent on something no pass can decide. It also
+      means the flag is not free — an issue parked there is an issue no reviewer will look at
+      again, so park only what genuinely needs the owner.
+    * **Escalate when you know, not on pass 3.** An issue that needs a decision does not
+      become decidable by being reviewed again.
   * **Escalation is a flag, not an exit.** The work still pushes; the flag says a human owes
     an answer. This is *distinct* from the abort below, which stops the push entirely. The
     test: escalation means **"this can live on `main` but I cannot choose"**; the abort means
