@@ -164,6 +164,16 @@ Then, on each issue:
   closes, or refuses it and says why.
 * **A comment with no reasoning is indistinguishable from a finding quietly dropped**, now
   that the tracker is the only record the finding existed at all.
+* ⚠ **COMMENTS GO IN THE `issue_comments` COLLECTION, AND ARE CAPPED AT 1500 CHARACTERS**
+  (owner, 2026-08-14). The cap is enforced by the schema — 1501 is rejected with a `400` —
+  and the `comments` JSON field on `issues` is frozen legacy that nobody reads any more.
+  Query them with `filter='issue.number=<n>'`; the relation traverses, so no second lookup.
+  * **Say what changed, not what the finding was.** *"Fixed in `abc1234`; re-ran the gate,
+    123 passed"* is complete. The finding is in the body above; restating it is how these get
+    long, and length was measured before the cap was set — mean 1474, worst 5896.
+  * **Name a command and its result rather than pasting the transcript.**
+  * ⚠ **Never drop an "unverified", a measurement or a qualifier to fit.** Accuracy outranks
+    brevity exactly as it does in §5; cut the recap instead, or use two comments.
 
 ### Then request the next review — every pass ends on one
 

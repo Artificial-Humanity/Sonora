@@ -157,7 +157,7 @@ rather than delaying it.
 | `state` | `open` on filing |
 | `labels` | `bug` \| `documentation` \| `enhancement` |
 | `author` | `Janis` |
-| `comments` | JSON array of `{author, createdAt, body}` |
+| `comments` | ⚠ **legacy, frozen — do not write to it.** See below |
 | `review_id` | the id in your brief — **set it on every issue you file** |
 | `escalated` | `false` on filing |
 | `agent_passes` | leave unset; it defaults to `0`. **Never write it** |
@@ -165,6 +165,43 @@ rather than delaying it.
 Leave the `gh_*` and `migrated_from_github` fields empty — they are provenance for the 48
 issues (#12–#89) migrated off GitHub, whose numbers were preserved so a `#33` in an old commit
 message still names the same finding.
+
+### Comments live in their own collection: `issue_comments`
+
+⚠ **The `comments` JSON field on `issues` is FROZEN legacy** (2026-08-14). It still holds a
+copy of all 96 pre-migration comments and is kept only as a rollback. **Never write to it** —
+a comment added there is invisible to everyone reading the new collection.
+
+| field | |
+|---|---|
+| `issue` | relation to the issue record. Required |
+| `author` | `Janis`, `Ozzy`, or the owner |
+| `body` | ⚠ **hard maximum 1500 characters, enforced by the schema** |
+| `posted_at` | when it was written |
+| `seq` | order within the issue — timestamps alone cannot order a batch |
+
+Read them in one query; the relation traverses, so you do **not** need the issue's record id:
+
+```
+pb_record_list  collection="issue_comments"  sort="seq"  perPage=200
+                filter='issue.number=101 && issue.repo="Artificial-Humanity/Sonora"'
+```
+
+### ⚠ BE CONCISE. 1500 CHARACTERS IS A WALL, NOT A TARGET
+
+The cap is enforced: a 1501-character body is rejected with a `400`. It exists because comment
+length was measured and it was bad — a 5,896-character maximum, and **the reviewer was the
+worst offender at a 1,839-character mean, twice the developer's.**
+
+* **A comment says what CHANGED, not what the finding was.** *"Verified fixed in `abc1234`;
+  re-ran the gate, 123 passed"* is a complete comment. The finding is already in the body
+  above it; restating it is the most common way these get long.
+* **Detail belongs in the issue BODY when you file it** — that field allows 200,000 characters
+  precisely so the comments do not have to.
+* **Do not paste a long reproduction into a comment.** Name the command and the result.
+* **If it will not fit, you are re-explaining rather than reporting.** Cut the recap, keep the
+  result. ⚠ **But never cut an "unverified", a measurement, or a qualifier to make the limit** —
+  §3 applies here too: accuracy first, then brevity. Split into two comments if you truly must.
 
 ### Allocating `number` — it does not auto-assign
 
