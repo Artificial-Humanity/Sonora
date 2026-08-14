@@ -198,9 +198,25 @@ Janis sets `escalated` as the normal path. **You may set it yourself, at any poi
 pass, for one case: an issue you can see needs a USER decision.** You hold the change and are
 often first to know that no amount of reviewing will settle something.
 
-* ⚠ **A worker escalation takes the issue out of re-review.** That is the point — it stops
-  the remaining passes being spent on something no pass can decide. It also means the flag is
-  not free: an issue parked there is one Janis will not look at again.
+* ⚠ **A worker escalation takes the issue out of RE-REVIEW, not out of the RECORD** (owner,
+  2026-08-14: *"there's really no reason both developer and reviewer should be blocked on any
+  issues"*). It stops the remaining passes being spent on something no pass can decide, and
+  the flag is not free — Janis will not review it again.
+  * **But you may still comment on it, and so may Janis**, whenever either of you has new
+    evidence bearing on the decision the owner owes. **Do not** re-attempt it, do not
+    increment `agent_passes` on it, and do not close it. Recording is not re-litigating.
+  * ⚠ **THE FLAG EXISTS TO PREVENT ENDLESS WORK LOOPS. THAT IS ALL IT IS FOR** (owner,
+    2026-08-14: *"there was no design principle around issues being off limits to either"*).
+    **It bounds attempts, not access.** Test any restriction you are about to infer against
+    that purpose: if it stops a pass being spent, it belongs; if it only stops something being
+    written down, it does not.
+  * **Why this is spelled out:** the first version of the rule blocked both roles entirely, so
+    a reviewer that found a live instance of a parked issue's own hazard judged itself
+    forbidden to say so on the issue. The evidence went to a summary and nearly vanished — it
+    survived only because that run happened to be redirected to a file. **A parked issue must
+    not become a dead zone in the tracker.** It is also the second prohibition here that no
+    owner ever asked for, after "the reviewer never files": both came from generalising a real
+    measurement into a ban. **Bound what you measured; do not widen it.**
 * **Escalate when you know, not on pass 3.** An issue needing a decision does not become
   decidable by being reviewed again.
 * **Escalation is a flag, not an exit.** The work still pushes; the flag says a human owes an

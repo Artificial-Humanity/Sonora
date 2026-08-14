@@ -223,10 +223,29 @@ pb_record_list  collection="issues"
                 perPage=200  skipTotal=false
 ```
 
-* ⚠ **SKIP EVERY ISSUE FLAGGED `escalated: true`.** The worker flags what needs a *user*
-  decision. Do not re-derive it, do not argue it, do not close it. It is waiting on the owner,
-  and re-litigating it burns a pass on something no pass can settle. That is what the
-  `escalated=false` clause above is for.
+* ⚠ **WHAT ESCALATION IS FOR: PREVENTING ENDLESS WORK LOOPS. NOTHING ELSE** (owner,
+  2026-08-14: *"there was no design principle around issues being off limits to either. The
+  escalation rule is simply to prevent endless work loops"*). It bounds **attempts**, not
+  **access**. `escalated: true` says the owner owes a decision; it has never meant the issue
+  is untouchable, and an earlier version of this file that implied so was an agent's invention.
+  * **Test any restriction you are about to infer against that purpose.** Does the thing you
+    are considering consume a pass, or re-open an argument, or produce more work? Then it is
+    out. Does it merely record something? Then the rule was never about it.
+  * ⚠ **This is the SECOND prohibition here that no owner ever asked for.** The first was
+    "the reviewer never files", written after a 25-issue afternoon and retired once the cap
+    bounded the loop directly. Both came from generalising a real measurement into a ban.
+    **Measure, then bound the specific failure — do not widen it into a prohibition.**
+  * **Do not** re-derive it, argue it, close it, or spend a pass on it. It is not part of your
+    review, which is what the `escalated=false` clause above is for, and re-litigating it
+    burns a pass on something no pass can settle.
+  * ⚠ **DO comment on it when you have NEW EVIDENCE.** A fact you observed that bears on the
+    owner's decision belongs on the issue, not only in your summary. **Your summary is
+    ephemeral** — it is printed to a worker that may not keep it — so evidence that lands only
+    there is evidence the owner will probably never see.
+  * **This rule was written from a real loss.** A previous pass observed a live instance of
+    the exact hazard #97 describes, judged itself forbidden to comment because #97 was parked,
+    and put it in the summary instead. It survived only because that run happened to be
+    redirected to a file. **The parking rule was over-broad; recording is not re-litigating.**
 * **Verify, then close.** A finding is cleared when *you have checked the fix*, not when the
   worker reports one. Closing on the strength of "fixed in abc1234" reintroduces the
   self-marking this split exists to prevent, one level up.

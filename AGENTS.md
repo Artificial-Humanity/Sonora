@@ -350,6 +350,23 @@ the simple version that holds until then. Do not build tooling on its shape.
     takes the issue OUT of re-review** (step 5): that is the point, and it means the flag is
     not free. **Escalate when you know, not on pass 3** — an issue needing a decision does not
     become decidable by being reviewed again.
+  * ⚠ **ESCALATION EXISTS TO PREVENT ENDLESS WORK LOOPS, AND THAT IS ITS WHOLE PURPOSE**
+    (owner, 2026-08-14: *"there was no design principle around issues being off limits to
+    either. The escalation rule is simply to prevent endless work loops"*). **It bounds
+    attempts, not access.**
+    * Neither role re-attempts, re-derives, re-argues or closes an escalated issue, and
+      `agent_passes` does not move on it — those all consume passes. **But both may comment
+      on it** when they have evidence bearing on the owner's decision. Recording is not work
+      the cap was ever aimed at.
+    * **Read any restriction you are tempted to infer against that purpose.** If it stops a
+      pass being spent, it belongs; if it only stops something being written down, it does not.
+    * ⚠ **THIS IS THE SECOND AGENT-INVENTED PROHIBITION THE OWNER HAS HAD TO RETIRE.** The
+      first was "the reviewer never files" (retired 2026-08-13, and never an owner mandate);
+      this was "a parked issue is untouchable". Both came from generalising a real measurement
+      into a ban nobody asked for, and this one cost real evidence: a reviewer found a live
+      instance of a parked issue's own hazard, judged itself forbidden to record it, and put
+      it in an ephemeral summary where it was nearly lost. **Bound the specific failure you
+      measured. Do not widen it into a rule.**
   * **Escalation is a flag, not an exit.** The work still pushes; the flag says a human owes an
     answer. *Distinct* from the abort above, which stops the push entirely. The test:
     escalation means **"this can live on `main` but I cannot choose"**; the abort means
