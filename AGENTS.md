@@ -79,20 +79,30 @@ brief and carries the steps below in the detail your role actually needs. This f
 depend on. It does not duplicate either role's procedure; that duplication is what drifted
 three times in one pull request.
 
-⚠ **NOTHING LOADS EITHER PERSONA FOR YOU, AND THIS FILE DOES NOT LOAD ITSELF.** Measured
-2026-08-14, not assumed: **Claude Code auto-discovers `CLAUDE.md` and does *not* auto-discover
-`AGENTS.md`** — a session started with a bare `claude` in this repo begins with neither this
-file nor `Personas/DEVELOPER.md` in context. The owner supplies the developer persona
-deliberately, per session (owner, 2026-08-14: *"I will direct sessions manually"*), and there
-is intentionally no launcher and no repo `CLAUDE.md` doing it automatically. **So if you have
-read this far, you were pointed here — and you should read `Personas/DEVELOPER.md` before
-touching anything.** If you were not pointed here and found this file yourself, say so: you
-are running without the brief your role is written against.
+⚠ **NOTHING LOADS THIS FILE OR EITHER PERSONA FOR YOU.** Measured 2026-08-14, not assumed:
+**Claude Code auto-discovers `CLAUDE.md` and does *not* auto-discover `AGENTS.md`.** A session
+started with a bare `claude` here begins with neither this file nor a persona in context.
+That is why [CLAUDE.md](CLAUDE.md) exists and is deliberately a few lines long: it is the one
+file that *is* loaded, and all it does is send you here and to your role's persona.
 
-⚠ **The reviewer never reads this file by default.** `Personas/REVIEWER.md` is passed to
-`claude -p` with `--system-prompt-file`, which **replaces** the default prompt outright — so
-anything Janis must know has to be in that file, or in the brief `request_review.sh` builds.
-A rule added here and nowhere else does not reach the reviewer at all.
+* ⚠ **A SYMLINK DOES NOT WORK.** `CLAUDE.md -> AGENTS.md` is **not** followed — measured, with
+  a canary. So the pointer has to be a real file, and keeping it to pointers is the only thing
+  stopping it becoming a second copy of these rules that drifts from them.
+* **The developer session is given `Personas/DEVELOPER.md` directly**, with
+  **`--append-system-prompt-file`** — *append*, not `--system-prompt-file`, which replaces
+  Claude Code's default prompt outright and would strip the session of everything else it
+  needs. Measured: an appended prompt **survives `/clear`**, so it holds for the life of the
+  process rather than the life of the context.
+* **The reviewer is given `Personas/REVIEWER.md` through `--system-prompt-file`** (the
+  replacing form), which is why that file is written to stand alone and this one is not.
+
+⚠ **The reviewer does not arrive holding this file.** `Personas/REVIEWER.md` is passed to
+`claude -p` with `--system-prompt-file`, which **replaces** the default prompt outright. Janis
+gets `CLAUDE.md` auto-loaded (measured: that still happens even under `--system-prompt-file`)
+and so gets a *pointer* here — but a pointer is only followed if something makes it worth
+following. **So a rule added here and nowhere else reaches the reviewer at best by one
+optional hop.** Anything Janis must not miss belongs in the persona or in the brief that
+`request_review.sh` builds.
 
 1. **Worker commits**, then runs
    `scripts/request_review.sh --range origin/main..HEAD --developer Ozzy`, naming **the whole
@@ -218,10 +228,15 @@ the simple version that holds until then. Do not build tooling on its shape.
   file does not restate it. Two things about it are rules rather than conveniences:
   * **It defaults to `origin/main..HEAD`**, because the range is what gets pushed. Override it
     and you own what falls outside.
-  * ⚠ **A NON-ZERO EXIT MEANS THE REVIEW DID NOT HAPPEN.** Say so — in the commit trail or to
-    the owner — and push anyway. A blocked push is worse than an unreviewed commit; a
-    *silently* skipped review is worse than both. ⚠ This does **not** override the abort
-    above: "the review did not happen" is not "a must-not-land finding was cleared".
+  * ⚠ **A NON-ZERO EXIT MEANS THE REVIEW DID NOT *COMPLETE* — NOT THAT NOTHING WAS FILED.**
+    The reviewer writes issues one at a time as it goes, so a run that dies half way leaves
+    real findings in the tracker, and the exit code cannot tell that apart from a run that
+    filed nothing. **Query the `review_id` before concluding either.** If nothing was filed,
+    say so and push anyway — a blocked push is worse than an unreviewed commit, and a
+    *silently* skipped review is worse than both. If some were filed, they are findings:
+    address them, and re-run with a **distinct** `review_id` for the part left unread. ⚠
+    Neither case overrides the abort above: a review that did not complete is not a
+    must-not-land finding being cleared.
 * **Step 2 (filing) — THE `Reviewer` FILES ITS OWN FINDINGS, DIRECTLY.** The procedure is
   [Personas/REVIEWER.md](Personas/REVIEWER.md) §4. What binds both roles:
   * **There is no report file. The tracker *is* the report.** `notes/reviews/` and its

@@ -176,4 +176,12 @@ NOT_ORCHESTRATORS = {
         "Preserved audition provenance — added for exactly that reason in 4e87241. Invokes a "
         "toolchain script outside this repo."
     ),
+    "scripts/request_review.sh": (
+        "Runs the code-review loop (AGENTS.md §1), not the data pipeline: it invokes `claude -p` "
+        "against Personas/REVIEWER.md and blocks. It touches no stage, produces no artifact under "
+        "/data, and its only side effect is issues filed in PocketBase. ⚠ It DOES run a `git` and "
+        "`pytest` reading of the repo through the reviewer it spawns, so it is not inert — but a "
+        "stage-coverage gate is the wrong instrument for it, since the thing it dispatches is a "
+        "model, not a script this manifest could name."
+    ),
 }

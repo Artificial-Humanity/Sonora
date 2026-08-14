@@ -112,10 +112,20 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
   taking responsibility for what falls outside.
 * **Commits that arrive *after* a review are a new cycle, not another lap.** The cap forbids
   re-reviewing the same range; it does not forbid reviewing new work.
-* **A non-zero exit means the review did not happen.** Say so — in the commit trail or to the
-  owner — and push anyway. A blocked push is worse than an unreviewed commit; a *silently*
-  skipped review is worse than both. ⚠ This does not override the abort in AGENTS.md §1:
-  unreachable means the review did not happen, not that a "must not land" finding was cleared.
+* ⚠ **A non-zero exit means the review did not COMPLETE. It does NOT mean nothing was filed.**
+  Janis writes issues one at a time as it goes, so a run that dies half way leaves **real
+  findings in the tracker** — and "filed nothing" and "filed six of nine then died" look
+  identical from the exit code. **Query the `review_id` before you conclude anything**; the
+  script does this for you and tells you which case you are in. Treating a partial review as
+  an absent one orphans those issues: open, against a range nobody is looking at any more,
+  waiting to be re-derived by the next reviewer as though they were new.
+  * **If nothing was filed**, say so — in the commit trail or to the owner — and push anyway.
+    A blocked push is worse than an unreviewed commit; a *silently* skipped review is worse
+    than both.
+  * **If some were filed**, address them as findings. The unread part of the range is still
+    unreviewed, so re-run with a **distinct** `--review-id` to cover it.
+  * ⚠ Neither case overrides the abort in AGENTS.md §1: a review that did not complete is not
+    a "must not land" finding being cleared.
 * **You do not review your own range.** That separation is the mechanism, not etiquette.
 
 ### Step 4 — increment first, then fix or rebut
@@ -153,8 +163,15 @@ Then, on each issue:
 
 ```bash
 scripts/request_review.sh --range origin/main..HEAD --developer Ozzy \
-  --pass 2 --notes-file /tmp/pass2-notes.md
+  --pass 2 --prior <the review_id from pass 1> --notes-file /tmp/pass2-notes.md
 ```
+
+⚠ **`--prior` is not optional from pass 2, and the script refuses the command without it.**
+That refusal is deliberate — a reviewer that cannot find its own previous findings re-derives
+them as new issues — but it means **a mistyped command here exits 1**, and the rule directly
+below says a non-zero exit means the review did not complete and you should push anyway.
+Between them, a typo can look exactly like a review that was honestly attempted. **Read the
+error before you accept it as an unreachable reviewer.**
 
 ⚠ **`--notes` / `--notes-file` is not optional in practice, because Janis remembers nothing.**
 It is a fresh process with no memory of the last pass; the issues carry the findings but not
@@ -187,3 +204,46 @@ often first to know that no amount of reviewing will settle something.
 * **What the owner reads is `escalated = true && state = "open"`.** Parking something merely
   hard there is how that view stops being read — the same way a 25-issue afternoon made a
   backlog nobody worked.
+
+---
+
+## 5. How you write to the owner — ASD-STE100
+
+**Use the `ste` skill for the prose you address to the owner** (owner, 2026-08-14). It is
+installed machine-wide for Claude Code and Antigravity, so it is available to you without
+setup: read `SKILL.md` and its `references/word-substitutions.md` before you write at length.
+
+⚠ **THIS STANDING INSTRUCTION *IS* THE EXPLICIT INVOCATION THE SKILL ASKS FOR — do not stall
+on the apparent contradiction.** The skill's own description says to load it **only** on
+explicit invocation and never on paraphrased intent, which is deliberate and correct as a
+default: it stops "simplify this" from silently changing how you write. The owner has scoped
+it **on** for this persona. So the answer to *"was I explicitly asked?"* is **yes, here, in
+writing** — you do not need to be asked again each session, and you must not treat a session
+that has not mentioned STE as a session where the skill is off.
+
+**What it covers: prose you say to the owner.** Explanations, status, findings, answers,
+the sentences around a diff.
+
+**What it does NOT cover**, because these have their own conventions that STE would fight:
+
+* **Commit messages.** AGENTS.md §4 wants *why the previous state was wrong* — reasoning that
+  a 20-word procedural limit chops into fragments. The commit trail is the record of change,
+  not an instruction to a reader.
+* **Issue titles, bodies and comments.** Written for Janis and the owner in the tracker's own
+  register, and re-read months later next to 48 migrated issues that are not in STE.
+* **Code, comments, docstrings, config, error strings, and this repo's `.md` files.** The
+  skill excludes code, paths, identifiers and quoted strings by its own rule; the broader
+  point is that repo files must read like the files around them.
+
+⚠ **If STE and accuracy conflict, ACCURACY WINS, and say so plainly rather than compressing.**
+The word limits exist to remove ambiguity, so a sentence that fits the limit while losing a
+qualifier has failed the standard's purpose while passing its arithmetic. This repo's most
+expensive review lesson is precisely that shape — *a right classification with a wrong
+instruction beside it* — and a stripped hedge is how a measured result becomes a claim.
+**Never drop an "unverified", a "measured", a confidence level, or a number's units to make
+a length limit.** Split the sentence instead.
+
+**Do not announce the standard, name it, or explain the style** — the skill says this and it
+is right. ⚠ **And never claim certified compliance.** The installed skill is a paraphrase
+compiled from public secondary sources, not the official ASD dictionary; a certified
+deliverable needs the official specification and a human sign-off.
