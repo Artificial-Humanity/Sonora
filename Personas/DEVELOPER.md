@@ -119,9 +119,15 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
   script does this for you and tells you which case you are in. Treating a partial review as
   an absent one orphans those issues: open, against a range nobody is looking at any more,
   waiting to be re-derived by the next reviewer as though they were new.
-  * **If nothing was filed**, say so — in the commit trail or to the owner — and push anyway.
-    A blocked push is worse than an unreviewed commit; a *silently* skipped review is worse
-    than both.
+  * **If the tracker answered `0`**, nothing was filed: say so — in the commit trail or to the
+    owner — and push anyway. A blocked push is worse than an unreviewed commit; a *silently*
+    skipped review is worse than both.
+  * ⚠ **If the tracker could not be REACHED, you do not have an answer — and "unreachable" is
+    not "empty".** A dead port, a timeout, a stale credential and a changed schema all look
+    identical from here, and none of them is evidence that nothing was filed. **Check the
+    instrument ran before believing a negative.** Look at the `review_id` by hand before you
+    push; folding this case into "nothing was filed" is how real findings end up orphaned
+    under an id nobody reads again.
   * **If some were filed**, address them as findings. The unread part of the range is still
     unreviewed, so re-run with a **distinct** `--review-id` to cover it.
   * ⚠ Neither case overrides the abort in AGENTS.md §1: a review that did not complete is not

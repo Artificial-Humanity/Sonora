@@ -340,11 +340,21 @@ fi
 
 # --- Tools -----------------------------------------------------------------
 # --tools sets what EXISTS: Edit, Write and NotebookEdit are absent, so the reviewer has no
-# file-editing tool. ⚠ THAT IS NOT THE SAME AS READ-ONLY, and it must not be described as
-# though it were: Bash is present, and a shell can write with a redirect. What the allowlist
-# below does is decline to PRE-APPROVE any writing command, leaving each one to the auto-mode
-# classifier instead of waving it through. The remaining distance is covered by REVIEWER.md
-# telling the reviewer not to write — an instruction, honestly labelled as one.
+# file-editing tool. ⚠ THAT IS NOT THE SAME AS READ-ONLY. Bash is present and a shell can
+# write with a redirect.
+#
+# ⚠⚠ AND THE ALLOWLIST IS NOT A SECURITY BOUNDARY. Do not describe it as one — two successive
+# versions of this comment claimed a guarantee the flags did not deliver, and each claim was
+# a worse defect than the grant it described, because a reader who believes the boundary is
+# structural stops checking it. What it actually is: a CONVENIENCE layer that spares the
+# auto-mode classifier a round trip on common read commands. Its entries are prefix matches,
+# so several can still reach arbitrary execution by design or by flag —
+#   * `pytest` executes this repo's test code and its conftest. That IS the verification the
+#     reviewer is here to do; it is not containment.
+#   * `rg --pre <cmd>` runs a command per file. `Bash(rg:*)` cannot exclude it.
+# Entries whose ONLY use was execution have been removed (see below). The real guarantees are
+# exactly two: no file-editing tool exists, and nothing that writes is pre-approved. The rest
+# is REVIEWER.md telling the reviewer not to write — an instruction, labelled as one.
 REVIEWER_TOOLS="Bash,Read,Grep,Glob"
 
 # ⚠ Read-only git SUBCOMMANDS, not `Bash(git:*)`. The wildcard pre-approved `git push`,
@@ -356,22 +366,39 @@ REVIEWER_ALLOW=(
   "Bash(git rev-list:*)" "Bash(git rev-parse:*)" "Bash(git blame:*)"
   "Bash(git merge-base:*)" "Bash(git ls-files:*)" "Bash(git ls-tree:*)"
   "Bash(git cat-file:*)" "Bash(git describe:*)" "Bash(git shortlog:*)"
-  "Bash(pytest:*)" "Bash(uv:*)" "Bash(ls:*)" "Bash(rg:*)" "Bash(wc:*)" "Bash(find:*)"
+  "Bash(pytest:*)" "Bash(ls:*)" "Bash(rg:*)" "Bash(wc:*)"
+  # REMOVED, each for a measured reason rather than on principle:
+  #   Bash(uv:*)   — `uv run` executes arbitrary code and `uv pip install` writes into the
+  #                  tree, and AGENTS.md §3 forbids `uv run` for host scripts anyway, so a
+  #                  reviewer had no legitimate use for it at all.
+  #   Bash(find:*) — `find -delete` and `find -exec rm` are deletion, pre-approved.
+  #                  `Glob` and `rg --files` cover every reviewing use.
   "mcp__pocketbase__pb_record_list"
   "mcp__pocketbase__pb_record_get"
   "mcp__pocketbase__pb_record_mutate"
   "mcp__pocketbase__pb_schema"
   "mcp__pocketbase__pb_health"
 )
-[[ -n "$PYBIN" ]] && REVIEWER_ALLOW+=("Bash($PYBIN:*)")
+# ⚠ Scoped to `-m pytest`. A bare `Bash($PYBIN:*)` — which the #96 fix added — pre-approved
+# `python -c '<anything>'`, so the remedy for "the reviewer cannot run the tests" handed it
+# an arbitrary interpreter. This grants exactly the verification that was missing.
+[[ -n "$PYBIN" ]] && REVIEWER_ALLOW+=("Bash($PYBIN -m pytest:*)")
 
 # Explicit denials. Schema and instance administration are not a reviewer's business —
-# pb_collection_delete would drop the tracker itself. The git entries are belt-and-braces
-# against the allowlist above ever being loosened back to a wildcard.
+# pb_collection_delete would drop the tracker itself.
+#
+# ⚠ `Bash(git -c:*)` IS LOAD-BEARING, AND ITS ABSENCE MADE THE REST DECORATIVE. These patterns
+# match a literal prefix, so `git -c core.pager=cat tag -l` escapes `Bash(git tag:*)` — proved
+# by running exactly that pair. `git -c … <verb>` is not an exotic spelling here: it is the
+# form DEVELOPER.md §1 mandates for every commit, so it is the first thing anyone would type.
+# Denying the whole `git -c` prefix costs the reviewer nothing, since it needs no config
+# override to read a range.
 REVIEWER_DENY=(
+  "Bash(git -c:*)"
   "Bash(git push:*)" "Bash(git commit:*)" "Bash(git reset:*)" "Bash(git checkout:*)"
   "Bash(git rebase:*)" "Bash(git merge:*)" "Bash(git clean:*)" "Bash(git stash:*)"
   "Bash(git config:*)" "Bash(git tag:*)" "Bash(git branch:*)" "Bash(git worktree:*)"
+  "Bash(git apply:*)" "Bash(git am:*)" "Bash(git restore:*)" "Bash(git switch:*)"
   "Edit" "Write" "NotebookEdit"
   "mcp__pocketbase__pb_collection_create"
   "mcp__pocketbase__pb_collection_patch"
@@ -440,8 +467,19 @@ if [[ "$STATUS" -ne 0 ]]; then
   # at any more, that the next reviewer then re-derives.
   FILED="$(pb_helper count "$REVIEW_ID" 2>/dev/null || echo unreachable)"
   echo "request_review.sh: THE REVIEW DID NOT COMPLETE (claude exited $STATUS)." >&2
-  if [[ "$FILED" == "unreachable" || "$FILED" == "0" ]]; then
-    echo "  Nothing is filed under review_id $REVIEW_ID (tracker says: $FILED)." >&2
+  if [[ "$FILED" == "unreachable" ]]; then
+    # ⚠ THE THIRD CASE, AND IT MUST NOT BE FOLDED INTO "nothing was filed". `unreachable`
+    # means the QUESTION WAS NEVER ANSWERED — a dead port, a timeout, a bad credential, a
+    # changed schema all land here. Reporting that as "nothing is filed" states a result the
+    # instrument never produced, and it restores exactly the orphaning this branch exists to
+    # prevent: findings sitting under a review_id nobody will look at again.
+    echo "  ⚠ AND THE TRACKER COULD NOT BE REACHED, so whether anything was filed is UNKNOWN." >&2
+    echo "  This is not the same as 'nothing was filed' — do not treat it as one." >&2
+    echo "  Check by hand before you push:" >&2
+    echo "      the issues collection, filter review_id=\"$REVIEW_ID\"" >&2
+    echo "  If it is empty the range is unreviewed; if it is not, those are real findings." >&2
+  elif [[ "$FILED" == "0" ]]; then
+    echo "  Nothing is filed under review_id $REVIEW_ID (the tracker answered: 0)." >&2
     echo "  Treat the range as unreviewed. Say so in the commit trail or to the owner," >&2
     echo "  then push anyway — AGENTS.md §1." >&2
   else
