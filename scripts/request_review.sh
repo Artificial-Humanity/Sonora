@@ -109,6 +109,17 @@ PERSONA="$REPO_ROOT/Personas/REVIEWER.md"
 # 371 commits beside a two-file diffstat of uncommitted edits, with nothing marking them as
 # describing different things. Every other guard here is about the reviewer being briefed
 # accurately; this is the same guard.
+# ⚠ THREE DOTS ARE CHECKED FIRST, AND THE ORDER IS THE WHOLE POINT. `...` contains `..`, so
+# the two-dot test below ACCEPTS `A...B` — which reproduces the exact defect this guard was
+# written to stop, through the guard itself. `git rev-list A...B` is the symmetric difference
+# while `git diff --stat A...B` is merge-base-to-B: measured on a divergent pair in this repo,
+# 411 commits against a diffstat describing 354 commits' worth of a different comparison.
+[[ "$RANGE" == *"..."* ]] \
+  && die "--range must be a TWO-dot range; '$RANGE' has three.
+     git reads them differently in the two commands this script runs: rev-list A...B is the
+     symmetric difference, diff --stat A...B is merge-base..B. The brief would announce one
+     and show the other. Use '${RANGE/\.\.\./..}'."
+
 [[ "$RANGE" == *".."* ]] \
   || die "--range must be a two-dot range like 'origin/main..HEAD', got '$RANGE'.
      A bare ref is refused on purpose: git rev-list would read it as the whole history while
@@ -387,18 +398,45 @@ REVIEWER_ALLOW=(
 # Explicit denials. Schema and instance administration are not a reviewer's business —
 # pb_collection_delete would drop the tracker itself.
 #
-# ⚠ `Bash(git -c:*)` IS LOAD-BEARING, AND ITS ABSENCE MADE THE REST DECORATIVE. These patterns
-# match a literal prefix, so `git -c core.pager=cat tag -l` escapes `Bash(git tag:*)` — proved
-# by running exactly that pair. `git -c … <verb>` is not an exotic spelling here: it is the
-# form DEVELOPER.md §1 mandates for every commit, so it is the first thing anyone would type.
-# Denying the whole `git -c` prefix costs the reviewer nothing, since it needs no config
-# override to read a range.
+# ⚠⚠ WHAT ACTUALLY KEEPS THE REVIEWER OFF `main` IS THE ALLOWLIST, NOT THIS LIST. Read that
+# first, because three successive versions of this comment claimed otherwise and each claim
+# was itself the defect. `REVIEWER_ALLOW` contains no git wildcard — only named read-only
+# verbs — so ANY other git spelling matches no allow entry and is never pre-approved. That is
+# the property to rely on. This list is defence in depth, and it is INCOMPLETE BY
+# CONSTRUCTION.
+#
+# ⚠ Why it cannot be made complete: these are LITERAL PREFIX matches, and git accepts global
+# options before the verb, so `git -c core.pager=cat tag -l` escapes `Bash(git tag:*)`
+# — measured, along with `-C .`, `--no-pager` and `--git-dir=`. The entries below enumerate
+# every global option in `git --help`'s usage line as of git 2.x. **An option added by a
+# future git, or an abbreviation this misses, escapes again.**
+#
+# ⚠ And it CANNOT be fixed by denying `Bash(git:*)` wholesale: measured, a broad deny beats a
+# specific allow, so that pattern blocks `git log` too and blinds the reviewer entirely.
+# There is no "deny all git, permit these verbs" spelling available.
 REVIEWER_DENY=(
-  "Bash(git -c:*)"
+  # Global options that can precede any verb — the escape route, enumerated from git --help.
+  "Bash(git -c:*)" "Bash(git -C:*)" "Bash(git -p:*)" "Bash(git -P:*)"
+  "Bash(git --paginate:*)" "Bash(git --no-pager:*)" "Bash(git --bare:*)"
+  # ⚠ BOTH SPELLINGS FOR EVERY OPTION THAT TAKES A VALUE. Measured: the matcher tokenises on
+  # whitespace, so `Bash(git --git-dir:*)` does NOT match `git --git-dir=/path` — the token
+  # `--git-dir=/path` is not the token `--git-dir`. That form escaped a deny list that
+  # already named it, which is the most misleading way for one of these to fail.
+  "Bash(git --git-dir:*)"    "Bash(git --git-dir=:*)"
+  "Bash(git --work-tree:*)"  "Bash(git --work-tree=:*)"
+  "Bash(git --namespace:*)"  "Bash(git --namespace=:*)"
+  "Bash(git --config-env:*)" "Bash(git --config-env=:*)"
+  "Bash(git --exec-path:*)"  "Bash(git --exec-path=:*)"
+  "Bash(git --no-replace-objects:*)"
+  "Bash(git --no-lazy-fetch:*)" "Bash(git --no-optional-locks:*)" "Bash(git --no-advice:*)"
+  "Bash(git --html-path:*)" "Bash(git --man-path:*)" "Bash(git --info-path:*)"
+  # Writing verbs.
   "Bash(git push:*)" "Bash(git commit:*)" "Bash(git reset:*)" "Bash(git checkout:*)"
   "Bash(git rebase:*)" "Bash(git merge:*)" "Bash(git clean:*)" "Bash(git stash:*)"
   "Bash(git config:*)" "Bash(git tag:*)" "Bash(git branch:*)" "Bash(git worktree:*)"
   "Bash(git apply:*)" "Bash(git am:*)" "Bash(git restore:*)" "Bash(git switch:*)"
+  "Bash(git rm:*)" "Bash(git mv:*)" "Bash(git add:*)" "Bash(git cherry-pick:*)"
+  "Bash(git revert:*)" "Bash(git filter-branch:*)" "Bash(git update-ref:*)"
   "Edit" "Write" "NotebookEdit"
   "mcp__pocketbase__pb_collection_create"
   "mcp__pocketbase__pb_collection_patch"

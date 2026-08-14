@@ -231,11 +231,19 @@ the simple version that holds until then. Do not build tooling on its shape.
   * ⚠ **A NON-ZERO EXIT MEANS THE REVIEW DID NOT *COMPLETE* — NOT THAT NOTHING WAS FILED.**
     The reviewer writes issues one at a time as it goes, so a run that dies half way leaves
     real findings in the tracker, and the exit code cannot tell that apart from a run that
-    filed nothing. **Query the `review_id` before concluding either.** If nothing was filed,
-    say so and push anyway — a blocked push is worse than an unreviewed commit, and a
-    *silently* skipped review is worse than both. If some were filed, they are findings:
-    address them, and re-run with a **distinct** `review_id` for the part left unread. ⚠
-    Neither case overrides the abort above: a review that did not complete is not a
+    filed nothing. **Query the `review_id` before concluding anything.** There are **three**
+    answers, not two:
+    * **The tracker answered `0`** — nothing was filed. Say so and push anyway; a blocked push
+      is worse than an unreviewed commit, and a *silently* skipped review is worse than both.
+    * **The tracker answered `N`** — those are findings. Address them, and re-run with a
+      **distinct** `review_id` for the part left unread.
+    * ⚠ **The tracker could not be REACHED — you have no answer, and that is not the same as
+      `0`.** A dead port, a timeout, a stale credential and a changed schema all look alike
+      from here, and none is evidence that nothing was filed. **Check the instrument ran
+      before believing a negative**; look at the `review_id` by hand. Folding this into
+      "nothing was filed" is how real findings end up orphaned under an id nobody reads again.
+
+    ⚠ Neither case overrides the abort above: a review that did not complete is not a
     must-not-land finding being cleared.
 * **Step 2 (filing) — THE `Reviewer` FILES ITS OWN FINDINGS, DIRECTLY.** The procedure is
   [Personas/REVIEWER.md](Personas/REVIEWER.md) §4. What binds both roles:
