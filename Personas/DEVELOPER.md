@@ -237,6 +237,22 @@ often first to know that no amount of reviewing will settle something.
   hard there is how that view stops being read — the same way a 25-issue afternoon made a
   backlog nobody worked.
 
+### `user_decision` — the owner's answer, and it outranks you
+
+⚠ **NEVER WRITE TO `user_decision`. It is the owner's field** (owner, 2026-08-14), the way
+`agent_passes` resets are. Writing there would let an agent forge the answer to a question it
+raised, which is the whole thing escalation exists to prevent.
+
+* **Read it on every issue you pick up.** When it is set, that is the resolution — it outranks
+  your own judgement on that issue and Janis's. Say in your comment that you are acting on it.
+* **The full return path is three fields, and the decision alone is not the signal:** the owner
+  writes `user_decision`, clears `escalated`, and resets `agent_passes` to `0`. The issue then
+  re-enters the loop with a fresh three passes and the answer attached.
+* ⚠ **`user_decision` set while `escalated` is still `true` means the owner answered but did
+  not release it.** Do not act on it and do not treat the issue as re-armed — but **do say so**,
+  because it is far more likely an oversight than an intention, and an answered issue nobody
+  picks up is the failure this field exists to end.
+
 ---
 
 ## 5. How you write to the owner — ASD-STE100

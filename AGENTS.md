@@ -374,6 +374,23 @@ the simple version that holds until then. Do not build tooling on its shape.
   * **What the owner reads:** `escalated = true && state = "open"`. Filing something there that
     merely looks hard is how that view stops being read — the same way the 25-issue afternoon
     made a backlog nobody worked.
+  * ⚠ **THE ANSWER COMES BACK IN `user_decision`, AND NO AGENT MAY WRITE IT** (owner,
+    2026-08-14). It is the owner's field exactly as an `agent_passes` reset is theirs — an
+    agent writing there forges the answer to a question it raised, which is the one thing
+    escalation exists to prevent. **Both roles read it; neither writes it.** When set, it
+    outranks the worker's judgement and the reviewer's findings on that issue.
+    * **The return path is three fields together**: `user_decision` written, `escalated`
+      cleared, `agent_passes` reset to `0`. The issue re-enters with a fresh three passes and
+      the answer attached.
+    * ⚠ **A decision on a still-escalated issue is not a release.** Do not act on it — but say
+      so, because an answered issue that nobody picks up is the exact failure the field exists
+      to end, and it is far likelier an oversight than an intention.
+    * **Not conditionally gated, deliberately.** The field is writable regardless of
+      `escalated` (owner, 2026-08-14: *"let's just leave it enabled"*). PocketBase cannot
+      conditionally enable a field in its console anyway — API rules are per-operation, not
+      per-field, and superusers bypass them, which is what agents authenticate as. Gating it
+      would also have been a third invented prohibition after "the reviewer never files" and
+      "a parked issue is untouchable". **Recording a directive on any issue is allowed.**
 
 ### 2. Training & Troubleshooting Mandates
 

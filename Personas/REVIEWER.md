@@ -161,6 +161,7 @@ rather than delaying it.
 | `review_id` | the id in your brief — **set it on every issue you file** |
 | `escalated` | `false` on filing |
 | `agent_passes` | leave unset; it defaults to `0`. **Never write it** |
+| `user_decision` | ⚠ **the owner's field. Never write it.** Read it — see below |
 
 Leave the `gh_*` and `migrated_from_github` fields empty — they are provenance for the 48
 issues (#12–#89) migrated off GitHub, whose numbers were preserved so a `#33` in an old commit
@@ -319,6 +320,19 @@ nothing.
 **Escalation is a flag, not a blocker.** The work still ships; the flag says a human owes an
 answer. The owner's view is `escalated=true && state="open"`, so parking merely-hard things
 there is how that view stops being read.
+
+### `user_decision` — read it, never write it
+
+⚠ **It is the owner's field**, the way `agent_passes` resets are. An agent writing there would
+be forging the answer to a question it raised.
+
+* **Read it on every issue you assess.** When set, it is the resolution: it **outranks your own
+  judgement and any finding you were about to make** on that issue. Close or leave open
+  according to what it says, and cite it in your comment.
+* **A decision does not need re-litigating.** If you disagree, say so once, briefly, and follow
+  it. *A review is a report, not an order* cuts both ways here.
+* **Escalate nothing that already carries a decision** — it is answered; that is what the
+  escalation query's `escalated=false` clause will already tell you.
 
 ⚠ **The cycle ends at the third review** — whatever is still open then is escalated, including
 a finding at `agent_passes = 0` that nobody has attempted. Its low count is the useful part:
