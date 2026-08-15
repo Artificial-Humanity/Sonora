@@ -198,7 +198,20 @@ the fix pass**, which is the class this repo has actually measured (a fix pass o
 diff ran 7→5→9→7 findings, later rounds mostly defects in the earlier rounds' own fixes).
 
 **A pass is not over when you stop typing — it is over when a reviewer has read the result.**
-There is no final worker pass that nobody reads. At most three passes, then you push.
+There is no final fix pass that nobody reads.
+
+⚠ **THE CAP IS THREE FIX PASSES PER ISSUE — IT IS NOT A CAP ON REVIEWS** (owner, 2026-08-15:
+*"counting reviews was never the goal. We count fix passes."*). Three fix passes means **up to
+four reviews**: the one that finds the issue, then one after each of your passes.
+
+```
+review 1  ──▶ your pass 1 ──▶ review 2 ──▶ your pass 2 ──▶ review 3 ──▶ your pass 3 ──▶ review 4
+(files)       passes=1                     passes=2                     passes=3        verifies
+```
+
+**It is per issue, so the count is not a clock for the whole cycle.** An issue Janis files at
+review 3 starts at `0` and gets its own three passes. When every issue you hold is closed,
+escalated, or out of attempts, you push.
 
 ---
 

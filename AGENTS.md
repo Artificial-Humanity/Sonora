@@ -117,12 +117,27 @@ optional hop.** Anything Janis must not miss belongs in the persona or in the br
 5. **`Reviewer` re-reviews and RESOLVES**: closes what is genuinely cleared, leaves open what
    is not, files anything new under a **new** `review_id`, and flags what needs the owner.
 
-⚠ **EVERY PASS ENDS WITH A REVIEWER CALL** (owner, 2026-08-13). Steps 4→5 are one pass, and a
+⚠ **EVERY FIX PASS ENDS WITH A REVIEWER CALL** (owner, 2026-08-13). Steps 4→5 are one pass, and a
 pass is not over when the worker stops typing — it is over when a reviewer has read the
 result. There is no final worker pass that nobody reads.
 
-**Repeat to a maximum of THREE passes** (owner, 2026-08-13), then the worker pushes to `main`.
-Anything still open after the third review is **escalated** — see below.
+⚠ **WHAT IS COUNTED IS DEVELOPER FIX PASSES — NOT REVIEWS** (owner, 2026-08-15, correcting an
+agent's misreading): *"We count developer attempts to fix issues found in the first review but
+counting reviews was never the goal. We count fix passes."*
+
+**Three fix passes per issue, which means UP TO FOUR REVIEWS**: the review that finds it, then
+one after each fix pass.
+
+```
+review 1  ──▶ fix pass 1 ──▶ review 2 ──▶ fix pass 2 ──▶ review 3 ──▶ fix pass 3 ──▶ review 4
+(files)       passes=1                    passes=2                    passes=3        verifies
+```
+
+An issue still open after its third fix pass is out of attempts and is **escalated** — the
+query below says exactly that, and needs no notion of "which review this is". A finding filed
+at review 3 starts at `0` and gets its own three fix passes; it is **not** escalated for being
+new. **The developer may escalate at any point** if it can see an issue needs an owner
+decision — that is the other way out, and it does not wait for the count.
 **There is no report file at any point**: the tracker is the report.
 
 **THE TWO ROLES.** Defined by responsibility, not by how either is spawned:
@@ -304,13 +319,21 @@ the simple version that holds until then. Do not build tooling on its shape.
     share a fate. Per issue, a finding cleared on pass 1 stops there, a stubborn one exhausts
     its three, and a late one is visibly untried — and the owner can re-arm exactly one without
     touching the others.
-    * ⚠ **The per-issue cap does NOT bound the cycle on its own.** If every review may file new
-      issues and each carries a fresh three passes, the loop never has to end — the exact
-      failure the cap exists to prevent, re-entering through the door opened for granularity.
-      **So: the cycle still ends at the third review.** Whatever is open then is escalated,
-      including a finding at `agent_passes = 0` that nobody has attempted. Its low count is the
-      useful part — it tells the owner this is untried work rather than a hard problem, and
-      the decision being asked for is *"another cycle, or ship it as known?"*
+    * ⚠ **WHAT BOUNDS THE CYCLE IS THE PER-ISSUE CAP PLUS THE DEVELOPER'S JUDGEMENT — there
+      is no separate cap on reviews, and an agent must not invent one** (owner, 2026-08-15).
+      A previous version of this file reasoned that since each new issue carries a fresh three
+      passes the loop need never end, and concluded "so the cycle ends at the third review,
+      escalate everything still open". **That was an agent's invention and it was wrong twice
+      over**: it capped the wrong thing, and it would have escalated `agent_passes = 0`
+      findings that had simply never been attempted — handing the owner untried work to
+      decide about, which is the fastest way to make the escalated view unreadable.
+      * **Each issue is bounded at three fix passes. That is the mechanism.**
+      * **The developer escalates whatever needs a decision, whenever it knows.** That is the
+        other exit, and it does not wait for a count.
+      * A cycle ends when every issue in it is closed, escalated, or out of attempts. In
+        practice reviews stop finding new things; if they do not, that is a signal about the
+        change, and it belongs to the developer's judgement rather than to an arbitrary
+        ceiling on how many times code may be read.
   * ⚠ **THE COUNTER IS THE OWNER'S DIAL, AND AGENTS DO NOT SECOND-GUESS IT** (owner,
     2026-08-13). **Setting `agent_passes` back to `0` re-arms the loop on that issue.** Treat
     the stored value as authoritative always: an issue you expected at `3` reading `0` was
@@ -324,8 +347,8 @@ the simple version that holds until then. Do not build tooling on its shape.
       counter, or sets one to a value it thinks fair, is the cap deleting itself.
 
 * **ESCALATION — `escalated: true` means the owner has to decide.**
-  * ⚠ **THE REVIEWER SETS IT. That is the normal path** (owner, 2026-08-13) — it flags what is
-    still open after the third review, as part of that review.
+  * ⚠ **THE REVIEWER SETS IT. That is the normal path** (owner, 2026-08-13) — it flags what
+    the query below returns, as part of whichever review follows the third fix pass.
   * ⚠ **THE RULE IS A QUERY, NOT A JUDGEMENT** (owner, 2026-08-13). Because the worker counts
     its own attempts, the reviewer needs no memory of the cycle to know what to escalate:
 

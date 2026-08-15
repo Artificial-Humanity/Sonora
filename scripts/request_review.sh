@@ -49,7 +49,10 @@ request_review.sh — one-shot code review by Janis. Blocks; prints the review o
                         for something that was never committed.
   --developer <ID>      Agent id the reviewer addresses in issues.   (default: Ozzy)
   --repo <SLUG>         Tracker `repo` field.      (default: Artificial-Humanity/Sonora)
-  --pass <N>            Which pass of the cycle this is, 1-3.        (default: 1)
+  --pass <N>            Which REVIEW this is, 1-4.                   (default: 1)
+                        ⚠ Reviews, not fix passes. Three fix passes per issue means up to
+                        four reviews: the one that finds it, then one after each fix pass.
+                        The per-ISSUE count lives on the issue as agent_passes.
   --prior <ID[,ID...]>  review_ids from earlier passes of THIS cycle. Required from pass 2:
                         Janis is a fresh process and cannot otherwise find its own findings.
   --notes <TEXT>        What you fixed and how, what you rebutted and why.
@@ -147,10 +150,15 @@ TIP="${COMMITS%%$'\n'*}"
 [[ -n "$REVIEW_ID" ]] || REVIEW_ID="$TIP"
 
 [[ "$PASS" =~ ^[0-9]+$ ]] || die "--pass must be a number, got '$PASS'"
-if [[ "$PASS" -gt 3 ]]; then
-  die "--pass $PASS exceeds the three-pass cap (AGENTS.md §1). Whatever is still open after
-     the third review is escalated, not reviewed a fourth time. If the owner has re-armed an
-     issue by resetting agent_passes, that is a NEW cycle: start again at --pass 1."
+# ⚠ FOUR, not three. What is capped is DEVELOPER FIX PASSES PER ISSUE (three of them, counted
+# on the issue as `agent_passes`), and three fix passes need four reviews: the one that finds
+# the issue, then one after each fix pass. An earlier version refused --pass 4, having
+# miscounted reviews for fix passes — it would have blocked the review that verifies the last
+# fix, which is the one that decides whether anything gets escalated at all.
+if [[ "$PASS" -gt 4 ]]; then
+  die "--pass $PASS exceeds four reviews, which is what three fix passes require.
+     If issues are still open and not escalated after that, the cap is not doing its job —
+     check agent_passes on them rather than adding another review."
 fi
 if [[ "$PASS" -gt 1 && -z "$PRIOR" ]]; then
   die "--pass $PASS needs --prior <earlier review_id[,...]>. Janis is a one-shot process with
@@ -260,7 +268,7 @@ directory. The tracker \`repo\` field for everything you file is \`$REPO_SLUG\`.
 - **review_id for THIS pass:** \`$REVIEW_ID\` — set it on every issue you file.
 - **Developer to address:** $DEVELOPER. Name them in issue comments. They are blocked on this
   process and will read your stdout when it exits; there is no other channel back.
-- **Pass $PASS of at most 3.**
+- **Review $PASS of at most 4** (three fix passes, each followed by a review).
 
 ### Commits in range
 
@@ -351,21 +359,31 @@ fi
 
 # --- Tools -----------------------------------------------------------------
 # --tools sets what EXISTS: Edit, Write and NotebookEdit are absent, so the reviewer has no
-# file-editing tool. ⚠ THAT IS NOT THE SAME AS READ-ONLY. Bash is present and a shell can
-# write with a redirect.
+# file-editing tool.
 #
-# ⚠⚠ AND THE ALLOWLIST IS NOT A SECURITY BOUNDARY. Do not describe it as one — two successive
-# versions of this comment claimed a guarantee the flags did not deliver, and each claim was
-# a worse defect than the grant it described, because a reader who believes the boundary is
-# structural stops checking it. What it actually is: a CONVENIENCE layer that spares the
-# auto-mode classifier a round trip on common read commands. Its entries are prefix matches,
-# so several can still reach arbitrary execution by design or by flag —
-#   * `pytest` executes this repo's test code and its conftest. That IS the verification the
-#     reviewer is here to do; it is not containment.
-#   * `rg --pre <cmd>` runs a command per file. `Bash(rg:*)` cannot exclude it.
-# Entries whose ONLY use was execution have been removed (see below). The real guarantees are
-# exactly two: no file-editing tool exists, and nothing that writes is pre-approved. The rest
-# is REVIEWER.md telling the reviewer not to write — an instruction, labelled as one.
+# ⚠ THERE IS DELIBERATELY NO `--permission-mode auto` (owner decision on #100, 2026-08-15).
+# That mode hands each unlisted command to a model to classify, and it classified
+# `python -c "<anything>"` as safe — so with it on, NO allowlist could make the reviewer
+# read-only; removing an entry did not deny the command. Measured both ways:
+#
+#     with    --permission-mode auto : python -c "print(999)" RAN   (4/4 control also ran)
+#     without --permission-mode auto : python -c "print(999)" DENIED
+#                                      git log / $PYBIN -m pytest still RAN (123 passed)
+#
+# So the allowlist below is now the actual boundary for shell commands: anything not matching
+# an entry is refused rather than judged.
+#
+# ⚠ THAT IS STILL NOT "THE REVIEWER CANNOT EXECUTE CODE", and three earlier versions of this
+# comment overclaimed in exactly this spot. Entries are PREFIX matches and some permit
+# execution by design: `pytest` runs this repo's test code and its conftest — which is the
+# verification the reviewer exists to do — and `rg --pre <cmd>` runs a command per file.
+# The honest statement: **an arbitrary command cannot be run; the allowed ones can still
+# cause execution.** Everything past that is REVIEWER.md's instruction, labelled as one.
+#
+# ⚠ The cost of this mode is real and asymmetric: a command Janis legitimately needs but that
+# nobody listed is refused SILENTLY as far as the review's quality is concerned. Janis is told
+# to report anything it could not run; if a review says it was blocked, add the entry here
+# rather than reaching for auto mode again.
 REVIEWER_TOOLS="Bash,Read,Grep,Glob"
 
 # ⚠ Read-only git SUBCOMMANDS, not `Bash(git:*)`. The wildcard pre-approved `git push`,
@@ -459,7 +477,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   printf 'claude -p %q \\\n' "$PROMPT"
   printf '  --system-prompt-file %q \\\n' "$PERSONA"
   printf '  --append-system-prompt <the brief above> \\\n'
-  printf '  --model %q --effort %q --permission-mode auto \\\n' "$MODEL" "$EFFORT"
+  printf '  --model %q --effort %q   (no --permission-mode: allowlist-only) \\\n' "$MODEL" "$EFFORT"
   printf '  --tools %q \\\n' "$REVIEWER_TOOLS"
   printf '  --allowedTools'; printf ' %q' "${REVIEWER_ALLOW[@]}"; printf ' \\\n'
   printf '  --disallowedTools'; printf ' %q' "${REVIEWER_DENY[@]}"; printf ' \\\n'
@@ -489,7 +507,6 @@ claude -p "$PROMPT" \
   --append-system-prompt "$BRIEF" \
   --model "$MODEL" \
   --effort "$EFFORT" \
-  --permission-mode auto \
   --tools "$REVIEWER_TOOLS" \
   --allowedTools "${REVIEWER_ALLOW[@]}" \
   --disallowedTools "${REVIEWER_DENY[@]}" \
