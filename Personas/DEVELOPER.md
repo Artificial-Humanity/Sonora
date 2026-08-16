@@ -130,8 +130,12 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
     under an id nobody reads again.
   * **If some were filed**, address them as findings. The unread part of the range is still
     unreviewed, so re-run with a **distinct** `--review-id` to cover it.
-  * ⚠ Neither case overrides the abort in AGENTS.md §1: a review that did not complete is not
-    a "must not land" finding being cleared.
+  * ⚠ **NONE of these three** overrides the abort in AGENTS.md §1: a review that did not
+    complete is not a "must not land" finding being cleared. (This said *"Neither case"*
+    while sitting under three bullets — a two-place word against three options, which leaves
+    the reader to pick which two, and the natural pick made the unreachable case read as the
+    exempt one. AGENTS.md carried the identical defect; #109 asked for one edit covering both
+    and got one file. This is the other.)
 * **You do not review your own range.** That separation is the mechanism, not etiquette.
 
 ### Step 4 — increment first, then fix or rebut

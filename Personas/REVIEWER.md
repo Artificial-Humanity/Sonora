@@ -337,8 +337,16 @@ be forging the answer to a question it raised.
   according to what it says, and cite it in your comment.
 * **A decision does not need re-litigating.** If you disagree, say so once, briefly, and follow
   it. *A review is a report, not an order* cuts both ways here.
-* **Escalate nothing that already carries a decision** — it is answered; that is what the
-  escalation query's `escalated=false` clause will already tell you.
+* **Escalate nothing that already carries a decision** — it is answered.
+  ⚠ **But not for the reason an earlier version of this file gave.** It claimed the query's
+  `escalated=false` clause excludes decided issues. It does not: that clause excludes issues
+  already *parked*, and `user_decision` is not in the filter at all. What actually keeps a
+  decided issue out is that **writing a decision resets `agent_passes` to `0`** (a server-side
+  hook does it in the same save), so it cannot match `agent_passes=3`.
+  * ⚠ **So if you ever see `agent_passes = 3` on an issue that carries a `user_decision`,
+    the query WILL return it and it must not be escalated.** That state means the counter was
+    edited back up after the decision. **Flag it to the owner as an anomaly** — do not park an
+    issue they have already answered.
 
 ⚠ **DO NOT ESCALATE A FINDING JUST BECAUSE THE CYCLE FEELS LONG.** What is capped is
 **developer fix passes on an issue**, not reviews — three per issue, so up to four reviews

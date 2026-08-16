@@ -347,13 +347,23 @@ None supplied.
 "
 fi
 
-if [[ "$PASS" -eq 3 ]]; then
+# ⚠ FIRES AT 4, NOT 3, AND SAYS SOMETHING DIFFERENT NOW. This block was the THIRD location of
+# the rule the owner retired in #102, and 7ec35fa fixed the other two and missed it — the same
+# fixed-in-2-of-3-places drift that #105 was filed for, on its third occurrence.
+#
+# What it used to say was wrong twice over: it fired at review 3 (so it suppressed the review
+# that verifies the final fix pass), and it told the reviewer to escalate `agent_passes = 0`
+# findings, which is the precise harm the owner's decision names — handing over untried work
+# to decide about.
+if [[ "$PASS" -eq 4 ]]; then
   BRIEF+="
-### This is the final pass
+### This is the fourth review, which follows the third fix pass
 
-The cycle ends here. Run the escalation query and flag what it returns; anything still open
-after this review is escalated rather than reviewed again, including findings nobody has
-attempted (\`agent_passes = 0\`). The worker pushes after you return.
+**Do not escalate anything merely because this is the last scheduled review.** What is capped
+is fix passes per issue, not reviews. Run the escalation query and flag exactly what it
+returns — issues that have had three fix passes and are still open. A finding you file *now*
+starts at \`agent_passes = 0\` and is entitled to its own three fix passes; it is not
+out of attempts and must not be escalated for being late.
 "
 fi
 
@@ -396,6 +406,12 @@ REVIEWER_ALLOW=(
   "Bash(git merge-base:*)" "Bash(git ls-files:*)" "Bash(git ls-tree:*)"
   "Bash(git cat-file:*)" "Bash(git describe:*)" "Bash(git shortlog:*)"
   "Bash(pytest:*)" "Bash(ls:*)" "Bash(rg:*)" "Bash(wc:*)"
+  # ⚠ ADDED BECAUSE A REVIEW ASKED FOR IT, which is the repair path this allowlist is
+  # supposed to have. Dropping auto-mode meant the reviewer could not run the very script it
+  # was reviewing: `--dry-run` files nothing, launches nothing and writes no credential file,
+  # and it is now the natural way to verify this file's behaviour. The review that hit the
+  # refusal reported it instead of absorbing it — exactly as REVIEWER.md §1 instructs.
+  "Bash(./scripts/request_review.sh:*)" "Bash(scripts/request_review.sh:*)"
   # REMOVED, each for a measured reason rather than on principle:
   #   Bash(uv:*)   — `uv run` executes arbitrary code and `uv pip install` writes into the
   #                  tree, and AGENTS.md §3 forbids `uv run` for host scripts anyway, so a

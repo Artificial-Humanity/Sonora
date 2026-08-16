@@ -135,12 +135,30 @@ def test_a_later_pass_requires_the_prior_review_ids(run):
     assert "--prior" in out
 
 
-def test_dry_run_writes_no_credential_file(run, tmp_path):
-    """#94: it used to create the MCP config, print its path, then delete it on the trap."""
-    before = set(Path("/tmp").glob("pb-mcp-*.json"))
+def test_dry_run_names_no_concrete_credential_path(run):
+    """#94, asserted so that it can actually FAIL against #94.
+
+    ⚠ The first version of this test globbed /tmp for `pb-mcp-*.json` before and after. That
+    cannot detect the bug its own docstring described: #94 was *create the file, print its
+    path, delete it on the EXIT trap*, and the trap fires before `subprocess.run` returns —
+    so the before/after sets match either way. It passed against the bug and against the fix
+    equally, which is the worst state a regression test can be in.
+
+    What survives the trap is the OUTPUT. The pre-fix version printed a real
+    `/tmp/pb-mcp-XXXXXX.json` path in the command it advertised as runnable — and with
+    `--strict-mcp-config`, running that named a file that no longer existed, starting a
+    reviewer with no tracker access at all. So: assert no concrete path is printed. The fixed
+    script prints a placeholder describing when the file is written instead.
+    """
     rc, out = run("--range", "HEAD~1..HEAD", "--review-id", "t-cred", "--dry-run")
     assert rc == 0, out
-    assert set(Path("/tmp").glob("pb-mcp-*.json")) == before
+    assert not re.search(r"/tmp/pb-mcp-\S*\.json", out), (
+        "--dry-run printed a concrete credential path; that file is deleted on exit, so the "
+        "command it advertises is not runnable (#94)"
+    )
+    assert "--mcp-config" in out, "the dry run should still show that a config is passed"
+    # And nothing is left behind either — the weaker property the first version tested.
+    assert not list(Path("/tmp").glob("pb-mcp-t-cred*"))
 
 
 # --------------------------------------------------------------------------- #
@@ -156,7 +174,18 @@ def _array(name):
     """
     start = SOURCE.index(f"{name}=(")
     end = SOURCE.index("\n)", start)
-    return re.findall(r'"([^"]+)"', SOURCE[start:end])
+    entries = []
+    for line in SOURCE[start:end].splitlines():
+        # ⚠ COMMENTS ARE DROPPED FIRST. `re.findall` over the raw slice takes every quoted
+        # run in the block, including inside a `#` comment — and every assertion built on
+        # this helper is a membership test, so an entry named only in a comment would
+        # satisfy it. That is correct today purely because the comments here quote entry
+        # names in backticks, which is a style convention holding up a security check.
+        # It fails in the dangerous direction: delete a real entry, mention it in a comment,
+        # and the suite stays green.
+        code = line.split("#", 1)[0]
+        entries.extend(re.findall(r'"([^"]+)"', code))
+    return entries
 
 
 def test_auto_permission_mode_is_not_used():
