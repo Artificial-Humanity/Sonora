@@ -289,3 +289,26 @@ def test_the_array_parser_ignores_entries_that_appear_only_in_comments():
     assert got == ["Bash(git push:*)", "Bash(git reset:*)"], got
     assert "Bash(git commit:*)" not in got, "a commented-out entry was counted as present"
     assert "Bash(git checkout:*)" not in got, "a trailing-comment entry was counted as present"
+
+
+def test_the_launcher_grant_is_scoped_to_dry_run():
+    """#119: the #115 fix was correct and unpinned, which is this cycle's most repeated shape.
+
+    `Bash(./scripts/request_review.sh:*)` — the whole script — was granted while the comment
+    beside it justified only `--dry-run`. Without that flag the script launches a real nested
+    `claude -p`, files issues under a review_id nobody watches, and the nested reviewer holds
+    the same entry: unbounded recursion, billed, with a credential file at every level.
+
+    ⚠ The fix landed with nothing holding it: `_array("REVIEWER_ALLOW")` had exactly one
+    caller, looking only for `Bash(git:*)`, so reverting to the whole-script entry left all
+    1094 tests green. Four fixes in this cycle have now been correct-but-unpinned (#110, #118,
+    #119, and the #80 shape) — and this is the first where the unpinned guard protected a
+    CAPABILITY rather than the accuracy of a sentence.
+    """
+    launcher = [a for a in _array("REVIEWER_ALLOW") if "request_review.sh" in a]
+    assert launcher, "the reviewer needs to be able to dry-run the launcher it reviews"
+    for entry in launcher:
+        assert "--dry-run" in entry, (
+            f"{entry!r} grants the whole launcher. Without --dry-run it starts a real nested "
+            "review; scope every launcher entry to the flag."
+        )

@@ -273,7 +273,8 @@ raised, which is the whole thing escalation exists to prevent.
     left, so clearing the flag alone gets it re-read, found out of attempts, and re-escalated.
   * ⚠ **THE MECHANISM LIVES IN ANOTHER REPO, WHICH IS WHY A REVIEWER CANNOT CONFIRM IT.** The
     hook is `pocketbase/pb_hooks/issues_user_decision.pb.js` in the **AI-Lab-AMD** repo, deployed
-    with `scripts/deploy.sh pb-hooks`. A review of *this* repo cannot see it — the install is
+    deployed from the **AI-Lab-AMD** repo with its `scripts/deploy.sh pb-hooks` — ⚠ **that
+    is a sibling repo's script, not this one's**; Sonora has no `deploy.sh` at all. A review of *this* repo cannot see it — the install is
     outside the working directory — so this paragraph is the only evidence a reviewer has, which
     is exactly why it must not drift again.
 * ⚠ **`user_decision` set while `escalated` is still `true` should now be impossible**, since

@@ -356,7 +356,8 @@ the simple version that holds until then. Do not build tooling on its shape.
       found out of attempts, and re-escalated.
       ⚠ **THE MECHANISM LIVES IN ANOTHER REPO, WHICH IS WHY A REVIEWER CANNOT CONFIRM IT.** The
       hook is `pocketbase/pb_hooks/issues_user_decision.pb.js` in the **AI-Lab-AMD** repo, deployed
-      with `scripts/deploy.sh pb-hooks`. A review of *this* repo cannot see it — the install is
+      deployed from the **AI-Lab-AMD** repo with its `scripts/deploy.sh pb-hooks` — ⚠ **that
+      is a sibling repo's script, not this one's**; Sonora has no `deploy.sh` at all. A review of *this* repo cannot see it — the install is
       outside the working directory — so this paragraph is the only evidence a reviewer has, which
       is exactly why it must not drift again.
     * **Incrementing is the worker's; RESETTING is only the owner's.** A worker that lowers a
@@ -418,12 +419,13 @@ the simple version that holds until then. Do not build tooling on its shape.
     agent writing there forges the answer to a question it raised, which is the one thing
     escalation exists to prevent. **Both roles read it; neither writes it.** When set, it
     outranks the worker's judgement and the reviewer's findings on that issue.
-    * **The return path is three fields together**: `user_decision` written, `escalated`
-      cleared, `agent_passes` reset to `0`. The issue re-enters with a fresh three passes and
-      the answer attached.
-    * ⚠ **A decision on a still-escalated issue is not a release.** Do not act on it — but say
-      so, because an answered issue that nobody picks up is the exact failure the field exists
-      to end, and it is far likelier an oversight than an intention.
+    * **The return path is ONE edit** — write `user_decision`, and the hook described above
+      clears `escalated` and resets `agent_passes` to `0` in the same save. The issue re-enters
+      with a fresh three passes and the answer attached.
+    * ⚠ **A decision sitting on a still-escalated issue should therefore be IMPOSSIBLE**, and
+      if you see one the hook is not deployed or the flag was re-set afterwards. Do not act on
+      it; say so, because an answered issue nobody picks up is the exact failure the field
+      exists to end.
     * **Not conditionally gated, deliberately.** The field is writable regardless of
       `escalated` (owner, 2026-08-14: *"let's just leave it enabled"*). PocketBase cannot
       conditionally enable a field in its console anyway — API rules are per-operation, not

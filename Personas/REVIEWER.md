@@ -350,9 +350,14 @@ be forging the answer to a question it raised.
   decided issue out is that **writing a decision resets `agent_passes` to `0`** (a server-side
   hook does it in the same save), so it cannot match `agent_passes=3`.
   * ⚠ **So if you ever see `agent_passes = 3` on an issue that carries a `user_decision`,
-    the query WILL return it and it must not be escalated.** That state means the counter was
-    edited back up after the decision. **Flag it to the owner as an anomaly** — do not park an
-    issue they have already answered.
+    the query WILL return it and it must not be escalated.** **Flag it to the owner as an
+    anomaly** — do not park an issue they have already answered. ⚠ **Do not assert a cause.**
+    There are at least two, they are not distinguishable from inside this repo, and they need
+    opposite responses:
+    * the counter was edited back up after the decision — a data anomaly; or
+    * **the hook is not deployed**, in which case *every* decision since is unreleased and the
+      repair is a deploy, not an edit. The hook lives in a **sibling repo** you cannot read
+      (see §4), so report what you observed and let the owner say which.
 
 ⚠ **DO NOT ESCALATE A FINDING JUST BECAUSE THE CYCLE FEELS LONG.** What is capped is
 **developer fix passes on an issue**, not reviews — three per issue, so up to four reviews
