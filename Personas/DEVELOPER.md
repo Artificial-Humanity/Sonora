@@ -262,12 +262,24 @@ raised, which is the whole thing escalation exists to prevent.
 
 * **Read it on every issue you pick up.** When it is set, that is the resolution — it outranks
   your own judgement on that issue and Janis's. Say in your comment that you are acting on it.
-* **The full return path is three fields, and the decision alone is not the signal:** the owner
-  writes `user_decision`, clears `escalated`, and resets `agent_passes` to `0`. The issue then
-  re-enters the loop with a fresh three passes and the answer attached.
-* ⚠ **`user_decision` set while `escalated` is still `true` means the owner answered but did
-  not release it.** Do not act on it and do not treat the issue as re-armed — but **do say so**,
-  because it is far more likely an oversight than an intention, and an answered issue nobody
+* ⚠ **THE RETURN PATH IS ONE EDIT, NOT THREE — a hook does the rest** (2026-08-14). The owner
+  writes `user_decision`; a **server-side PocketBase hook** clears `escalated` and resets
+  `agent_passes` to `0` **in the same save**. The issue re-enters the loop with a fresh three
+  passes and the answer attached.
+  * It fires on **any** change to a non-empty decision, so a *revised* answer re-arms too.
+    Clearing a decision does **not** re-arm — a withdrawal is not an answer.
+  * **This was three manual edits until the owner pointed out that forgetting the counter
+    reset silently strands the issue**: escalated at `agent_passes = 3`, it has no attempts
+    left, so clearing the flag alone gets it re-read, found out of attempts, and re-escalated.
+  * ⚠ **THE MECHANISM LIVES IN ANOTHER REPO, WHICH IS WHY A REVIEWER CANNOT CONFIRM IT.** The
+    hook is `pocketbase/pb_hooks/issues_user_decision.pb.js` in the **AI-Lab-AMD** repo, deployed
+    with `scripts/deploy.sh pb-hooks`. A review of *this* repo cannot see it — the install is
+    outside the working directory — so this paragraph is the only evidence a reviewer has, which
+    is exactly why it must not drift again.
+* ⚠ **`user_decision` set while `escalated` is still `true` should now be impossible**, since
+  the hook clears the flag in the same write. If you see it, the flag was re-set afterwards or
+  the hook is not deployed. Do not act on it and do not treat the issue as re-armed — **say
+  so**, because an answered issue nobody
   picks up is the failure this field exists to end.
 
 ---

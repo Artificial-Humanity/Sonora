@@ -69,16 +69,26 @@ def run(tmp_path_factory):
     home = box / "home"
     home.mkdir()
 
+    tmp = box / "tmp"
+    tmp.mkdir()
+
     def _run(*args):
         env = dict(os.environ)
         env["PATH"] = f"{bindir}:{env['PATH']}"
         env["HOME"] = str(home)
+        # ⚠ TMPDIR IS PINNED, and the previous version's assertion anchored on a literal
+        # "/tmp/" instead. `mktemp -t` follows $TMPDIR, which the fixture inherits — so on
+        # macOS, or any CI that sets TMPDIR, the credential path would not contain "/tmp/"
+        # and the #94 assertion would pass against the bug again. Controlling it here makes
+        # the check independent of the host.
+        env["TMPDIR"] = str(tmp)
         p = subprocess.run(
             [str(SCRIPT), *args],
             cwd=str(REPO), env=env, capture_output=True, text=True, timeout=120,
         )
         return p.returncode, p.stdout + p.stderr
 
+    _run.tmpdir = tmp
     return _run
 
 
@@ -152,19 +162,25 @@ def test_dry_run_names_no_concrete_credential_path(run):
     """
     rc, out = run("--range", "HEAD~1..HEAD", "--review-id", "t-cred", "--dry-run")
     assert rc == 0, out
-    assert not re.search(r"/tmp/pb-mcp-\S*\.json", out), (
+    # Not anchored on "/tmp/": mktemp -t follows $TMPDIR (#117). The fixture pins TMPDIR, and
+    # the pattern matches the template wherever it lands.
+    assert not re.search(r"pb-mcp-\S*\.json", out), (
         "--dry-run printed a concrete credential path; that file is deleted on exit, so the "
         "command it advertises is not runnable (#94)"
     )
     assert "--mcp-config" in out, "the dry run should still show that a config is passed"
-    # And nothing is left behind either — the weaker property the first version tested.
-    assert not list(Path("/tmp").glob("pb-mcp-t-cred*"))
+    # ⚠ A glob for "pb-mcp-t-cred*" used to sit here. It could NEVER match — the template is
+    # `pb-mcp-XXXXXX.json` and the review id never enters the filename — so it was a
+    # tautology, added four lines under a docstring calling tautologies the worst state a
+    # regression test can be in (#116). Replaced with the real property, against the TMPDIR
+    # this fixture controls.
+    assert not list(run.tmpdir.glob("pb-mcp-*")), "a dry run must leave no credential file"
 
 
 # --------------------------------------------------------------------------- #
 # static — the flags the reviewer is launched with
 # --------------------------------------------------------------------------- #
-def _array(name):
+def _array(name, source=None):
     """Every quoted entry of a bash array literal.
 
     ⚠ Per LINE, not per entry: these arrays pack several entries on one line, and a
@@ -172,10 +188,11 @@ def _array(name):
     failures against a correct script — a parser bug arriving as a wall of red about
     security flags, which is exactly the shape that gets a real finding dismissed.
     """
-    start = SOURCE.index(f"{name}=(")
-    end = SOURCE.index("\n)", start)
+    src = SOURCE if source is None else source
+    start = src.index(f"{name}=(")
+    end = src.index("\n)", start)
     entries = []
-    for line in SOURCE[start:end].splitlines():
+    for line in src[start:end].splitlines():
         # ⚠ COMMENTS ARE DROPPED FIRST. `re.findall` over the raw slice takes every quoted
         # run in the block, including inside a `#` comment — and every assertion built on
         # this helper is a membership test, so an entry named only in a comment would
@@ -248,3 +265,27 @@ def test_the_script_is_classified_in_the_pipeline_manifest():
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
 def test_the_script_parses():
     assert subprocess.run(["bash", "-n", str(SCRIPT)]).returncode == 0
+
+
+def test_the_array_parser_ignores_entries_that_appear_only_in_comments():
+    """#118: the comment-stripping in `_array` was itself unpinned.
+
+    Reverting it left all 29 tests green, because no comment inside either array happens to
+    contain a double-quoted run — so the protection rested on a style convention, and a hand
+    mutation is not a regression test. This pins the parser directly, against a synthetic
+    block, so the guard survives someone tidying the helper.
+
+    The failure it prevents is the dangerous direction: delete a real deny entry, mention it
+    in a comment, and every membership assertion keeps passing.
+    """
+    synthetic = (
+        'REVIEWER_DENY=(\n'
+        '  "Bash(git push:*)"\n'
+        '  # "Bash(git commit:*)" — named here only, must NOT count as an entry\n'
+        '  "Bash(git reset:*)"  # trailing comment with "Bash(git checkout:*)" in it\n'
+        ')\n'
+    )
+    got = _array("REVIEWER_DENY", source=synthetic)
+    assert got == ["Bash(git push:*)", "Bash(git reset:*)"], got
+    assert "Bash(git commit:*)" not in got, "a commented-out entry was counted as present"
+    assert "Bash(git checkout:*)" not in got, "a trailing-comment entry was counted as present"

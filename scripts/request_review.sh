@@ -406,12 +406,15 @@ REVIEWER_ALLOW=(
   "Bash(git merge-base:*)" "Bash(git ls-files:*)" "Bash(git ls-tree:*)"
   "Bash(git cat-file:*)" "Bash(git describe:*)" "Bash(git shortlog:*)"
   "Bash(pytest:*)" "Bash(ls:*)" "Bash(rg:*)" "Bash(wc:*)"
-  # ⚠ ADDED BECAUSE A REVIEW ASKED FOR IT, which is the repair path this allowlist is
-  # supposed to have. Dropping auto-mode meant the reviewer could not run the very script it
-  # was reviewing: `--dry-run` files nothing, launches nothing and writes no credential file,
-  # and it is now the natural way to verify this file's behaviour. The review that hit the
-  # refusal reported it instead of absorbing it — exactly as REVIEWER.md §1 instructs.
-  "Bash(./scripts/request_review.sh:*)" "Bash(scripts/request_review.sh:*)"
+  # ⚠ SCOPED TO --dry-run, AND THE SCOPING IS THE POINT. Added because a review asked for it
+  # (the repair path this allowlist is supposed to have) — but the first version granted the
+  # WHOLE script while the comment justified only the dry run. That grant let the reviewer
+  # launch a real nested `claude -p`, filing issues under a review_id nobody was watching,
+  # and the nested reviewer would hold the same entry: unbounded recursion, paid for.
+  # Fifth instance of this file's comment claiming less than its flags allowed.
+  #
+  # ⚠ These are PREFIX matches, so `--dry-run` must be the FIRST argument. REVIEWER.md says so.
+  "Bash(./scripts/request_review.sh --dry-run:*)" "Bash(scripts/request_review.sh --dry-run:*)"
   # REMOVED, each for a measured reason rather than on principle:
   #   Bash(uv:*)   — `uv run` executes arbitrary code and `uv pip install` writes into the
   #                  tree, and AGENTS.md §3 forbids `uv run` for host scripts anyway, so a

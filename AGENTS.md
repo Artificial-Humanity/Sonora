@@ -348,10 +348,17 @@ the simple version that holds until then. Do not build tooling on its shape.
     the stored value as authoritative always: an issue you expected at `3` reading `0` was
     reset on purpose — do not "correct" it and do not restore what you think it should have
     been. **The record is the count**; that is the entire reason it stopped living in a brief.
-    * **This is the return path out of escalation, and the only one.** The owner answers,
-      clears `escalated`, and resets the counter; the issue re-enters with a decision attached.
-      **Without a reset it stays parked** — clearing the flag alone gets it re-read on a spent
-      counter.
+    * **This is the return path out of escalation, and it is now ONE edit.** The owner writes
+      `user_decision`; a **server-side hook clears `escalated` and resets the counter in the
+      same save**, and the issue re-enters with the answer attached. It was three manual edits
+      until the owner observed that forgetting the reset strands the issue silently — parked at
+      `agent_passes = 3`, it has no attempts left, so clearing the flag alone gets it re-read,
+      found out of attempts, and re-escalated.
+      ⚠ **THE MECHANISM LIVES IN ANOTHER REPO, WHICH IS WHY A REVIEWER CANNOT CONFIRM IT.** The
+      hook is `pocketbase/pb_hooks/issues_user_decision.pb.js` in the **AI-Lab-AMD** repo, deployed
+      with `scripts/deploy.sh pb-hooks`. A review of *this* repo cannot see it — the install is
+      outside the working directory — so this paragraph is the only evidence a reviewer has, which
+      is exactly why it must not drift again.
     * **Incrementing is the worker's; RESETTING is only the owner's.** A worker that lowers a
       counter, or sets one to a value it thinks fair, is the cap deleting itself.
 

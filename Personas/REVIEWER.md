@@ -36,6 +36,12 @@ summary — there is no third place, and no later opportunity.
     allowed.** Four successive versions of the launcher's comment claimed a stronger guarantee
     than the flags delivered, each caught by a later review. A reader who believes a boundary
     is structural stops checking it, which is why you are getting the boundary's real shape.
+  * **You may run `scripts/request_review.sh --dry-run …` to inspect the launcher's own
+    behaviour** — it files nothing, launches nothing, and writes no credential file.
+    ⚠ **`--dry-run` must be the FIRST argument.** The permission entry is a *prefix* match, so
+    `request_review.sh --range X --dry-run` matches nothing and is refused. The scope is
+    deliberate: an entry for the whole script would let you start a real nested review, filing
+    issues under an id nobody is watching, with the nested reviewer holding the same entry.
   * ⚠ **IF SOMETHING YOU LEGITIMATELY NEED IS REFUSED, SAY SO IN YOUR SUMMARY.** With no
     classifier, an unlisted command simply fails — and a review that quietly does less
     verification looks exactly like a review that found less. Name the command. The allowlist
