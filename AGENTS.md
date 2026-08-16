@@ -255,11 +255,20 @@ the simple version that holds until then. Do not build tooling on its shape.
     * ⚠ **The tracker could not be REACHED — you have no answer, and that is not the same as
       `0`.** A dead port, a timeout, a stale credential and a changed schema all look alike
       from here, and none is evidence that nothing was filed. **Check the instrument ran
-      before believing a negative**; look at the `review_id` by hand. Folding this into
-      "nothing was filed" is how real findings end up orphaned under an id nobody reads again.
+      before believing a negative.** Folding this into "nothing was filed" is how real
+      findings end up orphaned under an id nobody reads again.
+      **So, BEFORE YOU PUSH:** query the `issues` collection with
+      `filter=review_id="<the id the script printed>"`. **Empty means the range is
+      unreviewed; not empty means those are real findings, and you address them.** That
+      disposition is the operative half — the other two answers each carry one, and the
+      first transcription of this case dropped it, leaving a rule that named a hazard and
+      told the reader nothing to do about it.
 
-    ⚠ Neither case overrides the abort above: a review that did not complete is not a
-    must-not-land finding being cleared.
+    ⚠ **NONE of these three overrides the abort above**: a review that did not complete is
+    not a must-not-land finding being cleared. (This read *"Neither case"* while sitting
+    under three bullets — a two-place quantifier against three options leaves the reader to
+    pick which two, and the natural pick made the unreachable case look like the exempt one.
+    That is the precise inversion of what it means.)
 * **Step 2 (filing) — THE `Reviewer` FILES ITS OWN FINDINGS, DIRECTLY.** The procedure is
   [Personas/REVIEWER.md](Personas/REVIEWER.md) §4. What binds both roles:
   * **There is no report file. The tracker *is* the report.** `notes/reviews/` and its
