@@ -47,10 +47,19 @@ def code_only(path):
     the sentence describing its absence and failed against correct code. Docstrings are
     strings, not comments, and a line-based strip cannot see them.
     """
+    # ⚠ F-STRINGS ARE NOT `STRING` TOKENS ON PYTHON 3.12+. They tokenize as FSTRING_START /
+    # FSTRING_MIDDLE / FSTRING_END, so a strip that names only `STRING` leaves every
+    # f-string's TEXT in the "code" — which failed a test against correct code, because a
+    # director prompt built with an f-string mentions the very identifiers being asserted
+    # absent. Named defensively: these members do not exist on older interpreters.
+    drop = {tokenize.COMMENT, tokenize.STRING}
+    for name in ("FSTRING_START", "FSTRING_MIDDLE", "FSTRING_END"):
+        if hasattr(tokenize, name):
+            drop.add(getattr(tokenize, name))
     out = []
     src = Path(path).read_text(encoding="utf-8")
     for tok in tokenize.generate_tokens(io.StringIO(src).readline):
-        if tok.type in (tokenize.COMMENT, tokenize.STRING):
+        if tok.type in drop:
             continue
         out.append(tok.string)
     # ⚠ Joined with SPACES, not newlines. Newlines make every multi-token phrase
@@ -261,3 +270,65 @@ def test_no_source_directory_would_swallow_a_new_file():
         "a NEW file added to these source directories would be silently skipped by "
         "`git add`:\n  " + "\n  ".join(swallowed[:20])
     )
+
+
+# --- intended V/A/T, validated at the WRITER ----------------------------------------------
+
+def test_an_absent_axis_stays_absent_and_is_not_neutralised():
+    """⚠ `tag.get("valence", 0.0)` TURNED SILENCE INTO A NEUTRAL LABEL.
+
+    Both writers in `book_ingest` defaulted a missing axis to 0.0, so "the director said
+    nothing" and "the director said neutral" arrived identical. `qc_verdict.intended_labels`
+    goes to real trouble to keep those apart — "an absent axis ... is not collected, because
+    there is nothing wrong with it" — and the writer's default made that branch UNREACHABLE
+    from this path: every row arrived with all three axes present and numeric.
+    """
+    out = schemas.intended_vat({"valence": 0.5})
+    assert out["V"] == 0.5
+    assert out["A"] is None and out["T"] is None, "a missing axis must not become 0.0"
+
+
+def test_a_numeric_string_is_a_label_and_a_word_is_not():
+    """Issue #58's rule, now applied where the value is WRITTEN rather than where it is read."""
+    assert schemas.intended_vat({"valence": "0.7"})["V"] == 0.7
+    with pytest.raises(schemas.SchemaError):
+        schemas.intended_vat({"valence": "very sad"})
+
+
+def test_out_of_range_is_refused_because_it_would_be_clamped_silently():
+    with pytest.raises(schemas.SchemaError) as e:
+        schemas.intended_vat({"valence": 3.0})
+    assert "clamped" in str(e.value)
+
+
+def test_lenient_mode_records_absence_rather_than_failing():
+    """The casting retry loop must not abort a whole run on one bad axis; the manifest write
+    is where it becomes fatal."""
+    assert schemas.intended_vat({"valence": "very sad"}, strict=False)["V"] is None
+
+
+def test_the_coercion_rule_has_exactly_one_definition():
+    """⚠ `qc_verdict.coerce_axis` must DELEGATE, not keep a second copy.
+
+    Two implementations of "what counts as a number" drift invisibly: both return floats for
+    every easy case, so only an odd input reveals the disagreement, and by then it is in a
+    manifest. Checked structurally — the function body must be a single call.
+    """
+    import ast
+
+    tree = ast.parse((REPO / "scripts" / "stages" / "qc_verdict.py").read_text(encoding="utf-8"))
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "coerce_axis")
+    body = [n for n in fn.body if not (isinstance(n, ast.Expr)
+                                       and isinstance(n.value, ast.Constant))]  # drop docstring
+    assert len(body) == 1 and isinstance(body[0], ast.Return), \
+        "qc_verdict.coerce_axis has grown its own logic again"
+    assert ast.unparse(body[0].value).startswith("schemas.coerce_axis")
+
+
+def test_the_writers_no_longer_default_an_axis_to_zero():
+    """The literal that caused it, gone from both sites. Read as code — the new comments
+    quote the old expression to explain it."""
+    code = code_only(REPO / "scripts" / "lib" / "book_ingest.py")
+    assert "valence" not in code.replace("intended_vat", ""), \
+        "book_ingest still reaches for a raw axis instead of schemas.intended_vat()"

@@ -866,9 +866,13 @@ def director_tag(chunk, retries=2):
         # Second pass: casting + delivery, written in the chosen engine's own
         # language. Dia has no direction channel, so it is skipped entirely.
         if engine != "dia":
+            # Same validation as the manifest row below, so the casting pass is briefed
+            # with the labels that will actually be written rather than a second reading of
+            # the same tag. `strict=False`: a bad axis here should not abort the retry loop,
+            # it should be absent — the manifest write is where it becomes fatal.
+            _vat = schemas.intended_vat(tag, strict=False)
             cast = casting_pass(chunk["text"], engine, labels={
-                "V": tag.get("valence", 0.0), "A": tag.get("arousal", 0.0),
-                "T": tag.get("tension", 0.0), "register": tag.get("register", "")})
+                **_vat, "register": tag.get("register", "")})
             if cast is None:
                 continue
             tag.update(cast)
@@ -1343,7 +1347,13 @@ def to_bank_line(idx, chunk, tag, slug, seed=1234):
         "engine": engine,
         "register": tag.get("register", "unspecified"),
         "chunk_type": chunk["chunk_type"],
-        "intended": {"V": tag.get("valence", 0.0), "A": tag.get("arousal", 0.0), "T": tag.get("tension", 0.0)},
+        # ⚠ `tag.get("valence", 0.0)` TURNED SILENCE INTO A NEUTRAL LABEL. An axis the
+        # director never produced was written as 0.0 — indistinguishable from one it
+        # deliberately called neutral — which made `qc_verdict`'s careful absent-vs-unreadable
+        # branch unreachable from this writer. And an unparseable value ("0.7" as a string, or
+        # "very sad") went straight into the file, where issue #58 had to be fixed in the
+        # READER. Validating here keeps it out of the file for all seven readers.
+        "intended": schemas.intended_vat(tag),
         "seed": seed,
         "text": text,
         "direction": direction,

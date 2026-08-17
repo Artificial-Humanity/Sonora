@@ -124,6 +124,91 @@ def load_register_lexicon(path: str | None = None) -> List[str]:
     return RegisterLexicon(**raw).lexicon
 
 
+# --- intended V/A/T, at the point of WRITE -----------------------------------------------
+# `qc_measures.jsonl` is read by seven modules. One of them, `qc_verdict.py`, was hardened by
+# hand after issue #58 — a JSON string like "0.7" was dropped as silently as "very sad", so a
+# fully directed bank counted as ZERO directed clips and `synth_bank.sh` announced it as real
+# audio and skipped the direction check. That fix is good and stays.
+#
+# ⚠ BUT IT FIXED THE READER. Its own docstring names the root and leaves it open: "book_ingest
+# writes {"V": tag.get("valence", 0.0), ...} straight out of the LLM and validates only
+# `register` and `engine`". So six other readers still receive whatever the director emitted,
+# and each would have to re-derive the same defence. Validating on write is one place instead
+# of seven, and it keeps the bad value out of the file rather than out of one consumer.
+
+AXES = ("V", "A", "T")
+
+# The trained range. `matcha/cli.py --vat` documents "comma-separated floats in [-1, 1]" and
+# derivation clamps per-speaker z-scores at 2 sigma; a label outside this is not a strong
+# label, it is a mistake that will be clamped silently downstream.
+AXIS_MIN, AXIS_MAX = -1.0, 1.0
+
+
+def coerce_axis(v):
+    """One axis value as a float, or None when it carries no usable number.
+
+    ⚠ THE SINGLE DEFINITION. `qc_verdict.coerce_axis` delegates here rather than keeping its
+    own copy: two implementations of "what counts as a number" would drift, and the drift
+    would be invisible because both sides would still return floats for the easy cases.
+
+    A JSON string that spells a number IS a label ("0.7" is 0.7); a string that spells
+    anything else is not, and the difference has to stay visible (issue #58).
+    """
+    if v is None or isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        try:
+            return float(v.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def intended_vat(tag, *, strict=True):
+    """The `intended` block for a manifest row, from a director's raw tag.
+
+    ⚠ AN ABSENT AXIS STAYS ABSENT. It is written as `None`, never as `0.0`.
+    `tag.get("valence", 0.0)` — what both writers used — turns "the director said nothing"
+    into "the director said neutral", and those are different facts. `qc_verdict`'s reader
+    goes to real trouble to distinguish them ("an absent axis ... is not collected, because
+    there is nothing wrong with it") and the writer's default made that branch UNREACHABLE
+    from this path: every row arrived with all three axes present and numeric.
+
+    `strict=True` refuses a value that is present and unreadable, because that is the case
+    where the director produced something and nobody can tell what. `strict=False` records it
+    as absent instead, for callers that must not fail a whole run on one bad line.
+    """
+    src = tag if isinstance(tag, dict) else {}
+    long_names = {"V": "valence", "A": "arousal", "T": "tension"}
+    out = {}
+    for ax in AXES:
+        raw = src.get(long_names[ax], src.get(ax))
+        if raw is None:
+            out[ax] = None
+            continue
+        v = coerce_axis(raw)
+        if v is None:
+            if strict:
+                raise SchemaError(
+                    "intended %s is present but unreadable: %r. A directed clip whose label "
+                    "cannot be parsed is not an undirected clip — write it as absent (null) "
+                    "or fix the director." % (long_names[ax], raw))
+            out[ax] = None
+            continue
+        if not (AXIS_MIN <= v <= AXIS_MAX):
+            if strict:
+                raise SchemaError(
+                    "intended %s = %r is outside the trained range [%s, %s]. Downstream this "
+                    "is clamped silently, so the label would not mean what it says."
+                    % (long_names[ax], v, AXIS_MIN, AXIS_MAX))
+            out[ax] = None
+            continue
+        out[ax] = v
+    return out
+
+
 # --- delivery lanes ---------------------------------------------------------------------
 # Imported, never re-spelled. `matcha/delivery.py` owns the vocabulary and the retired/active
 # split, and its ORDER IS THE WIRE FORMAT — a copy here that drifted by one entry would
