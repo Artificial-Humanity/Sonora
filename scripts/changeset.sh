@@ -10,7 +10,7 @@
 #
 # This gives you the other four, in PocketBase, with no GitHub and no PR ceremony:
 #
-#     changeset.sh open --title "…"     cut the record for the current branch
+#     changeset.sh open --title "…" [--branch B]   cut the record for a branch
 #     changeset.sh status [N]           state, open issues, reviews, converged?
 #     changeset.sh merge N              refuses unless converged, merges LOCALLY
 #     changeset.sh abandon N --why "…"  a dropped set must be distinguishable from a live one
@@ -24,7 +24,7 @@ set -euo pipefail
 
 REPO_SLUG="Artificial-Humanity/Sonora"
 BASE="origin/main"
-TITLE=""; DESC=""; WHY=""; NUM=""
+TITLE=""; DESC=""; WHY=""; NUM=""; BRANCH_ARG=""
 
 usage() { sed -n '3,26p' "$0" | sed 's/^# \{0,1\}//'; }
 
@@ -36,6 +36,10 @@ while [[ $# -gt 0 ]]; do
     --base) BASE="${2:?}"; shift 2 ;;
     --repo) REPO_SLUG="${2:?}"; shift 2 ;;
     --why) WHY="${2:?}"; shift 2 ;;
+    # ⚠ For opening a record on a branch you are NOT standing on — a placeholder branch whose
+    # work starts later. Without it the only way to register one is to reach past this script
+    # and write the record by hand, which is how a tool stops being the way a thing is done.
+    --branch) BRANCH_ARG="${2:?}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     [0-9]*) NUM="$1"; shift ;;
     *) echo "changeset.sh: unknown argument: $1" >&2; exit 2 ;;
@@ -90,7 +94,9 @@ PY
 case "$CMD" in
 open)
   [[ -n "$TITLE" ]] || die "open needs --title"
-  BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+  BRANCH="${BRANCH_ARG:-$(git rev-parse --abbrev-ref HEAD)}"
+  git show-ref --verify --quiet "refs/heads/$BRANCH" \
+    || die "no such branch: $BRANCH"
   [[ "$BRANCH" != "HEAD" ]] || die "detached HEAD — cut a branch first; the changeset is the branch."
   [[ "$BRANCH" != "main" ]] || die "refusing to open a changeset on main. Cut a branch: the point
      of a local PR is that the work is somewhere other than where it lands."
