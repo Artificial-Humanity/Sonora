@@ -314,7 +314,22 @@ ceiling, not a fact about the work — a first review can arrive as pass 3 if ea
 
 ### 5a. Initial review
 
-**Review every commit on the branch that is ahead of `main`.** Each finding becomes an issue:
+⚠⚠ **IF YOUR BRIEF SAYS "THIS IS A FULL CODE REVIEW", THE RANGE RULE BELOW DOES NOT APPLY.**
+Review the codebase **as it stands**. Commit history is neither the subject nor a scope, and a
+defect is a defect whether it arrived today or two years ago. Your brief carries an inventory
+instead of a diffstat. Everything else on this page is unchanged: same tracker, `open`,
+counter `0`, this branch.
+
+* **You cannot read it all well in one pass, and you are not asked to pretend otherwise.**
+  **Report what you covered AND what you did not.** A sweep that quietly skipped a subsystem is
+  worse than one that names the gap, because the next sweep will assume it was read.
+* **Look for what a per-change review CANNOT see** — that is the whole reason this exists. The
+  document that stopped being true. The guard nobody has run since it was written. The file
+  nothing invokes any more. The number measured once and copied ever since. **None of those is
+  *a change*, so nothing else in this lane will ever find them.**
+
+**Otherwise — review every commit on the branch that is ahead of `main`.** Each finding becomes
+an issue:
 
 | field | value |
 |---|---|

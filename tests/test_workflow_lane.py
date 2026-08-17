@@ -255,3 +255,85 @@ def test_escalation_comments_are_required_to_be_ste():
     assert "NECESSARY, NOT SUFFICIENT" in ISSUE_SRC
     dev = (REPO / "workflow" / "DEVELOPER.md").read_text(encoding="utf-8")
     assert "ESCALATION COMMENT IS THE EXCEPTION" in dev
+
+
+# --- the full code review ----------------------------------------------------------------
+
+FULL = REPO / "workflow" / "scripts" / "full_review.sh"
+FULL_SRC = FULL.read_text(encoding="utf-8")
+FULL_CODE = "\n".join(l.split("#", 1)[0] for l in FULL_SRC.splitlines())
+LAUNCHER = (REPO / "workflow" / "scripts" / "request_review.sh").read_text(encoding="utf-8")
+
+
+def test_full_review_cuts_a_dated_branch_with_no_upstream():
+    """⚠ `--no-track` is not optional here. `push.default=upstream` is set in this repo, so a
+    branch inheriting `origin/main` sends a bare `git push` straight to main whatever it is
+    called — measured. A review branch is the last thing that should have that property."""
+    assert 'BRANCH="review-$DATE"' in FULL_CODE
+    assert "--no-track" in FULL_CODE
+    assert 'date +%F' in FULL_CODE
+
+
+def test_full_review_resumes_an_existing_sweep_rather_than_refusing():
+    """A second run on the same date is how a sweep CONTINUES: pass 1 filed issues, Ozzy fixed
+    some, this is the next review. Refusing would make the obvious command wrong on its second
+    use — which is the use that matters."""
+    assert 'git show-ref --verify --quiet "refs/heads/$BRANCH"' in FULL_CODE
+    assert "resuming" in FULL_SRC
+
+
+def test_full_review_dry_run_answers_on_a_dirty_tree():
+    """⚠ A dirty tree is a reason not to SWITCH BRANCHES, not a reason to refuse to say what
+    would happen. `merge_branch.sh` had the identical bug; both now check after the dry run."""
+    dirty = FULL_CODE.index("git status --porcelain")
+    guard = FULL_CODE.index('if [[ "$DRY_RUN" -eq 0 ]]')
+    assert guard < dirty, "the dirty-tree check must sit inside the not-a-dry-run branch"
+
+
+def test_the_range_guards_are_skipped_not_loosened_under_full():
+    """A fresh review branch has ZERO commits ahead — the exact state the range guards refuse.
+    They stay strict for range reviews and are bypassed wholesale for a full one."""
+    assert 'if [[ "$FULL" -eq 0 ]]; then' in LAUNCHER
+    # ...and the guards themselves are unchanged.
+    assert "--range must be a TWO-dot range" in LAUNCHER
+    assert "A bare ref is refused on purpose" in LAUNCHER
+
+
+def test_variables_the_full_path_skips_are_initialised():
+    """⚠ `set -u` turns a read of an unassigned variable into a fatal error with a line number
+    and no cause. `COMMITS` was assigned only inside the range branch and read outside it —
+    the second time this exact shape bit this script, after `$BRANCH`."""
+    for var in ("COMMITS=", "COMMIT_COUNT=0", "TIP="):
+        i = LAUNCHER.index(var)
+        assert i < LAUNCHER.index('if [[ "$FULL" -eq 0 ]]; then'), \
+            f"{var} must be initialised before the block that may skip it"
+
+
+def test_the_full_brief_carries_an_inventory_and_no_diffstat():
+    """An empty diffstat would read as "nothing changed" rather than "this axis does not
+    apply"."""
+    assert "THIS IS A FULL CODE REVIEW. THERE IS NO COMMIT RANGE." in LAUNCHER
+    assert "tracked files" in LAUNCHER
+    assert "what you covered" in LAUNCHER.lower() or "what you did not" in LAUNCHER
+
+
+def test_the_brief_is_built_without_nesting_heredocs_in_the_brief_string():
+    """⚠ MEASURED: an unquoted heredoc inside `$( )` inside the double-quoted `BRIEF=` lost its
+    backslashes — markdown fences rendered as `\\\\\\` and the inventory vanished entirely,
+    while the script still exited 0. The scope blocks are plain variables now."""
+    assert "${SCOPE_LINES}" in LAUNCHER and "${SCOPE_BODY}" in LAUNCHER
+    brief = LAUNCHER[LAUNCHER.index('BRIEF="## This run'):]
+    brief = brief[:brief.index('\n"\n')]
+    assert "<<" not in brief, "no heredoc may be opened inside the BRIEF string"
+
+
+def test_the_reviewer_persona_knows_about_full_reviews():
+    """The launcher's brief and the persona are a machine contract split across two files."""
+    rev = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
+    assert "FULL CODE REVIEW" in rev
+    assert "Porting this lane" in WORKFLOW_MD
+
+
+def test_full_review_is_declared_in_the_manifest():
+    manifest = (REPO / "scripts" / "pipeline_manifest.py").read_text(encoding="utf-8")
+    assert "workflow/scripts/full_review.sh" in manifest

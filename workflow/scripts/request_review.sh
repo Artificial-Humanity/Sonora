@@ -42,6 +42,7 @@ NOTES_FILE=""
 MODEL="opus"
 EFFORT="xhigh"
 DRY_RUN=0
+FULL=0
 
 usage() {
   cat <<'USAGE'
@@ -62,6 +63,12 @@ request_review.sh — one-shot code review by Janis. Blocks; prints the review o
   --notes-file <PATH>   Same, read from a file. Mutually exclusive with --notes.
   --model <M>           (default: opus)
   --effort <E>          low|medium|high|xhigh|max                    (default: xhigh)
+  --full                FULL CODE REVIEW: review the whole codebase, not a commit range.
+                        For the periodic sweep the owner asks for by name. Cut the branch with
+                        `workflow/scripts/full_review.sh`, which makes `review-YYYY-MM-DD` from
+                        main and calls this. ⚠ The range guards below do not apply: a fresh
+                        review branch has NO commits ahead of main, which is exactly the state
+                        they refuse.
   --dry-run             Print the brief and the command, then exit. Costs nothing, files
                         nothing, and does NOT write the MCP credential file.
   -h, --help            This.
@@ -86,6 +93,7 @@ while [[ $# -gt 0 ]]; do
     --notes-file)  NOTES_FILE="${2:?--notes-file needs a value}"; shift 2 ;;
     --model)       MODEL="${2:?--model needs a value}"; shift 2 ;;
     --effort)      EFFORT="${2:?--effort needs a value}"; shift 2 ;;
+    --full)        FULL=1; shift ;;
     --dry-run)     DRY_RUN=1; shift ;;
     -h|--help)     usage; exit 0 ;;
     *) echo "request_review.sh: unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -127,6 +135,18 @@ PERSONA="$REPO_ROOT/workflow/REVIEWER.md"
 # written to stop, through the guard itself. `git rev-list A...B` is the symmetric difference
 # while `git diff --stat A...B` is merge-base-to-B: measured on a divergent pair in this repo,
 # 411 commits against a diffstat describing 354 commits' worth of a different comparison.
+# ⚠ INITIALISED BEFORE THE GUARDS, because `--full` skips the block that assigns them and
+# `set -u` turns a later read into a fatal "unbound variable" with a line number and no hint
+# about the cause. Second time this exact shape has bitten in this script; the first was
+# `$BRANCH`. A variable read outside the block that sets it needs a default at the top.
+COMMITS=""
+COMMIT_COUNT=0
+TIP=""
+
+# ⚠ SKIPPED ENTIRELY FOR `--full`, not merely relaxed. Each guard below protects the
+# accuracy of a RANGE brief; a full review has no range, so running them would refuse the
+# review for lacking something it does not use.
+if [[ "$FULL" -eq 0 ]]; then
 [[ "$RANGE" == *"..."* ]] \
   && die "--range must be a TWO-dot range; '$RANGE' has three.
      git reads them differently in the two commands this script runs: rev-list A...B is the
@@ -148,15 +168,21 @@ else
 fi
 
 if [[ "$COMMIT_COUNT" -eq 0 ]]; then
-  die "range '$RANGE' is empty — nothing to review, and no --review-id to review under.
-     There is nothing to review."
+  die "range '$RANGE' is empty — nothing to review.
+     For a whole-codebase sweep use --full (or workflow/scripts/full_review.sh), which does
+     not need commits ahead of main."
 fi
+fi  # end of the range guards
 
 # The tip is the newest commit in the range: for A..B that is B. Taken by parameter
 # expansion rather than `| head -1`, which under `set -o pipefail` takes SIGPIPE and kills
 # the script with a silent 141 once the range exceeds the 64 KiB pipe buffer (~1,600
 # commits at 41 bytes a SHA). Not reachable at this repo's size today; free to not have.
-TIP="${COMMITS%%$'\n'*}"
+if [[ "$FULL" -eq 1 ]]; then
+  TIP="$(git rev-parse HEAD)"
+else
+  TIP="${COMMITS%%$'\n'*}"
+fi
 
 [[ "$PASS" =~ ^[0-9]+$ ]] || die "--pass must be a number, got '$PASS'"
 # ⚠ FOUR, not three. What is capped is DEVELOPER FIX PASSES PER ISSUE (three of them, counted
@@ -278,8 +304,63 @@ ADD_DIR_ARGS=()
 [[ -n "$SIBLING" ]] && ADD_DIR_ARGS=(--add-dir "$SIBLING")
 
 # --- The brief: everything that changes per run ----------------------------
+# ⚠ AN INVENTORY, NOT A DIFFSTAT. A full review has nothing to diff, and handing it an
+# empty diffstat would read as "nothing changed" rather than "this axis does not apply".
+if [[ "$FULL" -eq 1 ]]; then
+  TRACKED_TOTAL="$(git ls-files | wc -l | tr -d ' ')"
+  INVENTORY="$(git ls-files | sed -E 's#^([^/]+/[^/]+)/.*#\1/#; s#^([^/]+)$#\1#' \
+               | sort | uniq -c | sort -rn | head -30)"
+  BY_EXT="$(git ls-files | sed -E 's#.*\.##; /\//d' | sort | uniq -c | sort -rn | head -12)"
+fi
 RANGE_LOG="$(git log --oneline --no-decorate "$RANGE" 2>/dev/null || true)"
 DIFFSTAT="$(git diff --stat "$RANGE" 2>/dev/null || true)"
+
+# ⚠ BUILT HERE, IN PLAIN VARIABLES, AND NOT INLINE IN THE BRIEF. The first version nested an
+# unquoted heredoc inside `$( )` inside the double-quoted `BRIEF=`, and the backslashes did not
+# survive three levels: the markdown fences came out as `\\\` and the inventory vanished
+# entirely, while the script still exited 0. This lane has met that trap before — a launcher
+# that builds another process's prompt has enough quoting layers already.
+if [[ "$FULL" -eq 1 ]]; then
+  SCOPE_LINES="- ⚠ **THIS IS A FULL CODE REVIEW. THERE IS NO COMMIT RANGE.** Review the codebase
+  as it stands. Commit history is neither the subject nor a scope: a defect is a defect whether
+  it arrived today or two years ago, and this sweep exists to find what per-change review is
+  structurally blind to — what ACCUMULATED, what stopped being true, what nobody has read since
+  it was written.
+- **Repository tip:** \`$TIP\` — for the record, not as a boundary."
+  SCOPE_BODY="
+### What is here — $TRACKED_TOTAL tracked files
+
+Largest directories:
+
+\`\`\`
+$INVENTORY
+\`\`\`
+
+By extension:
+
+\`\`\`
+$BY_EXT
+\`\`\`
+
+⚠ **This inventory orients you; it is not a worklist and not permission to sample.** You cannot
+read $TRACKED_TOTAL files well in one pass. **Say in your summary what you covered and what you
+did not** — a full review that quietly skipped a subsystem is worse than one that names the
+gap, because the next sweep will assume it was read."
+else
+  SCOPE_LINES="- **Range to review:** \`$RANGE\` — $COMMIT_COUNT commit(s), tip \`$TIP\`."
+  SCOPE_BODY="
+### Commits in range
+
+\`\`\`
+${RANGE_LOG:-(none)}
+\`\`\`
+
+### Diffstat
+
+\`\`\`
+${DIFFSTAT:-(none)}
+\`\`\`"
+fi
 
 # ⚠ THE ROLE IS DECIDED HERE, AT THE CALL SITE — NOT INFERRED BY THE MODEL. This script is
 # the only thing that launches Janis, so it knows which persona it is starting; the reviewer
@@ -299,23 +380,13 @@ edit, and you do not touch \`agent_passes\`. \`workflow/REVIEWER.md\` §0 has th
 You are reviewing the repository at \`$REPO_ROOT\` (host: $(hostname)). That is your working
 directory. The tracker \`repo\` field for everything you file is \`$REPO_SLUG\`.
 
-- **Range to review:** \`$RANGE\` — $COMMIT_COUNT commit(s), tip \`$TIP\`.
+${SCOPE_LINES}
 - **branch_name for THIS pass:** \`$BRANCH\` — set it on every issue you file.
 - **Developer to address:** $DEVELOPER. Name them in issue comments. They are blocked on this
   process and will read your stdout when it exits; there is no other channel back.
 - **Review $PASS of at most 4** (three fix passes, each followed by a review).
 
-### Commits in range
-
-\`\`\`
-${RANGE_LOG:-(none)}
-\`\`\`
-
-### Diffstat
-
-\`\`\`
-${DIFFSTAT:-(none)}
-\`\`\`
+${SCOPE_BODY}
 "
 
 if [[ -n "$PYBIN" ]]; then
@@ -585,7 +656,11 @@ cleanup() { rm -f "$MCP_CONF"; }
 trap cleanup EXIT INT TERM
 pb_helper config "$MCP_CONF" || die "could not extract the pocketbase MCP config from ~/.claude.json"
 
-echo "request_review.sh: reviewing $RANGE ($COMMIT_COUNT commit(s)) as branch $BRANCH, pass $PASS." >&2
+if [[ "$FULL" -eq 1 ]]; then
+  echo "request_review.sh: FULL code review of the whole codebase, branch $BRANCH, pass $PASS." >&2
+else
+  echo "request_review.sh: reviewing $RANGE ($COMMIT_COUNT commit(s)) as branch $BRANCH, pass $PASS." >&2
+fi
 echo "request_review.sh: this blocks until the review completes." >&2
 
 set +e

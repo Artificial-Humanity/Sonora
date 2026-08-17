@@ -197,4 +197,10 @@ NOT_ORCHESTRATORS = {
         "issues is open, review or escalated; then merges and pushes. ⚠ The only thing in this "
         "repo that reaches `main` on its own — see workflow/WORKFLOW.md §3."
     ),
+    "workflow/scripts/full_review.sh": (
+        "Review lane: the periodic WHOLE-CODEBASE sweep. Cuts `review-YYYY-MM-DD` from main and "
+        "starts a review with no commit range, because per-change review is structurally blind "
+        "to what ACCUMULATED — the doc that stopped being true, the guard nobody runs, the file "
+        "nothing invokes. See workflow/WORKFLOW.md §2b."
+    ),
 }

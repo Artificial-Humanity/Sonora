@@ -72,6 +72,37 @@ only state Ozzy cannot resolve alone** — it waits for the owner.
 
 ⚠ **Janis never escalates, and never touches `agent_passes`.**
 
+## 2b. The full code review — a different read, not a bigger one
+
+The owner periodically asks for a **"full code review"**. It is the same loop with one
+difference: **there is no commit range.**
+
+```bash
+workflow/scripts/full_review.sh          # cuts review-YYYY-MM-DD from main, then reviews
+```
+
+1. A branch **`review-YYYY-MM-DD`** is cut from `main` (today's date). It starts with **zero
+   commits ahead**, which is exactly the state an ordinary review refuses — so
+   `request_review.sh --full` takes a different path through the range guards rather than a
+   relaxed one.
+2. **Janis reviews the code as it stands.** Commit history is neither the subject nor a scope.
+3. **Everything after that is ordinary.** Issues carry `branch_name=review-YYYY-MM-DD`, Ozzy
+   takes and fixes them, Janis verifies, escalation and the merge gate behave exactly as in
+   §2–§4.
+
+⚠ **WHY IT EXISTS: per-change review is STRUCTURALLY BLIND to accumulation.** It can only see
+what changed. It cannot see the doc that quietly stopped being true, the guard nobody has run
+since it was written, or the file nothing invokes any more — because none of those are *a
+change*. This lab has measured all three. The sweep is the only thing that looks at the whole.
+
+⚠ **A full review cannot read everything well in one pass**, and the brief says so. Janis is
+told to report what it covered **and what it did not**. A sweep that quietly skipped a
+subsystem is worse than one that names the gap, because the next sweep assumes it was read.
+
+⚠ **Running it again on the same date RESUMES that sweep** — it checks out the existing branch
+rather than refusing. A second run is the normal way a sweep continues: pass 1 filed issues,
+Ozzy fixed some, and this is the next review.
+
 ## 3. Ozzy, after the review
 
 1. Ozzy reads the issues for this branch.
