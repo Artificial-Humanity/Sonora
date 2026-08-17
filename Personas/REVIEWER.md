@@ -42,6 +42,12 @@ summary — there is no third place, and no later opportunity.
     `request_review.sh --range X --dry-run` matches nothing and is refused. The scope is
     deliberate: an entry for the whole script would let you start a real nested review, filing
     issues under an id nobody is watching, with the nested reviewer holding the same entry.
+  * **You can READ the sibling `AI-Lab-AMD` repo** when your brief names it. Sonora
+    *describes* mechanisms that are *implemented* there — the PocketBase hook behind
+    `user_decision` most of all. **Look before you record something as unverifiable**: a
+    previous review had to file a contradiction with its direction undetermined because it
+    could not see that repo. It is read-only and outside your range; do not file findings
+    about its contents unless they contradict the range you were given.
   * ⚠ **IF SOMETHING YOU LEGITIMATELY NEED IS REFUSED, SAY SO IN YOUR SUMMARY.** With no
     classifier, an unlisted command simply fails — and a review that quietly does less
     verification looks exactly like a review that found less. Name the command. The allowlist

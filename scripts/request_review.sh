@@ -255,6 +255,26 @@ else
   fi
 fi
 
+# --- Sibling repos the reviewer may READ -----------------------------------
+# ⚠ WITHOUT THIS THE REVIEWER IS BLIND TO MECHANISMS THIS REPO ONLY DESCRIBES. Measured:
+# a review could not determine whether the PocketBase hook behind `user_decision` exists,
+# because it lives in AI-Lab-AMD and `ls` outside the working directory is refused. It filed
+# the resulting contradiction (#114) as "verified, direction undetermined" — which is the
+# correct thing to do and a worse outcome than simply letting it look.
+#
+# READ-ONLY: `--add-dir` widens what the file tools may reach, and Edit/Write/NotebookEdit are
+# both absent from --tools and named in --disallowedTools, so this grants reading and nothing
+# else. It is NOT a substitute for `--permission-mode auto`, which was removed deliberately
+# (#100) — most of what looked like permission friction was this working-directory limit.
+#
+# Derived, not hardcoded: the two layouts this repo is checked out in.
+SIBLING=""
+for _cand in "$REPO_ROOT/../../AI-Lab-AMD" "$HOME/Projects/Artificial-Humanity/AI-Lab-AMD"; do
+  if [[ -d "$_cand" ]]; then SIBLING="$(cd "$_cand" && pwd)"; break; fi
+done
+ADD_DIR_ARGS=()
+[[ -n "$SIBLING" ]] && ADD_DIR_ARGS=(--add-dir "$SIBLING")
+
 # --- The brief: everything that changes per run ----------------------------
 RANGE_LOG="$(git log --oneline --no-decorate "$RANGE" 2>/dev/null || true)"
 DIFFSTAT="$(git diff --stat "$RANGE" 2>/dev/null || true)"
@@ -304,6 +324,21 @@ else
 ⚠ **No usable interpreter was found** (no \`.venv/bin/python\` here or in the main checkout).
 You will not be able to run the suite. Mark every finding that needed execution as
 **unverified**, and say so in your summary — do not imply you ran anything.
+"
+fi
+
+if [[ -n "$SIBLING" ]]; then
+  BRIEF+="
+### A sibling repo you can read
+
+\`$SIBLING\` (the **AI-Lab-AMD** infrastructure repo) is readable. Some mechanisms this repo
+*describes* are *implemented* there — notably the PocketBase hook behind \`user_decision\`,
+at \`pocketbase/pb_hooks/issues_user_decision.pb.js\`, and the deploy target that installs it.
+**Check there before filing a claim as unverifiable**; a previous review had to record a
+contradiction with its direction undetermined because it could not see this.
+
+It is READ-ONLY and it is NOT part of your review range. Do not file findings about its
+contents unless they contradict something in the range you were given.
 "
 fi
 
@@ -500,7 +535,9 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   printf '  --tools %q \\\n' "$REVIEWER_TOOLS"
   printf '  --allowedTools'; printf ' %q' "${REVIEWER_ALLOW[@]}"; printf ' \\\n'
   printf '  --disallowedTools'; printf ' %q' "${REVIEWER_DENY[@]}"; printf ' \\\n'
-  printf '  --strict-mcp-config --mcp-config <0600 temp file, written at run time from ~/.claude.json>\n'
+  printf '  --strict-mcp-config --mcp-config <0600 temp file, written at run time from ~/.claude.json>'
+  [[ -n "$SIBLING" ]] && printf ' \\\n  --add-dir %q' "$SIBLING"
+  printf '\n'
   echo "───── (dry run: nothing called, nothing filed, no credential file written) ─────"
   exit 0
 fi
@@ -530,7 +567,8 @@ claude -p "$PROMPT" \
   --allowedTools "${REVIEWER_ALLOW[@]}" \
   --disallowedTools "${REVIEWER_DENY[@]}" \
   --strict-mcp-config \
-  --mcp-config "$MCP_CONF"
+  --mcp-config "$MCP_CONF" \
+  ${ADD_DIR_ARGS[@]+"${ADD_DIR_ARGS[@]}"}
 STATUS=$?
 set -e
 

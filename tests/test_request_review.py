@@ -312,3 +312,26 @@ def test_the_launcher_grant_is_scoped_to_dry_run():
             f"{entry!r} grants the whole launcher. Without --dry-run it starts a real nested "
             "review; scope every launcher entry to the flag."
         )
+
+
+def test_the_sibling_repo_is_offered_read_only_and_never_writable():
+    """The reviewer can READ AI-Lab-AMD, because Sonora describes mechanisms implemented there.
+
+    A review had to file #114 as "verified, direction undetermined" — it could not tell whether
+    the PocketBase hook behind `user_decision` exists, because it lives in the sibling repo and
+    listing outside the working directory is refused. That is the correct behaviour from the
+    reviewer and a worse outcome than letting it look.
+
+    ⚠ Pinned per #119's lesson: `--add-dir` widens what the file tools reach, so if
+    Edit/Write ever returned to `--tools`, this would become write access to a second repo.
+    The two properties are asserted together deliberately.
+    """
+    assert "--add-dir" in SOURCE, "the reviewer should be able to read the sibling repo"
+    assert 'ADD_DIR_ARGS=(--add-dir "$SIBLING")' in SOURCE
+    # Derived, never hardcoded to one machine's layout.
+    assert '$REPO_ROOT/../../AI-Lab-AMD' in SOURCE
+    # And read-only: no editing tool exists, and all three are denied by name.
+    tools = SOURCE[SOURCE.index("REVIEWER_TOOLS="):].split("\n")[0]
+    for t in ("Edit", "Write", "NotebookEdit"):
+        assert t not in tools, f"{t} in --tools would make --add-dir a write grant"
+        assert t in _array("REVIEWER_DENY")
