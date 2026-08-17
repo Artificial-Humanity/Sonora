@@ -100,10 +100,42 @@ def test_the_reviewer_persona_is_told_to_emit_the_marker():
     assert "MUST-NOT-LAND" in persona
 
 
-def test_convergence_excludes_the_migrated_backlog():
-    """`branch_name!=""` drops the 9 migrated GitHub issues, which carry no branch_name and are
-    worked by nobody. Without it the loop can never see itself converge."""
-    assert 'branch_name!=""' in SOURCE
+def _open_filter():
+    """The convergence check itself, not merely a line that resembles it.
+
+    ⚠ The predecessor of this helper is why it exists. That test asserted `'branch_name!=""'
+    in SOURCE` — anywhere in the file — and stayed green after the convergence filter stopped
+    containing it, because an unrelated guard further down still did. A substring search over
+    a whole script does not pin the line you mean.
+    """
+    return next(ln for ln in SOURCE.splitlines() if ln.startswith("OPEN_FILTER="))
+
+
+def test_convergence_is_scoped_to_the_branch_under_review():
+    """Convergence must count THIS branch's issues and no others.
+
+    ⚠ The old guard was `branch_name!=""`, which excluded the migrated GitHub backlog only
+    while that backlog carried no branch at all. It now sits on `github-issues-fixes`, so the
+    clause that once dropped it would sweep it in — and since nobody works it until that
+    branch is rebased, the loop could never see itself converge.
+    """
+    flt = _open_filter()
+    assert "rev-parse --abbrev-ref HEAD" in flt, flt
+    assert 'branch_name!=""' not in flt, flt
+
+
+def test_no_query_names_the_removed_escalated_field():
+    """`escalated` is a value of `state`, not a field beside it (owner, 2026-08-17).
+
+    Not a style preference: the column is GONE, and PocketBase answers a filter naming it
+    with HTTP 400. A leftover `escalated=false` would not merely fail to narrow a query — it
+    makes the driver read the tracker as unreachable and stop.
+    """
+    for ln in SOURCE.splitlines():
+        code = ln.split("#", 1)[0]
+        if "state=" in code or code.startswith("OPEN_FILTER="):
+            assert "escalated=" not in code, ln
+    assert 'state=\\"open\\"' in _open_filter()
 
 
 def test_it_is_classified_in_the_pipeline_manifest():

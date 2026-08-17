@@ -141,13 +141,16 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
 ### Step 4 — increment first, then fix or rebut
 
 ⚠ **Before you read the issue, before you touch any code:** `agent_passes += 1` on every
-open, un-escalated issue you are taking on.
+issue you are taking on — which means every issue whose `state` is `open`. ⚠ **`escalated` is
+a value of `state`, not a flag beside it** (owner, 2026-08-17): `open`, `escalated` and
+`closed` are exclusive, so "open" already means "not parked, not resolved". There is no
+`escalated=false` to add, and adding one is an error — the field is gone.
 
 * **Incrementing first is the point, not a detail.** A pass abandoned halfway — the session
   dies, the context runs out, you give up — has still spent its attempt. Counting at the end
   would make a failed pass free, and "retry until it works" is the unbounded loop the cap
   exists to prevent. **A crashed pass costs a pass.**
-* **Increment only what you are actually taking on** — the open, un-escalated issues under the
+* **Increment only what you are actually taking on** — the `state="open"` issues under the
   `branch_name` you were handed. Not the whole tracker, not what you are deferring.
 * **Anything already at `3` is out of attempts.** Escalate it; do not pick it up a fourth
   time. A worker that increments a `3` to `4` has broken the cap.
@@ -219,18 +222,23 @@ escalated, or out of attempts, you push.
 
 ## 4. Escalation — your one exception
 
-Janis sets `escalated` as the normal path. **You may set it yourself, at any point, on any
-pass, for one case: an issue you can see needs a USER decision.** You hold the change and are
-often first to know that no amount of reviewing will settle something.
+Janis moves `state` to `escalated` as the normal path. **You may set it yourself, at any point,
+on any pass, for one case: an issue you can see needs a USER decision.** You hold the change and
+are often first to know that no amount of reviewing will settle something.
+
+⚠ **It is a `state`, so escalating is a TRANSITION, not a flag you raise beside the old one**
+(owner, 2026-08-17). Setting `state: "escalated"` is what takes the issue out of `open` — and
+out of every convergence check, re-review query and merge gate in one move, because they all
+read `state="open"` and nothing else.
 
 * ⚠ **A worker escalation takes the issue out of RE-REVIEW, not out of the RECORD** (owner,
   2026-08-14: *"there's really no reason both developer and reviewer should be blocked on any
   issues"*). It stops the remaining passes being spent on something no pass can decide, and
-  the flag is not free — Janis will not review it again.
+  it is not free — Janis will not review it again.
   * **But you may still comment on it, and so may Janis**, whenever either of you has new
     evidence bearing on the decision the owner owes. **Do not** re-attempt it, do not
     increment `agent_passes` on it, and do not close it. Recording is not re-litigating.
-  * ⚠ **THE FLAG EXISTS TO PREVENT ENDLESS WORK LOOPS. THAT IS ALL IT IS FOR** (owner,
+  * ⚠ **ESCALATION EXISTS TO PREVENT ENDLESS WORK LOOPS. THAT IS ALL IT IS FOR** (owner,
     2026-08-14: *"there was no design principle around issues being off limits to either"*).
     **It bounds attempts, not access.** Test any restriction you are about to infer against
     that purpose: if it stops a pass being spent, it belongs; if it only stops something being
@@ -244,13 +252,12 @@ often first to know that no amount of reviewing will settle something.
     measurement into a ban. **Bound what you measured; do not widen it.**
 * **Escalate when you know, not on pass 3.** An issue needing a decision does not become
   decidable by being reviewed again.
-* **Escalation is a flag, not an exit.** The work still pushes; the flag says a human owes an
-  answer. The test: escalation means *"this can live on `main` but I cannot choose"*. The
-  abort in AGENTS.md §1 means *"this must not land"* — and that one stops the push entirely
+* **Escalation is a parking space, not an exit.** The work still pushes; the state says a human
+  owes an answer. The test: escalation means *"this can live on `main` but I cannot choose"*.
+  The abort in AGENTS.md §1 means *"this must not land"* — and that one stops the push entirely
   and goes to the owner.
-* **What the owner reads is `escalated = true && state = "open"`.** Parking something merely
-  hard there is how that view stops being read — the same way a 25-issue afternoon made a
-  backlog nobody worked.
+* **What the owner reads is `state = "escalated"`.** Parking something merely hard there is how
+  that view stops being read — the same way a 25-issue afternoon made a backlog nobody worked.
 
 ### `user_decision` — the owner's answer, and it outranks you
 
@@ -261,25 +268,29 @@ raised, which is the whole thing escalation exists to prevent.
 * **Read it on every issue you pick up.** When it is set, that is the resolution — it outranks
   your own judgement on that issue and Janis's. Say in your comment that you are acting on it.
 * ⚠ **THE RETURN PATH IS ONE EDIT, NOT THREE — a hook does the rest** (2026-08-14). The owner
-  writes `user_decision`; a **server-side PocketBase hook** clears `escalated` and resets
-  `agent_passes` to `0` **in the same save**. The issue re-enters the loop with a fresh three
-  passes and the answer attached.
+  writes `user_decision`; a **server-side PocketBase hook** moves `state` from `escalated` back
+  to `open` and resets `agent_passes` to `0` **in the same save**. The issue re-enters the loop
+  with a fresh three passes and the answer attached.
   * It fires on **any** change to a non-empty decision, so a *revised* answer re-arms too.
     Clearing a decision does **not** re-arm — a withdrawal is not an answer.
+  * ⚠ **It moves ONLY `escalated` → `open`.** A decision written on a `closed` issue is a note,
+    and reopening resolved work on the strength of one would be a worse failure than the one
+    this hook fixes. The guard is new: when escalation was a boolean, clearing it on a closed
+    issue was harmless, so folding it into `state` is what made the check necessary.
   * **This was three manual edits until the owner pointed out that forgetting the counter
     reset silently strands the issue**: escalated at `agent_passes = 3`, it has no attempts
-    left, so clearing the flag alone gets it re-read, found out of attempts, and re-escalated.
+    left, so releasing it alone gets it re-read, found out of attempts, and re-escalated.
   * ⚠ **THE MECHANISM LIVES IN ANOTHER REPO, WHICH IS WHY A REVIEWER CANNOT CONFIRM IT.** The
     hook is `pocketbase/pb_hooks/issues_user_decision.pb.js` in the **AI-Lab-AMD** repo, deployed
-    deployed from the **AI-Lab-AMD** repo with its `scripts/deploy.sh pb-hooks` — ⚠ **that
-    is a sibling repo's script, not this one's**; Sonora has no `deploy.sh` at all. A review of *this* repo cannot see it — the install is
-    outside the working directory — so this paragraph is the only evidence a reviewer has, which
-    is exactly why it must not drift again.
-* ⚠ **`user_decision` set while `escalated` is still `true` should now be impossible**, since
-  the hook clears the flag in the same write. If you see it, the flag was re-set afterwards or
-  the hook is not deployed. Do not act on it and do not treat the issue as re-armed — **say
-  so**, because an answered issue nobody
-  picks up is the failure this field exists to end.
+    from there with its `scripts/deploy.sh pb-hooks` — ⚠ **that is a sibling repo's script, not
+    this one's**; Sonora has no `deploy.sh` at all. A review of *this* repo cannot see it — the
+    install is outside the working directory — so this paragraph is the only evidence a reviewer
+    has, which is exactly why it must not drift again.
+* ⚠ **`user_decision` set on an issue still in `state: escalated` should now be impossible**,
+  since the hook returns it to `open` in the same write. If you see it, the state was re-set
+  afterwards or the hook is not deployed. Do not act on it and do not treat the issue as
+  re-armed — **say so**, because an answered issue nobody picks up is the failure this field
+  exists to end.
 
 ---
 

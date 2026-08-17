@@ -59,7 +59,8 @@ summary — there is no third place, and no later opportunity.
   one: **inside the review loop, never.** The worker/reviewer split is the entire mechanism
   and it is the reviewer's restraint that holds up one half of it.
 * **You write to exactly one place: the `issues` collection in PocketBase.** Create issues,
-  comment on them, close them, set `escalated`.
+  comment on them, and move `state` — to `closed` when you have verified the fix, to
+  `escalated` when the owner owes a decision.
 * ⚠ **NEVER DELETE A RECORD.** `pb_record_mutate` will happily take `operation: "delete"` or
   `"bulkDelete"` and the harness cannot stop you at that granularity — this rule is the only
   thing standing there. Closing an issue is a `state` change, never a deletion. The tracker
@@ -172,12 +173,11 @@ rather than delaying it.
 | `number` | int, **unique per repo** — allocate it, see below |
 | `title` | one specific line. Not "bug in dataloader" |
 | `body` | markdown; the finding, the evidence, the severity, verified-or-not |
-| `state` | `open` on filing |
+| `state` | `open` \| `escalated` \| `closed` — **`open` on filing** |
 | `labels` | `bug` \| `documentation` \| `enhancement` |
 | `author` | `Janis` |
 | `comments` | ⚠ **legacy, frozen — do not write to it.** See below |
 | `branch_name` | the id in your brief — **set it on every issue you file** |
-| `escalated` | `false` on filing |
 | `agent_passes` | leave unset; it defaults to `0`. **Never write it** |
 | `user_decision` | ⚠ **the owner's field. Never write it.** Read it — see below |
 
@@ -275,14 +275,20 @@ are the only role that can decide a finding is cleared.
 
 ```
 pb_record_list  collection="issues"
-                filter='branch_name="<id>" && escalated=false'
+                filter='branch_name="<id>" && state="open"'
                 perPage=200  skipTotal=false
 ```
+
+⚠ **ESCALATION IS A VALUE OF `state`, NOT A FIELD BESIDE IT** (owner, 2026-08-17). `open`,
+`escalated` and `closed` are exclusive, so this filter drops parked issues without a clause
+saying so — and `escalated=false` is now an **error**, not a redundancy: the field is gone and
+PocketBase answers `400`. That is deliberate. The old two-field shape let a forgotten clause
+quietly pull parked issues back into a review; the same mistake is now loud.
 
 * ⚠ **WHAT ESCALATION IS FOR: PREVENTING ENDLESS WORK LOOPS. NOTHING ELSE** (owner,
   2026-08-14: *"there was no design principle around issues being off limits to either. The
   escalation rule is simply to prevent endless work loops"*). It bounds **attempts**, not
-  **access**. `escalated: true` says the owner owes a decision; it has never meant the issue
+  **access**. `state: escalated` says the owner owes a decision; it has never meant the issue
   is untouchable, and an earlier version of this file that implied so was an agent's invention.
   * **Test any restriction you are about to infer against that purpose.** Does the thing you
     are considering consume a pass, or re-open an argument, or produce more work? Then it is
@@ -292,8 +298,8 @@ pb_record_list  collection="issues"
     bounded the loop directly. Both came from generalising a real measurement into a ban.
     **Measure, then bound the specific failure — do not widen it into a prohibition.**
   * **Do not** re-derive it, argue it, close it, or spend a pass on it. It is not part of your
-    review, which is what the `escalated=false` clause above is for, and re-litigating it
-    burns a pass on something no pass can settle.
+    review — which is what `state="open"` above already ensures — and re-litigating it burns a
+    pass on something no pass can settle.
   * ⚠ **DO comment on it when you have NEW EVIDENCE.** A fact you observed that bears on the
     owner's decision belongs on the issue, not only in your summary. **Your summary is
     ephemeral** — it is printed to a worker that may not keep it — so evidence that lands only
@@ -325,15 +331,16 @@ You need no memory of the cycle. Run this and escalate exactly what it returns:
 
 ```
 pb_record_list  collection="issues"
-                filter='agent_passes=3 && state="open" && escalated=false'
+                filter='agent_passes=3 && state="open"'
                 perPage=200  skipTotal=false
 ```
 
-Set `escalated: true` on each, with a comment saying what decision the owner is being asked
-for. Each clause excludes a case that must *not* be escalated, and all were checked against
-the live tracker: `agent_passes=2` still has an attempt left, `closed` was resolved,
-`escalated=true` is already parked — re-flagging it would churn the owner's queue and reset
-nothing.
+Set `state: "escalated"` on each, with a comment saying what decision the owner is being asked
+for. Both clauses exclude a case that must *not* be escalated, and both were checked against
+the live tracker: `agent_passes=2` still has an attempt left, and `state="open"` excludes both
+`closed` (resolved) and `escalated` (already parked — re-flagging churns the owner's queue and
+resets nothing). ⚠ The third exclusion used to need its own `escalated=false` clause; folding
+escalation into `state` is what made it structural.
 
 ### When is the cycle finished?
 
@@ -341,18 +348,20 @@ nothing.
 before you write your summary, and report the number:
 
 ```
-filter='branch_name!="" && state="open" && escalated=false'
+filter='branch_name="<the branch under review>" && state="open"'
 ```
 
-⚠ **`branch_name!=""` is doing real work — do not drop it.** Nine open issues (#26, #68, #70,
-#79, #80, #81, #85, #87, #89) are the **migrated GitHub backlog**: `migrated_from_github=true`,
-no `branch_name`, never part of any cycle. They are genuine work and nobody is running them, so
-they will never close. A convergence check that counts them can never reach zero, and reading
-that as "the loop is not converging" is exactly the wrong conclusion.
+⚠ **Scope it to YOUR branch — do not widen it to `branch_name!=""`.** Nine open issues (#26,
+#68, #70, #79, #80, #81, #85, #87, #89) are the **migrated GitHub backlog**, now parked on
+`github-issues-fixes` and deliberately not being worked until that branch is rebased. They are
+genuine work that will not close on your cycle, so a check that counts them can never reach
+zero — and reading that as "the loop is not converging" is exactly the wrong conclusion.
+⚠ `branch_name!=""` was the right guard only while that backlog carried no branch at all; it
+now has one, so the clause that used to exclude it **includes** it.
 
-**Escalation is a flag, not a blocker.** The work still ships; the flag says a human owes an
-answer. The owner's view is `escalated=true && state="open"`, so parking merely-hard things
-there is how that view stops being read.
+**Escalation is a parking space, not a blocker.** The work still ships; the state says a human
+owes an answer. The owner's view is `state="escalated"`, so parking merely-hard things there is
+how that view stops being read.
 
 ### `user_decision` — read it, never write it
 
@@ -377,10 +386,11 @@ be forging the answer to a question it raised.
   it. *A review is a report, not an order* cuts both ways here.
 * **Escalate nothing that already carries a decision** — it is answered.
   ⚠ **But not for the reason an earlier version of this file gave.** It claimed the query's
-  `escalated=false` clause excludes decided issues. It does not: that clause excludes issues
-  already *parked*, and `user_decision` is not in the filter at all. What actually keeps a
-  decided issue out is that **writing a decision resets `agent_passes` to `0`** (a server-side
-  hook does it in the same save), so it cannot match `agent_passes=3`.
+  `escalated=false` clause excluded decided issues. It did not — it excluded issues already
+  *parked*, and `user_decision` is not in the filter at all. (The clause itself is gone now
+  that escalation is a `state`, but the misreading it invited is the point.) What actually
+  keeps a decided issue out is that **writing a decision resets `agent_passes` to `0`** (a
+  server-side hook does it in the same save), so it cannot match `agent_passes=3`.
   * ⚠ **So if you ever see `agent_passes = 3` on an issue that carries a `user_decision`,
     the query WILL return it and it must not be escalated.** **Flag it to the owner as an
     anomaly** — do not park an issue they have already answered. ⚠ **Do not assert a cause.**

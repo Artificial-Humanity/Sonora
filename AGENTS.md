@@ -149,7 +149,7 @@ decision — that is the other way out, and it does not wait for the count.
 | writes to `main` | **yes — the only role that does** | **never** |
 | **opens** issues | not as part of the loop | **yes — this is its output** |
 | **closes** issues | **never** | **yes — only it decides a finding is cleared** |
-| sets `escalated` | on an existing issue, only for "this needs a user decision" | **yes — the normal path** |
+| sets `state: escalated` | on an existing issue, only for "this needs a user decision" | **yes — the normal path** |
 | holds the count | **yes — increments `agent_passes` first thing each pass** | no |
 
 * ⚠ **THE WORKER NEVER CLOSES AN ISSUE** (owner, 2026-08-13). It fixes, or it argues, and it
@@ -348,34 +348,46 @@ the simple version that holds until then. Do not build tooling on its shape.
     reset on purpose — do not "correct" it and do not restore what you think it should have
     been. **The record is the count**; that is the entire reason it stopped living in a brief.
     * **This is the return path out of escalation, and it is now ONE edit.** The owner writes
-      `user_decision`; a **server-side hook clears `escalated` and resets the counter in the
-      same save**, and the issue re-enters with the answer attached. It was three manual edits
-      until the owner observed that forgetting the reset strands the issue silently — parked at
-      `agent_passes = 3`, it has no attempts left, so clearing the flag alone gets it re-read,
-      found out of attempts, and re-escalated.
+      `user_decision`; a **server-side hook moves `state` from `escalated` back to `open` and
+      resets the counter in the same save**, and the issue re-enters with the answer attached.
+      It was three manual edits until the owner observed that forgetting the reset strands the
+      issue silently — parked at `agent_passes = 3`, it has no attempts left, so releasing it
+      alone gets it re-read, found out of attempts, and re-escalated.
+      ⚠ **The hook releases ONLY `escalated` → `open`.** A decision written on a `closed` issue
+      is a note; reopening resolved work on the strength of one would be worse than the failure
+      the hook exists to fix. That guard became necessary when escalation stopped being a
+      boolean — clearing a flag on a closed issue was harmless, moving a state is not.
       ⚠ **THE MECHANISM LIVES IN ANOTHER REPO, WHICH IS WHY A REVIEWER CANNOT CONFIRM IT.** The
-      hook is `pocketbase/pb_hooks/issues_user_decision.pb.js` in the **AI-Lab-AMD** repo, deployed
-      deployed from the **AI-Lab-AMD** repo with its `scripts/deploy.sh pb-hooks` — ⚠ **that
-      is a sibling repo's script, not this one's**; Sonora has no `deploy.sh` at all. A review of *this* repo cannot see it — the install is
-      outside the working directory — so this paragraph is the only evidence a reviewer has, which
-      is exactly why it must not drift again.
+      hook is `pocketbase/pb_hooks/issues_user_decision.pb.js` in the **AI-Lab-AMD** repo,
+      deployed from there with its `scripts/deploy.sh pb-hooks` — ⚠ **that is a sibling repo's
+      script, not this one's**; Sonora has no `deploy.sh` at all. A review of *this* repo cannot
+      see it — the install is outside the working directory — so this paragraph is the only
+      evidence a reviewer has, which is exactly why it must not drift again.
     * **Incrementing is the worker's; RESETTING is only the owner's.** A worker that lowers a
       counter, or sets one to a value it thinks fair, is the cap deleting itself.
 
-* **ESCALATION — `escalated: true` means the owner has to decide.**
+* **ESCALATION — `state: "escalated"` means the owner has to decide.**
+  * ⚠ **IT IS A VALUE OF `state`, NOT A FIELD BESIDE IT** (owner, 2026-08-17). The three values
+    are `open`, `escalated` and `closed`, and they are exclusive. That was a deliberate fold of
+    an earlier `escalated` boolean, for two reasons: it makes `closed + escalated` — a
+    combination that meant nothing — **unrepresentable**, and it removes the `escalated=false`
+    clause from every query in this lane. That clause was load-bearing in six places and
+    silently wrong if forgotten in any one of them; now the exclusion is structural, and a
+    filter that still names the old field gets a `400` rather than quietly counting parked
+    issues.
   * ⚠ **THE REVIEWER SETS IT. That is the normal path** (owner, 2026-08-13) — it flags what
     the query below returns, as part of whichever review follows the third fix pass.
   * ⚠ **THE RULE IS A QUERY, NOT A JUDGEMENT** (owner, 2026-08-13). Because the worker counts
     its own attempts, the reviewer needs no memory of the cycle to know what to escalate:
 
     ```
-    agent_passes = 3   AND   state = "open"   AND   escalated = false     →  escalate it
+    agent_passes = 3   AND   state = "open"     →  escalate it
     ```
 
-    Each clause excludes a case that must not be escalated, and all were checked against the
-    live tracker: `agent_passes = 2` still has an attempt left; `closed` was resolved;
-    `escalated = true` was already parked (re-flagging it would churn the owner's queue and
-    reset nothing). **Run the filter, escalate what it returns.**
+    Both clauses exclude a case that must not be escalated, and both were checked against the
+    live tracker: `agent_passes = 2` still has an attempt left; and `state = "open"` excludes
+    `closed` (resolved) *and* `escalated` (already parked — re-flagging churns the owner's
+    queue and resets nothing). **Run the filter, escalate what it returns.**
     * **This is what the counter bought.** A one-shot reviewer with no knowledge of which pass
       it is on reaches the same answer as a session that watched the whole cycle. The decision
       moved out of memory and onto the record — which is what made the move safe.
@@ -384,9 +396,9 @@ the simple version that holds until then. Do not build tooling on its shape.
       and writes only its own field. **That is the design, not a division of labour to tidy up
       later** — a role that could do all three could also undo the cap by itself.
   * **The worker's one exception: an issue it can see needs a USER decision.** It may set
-    `escalated: true` itself, at any point, on any pass — it holds the change and is often
+    `state: "escalated"` itself, at any point, on any pass — it holds the change and is often
     first to know that no amount of reviewing will settle something. ⚠ **A worker escalation
-    takes the issue OUT of re-review** (step 5): that is the point, and it means the flag is
+    takes the issue OUT of re-review** (step 5): that is the point, and it means escalating is
     not free. **Escalate when you know, not on pass 3** — an issue needing a decision does not
     become decidable by being reviewed again.
   * ⚠ **ESCALATION EXISTS TO PREVENT ENDLESS WORK LOOPS, AND THAT IS ITS WHOLE PURPOSE**
@@ -406,37 +418,39 @@ the simple version that holds until then. Do not build tooling on its shape.
       instance of a parked issue's own hazard, judged itself forbidden to record it, and put
       it in an ephemeral summary where it was nearly lost. **Bound the specific failure you
       measured. Do not widen it into a rule.**
-  * **Escalation is a flag, not an exit.** The work still pushes; the flag says a human owes an
-    answer. *Distinct* from the abort above, which stops the push entirely. The test:
-    escalation means **"this can live on `main` but I cannot choose"**; the abort means
+  * **Escalation is a parking space, not an exit.** The work still pushes; the state says a
+    human owes an answer. *Distinct* from the abort above, which stops the push entirely. The
+    test: escalation means **"this can live on `main` but I cannot choose"**; the abort means
     **"this must not land."**
-  * **What the owner reads:** `escalated = true && state = "open"`. Filing something there that
-    merely looks hard is how that view stops being read — the same way the 25-issue afternoon
-    made a backlog nobody worked.
+  * **What the owner reads:** `state = "escalated"`. Filing something there that merely looks
+    hard is how that view stops being read — the same way the 25-issue afternoon made a backlog
+    nobody worked.
   * ⚠ **A DECISION THAT HAS BEEN ACTED ON MUST BE CLOSED** (2026-08-17). The reviewer closes
     it, citing the decision. Obeying an answer is not resolving it: until this was written,
     *"the owner decided"* had **no path to `state: closed`**, so a decided issue stayed open
     permanently — measured on #97 and #104. An "accept as-is" decision strands most easily,
     because no commit will ever reference it.
   * **THE CYCLE IS FINISHED when every issue it produced is closed, escalated, or out of
-    attempts** — `branch_name!="" && state="open" && escalated=false` returns nothing.
-    ⚠ **The `branch_name!=""` clause is load-bearing**: the nine migrated GitHub issues carry no
-    `branch_name`, were never part of a cycle, and nobody is working them, so a check that counts
-    them never reaches zero and misreads a settled loop as a stuck one.
+    attempts** — `branch_name="<the branch>" && state="open"` returns nothing.
+    ⚠ **Scope it to the branch under review.** The nine open migrated GitHub issues are parked
+    on `github-issues-fixes` and deliberately unworked until that branch is rebased, so a check
+    that counts them never reaches zero and misreads a settled loop as a stuck one. ⚠ The old
+    guard was `branch_name!=""`, which worked only while that backlog carried **no** branch; it
+    now carries one, so the clause that used to exclude it would include it.
   * ⚠ **THE ANSWER COMES BACK IN `user_decision`, AND NO AGENT MAY WRITE IT** (owner,
     2026-08-14). It is the owner's field exactly as an `agent_passes` reset is theirs — an
     agent writing there forges the answer to a question it raised, which is the one thing
     escalation exists to prevent. **Both roles read it; neither writes it.** When set, it
     outranks the worker's judgement and the reviewer's findings on that issue.
     * **The return path is ONE edit** — write `user_decision`, and the hook described above
-      clears `escalated` and resets `agent_passes` to `0` in the same save. The issue re-enters
-      with a fresh three passes and the answer attached.
-    * ⚠ **A decision sitting on a still-escalated issue should therefore be IMPOSSIBLE**, and
-      if you see one the hook is not deployed or the flag was re-set afterwards. Do not act on
-      it; say so, because an answered issue nobody picks up is the exact failure the field
-      exists to end.
-    * **Not conditionally gated, deliberately.** The field is writable regardless of
-      `escalated` (owner, 2026-08-14: *"let's just leave it enabled"*). PocketBase cannot
+      returns `state` to `open` and resets `agent_passes` to `0` in the same save. The issue
+      re-enters with a fresh three passes and the answer attached.
+    * ⚠ **A decision sitting on an issue still in `state: escalated` should therefore be
+      IMPOSSIBLE**, and if you see one the hook is not deployed or the state was re-set
+      afterwards. Do not act on it; say so, because an answered issue nobody picks up is the
+      exact failure the field exists to end.
+    * **Not conditionally gated, deliberately.** The field is writable in any `state` (owner,
+      2026-08-14: *"let's just leave it enabled"*). PocketBase cannot
       conditionally enable a field in its console anyway — API rules are per-operation, not
       per-field, and superusers bypass them, which is what agents authenticate as. Gating it
       would also have been a third invented prohibition after "the reviewer never files" and

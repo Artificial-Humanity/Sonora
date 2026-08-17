@@ -52,9 +52,12 @@ STOPS ON, in order of precedence:
   3. convergence (nothing open)         7. the review ceiling
   4. the spend ceiling
 
-CONVERGENCE means: branch_name!="" && state="open" && escalated=false  ->  empty.
-⚠ The branch_name!="" clause excludes the 9 migrated GitHub issues, which carry no branch_name,
-were never part of a cycle, and nobody is working — a check counting them never reaches zero.
+CONVERGENCE means: branch_name="<the current branch>" && state="open"  ->  empty.
+⚠ There is no `escalated=false` clause. Escalation is a VALUE OF `state`, not a flag beside it
+(owner, 2026-08-17) — an escalated issue is not `open`, so it leaves this count on its own.
+⚠ Scoped to the CURRENT BRANCH, which is what keeps another branch's backlog out of this
+cycle's gate: the 48 migrated GitHub issues sit on `github-issues-fixes` and nobody is working
+them, and a check that counted them would never reach zero.
 USAGE
 }
 
@@ -118,7 +121,10 @@ except Exception:
 PY
 }
 
-OPEN_FILTER="branch_name=\"$(git rev-parse --abbrev-ref HEAD)\" && state=\"open\" && escalated=false"
+# ⚠ No `escalated=false` clause: escalation is a value of `state` (owner, 2026-08-17), so an
+# escalated issue is already not `open`. The clause is not merely redundant — it would be a
+# FILTER ERROR now, since the field it named no longer exists.
+OPEN_FILTER="branch_name=\"$(git rev-parse --abbrev-ref HEAD)\" && state=\"open\""
 
 check_stop() {
   if [[ -e "$STOPFILE" ]]; then
@@ -218,8 +224,9 @@ You are **$DEVELOPER**, working in \`$REPO_ROOT\` on range \`$RANGE\`. Run by
 \`scripts/review_cycle.sh\`, unattended — **there is no one to ask**, so where you would
 normally check, act on your best reading and say so in the issue comment.
 
-Issues to address: those under branch_name(s) \`$(IFS=,; echo "${REVIEW_TIPS[*]}")\` that are
-open and not escalated.
+Issues to address: those under branch_name(s) \`$(IFS=,; echo "${REVIEW_TIPS[*]}")\` whose
+\`state\` is \`open\`. \`escalated\` is a third value of \`state\`, so those are already excluded —
+you do not filter them out, and you do not work them.
 
 1. **Increment \`agent_passes\` by one on each issue you take on, FIRST**, before any work.
    The driver verifies this happened and stops if it did not.
@@ -250,7 +257,7 @@ open and not escalated.
   # ⚠ THE CAP IS ONLY REAL IF THE COUNTER MOVED. A worker that crashed or declined leaves the
   # counters untouched, and re-running would retry forever without ever spending an attempt —
   # the unbounded loop the cap exists to prevent, reintroduced by the thing automating it.
-  AFTER_SUM="$(pb 'branch_name!="" && state="open" && escalated=false && agent_passes=0')"
+  AFTER_SUM="$(pb 'branch_name!="" && state="open" && agent_passes=0')"
   if [[ "$AFTER_SUM" != "unreachable" && "$BEFORE_SUM" != "unreachable" ]]; then
     if [[ "$AFTER_SUM" != "0" && "$AFTER_SUM" == "$BEFORE_SUM" ]]; then
       say "worker did not advance agent_passes on any open issue — stopping rather than

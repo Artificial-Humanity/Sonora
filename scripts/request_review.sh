@@ -153,7 +153,7 @@ TIP="${COMMITS%%$'\n'*}"
 # fix, which is the one that decides whether anything gets escalated at all.
 if [[ "$PASS" -gt 4 ]]; then
   die "--pass $PASS exceeds four reviews, which is what three fix passes require.
-     If issues are still open and not escalated after that, the cap is not doing its job —
+     If issues are still open after that, the cap is not doing its job —
      check agent_passes on them rather than adding another review."
 fi
 

@@ -56,6 +56,13 @@ pbq() {  # $1 = python body operating on `call`/`TOK`; remaining args become ARG
   # rejecting the *title* for exceeding 300 characters, because the title it was handed was
   # the python source. An off-by-one in argument order that reports as a validation error on
   # an unrelated field.
+  # ⚠⚠ THE HEREDOC IS UNQUOTED (`<<PY`, not `<<'PY'`) — it has to be, because `${_body}` is
+  # interpolated into it. So the shell expands its whole contents, and BACKTICKS INSIDE THIS
+  # PYTHON ARE COMMAND SUBSTITUTION, comments included. Measured: a markdown-style `state` in
+  # a `#` comment ran `state` as a command and deleted the comment line, which surfaced as
+  # `changeset.sh: line 60: state: command not found` followed by an IndentationError from
+  # python — two errors, neither naming the backtick, on a line that only held prose.
+  # Use plain words in comments here. Same for `$` and `\` in anything not meant to expand.
   local _body="$1"; shift
   python3 - "$REPO_SLUG" "$BASE" "$@" <<PY
 import json, os, socket, sys, urllib.parse, urllib.request, urllib.error, datetime
@@ -84,8 +91,12 @@ def cs_by_number(n):
                 q('repo="%s" && number=%s' % (REPO, n)), token=TOK)
     return (r.get("items") or [None])[0]
 def open_issue_count(branch):
+    # No escalated=false clause -- escalation is a VALUE of state (owner, 2026-08-17), so an
+    # escalated issue is not open and drops out here on its own. Same exclusion the old
+    # two-clause filter made by hand, now structural: the merge gate below cannot be made to
+    # count escalated issues by forgetting a clause.
     _, r = call('/api/collections/issues/records?perPage=1&skipTotal=false&filter=' +
-                q('branch_name="%s" && state="open" && escalated=false' % branch), token=TOK)
+                q('branch_name="%s" && state="open"' % branch), token=TOK)
     return r.get("totalItems", 0)
 ${_body}
 PY
@@ -130,13 +141,13 @@ else:
     if not cs: sys.exit("no changeset #%s" % n)
 openc = open_issue_count(cs["branch"])
 _, esc = call("/api/collections/issues/records?perPage=100&skipTotal=false&sort=number&fields=number,title&filter=" +
-              q("branch_name=\"%s\" && state=\"open\" && escalated=true" % cs["branch"]), token=TOK)
+              q("branch_name=\"%s\" && state=\"escalated\"" % cs["branch"]), token=TOK)
 _, allr = call("/api/collections/issues/records?perPage=200&skipTotal=false&fields=number&filter=" +
                q("branch_name=\"%s\"" % cs["branch"]), token=TOK)
 print("changeset #%s  [%s]  %s" % (cs["number"], cs["state"], cs["title"]))
 print("  %s -> %s   head %s" % (cs["branch"], cs["base"], (cs.get("head_sha") or "")[:7]))
 print("  issues filed : %s" % allr.get("totalItems", 0))
-print("  open, unescalated : %s   %s" % (openc, "CONVERGED" if openc == 0 else "<- must reach 0 to merge"))
+print("  open : %s   %s" % (openc, "CONVERGED" if openc == 0 else "<- must reach 0 to merge"))
 print("  escalated, awaiting the owner : %s %s" % (esc.get("totalItems",0),
       [i["number"] for i in (esc.get("items") or [])]))
 ' "${NUM:-}"
@@ -147,8 +158,10 @@ merge)
   [[ -z "$(git status --porcelain)" ]] || die "working tree is dirty — commit or stash first."
   # ⚠ Convergence is checked SERVER-SIDE before anything touches git, so a stale local view
   # cannot authorise a merge. Escalated issues do NOT block: escalation means "this can live
-  # on main but a human must choose" (AGENTS.md §1) — blocking on them would turn a flag into
-  # a gate and strand work waiting on an answer that was never about landing.
+  # on main but a human must choose" (AGENTS.md §1) — blocking on them would turn a parked
+  # question into a gate and strand work waiting on an answer that was never about landing.
+  # Since 2026-08-17 that exclusion is structural rather than a clause someone remembered:
+  # `escalated` is a value of `state`, so an escalated issue is simply not `open`.
   READY="$(pbq '
 n = ARGS[0]
 cs = cs_by_number(n)
@@ -158,7 +171,7 @@ c = open_issue_count(cs["branch"])
 print("%s|%s|%s" % (c, cs["branch"], cs["base"]))
 ' "$NUM")" || die "$READY"
   IFS='|' read -r OPENC BRANCH CSBASE <<< "$READY"
-  [[ "$OPENC" == "0" ]] || die "changeset #$NUM has $OPENC open unescalated issue(s). Converge first:
+  [[ "$OPENC" == "0" ]] || die "changeset #$NUM has $OPENC open issue(s). Converge first:
      scripts/review_cycle.sh   (or fix and re-review by hand)"
   LOCAL_BASE="${CSBASE#origin/}"
   echo "merging $BRANCH into $LOCAL_BASE, locally"
