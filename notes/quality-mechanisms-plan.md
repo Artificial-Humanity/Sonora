@@ -23,6 +23,87 @@ not code that was wrong. Those two facts decide everything that follows.
 
 ---
 
+## M0 — Split `notes/` into `notes/` and `docs/`
+
+Owner, 2026-08-17: the established pattern in **Prosodia** is two directories, and this repo
+should match it.
+
+| | |
+|---|---|
+| **`docs/`** | **policy and canon.** Ratified, settled, standing. Other work must conform to it. |
+| **`notes/`** | **in-flight and transient.** Plans, proposals, campaigns, current state, research. |
+
+### Why this belongs in a quality plan rather than beside it
+
+It is not filing. The dominant defect class here is a document disagreeing with the code, and
+a large part of what makes that hard to spot is that **a reader cannot tell which documents are
+binding.** `direction-contract-v3-proposal.md` opens "Nothing here is ratified and nothing here
+is built"; `markup-schema-brief.md` is ratified v0.1. Both are `notes/*.md`, both are scanned by
+the same gate, and only the prose inside distinguishes them. A reviewer who cites the first as
+authority is making an error the directory structure invited.
+
+It also sharpens M1: a claim in `docs/` is a claim the repo stands behind, and that is a
+stronger reason to check it than "someone wrote a number down".
+
+### The classification
+
+**`docs/` — policy and canon (16)**
+
+`ARCHITECTURE.md` (says "_Canon._" in its own subtitle) · `audiobook-corpus-policy.md` ·
+`casting-attribute-norms-brief.md` · `direction-interface-brief.md` (DECIDED 2026-07-30) ·
+`markup-schema-brief.md` (RATIFIED v0.1) · `model-decisions.md` ("the settled answers") ·
+`training-sources.md` (SSOT) · `training-operations.md` (runbook) · `tts-engine-onboarding.md`
+("ratified pattern") · `vat-channels.md` · `synthesis-pipeline.md` · `book-prose-lane.md` ·
+`teacher-tts-audition-shortlist.md` (the licence authority) · `data-mirrors.md` ·
+`high-ambition-index.md` + the five `high-ambition-*.md`
+
+**`notes/` — in-flight and transient (11)**
+
+`STATE.md` · `todo.md` · `quality-gap-plan.md` · `quality-mechanisms-plan.md` ·
+`direction-contract-v3-proposal.md` ("PROPOSAL … nothing here is ratified") ·
+`delivery-mix-campaign.md` · `local-vs-runpod-decision.md` ("measure it during the next run") ·
+`dataset-landscape.md` ("evaluates CANDIDATES") · `matcha-siblings-study.md` ·
+`teacher-training-data.md` · `README.md` (the index; `docs/` gets its own)
+
+Six are genuine judgement calls rather than readings — the five high-ambition files plus
+`data-mirrors.md`. They are placed in `docs/` because other work is expected to conform to
+them ("singing is ambition 7" is cited as authority), not because the prose declares it. A
+file move is cheap; these are the ones to revisit first if the line feels wrong in use.
+
+### ⚠ The breakage surface, measured
+
+| | |
+|---|---|
+| absolute `notes/<file>.md` references across the tree | **190** |
+| relative intra-`notes/` links (`[STATE.md](STATE.md)`) | **224** |
+
+The second number is the dangerous one. Those links are bare filenames that resolve **because
+every file sits in one directory**, and the split is exactly what stops that being true. They
+do not error — they render, and go nowhere. This is the silent-degrade shape the whole plan is
+about, so the move must not be done by hand.
+
+### The work
+
+1. Move the files, rewriting both link forms in the same commit.
+2. **A link checker, and it is the durable part.** Every relative link in `docs/` and `notes/`
+   must resolve to a file on disk. Without it the split trades one invisible failure for
+   another, and this is the mechanism that makes the split *safe* rather than merely tidy.
+   ⚠ It must skip `[[double-bracket]]` names — those are agent memory slugs, deliberately not
+   repo files, and `notes/README.md` already says so.
+3. `docs()` in the doc-claims gate scans both directories. It currently hardcodes `notes/`;
+   after the split, a canon file would silently drop out of the gate's view — which is the
+   `.gitignore` failure of 2026-08-17 with a different mechanism.
+4. `docs/README.md` as the canon index; `notes/README.md` keeps the in-flight map. The existing
+   rules there (each file owns its subject, superseded narrative deleted not archived,
+   `lowercase-kebab-case.md`) carry over to both.
+
+### Acceptance
+
+Moving a file without fixing its inbound links must turn the checker red. Proven the same way
+M1 was: by doing it and watching it fail.
+
+---
+
 ## M1 — Doc claims about the repo's own constants
 
 ### The measurement that reshaped this item
@@ -213,9 +294,29 @@ existing source-string test is converted, proving the helper is general and not 
 
 ## Sequencing
 
-M1 first: it attacks the largest measured class with machinery that already exists and is
-already trusted. M2 second: it is the largest *runtime* class and the patterns are proven but
-scattered. M3 and M4 are small, independent, and can land in either order.
+**M1 is done** (`b0dafdd`). It attacked the largest measured class with machinery that already
+existed and was already trusted.
 
-Each is its own branch and its own review under `workflow/WORKFLOW.md`. None of them is
-blocked by another.
+**M0 next, and it has to precede M2–M4** rather than sit beside them: it moves the files the
+doc-claims gate reads, so running it after M2 would mean re-deriving M2's path checks against a
+tree that had just changed underneath them. It is also the only item here with a large
+mechanical surface (414 references), which is a second reason not to have it in flight
+alongside anything else.
+
+M2 after that: the largest *runtime* class, patterns proven but scattered. M3 and M4 are small,
+independent, and can land in either order.
+
+Each is its own branch and its own review under `workflow/WORKFLOW.md`.
+
+## What M1 changed about the rest of this plan
+
+Two things, both worth carrying forward:
+
+* **The measurement went first and reordered the work.** The proposal was a file-set widening;
+  the measurement said that buys zero and the registry was the real item. Do this for M0 and M2
+  as well — M0's 224 relative links were found the same way and are the reason it needs a
+  checker rather than a careful afternoon.
+* **A mutation battery found a test of mine that passed for the wrong reason** — a scope that
+  matched on letter case, so the assertion under it never ran. That is the third false-green of
+  exactly this shape in two days. **Every mechanism in this plan ships with its mutations run
+  one at a time**, which is the only step that has reliably found this class.
