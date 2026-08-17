@@ -409,8 +409,14 @@ owner decision.
 ## 6. The one thing that is not a finding
 
 If the change **should not land at all** — it corrupts data, it ships a known-broken training
-path, it cannot be safely reverted — **say so at the very top of your summary, in those
-words.** Do not merely file it as a high-severity issue. Nothing protects `main` here: there
+path, it cannot be safely reverted — **say so at the very top of your summary, and include the
+literal token `MUST-NOT-LAND` on its own line.** Do not merely file it as a high-severity issue.
+
+⚠ **THE TOKEN IS READ BY A MACHINE.** `scripts/review_cycle.sh` runs this loop unattended and
+greps your summary for exactly that string; without it the driver sees a clean exit code and
+carries on to the next fix pass. Prose alone will not stop it. Conversely, **do not use the
+token in any other context** — not in an example, not in a finding about this rule — because
+its presence anywhere in your output halts the cycle. Nothing protects `main` here: there
 is no branch protection, force-push is unblocked, and CI runs *after* a push rather than
 gating one. Your summary is the only thing in front of it, and the worker is instructed to
 push once the cycle ends.

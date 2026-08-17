@@ -176,6 +176,13 @@ NOT_ORCHESTRATORS = {
         "Preserved audition provenance — added for exactly that reason in 4e87241. Invokes a "
         "toolchain script outside this repo."
     ),
+    "scripts/review_cycle.sh": (
+        "Drives the code-review loop (AGENTS.md §1) to convergence: alternates request_review.sh "
+        "with a `claude -p` worker until every issue this cycle produced is closed, escalated or "
+        "out of attempts. Same lane as request_review.sh and the same reasoning — it touches no "
+        "stage and produces no artifact under /data. ⚠ It NEVER pushes, and denies `git push` to "
+        "the worker it spawns."
+    ),
     "scripts/request_review.sh": (
         "Runs the code-review loop (AGENTS.md §1), not the data pipeline: it invokes `claude -p` "
         "against Personas/REVIEWER.md and blocks. It touches no stage, produces no artifact under "
