@@ -121,10 +121,57 @@ except Exception:
 PY
 }
 
+pb_passes() {  # $1 = branch -> prints SUM of agent_passes over its issues, or "unreachable"
+  # ⚠ A SUM, NOT A COUNT, AND OVER EVERY STATE. This is the instrument for "did the worker
+  # spend an attempt?", and both properties are load-bearing:
+  #
+  #   * a SUM sees 1->2 on an issue that was never at zero; a count of `agent_passes=0` does
+  #     not, so a worker that only ever re-attempts already-tried issues looks idle;
+  #   * ALL STATES, because the worker may ESCALATE. An escalated issue leaves `state="open"`,
+  #     so a sum restricted to open issues can FALL across a pass that did real work — and the
+  #     guard below would read that as a stall and stop the loop.
+  #
+  # Nothing in this loop lowers `agent_passes` (only the owner resets, and the owner is not in
+  # it), so across a single worker run this is monotonic: it rises iff the worker incremented.
+  python3 - "$1" <<'PY'
+import json, os, socket, sys, urllib.parse, urllib.request
+socket.setdefaulttimeout(15)
+try:
+    pb = json.load(open(os.path.expanduser("~/.claude.json")))["mcpServers"]["pocketbase"]
+    env = pb.get("env", {}); base = env.get("PB_URL", "http://127.0.0.1:8090")
+    def call(path, method="GET", body=None, token=None):
+        r = urllib.request.Request(base + path, method=method)
+        if token: r.add_header("Authorization", token)
+        d = None
+        if body is not None:
+            d = json.dumps(body).encode(); r.add_header("Content-Type", "application/json")
+        with urllib.request.urlopen(r, d) as x: return json.loads(x.read() or b"{}")
+    tok = call("/api/collections/_superusers/auth-with-password", "POST",
+               {"identity": env.get("PB_EMAIL"), "password": env.get("PB_PASSWORD")})["token"]
+    q = urllib.parse.quote('branch_name="%s"' % sys.argv[1].replace('"', ""))
+    # ⚠ perPage is 500, not the API default of 10 — a truncated page silently under-sums and
+    # the guard then sees a stall that never happened.
+    r = call("/api/collections/issues/records?perPage=500&skipTotal=false&fields=agent_passes"
+             "&filter=" + q, token=tok)
+    items = r.get("items") or []
+    if r.get("totalItems", 0) > len(items):
+        raise RuntimeError("paged: %d of %d" % (len(items), r["totalItems"]))
+    print(sum(int(i.get("agent_passes") or 0) for i in items))
+except Exception:
+    print("unreachable")
+PY
+}
+
+# ⚠ RESOLVED ONCE, HERE, and read by everything below — the convergence filter and the
+# counter guard must be talking about the same branch, and two separate `rev-parse` calls are
+# two things to keep in step. `set -u` is on, so a use before this line is a hard failure
+# rather than an empty filter; that is the safer half of the trade and it has bitten before.
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+
 # ⚠ No `escalated=false` clause: escalation is a value of `state` (owner, 2026-08-17), so an
 # escalated issue is already not `open`. The clause is not merely redundant — it would be a
 # FILTER ERROR now, since the field it named no longer exists.
-OPEN_FILTER="branch_name=\"$(git rev-parse --abbrev-ref HEAD)\" && state=\"open\""
+OPEN_FILTER="branch_name=\"$BRANCH\" && state=\"open\""
 
 check_stop() {
   if [[ -e "$STOPFILE" ]]; then
@@ -216,7 +263,7 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   # --- fix pass ------------------------------------------------------------
   check_stop "fix pass $review"
   say "fix pass $review — spawning worker (git push denied)"
-  BEFORE_SUM="$(pb "$OPEN_FILTER")"
+  BEFORE_SUM="$(pb_passes "$BRANCH")"
 
   WORKER_BRIEF="## This fix pass
 
@@ -257,12 +304,29 @@ you do not filter them out, and you do not work them.
   # ⚠ THE CAP IS ONLY REAL IF THE COUNTER MOVED. A worker that crashed or declined leaves the
   # counters untouched, and re-running would retry forever without ever spending an attempt —
   # the unbounded loop the cap exists to prevent, reintroduced by the thing automating it.
-  AFTER_SUM="$(pb 'branch_name!="" && state="open" && agent_passes=0')"
+  #
+  # ⚠⚠ THIS GUARD DID NOT WORK UNTIL 2026-08-17, AND IT FAILED OPEN. `BEFORE_SUM` held the
+  # COUNT of open issues on this branch; `AFTER_SUM` held the COUNT of `agent_passes=0` issues
+  # REPO-WIDE. Two different populations over two different scopes, compared for equality — so
+  # `AFTER == BEFORE` held only by coincidence and the stall it exists to catch sailed through.
+  # The variables were named `_SUM` throughout, which is the tell: the instrument was meant to
+  # be a sum of the counter and had drifted into a count of records.
+  #
+  # Both readings now come from the SAME call on the SAME branch, so the comparison is between
+  # like and like — and a stall is `unchanged`, not `equal to some unrelated number`.
+  AFTER_SUM="$(pb_passes "$BRANCH")"
   if [[ "$AFTER_SUM" != "unreachable" && "$BEFORE_SUM" != "unreachable" ]]; then
-    if [[ "$AFTER_SUM" != "0" && "$AFTER_SUM" == "$BEFORE_SUM" ]]; then
-      say "worker did not advance agent_passes on any open issue — stopping rather than
-          looping. Check the worker's output above."
+    if (( AFTER_SUM == BEFORE_SUM )); then
+      say "worker did not advance agent_passes on any issue (sum stayed at $BEFORE_SUM) —
+          stopping rather than looping. Check the worker's output above."
       exit 5
+    fi
+    # ⚠ A FALL IS NOT A STALL, AND MUST NOT BE READ AS ONE. Nothing in this loop lowers the
+    # counter, so a drop means the owner re-armed an issue mid-run — their dial, never to be
+    # "corrected" (AGENTS.md §1). Say so and carry on; the worker plainly did something.
+    if (( AFTER_SUM < BEFORE_SUM )); then
+      say "agent_passes fell ($BEFORE_SUM -> $AFTER_SUM) — an issue was re-armed mid-cycle.
+          That is the owner's dial, not a fault. Continuing."
     fi
   fi
 done

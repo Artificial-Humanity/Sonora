@@ -120,8 +120,64 @@ def test_convergence_is_scoped_to_the_branch_under_review():
     branch is rebased, the loop could never see itself converge.
     """
     flt = _open_filter()
-    assert "rev-parse --abbrev-ref HEAD" in flt, flt
+    assert 'branch_name=\\"$BRANCH\\"' in flt, flt
     assert 'branch_name!=""' not in flt, flt
+    # ...and $BRANCH is the checked-out branch, resolved exactly once.
+    assigns = [ln for ln in SOURCE.splitlines() if ln.startswith("BRANCH=")]
+    assert len(assigns) == 1, assigns
+    assert "rev-parse --abbrev-ref HEAD" in assigns[0], assigns[0]
+
+
+def _guard_readings():
+    """The two `agent_passes` readings the stall guard compares."""
+    return [ln.strip() for ln in SOURCE.splitlines()
+            if ln.strip().startswith(("BEFORE_SUM=", "AFTER_SUM="))]
+
+
+def test_the_stall_guard_compares_like_with_like():
+    """⚠ THIS GUARD FAILED OPEN FOR ITS ENTIRE LIFE, AND SILENTLY.
+
+    `BEFORE_SUM` was the COUNT of open issues on this branch; `AFTER_SUM` was the COUNT of
+    `agent_passes=0` issues REPO-WIDE. Two populations, two scopes, compared for equality — so
+    the stall it exists to catch could only be caught by coincidence, and a crashed worker
+    would have looped forever spending no attempts. That is the exact unbounded loop the cap
+    exists to prevent, reintroduced by the thing automating it.
+
+    Nothing about the output said so: a guard that never fires looks identical to a guard that
+    never needed to. So this pins the shape rather than the wording — BOTH readings must come
+    from the same helper on the same argument.
+    """
+    before, after = _guard_readings()
+    assert before.split("=", 1)[1] == after.split("=", 1)[1], (before, after)
+    assert "pb_passes" in before, before
+
+
+def test_the_stall_guard_sums_over_every_state():
+    """A worker may ESCALATE, which takes an issue out of `state="open"`.
+
+    If the sum were restricted to open issues it could FALL across a pass that did real work,
+    and the guard would read that as a stall and stop the loop. `pb_passes` filters on
+    `branch_name` alone, deliberately.
+    """
+    body = SOURCE[SOURCE.index("pb_passes() {"):]
+    body = body[:body.index("\n}\n")]
+    flt = next(ln for ln in body.splitlines() if "urllib.parse.quote" in ln)
+    assert "branch_name" in flt, flt
+    assert "state=" not in flt, flt
+    assert "perPage=500" in body, "an unpaged read silently under-sums"
+
+
+def test_a_falling_counter_is_not_treated_as_a_stall():
+    """The owner resets `agent_passes` to re-arm an issue — their dial, never "corrected".
+
+    A drop therefore means work happened AND the owner intervened, which is the one case where
+    exiting would be most wrong.
+    """
+    assert "AFTER_SUM < BEFORE_SUM" in SOURCE
+    stall = SOURCE.index("AFTER_SUM == BEFORE_SUM")
+    fall = SOURCE.index("AFTER_SUM < BEFORE_SUM")
+    exits = [m.start() for m in re.finditer(r"exit 5", SOURCE)]
+    assert any(stall < e < fall for e in exits), "the stall branch must be the one that exits"
 
 
 def test_no_query_names_the_removed_escalated_field():
