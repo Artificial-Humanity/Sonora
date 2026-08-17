@@ -2,7 +2,7 @@
 
 _Owner request 2026-08-01: "if we're going to do it, let's do it to the best of our
 abilities." Six repos studied for what transfers into Sonora, with the
-[Decoder v2 DiT spike](model-decisions.md#decoder-v2--staged-dit-spike) as the
+[Decoder v2 DiT spike](../docs/model-decisions.md#decoder-v2--staged-dit-spike) as the
 immediate consumer._
 
 > **STANDING REFERENCE (owner 2026-08-01): "keep all of these sources on tap as case
@@ -18,7 +18,7 @@ immediate consumer._
 > [voice-interruption-and-discussion.md §6](../../../Prosodia/notes/voice-interruption-and-discussion.md).
 
 **Headline: the spike's single named risk is already solved in public MIT code.**
-[§ Decoder v2](model-decisions.md#decoder-v2--staged-dit-spike) records "tiny-scale DiT
+[§ Decoder v2](../docs/model-decisions.md#decoder-v2--staged-dit-spike) records "tiny-scale DiT
 is less proven than tiny-scale U-Nets on fine spectral texture" and proposes two
 untested mitigations. StableTTS ships both, at 31M, with MAS retained.
 
@@ -117,7 +117,7 @@ inference, and better cross-modal sync than the separate-pipeline baseline.
 The transferable idea is structural, not literal: a single flow-matching decoder can
 carry an additional correlated output channel driven by shared conditioning, and doing so
 *helped* rather than cost. That is the strongest available evidence for the
-[Direction Contract v2](model-decisions.md) choice to make delivery a 4th FiLM channel
+[Direction Contract v2](../docs/model-decisions.md) choice to make delivery a 4th FiLM channel
 inside the existing decoder instead of bolting on a head.
 
 ## 4. F5-TTS — consult narrowly, as already decided (MIT code, ⚠️ CC-BY-NC weights)

@@ -88,7 +88,7 @@ truth for each engine's payload** — bank builders must not invent keys. Unknow
 are fatal (the silent rewrite-to-vibevoice fallback is gone). Each renderer writes
 `<engine>_manifest.jsonl` echoing the full direction, seed, and license per clip.
 
-Interface traps and per-engine gotchas: [tts-engine-onboarding.md](tts-engine-onboarding.md).
+Interface traps and per-engine gotchas: [tts-engine-onboarding.md](../docs/tts-engine-onboarding.md).
 
 ## Director architecture (two passes)
 

@@ -47,28 +47,55 @@ stronger reason to check it than "someone wrote a number down".
 
 ### The classification
 
-**`docs/` — policy and canon (16)**
+⚠ **A first draft of this section moved sixteen files, and reading the sibling repo cut it to
+seven.** Prosodia's `docs/` holds **four** files — `ARCHITECTURE.md`, `CONTRIBUTING.md`,
+`ROADMAP.md` and a defensive-publication note — and everything else, *including
+`high-ambition-3` and `high-ambition-4`*, is in `notes/`. The pattern the owner pointed at is a
+small, tight canon directory, not a general reshelving. The draft was reasoning from the words
+"policy and canon" instead of from the repo that already does this.
 
-`ARCHITECTURE.md` (says "_Canon._" in its own subtitle) · `audiobook-corpus-policy.md` ·
-`casting-attribute-norms-brief.md` · `direction-interface-brief.md` (DECIDED 2026-07-30) ·
-`markup-schema-brief.md` (RATIFIED v0.1) · `model-decisions.md` ("the settled answers") ·
-`training-sources.md` (SSOT) · `training-operations.md` (runbook) · `tts-engine-onboarding.md`
-("ratified pattern") · `vat-channels.md` · `synthesis-pipeline.md` · `book-prose-lane.md` ·
-`teacher-tts-audition-shortlist.md` (the licence authority) · `data-mirrors.md` ·
-`high-ambition-index.md` + the five `high-ambition-*.md`
+The discriminator that survives: **does the file state a rule other work must conform to, or
+does it record state, progress, research or a plan?** A runbook listing runs-to-date is a
+record. A ratified contract is a rule.
 
-**`notes/` — in-flight and transient (11)**
+**`docs/` — the governing documents (7)**
 
-`STATE.md` · `todo.md` · `quality-gap-plan.md` · `quality-mechanisms-plan.md` ·
-`direction-contract-v3-proposal.md` ("PROPOSAL … nothing here is ratified") ·
-`delivery-mix-campaign.md` · `local-vs-runpod-decision.md` ("measure it during the next run") ·
-`dataset-landscape.md` ("evaluates CANDIDATES") · `matcha-siblings-study.md` ·
-`teacher-training-data.md` · `README.md` (the index; `docs/` gets its own)
+| file | why |
+|---|---|
+| `ARCHITECTURE.md` | says "_Canon._" in its own subtitle |
+| `direction-interface-brief.md` | "DECIDED 2026-07-30" — the Director↔Actor contract |
+| `markup-schema-brief.md` | "**RATIFIED v0.1**" |
+| `model-decisions.md` | "the settled answers … and only what they still direct" |
+| `tts-engine-onboarding.md` | "ratified pattern, owner 2026-07-25. Applies to every speech engine" |
+| `vat-channels.md` | the conditioning contract the model and the corpus both obey |
+| `audiobook-corpus-policy.md` | the owner's-audiobooks boundary and private-lineage firewall |
 
-Six are genuine judgement calls rather than readings — the five high-ambition files plus
-`data-mirrors.md`. They are placed in `docs/` because other work is expected to conform to
-them ("singing is ambition 7" is cited as authority), not because the prose declares it. A
-file move is cheap; these are the ones to revisit first if the line feels wrong in use.
+Everything else stays in `notes/` — twenty files, including `STATE.md`, `todo.md`, both plans,
+the proposal, the campaign records, the research, the runbook, and the whole `high-ambition-*`
+series.
+
+Deliberated and left in `notes/`, so the reasoning is on the record rather than rediscovered:
+`training-sources.md` and `training-operations.md` (state and runbook — records, not rules),
+`teacher-tts-audition-shortlist.md` (a running record of verdicts; the licence *rule* is in
+`dataset-landscape.md`), and `casting-attribute-norms-brief.md`, which is explicitly "design
+capture, **not yet scheduled**" and so fails the ratified test its sibling briefs pass.
+
+### ⚠ Why the high-ambition series must not move
+
+`notes/README.md` states the constraint and it is correct: *"the `high-ambition-N` numbering is
+a **cross-repo series** — goals 3 and 4 live in `Prosodia/notes`, and Prosodia links back to
+these files by name, so do not renumber or rename them."*
+
+Measured: **Prosodia holds 37 links into `Sonora/…/notes/`, and they resolve.** The rejected
+16-file draft would have broken **21** of them, none visible to any checker in this repo. The
+7-file split breaks **3** — `vat-channels.md` (2) and `model-decisions.md` (1) — which are
+repaired on Prosodia's side as part of this work rather than left to rot.
+
+**And 10 of the 37 already dangle**: `notes/archive/high-ambition-5-styletts2-lite.md` (5),
+`notes/archive/exploit-before-train-measurement.md` (3), `notes/actor-model-and-training.md`
+(2). The `archive/` directory was removed 2026-08-02 and neither repo noticed. That is the
+strongest single argument for the checker: the cross-repo surface has been rotting silently for
+two weeks, and the split is merely the event that made anyone look.
 
 ### ⚠ The breakage surface, measured
 
@@ -84,23 +111,47 @@ about, so the move must not be done by hand.
 
 ### The work
 
-1. Move the files, rewriting both link forms in the same commit.
-2. **A link checker, and it is the durable part.** Every relative link in `docs/` and `notes/`
-   must resolve to a file on disk. Without it the split trades one invisible failure for
-   another, and this is the mechanism that makes the split *safe* rather than merely tidy.
-   ⚠ It must skip `[[double-bracket]]` names — those are agent memory slugs, deliberately not
-   repo files, and `notes/README.md` already says so.
-3. `docs()` in the doc-claims gate scans both directories. It currently hardcodes `notes/`;
-   after the split, a canon file would silently drop out of the gate's view — which is the
-   `.gitignore` failure of 2026-08-17 with a different mechanism.
-4. `docs/README.md` as the canon index; `notes/README.md` keeps the in-flight map. The existing
-   rules there (each file owns its subject, superseded narrative deleted not archived,
-   `lowercase-kebab-case.md`) carry over to both.
+1. Move the seven files, rewriting both link forms in the same commit.
+2. **A link checker, and it is the durable part** — the split is the occasion, not the product.
+   Every relative link in `docs/` and `notes/` must resolve to a file on disk.
+   * ⚠ **Cross-repo aware.** Checking only Sonora's outbound links leaves the larger and
+     already-rotting surface untouched — 10 dead links prove that surface is the one that
+     actually fails. Sibling checkouts are already configured for the reviewer in
+     `workflow/config.env` (`SIBLING_REPO_CANDIDATES`); the checker uses the same idea and
+     **reports rather than fails when a sibling is absent**, because a laptop without Prosodia
+     checked out has not found a defect.
+   * ⚠ **Skips `[[double-bracket]]` names.** Those are agent memory slugs, deliberately not
+     repo files. `notes/README.md` is the only place that rule is written down, which makes it
+     part of this checker's specification and not a footnote.
+3. `docs()` in the doc-claims gate scans both directories. It hardcodes `notes/` today, so
+   after the split a canon file drops out of the gate's view — the `.gitignore` failure of
+   2026-08-17 with a different mechanism.
+4. `docs/README.md` as the canon index; `notes/README.md` keeps the in-flight map.
+
+### ⚠ The rules in `notes/README.md` are the split's real content
+
+That file is not only an index. It carries the directory's standing rules, each of which the
+split forces a decision about:
+
+* **"when two disagree, the SSOT named here wins"** — an arbitration rule whose *here* is
+  `notes/README.md`. Several SSOTs it arbitrates move to `docs/`, which would leave the
+  in-flight index as tie-breaker over canon. The arbitration moves with the canon.
+* **"except the two uppercase anchors"** — `STATE.md` and `ARCHITECTURE.md`, which the split
+  puts in different directories. The sentence then describes neither directory correctly, and
+  it is prose, so no gate catches it.
+* **"`[[double-bracket]]` names are memory slugs"** — the checker's specification, above.
+* **the high-ambition cross-repo constraint** — the reason the draft shrank.
+
+Two paragraphs there are already stale and get fixed in the same commit: it describes a
+`reviews/` directory that no longer exists, and says a finding "becomes a GitHub issue (AGENTS.md
+§1)" when the PocketBase tracker replaced that and `AGENTS.md` no longer mentions GitHub issues
+at all.
 
 ### Acceptance
 
-Moving a file without fixing its inbound links must turn the checker red. Proven the same way
-M1 was: by doing it and watching it fail.
+Moving a file without fixing its inbound links must turn the checker red — proven by doing it
+and watching it fail, the same way M1 was. The 10 pre-existing cross-repo dead links must be
+reported on the first run; if they are not, the checker is not looking where the rot is.
 
 ---
 

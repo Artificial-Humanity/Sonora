@@ -64,6 +64,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # one level deeper since #26 step 3 moved the gates into scripts/gates/
 REPO = os.path.dirname(os.path.dirname(HERE))
 NOTES = os.path.join(REPO, "notes")
+DOCS = os.path.join(REPO, "docs")
 V5 = os.path.join(REPO, "data", "libritts_r_emilia_vat_v5")
 V6 = os.path.join(REPO, "data", "libritts_r_emilia_expressive_vat_v6")
 V4 = os.path.join(REPO, "data", "libritts_r_vat_v4")
@@ -581,9 +582,17 @@ NAMED_DOCS = ("README.md", "AGENTS.md", "CLAUDE.md")
 
 def _candidate_docs():
     out = []
-    for name in sorted(os.listdir(NOTES)):
-        if name.endswith(".md"):
-            out.append(os.path.join(NOTES, name))
+    # ⚠ BOTH PROSE DIRECTORIES. `docs/` was split out of `notes/` on 2026-08-17 (M0) to
+    # separate policy and canon from what is in flight — and a gate that kept scanning only
+    # `notes/` would have silently stopped checking the SEVEN most authoritative files in the
+    # repo at the moment they became authoritative. That is the `.gitignore` failure of the
+    # same week with a different mechanism: the check does not break, it just stops matching.
+    for d in (NOTES, DOCS):
+        if not os.path.isdir(d):
+            continue
+        for name in sorted(os.listdir(d)):
+            if name.endswith(".md"):
+                out.append(os.path.join(d, name))
     out += [os.path.join(REPO, n) for n in NAMED_DOCS]
     if os.path.isdir(WORKFLOW):
         out += [os.path.join(WORKFLOW, n) for n in sorted(os.listdir(WORKFLOW))

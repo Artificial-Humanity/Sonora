@@ -11,7 +11,7 @@ remains here is what stays decision-relevant.
 [§ Benched engines](#benched-engines) (one record; do not restate elsewhere).
 Allocation is three-layer
 (`ref_select.ENGINE_MIX_BY_LANE`, see [delivery-mix-campaign.md](delivery-mix-campaign.md));
-onboarding pattern + interface gotchas: [tts-engine-onboarding.md](tts-engine-onboarding.md).
+onboarding pattern + interface gotchas: [tts-engine-onboarding.md](../docs/tts-engine-onboarding.md).
 
 ## What "teacher" means (three escalating uses)
 
@@ -53,7 +53,7 @@ onboarding pattern + interface gotchas: [tts-engine-onboarding.md](tts-engine-on
 Watch list (deliberately deferred): `scripts/teacher_audition/README.md` —
 GLM-TTS waits on its unreleased post-RL checkpoint (repo dormant since 2026-01);
 Kimi-Audio is an instrument candidate, not an actor. Revisit scope is **quality
-rejections only, never license rejections** ([tts-engine-onboarding.md](tts-engine-onboarding.md)).
+rejections only, never license rejections** ([tts-engine-onboarding.md](../docs/tts-engine-onboarding.md)).
 
 ## Standing rule
 
@@ -112,7 +112,7 @@ clips (*"a singing segment with music and multiple singers"*, *"Noise, semi-musi
 | qwen · chatterbox · zonos · orpheus · moss_vg · longcat | 1,107 | **0** | **0.0%** |
 
 A floor, not a rate — it counts clips where an auditor wrote the reason down. Cause and
-upstream quotes: [tts-engine-onboarding.md § VibeVoice sings, and you cannot stop it](tts-engine-onboarding.md).
+upstream quotes: [tts-engine-onboarding.md § VibeVoice sings, and you cannot stop it](../docs/tts-engine-onboarding.md).
 Emergent, never trained for, content-aware, and per the maker *"we can't directly control
 whether they are generated or not"*.
 

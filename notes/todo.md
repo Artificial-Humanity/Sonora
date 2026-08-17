@@ -29,7 +29,7 @@ the plan.
 
 ## 3 · Conditioning axes — one approved, one open
 
-The approved position is canon in [ARCHITECTURE.md § 1](ARCHITECTURE.md) and is not
+The approved position is canon in [ARCHITECTURE.md § 1](../docs/ARCHITECTURE.md) and is not
 repeated here.
 
 - [ ] **Embodiment bank across the current five survivor engines**, folded into a narration

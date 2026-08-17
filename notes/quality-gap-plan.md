@@ -3,7 +3,7 @@
 **Scope: what we do next to close the synthetic-vs-real gap, and in what order.**
 Measurement repair → data sequencing → decoder spike. This file owns the *sequencing
 and the gates between phases*; it does not restate the plans it sequences. The DiT
-design itself is [model-decisions.md § Decoder v2](model-decisions.md); source state is
+design itself is [model-decisions.md § Decoder v2](../docs/model-decisions.md); source state is
 [training-sources.md](training-sources.md) (SSOT); run mechanics are
 [training-operations.md](training-operations.md).
 
@@ -46,7 +46,7 @@ See [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-cor
 | | freeze a same-corpus U-Net baseline | ⏸ | **the last act of P1** | [§ Phase 2](#phase-2--the-dit-decoder-spike) |
 | | vocoder transparency re-check | ⏸ | after P1 | [§ gates](#gates-between-phases) |
 | **P1S** | mass synthetic production, Qwen-primary | ⏸ **plan written, 3 prerequisites open** | **rungs 1–5** (owner: exhaust public sources first) | [§ Phase 1S](#phase-1s--mass-synthetic-production-qwen-primary) |
-| **P2** | DiT decoder spike | ⏸ design written, not started | P1 landing + the frozen baseline | [model-decisions.md § Decoder v2](model-decisions.md) |
+| **P2** | DiT decoder spike | ⏸ design written, not started | P1 landing + the frozen baseline | [model-decisions.md § Decoder v2](../docs/model-decisions.md) |
 
 ### Parked — the casting/blend layer
 
@@ -969,7 +969,7 @@ whole build.
 
 ## Phase 2 — the DiT decoder spike
 
-Design, gates and known risks are already written: **[model-decisions.md § Decoder v2](model-decisions.md)**
+Design, gates and known risks are already written: **[model-decisions.md § Decoder v2](../docs/model-decisions.md)**
 (the content of the former `decoder-v2-dit-spike.md`, folded in during the 2026-08-02
 consolidation — the standalone file no longer exists). Start from StableTTS's 31M
 `DiTConVBlock` shape, which retires the spike's named tiny-scale risk in public MIT code

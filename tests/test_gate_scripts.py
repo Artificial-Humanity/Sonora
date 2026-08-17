@@ -26,7 +26,13 @@ GATES = os.path.join(REPO, "scripts", "gates")
 PY = os.path.join(REPO, ".venv", "bin", "python")
 
 # Scripts that need nothing but the repo venv.
-FAST = ["test_skill_files.py", "test_text_selection.py"]
+#
+# ⚠ `test_doc_links.py` belongs here and NOT in DATA_GATED, even though half its job is
+# cross-repo. Its in-repo half needs only this checkout, and its sibling half skips-and-prints
+# when a sibling is absent — the state on every CI runner — so a bare clone is green by design
+# rather than by luck. It also never FAILS on an inbound link: those live in the sibling's
+# files, and a check no commit here can turn green is one everybody learns to ignore.
+FAST = ["test_skill_files.py", "test_text_selection.py", "test_doc_links.py"]
 
 # Needs a DATA artifact but not torch — a third category, added 2026-08-09.
 #

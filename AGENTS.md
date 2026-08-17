@@ -24,7 +24,7 @@ in [notes/README.md](notes/README.md). Before starting work, read
   truth for what each engine actually receives — never bypass it; unknown engines are fatal.**
   The 2026-07-25 relay audit found rich direction had been silently dropped by every engine.
   **Standing rule:** no TTS model enters the portfolio without a studied interface and a
-  Gemma skill-file adapter — see [notes/tts-engine-onboarding.md](notes/tts-engine-onboarding.md),
+  Gemma skill-file adapter — see [docs/tts-engine-onboarding.md](docs/tts-engine-onboarding.md),
   which also carries the known-gotchas reference. Minimum clip length is **4 s of estimated
   speech**, gating input text (not render duration).
 * **Core Framework:** PyTorch & Matcha-TTS (conditional flow-matching).

@@ -58,7 +58,7 @@ selection against measurable norms — never a fourth channel.
 **4. Do not ask the model for what is free at inference.** Pace is host-side
 `length_scale`; per-frame loudness is a host-side dB bias. Both were measured free and
 dB-exact (2026-07-14; the measurement note was folded away, git history has it, and the
-resulting rule is pinned in `notes/ARCHITECTURE.md` §1) — WER 0 at -12 dB. Asking
+resulting rule is pinned in `docs/ARCHITECTURE.md` §1) — WER 0 at -12 dB. Asking
 the model to learn them wastes capacity that valence needs.
 
 **5. Span markup, when the span layer lands, uses CLOSED vocabularies only** — SCM's

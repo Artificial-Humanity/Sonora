@@ -13,7 +13,7 @@ _Established by the Phase 0 (baseline-ljspeech-22k) and §7 de-risk (derisk-ener
 8-wide to `ep019` (2026-08-08/09).
 ⚠ **The EXPORT lane is deliberately still 3-wide**: `convert_vat.py` refuses a wider
 checkpoint on purpose, because a mobile host told nothing about the last five channels being
-categorical will interpolate them ([todo.md §1](todo.md)). Shipped on the training side is
+categorical will interpolate them ([todo.md §1](../notes/todo.md)). Shipped on the training side is
 not shipped on the device.
 The seam assertions that make the width safe are proven to fire (`scripts/gates/test_vat_dim_seams.py`).
 Last updated: 2026-08-09._
@@ -28,7 +28,7 @@ against it must work against any tier unchanged.
 _v1→v2 (owner call, 2026-07-30): added the **Delivery** channel. The delivery axis proved to be
 a real orthogonal mode dimension during the teacher campaign (an engine can pass narration at
 94% and fail dialogue at 54%), the corpus is deliberately balanced on it (50/30/8/6/6, see
-[delivery-mix-campaign.md](delivery-mix-campaign.md)), and every certified clip now carries the
+[delivery-mix-campaign.md](../notes/delivery-mix-campaign.md)), and every certified clip now carries the
 label. Also pinned in the same call: **register stays Director-side** (the 47-label lexicon
 compiles to V/A/T + delivery + text; the Actor never sees a register id), and tempo/loudness
 remain host-side per the exploit-before-train measurement — training owns pitch + phonation._
@@ -73,7 +73,7 @@ test. But that failure is currently diagnosed as a **corpus-label limit rather t
 architectural one**, so the question is gated on Phase 1: if volume moves valence, it is
 answered; if not, the representation becomes the suspect. Shape if it is ever taken:
 append as channels 8+ on the same zero-init FiLM path, never reorder. Reasoning and the
-gate: [todo.md § 4](todo.md).
+gate: [todo.md § 4](../notes/todo.md).
 
 Contract changes bump the version and require an owner call.
 
@@ -117,7 +117,7 @@ Contract changes bump the version and require an owner call.
 
 ## 4. Training operations
 
-Full runbook: [training-operations.md](training-operations.md). Pinned:
+Full runbook: [training-operations.md](../notes/training-operations.md). Pinned:
 
 * One trainer on the GPU at a time; profile-gated compose services. **Deploy is explicit** —
   GitOps was retired 2026-07-22, so a push to main deploys nothing; use

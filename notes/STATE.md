@@ -2,7 +2,7 @@
 
 The current-state snapshot: what is true now, what is running, and what comes next.
 Behavioral rules and the stack/layout manifest live in [AGENTS.md](../AGENTS.md); the
-architecture canon is [ARCHITECTURE.md](ARCHITECTURE.md); open work is
+architecture canon is [ARCHITECTURE.md](../docs/ARCHITECTURE.md); open work is
 [todo.md](todo.md). One entry per front, newest facts first — superseded narrative is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
@@ -111,7 +111,7 @@ Independence gate (v3): corr(T,A) = −0.059 · corr(T,V) = −0.066 · corr(V,A
 all PASS. Channel standing (vat3-24k, 2026-07-22): energy **PASS**, tension
 **near-pass**, valence **FAIL** — a corpus-label limit, not architectural; that failure
 is what opened the directed teacher-synthesis lane
-([vat-channels.md](vat-channels.md)).
+([vat-channels.md](../docs/vat-channels.md)).
 
 ## Checkpoint lineage
 
@@ -137,7 +137,7 @@ are validated components, not the shippable directable actor.
 are **set aside** (2026-07-29, reversible, `ref_select.SET_ASIDE`) — VV stages scenes
 on dialogue, and the survivors already narrate at 94%. Engine standing, license
 verdicts, and the shortlist record: [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md);
-onboarding pattern + gotchas: [tts-engine-onboarding.md](tts-engine-onboarding.md).
+onboarding pattern + gotchas: [tts-engine-onboarding.md](../docs/tts-engine-onboarding.md).
 
 **Delivery campaign — COMPLETE 2026-08-04 (SSOT:
 [delivery-mix-campaign.md](delivery-mix-campaign.md)).** **1,189 fold-eligible keeps**
@@ -232,7 +232,7 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
 
 - **Base reaffirmed:** Matcha stays; StyleTTS2-Lite retired as contingency (2026-07-29);
   the escape hatch is a scaled flow-matching backbone. Kokoro stays out. Records:
-  [model-decisions.md](model-decisions.md).
+  [model-decisions.md](../docs/model-decisions.md).
 - **Decoder v2 (DiT) is a staged spike NOW** — adopt iff it passes the parity gate vs
   the U-Net baseline. The spike's one named risk (tiny-DiT spectral texture) is already
   retired in public MIT code: StableTTS's 31M `DiTConVBlock` (conv FFN in-block + long
@@ -242,7 +242,7 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
   bench — check it before designing any component blind.
 - **Contract v2** (2026-07-30): delivery is the 4th FiLM channel (5 lanes + unknown ≡
   zero); register compiles away Director-side; tempo/loudness stay host-side. Pinned in
-  [ARCHITECTURE.md](ARCHITECTURE.md) §1. **Implemented in the model core 2026-08-07** as a
+  [ARCHITECTURE.md](../docs/ARCHITECTURE.md) §1. **Implemented in the model core 2026-08-07** as a
   five-wide one-hot block (`vat_dim` 8, `matcha/delivery.py`); the EXPORT half is still
   open ([todo.md §1](todo.md)).
 - **RapFlow-TTS (consistency-FM, ~2 NFE)** logged as its own later spike — throughput

@@ -167,7 +167,7 @@ rich measured trajectories, infer from sparse authored ones, and the two sides s
 different languages. That is the classic prosody-transfer failure and it is how this
 kind of project usually dies.
 
-The answer is already ratified: **SCM** ([markup-schema-brief.md](markup-schema-brief.md)),
+The answer is already ratified: **SCM** ([markup-schema-brief.md](../docs/markup-schema-brief.md)),
 closed vocabularies — `emphasis` 1-3, `pause_after`, `pace`, `pitch_move`, `nonverbal`.
 
 > **Train on the COMPILED SCM, never on raw measured frames.** Derive SCM *from* audio

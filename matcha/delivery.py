@@ -1,4 +1,4 @@
-"""The delivery channel — Director↔Actor contract v2, §1 of notes/ARCHITECTURE.md.
+"""The delivery channel — Director↔Actor contract v2, §1 of docs/ARCHITECTURE.md.
 
 ONE definition of how a delivery lane becomes numbers. Everything that produces or
 consumes the 4th..8th conditioning channels goes through here: the corpus derivation, the

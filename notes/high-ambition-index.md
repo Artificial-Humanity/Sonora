@@ -19,7 +19,7 @@ PRODUCT — what the app does with a model it already has — live in `Prosodia/
 | 2 | [Dramatic Reader & full-cast audiobooks](high-ambition-2-dramatic-reader.md) | Sonora | live — needs 1 first |
 | 3 | [Child voices](../../../Prosodia/notes/high-ambition-3-child-voices.md) | Prosodia | live — casting/voicing range |
 | 4 | [Multilingual G2P](../../../Prosodia/notes/high-ambition-4-multilingual-g2p.md) | Prosodia | live — after English production quality |
-| 5 | StyleTTS2-Lite custom model | git history (deleted 2026-08-02) | **RETIRED 2026-07-29** — the quality-ceiling escape hatch is now a scaled flow-matching backbone; decision record in [model-decisions.md §5](model-decisions.md) |
+| 5 | StyleTTS2-Lite custom model | git history (deleted 2026-08-02) | **RETIRED 2026-07-29** — the quality-ceiling escape hatch is now a scaled flow-matching backbone; decision record in [model-decisions.md §5](../docs/model-decisions.md) |
 | 6 | [Audience: conveyance-aware STT](high-ambition-6-audience-conveyance-stt.md) | Sonora | live — the reverse lane; perceive prosody rather than dictate it |
 | 7 | [Singing](high-ambition-7-singing.md) | Sonora | **added 2026-08-09** — down the road, behind the quality ladder. ⚠ *Unrequested* singing is a DEFECT and stays one |
 
