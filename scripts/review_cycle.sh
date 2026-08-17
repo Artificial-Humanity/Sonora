@@ -52,8 +52,8 @@ STOPS ON, in order of precedence:
   3. convergence (nothing open)         7. the review ceiling
   4. the spend ceiling
 
-CONVERGENCE means: review_id!="" && state="open" && escalated=false  ->  empty.
-⚠ The review_id!="" clause excludes the 9 migrated GitHub issues, which carry no review_id,
+CONVERGENCE means: branch_name!="" && state="open" && escalated=false  ->  empty.
+⚠ The branch_name!="" clause excludes the 9 migrated GitHub issues, which carry no branch_name,
 were never part of a cycle, and nobody is working — a check counting them never reaches zero.
 USAGE
 }
@@ -118,7 +118,7 @@ except Exception:
 PY
 }
 
-OPEN_FILTER='review_id!="" && state="open" && escalated=false'
+OPEN_FILTER="branch_name=\"$(git rev-parse --abbrev-ref HEAD)\" && state=\"open\" && escalated=false"
 
 check_stop() {
   if [[ -e "$STOPFILE" ]]; then
@@ -155,7 +155,7 @@ WORKER_DENY=(
   "Bash(scripts/request_review.sh:*)" "Bash(./scripts/request_review.sh:*)"
 )
 
-REVIEW_IDS=()
+REVIEW_TIPS=()
 CONVERGED=0
 LAST_SUMMARY=""
 
@@ -163,24 +163,20 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   check_stop "review $review"
 
   say "review $review of $MAX_REVIEWS over $RANGE"
-  PRIOR_ARG=()
-  if (( ${#REVIEW_IDS[@]} )); then
-    PRIOR_ARG=(--prior "$(IFS=,; echo "${REVIEW_IDS[*]}")")
-  fi
   NOTES_ARG=()
   [[ -f "$REPO_ROOT/.review_cycle.notes" ]] && NOTES_ARG=(--notes-file "$REPO_ROOT/.review_cycle.notes")
 
   set +e
   OUT="$(scripts/request_review.sh --range "$RANGE" --developer "$DEVELOPER" \
-          --pass "$review" "${PRIOR_ARG[@]+"${PRIOR_ARG[@]}"}" \
+          --pass "$review" \
           "${NOTES_ARG[@]+"${NOTES_ARG[@]}"}" 2>&1)"
   RC=$?
   set -e
   printf '%s\n' "$OUT"
   LAST_SUMMARY="$OUT"
 
-  RID="$(sed -n 's/.*as review_id \([0-9a-zA-Z._-]*\),.*/\1/p' <<< "$OUT" | head -1 || true)"
-  [[ -n "$RID" ]] && REVIEW_IDS+=("$RID")
+  RID="$(sed -n 's/.*as branch_name \([0-9a-zA-Z._-]*\),.*/\1/p' <<< "$OUT" | head -1 || true)"
+  [[ -n "$RID" ]] && REVIEW_TIPS+=("$RID")
 
   # ⚠ CHECKED BEFORE THE EXIT CODE. A review can complete cleanly (rc 0) and still be telling
   # you the change must not land; that is a content signal, not a failure signal.
@@ -222,7 +218,7 @@ You are **$DEVELOPER**, working in \`$REPO_ROOT\` on range \`$RANGE\`. Run by
 \`scripts/review_cycle.sh\`, unattended — **there is no one to ask**, so where you would
 normally check, act on your best reading and say so in the issue comment.
 
-Issues to address: those under review_id(s) \`$(IFS=,; echo "${REVIEW_IDS[*]}")\` that are
+Issues to address: those under branch_name(s) \`$(IFS=,; echo "${REVIEW_TIPS[*]}")\` that are
 open and not escalated.
 
 1. **Increment \`agent_passes\` by one on each issue you take on, FIRST**, before any work.
@@ -254,7 +250,7 @@ open and not escalated.
   # ⚠ THE CAP IS ONLY REAL IF THE COUNTER MOVED. A worker that crashed or declined leaves the
   # counters untouched, and re-running would retry forever without ever spending an attempt —
   # the unbounded loop the cap exists to prevent, reintroduced by the thing automating it.
-  AFTER_SUM="$(pb 'review_id!="" && state="open" && escalated=false && agent_passes=0')"
+  AFTER_SUM="$(pb 'branch_name!="" && state="open" && escalated=false && agent_passes=0')"
   if [[ "$AFTER_SUM" != "unreachable" && "$BEFORE_SUM" != "unreachable" ]]; then
     if [[ "$AFTER_SUM" != "0" && "$AFTER_SUM" == "$BEFORE_SUM" ]]; then
       say "worker did not advance agent_passes on any open issue — stopping rather than
@@ -271,6 +267,6 @@ if [[ "$CONVERGED" -eq 1 ]]; then
 else
   say "RESULT: $(pb "$OPEN_FILTER") issue(s) still open from this cycle."
 fi
-say "reviews run: ${#REVIEW_IDS[@]}  ($(IFS=' '; echo "${REVIEW_IDS[*]:-none}"))"
+say "reviews run: ${#REVIEW_TIPS[@]}  ($(IFS=' '; echo "${REVIEW_TIPS[*]:-none}"))"
 say "⚠ NOTHING WAS PUSHED. Read the summary above, then push by hand if you agree with it."
 exit 0

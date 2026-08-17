@@ -176,7 +176,7 @@ rather than delaying it.
 | `labels` | `bug` \| `documentation` \| `enhancement` |
 | `author` | `Janis` |
 | `comments` | ⚠ **legacy, frozen — do not write to it.** See below |
-| `review_id` | the id in your brief — **set it on every issue you file** |
+| `branch_name` | the id in your brief — **set it on every issue you file** |
 | `escalated` | `false` on filing |
 | `agent_passes` | leave unset; it defaults to `0`. **Never write it** |
 | `user_decision` | ⚠ **the owner's field. Never write it.** Read it — see below |
@@ -244,11 +244,11 @@ Do not reuse a number below 90; `#12–#89` are taken.
 Between them, a re-review that lists issues carelessly reads a partial set and closes a cycle
 it has not actually read.
 
-### `review_id`
+### `branch_name`
 
 Your brief carries it. Set it on **every** issue this pass files — it is what makes *"what did
 this review find?"* a single query. It is indexed and deliberately **not** unique: a review
-yields many issues, which is the whole point. **One `review_id` per pass**, so a three-pass
+yields many issues, which is the whole point. **One `branch_name` per pass**, so a three-pass
 cycle leaves three; that is expected, not a duplicate to normalise away.
 
 ### Before you file
@@ -268,14 +268,14 @@ cycle leaves three; that is expected, not a duplicate to normalise away.
 
 ## 5. Re-review — resolving is yours alone
 
-On pass 2 and 3 the brief names the earlier `review_id`s and what the worker says it did. You
+On pass 2 and 3 the brief names the earlier `branch_name`s and what the worker says it did. You
 are the only role that can decide a finding is cleared.
 
 **Read this first, and set `perPage` on it:**
 
 ```
 pb_record_list  collection="issues"
-                filter='review_id="<id>" && escalated=false'
+                filter='branch_name="<id>" && escalated=false'
                 perPage=200  skipTotal=false
 ```
 
@@ -311,7 +311,7 @@ pb_record_list  collection="issues"
 * **Answer every rebuttal out loud.** The worker cannot close its own argument, so an
   unanswered rebuttal is a finding left hanging with nobody owning it. Close it if the
   argument holds; if it does not, say why, and leave it open.
-* **New findings go under the NEW `review_id`** — the one in your brief for this pass, not the
+* **New findings go under the NEW `branch_name`** — the one in your brief for this pass, not the
   earlier one.
 * ⚠ **Look for regressions introduced by the fix pass.** This is the class this repo has
   actually measured: a fix pass on a large diff ran 7→5→9→7 findings, with the later rounds
@@ -341,12 +341,12 @@ nothing.
 before you write your summary, and report the number:
 
 ```
-filter='review_id!="" && state="open" && escalated=false'
+filter='branch_name!="" && state="open" && escalated=false'
 ```
 
-⚠ **`review_id!=""` is doing real work — do not drop it.** Nine open issues (#26, #68, #70,
+⚠ **`branch_name!=""` is doing real work — do not drop it.** Nine open issues (#26, #68, #70,
 #79, #80, #81, #85, #87, #89) are the **migrated GitHub backlog**: `migrated_from_github=true`,
-no `review_id`, never part of any cycle. They are genuine work and nobody is running them, so
+no `branch_name`, never part of any cycle. They are genuine work and nobody is running them, so
 they will never close. A convergence check that counts them can never reach zero, and reading
 that as "the loop is not converging" is exactly the wrong conclusion.
 
@@ -431,7 +431,7 @@ This is deliberately a judgement call and not a severity threshold. The test: an
 Your stdout **is** the delivery — the worker is blocked on this process and reads what you
 print. It is not a chat message and there is no thread to continue it in. End with:
 
-1. **The range you reviewed** and the `review_id` you filed under.
+1. **The range you reviewed** and the `branch_name` you filed under.
 2. **Counts by severity**, and how many findings are verified vs unverified.
 3. **The issue numbers you filed**, the ones you **closed**, and the ones you **escalated** —
    each as a list, so the worker can act without querying.

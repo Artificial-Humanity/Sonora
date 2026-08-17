@@ -10,7 +10,7 @@
 #
 # The persona is static and lives in Personas/REVIEWER.md, passed with --system-prompt-file
 # so its several kilobytes never go through shell quoting. Everything that changes per run
-# — the range, the review_id, who to address, which pass, what the worker already did —
+# — the range, the branch_name, who to address, which pass, what the worker already did —
 # is assembled here and passed inline with --append-system-prompt. No temp prompt file is
 # written for it (owner, 2026-08-14).
 #
@@ -22,13 +22,11 @@ set -euo pipefail
 # Defaults
 # ---------------------------------------------------------------------------
 RANGE="origin/main..HEAD"
-REVIEW_ID=""
 DEVELOPER="Ozzy"
 REPO_SLUG="Artificial-Humanity/Sonora"
 PASS=1
 NOTES=""
 NOTES_FILE=""
-PRIOR=""
 MODEL="opus"
 EFFORT="xhigh"
 DRY_RUN=0
@@ -41,20 +39,12 @@ request_review.sh — one-shot code review by Janis. Blocks; prints the review o
                         MUST be a two-dot range. REVIEW THE WHOLE RANGE YOU WILL PUSH, not
                         the last commit — a push carries every unpushed commit, and this loop
                         has measured the range growing after the request on every cycle.
-  --review-id <ID>      Ties the filed issues to this review.
-                        (default: the tip SHA of --range)
-                        Pass one explicitly when reviewing something with no commit behind
-                        it — a working tree, or a directory with no git. Generate it
-                        (uuidgen, or timestamp-plus-noun); never invent a SHA-shaped string
-                        for something that was never committed.
   --developer <ID>      Agent id the reviewer addresses in issues.   (default: Ozzy)
   --repo <SLUG>         Tracker `repo` field.      (default: Artificial-Humanity/Sonora)
   --pass <N>            Which REVIEW this is, 1-4.                   (default: 1)
                         ⚠ Reviews, not fix passes. Three fix passes per issue means up to
                         four reviews: the one that finds it, then one after each fix pass.
                         The per-ISSUE count lives on the issue as agent_passes.
-  --prior <ID[,ID...]>  review_ids from earlier passes of THIS cycle. Required from pass 2:
-                        Janis is a fresh process and cannot otherwise find its own findings.
   --notes <TEXT>        What you fixed and how, what you rebutted and why.
   --notes-file <PATH>   Same, read from a file. Mutually exclusive with --notes.
   --model <M>           (default: opus)
@@ -67,7 +57,7 @@ request_review.sh — one-shot code review by Janis. Blocks; prints the review o
 filed. Janis writes issues one at a time as it goes, so a run that dies mid-way leaves real
 findings in the tracker. Before you conclude a failed run found nothing, query it:
 
-    review_id="<the id printed above>"
+    branch_name="<this branch>" && state="open"
 
 and read what is there. Then say what happened and push (AGENTS.md §1).
 USAGE
@@ -76,11 +66,9 @@ USAGE
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --range)       RANGE="${2:?--range needs a value}"; shift 2 ;;
-    --review-id)   REVIEW_ID="${2:?--review-id needs a value}"; shift 2 ;;
     --developer)   DEVELOPER="${2:?--developer needs a value}"; shift 2 ;;
     --repo)        REPO_SLUG="${2:?--repo needs a value}"; shift 2 ;;
     --pass)        PASS="${2:?--pass needs a value}"; shift 2 ;;
-    --prior)       PRIOR="${2:?--prior needs a value}"; shift 2 ;;
     --notes)       NOTES="${2:?--notes needs a value}"; shift 2 ;;
     --notes-file)  NOTES_FILE="${2:?--notes-file needs a value}"; shift 2 ;;
     --model)       MODEL="${2:?--model needs a value}"; shift 2 ;;
@@ -101,6 +89,15 @@ command -v python3 >/dev/null 2>&1 || die "python3 is not on PATH (needed for th
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
   || die "not inside a git repository."
 cd "$REPO_ROOT"
+
+# ⚠ RESOLVED HERE, BEFORE ANYTHING READS IT. The branch is the unit of work, so it is
+# referenced throughout — the brief, the tracker filter, the failure messages. Assigning it
+# further down left `$BRANCH` unbound at the range check, and under `set -u` that is a hard
+# stop with a line number and no hint about the cause.
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+[[ -n "$BRANCH" && "$BRANCH" != "HEAD" ]] \
+  || die "cannot determine the branch (detached HEAD?). All work happens on a branch —
+     the branch IS the reviewable unit, and issues are stamped with its name."
 
 PERSONA="$REPO_ROOT/Personas/REVIEWER.md"
 [[ -r "$PERSONA" ]] || die "reviewer persona not readable at $PERSONA"
@@ -137,9 +134,9 @@ else
   COMMIT_COUNT="$(wc -l <<< "$COMMITS" | tr -d ' ')"
 fi
 
-if [[ "$COMMIT_COUNT" -eq 0 && -z "$REVIEW_ID" ]]; then
+if [[ "$COMMIT_COUNT" -eq 0 ]]; then
   die "range '$RANGE' is empty — nothing to review, and no --review-id to review under.
-     If you meant to review an uncommitted working tree, pass --review-id explicitly."
+     There is nothing to review."
 fi
 
 # The tip is the newest commit in the range: for A..B that is B. Taken by parameter
@@ -147,7 +144,6 @@ fi
 # the script with a silent 141 once the range exceeds the 64 KiB pipe buffer (~1,600
 # commits at 41 bytes a SHA). Not reachable at this repo's size today; free to not have.
 TIP="${COMMITS%%$'\n'*}"
-[[ -n "$REVIEW_ID" ]] || REVIEW_ID="$TIP"
 
 [[ "$PASS" =~ ^[0-9]+$ ]] || die "--pass must be a number, got '$PASS'"
 # ⚠ FOUR, not three. What is capped is DEVELOPER FIX PASSES PER ISSUE (three of them, counted
@@ -159,11 +155,6 @@ if [[ "$PASS" -gt 4 ]]; then
   die "--pass $PASS exceeds four reviews, which is what three fix passes require.
      If issues are still open and not escalated after that, the cap is not doing its job —
      check agent_passes on them rather than adding another review."
-fi
-if [[ "$PASS" -gt 1 && -z "$PRIOR" ]]; then
-  die "--pass $PASS needs --prior <earlier review_id[,...]>. Janis is a one-shot process with
-     no memory of the previous pass; without the earlier review_id it cannot find the
-     findings it is supposed to be resolving, and will re-derive them as new issues."
 fi
 
 if [[ -n "$NOTES" && -n "$NOTES_FILE" ]]; then
@@ -211,7 +202,7 @@ def call(path, method="GET", body=None, token=None):
 try:
     tok = call("/api/collections/_superusers/auth-with-password", "POST",
                {"identity": env.get("PB_EMAIL"), "password": env.get("PB_PASSWORD")})["token"]
-    flt = urllib.parse.quote('review_id="%s"' % arg.replace('"', ''))
+    flt = urllib.parse.quote('branch_name="%s" && state="open"' % arg.replace('"', ''))
     r = call("/api/collections/issues/records?perPage=1&skipTotal=false&filter=" + flt, token=tok)
     print(r.get("totalItems", 0))
 except Exception:
@@ -219,24 +210,6 @@ except Exception:
 PY
 }
 
-# ⚠ A review_id COLLISION IS A REAL REVIEW BEING OVERWRITTEN, not a cosmetic clash.
-# The default id is the tip SHA, and the tip does not move unless a commit is added — so a
-# re-run over an unchanged range files under the SAME id as the run before it. The two sets
-# then merge, "what did this review find?" stops being one query, and the second reviewer is
-# told it is pass 1 while looking at a tracker its predecessor already wrote to. Measured:
-# that is exactly what happened on 205b97c when a timed-out first run had already filed #90.
-EXISTING="$(pb_helper count "$REVIEW_ID" 2>/dev/null || echo unreachable)"
-if [[ "$EXISTING" == "unreachable" ]]; then
-  echo "request_review.sh: WARNING — could not reach the tracker to check for a review_id" >&2
-  echo "  collision. If issues already exist under $REVIEW_ID they will be merged with this" >&2
-  echo "  run's. The reviewer will also be unable to file; see REVIEWER.md §4." >&2
-elif [[ "$EXISTING" != "0" ]]; then
-  die "review_id '$REVIEW_ID' already has $EXISTING issue(s) in the tracker.
-     A re-run over an unchanged range would merge two separate reviews under one id, and the
-     reviewer would be briefed as though this were the first look at the range.
-     Either pass a distinct --review-id (e.g. '${TIP:0:7}-r2'), or if this is the next pass of
-     a cycle, use --pass N --prior $REVIEW_ID after committing the fixes so the tip moves."
-fi
 
 # --- Which interpreter can the reviewer actually run tests with? -----------
 # REVIEWER.md makes verification the central obligation, so handing it a pytest command that
@@ -254,6 +227,15 @@ else
     PYBIN="$COMMON/.venv/bin/python"
   fi
 fi
+
+# --- The changeset: a branch's local-only pull request ---------------------
+# ⚠ ALL WORK HAPPENS ON A BRANCH, AND THE BRANCH IS THE REVIEWABLE UNIT (owner, 2026-08-17).
+# A commit is too granular to review — a fix commit is not a change, it is part of one — and a
+# GitHub PR is the friction this lane exists to avoid. The middle is a branch with a record:
+# `scripts/changeset.sh` gives it an identity, a state and a merge event, and every issue a
+# review files is stamped with it. That is what makes "is this piece of work done?" a query
+# instead of something a session has to remember.
+CS_JSON="$(BRANCH="$BRANCH" REPO_SLUG="$REPO_SLUG" python3 "$REPO_ROOT/scripts/lib/find_changeset.py" 2>/dev/null || true)"
 
 # --- Sibling repos the reviewer may READ -----------------------------------
 # ⚠ WITHOUT THIS THE REVIEWER IS BLIND TO MECHANISMS THIS REPO ONLY DESCRIBES. Measured:
@@ -285,7 +267,7 @@ You are reviewing the repository at \`$REPO_ROOT\` (host: $(hostname)). That is 
 directory. The tracker \`repo\` field for everything you file is \`$REPO_SLUG\`.
 
 - **Range to review:** \`$RANGE\` — $COMMIT_COUNT commit(s), tip \`$TIP\`.
-- **review_id for THIS pass:** \`$REVIEW_ID\` — set it on every issue you file.
+- **branch_name for THIS pass:** \`$BRANCH\` — set it on every issue you file.
 - **Developer to address:** $DEVELOPER. Name them in issue comments. They are blocked on this
   process and will read your stdout when it exits; there is no other channel back.
 - **Review $PASS of at most 4** (three fix passes, each followed by a review).
@@ -327,6 +309,33 @@ You will not be able to run the suite. Mark every finding that needed execution 
 "
 fi
 
+if [[ -n "$CS_JSON" ]]; then
+  CS_ID="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["id"])' "$CS_JSON")"
+  CS_NUM="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["number"])' "$CS_JSON")"
+  CS_TITLE="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["title"])' "$CS_JSON")"
+  BRIEF+="
+### The changeset this belongs to
+
+Branch \`$BRANCH\` is **changeset #$CS_NUM — $CS_TITLE**.
+
+⚠ **Stamp \`branch_name\` = \`$BRANCH\` on every issue you file.** That is what ties a finding
+to this piece of work, and it is what decides whether the work is finished: an unstamped issue
+belongs to no unit and appears in no convergence check.
+
+**To find what earlier passes on this branch already filed** — you have no memory of them —
+query \`branch_name=\"$BRANCH\" && state=\"open\"\`. That is every open finding on this
+changeset, whichever pass raised it. There is no list of prior ids to be handed any more.
+"
+else
+  BRIEF+="
+### No changeset
+
+Branch \`$BRANCH\` has no open changeset record. File issues as normal, but **say so in your
+summary** — unstamped issues appear in no convergence check, so the work cannot be shown to be
+finished.
+"
+fi
+
 if [[ -n "$SIBLING" ]]; then
   BRIEF+="
 ### A sibling repo you can read
@@ -342,17 +351,6 @@ contents unless they contradict something in the range you were given.
 "
 fi
 
-if [[ -n "$PRIOR" ]]; then
-  BRIEF+="
-### Earlier passes of this cycle
-
-Prior review_id(s): \`$PRIOR\`
-
-Read those issues before you read the code — you filed them, but you do not remember them.
-Resolve what is genuinely cleared, leave open what is not, and skip anything already
-\`escalated\`. File new findings under \`$REVIEW_ID\`, not under the prior id.
-"
-fi
 
 if [[ -n "$NOTES" ]]; then
   # ⚠ UNTRUSTED INPUT IN A SYSTEM PROMPT. This text comes from the agent whose work is being
@@ -444,7 +442,7 @@ REVIEWER_ALLOW=(
   # ⚠ SCOPED TO --dry-run, AND THE SCOPING IS THE POINT. Added because a review asked for it
   # (the repair path this allowlist is supposed to have) — but the first version granted the
   # WHOLE script while the comment justified only the dry run. That grant let the reviewer
-  # launch a real nested `claude -p`, filing issues under a review_id nobody was watching,
+  # launch a real nested `claude -p`, filing issues under a branch_name nobody was watching,
   # and the nested reviewer would hold the same entry: unbounded recursion, paid for.
   # Fifth instance of this file's comment claiming less than its flags allowed.
   #
@@ -554,7 +552,7 @@ cleanup() { rm -f "$MCP_CONF"; }
 trap cleanup EXIT INT TERM
 pb_helper config "$MCP_CONF" || die "could not extract the pocketbase MCP config from ~/.claude.json"
 
-echo "request_review.sh: reviewing $RANGE ($COMMIT_COUNT commit(s)) as review_id $REVIEW_ID, pass $PASS." >&2
+echo "request_review.sh: reviewing $RANGE ($COMMIT_COUNT commit(s)) as branch $BRANCH, pass $PASS." >&2
 echo "request_review.sh: this blocks until the review completes." >&2
 
 set +e
@@ -574,31 +572,31 @@ set -e
 
 if [[ "$STATUS" -ne 0 ]]; then
   # ⚠ NOT "the review did not happen". Janis files incrementally, so a run that dies
-  # mid-way leaves real findings in the tracker under this review_id. Telling the worker the
+  # mid-way leaves real findings in the tracker under this branch_name. Telling the worker the
   # review did not happen would orphan them: open issues, against a range nobody is looking
   # at any more, that the next reviewer then re-derives.
-  FILED="$(pb_helper count "$REVIEW_ID" 2>/dev/null || echo unreachable)"
+  FILED="$(pb_helper count "$BRANCH" 2>/dev/null || echo unreachable)"
   echo "request_review.sh: THE REVIEW DID NOT COMPLETE (claude exited $STATUS)." >&2
   if [[ "$FILED" == "unreachable" ]]; then
     # ⚠ THE THIRD CASE, AND IT MUST NOT BE FOLDED INTO "nothing was filed". `unreachable`
     # means the QUESTION WAS NEVER ANSWERED — a dead port, a timeout, a bad credential, a
     # changed schema all land here. Reporting that as "nothing is filed" states a result the
     # instrument never produced, and it restores exactly the orphaning this branch exists to
-    # prevent: findings sitting under a review_id nobody will look at again.
+    # prevent: findings sitting under a branch_name nobody will look at again.
     echo "  ⚠ AND THE TRACKER COULD NOT BE REACHED, so whether anything was filed is UNKNOWN." >&2
     echo "  This is not the same as 'nothing was filed' — do not treat it as one." >&2
     echo "  Check by hand before you push:" >&2
-    echo "      the issues collection, filter review_id=\"$REVIEW_ID\"" >&2
+    echo "      the issues collection, filter branch_name=\"$BRANCH\"" >&2
     echo "  If it is empty the range is unreviewed; if it is not, those are real findings." >&2
   elif [[ "$FILED" == "0" ]]; then
-    echo "  Nothing is filed under review_id $REVIEW_ID (the tracker answered: 0)." >&2
+    echo "  Nothing is filed under branch $BRANCH (the tracker answered: 0)." >&2
     echo "  Treat the range as unreviewed. Say so in the commit trail or to the owner," >&2
     echo "  then push anyway — AGENTS.md §1." >&2
   else
-    echo "  ⚠ BUT $FILED issue(s) ARE ALREADY FILED under review_id $REVIEW_ID." >&2
+    echo "  ⚠ BUT $FILED issue(s) ARE ALREADY FILED under branch $BRANCH." >&2
     echo "  This is a PARTIAL review, not an absent one. Read those issues and address them;" >&2
     echo "  do not treat the tracker as untouched. The unread part of the range is still" >&2
-    echo "  unreviewed — re-run with a DISTINCT --review-id to cover it." >&2
+    echo "  unreviewed — the unread part of the range is still unreviewed — review again." >&2
   fi
 fi
 exit "$STATUS"

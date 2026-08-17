@@ -36,7 +36,7 @@ If it reads the owner's name, fix it immediately with
 
 * **Amending is safe here and rewriting history is not**, and the line between them is
   whether the commit has been reviewed. Amend an *unpushed, unreviewed* commit freely.
-  ⚠ Never rebase or amend a commit a review has already read: the `review_id` on every issue
+  ⚠ Never rebase or amend a commit a review has already read: the `branch_name` on every issue
   that review filed is that range's tip SHA, and rewriting it turns those issues into
   findings against a commit that no longer exists. AGENTS.md §1 says merge, never rebase,
   for the same reason from the other direction.
@@ -100,7 +100,7 @@ scripts/request_review.sh --range origin/main..HEAD --developer Ozzy
 ```
 
 **It blocks.** The review runs to completion and the script prints Janis's summary and the
-`review_id` it filed under. There is no tap, no queue, no reply to wait for — the review has
+`branch_name` it filed under. There is no tap, no queue, no reply to wait for — the review has
 arrived when the script returns. Read `scripts/request_review.sh --help` for the rest of the
 flags; **`--notes` is the one that matters most** and is covered in step 4.
 
@@ -115,7 +115,7 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
 * ⚠ **A non-zero exit means the review did not COMPLETE. It does NOT mean nothing was filed.**
   Janis writes issues one at a time as it goes, so a run that dies half way leaves **real
   findings in the tracker** — and "filed nothing" and "filed six of nine then died" look
-  identical from the exit code. **Query the `review_id` before you conclude anything**; the
+  identical from the exit code. **Query the `branch_name` before you conclude anything**; the
   script does this for you and tells you which case you are in. Treating a partial review as
   an absent one orphans those issues: open, against a range nobody is looking at any more,
   waiting to be re-derived by the next reviewer as though they were new.
@@ -125,11 +125,11 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
   * ⚠ **If the tracker could not be REACHED, you do not have an answer — and "unreachable" is
     not "empty".** A dead port, a timeout, a stale credential and a changed schema all look
     identical from here, and none of them is evidence that nothing was filed. **Check the
-    instrument ran before believing a negative.** Look at the `review_id` by hand before you
+    instrument ran before believing a negative.** Look at the `branch_name` by hand before you
     push; folding this case into "nothing was filed" is how real findings end up orphaned
     under an id nobody reads again.
   * **If some were filed**, address them as findings. The unread part of the range is still
-    unreviewed, so re-run with a **distinct** `--review-id` to cover it.
+    unreviewed, so re-run with a **distinct** `--branch-name` to cover it.
   * ⚠ **NONE of these three** overrides the abort in AGENTS.md §1: a review that did not
     complete is not a "must not land" finding being cleared. (This said *"Neither case"*
     while sitting under three bullets — a two-place word against three options, which leaves
@@ -148,7 +148,7 @@ open, un-escalated issue you are taking on.
   would make a failed pass free, and "retry until it works" is the unbounded loop the cap
   exists to prevent. **A crashed pass costs a pass.**
 * **Increment only what you are actually taking on** — the open, un-escalated issues under the
-  `review_id` you were handed. Not the whole tracker, not what you are deferring.
+  `branch_name` you were handed. Not the whole tracker, not what you are deferring.
 * **Anything already at `3` is out of attempts.** Escalate it; do not pick it up a fourth
   time. A worker that increments a `3` to `4` has broken the cap.
 * ⚠ **Move it in one direction, by one.** Resetting a counter is the owner's alone — it is
@@ -183,15 +183,13 @@ Then, on each issue:
 
 ```bash
 scripts/request_review.sh --range origin/main..HEAD --developer Ozzy \
-  --pass 2 --prior <the review_id from pass 1> --notes-file /tmp/pass2-notes.md
+  --pass 2 --notes-file /tmp/pass2-notes.md
 ```
 
-⚠ **`--prior` is not optional from pass 2, and the script refuses the command without it.**
-That refusal is deliberate — a reviewer that cannot find its own previous findings re-derives
-them as new issues — but it means **a mistyped command here exits 1**, and the rule directly
-below says a non-zero exit means the review did not complete and you should push anyway.
-Between them, a typo can look exactly like a review that was honestly attempted. **Read the
-error before you accept it as an unreachable reviewer.**
+⚠ **There is no `--prior` any more — the branch replaced it.** Janis finds its own earlier
+findings with `branch_name="<this branch>" && state="open"`: every issue on the branch,
+whichever pass filed it. That is a better set than a list of ids threaded through a command
+line, and unlike a flag it cannot be forgotten.
 
 ⚠ **`--notes` / `--notes-file` is not optional in practice, because Janis remembers nothing.**
 It is a fresh process with no memory of the last pass; the issues carry the findings but not

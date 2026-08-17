@@ -108,14 +108,14 @@ optional hop.** Anything Janis must not miss belongs in the persona or in the br
    `scripts/request_review.sh --range origin/main..HEAD --developer Ozzy`, naming **the whole
    range it is about to push**.
 2. **The script blocks.** `Reviewer` reads the range and files issues straight into
-   PocketBase, each carrying the `review_id` of the review that produced it.
-3. **The script returns**, printing the review and the `review_id` it filed under. **There is
+   PocketBase, each carrying the `branch_name` of the review that produced it.
+3. **The script returns**, printing the review and the `branch_name` it filed under. **There is
    no tap-back** — the review has arrived when the script exits.
 4. **Worker increments `agent_passes` on each issue it takes on — first, before any work —**
    then addresses them: fixing what is wrong, rebutting what is not, **in the issue's
-   comments**. Then runs the script again with `--pass N --prior <earlier review_id>`.
+   comments**. Then runs the script again with `--pass N`.
 5. **`Reviewer` re-reviews and RESOLVES**: closes what is genuinely cleared, leaves open what
-   is not, files anything new under a **new** `review_id`, and flags what needs the owner.
+   is not, files anything new under a **new** `branch_name`, and flags what needs the owner.
 
 ⚠ **EVERY FIX PASS ENDS WITH A REVIEWER CALL** (owner, 2026-08-13). Steps 4→5 are one pass, and a
 pass is not over when the worker stops typing — it is over when a reviewer has read the
@@ -171,10 +171,9 @@ decision — that is the other way out, and it does not wait for the count.
   was written not to depend on the transport, and this is the change it was written to survive:
   it cost one bullet.
   * ⚠ **JANIS REMEMBERS NOTHING BETWEEN PASSES. THAT IS NOW A FACT, NOT A FORECAST.** Pass 2
-    and pass 3 must be briefed as completely as pass 1 — `--prior` hands it the earlier
-    `review_id`s so it can find its own findings, and `--notes` tells it what was fixed and what
-    was rebutted. The script **refuses** a pass past the first without `--prior`, because a
-    reviewer that cannot find its previous findings re-derives them as new issues.
+    and pass 3 must be briefed as completely as pass 1 — `--notes` says what was
+    fixed and what was rebutted. It finds its own earlier findings by querying the branch, so
+    there is nothing to thread through a command line and nothing to forget.
   * **The one thing that never needs re-briefing is the pass count.** It is on the issue as
     `agent_passes` — which is why it is there.
 
@@ -246,19 +245,19 @@ the simple version that holds until then. Do not build tooling on its shape.
   * ⚠ **A NON-ZERO EXIT MEANS THE REVIEW DID NOT *COMPLETE* — NOT THAT NOTHING WAS FILED.**
     The reviewer writes issues one at a time as it goes, so a run that dies half way leaves
     real findings in the tracker, and the exit code cannot tell that apart from a run that
-    filed nothing. **Query the `review_id` before concluding anything.** There are **three**
+    filed nothing. **Query the `branch_name` before concluding anything.** There are **three**
     answers, not two:
     * **The tracker answered `0`** — nothing was filed. Say so and push anyway; a blocked push
       is worse than an unreviewed commit, and a *silently* skipped review is worse than both.
     * **The tracker answered `N`** — those are findings. Address them, and re-run with a
-      **distinct** `review_id` for the part left unread.
+      **distinct** `branch_name` for the part left unread.
     * ⚠ **The tracker could not be REACHED — you have no answer, and that is not the same as
       `0`.** A dead port, a timeout, a stale credential and a changed schema all look alike
       from here, and none is evidence that nothing was filed. **Check the instrument ran
       before believing a negative.** Folding this into "nothing was filed" is how real
       findings end up orphaned under an id nobody reads again.
       **So, BEFORE YOU PUSH:** query the `issues` collection with
-      `filter=review_id="<the id the script printed>"`. **Empty means the range is
+      `filter=branch_name="<the id the script printed>"`. **Empty means the range is
       unreviewed; not empty means those are real findings, and you address them.** That
       disposition is the operative half — the other two answers each carry one, and the
       first transcription of this case dropped it, leaving a rule that named a hazard and
@@ -288,7 +287,7 @@ the simple version that holds until then. Do not build tooling on its shape.
       loopback-bound; there is no LAN-direct route and no anonymous read. With the report file
       gone this is the *only* copy, so an unreachable tracker loses the whole review rather
       than delaying its transcription.
-  * **`review_id` ties the issues to the review that produced them**, and every issue a review
+  * **`branch_name` ties the issues to the review that produced them**, and every issue a review
     files carries it. **Default: the tip SHA of the reviewed range** — the one unambiguous
     choice, since a range has no single SHA and "the interesting commit" is a judgement two
     agents make differently. ⚠ **A default, not a policy** (owner): a SHA can be rewritten by a
@@ -296,7 +295,7 @@ the simple version that holds until then. Do not build tooling on its shape.
     directory with no git behind it, **generate one** (`uuidgen`, or timestamp-plus-noun);
     never invent a plausible-looking SHA, which would read as a commit that never existed. The
     field is indexed and deliberately **not** unique — a review yields many issues, which is
-    the point — and there is **one `review_id` per pass**, so a three-pass cycle leaves three.
+    the point — and there is **one `branch_name` per pass**, so a three-pass cycle leaves three.
   * **The old "the `Reviewer` never files" rule is retired, and it was never an owner mandate**
     (owner, 2026-08-13). It was written here by agents after a real incident — 25 issues in one
     afternoon, each review producing a backlog and the backlog producing the next review's
@@ -420,9 +419,9 @@ the simple version that holds until then. Do not build tooling on its shape.
     permanently — measured on #97 and #104. An "accept as-is" decision strands most easily,
     because no commit will ever reference it.
   * **THE CYCLE IS FINISHED when every issue it produced is closed, escalated, or out of
-    attempts** — `review_id!="" && state="open" && escalated=false` returns nothing.
-    ⚠ **The `review_id!=""` clause is load-bearing**: the nine migrated GitHub issues carry no
-    `review_id`, were never part of a cycle, and nobody is working them, so a check that counts
+    attempts** — `branch_name!="" && state="open" && escalated=false` returns nothing.
+    ⚠ **The `branch_name!=""` clause is load-bearing**: the nine migrated GitHub issues carry no
+    `branch_name`, were never part of a cycle, and nobody is working them, so a check that counts
     them never reaches zero and misreads a settled loop as a stuck one.
   * ⚠ **THE ANSWER COMES BACK IN `user_decision`, AND NO AGENT MAY WRITE IT** (owner,
     2026-08-14). It is the owner's field exactly as an `agent_passes` reset is theirs — an
@@ -575,11 +574,11 @@ the simple version that holds until then. Do not build tooling on its shape.
     between reviews, so it is structurally incapable of being the floating session. That
     collapse is no longer available to make by accident.
   * **Still open: where a wholesale review's output lands.** It is **not** the per-change
-    tracker as §1 uses it — that loop files issues scoped to one range under one `review_id`,
+    tracker as §1 uses it — that loop files issues scoped to one range under one `branch_name`,
     and a wholesale read has neither. Ask before inventing a home for it.
   * **Also still open: whether Janis's persona fits that altitude.**
     [Personas/REVIEWER.md](Personas/REVIEWER.md) is written for a bounded range with a
-    `review_id` to file under. A wholesale read has neither, and reusing the persona
+    `branch_name` to file under. A wholesale read has neither, and reusing the persona
     unmodified would produce a per-diff review pointed at a whole codebase. Ask, do not assume.
 
 ### 5b. The doc-claims gate can stop enforcing WITHOUT going red

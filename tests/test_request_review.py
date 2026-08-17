@@ -118,7 +118,7 @@ def test_the_three_dot_check_precedes_the_two_dot_check_in_source():
 
 
 def test_a_two_dot_range_is_accepted(run):
-    rc, out = run("--range", "HEAD~1..HEAD", "--review-id", "test-range-ok", "--dry-run")
+    rc, out = run("--range", "HEAD~1..HEAD", "--dry-run")
     assert rc == 0, out
     assert "STUB CLAUDE WAS INVOKED" not in out, "--dry-run must not launch a review"
 
@@ -130,19 +130,27 @@ def test_four_reviews_are_allowed_and_five_are_not(run):
     would have blocked the review that verifies the final fix, which is the one that decides
     whether anything gets escalated at all.
     """
-    ok, out = run("--range", "HEAD~1..HEAD", "--review-id", "t4",
-                  "--pass", "4", "--prior", "x", "--notes", "n", "--dry-run")
+    ok, out = run("--range", "HEAD~1..HEAD",                   "--pass", "4", "--notes", "n", "--dry-run")
     assert ok == 0, out
-    bad, out5 = run("--range", "HEAD~1..HEAD", "--review-id", "t5",
-                    "--pass", "5", "--prior", "x", "--notes", "n", "--dry-run")
+    bad, out5 = run("--range", "HEAD~1..HEAD",                     "--pass", "5", "--notes", "n", "--dry-run")
     assert bad != 0, out5
 
 
-def test_a_later_pass_requires_the_prior_review_ids(run):
-    """A one-shot reviewer that cannot find its own findings re-derives them as new issues."""
-    rc, out = run("--range", "HEAD~1..HEAD", "--review-id", "t2", "--pass", "2", "--dry-run")
-    assert rc != 0, out
-    assert "--prior" in out
+def test_the_brief_tells_the_reviewer_which_branch_to_stamp(run):
+    """Replaces the old --prior contract, which the branch made unnecessary.
+
+    A one-shot reviewer used to be handed the previous passes' ids so it could find its own
+    earlier findings. With the BRANCH as the unit of work that threading is gone: the reviewer
+    queries `branch_name="<branch>" && state="open"` and gets exactly the right set, whichever
+    pass filed each one. What must still hold is that the brief NAMES the branch — an
+    unstamped issue belongs to no unit and appears in no convergence check.
+    """
+    rc, out = run("--range", "HEAD~1..HEAD", "--dry-run")
+    assert rc == 0, out
+    branch = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=str(REPO),
+                            capture_output=True, text=True).stdout.strip()
+    assert branch in out, "the brief must name the branch the reviewer stamps issues with"
+    assert "branch_name" in out
 
 
 def test_dry_run_names_no_concrete_credential_path(run):
@@ -160,7 +168,7 @@ def test_dry_run_names_no_concrete_credential_path(run):
     reviewer with no tracker access at all. So: assert no concrete path is printed. The fixed
     script prints a placeholder describing when the file is written instead.
     """
-    rc, out = run("--range", "HEAD~1..HEAD", "--review-id", "t-cred", "--dry-run")
+    rc, out = run("--range", "HEAD~1..HEAD", "--dry-run")
     assert rc == 0, out
     # Not anchored on "/tmp/": mktemp -t follows $TMPDIR (#117). The fixture pins TMPDIR, and
     # the pattern matches the template wherever it lands.
@@ -296,7 +304,7 @@ def test_the_launcher_grant_is_scoped_to_dry_run():
 
     `Bash(./scripts/request_review.sh:*)` — the whole script — was granted while the comment
     beside it justified only `--dry-run`. Without that flag the script launches a real nested
-    `claude -p`, files issues under a review_id nobody watches, and the nested reviewer holds
+    `claude -p`, files issues under a branch_name nobody watches, and the nested reviewer holds
     the same entry: unbounded recursion, billed, with a credential file at every level.
 
     ⚠ The fix landed with nothing holding it: `_array("REVIEWER_ALLOW")` had exactly one

@@ -101,9 +101,9 @@ def test_the_reviewer_persona_is_told_to_emit_the_marker():
 
 
 def test_convergence_excludes_the_migrated_backlog():
-    """`review_id!=""` drops the 9 migrated GitHub issues, which carry no review_id and are
+    """`branch_name!=""` drops the 9 migrated GitHub issues, which carry no branch_name and are
     worked by nobody. Without it the loop can never see itself converge."""
-    assert 'review_id!=""' in SOURCE
+    assert 'branch_name!=""' in SOURCE
 
 
 def test_it_is_classified_in_the_pipeline_manifest():

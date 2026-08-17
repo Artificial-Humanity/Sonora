@@ -176,6 +176,11 @@ NOT_ORCHESTRATORS = {
         "Preserved audition provenance — added for exactly that reason in 4e87241. Invokes a "
         "toolchain script outside this repo."
     ),
+    "scripts/changeset.sh": (
+        "The local-only pull request: opens, tracks and merges a `changesets` record so a BRANCH "
+        "has an identity, a state and a merge event. Review-lane tooling, not the data pipeline. "
+        "\u26a0 Its `merge` is a LOCAL merge only and never pushes."
+    ),
     "scripts/review_cycle.sh": (
         "Drives the code-review loop (AGENTS.md §1) to convergence: alternates request_review.sh "
         "with a `claude -p` worker until every issue this cycle produced is closed, escalated or "
