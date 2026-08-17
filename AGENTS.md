@@ -61,65 +61,106 @@ case-insensitive macOS/Windows.
 
 ### 1. Commit Hygiene
 
-**THE LOOP** (owner, 2026-08-13). Work is committed, reviewed by a second session, and pushed
-straight to `main`.
+**THE LOOP** (owner, 2026-08-13; respecified in full 2026-08-17). Work happens on a **branch**,
+is reviewed by a one-shot reviewer process, and merges to `main` only once every issue on it is
+closed.
 
-1. **Worker commits and taps `Reviewer`**, naming **the whole range it is about to push** —
-   `@{push}..HEAD`, or `origin/main..HEAD` with no upstream — and every commit in it.
-2. **`Reviewer` reviews and files issues** straight into PocketBase, each carrying the
-   `review_id` of the review that produced it.
-3. **`Reviewer` taps the worker**, naming the `review_id`: *"issues are filed under
-   `<review_id>`."*
+⚠⚠ **[workflow/WORKFLOW.md](workflow/WORKFLOW.md) IS THE MAP OF THE LOOP AND IT OUTRANKS THIS
+SECTION.** It holds the state machine, both roles' steps, and the four rulings of 2026-08-17
+that **reversed** what this file used to enforce: escalation moved to the worker, escalation
+now blocks the merge, the changeset record is retired, and `state: review` exists. Read it
+first. What follows is the contract *between* the roles, not either role's procedure.
+
+⚠ **`workflow/` IS A PORTABLE LANE, NOT PART OF THIS REPO'S SUBJECT MATTER** (owner,
+2026-08-17). It is meant to be copied whole into another repo, which is why the paragraph above
+is a pointer and not a summary: **a summary here becomes a second copy that the port leaves
+behind — still authoritative-looking, and now wrong.** The procedure is
+`workflow/WORKFLOW.md`, "Porting this lane": a copy, two lines in `CLAUDE.md`, and a glance at
+`workflow/config.env`. Nothing in this section should need editing to move the lane.
+
+⚠ **YOUR ROLE HAS A SYSTEM PROMPT, AND IT IS WHERE THE PROCEDURE NOW LIVES** (owner,
+2026-08-14):
+
+| role | identity | system prompt |
+|---|---|---|
+| **Worker** | **Ozzy** &lt;ozzy@artificialhumanity.io&gt; | [workflow/DEVELOPER.md](workflow/DEVELOPER.md) |
+| **Reviewer** | **Janis** &lt;janis@artificialhumanity.io&gt; | [workflow/REVIEWER.md](workflow/REVIEWER.md) |
+
+**If you are the developer session for this repo, read
+[workflow/DEVELOPER.md](workflow/DEVELOPER.md) now and work as Ozzy.** It is your standing
+brief and carries the steps below in the detail your role actually needs. This file keeps the
+*contract between* the roles — the loop, the cap, the abort, and the repo facts both sides
+depend on. It does not duplicate either role's procedure; that duplication is what drifted
+three times in one pull request.
+
+⚠ **NOTHING LOADS THIS FILE OR EITHER PERSONA FOR YOU.** Measured 2026-08-14, not assumed:
+**Claude Code auto-discovers `CLAUDE.md` and does *not* auto-discover `AGENTS.md`.** A session
+started with a bare `claude` here begins with neither this file nor a persona in context.
+That is why [CLAUDE.md](CLAUDE.md) exists and is deliberately a few lines long: it is the one
+file that *is* loaded, and all it does is send you here and to your role's persona.
+
+* ⚠ **A SYMLINK DOES NOT WORK.** `CLAUDE.md -> AGENTS.md` is **not** followed — measured, with
+  a canary. So the pointer has to be a real file, and keeping it to pointers is the only thing
+  stopping it becoming a second copy of these rules that drifts from them.
+* ⚠ **THE DEVELOPER PERSONA NEEDS NO FLAG — `CLAUDE.md` `@import`s IT** (owner, 2026-08-17:
+  *"I'm still not very keen on having to start claude code with a pre-prompt"*). A bare
+  `claude` in this repo comes up as Ozzy, because the import is inlined into the auto-loaded
+  file rather than linked from it. Measured the same day: `@`-imports resolve, including from
+  a subdirectory, and **a plain `claude -p` receives the imported content with no action of
+  its own.** The old route — `--append-system-prompt-file workflow/DEVELOPER.md` — still
+  works and still survives `/clear`, but it is now redundant, and a persona that depends on
+  someone remembering a flag is the failure this repo keeps re-learning.
+* **The reviewer is given `workflow/REVIEWER.md` through `--system-prompt-file`** (the
+  replacing form), which is why that file is written to stand alone and this one is not.
+* ⚠⚠ **THE IMPORT REACHES THE REVIEWER TOO, AND THAT IS THE COST OF THE ABOVE.**
+  `--system-prompt-file` replaces the *default assistant prompt*; it does **not** suppress
+  `CLAUDE.md`, and imports ride along with it (both measured 2026-08-17). **So Janis is handed
+  Ozzy's full persona on every run** — a competing role telling it to commit, to increment
+  `agent_passes`, and to fix rather than report.
+  * **The precedence rule is the whole separation**, so it is stated at three points: the
+    import site in `CLAUDE.md`, `REVIEWER.md` §0 (with a table of the four conflicts that
+    matter), and last of all in the brief `request_review.sh` appends — last because recency
+    favours it there.
+  * ⚠ **Do not "fix" this by deleting the import.** The contamination is the price of the
+    default working with no flag, and the owner chose the default. A system prompt outranks
+    project memory, which is what makes the price payable.
+  * ⚠ **Do not resolve a role question from the invocation.** `CLAUDE_CODE_ENTRYPOINT` is
+    `cli` interactively and `sdk-cli` under `-p` (measured, with the inherited value stripped
+    so it is print mode setting it, not leakage) — but **Ozzy runs under `-p` too**, unattended
+    via `review_cycle.sh`. It distinguishes the *invocation*, never the *role*. It is a
+    falsifier for a confused session and nothing more; the role is decided at the call site.
+
+⚠ **The reviewer does not arrive holding this file.** `workflow/REVIEWER.md` is passed to
+`claude -p` with `--system-prompt-file`, which **replaces** the default prompt outright. Janis
+gets `CLAUDE.md` auto-loaded (measured: that still happens even under `--system-prompt-file`)
+and so gets a *pointer* here — but a pointer is only followed if something makes it worth
+following. **So a rule added here and nowhere else reaches the reviewer at best by one
+optional hop.** Anything Janis must not miss belongs in the persona or in the brief that
+`request_review.sh` builds.
+
+1. **Worker commits**, then runs
+   `workflow/scripts/request_review.sh --range origin/main..HEAD --developer Ozzy`, naming **the whole
+   range it is about to push**.
+2. **The script blocks.** `Reviewer` reads the range and files issues straight into
+   PocketBase, each carrying the `branch_name` of the review that produced it.
+3. **The script returns**, printing the review and the `branch_name` it filed under. **There is
+   no tap-back** — the review has arrived when the script exits.
 4. **Worker increments `agent_passes` on each issue it takes on — first, before any work —**
    then addresses them: fixing what is wrong, rebutting what is not, **in the issue's
-   comments**. Then taps `Reviewer` again.
+   comments**. Then runs the script again with `--pass N`.
 5. **`Reviewer` re-reviews and RESOLVES**: closes what is genuinely cleared, leaves open what
-   is not, files anything new under a **new** `review_id`, flags what needs the owner, and
-   taps back.
+   is not, files anything new under a **new** `branch_name`, and flags what needs the owner.
 
-⚠ **EVERY PASS ENDS WITH A REVIEWER CALL** (owner, 2026-08-13). Steps 4→5 are one pass, and a
-pass is not over when the worker stops typing — it is over when a reviewer has read the
-result. There is no final worker pass that nobody reads.
+**The loop's procedure is not here.** The state machine, both roles' steps, the
+three-fix-pass cap, escalation and the `user_decision` return path all live in
+[workflow/WORKFLOW.md](workflow/WORKFLOW.md), with each role's half in
+[workflow/DEVELOPER.md](workflow/DEVELOPER.md) and
+[workflow/REVIEWER.md](workflow/REVIEWER.md). **They were restated here until 2026-08-17 and
+the copy drifted from the original three times in one pull request** — including a role table
+that still assigned escalation to the reviewer a day after the owner moved it to the worker.
+One copy, in `workflow/`.
 
-**Repeat to a maximum of THREE passes** (owner, 2026-08-13), then the worker pushes to `main`.
-Anything still open after the third review is **escalated** — see below.
 **There is no report file at any point**: the tracker is the report.
-
-**THE TWO ROLES.** Defined by responsibility, not by how either is spawned:
-
-| | **Worker** | **Reviewer** |
-|---|---|---|
-| owns | the change, **and the attempt count** | the reading of it, **and whether a finding is cleared** |
-| does | commits, fixes, rebuts, pushes | reads the range, files issues, **closes them**, taps back |
-| writes to `main` | **yes — the only role that does** | **never** |
-| **opens** issues | not as part of the loop | **yes — this is its output** |
-| **closes** issues | **never** | **yes — only it decides a finding is cleared** |
-| sets `escalated` | on an existing issue, only for "this needs a user decision" | **yes — the normal path** |
-| holds the count | **yes — increments `agent_passes` first thing each pass** | no |
-
-* ⚠ **THE WORKER NEVER CLOSES AN ISSUE** (owner, 2026-08-13). It fixes, or it argues, and it
-  says so in the comments — but the issue stays open until a reviewer agrees it is cleared.
-  **A worker closing its own findings is marking its own homework**, and it defeats the one
-  thing the split exists to buy. This is the same reason the worker does not review its own
-  range, applied to the tracker instead of the diff.
-  * **A rebuttal is not a close either.** Argue it in the comments and leave it open; the
-    reviewer accepts the argument and closes, or does not and says why. **A review is a
-    report, not an order** (§5) — that still holds, and it now cuts both ways, since the
-    worker cannot end the argument unilaterally any more than the reviewer can.
-* **One session is only ever one role for one change.** The worker does not review its own
-  range and the reviewer does not fix what it finds — that separation *is* the mechanism, and
-  it survives regardless of what the reviewer is made of.
-* ⚠ **DO NOT COUPLE THE PROTOCOL TO THE REVIEWER'S IMPLEMENTATION.** Today it is a persistent
-  peer session (below). The owner intends to move to **single-shot `claude -p` runs** and is
-  not building that yet. Everything above is written to survive that swap: it turns on *a
-  reviewer reads the range and files issues*, never on a session that remembers the last one.
-  The transport details in the next bullet are the part that will be replaced — keep new
-  rules out of it.
-  * Practical consequence today: **a single-shot reviewer remembers nothing between passes**,
-    so pass 2 and pass 3 must be briefed as completely as pass 1. Writing the briefs that way
-    now costs nothing and is what makes the swap a change of one bullet. The one thing that
-    does *not* have to be re-briefed is the pass number — it is on the issue as
-    `agent_passes`, which is why it is there.
 
 ⚠ **THE LOOP HAS ONE EXIT THAT IS NOT A PUSH, and it is a human handoff.** If a finding is
 that the change **should not land at all** — it corrupts data, it ships a known-broken
@@ -182,228 +223,15 @@ the simple version that holds until then. Do not build tooling on its shape.
   lesson expensively: `deploy.sh`'s "deploy only when a service change is intended" was a
   header comment for weeks, got ignored eleven hours into a live training run, and is now a
   hard refusal in code.
-* **Step 1 (tapping) — reaching the reviewer.** ⚠ **This bullet is the TRANSPORT, and it is
-  the part the `claude -p` move replaces.** Nothing above depends on it.
-  Today `Reviewer` is a peer Claude session on this host (tmux
-  `claude-reviewer`), addressed by name with `SendMessage`; `ListAgents` confirms it is up.
-  Messages queue and drain on the receiver's next turn, so a reply is not instant.
-  * ⚠ **THE FIRST SEND IS REJECTED, IN BOTH DIRECTIONS, AND THAT IS NOT A FAILURE.** A
-    cross-session send to a name the conversation has not used before returns
-    `'<name>' is not an agent in this conversation` plus the ref to confirm with; re-send as
-    `Reviewer [<ref>]`. Take the ref from that error or from `ListAgents`, **never from this
-    file** — it changes when a session restarts. ⚠ It bites the **reply** as well as the
-    request (measured from both ends), so a worker whose reviewer hit it and gave up sees a
-    review that simply never arrives. Expect one rejection at each end.
-  * ⚠ **IT HAS NO SYSTEM PROMPT, SO THE REQUEST MUST CARRY ITS OWN BRIEF.** The `Reviewer`
-    session holds no standing context about this repo, this file, or what a good review is
-    here. A bare "please review my commit" gets a generic reading of unfamiliar code. Send the
-    repo path, the commit range and how to diff it, what the change is *for*, what you already
-    verified, and which standards apply (§5, plus §5b/§5c when the change touches doc claims
-    or stage wiring). **The quality of the review is bounded by the quality of the brief.**
-  * ⚠ **A REVIEW IS DELIVERED WHEN THE `Reviewer` SAYS SO, NOT WHEN ISSUES APPEAR.** Issues
-    land one at a time, so a partially-filed review is indistinguishable from a finished one
-    by looking at the tracker. **Do not start the fix pass until the Reviewer has said it is
-    complete.** This outlived the report file it was written for: the same mistake once
-    deleted a whole second version of a report unread, because its existence on disk was
-    taken as the signal.
-* **Step 2 (filing) — THE `Reviewer` FILES ITS OWN FINDINGS, DIRECTLY.**
-  * **The old "the `Reviewer` never files" rule is retired, and it was never an owner mandate**
-    (owner, 2026-08-13: *"I never actually asked for a reviewer-never-files rule... reviewer
-    filing is fine and perhaps ideal"*). It was written here by agents after a real incident —
-    25 issues in one afternoon, each review producing a backlog and the backlog producing the
-    next review's subject — and it generalised that measurement into a prohibition the owner
-    had not asked for. **The measurement stands; the prohibition does not.** What holds the
-    hazard now is the **three-pass cap**, which bounds the loop directly instead of by
-    proxy. Keep the cap honest and reviewer-filing is safe; relax the cap and this is the
-    first thing to reconsider.
-  * **There is no report file.** The tracker *is* the report. `notes/reviews/` and its
-    `review-<sha7>.md` handoffs are retired, along with the whole "write a document, then
-    transcribe it into issues" step — the issues are local, immediate, and queryable, and the
-    intermediate document was a second place for the same findings to drift.
-  * **ISSUES LIVE IN POCKETBASE, NOT GITHUB** (owner, 2026-08-13). The tracker is the
-    `issues` collection at **https://board.ai-lab-0.mcfarlin.family/_/**, and the `pocketbase`
-    skill — machine-wide for Claude Code and Antigravity — carries the shape, the field list
-    and the number-allocation snippet. File with `repo: "Artificial-Humanity/Sonora"`.
-    * **This repo's GitHub issue tracker is empty by intent.** All 48 issues (#12–#89) were
-      replicated into PocketBase on 2026-08-13, byte-for-byte including comment bodies, and
-      their **numbers were preserved** — so a `#33` in a commit message still names the same
-      finding, it now resolves in the tracker rather than on GitHub. `gh issue create` against
-      this repo is a mistake, not an alternative route.
-    * ⚠ **The tracker is superuser-only and reachable only from ai-lab-0.** Port 8090 is
-      loopback-bound; there is no LAN-direct route and no anonymous read. A session that
-      cannot reach it cannot file — say so and hand the findings to the owner rather than
-      silently dropping them. With the report file gone this is the *only* copy, so an
-      unreachable tracker now loses the whole review rather than delaying its transcription.
-  * **`review_id` ties the issues to the review that produced them.** Set it on every issue a
-    review files.
-    * **Default: the tip SHA of the reviewed range**, at the time of the request — the one
-      unambiguous choice, since a range has no single SHA and "the interesting commit" is a
-      judgement two agents make differently. Full SHA or `sha7`, consistently within a review.
-    * ⚠ **This is a default, not a policy** (owner). A SHA can be rewritten by a rebase, and
-      not everything reviewed is a commit at all. **When there is no commit to name — a
-      review of a working tree, or of a directory with no git behind it — GENERATE one**
-      (`uuidgen`, or a timestamp-plus-noun); do not skip the field and do not invent a
-      plausible-looking SHA, which would read as a commit that never existed.
-    * **The requirement is only that it be unique to one review**, so that "what did this
-      review find?" is one query. The field is indexed and deliberately **not** unique —
-      a review yields many issues, which is the entire point.
-    * **One review_id per pass**, so a three-pass cycle leaves three of them. That is
-      expected, not a bug to normalise away: each names what was true when that pass read the
-      code, and the fix commits move the tip in between.
-  * **File with the reproduction re-verified, not relayed.** A finding never executed is how a
-    wrong finding becomes a tracked task. This gets *sharper* now that the reviewer files
-    directly: there is no longer a worker reading the report in between, so nothing else
-    stands between a speculative finding and a permanent record of it.
-* **Step 4 (addressing) — INCREMENT FIRST, then fix or rebut, and LEAVE IT OPEN.**
-  ⚠ **Before anything else, `agent_passes += 1` on every open, un-escalated issue you are
-  taking on** — an attempt is counted when it starts, so a pass that dies halfway has still
-  spent one. Anything already at `3` is out of attempts: escalate it instead of picking it
-  up. Then: fix what is genuinely wrong and
-  say so in the issue's comments, naming the commit. Where a finding is wrong, argue it there
-  and leave the code alone rather than making a change you believe is wrong — **a review is a
-  report, not an order** (§5). **Close nothing**: resolving is the reviewer's job (see the
-  role table), and a comment with no reasoning is indistinguishable from a finding quietly
-  dropped, now that the tracker is the only record it happened at all.
-  * **Re-brief on the next pass, and say what you did.** The fix pass adds commits, so
-    `@{push}..HEAD` has grown; re-brief all of it. ⚠ **The later brief has a job the first
-    does not: it must say which findings were fixed and how, and which were rebutted and
-    why.** Without that the next review cannot tell a fix from an omission, and it will
-    re-derive findings already settled — burning a pass that exists to catch *regressions
-    introduced by the fix pass*, which is the class this repo has actually measured.
-* **Step 5 (resolving) — THE REVIEWER CLOSES WHAT IS CLEARED** (owner, 2026-08-13). Every pass
-  ends here, not at step 4.
-  * **Verify, then close.** A finding is cleared when the reviewer has *checked* the fix, not
-    when the worker reports one. Closing on the strength of "fixed in abc1234" reintroduces
-    the self-marking this split exists to prevent, one level up.
-  * **Closing is per-issue and explicit.** Leave open what is not cleared, and say in the
-    comment why — "the fix addresses the symptom, the cause in §3 is untouched" is a review
-    finding, not a re-file. **Do not close in bulk at the end of a pass.**
-  * **Accept or refuse a rebuttal, out loud.** The worker cannot close its own argument, so
-    an unanswered rebuttal is a finding left hanging with no one owning it. Close it if the
-    argument holds; if it does not, say why and leave it open.
-  * ⚠ **SKIP THE ISSUES THE WORKER ESCALATED.** An issue the worker flagged
-    `escalated: true` as needing a user decision is **out of scope for re-review** — do not
-    re-derive it, do not argue it, do not close it. It is waiting on the owner, and a
-    reviewer re-litigating it burns a pass on something no pass can settle. Filter them out:
-    `filter=review_id="<id>" && escalated=false`.
-
-* **THE CAP — AT MOST THREE PASSES** (owner, 2026-08-13). The number of passes is otherwise a
-  judgement call, not a fixed count; three is the ceiling, not a target. Stopping earlier
-  because the work is clean is the normal, good outcome.
-  * ⚠ **The cap is what bounds the loop, and it is the only thing that does.** The failure it
-    exists to prevent is a *loop* — each review produces work, the work produces the next
-    review — and this repo has measured that failure rather than theorised it: a fix pass on a
-    large diff ran 7→5→9→7 findings, with the later rounds mostly defects introduced by the
-    earlier rounds' own fixes. **More passes stopped converging and started manufacturing
-    work.** A fourth pass is not a judgement call.
-  * **THE COUNT LIVES ON THE ISSUE: `agent_passes`** (owner, 2026-08-13). An integer,
-    defaulting to `0` — this used to be a number carried in the brief, which §1's own lesson
-    says is a convention and not a mechanism.
-    * ⚠ **THE WORKER INCREMENTS IT, AND DOES SO AS THE FIRST ACT OF ITS PASS** (owner,
-      2026-08-13) — before reading the issue, before touching any code. It counts **worker
-      attempts**, so the role making the attempt is the one that records it. An issue is
-      filed at `0` and becomes `1` when a worker picks it up, not when it is written.
-    * ⚠ **Incrementing FIRST is the point, not a detail.** A pass that is abandoned halfway —
-      the session dies, the context runs out, the worker gives up — **has still spent its
-      attempt**, because the count went up before the work started. Incrementing at the end
-      would make a failed pass free, and "retry until it works" is exactly the unbounded loop
-      the cap exists to prevent. **A crashed pass costs a pass.**
-    * **Increment only what you are actually taking on**: open, un-escalated issues in the
-      review you were tapped about. Not the whole tracker, not issues you are deferring.
-    * ⚠ **The current pass is `max(agent_passes)` over the issues in play, not something a
-      session remembers.** This is the property that matters: a **single-shot `claude -p`
-      reviewer remembers nothing**, so a count held in conversation cannot survive the move
-      the owner intends. Held on the record, it survives a session that has never run before.
-    * **At `agent_passes = 3` the issue is out of attempts** — it is escalated rather than
-      picked up a fourth time. A worker that increments a `3` to `4` has broken the cap.
-    * **An escalated issue stops incrementing**, because neither role picks it up: the
-      worker does not attempt it and re-review skips it (step 5). Its count therefore reads
-      as *how many attempts were made before it was parked* — 1 means "recognised
-      immediately", 3 means "we spent the whole cycle failing to settle it".
-    * A finding first raised on the last pass sits at `0` while others are at `3`. That is
-      correct and worth reading — it distinguishes *nobody has attempted this yet* from
-      *three passes could not fix it*, which the cycle number alone cannot.
-  * **THE COUNT IS PER ISSUE, NOT PER REVIEW — deliberately** (owner, 2026-08-13: *"it allows
-    finer grained control"*). A single number for the whole cycle would force every finding to
-    share a fate: one stubborn issue would either drag the rest through extra passes or drop
-    them all at the same line. Per issue, a finding cleared on pass 1 stops there, a stubborn
-    one exhausts its three, and a late one is visibly untried — and the owner can re-arm
-    exactly one without touching the others.
-    * ⚠ **The per-issue cap does NOT bound the cycle on its own, and must not be read as
-      doing so.** If every review may file new issues and each new issue carries a fresh
-      three passes, the loop never has to end — which is the *exact* failure the cap exists
-      to prevent, re-entering through the door that was opened for granularity.
-      **So: the cycle still ends at the third review.** Whatever is open then is escalated,
-      including a finding at `agent_passes = 0` that nobody has attempted. Its low count is
-      the useful part — it tells the owner this is untried work rather than a hard problem,
-      and the decision being asked for is *"another cycle, or ship it as known?"*
-  * ⚠ **THE COUNTER IS THE OWNER'S DIAL, AND AGENTS DO NOT SECOND-GUESS IT** (owner,
-    2026-08-13). Putting the count on the record rather than in a brief means the owner can
-    edit it in the admin console — **setting `agent_passes` back to `0` re-arms the loop on
-    that issue for another three passes.**
-    * **Treat the stored value as authoritative, always.** If an issue you expected at `3`
-      reads `0`, the cap was reset on purpose; do not "correct" it, do not reason from what
-      you remember, and do not restore a value you think it should have had. **The record is
-      the count** — that is the entire reason it stopped living in the brief.
-    * **This is the return path out of escalation, and it is the only one.** An escalated
-      issue is not a dead end: the owner answers, clears `escalated`, and resets
-      `agent_passes` to `0`; the issue re-enters the loop with a fresh three passes and a
-      decision attached. **Without a reset it stays parked** — re-review skips escalated
-      issues, so clearing the flag alone gets it read again but on a spent counter.
-    * **Incrementing is the worker's; RESETTING is only the owner's.** The distinction is
-      the whole guard: a worker that lowers a counter, or sets it to a value it thinks fair,
-      is the cap deleting itself. Move it in one direction, by one, at the start of a pass.
-      If an issue genuinely deserves more attempts, that is a judgement the owner makes.
-
-* **ESCALATION — `escalated: true` means the owner has to decide.**
-  * ⚠ **THE REVIEWER SETS IT. That is the normal path** (owner, 2026-08-13) — it flags what is
-    still open after the third review, as part of that review. The worker does not sweep the
-    tracker before pushing; by then a reviewer has already read everything and marked it.
-  * ⚠ **THE RULE IS A QUERY, NOT A JUDGEMENT** (owner, 2026-08-13). Because the worker counts
-    its own attempts, the reviewer needs no memory of the cycle to know what to escalate —
-    the three fields say it outright:
-
-    ```
-    agent_passes = 3   AND   state = "open"   AND   escalated = false     →  escalate it
-    ```
-    ```bash
-    .../issues/records?filter=agent_passes%3D3%20%26%26%20state%3D%22open%22%20%26%26%20escalated%3Dfalse
-    ```
-
-    Each clause excludes a case that must not be escalated, and all four were checked against
-    the live tracker: `agent_passes = 2` still has an attempt left; `state = "closed"` was
-    resolved; `escalated = true` was already parked (re-flagging it would churn the owner's
-    queue and reset nothing). **Run the filter, escalate what it returns.**
-    * **This is what the counter bought.** A single-shot `claude -p` reviewer, with no
-      knowledge of which pass it is on or what happened before, reaches the same answer as a
-      session that watched the whole cycle. The decision moved out of memory and onto the
-      record — which is the property that makes the planned move safe rather than merely
-      possible.
-    * **No agent owns every part of this** (owner, 2026-08-13). The worker counts, the
-      reviewer resolves and escalates, the owner decides and re-arms. Each reads state the
-      others wrote and writes only its own field. **That is the design, not a division of
-      labour to tidy up later** — a role that could do all three could also undo the cap
-      by itself.
-  * **The worker's one exception: an issue it can see needs a USER decision.** The worker may
-    set `escalated: true` itself, at any point, on any pass — it is the role actually holding
-    the change and is often first to know that no amount of reviewing will settle something.
-    * ⚠ **A worker escalation takes the issue OUT of re-review** (step 5). That is the point:
-      it stops the remaining passes being spent on something no pass can decide. It also
-      means the flag is not free — an issue parked there is an issue no reviewer will look at
-      again, so park only what genuinely needs the owner.
-    * **Escalate when you know, not on pass 3.** An issue that needs a decision does not
-      become decidable by being reviewed again.
-  * **Escalation is a flag, not an exit.** The work still pushes; the flag says a human owes
-    an answer. This is *distinct* from the abort below, which stops the push entirely. The
-    test: escalation means **"this can live on `main` but I cannot choose"**; the abort means
-    **"this must not land."**
-  * **What the owner reads:** `escalated = true && state = "open"`. Filing something there
-    that merely looks hard, rather than genuinely needing a decision, is how that view stops
-    being read — the same way the 25-issue afternoon made a backlog nobody worked.
-* **If `Reviewer` is unreachable or does not answer, say so and push anyway.** Say it in the
-  commit trail or to the owner. A blocked push is worse than an unreviewed commit; a *silently*
-  skipped review is worse than both. ⚠ This does **not** override the abort above: unreachable
-  means the review did not happen, not that a "must not land" finding was cleared.
+* **The steps, the cap, escalation and `user_decision` are in
+  [workflow/WORKFLOW.md](workflow/WORKFLOW.md).** It is the map; this section is the contract
+  between the roles plus the repo facts both depend on.
+  * ⚠ **The rules are also MECHANISMS now, which is why restating them here is worse than
+    useless.** `workflow/scripts/issue.py` refuses an escalation or a reopen with no comment,
+    refuses to take an issue at the cap, and refuses an illegal state transition;
+    `workflow/scripts/merge_branch.sh` refuses to merge a branch with anything unclosed on it.
+    A paraphrase in this file cannot refuse anything, and a reader who believes it over the
+    script is being misled by the more authoritative-looking document.
 
 ### 2. Training & Troubleshooting Mandates
 
@@ -526,17 +354,23 @@ the simple version that holds until then. Do not build tooling on its shape.
   review**.
   * ⚠ **THIS IS A JUDGEMENT THE WORKER MAKES ABOUT ITS OWN CHANGE**, before it asks for
     anything — nothing checks it. When in doubt on a mixed diff, request the review.
-* ⚠ **Periodic wholesale review is a different altitude — and whether `Reviewer` is also the
-  session that does it is an OPEN QUESTION for the owner** (raised 2026-08-13). The owner
-  keeps a floating reviewer session for reading the codebase and the product direction as a
-  whole, on its own cadence: per-change review answers *"is this diff correct?"*, that one
-  answers *"is this still coherent?"*. The standing warning was that the two must not be
-  collapsed, because per-diff volume will always crowd out the wider read — and §1 now points
-  per-commit traffic at a session named `Reviewer`, which is either that same session or one
-  the file never names. **Do not resolve this by assumption in either direction; ask.** Where
-  a wholesale review's output lands is open for the same reason. It is **not** the per-change
-  tracker: §1's loop files issues scoped to one range under one `review_id`, and a wholesale
-  read has neither. Ask before inventing a home for it.
+* ⚠ **Periodic wholesale review is a different altitude, and the one-shot move SETTLED HALF OF
+  THIS** (raised 2026-08-13, half-resolved 2026-08-14). The owner keeps a floating reviewer
+  session for reading the codebase and the product direction as a whole, on its own cadence:
+  per-change review answers *"is this diff correct?"*, that one answers *"is this still
+  coherent?"*. The standing warning was that the two must not be collapsed, because per-diff
+  volume will always crowd out the wider read.
+  * **Resolved: they cannot now be the same thing.** Per-commit traffic goes to a `claude -p`
+    process that exits when the review does — it has no cadence, no memory, and no existence
+    between reviews, so it is structurally incapable of being the floating session. That
+    collapse is no longer available to make by accident.
+  * **Still open: where a wholesale review's output lands.** It is **not** the per-change
+    tracker as §1 uses it — that loop files issues scoped to one range under one `branch_name`,
+    and a wholesale read has neither. Ask before inventing a home for it.
+  * **Also still open: whether Janis's persona fits that altitude.**
+    [workflow/REVIEWER.md](workflow/REVIEWER.md) is written for a bounded range with a
+    `branch_name` to file under. A wholesale read has neither, and reusing the persona
+    unmodified would produce a per-diff review pointed at a whole codebase. Ask, do not assume.
 
 ### 5b. The doc-claims gate can stop enforcing WITHOUT going red
 
