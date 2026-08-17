@@ -18,8 +18,8 @@ import subprocess
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-MERGE = REPO / "workflow" / "merge_branch.sh"
-ISSUE = REPO / "workflow" / "issue.py"
+MERGE = REPO / "workflow" / "scripts" / "merge_branch.sh"
+ISSUE = REPO / "workflow" / "scripts" / "issue.py"
 MERGE_SRC = MERGE.read_text(encoding="utf-8")
 ISSUE_SRC = ISSUE.read_text(encoding="utf-8")
 WORKFLOW_MD = (REPO / "workflow" / "WORKFLOW.md").read_text(encoding="utf-8")
@@ -199,4 +199,59 @@ def test_the_workflow_map_matches_the_states_the_code_enforces():
     """WORKFLOW.md is the map; drift between it and the scripts is the failure this catches."""
     for state in ("open", "review", "escalated", "closed"):
         assert f"`{state}`" in WORKFLOW_MD
-    assert "workflow/merge_branch.sh" in WORKFLOW_MD
+    assert "workflow/scripts/merge_branch.sh" in WORKFLOW_MD
+
+
+# --- portability ------------------------------------------------------------------------
+
+CONFIG = (REPO / "workflow" / "config.env").read_text(encoding="utf-8")
+
+
+def test_the_repo_slug_is_not_hardcoded_anywhere_in_the_lane():
+    """⚠ THE ONE FAILURE A COPY-PASTE PORT PRODUCES SILENTLY.
+
+    `workflow/` is meant to be copied into another repo wholesale. A hardcoded slug survives
+    that copy and files the NEW repo's issues against the OLD one, where they look entirely
+    normal — right title, right branch, right author — and nothing ever flags them. So the slug
+    is derived from `git remote get-url origin` and no file in the lane may name one.
+    """
+    for path in sorted((REPO / "workflow").rglob("*")):
+        if not (path.is_file() and path.suffix in (".sh", ".py")):
+            continue
+        code = "\n".join(l.split("#", 1)[0] for l in path.read_text(encoding="utf-8").splitlines())
+        assert "Artificial-Humanity/" not in code, \
+            f"{path.relative_to(REPO)} hardcodes a repo slug — it will not survive a port"
+    # ⚠ config.env is EXEMPT, and only config.env. It is the file a port is expected to edit,
+    # and `SIBLING_REPO_CANDIDATES` legitimately names this lab's paths — which is precisely
+    # why those paths were moved OUT of request_review.sh and into it.
+
+
+def test_config_leaves_the_slug_empty_so_it_derives():
+    assert re.search(r"^REPO_SLUG=\s*$", CONFIG, re.M), \
+        "REPO_SLUG must be empty in config.env so it derives from the origin remote"
+
+
+def test_every_setting_has_a_fallback_in_the_scripts():
+    """An unedited copy must run. Each setting is read with a default beside it."""
+    issue = ISSUE_SRC
+    for key, src in (("MAX_PASSES", issue), ("COMMENT_MAX", issue)):
+        assert re.search(r'CFG\.get\("%s"\)\s*or\s*\d+' % key, src), key
+    assert 'BASE_BRANCH="${BASE_BRANCH:-main}"' in MERGE_CODE
+
+
+def test_porting_instructions_exist_and_name_the_untravelled_parts():
+    """A port that silently lacks the hook turns escalation into a one-way door."""
+    for needed in ("Porting this lane", "@workflow/DEVELOPER.md", "config.env",
+                   "user_decision", "DOES NOT TRAVEL"):
+        assert needed in WORKFLOW_MD, needed
+
+
+def test_escalation_comments_are_required_to_be_ste():
+    """⚠ An escalation comment is addressed to the OWNER (owner, 2026-08-17) — the one thing in
+    the tracker written to them rather than near them. The check is length-only and says so;
+    the mechanism for the rest is the `ste` skill."""
+    assert "ste_warnings" in ISSUE_SRC
+    assert "ASD-STE100" in ISSUE_SRC
+    assert "NECESSARY, NOT SUFFICIENT" in ISSUE_SRC
+    dev = (REPO / "workflow" / "DEVELOPER.md").read_text(encoding="utf-8")
+    assert "ESCALATION COMMENT IS THE EXCEPTION" in dev

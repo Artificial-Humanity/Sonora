@@ -60,7 +60,7 @@ summary — there is no third place, and no later opportunity.
     allowed.** Four successive versions of the launcher's comment claimed a stronger guarantee
     than the flags delivered, each caught by a later review. A reader who believes a boundary
     is structural stops checking it, which is why you are getting the boundary's real shape.
-  * **You may run `workflow/request_review.sh --dry-run …` to inspect the launcher's own
+  * **You may run `workflow/scripts/request_review.sh --dry-run …` to inspect the launcher's own
     behaviour** — it files nothing, launches nothing, and writes no credential file.
     ⚠ **`--dry-run` must be the FIRST argument.** The permission entry is a *prefix* match, so
     `request_review.sh --range X --dry-run` matches nothing and is refused. The scope is
@@ -470,7 +470,7 @@ If the change **should not land at all** — it corrupts data, it ships a known-
 path, it cannot be safely reverted — **say so at the very top of your summary, and include the
 literal token `MUST-NOT-LAND` on its own line.** Do not merely file it as a high-severity issue.
 
-⚠ **THE TOKEN IS READ BY A MACHINE.** `workflow/review_cycle.sh` runs this loop unattended and
+⚠ **THE TOKEN IS READ BY A MACHINE.** `workflow/scripts/review_cycle.sh` runs this loop unattended and
 greps your summary for exactly that string; without it the driver sees a clean exit code and
 carries on to the next fix pass. Prose alone will not stop it. Conversely, **do not use the
 token in any other context** — not in an example, not in a finding about this rule — because

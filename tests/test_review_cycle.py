@@ -1,6 +1,6 @@
 """The driver's safety properties, pinned because it runs unattended with write access.
 
-`workflow/review_cycle.sh` alternates a review with a `claude -p` WORKER that edits files and
+`workflow/scripts/review_cycle.sh` alternates a review with a `claude -p` WORKER that edits files and
 commits, without a human in the loop. That is a different risk class from anything else in
 `scripts/`, and exactly one property makes it acceptable:
 
@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-SCRIPT = REPO / "workflow" / "review_cycle.sh"
+SCRIPT = REPO / "workflow" / "scripts" / "review_cycle.sh"
 SOURCE = SCRIPT.read_text(encoding="utf-8")
 
 
@@ -61,8 +61,8 @@ def test_the_worker_cannot_re_enter_the_loop():
     entry naming a path that does not exist denies precisely nothing.
     """
     deny = _array("WORKER_DENY")
-    for s in ("workflow/review_cycle.sh", "workflow/request_review.sh",
-              "workflow/merge_branch.sh"):
+    for s in ("workflow/scripts/review_cycle.sh", "workflow/scripts/request_review.sh",
+              "workflow/scripts/merge_branch.sh"):
         assert f"Bash({s}:*)" in deny, f"the worker must not be able to run {s}"
         assert f"Bash(./{s}:*)" in deny, f"the './' form of {s} is a second way in"
 
@@ -84,7 +84,7 @@ def test_every_denied_script_actually_exists():
 def test_the_worker_keeps_the_tracker_script():
     """⚠ The inverse assertion, deliberate.
 
-    `workflow/issue.py` is how the worker takes an issue, comments, escalates, and moves one to
+    `workflow/scripts/issue.py` is how the worker takes an issue, comments, escalates, and moves one to
     `review` — its actual job — and it is the single path that enforces the counter cap and the
     mandatory-comment rules. Denying it would push the worker back to raw tracker writes, where
     none of those refusals exist.
@@ -230,7 +230,7 @@ def test_no_query_names_the_removed_escalated_field():
 
 def test_it_is_classified_in_the_pipeline_manifest():
     manifest = (REPO / "scripts" / "pipeline_manifest.py").read_text(encoding="utf-8")
-    assert "workflow/review_cycle.sh" in manifest
+    assert "workflow/scripts/review_cycle.sh" in manifest
 
 
 def test_the_script_parses():

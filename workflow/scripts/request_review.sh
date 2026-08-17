@@ -14,7 +14,7 @@
 # is assembled here and passed inline with --append-system-prompt. No temp prompt file is
 # written for it (owner, 2026-08-14).
 #
-# Usage: workflow/request_review.sh --help
+# Usage: workflow/scripts/request_review.sh --help
 #
 set -euo pipefail
 
@@ -23,7 +23,19 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 RANGE="origin/main..HEAD"
 DEVELOPER="Ozzy"
-REPO_SLUG="Artificial-Humanity/Sonora"
+# --- Per-repo settings -----------------------------------------------------
+# ⚠ ONE FILE TO EDIT WHEN PORTING THIS LANE. Sourced rather than hardcoded so that copying
+# `workflow/` into another repo does not carry this repo's identity with it. REPO_SLUG is
+# DERIVED from `origin` when config.env leaves it empty — a stale hardcoded slug would file
+# the new repo's issues against the old one, where they look perfectly normal.
+_WF_CFG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config.env"
+# shellcheck disable=SC1090
+[[ -r "$_WF_CFG" ]] && source "$_WF_CFG"
+BASE_BRANCH="${BASE_BRANCH:-main}"
+if [[ -z "${REPO_SLUG:-}" ]]; then
+  _url="$(git remote get-url origin 2>/dev/null || echo '')"
+  REPO_SLUG="$(printf '%s' "$_url" | sed -E 's#(\.git)?$##; s#^.*[:/]([^/:]+/[^/]+)$#\1#')"
+fi
 PASS=1
 NOTES=""
 NOTES_FILE=""
@@ -40,7 +52,8 @@ request_review.sh — one-shot code review by Janis. Blocks; prints the review o
                         the last commit — a push carries every unpushed commit, and this loop
                         has measured the range growing after the request on every cycle.
   --developer <ID>      Agent id the reviewer addresses in issues.   (default: Ozzy)
-  --repo <SLUG>         Tracker `repo` field.      (default: Artificial-Humanity/Sonora)
+  --repo <SLUG>         Tracker `repo` field.  (default: workflow/config.env, or derived
+                        from `git remote get-url origin` when that leaves it empty)
   --pass <N>            Which REVIEW this is, 1-4.                   (default: 1)
                         ⚠ Reviews, not fix passes. Three fix passes per issue means up to
                         four reviews: the one that finds it, then one after each fix pass.
@@ -249,9 +262,16 @@ CS_JSON="$(BRANCH="$BRANCH" REPO_SLUG="$REPO_SLUG" python3 "$REPO_ROOT/scripts/l
 # else. It is NOT a substitute for `--permission-mode auto`, which was removed deliberately
 # (#100) — most of what looked like permission friction was this working-directory limit.
 #
-# Derived, not hardcoded: the two layouts this repo is checked out in.
+# ⚠ CANDIDATES COME FROM config.env, NOT FROM HERE. `SIBLING_REPO_CANDIDATES` is a
+# colon-separated list of paths the reviewer may READ, and it is per-repo by nature: which
+# sibling checkouts exist is a fact about a machine and a lab, not about this lane. Hardcoding
+# them here was one of two things that would not survive `workflow/` being copied elsewhere.
+# Absent or unset is fine — the reviewer simply gets no --add-dir.
 SIBLING=""
-for _cand in "$REPO_ROOT/../../AI-Lab-AMD" "$HOME/Projects/Artificial-Humanity/AI-Lab-AMD"; do
+IFS=':' read -r -a _cands <<< "${SIBLING_REPO_CANDIDATES:-}"
+for _cand in "${_cands[@]}"; do
+  _cand="${_cand/#\~/$HOME}"
+  [[ "$_cand" == /* ]] || _cand="$REPO_ROOT/$_cand"
   if [[ -d "$_cand" ]]; then SIBLING="$(cd "$_cand" && pwd)"; break; fi
 done
 ADD_DIR_ARGS=()
@@ -460,7 +480,7 @@ REVIEWER_ALLOW=(
   # Fifth instance of this file's comment claiming less than its flags allowed.
   #
   # ⚠ These are PREFIX matches, so `--dry-run` must be the FIRST argument. REVIEWER.md says so.
-  "Bash(./workflow/request_review.sh --dry-run:*)" "Bash(workflow/request_review.sh --dry-run:*)"
+  "Bash(./workflow/scripts/request_review.sh --dry-run:*)" "Bash(workflow/scripts/request_review.sh --dry-run:*)"
   # REMOVED, each for a measured reason rather than on principle:
   #   Bash(uv:*)   — `uv run` executes arbitrary code and `uv pip install` writes into the
   #                  tree, and AGENTS.md §3 forbids `uv run` for host scripts anyway, so a

@@ -71,6 +71,13 @@ that **reversed** what this file used to enforce: escalation moved to the worker
 now blocks the merge, the changeset record is retired, and `state: review` exists. Read it
 first. What follows is the contract *between* the roles, not either role's procedure.
 
+⚠ **`workflow/` IS A PORTABLE LANE, NOT PART OF THIS REPO'S SUBJECT MATTER** (owner,
+2026-08-17). It is meant to be copied whole into another repo, which is why the paragraph above
+is a pointer and not a summary: **a summary here becomes a second copy that the port leaves
+behind — still authoritative-looking, and now wrong.** The procedure is
+`workflow/WORKFLOW.md`, "Porting this lane": a copy, two lines in `CLAUDE.md`, and a glance at
+`workflow/config.env`. Nothing in this section should need editing to move the lane.
+
 ⚠ **YOUR ROLE HAS A SYSTEM PROMPT, AND IT IS WHERE THE PROCEDURE NOW LIVES** (owner,
 2026-08-14):
 
@@ -132,7 +139,7 @@ optional hop.** Anything Janis must not miss belongs in the persona or in the br
 `request_review.sh` builds.
 
 1. **Worker commits**, then runs
-   `workflow/request_review.sh --range origin/main..HEAD --developer Ozzy`, naming **the whole
+   `workflow/scripts/request_review.sh --range origin/main..HEAD --developer Ozzy`, naming **the whole
    range it is about to push**.
 2. **The script blocks.** `Reviewer` reads the range and files issues straight into
    PocketBase, each carrying the `branch_name` of the review that produced it.
@@ -144,67 +151,16 @@ optional hop.** Anything Janis must not miss belongs in the persona or in the br
 5. **`Reviewer` re-reviews and RESOLVES**: closes what is genuinely cleared, leaves open what
    is not, files anything new under a **new** `branch_name`, and flags what needs the owner.
 
-⚠ **EVERY FIX PASS ENDS WITH A REVIEWER CALL** (owner, 2026-08-13). Steps 4→5 are one pass, and a
-pass is not over when the worker stops typing — it is over when a reviewer has read the
-result. There is no final worker pass that nobody reads.
+**The loop's procedure is not here.** The state machine, both roles' steps, the
+three-fix-pass cap, escalation and the `user_decision` return path all live in
+[workflow/WORKFLOW.md](workflow/WORKFLOW.md), with each role's half in
+[workflow/DEVELOPER.md](workflow/DEVELOPER.md) and
+[workflow/REVIEWER.md](workflow/REVIEWER.md). **They were restated here until 2026-08-17 and
+the copy drifted from the original three times in one pull request** — including a role table
+that still assigned escalation to the reviewer a day after the owner moved it to the worker.
+One copy, in `workflow/`.
 
-⚠ **WHAT IS COUNTED IS DEVELOPER FIX PASSES — NOT REVIEWS** (owner, 2026-08-15, correcting an
-agent's misreading): *"We count developer attempts to fix issues found in the first review but
-counting reviews was never the goal. We count fix passes."*
-
-**Three fix passes per issue, which means UP TO FOUR REVIEWS**: the review that finds it, then
-one after each fix pass.
-
-```
-review 1  ──▶ fix pass 1 ──▶ review 2 ──▶ fix pass 2 ──▶ review 3 ──▶ fix pass 3 ──▶ review 4
-(files)       passes=1                    passes=2                    passes=3        verifies
-```
-
-An issue still open after its third fix pass is out of attempts and is **escalated** — the
-query below says exactly that, and needs no notion of "which review this is". A finding filed
-at review 3 starts at `0` and gets its own three fix passes; it is **not** escalated for being
-new. **The developer may escalate at any point** if it can see an issue needs an owner
-decision — that is the other way out, and it does not wait for the count.
 **There is no report file at any point**: the tracker is the report.
-
-**THE TWO ROLES.** Defined by responsibility, not by how either is spawned:
-
-| | **Worker** | **Reviewer** |
-|---|---|---|
-| owns | the change, **and the attempt count** | the reading of it, **and whether a finding is cleared** |
-| does | commits, fixes, rebuts, pushes | reads the range, files issues, **closes them**, taps back |
-| writes to `main` | **yes — the only role that does** | **never** |
-| **opens** issues | not as part of the loop | **yes — this is its output** |
-| **closes** issues | **never** | **yes — only it decides a finding is cleared** |
-| sets `state: escalated` | **yes — and it is the ONLY role that does** | **never** (reversed 2026-08-17) |
-| sets `state: review` | **yes — after committing a fix**, so Janis knows what to verify | never |
-| merges to `main` and pushes | **yes — via `workflow/merge_branch.sh`, which gates on the tracker** | never |
-| holds the count | **yes — increments `agent_passes` first thing each pass** | no |
-
-* ⚠ **THE WORKER NEVER CLOSES AN ISSUE** (owner, 2026-08-13). It fixes, or it argues, and it
-  says so in the comments — but the issue stays open until a reviewer agrees it is cleared.
-  **A worker closing its own findings is marking its own homework**, and it defeats the one
-  thing the split exists to buy. This is the same reason the worker does not review its own
-  range, applied to the tracker instead of the diff.
-  * **A rebuttal is not a close either.** Argue it in the comments and leave it open; the
-    reviewer accepts the argument and closes, or does not and says why. **A review is a
-    report, not an order** (§5) — that still holds, and it now cuts both ways, since the
-    worker cannot end the argument unilaterally any more than the reviewer can.
-* **One session is only ever one role for one change.** The worker does not review its own
-  range and the reviewer does not fix what it finds — that separation *is* the mechanism, and
-  it survives regardless of what the reviewer is made of.
-* **THE REVIEWER IS A ONE-SHOT PROCESS, AND THE SWAP HAS HAPPENED** (owner, 2026-08-14). The
-  persistent peer session is retired. `workflow/request_review.sh` runs `claude -p` against
-  [workflow/REVIEWER.md](workflow/REVIEWER.md) and **blocks** until it returns — so there is no
-  transport to fail, no queue to drain, and no reply that can go missing. The protocol above
-  was written not to depend on the transport, and this is the change it was written to survive:
-  it cost one bullet.
-  * ⚠ **JANIS REMEMBERS NOTHING BETWEEN PASSES. THAT IS NOW A FACT, NOT A FORECAST.** Pass 2
-    and pass 3 must be briefed as completely as pass 1 — `--notes` says what was
-    fixed and what was rebutted. It finds its own earlier findings by querying the branch, so
-    there is nothing to thread through a command line and nothing to forget.
-  * **The one thing that never needs re-briefing is the pass count.** It is on the issue as
-    `agent_passes` — which is why it is there.
 
 ⚠ **THE LOOP HAS ONE EXIT THAT IS NOT A PUSH, and it is a human handoff.** If a finding is
 that the change **should not land at all** — it corrupts data, it ships a known-broken
@@ -267,230 +223,15 @@ the simple version that holds until then. Do not build tooling on its shape.
   lesson expensively: `deploy.sh`'s "deploy only when a service change is intended" was a
   header comment for weeks, got ignored eleven hours into a live training run, and is now a
   hard refusal in code.
-* **Step 1 (requesting) — `workflow/request_review.sh`.** `--help` is the interface and this
-  file does not restate it. Two things about it are rules rather than conveniences:
-  * **It defaults to `origin/main..HEAD`**, because the range is what gets pushed. Override it
-    and you own what falls outside.
-  * ⚠ **A NON-ZERO EXIT MEANS THE REVIEW DID NOT *COMPLETE* — NOT THAT NOTHING WAS FILED.**
-    The reviewer writes issues one at a time as it goes, so a run that dies half way leaves
-    real findings in the tracker, and the exit code cannot tell that apart from a run that
-    filed nothing. **Query the `branch_name` before concluding anything.** There are **three**
-    answers, not two:
-    * **The tracker answered `0`** — nothing was filed. Say so and push anyway; a blocked push
-      is worse than an unreviewed commit, and a *silently* skipped review is worse than both.
-    * **The tracker answered `N`** — those are findings. Address them, and re-run with a
-      **distinct** `branch_name` for the part left unread.
-    * ⚠ **The tracker could not be REACHED — you have no answer, and that is not the same as
-      `0`.** A dead port, a timeout, a stale credential and a changed schema all look alike
-      from here, and none is evidence that nothing was filed. **Check the instrument ran
-      before believing a negative.** Folding this into "nothing was filed" is how real
-      findings end up orphaned under an id nobody reads again.
-      **So, BEFORE YOU PUSH:** query the `issues` collection with
-      `filter=branch_name="<the id the script printed>"`. **Empty means the range is
-      unreviewed; not empty means those are real findings, and you address them.** That
-      disposition is the operative half — the other two answers each carry one, and the
-      first transcription of this case dropped it, leaving a rule that named a hazard and
-      told the reader nothing to do about it.
-
-    ⚠ **NONE of these three overrides the abort above**: a review that did not complete is
-    not a must-not-land finding being cleared. (This read *"Neither case"* while sitting
-    under three bullets — a two-place quantifier against three options leaves the reader to
-    pick which two, and the natural pick made the unreachable case look like the exempt one.
-    That is the precise inversion of what it means.)
-* **Step 2 (filing) — THE `Reviewer` FILES ITS OWN FINDINGS, DIRECTLY.** The procedure is
-  [workflow/REVIEWER.md](workflow/REVIEWER.md) §4. What binds both roles:
-  * **There is no report file. The tracker *is* the report.** `notes/reviews/` and its
-    `review-<sha7>.md` handoffs are retired, along with the whole "write a document, then
-    transcribe it into issues" step — the issues are local, immediate and queryable, and the
-    intermediate document was a second place for the same findings to drift.
-  * **ISSUES LIVE IN POCKETBASE, NOT GITHUB** (owner, 2026-08-13). The tracker is the `issues`
-    collection at **https://board.ai-lab-0.mcfarlin.family/_/**, and the machine-wide
-    `pocketbase` skill carries the shape, the field list and the number-allocation snippet.
-    File with `repo: "Artificial-Humanity/Sonora"`.
-    * **This repo's GitHub issue tracker is empty by intent.** All 48 issues (#12–#89) were
-      replicated into PocketBase on 2026-08-13, byte-for-byte including comment bodies, and
-      their **numbers were preserved** — so a `#33` in a commit message still names the same
-      finding, it now resolves in the tracker rather than on GitHub. `gh issue create` against
-      this repo is a mistake, not an alternative route.
-    * ⚠ **The tracker is superuser-only and reachable only from ai-lab-0.** Port 8090 is
-      loopback-bound; there is no LAN-direct route and no anonymous read. With the report file
-      gone this is the *only* copy, so an unreachable tracker loses the whole review rather
-      than delaying its transcription.
-  * **`branch_name` ties the issues to the review that produced them**, and every issue a review
-    files carries it. **Default: the tip SHA of the reviewed range** — the one unambiguous
-    choice, since a range has no single SHA and "the interesting commit" is a judgement two
-    agents make differently. ⚠ **A default, not a policy** (owner): a SHA can be rewritten by a
-    rebase, and not everything reviewed is a commit at all. Reviewing a working tree, or a
-    directory with no git behind it, **generate one** (`uuidgen`, or timestamp-plus-noun);
-    never invent a plausible-looking SHA, which would read as a commit that never existed. The
-    field is indexed and deliberately **not** unique — a review yields many issues, which is
-    the point — and there is **one `branch_name` per pass**, so a three-pass cycle leaves three.
-  * **The old "the `Reviewer` never files" rule is retired, and it was never an owner mandate**
-    (owner, 2026-08-13). It was written here by agents after a real incident — 25 issues in one
-    afternoon, each review producing a backlog and the backlog producing the next review's
-    subject — and generalised that measurement into a prohibition the owner had not asked for.
-    **The measurement stands; the prohibition does not.** What holds the hazard now is the
-    three-pass cap, which bounds the loop directly instead of by proxy. Keep the cap honest and
-    reviewer-filing is safe; relax the cap and this is the first thing to reconsider.
-* **Step 4 (addressing) — INCREMENT FIRST, then fix or rebut, and LEAVE IT OPEN.** The
-  procedure is [workflow/DEVELOPER.md](workflow/DEVELOPER.md) §3.
-* **Step 5 (resolving) — THE REVIEWER CLOSES WHAT IS CLEARED** (owner, 2026-08-13). Every pass
-  ends here, not at step 4. The procedure is [workflow/REVIEWER.md](workflow/REVIEWER.md) §5.
-
-* **THE CAP — AT MOST THREE PASSES** (owner, 2026-08-13). The number of passes is otherwise a
-  judgement call, not a fixed count; three is the ceiling, not a target. Stopping earlier
-  because the work is clean is the normal, good outcome.
-  * ⚠ **The cap is what bounds the loop, and it is the only thing that does.** The failure it
-    exists to prevent is a *loop* — each review produces work, the work produces the next
-    review — and this repo has measured that failure rather than theorised it: a fix pass on a
-    large diff ran 7→5→9→7 findings, with the later rounds mostly defects introduced by the
-    earlier rounds' own fixes. **More passes stopped converging and started manufacturing
-    work.** A fourth pass is not a judgement call, and `request_review.sh` refuses one.
-  * **THE COUNT LIVES ON THE ISSUE: `agent_passes`** (owner, 2026-08-13). An integer defaulting
-    to `0`, incremented by the **worker** as the first act of its pass — so an abandoned pass
-    still spends its attempt, and the current pass is `max(agent_passes)` over the issues in
-    play rather than something a session remembers. That is the property that makes a one-shot
-    reviewer possible at all.
-  * **THE COUNT IS PER ISSUE, NOT PER REVIEW — deliberately** (owner, 2026-08-13: *"it allows
-    finer grained control"*). A single number for the whole cycle would force every finding to
-    share a fate. Per issue, a finding cleared on pass 1 stops there, a stubborn one exhausts
-    its three, and a late one is visibly untried — and the owner can re-arm exactly one without
-    touching the others.
-    * ⚠ **WHAT BOUNDS THE CYCLE IS THE PER-ISSUE CAP PLUS THE DEVELOPER'S JUDGEMENT — there
-      is no separate cap on reviews, and an agent must not invent one** (owner, 2026-08-15).
-      A previous version of this file reasoned that since each new issue carries a fresh three
-      passes the loop need never end, and concluded "so the cycle ends at the third review,
-      escalate everything still open". **That was an agent's invention and it was wrong twice
-      over**: it capped the wrong thing, and it would have escalated `agent_passes = 0`
-      findings that had simply never been attempted — handing the owner untried work to
-      decide about, which is the fastest way to make the escalated view unreadable.
-      * **Each issue is bounded at three fix passes. That is the mechanism.**
-      * **The developer escalates whatever needs a decision, whenever it knows.** That is the
-        other exit, and it does not wait for a count.
-      * A cycle ends when every issue in it is closed, escalated, or out of attempts. In
-        practice reviews stop finding new things; if they do not, that is a signal about the
-        change, and it belongs to the developer's judgement rather than to an arbitrary
-        ceiling on how many times code may be read.
-  * ⚠ **THE COUNTER IS THE OWNER'S DIAL, AND AGENTS DO NOT SECOND-GUESS IT** (owner,
-    2026-08-13). **Setting `agent_passes` back to `0` re-arms the loop on that issue.** Treat
-    the stored value as authoritative always: an issue you expected at `3` reading `0` was
-    reset on purpose — do not "correct" it and do not restore what you think it should have
-    been. **The record is the count**; that is the entire reason it stopped living in a brief.
-    * **This is the return path out of escalation, and it is now ONE edit.** The owner writes
-      `user_decision`; a **server-side hook moves `state` from `escalated` back to `open` and
-      resets the counter in the same save**, and the issue re-enters with the answer attached.
-      It was three manual edits until the owner observed that forgetting the reset strands the
-      issue silently — parked at `agent_passes = 3`, it has no attempts left, so releasing it
-      alone gets it re-read, found out of attempts, and re-escalated.
-      ⚠ **The hook releases ONLY `escalated` → `open`.** A decision written on a `closed` issue
-      is a note; reopening resolved work on the strength of one would be worse than the failure
-      the hook exists to fix. That guard became necessary when escalation stopped being a
-      boolean — clearing a flag on a closed issue was harmless, moving a state is not.
-      ⚠ **THE MECHANISM LIVES IN ANOTHER REPO, WHICH IS WHY A REVIEWER CANNOT CONFIRM IT.** The
-      hook is `pocketbase/pb_hooks/issues_user_decision.pb.js` in the **AI-Lab-AMD** repo,
-      deployed from there with its `scripts/deploy.sh pb-hooks` — ⚠ **that is a sibling repo's
-      script, not this one's**; Sonora has no `deploy.sh` at all. A review of *this* repo cannot
-      see it — the install is outside the working directory — so this paragraph is the only
-      evidence a reviewer has, which is exactly why it must not drift again.
-    * **Incrementing is the worker's; RESETTING is only the owner's.** A worker that lowers a
-      counter, or sets one to a value it thinks fair, is the cap deleting itself.
-
-* **ESCALATION — `state: "escalated"` means the owner has to decide.**
-  * ⚠ **IT IS A VALUE OF `state`, NOT A FIELD BESIDE IT** (owner, 2026-08-17). The three values
-    are `open`, `escalated` and `closed`, and they are exclusive. That was a deliberate fold of
-    an earlier `escalated` boolean, for two reasons: it makes `closed + escalated` — a
-    combination that meant nothing — **unrepresentable**, and it removes the `escalated=false`
-    clause from every query in this lane. That clause was load-bearing in six places and
-    silently wrong if forgotten in any one of them; now the exclusion is structural, and a
-    filter that still names the old field gets a `400` rather than quietly counting parked
-    issues.
-  * ⚠⚠ **THE WORKER SETS IT, AND IT IS THE ONLY ROLE THAT DOES** (owner, 2026-08-17). This
-    **reversed** on that date — until then it was the reviewer's normal path — so any text
-    assigning it to Janis is stale rather than authoritative. Two triggers: an issue that needs
-    an owner decision (escalate when you know, not on pass 3), or one already at
-    `agent_passes = 3`. **A comment is mandatory**, and `workflow/issue.py escalate` refuses
-    without one.
-  * ⚠⚠ **IT BLOCKS THE MERGE**, also new on 2026-08-17 and also a reversal: this file said
-    *"escalation is a parking space, not a blocker — the work still ships"*. The merge gate now
-    counts `open`, `review` **and** `escalated`, so an undecided question holds the branch.
-  * ⚠ **THE RULE IS A QUERY, NOT A JUDGEMENT** (owner, 2026-08-13). Because the worker counts
-    its own attempts, the reviewer needs no memory of the cycle to know what to escalate:
-
-    ```
-    agent_passes = 3   AND   state = "open"     →  escalate it
-    ```
-
-    Both clauses exclude a case that must not be escalated, and both were checked against the
-    live tracker: `agent_passes = 2` still has an attempt left; and `state = "open"` excludes
-    `closed` (resolved) *and* `escalated` (already parked — re-flagging churns the owner's
-    queue and resets nothing). **Run the filter, escalate what it returns.**
-    * **This is what the counter bought.** A one-shot reviewer with no knowledge of which pass
-      it is on reaches the same answer as a session that watched the whole cycle. The decision
-      moved out of memory and onto the record — which is what made the move safe.
-    * **No agent owns every part of this** (owner, 2026-08-13). The worker counts, the reviewer
-      resolves and escalates, the owner decides and re-arms. Each reads state the others wrote
-      and writes only its own field. **That is the design, not a division of labour to tidy up
-      later** — a role that could do all three could also undo the cap by itself.
-  * **The worker's one exception: an issue it can see needs a USER decision.** It may set
-    `state: "escalated"` itself, at any point, on any pass — it holds the change and is often
-    first to know that no amount of reviewing will settle something. ⚠ **A worker escalation
-    takes the issue OUT of re-review** (step 5): that is the point, and it means escalating is
-    not free. **Escalate when you know, not on pass 3** — an issue needing a decision does not
-    become decidable by being reviewed again.
-  * ⚠ **ESCALATION EXISTS TO PREVENT ENDLESS WORK LOOPS, AND THAT IS ITS WHOLE PURPOSE**
-    (owner, 2026-08-14: *"there was no design principle around issues being off limits to
-    either. The escalation rule is simply to prevent endless work loops"*). **It bounds
-    attempts, not access.**
-    * Neither role re-attempts, re-derives, re-argues or closes an escalated issue, and
-      `agent_passes` does not move on it — those all consume passes. **But both may comment
-      on it** when they have evidence bearing on the owner's decision. Recording is not work
-      the cap was ever aimed at.
-    * **Read any restriction you are tempted to infer against that purpose.** If it stops a
-      pass being spent, it belongs; if it only stops something being written down, it does not.
-    * ⚠ **THIS IS THE SECOND AGENT-INVENTED PROHIBITION THE OWNER HAS HAD TO RETIRE.** The
-      first was "the reviewer never files" (retired 2026-08-13, and never an owner mandate);
-      this was "a parked issue is untouchable". Both came from generalising a real measurement
-      into a ban nobody asked for, and this one cost real evidence: a reviewer found a live
-      instance of a parked issue's own hazard, judged itself forbidden to record it, and put
-      it in an ephemeral summary where it was nearly lost. **Bound the specific failure you
-      measured. Do not widen it into a rule.**
-  * **Escalation is a parking space, not an exit.** The work still pushes; the state says a
-    human owes an answer. *Distinct* from the abort above, which stops the push entirely. The
-    test: escalation means **"this can live on `main` but I cannot choose"**; the abort means
-    **"this must not land."**
-  * **What the owner reads:** `state = "escalated"`. Filing something there that merely looks
-    hard is how that view stops being read — the same way the 25-issue afternoon made a backlog
-    nobody worked.
-  * ⚠ **A DECISION THAT HAS BEEN ACTED ON MUST BE CLOSED** (2026-08-17). The reviewer closes
-    it, citing the decision. Obeying an answer is not resolving it: until this was written,
-    *"the owner decided"* had **no path to `state: closed`**, so a decided issue stayed open
-    permanently — measured on #97 and #104. An "accept as-is" decision strands most easily,
-    because no commit will ever reference it.
-  * **THE CYCLE IS FINISHED when every issue it produced is closed, escalated, or out of
-    attempts** — `branch_name="<the branch>" && state="open"` returns nothing.
-    ⚠ **Scope it to the branch under review.** The nine open migrated GitHub issues are parked
-    on `github-issues-fixes` and deliberately unworked until that branch is rebased, so a check
-    that counts them never reaches zero and misreads a settled loop as a stuck one. ⚠ The old
-    guard was `branch_name!=""`, which worked only while that backlog carried **no** branch; it
-    now carries one, so the clause that used to exclude it would include it.
-  * ⚠ **THE ANSWER COMES BACK IN `user_decision`, AND NO AGENT MAY WRITE IT** (owner,
-    2026-08-14). It is the owner's field exactly as an `agent_passes` reset is theirs — an
-    agent writing there forges the answer to a question it raised, which is the one thing
-    escalation exists to prevent. **Both roles read it; neither writes it.** When set, it
-    outranks the worker's judgement and the reviewer's findings on that issue.
-    * **The return path is ONE edit** — write `user_decision`, and the hook described above
-      returns `state` to `open` and resets `agent_passes` to `0` in the same save. The issue
-      re-enters with a fresh three passes and the answer attached.
-    * ⚠ **A decision sitting on an issue still in `state: escalated` should therefore be
-      IMPOSSIBLE**, and if you see one the hook is not deployed or the state was re-set
-      afterwards. Do not act on it; say so, because an answered issue nobody picks up is the
-      exact failure the field exists to end.
-    * **Not conditionally gated, deliberately.** The field is writable in any `state` (owner,
-      2026-08-14: *"let's just leave it enabled"*). PocketBase cannot
-      conditionally enable a field in its console anyway — API rules are per-operation, not
-      per-field, and superusers bypass them, which is what agents authenticate as. Gating it
-      would also have been a third invented prohibition after "the reviewer never files" and
-      "a parked issue is untouchable". **Recording a directive on any issue is allowed.**
+* **The steps, the cap, escalation and `user_decision` are in
+  [workflow/WORKFLOW.md](workflow/WORKFLOW.md).** It is the map; this section is the contract
+  between the roles plus the repo facts both depend on.
+  * ⚠ **The rules are also MECHANISMS now, which is why restating them here is worse than
+    useless.** `workflow/scripts/issue.py` refuses an escalation or a reopen with no comment,
+    refuses to take an issue at the cap, and refuses an illegal state transition;
+    `workflow/scripts/merge_branch.sh` refuses to merge a branch with anything unclosed on it.
+    A paraphrase in this file cannot refuse anything, and a reader who believes it over the
+    script is being misled by the more authoritative-looking document.
 
 ### 2. Training & Troubleshooting Mandates
 

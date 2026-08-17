@@ -2,7 +2,7 @@
 #
 # merge_branch.sh — merge the current branch to main, but only once its issues are settled.
 #
-#     workflow/merge_branch.sh [--branch B] [--base main] [--no-push] [--dry-run]
+#     workflow/scripts/merge_branch.sh [--branch B] [--base main] [--no-push] [--dry-run]
 #                              [--allow-unreviewed]
 #
 # ⚠ THE GATE IS ON THE MERGE, NOT THE PUSH (owner, 2026-08-17). A branch that merged
@@ -19,9 +19,21 @@
 #
 set -euo pipefail
 
-BASE="main"
+# --- Per-repo settings -----------------------------------------------------
+# ⚠ ONE FILE TO EDIT WHEN PORTING THIS LANE. Sourced rather than hardcoded so that copying
+# `workflow/` into another repo does not carry this repo's identity with it. REPO_SLUG is
+# DERIVED from `origin` when config.env leaves it empty — a stale hardcoded slug would file
+# the new repo's issues against the old one, where they look perfectly normal.
+_WF_CFG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config.env"
+# shellcheck disable=SC1090
+[[ -r "$_WF_CFG" ]] && source "$_WF_CFG"
+BASE_BRANCH="${BASE_BRANCH:-main}"
+if [[ -z "${REPO_SLUG:-}" ]]; then
+  _url="$(git remote get-url origin 2>/dev/null || echo '')"
+  REPO_SLUG="$(printf '%s' "$_url" | sed -E 's#(\.git)?$##; s#^.*[:/]([^/:]+/[^/]+)$#\1#')"
+fi
+BASE="${BASE_BRANCH}"
 BRANCH=""
-REPO_SLUG="Artificial-Humanity/Sonora"
 PUSH=1
 DRY_RUN=0
 ALLOW_UNREVIEWED=0
@@ -111,7 +123,7 @@ if [[ "$UNSETTLED" == *NEVER_REVIEWED* ]]; then
   [[ "$ALLOW_UNREVIEWED" -eq 1 ]] || die "'$BRANCH' has NO issues at all — not one was ever
      filed against it. That reads identically to 'reviewed and found clean', and this gate
      cannot tell the two apart, so it refuses rather than guessing the flattering one.
-       Review it:  workflow/request_review.sh
+       Review it:  workflow/scripts/request_review.sh
        Or, if a review genuinely ran and found nothing:  --allow-unreviewed"
   UNSETTLED="${UNSETTLED/NEVER_REVIEWED/}"
 fi

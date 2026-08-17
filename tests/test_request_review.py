@@ -1,6 +1,6 @@
 """The review launcher's guards, which have twice been defeated with the suite green (#110).
 
-`workflow/request_review.sh` decides what a reviewer is told and what it is allowed to run.
+`workflow/scripts/request_review.sh` decides what a reviewer is told and what it is allowed to run.
 Nothing tested it. That is not a general "add tests" gap — it is specific, and it has a
 history:
 
@@ -48,7 +48,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-SCRIPT = REPO / "workflow" / "request_review.sh"
+SCRIPT = REPO / "workflow" / "scripts" / "request_review.sh"
 SOURCE = SCRIPT.read_text(encoding="utf-8")
 
 
@@ -267,7 +267,7 @@ def test_the_script_is_classified_in_the_pipeline_manifest():
     """#90: it is a tracked shell under scripts/, so test_stage_coverage requires a decision
     about what it is. Asserted here too so this file fails for its own reason."""
     manifest = (REPO / "scripts" / "pipeline_manifest.py").read_text(encoding="utf-8")
-    assert "workflow/request_review.sh" in manifest
+    assert "workflow/scripts/request_review.sh" in manifest
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
@@ -302,7 +302,7 @@ def test_the_array_parser_ignores_entries_that_appear_only_in_comments():
 def test_the_launcher_grant_is_scoped_to_dry_run():
     """#119: the #115 fix was correct and unpinned, which is this cycle's most repeated shape.
 
-    `Bash(./workflow/request_review.sh:*)` — the whole script — was granted while the comment
+    `Bash(./workflow/scripts/request_review.sh:*)` — the whole script — was granted while the comment
     beside it justified only `--dry-run`. Without that flag the script launches a real nested
     `claude -p`, files issues under a branch_name nobody watches, and the nested reviewer holds
     the same entry: unbounded recursion, billed, with a credential file at every level.
@@ -336,8 +336,15 @@ def test_the_sibling_repo_is_offered_read_only_and_never_writable():
     """
     assert "--add-dir" in SOURCE, "the reviewer should be able to read the sibling repo"
     assert 'ADD_DIR_ARGS=(--add-dir "$SIBLING")' in SOURCE
-    # Derived, never hardcoded to one machine's layout.
-    assert '$REPO_ROOT/../../AI-Lab-AMD' in SOURCE
+    # ⚠ THE CANDIDATE PATHS MOVED TO config.env ON 2026-08-17, and this assertion moved with
+    # them. It pinned the literal `$REPO_ROOT/../../AI-Lab-AMD` — a fact about this lab's disk
+    # layout rather than about the launcher, and exactly the sort of thing that must not
+    # survive `workflow/` being copied into another repo. What the script must still do is READ
+    # the list from config; which paths are in it is the port's business.
+    assert "SIBLING_REPO_CANDIDATES" in SOURCE, \
+        "the sibling paths must come from config.env, not from this script"
+    cfg = (REPO / "workflow" / "config.env").read_text(encoding="utf-8")
+    assert "SIBLING_REPO_CANDIDATES=" in cfg, "config.env must declare the setting, even if empty"
     # And read-only: no editing tool exists, and all three are denied by name.
     tools = SOURCE[SOURCE.index("REVIEWER_TOOLS="):].split("\n")[0]
     for t in ("Edit", "Write", "NotebookEdit"):

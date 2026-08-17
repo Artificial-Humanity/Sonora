@@ -182,17 +182,17 @@ NOT_ORCHESTRATORS = {
     # (2026-08-12) was made when every shell happened to live under `scripts/`, so it changed
     # no result and read as belt-and-braces. `workflow/` is the first thing to exercise it —
     # leaving these undeclared would be exactly the exemption-by-construction it removed.
-    "workflow/request_review.sh": (
+    "workflow/scripts/request_review.sh": (
         "Review lane: runs `claude -p` as Janis over a commit range, and blocks. Touches no "
         "pipeline stage and writes no artifact under /data — its output is issues in the "
         "tracker. See workflow/WORKFLOW.md §2."
     ),
-    "workflow/review_cycle.sh": (
+    "workflow/scripts/review_cycle.sh": (
         "Review lane: drives request_review.sh and a `claude -p` worker unattended until the "
         "branch converges. ⚠ It NEVER pushes, and denies `git push` and `merge_branch.sh` to "
         "the worker it spawns."
     ),
-    "workflow/merge_branch.sh": (
+    "workflow/scripts/merge_branch.sh": (
         "Review lane: the merge gate. Refuses to merge a branch into main while any of its "
         "issues is open, review or escalated; then merges and pushes. ⚠ The only thing in this "
         "repo that reaches `main` on its own — see workflow/WORKFLOW.md §3."

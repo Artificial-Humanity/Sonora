@@ -12,7 +12,7 @@ already in your context by the time you read this sentence.
 @workflow/DEVELOPER.md
 
 ⚠ **The one exception is Janis, the reviewer** — [workflow/REVIEWER.md](workflow/REVIEWER.md),
-launched only by `workflow/request_review.sh` as its `--system-prompt-file`. **If that file is
+launched only by `workflow/scripts/request_review.sh` as its `--system-prompt-file`. **If that file is
 your system prompt it outranks everything here**, and the import above is not addressed to you.
 
 MEASURED 2026-08-17: `--system-prompt-file` replaces the *default assistant prompt*; it does

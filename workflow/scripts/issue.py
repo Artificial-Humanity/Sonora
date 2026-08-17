@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """issue.py — every standard tracker operation in the review loop, as one command.
 
-    workflow/issue.py list      [--branch B] [--state S]
-    workflow/issue.py show      N
-    workflow/issue.py file      --title T (--body B | --body-file F) [--label L] [--branch B]
-    workflow/issue.py take      N [N ...]          Ozzy: agent_passes += 1, BEFORE any work
-    workflow/issue.py review    N --comment C      Ozzy: addressed, awaiting Janis
-    workflow/issue.py escalate  N --comment C      Ozzy: the owner must decide
-    workflow/issue.py close     N [--comment C]    Janis: verified resolved
-    workflow/issue.py reopen    N --comment C      Janis: not resolved
-    workflow/issue.py comment   N --text T
-    workflow/issue.py escalated                    what the owner owes a decision on
+    workflow/scripts/issue.py list      [--branch B] [--state S]
+    workflow/scripts/issue.py show      N
+    workflow/scripts/issue.py file      --title T (--body B | --body-file F) [--label L] [--branch B]
+    workflow/scripts/issue.py take      N [N ...]          Ozzy: agent_passes += 1, BEFORE any work
+    workflow/scripts/issue.py review    N --comment C      Ozzy: addressed, awaiting Janis
+    workflow/scripts/issue.py escalate  N --comment C      Ozzy: the owner must decide
+    workflow/scripts/issue.py close     N [--comment C]    Janis: verified resolved
+    workflow/scripts/issue.py reopen    N --comment C      Janis: not resolved
+    workflow/scripts/issue.py comment   N --text T
+    workflow/scripts/issue.py escalated                    what the owner owes a decision on
 
 WHY THIS EXISTS. The workflow's rules were prose in three files, and this repo's most
 expensive recurring lesson is that **a rule in a file is not an enforcement mechanism**. Every
@@ -36,6 +36,7 @@ Reads PocketBase credentials from ~/.claude.json (mcpServers.pocketbase.env). St
 import argparse
 import json
 import os
+import re
 import socket
 import sys
 import urllib.error
@@ -44,9 +45,40 @@ import urllib.request
 
 socket.setdefaulttimeout(20)
 
-REPO_SLUG = "Artificial-Humanity/Sonora"
-MAX_PASSES = 3
-COMMENT_MAX = 1500
+def _config():
+    """workflow/config.env, plus a derived repo slug. See that file for why it is derived.
+
+    ⚠ THE SLUG IS DERIVED FROM `origin` BY DEFAULT, and that is a portability decision with a
+    real failure behind it: a hardcoded slug that survives a copy of `workflow/` into another
+    repo files that repo's issues against the ORIGINAL, where they look entirely normal and
+    nothing ever flags them.
+    """
+    cfg = {}
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "config.env")
+    try:
+        for line in open(path, encoding="utf-8"):
+            line = line.split("#", 1)[0].strip()
+            if "=" in line:
+                k, v = line.split("=", 1)
+                cfg[k.strip()] = v.strip()
+    except FileNotFoundError:
+        pass
+    if not cfg.get("REPO_SLUG"):
+        import subprocess
+        try:
+            url = subprocess.run(["git", "remote", "get-url", "origin"],
+                                 capture_output=True, text=True, check=True).stdout.strip()
+            m = re.search(r"[:/]([^/:]+/[^/]+?)(?:\.git)?$", url)
+            cfg["REPO_SLUG"] = m.group(1) if m else ""
+        except Exception:
+            cfg["REPO_SLUG"] = ""
+    return cfg
+
+
+CFG = _config()
+REPO_SLUG = CFG.get("REPO_SLUG") or ""
+MAX_PASSES = int(CFG.get("MAX_PASSES") or 3)
+COMMENT_MAX = int(CFG.get("COMMENT_MAX") or 1500)
 OPEN_STATES = ("open", "review", "escalated")
 
 # The state machine from workflow/WORKFLOW.md. `escalated -> open` is absent on purpose: only
@@ -229,7 +261,7 @@ def cmd_take(pb, args):
                 }.get(rec["state"], "")))
         if cur >= MAX_PASSES:
             die("#%d is at agent_passes=%d, which is the cap. It cannot be attempted again -- "
-                "escalate it instead:\n    workflow/issue.py escalate %d --comment '...'"
+                "escalate it instead:\n    workflow/scripts/issue.py escalate %d --comment '...'"
                 % (number, cur, number))
         pb.patch(rec["id"], {"agent_passes": cur + 1})
         print("#%d taken: agent_passes %d -> %d" % (number, cur, cur + 1))
@@ -257,8 +289,36 @@ def cmd_review(pb, args):
     transition(pb, args, "review", "review", args.author)
 
 
+STE_SENTENCE_WORDS = 25
+
+
+def ste_warnings(text):
+    """⚠ AN ESCALATION COMMENT IS ADDRESSED TO THE OWNER, SO IT IS WRITTEN IN ASD-STE100
+    (owner, 2026-08-17). It is the one thing in the tracker written *to* the owner rather than
+    *near* them — a decision request, not tracker prose.
+
+    ⚠⚠ NECESSARY, NOT SUFFICIENT, AND NOT AN STE PASS. This counts sentence length. It cannot
+    see approved vocabulary, active voice, or one-instruction-per-sentence — the parts of the
+    standard carrying most of the meaning. Silence here means "no long sentences", never "this
+    is STE". The mechanism for the rest is the `ste` skill, which the persona is
+    standing-instructed to use.
+    """
+    out = []
+    for raw in re.split(r"(?<=[.!?])\s+", (text or "").strip()):
+        s = raw.strip()
+        if s and len(s.split()) > STE_SENTENCE_WORDS:
+            out.append("%d words: %s..." % (len(s.split()), s[:58]))
+    return out
+
+
 def cmd_escalate(pb, args):
     require_comment(args, "escalate")
+    warn = ste_warnings(args.comment)
+    for w in warn:
+        print("⚠ STE — %s" % w)
+    if warn:
+        print("  (escalation comments are written in ASD-STE100; use the `ste` skill. This "
+              "check sees sentence length ONLY — passing it is not an STE pass.)")
     transition(pb, args, "escalate", "escalated", args.author)
     print("⚠ the owner owes a decision here. Tell them; they write `user_decision`, and a hook "
           "returns it to 'open' with a fresh counter.")
@@ -314,7 +374,8 @@ def main():
     # natural `issue.py reopen 97 --author Janis` died with a bare usage dump that named no
     # cause. A tool the loop is meant to reach for cannot have a wrong-looking word order.
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--repo", default=REPO_SLUG)
+    common.add_argument("--repo", default=REPO_SLUG,
+                        help="tracker repo slug; defaults to config.env or the origin remote")
     common.add_argument("--author", default=os.environ.get("ISSUE_AUTHOR", ""),
                         help="Janis or Ozzy; also read from $ISSUE_AUTHOR")
 

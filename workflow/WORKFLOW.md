@@ -48,7 +48,7 @@ only state Ozzy cannot resolve alone** — it waits for the owner.
 
 ## 2. The review cycle
 
-1. **Ozzy runs `workflow/request_review.sh`** to call Janis.
+1. **Ozzy runs `workflow/scripts/request_review.sh`** to call Janis.
 2. **Janis wakes in a `-p` session and asks one question first: are there already issues under
    this `branch_name`?** That answer, and nothing else, decides which review this is.
    * **none → INITIAL review**
@@ -76,7 +76,7 @@ only state Ozzy cannot resolve alone** — it waits for the owner.
 
 1. Ozzy reads the issues for this branch.
 2. **Nothing left in `open`, `review` or `escalated` → merge to `main`, push, and the workflow
-   ends.** Use `workflow/merge_branch.sh`, which re-checks the tracker server-side and refuses
+   ends.** Use `workflow/scripts/merge_branch.sh`, which re-checks the tracker server-side and refuses
    otherwise. ⚠ **The gate is on the MERGE, not the push** (owner, 2026-08-17): a branch that
    merged legitimately is one whose push is unremarkable.
 3. For each issue, in order:
@@ -106,6 +106,43 @@ only state Ozzy cannot resolve alone** — it waits for the owner.
      `agent_passes = 3`, which has no attempts left, so releasing the state alone would get the
      issue picked up, found out of attempts, and escalated again.
 3. Ozzy acts on the guidance and rejoins §3.
+
+---
+
+## Porting this lane to another repo
+
+The goal is a copy plus two lines. `workflow/` is meant to be self-contained: personas, map,
+scripts and settings.
+
+1. **Copy `workflow/` into the new repo.**
+2. **Add the import to that repo's `CLAUDE.md`.** This is what makes the developer role need no
+   flag — and `CLAUDE.md` is the only file Claude Code auto-discovers, while `AGENTS.md` is
+   **not**, so this line is what makes any of the rest reachable at all:
+
+   ```markdown
+   ## By default you are Ozzy, the developer
+   @workflow/DEVELOPER.md
+   ```
+
+3. **Check `workflow/config.env`** — the only file with per-repo settings, and every value has
+   a working default. ⚠ **Leave `REPO_SLUG` empty** so it derives from
+   `git remote get-url origin`: a hardcoded slug that survives the copy files the *new* repo's
+   issues against the *old* one, where they look entirely normal and nothing ever flags them.
+4. **Point that repo's `AGENTS.md` here**, in one line, so its rules-of-record names the lane
+   rather than restating it.
+
+⚠ **WHAT DOES NOT TRAVEL, AND MUST BE CHECKED:**
+
+* **The tracker's schema.** `issues` and `issue_comments` must exist, with `state` carrying all
+  four values. The scripts assume it; they do not create it.
+* **The `user_decision` hook**, which lives in the **AI-Lab-AMD** repo. It is what returns a
+  decided issue to `open` with a fresh counter. Without it deployed, escalation is a one-way
+  door and every decision strands at `agent_passes = 3`.
+* **The personas' expertise.** `REVIEWER.md` §2 knows PyTorch, Matcha-TTS and this pipeline's
+  failure modes; `DEVELOPER.md` names this repo's git traps. Both still *run* elsewhere, but a
+  review is only as good as what the reviewer knows to look for. **Edit §2 for the new repo
+  rather than assuming it transfers.**
+* **The `ste` skill**, installed machine-wide from AI-Lab-AMD rather than carried here.
 
 ---
 

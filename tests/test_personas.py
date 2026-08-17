@@ -27,7 +27,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 CLAUDE_MD = (REPO / "CLAUDE.md").read_text(encoding="utf-8")
 REVIEWER = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
-LAUNCHER = (REPO / "workflow" / "request_review.sh").read_text(encoding="utf-8")
+LAUNCHER = (REPO / "workflow" / "scripts" / "request_review.sh").read_text(encoding="utf-8")
 
 IMPORT_RE = re.compile(r"^@(\S+)$", re.M)
 

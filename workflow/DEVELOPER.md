@@ -94,13 +94,13 @@ naming and idiom rather than importing a house style from elsewhere.
 the two differ. This section is your half of it. The reviewer is **Janis**, and it is not a
 session you talk to — it is a **one-shot process you run**.
 
-### ⚠ Use `workflow/issue.py` for every tracker write
+### ⚠ Use `workflow/scripts/issue.py` for every tracker write
 
 ```bash
-workflow/issue.py list --branch "$(git rev-parse --abbrev-ref HEAD)"
-workflow/issue.py take 114                    # agent_passes += 1, BEFORE any work
-workflow/issue.py review 114 --comment "…"    # addressed, awaiting Janis
-workflow/issue.py escalate 114 --comment "…"  # the owner must decide (comment REQUIRED)
+workflow/scripts/issue.py list --branch "$(git rev-parse --abbrev-ref HEAD)"
+workflow/scripts/issue.py take 114                    # agent_passes += 1, BEFORE any work
+workflow/scripts/issue.py review 114 --comment "…"    # addressed, awaiting Janis
+workflow/scripts/issue.py escalate 114 --comment "…"  # the owner must decide (comment REQUIRED)
 ```
 
 Not a convenience. The rules that used to be prose in three files are **refusals** in that
@@ -115,12 +115,12 @@ the script. Set `ISSUE_AUTHOR=Ozzy` once and it stops asking who you are.
 ### Step 1 — commit, then request the review
 
 ```bash
-workflow/request_review.sh --range origin/main..HEAD --developer Ozzy
+workflow/scripts/request_review.sh --range origin/main..HEAD --developer Ozzy
 ```
 
 **It blocks.** The review runs to completion and the script prints Janis's summary and the
 `branch_name` it filed under. There is no tap, no queue, no reply to wait for — the review has
-arrived when the script returns. Read `workflow/request_review.sh --help` for the rest of the
+arrived when the script returns. Read `workflow/scripts/request_review.sh --help` for the rest of the
 flags; **`--notes` is the one that matters most** and is covered in step 4.
 
 * ⚠ **REQUEST A REVIEW OF THE WHOLE RANGE YOU ARE ABOUT TO PUSH, NOT THE LAST COMMIT.** A
@@ -159,13 +159,13 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
 
 ### Step 4 — take it, fix it, then set `review`
 
-⚠ **Before you read the issue, before you touch any code:** `workflow/issue.py take N`, which
+⚠ **Before you read the issue, before you touch any code:** `workflow/scripts/issue.py take N`, which
 increments `agent_passes` on every issue you are taking on — meaning every issue whose `state`
 is `open`. `state` has four exclusive values (`open`, `review`, `escalated`, `closed`), so
 "open" already means "not addressed, not parked, not resolved"; there is no flag beside it.
 
 ⚠⚠ **WHEN THE FIX IS COMMITTED, SET `review` — DO NOT LEAVE IT OPEN.**
-`workflow/issue.py review N`. That is the signal Janis reads on the next pass; an issue you
+`workflow/scripts/issue.py review N`. That is the signal Janis reads on the next pass; an issue you
 fixed but left in `open` reads as untouched, and Janis will not verify it. A comment is
 optional here (the commit is the evidence), but a one-liner saying what you did is cheap and
 often saves a round.
@@ -209,7 +209,7 @@ Then, on each issue:
 ### Then request the next review — every pass ends on one
 
 ```bash
-workflow/request_review.sh --range origin/main..HEAD --developer Ozzy \
+workflow/scripts/request_review.sh --range origin/main..HEAD --developer Ozzy \
   --pass 2 --notes-file /tmp/pass2-notes.md
 ```
 
@@ -244,7 +244,7 @@ review 3 starts at `0` and gets its own three passes.
 ### Step 5 — when nothing is left, merge
 
 ```bash
-workflow/merge_branch.sh          # refuses unless every issue on the branch is closed
+workflow/scripts/merge_branch.sh          # refuses unless every issue on the branch is closed
 ```
 
 **The branch is done when it has no issue in `open`, `review` or `escalated`.** Then merge to
@@ -274,14 +274,14 @@ that no amount of reviewing will settle a question.
 
 1. **You cannot address it without a decision from the owner.** Escalate when you know, not on
    pass 3 — an issue needing a decision does not become decidable by being reviewed again.
-2. **`agent_passes` is already 3.** It is out of attempts. `workflow/issue.py take` refuses it
+2. **`agent_passes` is already 3.** It is out of attempts. `workflow/scripts/issue.py take` refuses it
    and tells you so; escalating is the only move left.
 
 ⚠ **A comment is MANDATORY** — say what decision is being asked for. `issue.py escalate`
 refuses without one, because the owner cannot answer a question that was not asked.
 
 ⚠ **Then tell the owner.** An escalation nobody is told about is an issue that stops moving.
-`workflow/issue.py escalated` lists exactly what they owe a decision on.
+`workflow/scripts/issue.py escalated` lists exactly what they owe a decision on.
 
 ⚠ **It is a `state`, so escalating is a TRANSITION, not a flag you raise beside the old one**
 (owner, 2026-08-17). Setting `state: "escalated"` takes the issue out of `open`, and so out of
@@ -376,8 +376,21 @@ the sentences around a diff.
 * **Commit messages.** AGENTS.md §4 wants *why the previous state was wrong* — reasoning that
   a 20-word procedural limit chops into fragments. The commit trail is the record of change,
   not an instruction to a reader.
-* **Issue titles, bodies and comments.** Written for Janis and the owner in the tracker's own
-  register, and re-read months later next to 48 migrated issues that are not in STE.
+* **Issue titles, bodies and ORDINARY comments.** Written for Janis in the tracker's own
+  register, and re-read months later next to issues migrated from elsewhere that are not in STE.
+  * ⚠⚠ **AN ESCALATION COMMENT IS THE EXCEPTION, AND IT IS WRITTEN IN STE** (owner,
+    2026-08-17). This clause excluded issue comments outright, which was too broad. **An
+    escalation comment is not tracker prose — it is a decision request addressed to the
+    owner**, the one thing in the tracker written *to* them rather than *near* them. It is
+    squarely "prose you say to the owner", so the rule above applies to it in full.
+    * `workflow/scripts/issue.py escalate` says so where you write it, and warns on the one
+      violation it can measure. ⚠ **That check is NECESSARY, NOT SUFFICIENT** — it counts
+      sentence length and nothing else. It cannot see vocabulary, voice, or
+      one-instruction-per-sentence, so a comment that passes it silently has been checked for
+      the crudest failure only. **Use the skill; do not write to the warning.**
+    * **The rest of the issue stays in the tracker's register.** The finding, the evidence and
+      the reasoning belong in the body, where 200,000 characters and ordinary prose are
+      available. Do not rewrite a whole issue into STE to satisfy this.
 * **Code, comments, docstrings, config, error strings, and this repo's `.md` files.** The
   skill excludes code, paths, identifiers and quoted strings by its own rule; the broader
   point is that repo files must read like the files around them.
