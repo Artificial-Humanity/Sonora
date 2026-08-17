@@ -414,6 +414,16 @@ the simple version that holds until then. Do not build tooling on its shape.
   * **What the owner reads:** `escalated = true && state = "open"`. Filing something there that
     merely looks hard is how that view stops being read — the same way the 25-issue afternoon
     made a backlog nobody worked.
+  * ⚠ **A DECISION THAT HAS BEEN ACTED ON MUST BE CLOSED** (2026-08-17). The reviewer closes
+    it, citing the decision. Obeying an answer is not resolving it: until this was written,
+    *"the owner decided"* had **no path to `state: closed`**, so a decided issue stayed open
+    permanently — measured on #97 and #104. An "accept as-is" decision strands most easily,
+    because no commit will ever reference it.
+  * **THE CYCLE IS FINISHED when every issue it produced is closed, escalated, or out of
+    attempts** — `review_id!="" && state="open" && escalated=false` returns nothing.
+    ⚠ **The `review_id!=""` clause is load-bearing**: the nine migrated GitHub issues carry no
+    `review_id`, were never part of a cycle, and nobody is working them, so a check that counts
+    them never reaches zero and misreads a settled loop as a stuck one.
   * ⚠ **THE ANSWER COMES BACK IN `user_decision`, AND NO AGENT MAY WRITE IT** (owner,
     2026-08-14). It is the owner's field exactly as an `agent_passes` reset is theirs — an
     agent writing there forges the answer to a question it raised, which is the one thing

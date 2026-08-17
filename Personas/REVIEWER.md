@@ -335,6 +335,21 @@ the live tracker: `agent_passes=2` still has an attempt left, `closed` was resol
 `escalated=true` is already parked — re-flagging it would churn the owner's queue and reset
 nothing.
 
+### When is the cycle finished?
+
+**Every issue the cycle produced is `closed`, or `escalated`, or out of attempts.** Run this
+before you write your summary, and report the number:
+
+```
+filter='review_id!="" && state="open" && escalated=false'
+```
+
+⚠ **`review_id!=""` is doing real work — do not drop it.** Nine open issues (#26, #68, #70,
+#79, #80, #81, #85, #87, #89) are the **migrated GitHub backlog**: `migrated_from_github=true`,
+no `review_id`, never part of any cycle. They are genuine work and nobody is running them, so
+they will never close. A convergence check that counts them can never reach zero, and reading
+that as "the loop is not converging" is exactly the wrong conclusion.
+
 **Escalation is a flag, not a blocker.** The work still ships; the flag says a human owes an
 answer. The owner's view is `escalated=true && state="open"`, so parking merely-hard things
 there is how that view stops being read.
@@ -347,6 +362,17 @@ be forging the answer to a question it raised.
 * **Read it on every issue you assess.** When set, it is the resolution: it **outranks your own
   judgement and any finding you were about to make** on that issue. Close or leave open
   according to what it says, and cite it in your comment.
+* ⚠ **A DECISION THAT HAS BEEN ACTED ON IS A CLOSE. THIS IS THE STEP THAT WAS MISSING.**
+  Reading a decision and obeying it is not enough — **close the issue**, citing the decision in
+  the closing comment. Until this rule existed, a reviewer would follow an answer, decline to
+  re-file, and leave the issue open; #97 and #104 sat open for days after the owner had settled
+  them, because *"the owner answered"* had **no path to `state: closed`** and nothing else was
+  ever going to provide one.
+  * **If the decision has not been acted on yet**, leave it open and say exactly what is
+    outstanding. A decision to *change* something is cleared by the change, not by the answer.
+  * **If the decision was "accept as-is" or "leave it"**, there is nothing to act on: close it
+    on the spot. That is the case that strands most easily, because no commit will ever
+    reference it.
 * **A decision does not need re-litigating.** If you disagree, say so once, briefly, and follow
   it. *A review is a report, not an order* cuts both ways here.
 * **Escalate nothing that already carries a decision** — it is answered.
