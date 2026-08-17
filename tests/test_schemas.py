@@ -82,21 +82,34 @@ def test_the_real_asset_loads():
     ({}, "missing the key entirely"),
 ])
 def test_a_broken_lexicon_is_refused(tmp_path, bad, why):
+    """⚠ `SchemaError`, NOT `Exception` — and the wide spelling is what hid issue #94.
+
+    Pydantic converts a `ValueError` raised in a validator into `ValidationError`, so every
+    invariant here surfaced as a type the module never promised. `pytest.raises(Exception)`
+    passed either way, and the message assertion passed too because pydantic preserves the
+    text. The empty case — the one the validator calls the one that matters — was the worst
+    of them. Pinning the type is the whole assertion.
+    """
     p = tmp_path / "register_lexicon.json"
     p.write_text(json.dumps(bad), encoding="utf-8")
-    with pytest.raises(Exception) as e:
+    with pytest.raises(schemas.SchemaError) as e:
         schemas.load_register_lexicon(str(p))
     assert "lexicon" in str(e.value).lower(), why
 
 
-def test_the_empty_case_says_why_it_matters():
+def test_the_empty_case_says_why_it_matters(tmp_path):
     """⚠ The message has to explain that empty is not "weaker" but "absent".
 
     A reader who thinks an empty vocabulary is a degraded vocabulary will restore the
     `except: return []` the first time this refusal is inconvenient.
     """
-    with pytest.raises(Exception) as e:
-        schemas.RegisterLexicon(lexicon=[])
+    # Through the LOADER, because that is the boundary that converts (#94). Constructing the
+    # model directly still raises pydantic's own type, and asserting on that would pin the
+    # very behaviour the fix routes around.
+    with pytest.raises(schemas.SchemaError) as e:
+        _lex = tmp_path / "register_lexicon.json"
+        _lex.write_text(json.dumps({"lexicon": []}), encoding="utf-8")
+        schemas.load_register_lexicon(str(_lex))
     msg = str(e.value)
     assert "guard" in msg and "prompt" in msg
 
@@ -104,45 +117,24 @@ def test_the_empty_case_says_why_it_matters():
 def test_missing_and_malformed_files_are_named(tmp_path):
     """`FileNotFoundError` and `JSONDecodeError` both say WHICH file and what it was for —
     the bare `json.load(...)["lexicon"]` this replaced said neither."""
-    with pytest.raises(Exception) as e:
+    with pytest.raises(schemas.SchemaError) as e:
         schemas.load_register_lexicon(str(tmp_path / "nope.json"))
     assert "nope.json" in str(e.value)
 
     p = tmp_path / "bad.json"
     p.write_text("{not json", encoding="utf-8")
-    with pytest.raises(Exception) as e:
+    with pytest.raises(schemas.SchemaError) as e:
         schemas.load_register_lexicon(str(p))
     assert "bad.json" in str(e.value)
 
 
-# --- the delivery lane split -------------------------------------------------------------
-
-def test_producing_and_reading_are_different_vocabularies():
-    """⚠ `matcha/delivery.py` states the rule and nothing enforced it: a NEW row may only be
-    labelled with an ACTIVE lane, while readers stay on the full vocabulary because v5's
-    filelists and ep019's weights carry the retired channel and must keep decoding."""
-    from matcha import delivery
-    retired = delivery.RETIRED_LANES[0]
-
-    assert schemas.validate_delivery_label(retired, producing=False) == retired
-    with pytest.raises(Exception) as e:
-        schemas.validate_delivery_label(retired, producing=True)
-    assert "RETIRED" in str(e.value), "the message must distinguish retired from unknown"
-
-
-def test_unknown_is_accepted_on_both_sides():
-    """The blank cell is a legitimate label: `seed_delivery.py` leaves the ear's cases blank
-    rather than guessing, and every LibriTTS clip predates the axis."""
-    from matcha import delivery
-    for producing in (True, False):
-        assert schemas.validate_delivery_label(
-            delivery.DELIVERY_UNKNOWN, producing=producing) == delivery.DELIVERY_UNKNOWN
-
-
-def test_a_typo_is_refused_on_both_sides():
-    for producing in (True, False):
-        with pytest.raises(Exception):
-            schemas.validate_delivery_label("Netural", producing=producing)
+# --- the delivery lane split: NOT THIS MODULE'S JOB --------------------------------------
+#
+# ⚠ Three tests here drove `schemas.validate_delivery_label`, which was REMOVED (issue #95).
+# `matcha.delivery.check_assignable` already owns that rule and is wired at the real write
+# sites; a second implementation in `schemas.py` was the "second literal" its own docstring
+# warns about. The rule is still tested — by `tests/test_delivery_channel.py` against the
+# function that production actually calls, which is where a test of it belongs.
 
 
 # --- no second copy of any vocabulary -----------------------------------------------------
@@ -330,5 +322,75 @@ def test_the_writers_no_longer_default_an_axis_to_zero():
     """The literal that caused it, gone from both sites. Read as code — the new comments
     quote the old expression to explain it."""
     code = code_only(REPO / "scripts" / "lib" / "book_ingest.py")
-    assert "valence" not in code.replace("intended_vat", ""), \
+    # ⚠ The `.replace("intended_vat", "")` that used to wrap this was DEAD: "valence" is not a
+    # substring of "intended_vat", so it removed nothing and the assertion was already the
+    # stronger one. Worse than harmless to leave — it read as load-bearing, so the next editor
+    # would have had to work out what it defended against before touching the line. Raised as a
+    # nit by the 2026-08-17 review, which declined to spend a tracker record on it.
+    assert "valence" not in code, \
         "book_ingest still reaches for a raw axis instead of schemas.intended_vat()"
+
+
+# --- the two shapes of an absent axis (issues #90, #91, #92) ------------------------------
+#
+# Both HIGH findings of the 2026-08-17 review came from ONE change: `intended_vat` writes all
+# three keys always, using `None` for an absent axis. That is right for the manifest and wrong
+# for a label dict, and the difference had to become two functions.
+
+def test_a_label_dict_omits_an_absent_axis_rather_than_passing_none():
+    """⚠ THE PRE-EXISTING GUARD WAS RIGHT; THE VALUE SHAPE WAS WRONG (#90).
+
+    `book_ingest.casting_pass` formats each axis with `:+.2f` under `if k in labels` — a guard
+    written for exactly the axis a director never produced. Making every key always present
+    satisfied `in`, and `format(None, '+.2f')` raises. The run died.
+    """
+    tag = {"valence": 0.4, "register": "wry"}
+    labels = schemas.intended_labels(tag)
+    assert labels == {"V": 0.4}, "an absent axis must not appear at all"
+    # The real consumer's idiom, verbatim.
+    rendered = ", ".join(f"{k}={labels[k]:+.2f}" for k in ("V", "A", "T") if k in labels)
+    assert rendered == "V=+0.40"
+
+
+def test_the_manifest_still_records_an_absent_axis_as_an_explicit_null():
+    """The other half: dropping the key here would make "not asked" and "asked, no answer"
+    identical, which is the distinction `qc_verdict` goes to real trouble to preserve."""
+    got = schemas.intended_vat({"valence": 0.4, "register": "wry"})
+    assert got == {"V": 0.4, "A": None, "T": None}
+    assert set(got) == {"V", "A", "T"}, "the manifest keeps all three keys"
+
+
+def test_the_two_shapes_agree_on_every_axis_they_both_report():
+    """They must differ only in whether an absent axis is present, never in its VALUE."""
+    for tag in ({"valence": 0.4}, {"valence": 0.4, "arousal": -0.2, "tension": 0.0},
+                {"valence": "0.7", "arousal": "junk"}, {}):
+        vat = schemas.intended_vat(tag, strict=False)
+        lab = schemas.intended_labels(tag)
+        assert lab == {k: v for k, v in vat.items() if v is not None}, tag
+
+
+def test_a_progress_line_prints_an_absent_axis_instead_of_dying(capsys):
+    """⚠ #91's ordering is why this is not cosmetic: the crash sat AFTER the checkpoint was
+    written, flushed and fsynced, so the offending row was already durable. Resume skipped it
+    and died on the next one — a run made exactly one chunk of progress per restart."""
+    i = schemas.intended_vat({"valence": 0.4})
+    line = (f"V={schemas.fmt_axis(i['V'])} A={schemas.fmt_axis(i['A'])} "
+            f"T={schemas.fmt_axis(i['T'])}")
+    assert "+0.4" in line
+    assert "None" not in line, "a placeholder, not the word None"
+
+
+def test_fmt_axis_refuses_a_bool():
+    """`True` is an `int` in Python and `format(True, '+.1f')` renders `+1.0` — a plausible
+    number from a value that is not one. Every axis reader in this module refuses bools for
+    the same reason."""
+    assert schemas.fmt_axis(True) == schemas.fmt_axis(None)
+    assert schemas.fmt_axis(0.0) == "+0.0"
+
+
+def test_the_removed_delivery_validator_has_not_come_back():
+    """⚠ #95: `matcha.delivery.check_assignable` owns this rule. A re-export or a thin wrapper
+    here restores the fork with an extra layer over it."""
+    assert not hasattr(schemas, "validate_delivery_label"), (
+        "schemas.py is re-implementing the delivery rule again — import check_assignable from "
+        "matcha.delivery instead")

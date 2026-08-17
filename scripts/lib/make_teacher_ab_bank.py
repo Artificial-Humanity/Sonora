@@ -340,9 +340,14 @@ def main():
             print("    SKIPPED (line pass failed)")
             continue
         register = lab["register"]
-        intended = {"V": round(float(lab["valence"]), 2),
-                    "A": round(float(lab["arousal"]), 2),
-                    "T": round(float(lab["tension"]), 2)}
+        # ⚠ THE SECOND WRITER OF `intended`, and it was left behind (issue #93). The whole
+        # argument for validating at the writer is "one place instead of seven readers" —
+        # which only holds if every writer goes through it. `float(lab["valence"])` raises
+        # KeyError on an absent axis and ValueError on an unreadable one, both of which kill
+        # the campaign mid-run, and it accepts an out-of-range value that is silently clamped
+        # downstream. `intended_vat` is the one definition of what a legal axis is.
+        intended = {k: (round(v, 2) if v is not None else None)
+                    for k, v in schemas.intended_vat(lab).items()}
         if register != expected_register:
             misses.append((key, expected_register, register))
         print(f"    line: {register}  V/A/T {intended['V']}/{intended['A']}/{intended['T']}",

@@ -61,14 +61,39 @@ OUT_DIR = DS / "quote-pilot-v3d"
 ENGINE_PREF = {"moss85": 0.0, "longcat": 0.05, "qwen": 0.15, "dia": 0.3}
 FT_VOICE = {"F": "tara", "M": "leo"}
 
+AXES = ("V", "A", "T")
+
+
+def complete_vat(d):
+    """True when all three axes carry a real number.
+
+    ⚠ `intended.V/A/T` MAY BE `null` SINCE 2026-08-17 (issue #92). `book_ingest` used to write
+    `tag.get("valence", 0.0)`, so every row arrived with three floats and this file was written
+    against that. An absent axis is now recorded honestly as `null` instead of being invented
+    as a neutral 0.0 — which is the right call at the writer and makes the arithmetic below a
+    `TypeError` here. A bool is refused too: `True - 0.4` is perfectly legal arithmetic and
+    silently wrong.
+    """
+    return all(isinstance(d.get(k), (int, float)) and not isinstance(d.get(k), bool)
+               for k in AXES)
+
+
 def vat_dist(a, b):
-    return math.sqrt(sum((a[k] - b[k]) ** 2 for k in ("V", "A", "T")))
+    return math.sqrt(sum((a[k] - b[k]) ** 2 for k in AXES))
 
 rows = [json.loads(l) for l in SRC.open()]
 keeps = [json.loads(l) for l in KEEPS.open()]
 
 bank = []
 used = set()
+# ⚠ SKIPPED AND COUNTED, NEVER SILENTLY DROPPED. A line whose intended vector is incomplete
+# cannot be distance-ranked against anything, so it has no place in this bank — but a bank
+# that is quietly short is the failure this repo keeps paying for, so the count is printed.
+unscoreable = [r for r in rows if not complete_vat(r["intended"])]
+rows = [r for r in rows if complete_vat(r["intended"])]
+if unscoreable:
+    print(f"  ⚠ {len(unscoreable)} line(s) skipped: intended V/A/T is incomplete, so they "
+          f"cannot be ranked by distance. Re-direct them or accept a shorter bank.")
 for r in rows:
     g = design_gender(r["direction"]["design"])
     cands = []

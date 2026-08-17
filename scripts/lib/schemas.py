@@ -1,9 +1,18 @@
 """Validated loaders for the data contracts that enter this repo from files.
 
-WHY THIS EXISTS. 77 files call `json.load` against no schema at all, and the tree holds one
-dataclass and zero `TypedDict`. Where an invariant IS known it tends to live in a gate test —
-which runs in CI and protects no runtime read. So a malformed asset is caught on the machine
-that runs the suite and nowhere else.
+WHY THIS EXISTS. Most JSON entering this repo is read against no schema at all, and the tree
+holds one `@dataclass` (`matcha/direction.py:59`) and zero `TypedDict`. Where an invariant IS
+known it tends to live in a gate test — which runs in CI and protects no runtime read. So a
+malformed asset is caught on the machine that runs the suite and nowhere else.
+
+⚠ THE NUMBER NOW CARRIES ITS METHOD, because the first version did not and could not be
+reproduced (issue #97). It said "77 files", which matches no counting rule anyone could find:
+the plausible ones give 90 (any `json.load`, including `json.loads`, tests included), 80 (same,
+tests excluded) and 61 (`json.load(` — an actual file read — tests excluded). A motivating
+figure that a reader cannot re-derive is worse than no figure, because it gets quoted onward.
+Measured 2026-08-17, and re-runnable:
+
+    git ls-files '*.py' | grep -v '^tests/' | xargs grep -lE 'json\\.load\\(' | wc -l   # 61
 
 ⚠ THE TARGET IS THE SILENT DEGRADE, NOT THE CRASH. A file that fails to parse loudly is
 already survivable. What is not is a loader that answers with a plausible empty value, because
@@ -13,8 +22,15 @@ Both halves then fail in the same direction with nothing on stdout. That is the 
 `build_direction()` was already made fatal for on the engine axis (`book_ingest` §"unknown
 engine"); this module is the same decision for the axes that were left behind.
 
-Pydantic was already an installed dependency (2.13.4, transitively) before this module, so
-nothing here adds one.
+⚠ PYDANTIC IS A CORE DEPENDENCY BECAUSE OF THIS MODULE, and an earlier draft of this
+paragraph said the opposite (issue #96) — "already an installed dependency (2.13.4,
+transitively), so nothing here adds one" — while `pyproject.toml` in the SAME COMMIT added it
+to `[project.dependencies]` and explained why. Both statements cannot be true, and the
+reassuring one was false in the way that matters: pydantic was reachable only through
+`fastapi`, which lives in the `vocalizer` extra, so a dev box had it by accident and a
+training or eval image would not have had it at all. `book_ingest` imports this module at
+module scope, which puts it on the teacher-synthesis path every container takes. The failure
+would have been an `ImportError` in a container, where no test could see it.
 
 ⚠ VOCABULARIES ARE DERIVED, NEVER RE-SPELLED. Every controlled list below is imported from
 the module that owns it. A literal copied into this file would be exactly the defect the file
@@ -29,7 +45,7 @@ import os
 import re
 from typing import List
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 _REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ASSETS = os.path.join(_REPO, "scripts", "assets")
@@ -51,11 +67,26 @@ _SNAKE = re.compile(r"[a-z0-9_]+")
 
 
 class SchemaError(ValueError):
-    """A data contract was violated. Deliberately not caught anywhere in this module.
+    """A data contract was violated. The ONE exception type this module's loaders raise.
 
     ⚠ Callers must not wrap a load in `except Exception` and substitute a default. That is
     the failure this module exists to remove, and it reads as defensive programming right up
     until the default silently disables a downstream guard.
+
+    ⚠ RAISING THIS INSIDE A PYDANTIC VALIDATOR DOES NOT REACH THE CALLER (issue #94, measured).
+    Pydantic catches `ValueError` — which this subclasses — out of a `field_validator` and
+    converts it into `pydantic_core.ValidationError`. So every lexicon invariant below used to
+    surface as a type the caller was never told about, INCLUDING the empty case that
+    `RegisterLexicon._check` calls the one that matters. A caller who wrote the narrow
+    `except SchemaError` that this module's own guard test reasons about would have caught a
+    missing file and let an empty vocabulary straight through.
+
+    The tests could not see it: they asserted on the MESSAGE through `pytest.raises(Exception)`,
+    and pydantic preserves the message ("Value error, <text>"), so they passed either way. The
+    asymmetry was the tell — `intended_vat`'s tests, which do not go through pydantic, pinned
+    `SchemaError` exactly. The type was pinned where it happened to hold and left loose where
+    it did not. Loaders now convert at the boundary; `tests/test_schemas.py` pins the type on
+    every path.
     """
 
 
@@ -121,7 +152,15 @@ def load_register_lexicon(path: str | None = None) -> List[str]:
     if not isinstance(raw, dict):
         raise SchemaError("register lexicon at %s must be a JSON object, got %s"
                           % (p, type(raw).__name__))
-    return RegisterLexicon(**raw).lexicon
+    # ⚠ THE CONVERSION IS THE POINT (#94). Everything above raises `SchemaError` directly;
+    # everything pydantic checks would otherwise escape as `ValidationError`, so the same
+    # broken asset raised two unrelated types depending on HOW it was broken. Converting here
+    # rather than in the validator keeps one boundary: the model stays a plain pydantic model
+    # and this function stays the only thing callers have to reason about.
+    try:
+        return RegisterLexicon(**raw).lexicon
+    except ValidationError as e:
+        raise SchemaError("register lexicon at %s is invalid: %s" % (p, e)) from e
 
 
 # --- intended V/A/T, at the point of WRITE -----------------------------------------------
@@ -209,42 +248,55 @@ def intended_vat(tag, *, strict=True):
     return out
 
 
-# --- delivery lanes ---------------------------------------------------------------------
-# Imported, never re-spelled. `matcha/delivery.py` owns the vocabulary and the retired/active
-# split, and its ORDER IS THE WIRE FORMAT — a copy here that drifted by one entry would
-# silently reinterpret every filelist and every checkpoint written at that `vat_dim`.
+def intended_labels(tag, *, strict=False):
+    """The same axes as `intended_vat`, but an absent axis is OMITTED rather than `None`.
 
+    ⚠ TWO SHAPES BECAUSE THERE ARE TWO CONTRACTS, and conflating them broke a live run
+    (issues #90, #91, #92 — all reproduced).
 
-def _delivery():
-    from matcha import delivery
-    return delivery
+      * `intended_vat`    -> the MANIFEST. A durable JSON record, where an explicit `null`
+                             is a fact: the director was asked and said nothing. Dropping the
+                             key would make "not asked" and "asked, no answer" identical.
+      * `intended_labels` -> an IN-MEMORY label dict handed to a prompt builder, where the
+                             reader's own idiom is `for k in ("V","A","T") if k in labels`.
 
+    That `if k in labels` guard is PRE-EXISTING and was written for exactly this — an axis the
+    director never produced. Making every key always present defeated it silently, and the
+    line under it formats with `:+.2f`, so a `None` reached `__format__` and took the whole
+    book-ingest run down. The guard was right; the value shape was wrong.
 
-def validate_delivery_label(lane: str, *, producing: bool) -> str:
-    """Check a delivery lane, on the right side of the retired/active split.
-
-    ⚠ `producing` IS NOT A STYLE CHOICE, and getting it backwards is silent both ways.
-    `matcha/delivery.py` states the rule: a NEW row may only be labelled with an ACTIVE lane,
-    while READERS stay on the full vocabulary because v5's filelists and ep019's weights both
-    carry the retired channel and must keep decoding.
-
-      producing=True   labelling a row, writing a manifest  -> ACTIVE_DELIVERY_LANES
-      producing=False  conditioning a render, decoding      -> DELIVERY_LANES (full)
-
-    Passing `producing=False` where a row is being written lets a retired lane back into the
-    corpus; passing `True` where a render is conditioned refuses a lane the checkpoint can
-    legitimately still decode.
+    Defaults to lenient: a caller building a prompt should degrade to fewer labels, never
+    abort a retry loop. The manifest write is where a bad axis is fatal.
     """
-    d = _delivery()
-    if lane == d.DELIVERY_UNKNOWN:
-        return lane
-    allowed = d.ACTIVE_DELIVERY_LANES if producing else d.DELIVERY_LANES
-    if lane not in allowed:
-        retired = producing and lane in d.DELIVERY_LANES
-        raise SchemaError(
-            "delivery lane %r is not %s. Allowed: %s.%s"
-            % (lane, "assignable" if producing else "known", list(allowed),
-               "  It is a RETIRED lane: the channel still decodes, but no new row may be "
-               "labelled with it." if retired else "")
-        )
-    return lane
+    return {k: v for k, v in intended_vat(tag, strict=strict).items() if v is not None}
+
+
+def fmt_axis(v, spec="+.1f", absent="  · "):
+    """One axis for HUMAN OUTPUT, where `None` must print rather than raise.
+
+    ⚠ Progress lines are not diagnostics — they are the only thing a long run shows, and this
+    one sat AFTER the checkpoint `write`/`flush`/`fsync`. So a `TypeError` here killed the run
+    with the offending row already durable: resume skipped it, then died on the next chunk
+    missing an axis. A run made exactly one chunk of progress per restart (issue #91).
+    """
+    return format(v, spec) if isinstance(v, (int, float)) and not isinstance(v, bool) else absent
+
+
+# --- delivery lanes: DELIBERATELY NOT HERE ---------------------------------------------
+#
+# ⚠ A `validate_delivery_label()` lived here for one commit and was REMOVED (issue #95). It
+# had zero production call sites — its only four callers were its own tests — but "unwired"
+# was the smaller half of the problem.
+#
+# `matcha.delivery.check_assignable()` already owns this rule, and it is wired at the sites
+# that matter: `scripts/stages/register_audition.py` (the synthesis pipeline's write site for
+# `delivery`), `scripts/lib/ref_select.py`, and the corpus merge. A second implementation here
+# is exactly what this module's own docstring says it is most at risk of becoming — "the
+# second literal" — and it would have been the more dangerous copy, because it encoded the
+# active/retired split as a `producing=` BOOLEAN that a caller can get backwards in silence:
+# `producing=False` on a write lets a retired lane back into the corpus, `producing=True` on a
+# render refuses a lane the checkpoint can legitimately still decode.
+#
+# The right shape for a new caller is `from matcha.delivery import check_assignable`, not a
+# re-export through this module. Adding a thin wrapper here would restore the fork with an
+# extra layer of indirection over it.

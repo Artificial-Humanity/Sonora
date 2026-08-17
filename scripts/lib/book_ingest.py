@@ -870,7 +870,7 @@ def director_tag(chunk, retries=2):
             # with the labels that will actually be written rather than a second reading of
             # the same tag. `strict=False`: a bad axis here should not abort the retry loop,
             # it should be absent — the manifest write is where it becomes fatal.
-            _vat = schemas.intended_vat(tag, strict=False)
+            _vat = schemas.intended_labels(tag)
             cast = casting_pass(chunk["text"], engine, labels={
                 **_vat, "register": tag.get("register", "")})
             if cast is None:
@@ -1473,8 +1473,10 @@ def main():
                                         ensure_ascii=False) + "\n")
             checkpoint.flush()
             os.fsync(checkpoint.fileno())
+            _i = line["intended"]
             print(f"  [{i}] {chunk['chunk_type']:9} eng={line['engine']:6} "
-                  f"V={line['intended']['V']:+.1f} A={line['intended']['A']:+.1f} T={line['intended']['T']:+.1f} "
+                  f"V={schemas.fmt_axis(_i['V'])} A={schemas.fmt_axis(_i['A'])} "
+                  f"T={schemas.fmt_axis(_i['T'])} "
                   f"{line['register']:22} | {chunk['text'][:55]}", flush=True)
     if resumed:
         print(f"  reused {resumed} directed chunk(s) from the checkpoint", flush=True)

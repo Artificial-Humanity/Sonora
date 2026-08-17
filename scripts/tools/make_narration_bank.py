@@ -208,8 +208,14 @@ def main():
         if engine is None:
             skipped["no engine left in lane"] += 1
             continue
-        labels = {"V": src["intended"]["V"], "A": src["intended"]["A"],
-                  "T": src["intended"]["T"], "register": src.get("register", "")}
+        # ⚠ OMIT AN ABSENT AXIS, do not pass `None` (issue #92). `intended.V/A/T` may be
+        # `null` since 2026-08-17, and `casting_pass` formats each label with `:+.2f` under a
+        # pre-existing `if k in labels` guard — a guard written for exactly this case. Passing
+        # the key with a `None` value satisfies `in` and then raises in `__format__`.
+        labels = {k: v for k, v in src["intended"].items()
+                  if k in ("V", "A", "T") and isinstance(v, (int, float))
+                  and not isinstance(v, bool)}
+        labels["register"] = src.get("register", "")
         cast = bi.casting_pass(src["text"], engine, labels=labels)
         if cast is None:
             skipped[f"{engine}: casting_pass failed"] += 1

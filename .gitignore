@@ -8,11 +8,11 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
-develop-eggs/
+/build/
+/develop-eggs/
 dist/
-downloads/
-eggs/
+/downloads/
+/eggs/
 .eggs/
 # ⚠ ANCHORED WITH A LEADING SLASH. These come from the standard Python template, where
 # they mean the TOP-LEVEL setuptools build directories. Unanchored, `lib/` also matches
@@ -22,12 +22,19 @@ eggs/
 # in no commit at all, and `scripts/lib/schemas.py` was invisible to a guard that
 # enumerates via `git ls-files`. Existing files stayed tracked, which is what kept it
 # hidden: the rule only ever ate the next one.
+#
+# ⚠ EVERY DIRECTORY NAME FROM THAT TEMPLATE IS NOW ANCHORED, not just the two that had
+# already bitten (issue #98). Fixing `lib/` and `lib64/` alone treated a general defect as
+# two incidents: `build/`, `parts/`, `var/`, `wheels/`, `sdist/`, `eggs/`, `downloads/` and
+# `develop-eggs/` are the same unanchored shape from the same template, and `scripts/build/`
+# or `matcha/var/` would be eaten exactly as `scripts/lib/` was — silently, absent from
+# `git status`. The two that bit were not special; they were only first.
 /lib/
 /lib64/
-parts/
-sdist/
-var/
-wheels/
+/parts/
+/sdist/
+/var/
+/wheels/
 share/python-wheels/
 *.egg-info/
 .installed.cfg
