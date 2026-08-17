@@ -62,7 +62,8 @@ def test_a_double_bracket_memory_slug_is_not_a_link():
 def test_external_and_anchor_targets_are_left_alone():
     """Fetching URLs would make the gate fail offline; anchors are a different check."""
     for line in ("[x](https://example.com/a.md)", "[x](http://example.com)",
-                 "[x](mailto:a@b.c)", "[x](#a-section)"):
+                 "[x](mailto:a@b.c)", "[x](#a-section)",
+                 "[x](file:///Users/someone/Projects/thing.rs)"):
         assert gate.targets(line) == [], line
 
 
@@ -241,27 +242,61 @@ def test_every_doc_path_constructed_in_python_resolves():
     Both spellings the tree uses are covered. `os.path.join(REPO, "notes")` with no filename
     is not — that is a directory constant, and `scripts/gates/test_doc_claims.py` legitimately
     holds one for each prose directory.
+
+    ⚠ AST, NOT TEXT-SCANNING, and the first draft proved why within a minute: written as two
+    regexes over raw lines, it flagged the DOCSTRING THREE LINES ABOVE — prose that quotes the
+    old code is not the old code. That is the third time this exact shape has cost something in
+    two days (`tests/test_schemas.py` hit it with docstrings, then again with f-strings, which
+    tokenize as FSTRING_* rather than STRING on 3.12+). A parser cannot be fooled by a quote of
+    itself, and M4 of notes/quality-mechanisms-plan.md is about making this the easy path
+    rather than the one you reach for after being bitten.
     """
-    import re as _re
+    import ast
     import subprocess
 
-    joined = _re.compile(
-        r'os\.path\.join\(\s*REPO\s*,\s*"([a-z]+)"\s*,\s*"([^"]+\.md)"\s*\)')
-    divided = _re.compile(r'REPO\s*/\s*"([a-z]+)"\s*/\s*"([^"]+\.md)"')
+    def built_paths(tree):
+        """-> [(lineno, dir, filename)] for repo-relative doc paths built in this module."""
+        found = []
+        for node in ast.walk(tree):
+            # os.path.join(REPO, "docs", "X.md")
+            if isinstance(node, ast.Call):
+                f = node.func
+                if (isinstance(f, ast.Attribute) and f.attr == "join"
+                        and len(node.args) == 3
+                        and isinstance(node.args[0], ast.Name) and node.args[0].id == "REPO"
+                        and all(isinstance(a, ast.Constant) and isinstance(a.value, str)
+                                for a in node.args[1:])):
+                    d, name = node.args[1].value, node.args[2].value
+                    if name.endswith(".md"):
+                        found.append((node.lineno, d, name))
+            # REPO / "docs" / "X.md" — parses as ((REPO / "docs") / "X.md"), so the constants
+            # come off right-to-left and `ast.walk` also visits the inner node, which has only
+            # one constant and is skipped by the length test.
+            if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+                parts, cur = [], node
+                while isinstance(cur, ast.BinOp) and isinstance(cur.op, ast.Div):
+                    if isinstance(cur.right, ast.Constant) and isinstance(cur.right.value, str):
+                        parts.append(cur.right.value)
+                    cur = cur.left
+                if (isinstance(cur, ast.Name) and cur.id == "REPO" and len(parts) == 2
+                        and parts[0].endswith(".md")):
+                    found.append((node.lineno, parts[1], parts[0]))
+        return found
 
     tracked = subprocess.run(["git", "ls-files", "*.py"], cwd=REPO,
                              capture_output=True, text=True).stdout.split()
-    bad = []
+    bad, seen = [], 0
     for rel in tracked:
-        path = os.path.join(REPO, rel)
         try:
-            with open(path, encoding="utf-8") as fh:
-                lines = fh.readlines()
-        except (UnicodeDecodeError, OSError):
+            with open(os.path.join(REPO, rel), encoding="utf-8") as fh:
+                tree = ast.parse(fh.read())
+        except (UnicodeDecodeError, OSError, SyntaxError):
             continue
-        for lineno, line in enumerate(lines, 1):
-            for pat in (joined, divided):
-                for d, name in pat.findall(line):
-                    if not os.path.isfile(os.path.join(REPO, d, name)):
-                        bad.append(f"{rel}:{lineno} — builds {d}/{name}, which does not exist")
+        for lineno, d, name in built_paths(tree):
+            seen += 1
+            if not os.path.isfile(os.path.join(REPO, d, name)):
+                bad.append(f"{rel}:{lineno} — builds {d}/{name}, which does not exist")
     assert not bad, "\n".join(bad)
+    # ⚠ A guard that matches nothing is not a passing guard. If the tree stops building doc
+    # paths in code this can go, but it must be a decision rather than a silent drift to zero.
+    assert seen, "this guard now examines NO path in the tree — it has stopped binding"

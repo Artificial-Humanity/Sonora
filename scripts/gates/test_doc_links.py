@@ -66,8 +66,15 @@ ROOT_DOCS = ("README.md", "AGENTS.md", "CLAUDE.md")
 # match; reference-style links (`[x][ref]`) are not used in this tree and are not handled.
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)")
 
-# Not our business: the public internet, mail, and in-page anchors.
-EXTERNAL = ("http://", "https://", "mailto:", "#")
+# Not our business: the public internet, mail, in-page anchors, and absolute file URLs.
+#
+# ⚠ `file://` IS HERE BECAUSE IT WAS MEASURED ELSEWHERE, not on principle. Prosodia's
+# `notes/out-of-bounds-references.md` deliberately records `file:///Users/...` paths from a
+# Mac; run against that tree, this gate reported five of them as dead links. Sonora carries
+# none today, which is exactly why it belongs in the list now — a scheme is not a relative
+# path, and the first one written here would otherwise arrive as a false failure on a gate
+# nobody was expecting to argue with.
+EXTERNAL = ("http://", "https://", "mailto:", "file://", "#")
 
 # Sibling checkouts whose links point INTO this repo. Colon-separated, `~` allowed, relative
 # paths resolve from the repo root — the same shape as `SIBLING_REPO_CANDIDATES` in
