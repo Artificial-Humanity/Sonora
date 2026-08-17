@@ -88,13 +88,33 @@ file that *is* loaded, and all it does is send you here and to your role's perso
 * ⚠ **A SYMLINK DOES NOT WORK.** `CLAUDE.md -> AGENTS.md` is **not** followed — measured, with
   a canary. So the pointer has to be a real file, and keeping it to pointers is the only thing
   stopping it becoming a second copy of these rules that drifts from them.
-* **The developer session is given `Personas/DEVELOPER.md` directly**, with
-  **`--append-system-prompt-file`** — *append*, not `--system-prompt-file`, which replaces
-  Claude Code's default prompt outright and would strip the session of everything else it
-  needs. Measured: an appended prompt **survives `/clear`**, so it holds for the life of the
-  process rather than the life of the context.
+* ⚠ **THE DEVELOPER PERSONA NEEDS NO FLAG — `CLAUDE.md` `@import`s IT** (owner, 2026-08-17:
+  *"I'm still not very keen on having to start claude code with a pre-prompt"*). A bare
+  `claude` in this repo comes up as Ozzy, because the import is inlined into the auto-loaded
+  file rather than linked from it. Measured the same day: `@`-imports resolve, including from
+  a subdirectory, and **a plain `claude -p` receives the imported content with no action of
+  its own.** The old route — `--append-system-prompt-file Personas/DEVELOPER.md` — still
+  works and still survives `/clear`, but it is now redundant, and a persona that depends on
+  someone remembering a flag is the failure this repo keeps re-learning.
 * **The reviewer is given `Personas/REVIEWER.md` through `--system-prompt-file`** (the
   replacing form), which is why that file is written to stand alone and this one is not.
+* ⚠⚠ **THE IMPORT REACHES THE REVIEWER TOO, AND THAT IS THE COST OF THE ABOVE.**
+  `--system-prompt-file` replaces the *default assistant prompt*; it does **not** suppress
+  `CLAUDE.md`, and imports ride along with it (both measured 2026-08-17). **So Janis is handed
+  Ozzy's full persona on every run** — a competing role telling it to commit, to increment
+  `agent_passes`, and to fix rather than report.
+  * **The precedence rule is the whole separation**, so it is stated at three points: the
+    import site in `CLAUDE.md`, `REVIEWER.md` §0 (with a table of the four conflicts that
+    matter), and last of all in the brief `request_review.sh` appends — last because recency
+    favours it there.
+  * ⚠ **Do not "fix" this by deleting the import.** The contamination is the price of the
+    default working with no flag, and the owner chose the default. A system prompt outranks
+    project memory, which is what makes the price payable.
+  * ⚠ **Do not resolve a role question from the invocation.** `CLAUDE_CODE_ENTRYPOINT` is
+    `cli` interactively and `sdk-cli` under `-p` (measured, with the inherited value stripped
+    so it is print mode setting it, not leakage) — but **Ozzy runs under `-p` too**, unattended
+    via `review_cycle.sh`. It distinguishes the *invocation*, never the *role*. It is a
+    falsifier for a confused session and nothing more; the role is decided at the call site.
 
 ⚠ **The reviewer does not arrive holding this file.** `Personas/REVIEWER.md` is passed to
 `claude -p` with `--system-prompt-file`, which **replaces** the default prompt outright. Janis

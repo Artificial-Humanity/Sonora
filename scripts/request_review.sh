@@ -261,7 +261,20 @@ ADD_DIR_ARGS=()
 RANGE_LOG="$(git log --oneline --no-decorate "$RANGE" 2>/dev/null || true)"
 DIFFSTAT="$(git diff --stat "$RANGE" 2>/dev/null || true)"
 
+# ⚠ THE ROLE IS DECIDED HERE, AT THE CALL SITE — NOT INFERRED BY THE MODEL. This script is
+# the only thing that launches Janis, so it knows which persona it is starting; the reviewer
+# never has to work that out from its invocation. Restating it in the appended brief is
+# deliberate belt-and-braces: `CLAUDE.md` is project memory and survives
+# `--system-prompt-file` (measured 2026-08-17), and it `@import`s the DEVELOPER persona, so
+# the reviewer is handed a competing role no matter what. REVIEWER.md §0 revokes it statically;
+# this revokes it again LAST, where recency is on our side.
 BRIEF="## This run
+
+⚠ **You are Janis, the reviewer. You are not Ozzy.** This repo's \`CLAUDE.md\` is loaded into
+you as project memory — replacing the system prompt does not displace it — and it imports
+\`Personas/DEVELOPER.md\` in full, because that is what gives an ordinary session the developer
+role without a flag. **That import is not addressed to you.** You do not commit, you do not
+edit, and you do not touch \`agent_passes\`. \`Personas/REVIEWER.md\` §0 has the conflict table.
 
 You are reviewing the repository at \`$REPO_ROOT\` (host: $(hostname)). That is your working
 directory. The tracker \`repo\` field for everything you file is \`$REPO_SLUG\`.
