@@ -2,7 +2,8 @@
 #
 # merge_branch.sh — merge the current branch to main, but only once its issues are settled.
 #
-#     scripts/merge_branch.sh [--branch B] [--base main] [--no-push] [--dry-run]
+#     workflow/merge_branch.sh [--branch B] [--base main] [--no-push] [--dry-run]
+#                              [--allow-unreviewed]
 #
 # ⚠ THE GATE IS ON THE MERGE, NOT THE PUSH (owner, 2026-08-17). A branch that merged
 # legitimately is one whose push is unremarkable, so this pushes by default. What it will not
@@ -23,6 +24,7 @@ BRANCH=""
 REPO_SLUG="Artificial-Humanity/Sonora"
 PUSH=1
 DRY_RUN=0
+ALLOW_UNREVIEWED=0
 
 usage() { sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'; }
 
@@ -32,6 +34,7 @@ while [[ $# -gt 0 ]]; do
     --base)    BASE="${2:?--base needs a value}"; shift 2 ;;
     --repo)    REPO_SLUG="${2:?--repo needs a value}"; shift 2 ;;
     --no-push) PUSH=0; shift ;;
+    --allow-unreviewed) ALLOW_UNREVIEWED=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "merge_branch.sh: unknown argument: $1" >&2; exit 2 ;;
@@ -71,8 +74,19 @@ try:
         with urllib.request.urlopen(r, d) as x: return json.loads(x.read() or b"{}")
     tok = call("/api/collections/_superusers/auth-with-password", "POST",
                {"identity": env.get("PB_EMAIL"), "password": env.get("PB_PASSWORD")})["token"]
+    repo, branch = sys.argv[1].replace('"', ""), sys.argv[2].replace('"', "")
+    # ⚠ "NO OPEN ISSUES" AND "NEVER REVIEWED" ARE THE SAME READING, and this gate cannot tell
+    # them apart from the tracker alone: a branch nobody has reviewed has zero open issues,
+    # exactly like one reviewed clean. Measured on this very branch — after its open findings
+    # moved elsewhere, the gate reported 21 unreviewed commits as settled and offered to push
+    # them to main. So a branch with NO issues at all is refused below.
+    ever = call("/api/collections/issues/records?perPage=1&skipTotal=false&filter="
+                + urllib.parse.quote('repo="%s" && branch_name="%s"' % (repo, branch)),
+                token=tok).get("totalItems", 0)
+    if ever == 0:
+        print("NEVER_REVIEWED")
     flt = urllib.parse.quote('repo="%s" && branch_name="%s" && state!="closed"'
-                             % (sys.argv[1].replace('"', ""), sys.argv[2].replace('"', "")))
+                             % (repo, branch))
     r = call("/api/collections/issues/records?perPage=200&skipTotal=false&sort=number"
              "&fields=number,state,title&filter=" + flt, token=tok)
     items = r.get("items") or []
@@ -93,7 +107,16 @@ if [[ "$UNSETTLED" == TRACKER_UNREACHABLE:* ]]; then
      Refusing rather than guessing. (${UNSETTLED#TRACKER_UNREACHABLE: })"
 fi
 
-if [[ -n "$UNSETTLED" ]]; then
+if [[ "$UNSETTLED" == *NEVER_REVIEWED* ]]; then
+  [[ "$ALLOW_UNREVIEWED" -eq 1 ]] || die "'$BRANCH' has NO issues at all — not one was ever
+     filed against it. That reads identically to 'reviewed and found clean', and this gate
+     cannot tell the two apart, so it refuses rather than guessing the flattering one.
+       Review it:  workflow/request_review.sh
+       Or, if a review genuinely ran and found nothing:  --allow-unreviewed"
+  UNSETTLED="${UNSETTLED/NEVER_REVIEWED/}"
+fi
+
+if [[ -n "${UNSETTLED//[[:space:]]/}" ]]; then
   echo "merge_branch.sh: '$BRANCH' is not settled — these issues are not closed:" >&2
   echo "$UNSETTLED" >&2
   die "resolve them first. open -> Ozzy fixes it; review -> Janis has not verified it yet;
@@ -101,6 +124,11 @@ if [[ -n "$UNSETTLED" ]]; then
 fi
 
 echo "merge_branch.sh: '$BRANCH' is settled — every issue on it is closed."
+# ⚠ SAY WHAT THIS DOES NOT PROVE. Closed issues show that a review ran at SOME point, not that
+# one covered the commit about to land: nothing records which tip was reviewed. Ozzy is
+# responsible for having requested a review of the range being merged; this gate only refuses
+# to land KNOWN-open findings. Stating the limit here so the line above is not read as more.
+echo "  ⚠ this proves no finding is outstanding — NOT that a review covered $(git rev-parse --short HEAD)."
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "  would: git checkout $BASE && git merge --no-ff $BRANCH"

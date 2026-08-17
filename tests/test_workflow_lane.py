@@ -52,8 +52,36 @@ def test_an_unreachable_tracker_refuses_the_merge():
     """Unreachable is not clear. The opposite choice lands unreviewed work whenever
     PocketBase happens to be down — the failure being silent is what makes it serious."""
     assert "TRACKER_UNREACHABLE" in MERGE_SRC
-    assert MERGE_SRC.index("TRACKER_UNREACHABLE:*") < MERGE_SRC.index("if [[ -n \"$UNSETTLED\""), \
+    # ⚠ Anchored on the `$UNSETTLED` emptiness TEST, however it is spelled. Pinning the literal
+    # `if [[ -n "$UNSETTLED"` broke the moment the condition grew a whitespace strip — a test
+    # that fails on a rewording rather than a behaviour change.
+    empty_check = re.search(r'if \[\[ -n "\$\{?UNSETTLED', MERGE_CODE)
+    assert empty_check, "the emptiness check on $UNSETTLED was not found"
+    assert MERGE_CODE.index("TRACKER_UNREACHABLE:*") < empty_check.start(), \
         "the unreachable check must precede the emptiness check, or 'down' reads as 'clear'"
+
+
+def test_a_branch_with_no_issues_at_all_is_refused():
+    """⚠ "NO OPEN ISSUES" AND "NEVER REVIEWED" ARE THE SAME READING.
+
+    A branch nobody reviewed has zero open issues, exactly like one reviewed clean — so the
+    gate cannot tell them apart and must not guess the flattering one. MEASURED on the
+    `workflow` branch: once its open findings moved to another branch, the gate declared 21
+    unreviewed commits settled and offered to push them to main.
+
+    An override exists (`--allow-unreviewed`), because a genuinely clean review does file
+    nothing and that case has to stay reachable — but it must be typed.
+    """
+    assert "NEVER_REVIEWED" in MERGE_CODE
+    assert "ALLOW_UNREVIEWED" in MERGE_CODE
+    assert "--allow-unreviewed" in MERGE_SRC
+
+
+def test_the_gate_states_what_it_does_not_prove():
+    """Closed issues show a review ran at SOME point, not that one covered the tip being
+    merged — nothing records which commit was reviewed. Saying so is the difference between a
+    gate and a rubber stamp."""
+    assert "NOT that a review covered" in MERGE_SRC
 
 
 def test_the_gate_runs_before_any_git_write():
