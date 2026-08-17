@@ -90,18 +90,37 @@ naming and idiom rather than importing a house style from elsewhere.
 
 ## 3. The loop — your half
 
-AGENTS.md §1 holds the loop, the cap and the abort. Your steps are 1 and 4. The reviewer is
-**Janis**, and it is no longer a session you talk to — it is a **one-shot process you run**.
+**[WORKFLOW.md](WORKFLOW.md) is the map of the whole loop** and outranks this file wherever
+the two differ. This section is your half of it. The reviewer is **Janis**, and it is not a
+session you talk to — it is a **one-shot process you run**.
+
+### ⚠ Use `workflow/issue.py` for every tracker write
+
+```bash
+workflow/issue.py list --branch "$(git rev-parse --abbrev-ref HEAD)"
+workflow/issue.py take 114                    # agent_passes += 1, BEFORE any work
+workflow/issue.py review 114 --comment "…"    # addressed, awaiting Janis
+workflow/issue.py escalate 114 --comment "…"  # the owner must decide (comment REQUIRED)
+```
+
+Not a convenience. The rules that used to be prose in three files are **refusals** in that
+script: it will not let you escalate without saying what decision is needed, will not take an
+issue that is already at the cap, will not move a state through an illegal transition, and
+allocates the issue number so two writers cannot collide. **A rule in a file is not an
+enforcement mechanism** — this repo has paid for that lesson repeatedly, so the mechanism is
+the script. Set `ISSUE_AUTHOR=Ozzy` once and it stops asking who you are.
+
+⚠ **You never write `user_decision`,** and there is deliberately no subcommand for it.
 
 ### Step 1 — commit, then request the review
 
 ```bash
-scripts/request_review.sh --range origin/main..HEAD --developer Ozzy
+workflow/request_review.sh --range origin/main..HEAD --developer Ozzy
 ```
 
 **It blocks.** The review runs to completion and the script prints Janis's summary and the
 `branch_name` it filed under. There is no tap, no queue, no reply to wait for — the review has
-arrived when the script returns. Read `scripts/request_review.sh --help` for the rest of the
+arrived when the script returns. Read `workflow/request_review.sh --help` for the rest of the
 flags; **`--notes` is the one that matters most** and is covered in step 4.
 
 * ⚠ **REQUEST A REVIEW OF THE WHOLE RANGE YOU ARE ABOUT TO PUSH, NOT THE LAST COMMIT.** A
@@ -138,13 +157,18 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
     and got one file. This is the other.)
 * **You do not review your own range.** That separation is the mechanism, not etiquette.
 
-### Step 4 — increment first, then fix or rebut
+### Step 4 — take it, fix it, then set `review`
 
-⚠ **Before you read the issue, before you touch any code:** `agent_passes += 1` on every
-issue you are taking on — which means every issue whose `state` is `open`. ⚠ **`escalated` is
-a value of `state`, not a flag beside it** (owner, 2026-08-17): `open`, `escalated` and
-`closed` are exclusive, so "open" already means "not parked, not resolved". There is no
-`escalated=false` to add, and adding one is an error — the field is gone.
+⚠ **Before you read the issue, before you touch any code:** `workflow/issue.py take N`, which
+increments `agent_passes` on every issue you are taking on — meaning every issue whose `state`
+is `open`. `state` has four exclusive values (`open`, `review`, `escalated`, `closed`), so
+"open" already means "not addressed, not parked, not resolved"; there is no flag beside it.
+
+⚠⚠ **WHEN THE FIX IS COMMITTED, SET `review` — DO NOT LEAVE IT OPEN.**
+`workflow/issue.py review N`. That is the signal Janis reads on the next pass; an issue you
+fixed but left in `open` reads as untouched, and Janis will not verify it. A comment is
+optional here (the commit is the evidence), but a one-liner saying what you did is cheap and
+often saves a round.
 
 * **Incrementing first is the point, not a detail.** A pass abandoned halfway — the session
   dies, the context runs out, you give up — has still spent its attempt. Counting at the end
@@ -185,7 +209,7 @@ Then, on each issue:
 ### Then request the next review — every pass ends on one
 
 ```bash
-scripts/request_review.sh --range origin/main..HEAD --developer Ozzy \
+workflow/request_review.sh --range origin/main..HEAD --developer Ozzy \
   --pass 2 --notes-file /tmp/pass2-notes.md
 ```
 
@@ -215,21 +239,54 @@ review 1  ──▶ your pass 1 ──▶ review 2 ──▶ your pass 2 ──�
 ```
 
 **It is per issue, so the count is not a clock for the whole cycle.** An issue Janis files at
-review 3 starts at `0` and gets its own three passes. When every issue you hold is closed,
-escalated, or out of attempts, you push.
+review 3 starts at `0` and gets its own three passes.
+
+### Step 5 — when nothing is left, merge
+
+```bash
+workflow/merge_branch.sh          # refuses unless every issue on the branch is closed
+```
+
+**The branch is done when it has no issue in `open`, `review` or `escalated`.** Then merge to
+`main` and push — and this is the one thing in the repo that reaches `main` on its own.
+
+* ⚠ **THE GATE IS ON THE MERGE, NOT THE PUSH** (owner, 2026-08-17). A branch that merged
+  legitimately is one whose push is unremarkable, so `merge_branch.sh` pushes by default. Its
+  tracker check is therefore not one guard among several — **it is the guard.** This repo has
+  no branch protection and force-push is unblocked.
+* ⚠ **`escalated` BLOCKS the merge.** This reversed on 2026-08-17: escalation used to be
+  explicitly *"a parking space, not a blocker — the work still ships"*. It now holds the branch
+  back, because an issue nobody has decided is not an issue that has been dealt with.
+* ⚠ **The check is server-side and re-run at merge time**, so your own reading of the tracker
+  cannot authorise it. If the tracker is unreachable the merge is **refused**, not waved
+  through — unreachable is not clear.
 
 ---
 
-## 4. Escalation — your one exception
+## 4. Escalation — yours, and yours alone
 
-Janis moves `state` to `escalated` as the normal path. **You may set it yourself, at any point,
-on any pass, for one case: an issue you can see needs a USER decision.** You hold the change and
-are often first to know that no amount of reviewing will settle something.
+⚠⚠ **ESCALATION IS YOURS. JANIS DOES NOT ESCALATE** (owner, 2026-08-17). This reversed on that
+date — it used to be the reviewer's normal path, with you allowed it as an exception — so
+anything you read saying otherwise is **stale**. You hold the change, and you are first to know
+that no amount of reviewing will settle a question.
+
+**Two triggers, and the second is not a judgement call:**
+
+1. **You cannot address it without a decision from the owner.** Escalate when you know, not on
+   pass 3 — an issue needing a decision does not become decidable by being reviewed again.
+2. **`agent_passes` is already 3.** It is out of attempts. `workflow/issue.py take` refuses it
+   and tells you so; escalating is the only move left.
+
+⚠ **A comment is MANDATORY** — say what decision is being asked for. `issue.py escalate`
+refuses without one, because the owner cannot answer a question that was not asked.
+
+⚠ **Then tell the owner.** An escalation nobody is told about is an issue that stops moving.
+`workflow/issue.py escalated` lists exactly what they owe a decision on.
 
 ⚠ **It is a `state`, so escalating is a TRANSITION, not a flag you raise beside the old one**
-(owner, 2026-08-17). Setting `state: "escalated"` is what takes the issue out of `open` — and
-out of every convergence check, re-review query and merge gate in one move, because they all
-read `state="open"` and nothing else.
+(owner, 2026-08-17). Setting `state: "escalated"` takes the issue out of `open`, and so out of
+your queue and out of Janis's re-review in one move. ⚠ **It does NOT take it out of the merge
+gate** — that counts `open`, `review` *and* `escalated`, so an escalation holds the branch.
 
 * ⚠ **A worker escalation takes the issue out of RE-REVIEW, not out of the RECORD** (owner,
   2026-08-14: *"there's really no reason both developer and reviewer should be blocked on any
@@ -250,14 +307,17 @@ read `state="open"` and nothing else.
     not become a dead zone in the tracker.** It is also the second prohibition here that no
     owner ever asked for, after "the reviewer never files": both came from generalising a real
     measurement into a ban. **Bound what you measured; do not widen it.**
-* **Escalate when you know, not on pass 3.** An issue needing a decision does not become
-  decidable by being reviewed again.
-* **Escalation is a parking space, not an exit.** The work still pushes; the state says a human
-  owes an answer. The test: escalation means *"this can live on `main` but I cannot choose"*.
-  The abort in AGENTS.md §1 means *"this must not land"* — and that one stops the push entirely
-  and goes to the owner.
+* ⚠ **ESCALATION IS NOW A BLOCKER, AND THAT REVERSED ON 2026-08-17.** This file said the
+  opposite for its whole life — *"the work still pushes; escalation means this can live on
+  `main` but I cannot choose"* — and the merge gate now counts `escalated` alongside `open` and
+  `review`. The branch waits for the owner. **Do not restore the old reading**; it is the
+  difference between an unanswered question being a note and being a stop.
+  * Still distinct from the **abort** in AGENTS.md §1. Escalation = *"I cannot choose"*; the
+    abort = *"this must not land"*, which stops everything and goes to the owner immediately
+    rather than waiting in a queue.
 * **What the owner reads is `state = "escalated"`.** Parking something merely hard there is how
   that view stops being read — the same way a 25-issue afternoon made a backlog nobody worked.
+  It costs more than attention now: it holds the branch.
 
 ### `user_decision` — the owner's answer, and it outranks you
 

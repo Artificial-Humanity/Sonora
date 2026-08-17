@@ -1,6 +1,6 @@
 """The review launcher's guards, which have twice been defeated with the suite green (#110).
 
-`scripts/request_review.sh` decides what a reviewer is told and what it is allowed to run.
+`workflow/request_review.sh` decides what a reviewer is told and what it is allowed to run.
 Nothing tested it. That is not a general "add tests" gap — it is specific, and it has a
 history:
 
@@ -48,7 +48,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-SCRIPT = REPO / "scripts" / "request_review.sh"
+SCRIPT = REPO / "workflow" / "request_review.sh"
 SOURCE = SCRIPT.read_text(encoding="utf-8")
 
 
@@ -267,7 +267,7 @@ def test_the_script_is_classified_in_the_pipeline_manifest():
     """#90: it is a tracked shell under scripts/, so test_stage_coverage requires a decision
     about what it is. Asserted here too so this file fails for its own reason."""
     manifest = (REPO / "scripts" / "pipeline_manifest.py").read_text(encoding="utf-8")
-    assert "scripts/request_review.sh" in manifest
+    assert "workflow/request_review.sh" in manifest
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
@@ -302,7 +302,7 @@ def test_the_array_parser_ignores_entries_that_appear_only_in_comments():
 def test_the_launcher_grant_is_scoped_to_dry_run():
     """#119: the #115 fix was correct and unpinned, which is this cycle's most repeated shape.
 
-    `Bash(./scripts/request_review.sh:*)` — the whole script — was granted while the comment
+    `Bash(./workflow/request_review.sh:*)` — the whole script — was granted while the comment
     beside it justified only `--dry-run`. Without that flag the script launches a real nested
     `claude -p`, files issues under a branch_name nobody watches, and the nested reviewer holds
     the same entry: unbounded recursion, billed, with a credential file at every level.

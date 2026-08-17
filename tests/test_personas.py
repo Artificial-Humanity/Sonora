@@ -1,7 +1,7 @@
 """The persona wiring: how a session acquires a role, and how the reviewer refuses one.
 
 Since 2026-08-17 the developer role needs no flag — `CLAUDE.md` `@import`s
-`Personas/DEVELOPER.md`, and Claude Code auto-discovers `CLAUDE.md`. That removed the owner's
+`workflow/DEVELOPER.md`, and Claude Code auto-discovers `CLAUDE.md`. That removed the owner's
 standing irritation (*"I'm still not very keen on having to start claude code with a
 pre-prompt"*) and replaced a remembered flag with a mechanism.
 
@@ -26,15 +26,15 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 CLAUDE_MD = (REPO / "CLAUDE.md").read_text(encoding="utf-8")
-REVIEWER = (REPO / "Personas" / "REVIEWER.md").read_text(encoding="utf-8")
-LAUNCHER = (REPO / "scripts" / "request_review.sh").read_text(encoding="utf-8")
+REVIEWER = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
+LAUNCHER = (REPO / "workflow" / "request_review.sh").read_text(encoding="utf-8")
 
 IMPORT_RE = re.compile(r"^@(\S+)$", re.M)
 
 
 def test_claude_md_imports_the_developer_persona():
     """The import IS the mechanism. A link would be a request the session may decline."""
-    assert "@Personas/DEVELOPER.md" in CLAUDE_MD
+    assert "@workflow/DEVELOPER.md" in CLAUDE_MD
 
 
 def test_every_import_target_exists():
@@ -52,7 +52,7 @@ def test_every_import_target_exists():
 
 def test_claude_md_does_not_import_the_reviewer_persona():
     """Importing REVIEWER.md would hand every ordinary session the role that must not write."""
-    assert "@Personas/REVIEWER.md" not in CLAUDE_MD
+    assert "@workflow/REVIEWER.md" not in CLAUDE_MD
 
 
 def test_the_reviewer_persona_revokes_the_imported_developer_persona():

@@ -1,0 +1,34 @@
+[
+  {
+    "base": "origin/main",
+    "branch": "personas",
+    "collectionId": "pbc_4134735526",
+    "collectionName": "changesets",
+    "description": "The review-workflow build: personas, request_review.sh, review_cycle.sh, changeset.sh, tracker wiring, ste skill.",
+    "head_sha": "d85f9d00675e3d8531bce52da3025c4cb473c704",
+    "id": "5zipdpappflbguj",
+    "merged_at": "",
+    "merged_sha": "",
+    "number": 1,
+    "opened_at": "2026-08-17 00:58:08.000Z",
+    "repo": "Artificial-Humanity/Sonora",
+    "state": "open",
+    "title": "Agent personas, one-shot reviewer, local-PR lane"
+  },
+  {
+    "base": "origin/main",
+    "branch": "github-issues-fixes",
+    "collectionId": "pbc_4134735526",
+    "collectionName": "changesets",
+    "description": "The 48 issues migrated from the Sonora GitHub tracker on 2026-08-13. Branched from main; to be rebased and worked after the personas changeset lands.",
+    "head_sha": "dcc4c1eae32a907861c56de4f6cf4b9be4b8f281",
+    "id": "mmtt6dj1unzgdxs",
+    "merged_at": "",
+    "merged_sha": "",
+    "number": 2,
+    "opened_at": "2026-08-17 01:32:40.000Z",
+    "repo": "Artificial-Humanity/Sonora",
+    "state": "open",
+    "title": "GitHub-era issue backlog"
+  }
+]

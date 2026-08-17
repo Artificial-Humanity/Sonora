@@ -176,24 +176,25 @@ NOT_ORCHESTRATORS = {
         "Preserved audition provenance — added for exactly that reason in 4e87241. Invokes a "
         "toolchain script outside this repo."
     ),
-    "scripts/changeset.sh": (
-        "The local-only pull request: opens, tracks and merges a `changesets` record so a BRANCH "
-        "has an identity, a state and a merge event. Review-lane tooling, not the data pipeline. "
-        "\u26a0 Its `merge` is a LOCAL merge only and never pushes."
+    # --- the review lane (workflow/), not the data pipeline -----------------------------
+    # ⚠ These live outside `scripts/` since 2026-08-17 and are declared here anyway, because
+    # the enumeration behind this gate is REPO-WIDE rather than `scripts/*.sh`. That widening
+    # (2026-08-12) was made when every shell happened to live under `scripts/`, so it changed
+    # no result and read as belt-and-braces. `workflow/` is the first thing to exercise it —
+    # leaving these undeclared would be exactly the exemption-by-construction it removed.
+    "workflow/request_review.sh": (
+        "Review lane: runs `claude -p` as Janis over a commit range, and blocks. Touches no "
+        "pipeline stage and writes no artifact under /data — its output is issues in the "
+        "tracker. See workflow/WORKFLOW.md §2."
     ),
-    "scripts/review_cycle.sh": (
-        "Drives the code-review loop (AGENTS.md §1) to convergence: alternates request_review.sh "
-        "with a `claude -p` worker until every issue this cycle produced is closed, escalated or "
-        "out of attempts. Same lane as request_review.sh and the same reasoning — it touches no "
-        "stage and produces no artifact under /data. ⚠ It NEVER pushes, and denies `git push` to "
+    "workflow/review_cycle.sh": (
+        "Review lane: drives request_review.sh and a `claude -p` worker unattended until the "
+        "branch converges. ⚠ It NEVER pushes, and denies `git push` and `merge_branch.sh` to "
         "the worker it spawns."
     ),
-    "scripts/request_review.sh": (
-        "Runs the code-review loop (AGENTS.md §1), not the data pipeline: it invokes `claude -p` "
-        "against Personas/REVIEWER.md and blocks. It touches no stage, produces no artifact under "
-        "/data, and its only side effect is issues filed in PocketBase. ⚠ It DOES run a `git` and "
-        "`pytest` reading of the repo through the reviewer it spawns, so it is not inert — but a "
-        "stage-coverage gate is the wrong instrument for it, since the thing it dispatches is a "
-        "model, not a script this manifest could name."
+    "workflow/merge_branch.sh": (
+        "Review lane: the merge gate. Refuses to merge a branch into main while any of its "
+        "issues is open, review or escalated; then merges and pushes. ⚠ The only thing in this "
+        "repo that reaches `main` on its own — see workflow/WORKFLOW.md §3."
     ),
 }

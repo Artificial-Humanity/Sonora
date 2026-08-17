@@ -82,8 +82,8 @@ say() { echo "── review_cycle: $*" >&2; }
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository."
 cd "$REPO_ROOT"
 [[ -z "$STOPFILE" ]] && STOPFILE="$REPO_ROOT/.review_cycle.stop"
-[[ -x scripts/request_review.sh ]] || die "scripts/request_review.sh not found or not executable"
-[[ -r Personas/DEVELOPER.md ]] || die "Personas/DEVELOPER.md not readable"
+[[ -x workflow/request_review.sh ]] || die "workflow/request_review.sh not found or not executable"
+[[ -r workflow/DEVELOPER.md ]] || die "workflow/DEVELOPER.md not readable"
 [[ "$MAX_REVIEWS" =~ ^[1-4]$ ]] || die "--max-reviews must be 1-4 (three fix passes need four reviews)"
 
 # ⚠ Refuse a dirty tree. The worker commits, so uncommitted edits would be swept into a
@@ -204,9 +204,17 @@ fi
 WORKER_DENY=(
   "Bash(git push:*)"
   "Bash(git remote:*)"
-  "Bash(scripts/review_cycle.sh:*)" "Bash(./scripts/review_cycle.sh:*)"
-  "Bash(scripts/request_review.sh:*)" "Bash(./scripts/request_review.sh:*)"
+  "Bash(workflow/review_cycle.sh:*)" "Bash(./workflow/review_cycle.sh:*)"
+  "Bash(workflow/request_review.sh:*)" "Bash(./workflow/request_review.sh:*)"
+  # ⚠ THE MERGE IS NOT THIS LOOP'S TO MAKE. `merge_branch.sh` merges to main AND PUSHES once
+  # the tracker says the branch is settled — correct when Ozzy runs it deliberately, wrong for
+  # an unattended fix loop, which would then be able to land its own work. The driver's job
+  # ends at convergence; the merge is a separate, deliberate act.
+  "Bash(workflow/merge_branch.sh:*)" "Bash(./workflow/merge_branch.sh:*)"
 )
+# ⚠ `workflow/issue.py` is deliberately NOT denied: taking, commenting, escalating and moving
+# an issue to `review` IS the worker's job, and it is the one path that enforces the counter
+# cap and the mandatory-comment rules.
 
 REVIEW_TIPS=()
 CONVERGED=0
@@ -220,7 +228,7 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   [[ -f "$REPO_ROOT/.review_cycle.notes" ]] && NOTES_ARG=(--notes-file "$REPO_ROOT/.review_cycle.notes")
 
   set +e
-  OUT="$(scripts/request_review.sh --range "$RANGE" --developer "$DEVELOPER" \
+  OUT="$(workflow/request_review.sh --range "$RANGE" --developer "$DEVELOPER" \
           --pass "$review" \
           "${NOTES_ARG[@]+"${NOTES_ARG[@]}"}" 2>&1)"
   RC=$?
@@ -268,7 +276,7 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   WORKER_BRIEF="## This fix pass
 
 You are **$DEVELOPER**, working in \`$REPO_ROOT\` on range \`$RANGE\`. Run by
-\`scripts/review_cycle.sh\`, unattended — **there is no one to ask**, so where you would
+\`workflow/review_cycle.sh\`, unattended — **there is no one to ask**, so where you would
 normally check, act on your best reading and say so in the issue comment.
 
 Issues to address: those under branch_name(s) \`$(IFS=,; echo "${REVIEW_TIPS[*]}")\` whose
@@ -288,7 +296,7 @@ you do not filter them out, and you do not work them.
 
   set +e
   claude -p "Address the open issues from this review, then commit." \
-    --append-system-prompt-file "$REPO_ROOT/Personas/DEVELOPER.md" \
+    --append-system-prompt-file "$REPO_ROOT/workflow/DEVELOPER.md" \
     --append-system-prompt "$WORKER_BRIEF" \
     --model "$MODEL" --effort "$EFFORT" \
     --permission-mode auto \

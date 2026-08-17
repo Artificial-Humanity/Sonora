@@ -1,6 +1,6 @@
 """The driver's safety properties, pinned because it runs unattended with write access.
 
-`scripts/review_cycle.sh` alternates a review with a `claude -p` WORKER that edits files and
+`workflow/review_cycle.sh` alternates a review with a `claude -p` WORKER that edits files and
 commits, without a human in the loop. That is a different risk class from anything else in
 `scripts/`, and exactly one property makes it acceptable:
 
@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-SCRIPT = REPO / "scripts" / "review_cycle.sh"
+SCRIPT = REPO / "workflow" / "review_cycle.sh"
 SOURCE = SCRIPT.read_text(encoding="utf-8")
 
 
@@ -52,10 +52,44 @@ def test_the_driver_itself_never_pushes():
 
 
 def test_the_worker_cannot_re_enter_the_loop():
-    """A worker that can run the driver or the launcher recurses, billed, unattended."""
+    """A worker that can run the driver or the launcher recurses, billed, unattended.
+
+    ⚠ THE FULL PATH IS CHECKED, NOT THE BASENAME, AND THAT IS NOW THE POINT. This asserted
+    `any("review_cycle.sh" in d for d in deny)` until 2026-08-17 — a substring test that stayed
+    GREEN after the scripts moved from `scripts/` to `workflow/` while every deny entry still
+    named the old path. The guard was disarmed and the test said nothing, because a permission
+    entry naming a path that does not exist denies precisely nothing.
+    """
     deny = _array("WORKER_DENY")
-    for s in ("review_cycle.sh", "request_review.sh"):
-        assert any(s in d for d in deny), f"the worker must not be able to run {s}"
+    for s in ("workflow/review_cycle.sh", "workflow/request_review.sh",
+              "workflow/merge_branch.sh"):
+        assert f"Bash({s}:*)" in deny, f"the worker must not be able to run {s}"
+        assert f"Bash(./{s}:*)" in deny, f"the './' form of {s} is a second way in"
+
+
+def test_every_denied_script_actually_exists():
+    """⚠ A DENY ON A PATH THAT DOES NOT EXIST IS NOT A DENY.
+
+    The failure above was invisible because nothing tied the deny list to the filesystem. This
+    does: rename or move a script without updating the list in the same commit, and the entry
+    silently stops matching while the worker regains the capability.
+    """
+    for entry in _array("WORKER_DENY"):
+        m = re.fullmatch(r"Bash\(\.?/?([\w][\w./-]*\.(?:sh|py)):\*\)", entry)
+        if m:
+            assert (REPO / m.group(1)).is_file(), \
+                f"WORKER_DENY names {m.group(1)}, which does not exist — it denies nothing"
+
+
+def test_the_worker_keeps_the_tracker_script():
+    """⚠ The inverse assertion, deliberate.
+
+    `workflow/issue.py` is how the worker takes an issue, comments, escalates, and moves one to
+    `review` — its actual job — and it is the single path that enforces the counter cap and the
+    mandatory-comment rules. Denying it would push the worker back to raw tracker writes, where
+    none of those refusals exist.
+    """
+    assert not any("issue.py" in d for d in _array("WORKER_DENY"))
 
 
 def test_git_dash_c_is_NOT_denied_to_the_worker():
@@ -96,7 +130,7 @@ def test_the_abort_marker_is_checked_before_the_exit_code():
 def test_the_reviewer_persona_is_told_to_emit_the_marker():
     """The driver greps for a token the reviewer must know to produce — a machine contract
     split across two files, which is how one half gets edited alone."""
-    persona = (REPO / "Personas" / "REVIEWER.md").read_text(encoding="utf-8")
+    persona = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
     assert "MUST-NOT-LAND" in persona
 
 
@@ -196,7 +230,7 @@ def test_no_query_names_the_removed_escalated_field():
 
 def test_it_is_classified_in_the_pipeline_manifest():
     manifest = (REPO / "scripts" / "pipeline_manifest.py").read_text(encoding="utf-8")
-    assert "scripts/review_cycle.sh" in manifest
+    assert "workflow/review_cycle.sh" in manifest
 
 
 def test_the_script_parses():

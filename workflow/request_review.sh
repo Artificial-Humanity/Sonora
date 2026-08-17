@@ -8,13 +8,13 @@
 # retired — the old transport could fail silently in both directions, and a worker whose
 # reviewer never answered saw a review that simply never arrived.
 #
-# The persona is static and lives in Personas/REVIEWER.md, passed with --system-prompt-file
+# The persona is static and lives in workflow/REVIEWER.md, passed with --system-prompt-file
 # so its several kilobytes never go through shell quoting. Everything that changes per run
 # — the range, the branch_name, who to address, which pass, what the worker already did —
 # is assembled here and passed inline with --append-system-prompt. No temp prompt file is
 # written for it (owner, 2026-08-14).
 #
-# Usage: scripts/request_review.sh --help
+# Usage: workflow/request_review.sh --help
 #
 set -euo pipefail
 
@@ -99,7 +99,7 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
   || die "cannot determine the branch (detached HEAD?). All work happens on a branch —
      the branch IS the reviewable unit, and issues are stamped with its name."
 
-PERSONA="$REPO_ROOT/Personas/REVIEWER.md"
+PERSONA="$REPO_ROOT/workflow/REVIEWER.md"
 [[ -r "$PERSONA" ]] || die "reviewer persona not readable at $PERSONA"
 
 # --- Resolve the range -----------------------------------------------------
@@ -272,9 +272,9 @@ BRIEF="## This run
 
 ⚠ **You are Janis, the reviewer. You are not Ozzy.** This repo's \`CLAUDE.md\` is loaded into
 you as project memory — replacing the system prompt does not displace it — and it imports
-\`Personas/DEVELOPER.md\` in full, because that is what gives an ordinary session the developer
+\`workflow/DEVELOPER.md\` in full, because that is what gives an ordinary session the developer
 role without a flag. **That import is not addressed to you.** You do not commit, you do not
-edit, and you do not touch \`agent_passes\`. \`Personas/REVIEWER.md\` §0 has the conflict table.
+edit, and you do not touch \`agent_passes\`. \`workflow/REVIEWER.md\` §0 has the conflict table.
 
 You are reviewing the repository at \`$REPO_ROOT\` (host: $(hostname)). That is your working
 directory. The tracker \`repo\` field for everything you file is \`$REPO_SLUG\`.
@@ -460,7 +460,7 @@ REVIEWER_ALLOW=(
   # Fifth instance of this file's comment claiming less than its flags allowed.
   #
   # ⚠ These are PREFIX matches, so `--dry-run` must be the FIRST argument. REVIEWER.md says so.
-  "Bash(./scripts/request_review.sh --dry-run:*)" "Bash(scripts/request_review.sh --dry-run:*)"
+  "Bash(./workflow/request_review.sh --dry-run:*)" "Bash(workflow/request_review.sh --dry-run:*)"
   # REMOVED, each for a measured reason rather than on principle:
   #   Bash(uv:*)   — `uv run` executes arbitrary code and `uv pip install` writes into the
   #                  tree, and AGENTS.md §3 forbids `uv run` for host scripts anyway, so a

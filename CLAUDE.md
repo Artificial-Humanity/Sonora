@@ -9,10 +9,10 @@ It is not loaded for you — only this file is — so nothing else will put it i
 pre-prompt, and no decision on your part: the persona is imported on the next line, so it is
 already in your context by the time you read this sentence.
 
-@Personas/DEVELOPER.md
+@workflow/DEVELOPER.md
 
-⚠ **The one exception is Janis, the reviewer** — [Personas/REVIEWER.md](Personas/REVIEWER.md),
-launched only by `scripts/request_review.sh` as its `--system-prompt-file`. **If that file is
+⚠ **The one exception is Janis, the reviewer** — [workflow/REVIEWER.md](workflow/REVIEWER.md),
+launched only by `workflow/request_review.sh` as its `--system-prompt-file`. **If that file is
 your system prompt it outranks everything here**, and the import above is not addressed to you.
 
 MEASURED 2026-08-17: `--system-prompt-file` replaces the *default assistant prompt*; it does
@@ -35,7 +35,7 @@ git -c user.name=Ozzy -c user.email=ozzy@artificialhumanity.io commit -m "…"
 ```
 
 The repo's configured identity is the owner's, deliberately, so a forgotten `-c` pair does
-not error — it silently commits your work under their name. `Personas/DEVELOPER.md` §1 has
+not error — it silently commits your work under their name. `workflow/DEVELOPER.md` §1 has
 the check to run afterwards.
 
 **Keep this file short.** It exists to route and to import; the rules live in `AGENTS.md` and

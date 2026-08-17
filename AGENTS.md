@@ -61,19 +61,26 @@ case-insensitive macOS/Windows.
 
 ### 1. Commit Hygiene
 
-**THE LOOP** (owner, 2026-08-13). Work is committed, reviewed by a one-shot reviewer process,
-and pushed straight to `main`.
+**THE LOOP** (owner, 2026-08-13; respecified in full 2026-08-17). Work happens on a **branch**,
+is reviewed by a one-shot reviewer process, and merges to `main` only once every issue on it is
+closed.
+
+⚠⚠ **[workflow/WORKFLOW.md](workflow/WORKFLOW.md) IS THE MAP OF THE LOOP AND IT OUTRANKS THIS
+SECTION.** It holds the state machine, both roles' steps, and the four rulings of 2026-08-17
+that **reversed** what this file used to enforce: escalation moved to the worker, escalation
+now blocks the merge, the changeset record is retired, and `state: review` exists. Read it
+first. What follows is the contract *between* the roles, not either role's procedure.
 
 ⚠ **YOUR ROLE HAS A SYSTEM PROMPT, AND IT IS WHERE THE PROCEDURE NOW LIVES** (owner,
 2026-08-14):
 
 | role | identity | system prompt |
 |---|---|---|
-| **Worker** | **Ozzy** &lt;ozzy@artificialhumanity.io&gt; | [Personas/DEVELOPER.md](Personas/DEVELOPER.md) |
-| **Reviewer** | **Janis** &lt;janis@artificialhumanity.io&gt; | [Personas/REVIEWER.md](Personas/REVIEWER.md) |
+| **Worker** | **Ozzy** &lt;ozzy@artificialhumanity.io&gt; | [workflow/DEVELOPER.md](workflow/DEVELOPER.md) |
+| **Reviewer** | **Janis** &lt;janis@artificialhumanity.io&gt; | [workflow/REVIEWER.md](workflow/REVIEWER.md) |
 
 **If you are the developer session for this repo, read
-[Personas/DEVELOPER.md](Personas/DEVELOPER.md) now and work as Ozzy.** It is your standing
+[workflow/DEVELOPER.md](workflow/DEVELOPER.md) now and work as Ozzy.** It is your standing
 brief and carries the steps below in the detail your role actually needs. This file keeps the
 *contract between* the roles — the loop, the cap, the abort, and the repo facts both sides
 depend on. It does not duplicate either role's procedure; that duplication is what drifted
@@ -93,10 +100,10 @@ file that *is* loaded, and all it does is send you here and to your role's perso
   `claude` in this repo comes up as Ozzy, because the import is inlined into the auto-loaded
   file rather than linked from it. Measured the same day: `@`-imports resolve, including from
   a subdirectory, and **a plain `claude -p` receives the imported content with no action of
-  its own.** The old route — `--append-system-prompt-file Personas/DEVELOPER.md` — still
+  its own.** The old route — `--append-system-prompt-file workflow/DEVELOPER.md` — still
   works and still survives `/clear`, but it is now redundant, and a persona that depends on
   someone remembering a flag is the failure this repo keeps re-learning.
-* **The reviewer is given `Personas/REVIEWER.md` through `--system-prompt-file`** (the
+* **The reviewer is given `workflow/REVIEWER.md` through `--system-prompt-file`** (the
   replacing form), which is why that file is written to stand alone and this one is not.
 * ⚠⚠ **THE IMPORT REACHES THE REVIEWER TOO, AND THAT IS THE COST OF THE ABOVE.**
   `--system-prompt-file` replaces the *default assistant prompt*; it does **not** suppress
@@ -116,7 +123,7 @@ file that *is* loaded, and all it does is send you here and to your role's perso
     via `review_cycle.sh`. It distinguishes the *invocation*, never the *role*. It is a
     falsifier for a confused session and nothing more; the role is decided at the call site.
 
-⚠ **The reviewer does not arrive holding this file.** `Personas/REVIEWER.md` is passed to
+⚠ **The reviewer does not arrive holding this file.** `workflow/REVIEWER.md` is passed to
 `claude -p` with `--system-prompt-file`, which **replaces** the default prompt outright. Janis
 gets `CLAUDE.md` auto-loaded (measured: that still happens even under `--system-prompt-file`)
 and so gets a *pointer* here — but a pointer is only followed if something makes it worth
@@ -125,7 +132,7 @@ optional hop.** Anything Janis must not miss belongs in the persona or in the br
 `request_review.sh` builds.
 
 1. **Worker commits**, then runs
-   `scripts/request_review.sh --range origin/main..HEAD --developer Ozzy`, naming **the whole
+   `workflow/request_review.sh --range origin/main..HEAD --developer Ozzy`, naming **the whole
    range it is about to push**.
 2. **The script blocks.** `Reviewer` reads the range and files issues straight into
    PocketBase, each carrying the `branch_name` of the review that produced it.
@@ -169,7 +176,9 @@ decision — that is the other way out, and it does not wait for the count.
 | writes to `main` | **yes — the only role that does** | **never** |
 | **opens** issues | not as part of the loop | **yes — this is its output** |
 | **closes** issues | **never** | **yes — only it decides a finding is cleared** |
-| sets `state: escalated` | on an existing issue, only for "this needs a user decision" | **yes — the normal path** |
+| sets `state: escalated` | **yes — and it is the ONLY role that does** | **never** (reversed 2026-08-17) |
+| sets `state: review` | **yes — after committing a fix**, so Janis knows what to verify | never |
+| merges to `main` and pushes | **yes — via `workflow/merge_branch.sh`, which gates on the tracker** | never |
 | holds the count | **yes — increments `agent_passes` first thing each pass** | no |
 
 * ⚠ **THE WORKER NEVER CLOSES AN ISSUE** (owner, 2026-08-13). It fixes, or it argues, and it
@@ -185,8 +194,8 @@ decision — that is the other way out, and it does not wait for the count.
   range and the reviewer does not fix what it finds — that separation *is* the mechanism, and
   it survives regardless of what the reviewer is made of.
 * **THE REVIEWER IS A ONE-SHOT PROCESS, AND THE SWAP HAS HAPPENED** (owner, 2026-08-14). The
-  persistent peer session is retired. `scripts/request_review.sh` runs `claude -p` against
-  [Personas/REVIEWER.md](Personas/REVIEWER.md) and **blocks** until it returns — so there is no
+  persistent peer session is retired. `workflow/request_review.sh` runs `claude -p` against
+  [workflow/REVIEWER.md](workflow/REVIEWER.md) and **blocks** until it returns — so there is no
   transport to fail, no queue to drain, and no reply that can go missing. The protocol above
   was written not to depend on the transport, and this is the change it was written to survive:
   it cost one bullet.
@@ -258,7 +267,7 @@ the simple version that holds until then. Do not build tooling on its shape.
   lesson expensively: `deploy.sh`'s "deploy only when a service change is intended" was a
   header comment for weeks, got ignored eleven hours into a live training run, and is now a
   hard refusal in code.
-* **Step 1 (requesting) — `scripts/request_review.sh`.** `--help` is the interface and this
+* **Step 1 (requesting) — `workflow/request_review.sh`.** `--help` is the interface and this
   file does not restate it. Two things about it are rules rather than conveniences:
   * **It defaults to `origin/main..HEAD`**, because the range is what gets pushed. Override it
     and you own what falls outside.
@@ -289,7 +298,7 @@ the simple version that holds until then. Do not build tooling on its shape.
     pick which two, and the natural pick made the unreachable case look like the exempt one.
     That is the precise inversion of what it means.)
 * **Step 2 (filing) — THE `Reviewer` FILES ITS OWN FINDINGS, DIRECTLY.** The procedure is
-  [Personas/REVIEWER.md](Personas/REVIEWER.md) §4. What binds both roles:
+  [workflow/REVIEWER.md](workflow/REVIEWER.md) §4. What binds both roles:
   * **There is no report file. The tracker *is* the report.** `notes/reviews/` and its
     `review-<sha7>.md` handoffs are retired, along with the whole "write a document, then
     transcribe it into issues" step — the issues are local, immediate and queryable, and the
@@ -324,9 +333,9 @@ the simple version that holds until then. Do not build tooling on its shape.
     three-pass cap, which bounds the loop directly instead of by proxy. Keep the cap honest and
     reviewer-filing is safe; relax the cap and this is the first thing to reconsider.
 * **Step 4 (addressing) — INCREMENT FIRST, then fix or rebut, and LEAVE IT OPEN.** The
-  procedure is [Personas/DEVELOPER.md](Personas/DEVELOPER.md) §3.
+  procedure is [workflow/DEVELOPER.md](workflow/DEVELOPER.md) §3.
 * **Step 5 (resolving) — THE REVIEWER CLOSES WHAT IS CLEARED** (owner, 2026-08-13). Every pass
-  ends here, not at step 4. The procedure is [Personas/REVIEWER.md](Personas/REVIEWER.md) §5.
+  ends here, not at step 4. The procedure is [workflow/REVIEWER.md](workflow/REVIEWER.md) §5.
 
 * **THE CAP — AT MOST THREE PASSES** (owner, 2026-08-13). The number of passes is otherwise a
   judgement call, not a fixed count; three is the ceiling, not a target. Stopping earlier
@@ -395,8 +404,15 @@ the simple version that holds until then. Do not build tooling on its shape.
     silently wrong if forgotten in any one of them; now the exclusion is structural, and a
     filter that still names the old field gets a `400` rather than quietly counting parked
     issues.
-  * ⚠ **THE REVIEWER SETS IT. That is the normal path** (owner, 2026-08-13) — it flags what
-    the query below returns, as part of whichever review follows the third fix pass.
+  * ⚠⚠ **THE WORKER SETS IT, AND IT IS THE ONLY ROLE THAT DOES** (owner, 2026-08-17). This
+    **reversed** on that date — until then it was the reviewer's normal path — so any text
+    assigning it to Janis is stale rather than authoritative. Two triggers: an issue that needs
+    an owner decision (escalate when you know, not on pass 3), or one already at
+    `agent_passes = 3`. **A comment is mandatory**, and `workflow/issue.py escalate` refuses
+    without one.
+  * ⚠⚠ **IT BLOCKS THE MERGE**, also new on 2026-08-17 and also a reversal: this file said
+    *"escalation is a parking space, not a blocker — the work still ships"*. The merge gate now
+    counts `open`, `review` **and** `escalated`, so an undecided question holds the branch.
   * ⚠ **THE RULE IS A QUERY, NOT A JUDGEMENT** (owner, 2026-08-13). Because the worker counts
     its own attempts, the reviewer needs no memory of the cycle to know what to escalate:
 
@@ -611,7 +627,7 @@ the simple version that holds until then. Do not build tooling on its shape.
     tracker as §1 uses it — that loop files issues scoped to one range under one `branch_name`,
     and a wholesale read has neither. Ask before inventing a home for it.
   * **Also still open: whether Janis's persona fits that altitude.**
-    [Personas/REVIEWER.md](Personas/REVIEWER.md) is written for a bounded range with a
+    [workflow/REVIEWER.md](workflow/REVIEWER.md) is written for a bounded range with a
     `branch_name` to file under. A wholesale read has neither, and reusing the persona
     unmodified would produce a per-diff review pointed at a whole codebase. Ask, do not assume.
 
