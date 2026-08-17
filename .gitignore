@@ -14,8 +14,16 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# ⚠ ANCHORED WITH A LEADING SLASH. These come from the standard Python template, where
+# they mean the TOP-LEVEL setuptools build directories. Unanchored, `lib/` also matches
+# `scripts/lib/` — a first-class source directory with ten tracked modules — so every
+# NEW file added there was silently skipped by `git add`, with no message and no entry
+# in `git status`. Measured twice on 2026-08-17: `scripts/lib/find_changeset.py` existed
+# in no commit at all, and `scripts/lib/schemas.py` was invisible to a guard that
+# enumerates via `git ls-files`. Existing files stayed tracked, which is what kept it
+# hidden: the rule only ever ate the next one.
+/lib/
+/lib64/
 parts/
 sdist/
 var/

@@ -45,6 +45,7 @@ for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in 
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
 
+import schemas  # noqa: E402  (the validated loaders; see scripts/lib/schemas.py)
 from ref_select import route_engines
 from book_ingest import (MIN_CLIP_CHARS, MIN_CLIP_SECONDS, DIRECTOR_SYSTEM,
                          MODEL, OLLAMA, _merge, _extract_json)
@@ -189,8 +190,11 @@ SKILL_DIR = os.path.join(_SONORA_REPO, "scripts", "assets", "director_skills")
 # identical casting brief across arms; the direction itself is deliberately
 # tailored, because a lowest-common-denominator string would handicap every engine
 # at once and tell us nothing about which deserves render time.
-LEXICON = json.load(open(os.path.join(_SONORA_REPO, "scripts", "assets", "register_lexicon.json"),
-    encoding="utf-8"))["lexicon"]
+# ⚠ ONE VALIDATED LOADER, shared with `book_ingest`. The bare `json.load(...)["lexicon"]`
+# this replaces failed loudly rather than silently — but it raised `KeyError: 'lexicon'` or a
+# `JSONDecodeError` at import time, naming neither the file nor what it was for, and it
+# accepted an empty, unsorted or duplicated vocabulary without a word.
+LEXICON = schemas.load_register_lexicon()
 
 # TWO PASSES, deliberately. V/A/T and register are properties of the LINE;
 # voice_design and instruct are properties of the ENGINE. Asking one call for all

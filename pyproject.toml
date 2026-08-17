@@ -52,6 +52,13 @@ dependencies = [
   "matplotlib",
   "tqdm",
   "PyYAML",
+  # ⚠ CORE, NOT TRANSITIVE, AND NOT OPTIONAL. `scripts/lib/schemas.py` imports it at module
+  # scope and `book_ingest` imports that, so it sits on the teacher-synthesis path every
+  # container takes. It was previously reachable ONLY through `fastapi`, which lives in the
+  # `vocalizer` extra below — so a dev box had it by accident while a training or eval image
+  # would not have had it at all, and the failure would have been an ImportError in a
+  # container rather than anywhere a test could see. MIT, so no friction with Apache-2.0.
+  "pydantic>=2",
 ]
 
 [project.optional-dependencies]

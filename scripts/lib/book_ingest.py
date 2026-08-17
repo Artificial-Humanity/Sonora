@@ -39,6 +39,11 @@ for _p in (_SONORA_REPO, _os.path.join(_SONORA_REPO, "scripts", "lib")):
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
 
+# ⚠ IMPORTED HERE, NOT WITH THE OTHER SIBLINGS FURTHER DOWN. `_lexicon()` runs at module
+# scope around line 130, well before the `synth_common` import block, so a `schemas` import
+# placed beside that one would be a NameError at import time rather than a missing feature.
+import schemas  # noqa: E402
+
 
 UA = "Mozilla/5.0 (book_ingest prototype; contact lmcfarlin)"
 OLLAMA = "http://localhost:11434/api/chat"
@@ -119,13 +124,22 @@ def _lexicon():
     governed by the app's Recategorize flow; it was never enforced, and by
     2026-07-25 ratings.csv held 138 distinct labels across 554 keeps. Regenerate
     with build_register_lexicon.py.
+
+    ⚠⚠ THIS WAS `except Exception: return []`, AND IT FAILED IN TWO PLACES AT ONCE.
+    An unreadable, renamed or malformed asset produced an empty list, and then:
+
+      * the director's prompt below said "`register` MUST be copied EXACTLY from this
+        controlled lexicon:" followed by NOTHING; and
+      * the off-lexicon guard in the tagging pass reads `if REGISTER_LEXICON and ...`, so an
+        empty list SWITCHED THAT GUARD OFF — every invented register passed through
+        unreported.
+
+    Both halves degraded in the same direction with nothing on stdout, so an empty vocabulary
+    is not a weaker vocabulary; it is the absence of the entire mechanism. This is the same
+    silent-fallback shape `build_direction()` already treats as fatal on the ENGINE axis
+    below, applied to the axis that was left behind.
     """
-    path = os.path.join(_SONORA_REPO, "scripts", "assets", "register_lexicon.json")
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)["lexicon"]
-    except Exception:
-        return []
+    return schemas.load_register_lexicon()
 
 
 REGISTER_LEXICON = _lexicon()
@@ -824,7 +838,14 @@ def director_tag(chunk, retries=2):
         tag = _extract_json(content)
         if not tag:
             continue
-        if REGISTER_LEXICON and tag.get("register") not in REGISTER_LEXICON:
+        # ⚠ THE `REGISTER_LEXICON and` GUARD IS GONE, AND ITS REMOVAL IS THE POINT.
+        # It read as harmless defensiveness and was in fact the off switch: the only way the
+        # lexicon could be empty was the loader's `except Exception: return []`, so the one
+        # circumstance that emptied the vocabulary ALSO disabled the check on the consequence.
+        # `schemas.load_register_lexicon()` now refuses to return an empty list, so a
+        # short-circuit here could no longer protect anything — it could only hide a future
+        # regression in the loader.
+        if tag.get("register") not in REGISTER_LEXICON:
             print(f"    off-lexicon register {tag.get('register')!r} -> neutral")
             tag["register"] = "neutral"
         # This used to default to "vibevoice" and coerce any unrecognised name to
