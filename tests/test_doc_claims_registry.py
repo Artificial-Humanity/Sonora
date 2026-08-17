@@ -48,7 +48,15 @@ def _load_gate():
 
 
 gate = _load_gate()
-BY_NAME = {f["name"]: f for f in gate.FACTS}
+
+# BOTH REGISTRIES. The generic invariants below — one capture group, no scope anchored on the
+# value under test, every fact reads something live — are properties of the SCANNER, not of the
+# corpus, so a second registry that skipped them would be the untested half all over again.
+ALL_FACTS = gate.FACTS + gate.PROTOCOL_FACTS
+BY_NAME = {f["name"]: f for f in ALL_FACTS}
+
+PASS_CAP = "review pass cap (MAX_PASSES)"
+COMMENT_CAP = "comment length cap (COMMENT_MAX)"
 
 V5_DIGITS = "Emilia rows dropped on digits (v5 merge)"
 V6_DIGITS = "v6 append rows dropped on digits"
@@ -289,7 +297,7 @@ def test_no_scope_marker_is_a_bare_number_a_fact_could_be_checking():
     trap — so the whitelist is explicit and adding to it is a decision, not a slip.
     """
     allowed = {"13,141", "31,44"}
-    for fact in gate.FACTS:
+    for fact in ALL_FACTS:
         for alt in fact["scope"].split("|"):
             if re.fullmatch(r"[\d,]+", alt):
                 assert alt in allowed, (
@@ -375,7 +383,7 @@ def test_an_unreadable_report_is_still_a_failure(tmp_path):
 # --- #52: coverage must not vanish silently -------------------------------------------
 
 def test_every_fact_declares_the_artifacts_it_reads():
-    for fact in gate.FACTS:
+    for fact in ALL_FACTS:
         assert fact.get("artifacts"), (
             f"{fact['name']} declares no artifacts — it would be checked on a machine that "
             f"cannot read it, and go red for a fact it had no way to check")
@@ -432,7 +440,7 @@ def test_every_fact_recognises_at_least_one_live_statement():
     into a phrasing no pattern knows. If this fails, coverage was lost — find the reworded
     sentence and either restore the idiom or teach the entry the new one.
     """
-    for fact in gate.FACTS:
+    for fact in ALL_FACTS:
         hits = 0
         for path in gate.docs():
             with open(path, encoding="utf-8") as fh:
@@ -444,7 +452,7 @@ def test_every_fact_recognises_at_least_one_live_statement():
 
 
 def test_every_pattern_carries_exactly_one_capture_group():
-    for fact in gate.FACTS:
+    for fact in ALL_FACTS:
         for pat in fact["patterns"]:
             assert re.compile(pat).groups == 1, (
                 f"{fact['name']}: {pat!r} — main() reads group(1) and nothing else")
@@ -452,10 +460,252 @@ def test_every_pattern_carries_exactly_one_capture_group():
 
 def test_every_exemption_is_still_earning_its_place():
     """An exemption whose line is gone is a hiding place waiting for a new tenant."""
-    for fact in gate.FACTS:
+    for fact in ALL_FACTS:
         for needle in fact["exempt"]:
             found = any(needle in line
                         for path in gate.docs()
                         for line in open(path, encoding="utf-8"))
             assert found, (
                 f"{fact['name']} exempts {needle!r}, which no document contains any more")
+
+
+# --- the protocol registry (2026-08-17) -----------------------------------------------
+#
+# Same discipline as everything above: the RED direction, made durable. Each of these was run
+# by hand against the live tree before it was written down, and the counts below are what that
+# run reported rather than what anybody expected — hand-counting said the pass cap was restated
+# six times and the gate found seven.
+#
+# ⚠ THESE RUN EVERYWHERE. `workflow/config.env` is tracked, so unlike the corpus facts there is
+# no machine on which this coverage quietly becomes a skip.
+
+
+def _patched_setting(**overrides):
+    """`gate.setting` with some constants forced. Everything else still reads the real file."""
+    real = gate.setting
+
+    def fake(key, path=gate.CONFIG_ENV):
+        if key in overrides:
+            return overrides[key]
+        return real(key, path)
+    return fake
+
+
+def _protocol_failures(monkeypatch, **overrides):
+    monkeypatch.setattr(gate, "setting", _patched_setting(**overrides))
+    failures, _skipped, _checked, _matched, _exempted = gate.scan(
+        gate.PROTOCOL_FACTS, gate.docs())
+    return failures
+
+
+def test_a_wrong_pass_cap_is_reported_at_every_file_that_restates_it(monkeypatch):
+    """The whole point of the registry, in one assertion.
+
+    Nothing compared any two of the seven statements of this constant before it existed. The
+    assertion is on the FILE SET rather than on the count, because a new restatement written
+    in a recognised phrasing is ordinary prose and must not fail a test — but a file dropping
+    OUT of this set means the entry stopped reading a place the constant is claimed.
+    """
+    failures = _protocol_failures(monkeypatch, MAX_PASSES=4)
+    named = {f.split(":")[0] for f in failures}
+    for path in ("workflow/WORKFLOW.md", "workflow/DEVELOPER.md",
+                 "workflow/config.env", "workflow/scripts/issue.py"):
+        assert path in named, (
+            f"a wrong pass cap went unreported in {path} — that file restates the constant, "
+            f"so the entry has stopped reading a phrasing it used to read.\n"
+            f"reported: {sorted(named)}")
+
+
+def test_the_word_spellings_are_what_make_three_of_those_seven_visible(monkeypatch):
+    """⚠ Half the restatements of a small integer are WORDS, and a digits-only registry is
+    blind to them while reporting full coverage of the file they live in."""
+    failures = _protocol_failures(monkeypatch, MAX_PASSES=4)
+    assert any("'three'" in f for f in failures), "the lower-case word form went unread"
+    assert any("'Three'" in f for f in failures), (
+        "the capitalised word form went unread — `config.env` starts the sentence with it, "
+        "and that is the restatement sitting one line above the assignment it restates")
+
+
+def test_config_env_is_both_the_truth_and_a_scanned_document(monkeypatch):
+    """The tightest fork in the lane: a file restating its own constant in the comment above it.
+
+    This is the one hand-counting missed, and it is the one most likely to be edited without
+    thinking — nobody re-reads a comment they are not changing.
+    """
+    assert gate.CONFIG_ENV in gate.docs(), "config.env stopped being scanned"
+    assert gate.setting("MAX_PASSES") == 3
+    failures = _protocol_failures(monkeypatch, MAX_PASSES=4)
+    assert any(f.startswith("workflow/config.env:") for f in failures)
+
+
+def test_a_wrong_comment_cap_is_reported(monkeypatch):
+    failures = _protocol_failures(monkeypatch, COMMENT_MAX=1200)
+    assert any("workflow/REVIEWER.md" in f for f in failures), (
+        "REVIEWER.md states the cap AND states that the schema enforces it — the two numbers "
+        "must move together or that second claim silently becomes false")
+
+
+def test_the_reviewer_note_that_the_schema_enforces_the_cap_is_still_there():
+    """⚠ CHECKED BY HAND AGAINST THE LIVE TRACKER 2026-08-17 and TRUE: `issue_comments.body`
+    really does carry `max=1500`, so the cap survives a writer that bypasses `issue.py`.
+
+    This test guards the SENTENCE, not the schema — a network read does not belong in the
+    suite. If the sentence is reworded, the protocol fact above stops reading the only line
+    that states the cap and its coverage drops to zero with nothing to show for it.
+    """
+    text = (open(os.path.join(REPO, "workflow", "REVIEWER.md"), encoding="utf-8").read())
+    assert re.search(r"hard maximum [\d,]+ characters", text), (
+        "REVIEWER.md no longer states the comment cap in the phrasing the registry reads")
+
+
+def test_the_1839_in_config_env_is_not_read_as_a_wrong_cap():
+    """A DIFFERENT fact about a different population, two lines from the constant.
+
+    `([\\d,]+) characters` reads it as the cap and turns the gate red on correct prose — the
+    noisy-gate failure that gets a check switched off.
+
+    ⚠ THIS TEST USED TO PASS FOR THE WRONG REASON, and only a mutation found it. The scope
+    said `comment` and the line says `Comment`, so it fell out of scope on CASE and the
+    pattern was never reached — loosening the pattern left the whole suite green. The scope
+    accepts both spellings now, which is what puts the line in front of the pattern and makes
+    the assertion below mean what it says.
+    """
+    line = ("# Comment length cap. The owner set one because a reviewer averaged 1839 "
+            "characters and detail")
+    assert in_scope(COMMENT_CAP, line), (
+        "the 1839 line is out of this fact's scope, so the assertion below proves nothing "
+        "about the pattern — that is exactly how this test passed while enforcing nothing")
+    assert captures(COMMENT_CAP, line) == []
+    loose = re.findall(r"([\d,]+) characters", line)
+    assert loose == ["1839"], (
+        "the loose pattern is supposed to be fooled — if it stopped being, this test no "
+        "longer demonstrates why the real pattern is narrow")
+
+
+# --- the constant reader --------------------------------------------------------------
+
+def _config(tmp_path, text):
+    p = tmp_path / "config.env"
+    p.write_text(text, encoding="utf-8")
+    return str(p)
+
+
+def test_a_constant_stated_only_in_a_comment_is_not_read_as_a_value(tmp_path):
+    """The half that lets config.env be scanned as well as read.
+
+    If comment lines counted, the file's prose would be checked against itself — doc-vs-doc,
+    which this gate exists specifically not to do.
+    """
+    path = _config(tmp_path, "# MAX_PASSES=9 was the old value\nMAX_PASSES=3\n")
+    assert gate.setting("MAX_PASSES", path) == 3
+
+
+def test_a_missing_constant_is_a_failure_rather_than_a_default(tmp_path):
+    with pytest.raises(KeyError):
+        gate.setting("MAX_PASSES", _config(tmp_path, "BASE_BRANCH=main\n"))
+
+
+def test_an_empty_constant_is_a_failure_rather_than_a_default(tmp_path):
+    """`REPO_SLUG=` is legitimately empty in this file, so empty must be distinguishable from
+    set — and for an integer constant it is a missing value, not a zero."""
+    with pytest.raises(KeyError):
+        gate.setting("MAX_PASSES", _config(tmp_path, "MAX_PASSES=\n"))
+
+
+def test_a_non_numeric_constant_is_reported_rather_than_crashing_the_run(tmp_path):
+    """`int()` raises ValueError, which `scan()` catches beside OSError and KeyError.
+
+    Uncaught it would abort the whole gate — every other fact behind it losing its check to
+    one bad line, which is the all-or-nothing failure #52 was about.
+    """
+    with pytest.raises(ValueError):
+        gate.setting("MAX_PASSES", _config(tmp_path, "MAX_PASSES=three\n"))
+    fact = dict(BY_NAME[PASS_CAP], truth=lambda: (_ for _ in ()).throw(ValueError("boom")))
+    failures, _s, checked, _m, _e = gate.scan([fact], gate.docs())
+    assert checked == 0
+    assert len(failures) == 1 and "cannot read the artifact" in failures[0]
+
+
+def test_the_spellings_helper_adds_words_only_when_asked():
+    assert gate.spellings(3) == {"3"}
+    assert gate.spellings(3, words=True) == {"3", "three", "Three"}
+    assert gate.spellings(1500) == {"1500", "1,500"}
+    # Past the table, `words` is inert rather than wrong.
+    assert gate.spellings(99, words=True) == {"99"}
+
+
+def test_the_words_flag_and_the_word_patterns_agree():
+    """⚠ EITHER HALF ALONE IS SILENTLY BROKEN, in opposite directions.
+
+    A `(\\w+)` pattern on a fact that does not accept words is PERMANENTLY red — it captures
+    "three" and compares it against "3". A `words` flag on a fact with no word-capturing
+    pattern is inert: it reads as coverage and buys nothing.
+    """
+    for fact in ALL_FACTS:
+        word_patterns = [p for p in fact["patterns"] if r"(\w+)" in p]
+        if word_patterns:
+            assert fact.get("words"), (
+                f"{fact['name']} captures a word with {word_patterns[0]!r} but does not "
+                f"accept word spellings — it can only ever report a mismatch")
+        if fact.get("words"):
+            assert word_patterns, (
+                f"{fact['name']} sets words=True and no pattern can capture one — the flag "
+                f"is inert and reads as coverage it does not have")
+
+
+# --- the scanned file set -------------------------------------------------------------
+
+def test_every_named_document_is_scanned_by_full_path():
+    """⚠ FULL PATHS, NOT SUBSTRINGS. A guard written as a substring search over the scanned
+    set stays green when its subject MOVES — measured twice on 2026-08-17, in two different
+    files, within an hour."""
+    scanned = set(gate.docs())
+    expected = [os.path.join(REPO, n) for n in gate.NAMED_DOCS]
+    expected += [os.path.join(REPO, "workflow", n)
+                 for n in ("WORKFLOW.md", "DEVELOPER.md", "REVIEWER.md")]
+    expected += [gate.CONFIG_ENV, os.path.join(REPO, "workflow", "scripts", "issue.py")]
+    for path in expected:
+        assert path in scanned, (
+            f"{os.path.relpath(path, REPO)} is no longer scanned — every claim in it has "
+            f"silently stopped being checked")
+
+
+def test_nothing_named_is_quietly_missing():
+    """`docs()` filters non-existent files so a checkout cannot crash the gate. That filter is
+    exactly how a scanned file stops being scanned, so the absence has to be visible."""
+    assert gate.absent_docs() == [], (
+        f"named documents are missing from this checkout and would be skipped: "
+        f"{[os.path.relpath(p, REPO) for p in gate.absent_docs()]}")
+
+
+def test_a_renamed_document_is_announced_rather_than_dropped(monkeypatch):
+    """The red direction for the filter above."""
+    real_isfile = os.path.isfile
+    gone = os.path.join(REPO, "CLAUDE.md")
+    monkeypatch.setattr(gate.os.path, "isfile",
+                        lambda p: False if p == gone else real_isfile(p))
+    assert gone not in gate.docs()
+    assert gone in gate.absent_docs()
+
+
+def test_protocol_facts_are_checked_even_when_no_corpus_is_on_disk(monkeypatch):
+    """The claim in the gate's own comment — 'these run everywhere' — asserted rather than said.
+
+    Every corpus fact skips on a laptop and in CI. If the protocol facts ever acquire an
+    artifact that is not tracked, this is what notices.
+    """
+    real_exists = os.path.exists
+    corpus = {p for f in gate.FACTS for p in f["artifacts"]}
+    monkeypatch.setattr(gate.os.path, "exists",
+                        lambda p: False if p in corpus else real_exists(p))
+    _f, skipped, checked, _m, _e = gate.scan(gate.PROTOCOL_FACTS, gate.docs())
+    assert skipped == []
+    assert checked == len(gate.PROTOCOL_FACTS)
+
+
+def test_that_trap_line_is_still_the_one_config_env_actually_carries():
+    """The synthetic line above is only worth testing while it matches the real file."""
+    text = open(gate.CONFIG_ENV, encoding="utf-8").read()
+    assert "averaged 1839 characters" in text, (
+        "config.env no longer carries the sentence this trap was built from — re-derive the "
+        "trap from the file rather than deleting the test")

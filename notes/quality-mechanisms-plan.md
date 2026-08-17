@@ -69,10 +69,14 @@ work, and saying so plainly is part of the plan:
 
 | constant | owner | independent restatements |
 |---|---|---|
-| review pass cap (`3`) | `workflow/config.env` `MAX_PASSES` | `issue.py` docstring; `WORKFLOW.md` ×2; `DEVELOPER.md` ×2 — **6 spellings** |
-| comment cap (`1500`) | `workflow/config.env` `COMMENT_MAX` | the PocketBase `issue_comments.body.max`; `REVIEWER.md` — **3 spellings** |
-| issue body cap (`200,000`) | the PocketBase `issues.body.max` | `issue.py` error message; `DEVELOPER.md`; `REVIEWER.md` — **4 spellings** |
+| review pass cap (`3`) | `workflow/config.env` `MAX_PASSES` | `WORKFLOW.md` ×2; `DEVELOPER.md` ×3; `issue.py` docstring; `config.env`'s **own comment** — **7 restatements in 4 files** |
+| comment cap (`1500`) | `workflow/config.env` `COMMENT_MAX` | `REVIEWER.md`; separately enforced by the PocketBase `issue_comments.body.max` |
+| issue body cap (`200,000`) | the PocketBase `issues.body.max` | `issue.py` error message; `config.env` comment; `DEVELOPER.md`; `REVIEWER.md` |
 | state vocabulary | the PocketBase `issues.state` select | `WORKFLOW.md`; `DEVELOPER.md`; `REVIEWER.md`; `issue.py` transition table |
+
+The pass-cap row was counted by hand as six and **measured as seven** once the check existed —
+`config.env`'s own comment restates its own constant one line above the assignment, which is
+the tightest fork in the table and the one hand-counting missed.
 
 Two of these were checked by hand while writing this plan and both were **true**, including one
 I expected to be false: `REVIEWER.md`'s "hard maximum 1500 characters, **enforced by the

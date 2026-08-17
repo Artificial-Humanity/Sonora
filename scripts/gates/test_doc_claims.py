@@ -31,8 +31,10 @@ reproduced it.
 
 WHAT IT DOES NOT COVER — read this before trusting a pass
 ---------------------------------------------------------
-* **Only corpus/checkpoint numbers** (owner scope, 2026-08-09). Not statuses, not prose, not
-  the sequencing claims that made up most of the review's product findings.
+* **Two registries, and each is narrow.** `FACTS` holds corpus/checkpoint numbers (owner
+  scope, 2026-08-09). `PROTOCOL_FACTS` holds the workflow lane's own constants (owner,
+  2026-08-17). Neither covers statuses, prose, or the sequencing claims that made up most of
+  the 2026-08-09 review's product findings.
 * **Only phrasings the patterns match.** A number written in a form no pattern recognises is
   invisible here — a silent miss, not an error. When a check goes green it means "no
   RECOGNISED statement disagrees", never "the docs are correct".
@@ -66,6 +68,8 @@ V5 = os.path.join(REPO, "data", "libritts_r_emilia_vat_v5")
 V6 = os.path.join(REPO, "data", "libritts_r_emilia_expressive_vat_v6")
 V4 = os.path.join(REPO, "data", "libritts_r_vat_v4")
 HOLDOUT = os.path.join(REPO, "data", "libritts_r_holdout_devclean")
+WORKFLOW = os.path.join(REPO, "workflow")
+CONFIG_ENV = os.path.join(WORKFLOW, "config.env")
 
 # The artifacts themselves, named once. Every fact lists the ones it reads, so a machine
 # that holds one corpus and not another enforces what it can (see the docstring, #52).
@@ -134,6 +138,52 @@ def drop_count6(key):
 
 def comma(n):
     return f"{n:,}"
+
+
+def setting(key, path=CONFIG_ENV):
+    """An integer `KEY=value` from `workflow/config.env`, the file that OWNS the constant.
+
+    ⚠ COMMENT LINES ARE SKIPPED, and that is what makes `config.env` safe to also SCAN.
+    The file states several of its own constants in prose directly above the assignment
+    ("Per-issue fix-pass cap. Three, unless the owner says otherwise."), so it is both a truth
+    source and a scanned document. Reading only real assignments keeps those two roles from
+    touching: the prose is checked against the value, never against itself.
+
+    Absent or empty is a `KeyError`, never a default. A protocol fact whose constant has been
+    deleted is not a passing fact — the documents would then be restating something nothing
+    defines, which is the drift this registry exists to find.
+    """
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            if k.strip() != key:
+                continue
+            v = v.strip()
+            if not v:
+                raise KeyError(f"{key} is empty in {os.path.relpath(path, REPO)}")
+            return int(v)
+    raise KeyError(f"{key} is not set in {os.path.relpath(path, REPO)}")
+
+
+# Small integers get written as words in prose at least as often as as digits — three of the
+# five live restatements of the pass cap spell it "three". A cap that moves to 4 must turn
+# those lines red too, so the accepted spellings include the word and its capitalised form.
+# Bounded deliberately: past twelve, prose uses digits, and a longer table would only be a
+# place for a mistake to hide.
+_WORDS = {0: "zero", 1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
+          7: "seven", 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
+
+
+def spellings(truth, words=False):
+    """Every form a document may legitimately write `truth` in."""
+    out = {comma(truth), str(truth)}
+    if words and truth in _WORDS:
+        out.add(_WORDS[truth])
+        out.add(_WORDS[truth].capitalize())
+    return out
 
 
 # --- the registry -------------------------------------------------------------------
@@ -360,6 +410,84 @@ FACTS = [
 ]
 
 
+# --- the protocol registry ------------------------------------------------------------
+#
+# SAME MACHINE, DIFFERENT TRUTH SOURCE (owner, 2026-08-17). Every fact above reads a corpus
+# ARTIFACT; every fact here reads a CONSTANT from the file that owns it. The scanning half —
+# scope, exemptions, capture — is shared, because a second copy of that regex logic is exactly
+# the fork this file exists to catch.
+#
+# WHY IT IS A SEPARATE LIST, measured before it was written. Widening `docs()` to
+# `AGENTS.md`, `CLAUDE.md` and `workflow/*.md` enrols **zero** statements into the registry
+# above: those five files hold 472 numeric tokens and not one is written in a phrasing any
+# corpus fact recognises. The reason is structural rather than incidental — the numbers there
+# are protocol constants, not corpus counts — so the file-set widening was never going to be
+# enough on its own, and a registry keyed on `derivation_report.json` could not have grown
+# into these however many files it scanned.
+#
+# ⚠ THESE ALL AGREE TODAY. This is prophylactic work and the entries should not pretend
+# otherwise. What justifies it is the restatement count: measured by turning `MAX_PASSES` to 4
+# and reading the failures, the pass cap is restated SEVEN times across FOUR files —
+# `WORKFLOW.md` twice, `DEVELOPER.md` three times, `issue.py`'s module docstring, and
+# `config.env`'s own comment one line above the assignment. Nothing compared any two of them.
+#
+# ⚠ THEY ALSO RUN EVERYWHERE, unlike the corpus facts. `workflow/config.env` is tracked, so
+# these are the first facts in this file that a laptop and a CI runner both check for real
+# rather than skip.
+#
+# ⚠ WHAT IS DELIBERATELY ABSENT: the issue BODY cap (200,000) and the tracker's `state`
+# vocabulary. Their only authority is the live PocketBase schema, which is not a path on disk
+# — so `unreadable()` cannot express the prerequisite, and an offline laptop would report a
+# doc defect where there is none. That needs a probe-shaped prerequisite, which is the next
+# increment and not a rename of this one.
+PROTOCOL_FACTS = [
+    {
+        # ⚠ SIX INDEPENDENT SPELLINGS, and `config.env`'s own comment is one of them — the
+        # tightest possible fork, sitting one line above the assignment it restates.
+        # Three of the six write the number as a word, hence `words`.
+        "name": "review pass cap (MAX_PASSES)",
+        "truth": lambda: setting("MAX_PASSES"),
+        "artifacts": [CONFIG_ENV],
+        "words": True,
+        # Phrases only. `agent_passes` is the field, `counter` is what the map calls it, and
+        # `fix-pass cap` is config.env's own wording — none of them is the number under test,
+        # so a wrong value cannot drop its own line out of scope.
+        "scope": r"agent_passes|counter|fix-pass cap|attempts|passes",
+        "patterns": [r"counter is (\d+)",
+                     r"`agent_passes` is already (\d+)",
+                     r"never past (\d+)",
+                     r"(?:own|fresh) (\w+) passes",
+                     r"fix-pass cap\. (\w+)"],
+        "exempt": [],
+    },
+    {
+        # One restatement today, in REVIEWER.md's field table. It is kept because that
+        # sentence also claims the cap is "enforced by the schema" — checked by hand
+        # 2026-08-17 and TRUE (`issue_comments.body.max` really is 1500), which means the two
+        # numbers must move together or the claim silently becomes false.
+        #
+        # ⚠ THE PATTERN IS TIGHT ON PURPOSE, and the tightness is the ONLY thing protecting a
+        # correct sentence. `config.env` is scanned as well as read, and the comment two lines
+        # above this constant says "a reviewer averaged 1839 characters" — a DIFFERENT fact
+        # about a different population. A pattern of `([\d,]+) characters` reads it as a wrong
+        # cap and turns the gate red on correct prose, which is the noisy-gate failure this
+        # file documents at length.
+        #
+        # ⚠ `[Cc]omment`, NOT `comment`, AND THAT MATTERS MORE THAN IT LOOKS. With the
+        # lower-case spelling the 1839 line fell out of scope on CASE ALONE — so the pattern's
+        # tightness was untested, the mutation that loosened it left the suite green, and
+        # sentence-casing that one word (or writing "the comment cap") would have armed the
+        # trap with nobody touching this file. Protection by accident is not protection.
+        "name": "comment length cap (COMMENT_MAX)",
+        "truth": lambda: setting("COMMENT_MAX"),
+        "artifacts": [CONFIG_ENV],
+        "scope": r"hard maximum|COMMENT_MAX|[Cc]omment",
+        "patterns": [r"hard maximum ([\d,]+) characters"],
+        "exempt": [],
+    },
+]
+
+
 # The checkpoint a concluded run SELECTED. Not a count, so it is checked differently: the
 # file the verdict names must exist, because "warm start from epNNN" is worthless if it does
 # not.
@@ -426,12 +554,42 @@ def docs():
     recognises — so it moved 32 files / 36 recognised statements to 42 / 37. One statement
     today; the point is that the next config line written in a recognised phrasing is
     enforced without anyone remembering to come back here.
+
+    `AGENTS.md`, `CLAUDE.md`, the workflow lane's prose, `workflow/config.env` and
+    `workflow/scripts/issue.py` were added 2026-08-17 (owner), and the same measurement was
+    taken first: against the CORPUS registry alone they enrol **zero** statements. They are
+    here for `PROTOCOL_FACTS`, which is the registry their numbers actually belong to.
+
+    ⚠ TWO NON-MARKDOWN FILES ARE IN HERE ON PURPOSE. `config.env` states its own constants in
+    prose above the assignments, and `issue.py`'s module docstring restates the pass cap
+    beside the code that enforces it — the most dangerous restatement in the lane, because it
+    is the one a reader trusts most. A claim is a claim wherever it is written; the file
+    extension is not the thing being checked.
+
+    ⚠ THIS SET DOES NOT TRAVEL. `workflow/` is meant to be copied wholesale into another repo,
+    and this gate is Sonora's. A ported lane has the constants and the prose but no check that
+    compares them, which `workflow/WORKFLOW.md` records under "Porting this lane".
     """
+    return [p for p in _candidate_docs() if os.path.isfile(p)]
+
+
+# The files named ONE BY ONE rather than globbed. A glob cannot tell "this repo has no
+# CLAUDE.md" from "CLAUDE.md was renamed and nobody noticed", and the second is a silent
+# coverage loss of exactly the kind this file exists to make impossible.
+NAMED_DOCS = ("README.md", "AGENTS.md", "CLAUDE.md")
+
+
+def _candidate_docs():
     out = []
     for name in sorted(os.listdir(NOTES)):
         if name.endswith(".md"):
             out.append(os.path.join(NOTES, name))
-    out.append(os.path.join(REPO, "README.md"))
+    out += [os.path.join(REPO, n) for n in NAMED_DOCS]
+    if os.path.isdir(WORKFLOW):
+        out += [os.path.join(WORKFLOW, n) for n in sorted(os.listdir(WORKFLOW))
+                if n.endswith(".md")]
+        out.append(CONFIG_ENV)
+        out.append(os.path.join(WORKFLOW, "scripts", "issue.py"))
     cfg = os.path.join(REPO, "configs", "data")
     if os.path.isdir(cfg):
         out += [os.path.join(cfg, n) for n in sorted(os.listdir(cfg))
@@ -439,11 +597,27 @@ def docs():
     return out
 
 
-def main():
-    failures, skipped, checked, matched, exempted = [], [], 0, 0, 0
-    files = docs()
+def absent_docs():
+    """Named documents that are not on disk. PRINTED by `main()`, never silently dropped.
 
-    for fact in FACTS:
+    ⚠ `docs()` has to filter — a checkout without one of these must not crash the gate — and a
+    filter is how a scanned file quietly stops being scanned. This is the other half: the
+    filter is allowed, the silence is not.
+    """
+    return [p for p in _candidate_docs() if not os.path.isfile(p)]
+
+
+def scan(facts, files):
+    """Run one registry over one file set. -> (failures, skipped, checked, matched, exempted)
+
+    ⚠ SHARED BY BOTH REGISTRIES ON PURPOSE. The scope-then-exempt-then-capture order below is
+    not arrangement, it is the accumulated fix list of this file's own bugs — scope first
+    (20 false failures), exemptions counted rather than silent, `group(1)` and nothing else.
+    A second copy of it for `PROTOCOL_FACTS` would be a fork of the very logic that catches
+    forks, and it would drift in the direction nobody looks at.
+    """
+    failures, skipped, checked, matched, exempted = [], [], 0, 0, 0
+    for fact in facts:
         # PER FACT, not per run. The prerequisite used to live in the pytest harness as one
         # all-or-nothing list, so a host with v5 and not v6 — a partial mount, a rollback,
         # ai-lab-0 itself between the two merges — checked NOTHING and called it a skip,
@@ -456,11 +630,15 @@ def main():
             continue
         try:
             truth = fact["truth"]()
-        except (OSError, KeyError) as e:
+        except (OSError, KeyError, ValueError) as e:
+            # ValueError joins the pair for the protocol registry: `setting()` ends in
+            # `int(v)`, so a constant edited to a non-number is a source this fact cannot
+            # read — the same condition as a missing key, and it must report as one rather
+            # than crash the run for every other fact behind it.
             failures.append(f"{fact['name']}: cannot read the artifact ({e}). "
                             "A fact whose source is missing is not a passing fact.")
             continue
-        want = {comma(truth), str(truth)}
+        want = spellings(truth, fact.get("words", False))
         checked += 1
         for path in files:
             rel = os.path.relpath(path, REPO)
@@ -484,11 +662,28 @@ def main():
                                     f"{rel}:{lineno} — {fact['name']}: doc says {got!r}, "
                                     f"artifact says {comma(truth)!r}\n"
                                     f"      {line.strip()[:110]}")
+    return failures, skipped, checked, matched, exempted
+
+
+def main():
+    files = docs()
+    failures, skipped, checked, matched, exempted = scan(FACTS, files)
+    p_fail, p_skip, p_checked, p_matched, p_exempted = scan(PROTOCOL_FACTS, files)
+    failures += p_fail
+    skipped += p_skip
 
     print(f"checked {checked} of {len(FACTS)} corpus/checkpoint facts against the "
           f"artifacts on disk")
     print(f"  {len(files)} documents scanned, {matched} recognised statements, "
           f"{exempted} exempted line(s)")
+    # REPORTED SEPARATELY, because they are checked against different sources and a reader
+    # has to be able to tell which half a green run is talking about. Folding the counts
+    # together would let the corpus half go to zero coverage behind a healthy-looking total.
+    print(f"checked {p_checked} of {len(PROTOCOL_FACTS)} protocol constants against the "
+          f"files that own them")
+    print(f"  {p_matched} recognised statements, {p_exempted} exempted line(s)")
+    for path in absent_docs():
+        print(f"  ~ NOT SCANNED: {os.path.relpath(path, REPO)} is not in this checkout")
     # PRINTED, NEVER SILENT. "The corpus is not on this machine" is not a finding, but it
     # is not a pass either, and a reduction in coverage that nobody can see is how a gate
     # stops being one.
@@ -526,12 +721,13 @@ def main():
 
     print("\nPASS — every recognised claim matches disk.")
     print("⚠ This does NOT mean the docs are correct: only recognised phrasings are seen, "
-          "and\n  scope is corpus/checkpoint numbers only (owner, 2026-08-09). A green run "
-          "means\n  'nothing recognised disagrees'.")
+          "and\n  scope is corpus/checkpoint numbers (owner, 2026-08-09) plus the workflow "
+          "lane's own\n  constants (owner, 2026-08-17). A green run means 'nothing recognised "
+          "disagrees'.")
     if skipped:
-        print(f"⚠ …and {len(skipped)} of {len(FACTS)} facts were NOT CHECKED here (listed "
-              f"above): their\n  artifact is absent, so this run says nothing about them "
-              f"either way.")
+        print(f"⚠ …and {len(skipped)} of {len(FACTS) + len(PROTOCOL_FACTS)} facts were NOT "
+              f"CHECKED here (listed\n  above): their artifact is absent, so this run says "
+              f"nothing about them either way.")
     return 0
 
 
