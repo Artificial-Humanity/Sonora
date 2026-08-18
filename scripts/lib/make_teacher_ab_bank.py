@@ -331,7 +331,7 @@ def main():
         raise SystemExit(f"texts below the {MIN_CLIP_SECONDS}s floor "
                          f"({MIN_CLIP_CHARS} chars): {short}")
 
-    lines, misses, unusable, no_line = [], [], [], []
+    lines, misses, unusable, no_line, lost_arms = [], [], [], [], []
     for idx, (key, expected_register, brief, text) in enumerate(ITEMS):
         print(f"[{idx + 1}/{len(ITEMS)}] {key}", flush=True)
         # ---- pass 1: label the LINE once. Shared verbatim by every arm. ----
@@ -366,8 +366,10 @@ def main():
         # is true here.
         #
         # Skipping matches this loop's own idiom for an unusable pass ("SKIPPED (line pass
-        # failed)" above), and BOTH skips are now counted and reported by name at the end,
-        # so a short campaign is visible rather than silent (issue #105).
+        # failed)" above). ⚠ THERE ARE FOUR WAYS OUT OF THIS LOOP, NOT TWO (issue #111):
+        # two item-level (line pass failed, unusable axis) and two arm-level (director
+        # failed, routed away). All four are counted and named at the end now; the comment
+        # here said "BOTH" while two of them left no trace at all (issues #105, #111).
         try:
             intended = {k: (round(v, 2) if v is not None else None)
                         for k, v in schemas.intended_vat(lab).items()}
@@ -419,6 +421,7 @@ def main():
             d = direct(brief, text, engine, args.model, args.ollama)
             if d is None:
                 print(f"    {engine}: SKIPPED (director failed)")
+                lost_arms.append((key, engine, "director failed"))
                 continue
             # Routing is checked HERE, not at the top of the loop: the rule reads the
             # voice_design the director just wrote, which does not exist until now.
@@ -429,6 +432,7 @@ def main():
             if not _kept:
                 for _e, _why in _dropped:
                     print(f"    {_e}: ROUTED AWAY — {_why}")
+                    lost_arms.append((key, _e, _why))
                 continue
             if engine == "vibevoice":
                 # design verbatim so ref_select can parse gender + age band;
@@ -452,7 +456,19 @@ def main():
     secs = [len(t) / 14.0 for _k, _r, _b, t in ITEMS]
     tagged = sum(1 for l in lines if l["engine"] == "dia" and l["direction"].get("dia_tags"))
     print(f"\nwrote {args.out}")
-    print(f"  {len(lines) // len(ENGINES)} items x {len(ENGINES)} engines = {len(lines)} renders")
+    # ⚠ THREE NUMBERS, NOT AN IDENTITY (issue #111). This read
+    # `{len(lines) // len(ENGINES)} items x {len(ENGINES)} engines = {len(lines)} renders`,
+    # which asserts a relationship that stops holding the moment ONE arm is dropped: ten
+    # items, four engines and a single director failure printed "9 items x 4 engines = 39
+    # renders". 9 x 4 is 36. The integer division absorbs the remainder in silence, and it
+    # understates the ITEM count — sending a reader to re-direct a line when what was lost
+    # was one engine's arm. The two have different remedies, which is why the line has to
+    # stop guessing and report what it actually counted.
+    attempted = len(ITEMS)
+    directed = attempted - len(unusable) - len(no_line)
+    print(f"  {attempted} items attempted, {directed} directed, "
+          f"{len(lines)} renders across {len(ENGINES)} engines "
+          f"({directed * len(ENGINES)} if every arm had survived)")
     print(f"  est. length {min(secs):.1f}-{max(secs):.1f}s (floor {MIN_CLIP_SECONDS}s)")
     print(f"  dia lines carrying a non-verbal tag: {tagged}")
     print(f"  director register mismatches vs expectation: {len(misses)}")
@@ -468,6 +484,14 @@ def main():
     print(f"  items skipped, line pass failed: {len(no_line)}")
     for k in no_line:
         print(f"      {k}")
+    # ⚠ ARM-LEVEL LOSSES, WHICH ARE NOT ITEM-LEVEL ONES. `direct()` returns None whenever
+    # ollama fails or the model omits `instruct` — routine for a 31B local director, not
+    # exotic — and `route_engines` can drop an arm on the voice_design it just read. Both
+    # left the loop silently until 2026-08-18. An item missing one arm is still in the
+    # bank; whether it BELONGS there is a campaign-design question and is not decided here.
+    print(f"  arms lost after direction: {len(lost_arms)}")
+    for k, eng, why in lost_arms:
+        print(f"      {k} [{eng}]: {why}")
 
 
 if __name__ == "__main__":
