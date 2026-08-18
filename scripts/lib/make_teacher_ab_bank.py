@@ -384,8 +384,12 @@ def main():
             continue
         if register != expected_register:
             misses.append((key, expected_register, register))
-        print(f"    line: {register}  V/A/T {intended['V']}/{intended['A']}/{intended['T']}",
-              flush=True)
+        # ⚠ `fmt_axis`, NOT a bare `{}` (issue #100). An absent axis is legal here since
+        # 8d8f986 and `f"{None}"` renders it as the word "None" — which reads as a value the
+        # director produced rather than as one it declined to give. `fmt_axis` is in this
+        # range for exactly that, and its own test asserts "a placeholder, not the word None".
+        print(f"    line: {register}  V/A/T " + "/".join(
+            schemas.fmt_axis(intended[k]) for k in ("V", "A", "T")), flush=True)
 
         tags = pick_dia_tags(text, args.model, args.ollama)
         dia_text = _place_tags(text, tags)
