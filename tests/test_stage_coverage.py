@@ -367,8 +367,21 @@ def test_no_test_module_reaches_into_scripts_by_hand():
     # AST, not a text scan: a text scan matched this very docstring, which is the
     # trailing-comment defect in miniature — prose about code is not code.
     offenders = []
+    # ⚠ `--others --exclude-standard`, SO UNTRACKED MODULES COUNT (issue #110). Plain
+    # `git ls-files` lists TRACKED files only, and **pytest does not care what git knows** —
+    # it walks the filesystem. Demonstrated 2026-08-18 with a throwaway
+    # `tests/test__probe_untracked.py` doing a hand `sys.path.insert`: pytest collected it
+    # and this guard passed. So the guard went red one commit AFTER the violation landed,
+    # at the point where amending stops being free — which is what happened to
+    # `tests/test_ref_select_vat.py` in 9bb3607.
+    #
+    # `--exclude-standard` keeps .gitignore honoured, so this does not start reporting build
+    # junk. The cost considered and accepted: a half-written scratch module in `tests/` can
+    # now fail this. It could already fail every OTHER test in the suite, because pytest was
+    # loading it regardless; this only stops the enumeration being narrower than the run.
     files = [r for r in subprocess.run(
-        ["git", "ls-files", "-z", "tests/*.py"], cwd=REPO, capture_output=True, text=True, check=True,
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "tests/*.py"],
+        cwd=REPO, capture_output=True, text=True, check=True,
     ).stdout.split("\0") if r]
     assert len(files) >= 20, f"only {len(files)} test modules enumerated — is the listing working?"
     for rel in sorted(files):
