@@ -241,7 +241,20 @@ def call(path, method="GET", body=None, token=None):
 try:
     tok = call("/api/collections/_superusers/auth-with-password", "POST",
                {"identity": env.get("PB_EMAIL"), "password": env.get("PB_PASSWORD")})["token"]
-    flt = urllib.parse.quote('branch_name="%s" && state="open"' % arg.replace('"', ''))
+    # ⚠ `state!="closed"`, NOT `state="open"` — MATCHED TO THE QUESTION THIS ANSWERS.
+    # This count exists to tell a worker whether a CRASHED review left real findings behind.
+    # Scoped to "open" it returned 0 on any branch that had been through a fix pass, because
+    # a fix pass moves every issue to `review` — which is exactly when a crashed review is
+    # most likely and most consequential. Measured 2026-08-18: a 529 killed pass 3 with FIVE
+    # findings sitting in `review`, and this printed "Nothing is filed ... treat the range as
+    # unreviewed ... push anyway". The comment above argues at length that "unreachable" must
+    # never be folded into "nothing was filed" because that states a result the instrument
+    # never produced; the filter underneath it produced exactly that by another route.
+    #
+    # `!="closed"` is what `merge_branch.sh` and `issue.py` already use, and it is FAIL-CLOSED
+    # for the reason merge_branch.sh gives: a state added later is counted until someone
+    # decides otherwise, rather than silently dropping out of every check at once.
+    flt = urllib.parse.quote('branch_name="%s" && state!="closed"' % arg.replace('"', ''))
     r = call("/api/collections/issues/records?perPage=1&skipTotal=false&filter=" + flt, token=tok)
     print(r.get("totalItems", 0))
 except Exception:
@@ -714,7 +727,7 @@ if [[ "$STATUS" -ne 0 ]]; then
     echo "      the issues collection, filter branch_name=\"$BRANCH\"" >&2
     echo "  If it is empty the range is unreviewed; if it is not, those are real findings." >&2
   elif [[ "$FILED" == "0" ]]; then
-    echo "  Nothing is filed under branch $BRANCH (the tracker answered: 0)." >&2
+    echo "  Nothing unresolved under branch $BRANCH (the tracker answered: 0 not-closed)." >&2
     echo "  Treat the range as unreviewed. Say so in the commit trail or to the owner," >&2
     echo "  then push anyway — AGENTS.md §1." >&2
   else

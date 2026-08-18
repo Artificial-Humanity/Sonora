@@ -337,3 +337,52 @@ def test_the_reviewer_persona_knows_about_full_reviews():
 def test_full_review_is_declared_in_the_manifest():
     manifest = (REPO / "scripts" / "pipeline_manifest.py").read_text(encoding="utf-8")
     assert "workflow/scripts/full_review.sh" in manifest
+
+
+# --- the crash handler's count (issue found 2026-08-18) ----------------------------------
+
+def test_the_crash_handler_counts_everything_not_closed():
+    """⚠ THE ONE QUERY THAT ONLY EVER RUNS WHEN A REVIEW HAS ALREADY FAILED.
+
+    `request_review.sh` answers "did the crashed review leave findings behind?" by counting
+    issues on the branch. Scoped to `state="open"` it returned **0 on any branch that had been
+    through a fix pass** — because a fix pass moves every issue to `review`, which is exactly
+    when a crashed review is most likely and most damaging.
+
+    Measured: a 529 killed review pass 3 of `pydantic-boundaries` with FIVE findings sitting in
+    `review`, and the handler printed *"Nothing is filed … treat the range as unreviewed …
+    push anyway"*. Against the live tracker, `state="open"` answered 0 and `state!="closed"`
+    answered 5.
+
+    ⚠ The bug survived because this path is unreachable in a normal run. Nothing exercises a
+    crash handler except a crash, so its query had never been asked in the state that matters —
+    the guard-liveness class, in the guard that reports on other guards failing.
+    """
+    src = (REPO / "workflow" / "scripts" / "request_review.sh").read_text(encoding="utf-8")
+    assert 'branch_name="%s" && state!="closed"' in src, (
+        "the crash handler's count is not scoped to `state!=\"closed\"` — if it filters on "
+        "`open`, it reports 0 on every branch that has had a fix pass and tells the worker to "
+        "push unreviewed work")
+    # ⚠ COMMENTS STRIPPED FIRST, and the first draft of this line did not — it matched the
+    # ⚠-comment three lines above, which QUOTES `state="open"` to explain the bug. Prose that
+    # quotes the old code is not the old code; this is the fourth time that shape has cost
+    # something this week, and it is what M4 of notes/quality-mechanisms-plan.md is for.
+    helper = src.split("pb_helper()")[1].split("\n}")[0]
+    code = "\n".join(ln for ln in helper.splitlines() if not ln.lstrip().startswith("#"))
+    assert 'state="open"' not in code, (
+        "pb_helper still carries a `state=\"open\"` filter in executable code")
+
+
+def test_the_three_lane_scripts_agree_on_what_unfinished_means():
+    """⚠ ONE DEFINITION, THREE READERS. `merge_branch.sh` gates the merge, `issue.py` lists
+    what is left, and `request_review.sh` reports after a crash. All three are answering the
+    same question — *is there anything unresolved on this branch?* — and a disagreement
+    between them is silent: each looks right on its own.
+
+    `merge_branch.sh` states the reasoning (fail-closed: a state added later stays counted
+    rather than dropping out of every check at once). The other two must not drift from it.
+    """
+    for rel in ("workflow/scripts/merge_branch.sh", "workflow/scripts/issue.py",
+                "workflow/scripts/request_review.sh"):
+        src = (REPO / rel).read_text(encoding="utf-8")
+        assert 'state!="closed"' in src, f"{rel} no longer uses the fail-closed definition"
