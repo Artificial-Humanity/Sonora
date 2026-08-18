@@ -122,11 +122,23 @@ def design_gender(design: str) -> str:
 
 
 def _vat(v):
-    """The three axes as numbers, for DISTANCE RANKING only.
+    """The three axes as floats, or **None** where the axis carries no usable number.
 
-    ⚠ `0` HERE MEANS "NO INFORMATION", NOT "NEUTRAL". This is a ranking helper: an unknown
-    axis contributes nothing to the distance rather than pulling the match toward neutral on
-    purpose. It has always defaulted an ABSENT axis to 0; it must not be read as a labeller.
+    ⚠ `None` MEANS "NO INFORMATION" AND THE RANKING MUST SKIP IT — it is not `0.0`, and the
+    difference is the whole point. This returned `0.0` for an unknown axis until 2026-08-18,
+    and the docstring here claimed that "contributes nothing to the distance". It did not:
+    `select_reference` computes `(want[a] - kv[a]) ** 2`, so a `0.0` target contributes
+    `kv[a] ** 2` — the LARGEST term for the most strongly-labelled candidates — and
+    minimising it selects the reference closest to neutral. Measured on the 436-clip pool
+    for a tag with V known and A/T absent: the top ten averaged |A|+|T| of **0.252**, against
+    **0.219** for the pool at large, so the ranking preferred references FLATTER than average
+    on the two axes nobody had said anything about (issue #103).
+
+    ⚠ DELEGATES TO `schemas.coerce_axis`, WHICH IS THE SINGLE DEFINITION of what counts as a
+    number. This function kept its own `isinstance(c, (int, float))` test, which is the exact
+    test issue #58 was filed against: it reads `"0.7"` — a numeric string, which #58 ruled IS
+    a label — as no-information (issue #104). `qc_verdict.coerce_axis` was rewritten into a
+    one-line delegation nine commits earlier for this reason; a third copy went in anyway.
 
     ⚠ A PRESENT-BUT-NULL KEY IS THE TRAP, and `.get(k, 0)` does not catch it (issue #92).
     `{"V": None}.get("V", 0)` is `None`, not `0` — the default only fires when the key is
@@ -134,15 +146,39 @@ def _vat(v):
     `select_reference` raised `TypeError`. The three synth callers catch
     `(LookupError, ValueError)`, which does not include `TypeError`, so one null axis killed
     that engine's entire remaining bank rather than one clip.
+
+    The alias chain is a fall-through, not a first-key-wins: an unreadable `V` still lets
+    `valence` answer, which is what the `isinstance` version did and is worth keeping.
     """
     def _n(*candidates):
         for c in candidates:
-            if isinstance(c, (int, float)) and not isinstance(c, bool):
-                return float(c)
-        return 0.0
+            n = schemas.coerce_axis(c)
+            if n is not None:
+                return n
+        return None
     return {"V": _n(v.get("V"), v.get("valence")),
             "A": _n(v.get("A"), v.get("arousal"), v.get("energy")),
             "T": _n(v.get("T"), v.get("tension"))}
+
+
+def _vat_distance(want, kv):
+    """Euclidean distance over the axes BOTH sides label, rescaled to three axes.
+
+    ⚠ THE RESCALE IS WHAT MAKES CANDIDATES COMPARABLE. Summing over only the shared axes
+    would hand a systematic advantage to whichever side labelled fewer of them — two axes of
+    error always sum to less than three. `* 3 / len(axes)` restores the missing terms at the
+    mean squared error of the ones present, which is the standard treatment and, more
+    usefully here, is **exactly identity when all three axes are present**: measured across
+    the 197 in-window female clips, ordering unchanged and max score delta 2.2e-16. So this
+    does not recalibrate the ranking against `ENGINE_PREF` or `AGE_WEIGHT`.
+
+    No shared axis at all -> `0.0`, and the VAT term genuinely drops out of the ranking. That
+    is the honest reading of "no information", and it is what the old docstring promised.
+    """
+    axes = [a for a in "VAT" if want.get(a) is not None and kv.get(a) is not None]
+    if not axes:
+        return 0.0
+    return math.sqrt(sum((want[a] - kv[a]) ** 2 for a in axes) * 3.0 / len(axes))
 
 
 # Engines that must not receive bright / teen female casting. **EMPTY as of 2026-07-29**,
@@ -417,6 +453,7 @@ for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in 
 from matcha.delivery import (DELIVERY_LANES as _DELIVERY_LANES,  # noqa: E402
                             NARRATION_LANES as _NARRATION_LANES,
                             RETIRED_LANES as _RETIRED_LANES, check_assignable)
+import schemas  # noqa: E402  -- the single definition of what counts as an axis number
 
 # The pre-2026-08-02 caller convention was lowercase lane names, and it still has to
 # resolve. DERIVED from the vocabulary rather than typed out as a five-entry table, for
@@ -780,7 +817,7 @@ def select_reference(design: str, intended: dict, used: set | None = None,
             if exc is not None and exc >= max_excursion:
                 continue
         kv = _vat(k["intended_vat"])
-        score = math.sqrt(sum((want[a] - kv[a]) ** 2 for a in "VAT"))
+        score = _vat_distance(want, kv)
         score += ENGINE_PREF.get(k.get("engine"), 0.2)
         if age_target is not None:
             pct = _load_acoustics().get(k["file"])
