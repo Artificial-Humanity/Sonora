@@ -331,35 +331,56 @@ def main():
         raise SystemExit(f"texts below the {MIN_CLIP_SECONDS}s floor "
                          f"({MIN_CLIP_CHARS} chars): {short}")
 
-    lines, misses = [], []
+    lines, misses, unusable, no_line = [], [], [], []
     for idx, (key, expected_register, brief, text) in enumerate(ITEMS):
         print(f"[{idx + 1}/{len(ITEMS)}] {key}", flush=True)
         # ---- pass 1: label the LINE once. Shared verbatim by every arm. ----
         lab = label_line(text, args.model, args.ollama)
         if lab is None:
             print("    SKIPPED (line pass failed)")
+            no_line.append(key)
             continue
         register = lab["register"]
         # ⚠ THE SECOND WRITER OF `intended`, and it was left behind (issue #93). The whole
         # argument for validating at the writer is "one place instead of seven readers" —
-        # which only holds if every writer goes through it. `float(lab["valence"])` raises
-        # KeyError on an absent axis and ValueError on an unreadable one, both of which kill
-        # the campaign mid-run, and it accepts an out-of-range value that is silently clamped
-        # downstream. `intended_vat` is the one definition of what a legal axis is.
+        # which only holds if every writer goes through it. `intended_vat` is the one
+        # definition of what a legal axis is.
+        #
+        # ⚠ WHAT THE OLD `float(lab["valence"])` ACTUALLY DID, corrected 2026-08-18 (issue
+        # #100). The comment here used to claim it raised "KeyError on an absent axis";
+        # **that case is unreachable** and always was. `label_line` returns None if any of
+        # valence/arousal/tension/register is missing, and the `continue` above sends the
+        # item away before this line. Measured by stubbing the model call: all four missing
+        # keys are refused at the line pass. What genuinely arrives here is an axis that is
+        # present and out of range, or present and unreadable — and neither used to be
+        # refused: `float("1.5")` is 1.5, and the value was clamped silently downstream.
+        # That silent clamp is the ONE thing the change fixed. It did not remove a mid-run
+        # death; it swapped a ValueError for a SchemaError and, until this was caught,
+        # widened the set of values that cause one.
+        #
         # ⚠ CAUGHT, NOT PROPAGATED — this loop has no checkpoint (issue #100). The bank is
         # written only after every item completes, so one `SchemaError` here does not lose a
-        # line, it loses THE WHOLE CAMPAIGN, including every arm already rendered. Site 1 in
-        # `book_ingest` can afford to be fatal because its retry loop re-asks the director and
-        # its checkpoint survives a death; neither is true here.
+        # line, it loses THE WHOLE CAMPAIGN, including every arm already rendered — each of
+        # which is a 31B inference. Site 1 in `book_ingest` can afford to be fatal because
+        # its retry loop re-asks the director and its checkpoint survives a death; neither
+        # is true here.
         #
         # Skipping matches this loop's own idiom for an unusable pass ("SKIPPED (line pass
-        # failed)" above) and is counted, so a short campaign is visible rather than silent.
+        # failed)" above), and BOTH skips are now counted and reported by name at the end,
+        # so a short campaign is visible rather than silent (issue #105).
         try:
             intended = {k: (round(v, 2) if v is not None else None)
                         for k, v in schemas.intended_vat(lab).items()}
         except schemas.SchemaError as e:
             print(f"    SKIPPED (unusable axis): {e}")
-            misses.append((key, "unusable axis", str(e)[:80]))
+            # ⚠ NOT `misses` (issue #105). That list has one reader, which prints
+            # "expected {exp}, lexicon pick {got}" — so an axis skip filed there both
+            # inflates the ONE number this campaign reports about register quality and
+            # renders as "expected unusable axis, lexicon pick <error text>", with the
+            # tuple positions inverted and the cause truncated mid-sentence at 80 chars.
+            # A skip that is not a register mismatch does not belong in the register
+            # mismatch list, however much it wants a home.
+            unusable.append((key, str(e)))
             continue
         if register != expected_register:
             misses.append((key, expected_register, register))
@@ -433,6 +454,16 @@ def main():
     print(f"  director register mismatches vs expectation: {len(misses)}")
     for k, exp, got in misses:
         print(f"      {k}: expected {exp}, lexicon pick {got}")
+    # ⚠ PRINTED EVEN WHEN ZERO. A skipped item is a hole in the campaign, and the count
+    # of renders above cannot show it — 8 items x 4 engines and 10 items x 4 engines are
+    # both just "a number of renders" to the reader. Reported in full, not truncated:
+    # the whole point of the message is which axis and what value.
+    print(f"  items skipped, unusable axis: {len(unusable)}")
+    for k, msg in unusable:
+        print(f"      {k}: {msg}")
+    print(f"  items skipped, line pass failed: {len(no_line)}")
+    for k in no_line:
+        print(f"      {k}")
 
 
 if __name__ == "__main__":

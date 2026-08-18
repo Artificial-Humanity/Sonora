@@ -22,13 +22,12 @@ falsifiers, against the specific expression that was there before.
 """
 
 import math
-import os
-import sys
 
 import pytest
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(REPO, "scripts", "lib"))
+from scripts_layout import SCRIPTS
+
+SCRIPTS.on_path()
 
 import ref_select  # noqa: E402
 import schemas  # noqa: E402
