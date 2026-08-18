@@ -542,7 +542,24 @@ REVIEWER_ALLOW=(
   "Bash(git rev-list:*)" "Bash(git rev-parse:*)" "Bash(git blame:*)"
   "Bash(git merge-base:*)" "Bash(git ls-files:*)" "Bash(git ls-tree:*)"
   "Bash(git cat-file:*)" "Bash(git describe:*)" "Bash(git shortlog:*)"
+  "Bash(git check-ignore:*)" "Bash(git grep:*)" "Bash(git for-each-ref:*)"
+  "Bash(git diff-tree:*)" "Bash(git count-objects:*)" "Bash(git symbolic-ref:*)"
   "Bash(pytest:*)" "Bash(ls:*)" "Bash(rg:*)" "Bash(wc:*)"
+  # ⚠ ARBITRARY PYTHON, GRANTED DELIBERATELY AND WITH ITS EYES OPEN (owner, 2026-08-18).
+  # This is NOT the same kind of entry as the git verbs above. Those are enumerable and
+  # genuinely non-mutating; `python -c` is arbitrary code execution, and one line of it can
+  # delete the tree. There is no prefix pattern that separates "evaluate this expression"
+  # from "rewrite this file", so what stops a reviewer writing is now the PERSONA, not the
+  # allowlist — a rule rather than a mechanism, which AGENTS.md §1 is explicit is a weaker
+  # thing. The owner accepted that trade knowingly.
+  #
+  # WHY IT IS WORTH IT, measured rather than argued: without it the reviewer must REASON where
+  # it could REPRODUCE. On 2026-08-17 that cost three findings their verification (#90, #91,
+  # #94 — all three later reproduced in seconds), and a FALSE CLAIM in a fix comment survived
+  # a whole review pass (#98) because `git check-ignore`, its direct falsifier, was refused.
+  # Against that: the reviewer twice declined to route around the restriction when it could
+  # have (it noted, unprompted, that it did not use `rg --pre`).
+  "Bash(python:*)" "Bash(python3:*)" "Bash(.venv/bin/python:*)"
   # ⚠ SCOPED TO --dry-run, AND THE SCOPING IS THE POINT. Added because a review asked for it
   # (the repair path this allowlist is supposed to have) — but the first version granted the
   # WHOLE script while the comment justified only the dry run. That grant let the reviewer
