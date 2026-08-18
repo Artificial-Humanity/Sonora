@@ -73,22 +73,22 @@ BAD_TRAILER = "Co-Authored-By: Ziggy"
 GRANDFATHERED_THROUGH = "80be925"
 
 
-def _base_ref():
+def _base_ref(repo=REPO):
     """The remote-tracking base if there is one, else the local branch, else None."""
     for ref in ("refs/remotes/origin/" + BASE_BRANCH, "refs/heads/" + BASE_BRANCH):
         if subprocess.run(["git", "rev-parse", "--verify", "--quiet", ref],
-                          cwd=REPO, capture_output=True).returncode == 0:
+                          cwd=repo, capture_output=True).returncode == 0:
             return ref
     return None
 
 
-def _on_base_branch():
+def _on_base_branch(repo=REPO):
     r = subprocess.run(["git", "symbolic-ref", "--quiet", "--short", "HEAD"],
-                       cwd=REPO, capture_output=True, text=True)
+                       cwd=repo, capture_output=True, text=True)
     return r.returncode == 0 and r.stdout.strip() == BASE_BRANCH
 
 
-def _commits():
+def _commits(repo=REPO, boundary=GRANDFATHERED_THROUGH):
     """(sha, author, email, body) for THIS BRANCH'S own unmerged commits after the boundary.
 
     ⚠ `--no-merges`, and scoped to `BASE..HEAD` (issue #102). A merge commit is made by
@@ -96,36 +96,47 @@ def _commits():
     owner's on purpose; and everything already on the base branch is history this guard was
     never given a mandate over. Empty when the boundary is not an ancestor — a branch cut
     from elsewhere is not evidence of anything."""
-    base = _base_ref()
-    if base is None or _on_base_branch():
+    base = _base_ref(repo)
+    if base is None or _on_base_branch(repo):
         return []
-    anc = subprocess.run(["git", "merge-base", "--is-ancestor",
-                          GRANDFATHERED_THROUGH, "HEAD"], cwd=REPO, capture_output=True)
+    anc = subprocess.run(["git", "merge-base", "--is-ancestor", boundary, "HEAD"],
+                         cwd=repo, capture_output=True)
     if anc.returncode != 0:
         return []
     r = subprocess.run(
-        ["git", "log", "--no-merges", f"{base}..HEAD", f"^{GRANDFATHERED_THROUGH}",
+        ["git", "log", "--no-merges", f"{base}..HEAD", f"^{boundary}",
          "--format=%H%x1f%an%x1f%ae%x1f%B%x1e"],
-        cwd=REPO, capture_output=True, text=True)
+        cwd=repo, capture_output=True, text=True)
     out = []
     for rec in r.stdout.split("\x1e"):
         rec = rec.strip("\n")
         if not rec:
             continue
         sha, name, email, body = rec.split("\x1f", 3)
-        out.append((sha[:9], name, email, body))
+        # ⚠ FULL SHA, TRUNCATED ONLY WHERE IT IS PRINTED (issue #108). This used to store
+        # `sha[:9]`, and the regression test below then compared that set against `%h`
+        # output — seven characters here, because `core.abbrev=auto` scales with repo size.
+        # A nine-character string never equals a seven-character one, so BOTH of its
+        # assertions were incapable of failing, whatever the range contained. Comparing
+        # full object names removes the question rather than picking a matching width.
+        out.append((sha, name, email, body))
     return out
 
 
+def _short(sha):
+    return sha[:9]
+
+
 def test_no_commit_carries_the_ziggy_trailer():
-    bad = [f"  {sha}  {name}" for sha, name, _e, body in _commits() if BAD_TRAILER in body]
+    bad = [f"  {_short(sha)}  {name}" for sha, name, _e, body in _commits()
+           if BAD_TRAILER in body]
     assert not bad, (
         "commits carry a `Co-Authored-By: Ziggy` trailer, which DEVELOPER.md §1 rules out "
         "inside Sonora — you are the author:\n" + "\n".join(bad))
 
 
 def test_commits_are_authored_as_the_developer():
-    bad = [f"  {sha}  {name} <{email}>" for sha, name, email, _b in _commits()
+    bad = [f"  {_short(sha)}  {name} <{email}>" for sha, name, email, _b in _commits()
            if (name, email) != DEVELOPER]
     assert not bad, (
         "unmerged commits on this branch are not authored as the developer:\n"
@@ -168,6 +179,89 @@ def test_the_grandfather_boundary_still_exists_and_is_named():
     assert True
 
 
+OWNER = ("lmcfarlin", "owner@example.invalid")
+
+
+def _git(repo, *args, **kw):
+    env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
+    r = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, env=env, **kw)
+    assert r.returncode == 0, f"git {' '.join(args)} failed:\n{r.stderr}"
+    return r.stdout.strip()
+
+
+def _commit(repo, msg, who, n=[0]):
+    n[0] += 1
+    (repo / f"f{n[0]}.txt").write_text(msg, encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "-c", f"user.name={who[0]}", "-c", f"user.email={who[1]}",
+         "commit", "-q", "-m", msg)
+    return _git(repo, "rev-parse", "HEAD")
+
+
+@pytest.fixture
+def landed_branch(tmp_path):
+    """A branch that has merged the base INTO itself, which is where `--no-merges` bites.
+
+    ⚠ BUILT RATHER THAN OBSERVED, and that is the whole point of issue #108. The two
+    properties this guard holds — no merge commits, nothing already on base — are
+    INDISTINGUISHABLE from the real repo's current shape: `origin/main..HEAD` contains no
+    merge, and it happens to equal `GRANDFATHERED_THROUGH..HEAD` on this branch. Measured:
+    with `--no-merges` deleted, or the range reverted to `{GRANDFATHERED_THROUGH}..HEAD`,
+    the whole file stayed green. A guard for a condition the repo does not currently
+    exhibit has to create the condition.
+
+    ⚠ Note the shape that does NOT work here, because it is the obvious one: landing the
+    branch onto base and checking from base. After `merge_branch.sh` merges, `base..HEAD`
+    on the branch is EMPTY — base contains everything the branch had — and on `main` the
+    guard skips by design. The first version of this fixture did that and its own control
+    test caught it.
+    """
+    repo = tmp_path / "r"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", BASE_BRANCH)
+    boundary = _commit(repo, "boundary", OWNER)          # stands in for GRANDFATHERED_THROUGH
+    _git(repo, "branch", "work")
+    owner_on_base = _commit(repo, "owner hand-commit on base", OWNER)
+    _git(repo, "checkout", "-q", "work")
+    dev = _commit(repo, "agent work on the branch", DEVELOPER)
+    # Catching the branch up on base. `git merge` takes the CONFIGURED identity — no `-c`
+    # pair, exactly as merge_branch.sh:162 does — so this commit is owner-authored and sits
+    # squarely inside `base..HEAD`.
+    _git(repo, "-c", f"user.name={OWNER[0]}", "-c", f"user.email={OWNER[1]}",
+         "merge", "--no-ff", BASE_BRANCH, "-q", "-m", f"merge {BASE_BRANCH} into work")
+    merge = _git(repo, "rev-parse", "HEAD")
+    return {"repo": repo, "boundary": boundary, "owner_on_base": owner_on_base,
+            "dev": dev, "merge": merge}
+
+
+def test_a_merge_commit_never_enters_the_range(landed_branch):
+    """The failure #102 was filed about, reproduced in miniature."""
+    shas = {sha for sha, _n, _e, _b in
+            _commits(landed_branch["repo"], landed_branch["boundary"])}
+    assert landed_branch["merge"] not in shas, (
+        "the merge commit is in the range, so the author check will fail on it — and it is "
+        "made by merge_branch.sh with the owner's configured identity, on purpose")
+
+
+def test_a_commit_already_on_the_base_branch_never_enters_the_range(landed_branch):
+    shas = {sha for sha, _n, _e, _b in
+            _commits(landed_branch["repo"], landed_branch["boundary"])}
+    assert landed_branch["owner_on_base"] not in shas, (
+        "a commit already on the base branch is in the range. That is history this guard "
+        "has no mandate over, and the owner is 388 of 396 commits there")
+
+
+def test_the_branch_own_work_DOES_enter_the_range(landed_branch):
+    """⚠ THE CONTROL. Both assertions above are 'X is not in a set', which an empty set
+    satisfies for free — the exact way the first version of this test passed while checking
+    nothing. This one fails if the range has gone inert."""
+    shas = {sha for sha, _n, _e, _b in
+            _commits(landed_branch["repo"], landed_branch["boundary"])}
+    assert landed_branch["dev"] in shas, (
+        "the branch's own commit is NOT in the range, so the two exclusion tests above are "
+        "passing on an empty set and prove nothing")
+
+
 def test_the_range_excludes_what_it_is_not_a_guard_over():
     """⚠ THE #102 REGRESSION TEST, as a property of the range rather than of one SHA.
 
@@ -181,10 +275,23 @@ def test_the_range_excludes_what_it_is_not_a_guard_over():
     shas = {sha for sha, _n, _e, _b in _commits()}
     if not shas:
         pytest.skip("no unmerged commits after the boundary on this branch")
-    on_base = subprocess.run(["git", "log", base, "--format=%h"],
-                             cwd=REPO, capture_output=True, text=True).stdout.split()
-    overlap = shas & {s[:9] for s in on_base}
+    assert all(len(s) == 40 for s in shas), "expected full object names from --format=%H"
+
+    def _log(*args):
+        return set(subprocess.run(["git", "log", *args, "--format=%H"],
+                                  cwd=REPO, capture_output=True, text=True).stdout.split())
+
+    # ⚠ THE CONTROL. Both assertions below are "an intersection is empty", which is also
+    # what a comparison of two incompatible formats produces — that is exactly how the
+    # first version of this test passed while checking nothing (issue #108). So first
+    # prove the two sides CAN meet: HEAD is on HEAD's own log.
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO,
+                          capture_output=True, text=True).stdout.strip()
+    assert head in _log("-1", "HEAD"), (
+        "the comparison itself is broken — a commit is not matching its own log entry, so "
+        "the two assertions below would pass no matter what the range held")
+
+    overlap = shas & _log(base)
     assert not overlap, f"the range reaches commits already on {base}: {sorted(overlap)}"
-    merges = subprocess.run(["git", "log", "--merges", f"{base}..HEAD", "--format=%h"],
-                            cwd=REPO, capture_output=True, text=True).stdout.split()
-    assert not (shas & {m[:9] for m in merges}), "the range includes a merge commit"
+    assert not (shas & _log("--merges", f"{base}..HEAD")), \
+        "the range includes a merge commit"
