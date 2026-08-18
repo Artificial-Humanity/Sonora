@@ -441,3 +441,38 @@ def test_the_comment_query_does_not_sort_on_a_field_that_collection_lacks():
     assert not bad, (
         f"issue_comments has no `created` field; sorting on it returns HTTP 400 "
         f"(lines {sorted(set(bad))}). Sort on `posted_at,seq`.")
+
+
+def test_a_written_comment_carries_both_ordering_fields():
+    """⚠ `seq` IS THE FIELD THE REVIEWER'S DOCUMENTED QUERY SORTS ON (issue #109).
+
+    `issue_comments` has no `created`/`updated` system field — measured: its columns are
+    exactly id, issue, author, body, posted_at, seq — so nothing stamps an order unless this
+    script does. It stamped `posted_at` and not `seq`, which fixed `show` and left
+    `REVIEWER.md` §4's `sort="seq"` returning every agent comment ahead of the findings it
+    answers. AST, because the comment above names both fields and a text scan would match it.
+    """
+    tree = ast.parse(ISSUE_SRC)
+    posts = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "call" and len(node.args) >= 2):
+            continue
+        path = node.args[0]
+        if not (isinstance(path, ast.Constant) and isinstance(path.value, str)
+                and "issue_comments" in path.value):
+            continue
+        method = node.args[1]
+        if not (isinstance(method, ast.Constant) and method.value == "POST"):
+            continue
+        body = node.args[2] if len(node.args) > 2 else None
+        keys = {k.value for k in body.keys
+                if isinstance(k, ast.Constant)} if isinstance(body, ast.Dict) else set()
+        posts.append(keys)
+    assert posts, "no POST to issue_comments found — has the writer moved?"
+    for keys in posts:
+        missing = {"seq", "posted_at", "issue", "author", "body"} - keys
+        assert not missing, (
+            f"a comment is written without {sorted(missing)}. `seq` and `posted_at` are the "
+            f"only ordering this collection has; a comment missing either is unplaceable in "
+            f"its own thread.")

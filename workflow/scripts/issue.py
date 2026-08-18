@@ -162,8 +162,20 @@ class PB:
         # which carried their own timestamps. A comment written through this script had
         # `posted_at=""` and `seq=0`, so a reader sorting by time got every agent comment in
         # one undifferentiated block ahead of the imported ones (2026-08-18).
+        # ⚠ `seq` IS STAMPED TOO, AND IT IS THE ORDERING FIELD THE READERS USE (issue #109).
+        # Stamping only `posted_at` fixed `show` and left the documented query wrong:
+        # `REVIEWER.md` §4 gives `sort="seq"` verbatim, and every comment this script had
+        # ever written carried the schema default of `0`. Measured on #92 — four comments —
+        # Ozzy's replies came back ahead of the Janis findings they answer, so the thread
+        # read backwards for the one role that is told to run that query.
+        st, prev = self.call(
+            "/api/collections/issue_comments/records?perPage=200&fields=seq&filter="
+            + urllib.parse.quote('issue="%s"' % rec["id"]))
+        if st != 200:
+            die("could not read the comment sequence: %s" % json.dumps(prev)[:400])
+        nxt = max([int(c.get("seq") or 0) for c in (prev.get("items") or [])], default=0) + 1
         st, r = self.call("/api/collections/issue_comments/records", "POST",
-                          {"issue": rec["id"], "author": author, "body": text,
+                          {"issue": rec["id"], "author": author, "body": text, "seq": nxt,
                            "posted_at": datetime.datetime.now(datetime.timezone.utc)
                            .strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] + "Z"})
         if st >= 300:
