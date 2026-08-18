@@ -10,7 +10,7 @@ __pycache__/
 .Python
 /build/
 /develop-eggs/
-dist/
+/dist/
 /downloads/
 /eggs/
 .eggs/
@@ -23,19 +23,29 @@ dist/
 # enumerates via `git ls-files`. Existing files stayed tracked, which is what kept it
 # hidden: the rule only ever ate the next one.
 #
-# ⚠ EVERY DIRECTORY NAME FROM THAT TEMPLATE IS NOW ANCHORED, not just the two that had
-# already bitten (issue #98). Fixing `lib/` and `lib64/` alone treated a general defect as
-# two incidents: `build/`, `parts/`, `var/`, `wheels/`, `sdist/`, `eggs/`, `downloads/` and
-# `develop-eggs/` are the same unanchored shape from the same template, and `scripts/build/`
-# or `matcha/var/` would be eaten exactly as `scripts/lib/` was — silently, absent from
+# ⚠ THE TEMPLATE NAMES ARE ANCHORED; A SHORT LIST IS DELIBERATELY NOT (issue #98).
+# Fixing `lib/` and `lib64/` alone treated a general defect as two incidents — `build/`,
+# `dist/`, `parts/`, `var/`, `wheels/`, `env/`, `venv/`, `logs`, `outputs` and the rest are
+# the same unanchored shape from the same Python template, and `scripts/build/` or
+# `matcha/var/` would be eaten exactly as `scripts/lib/` was: silently, absent from
 # `git status`. The two that bit were not special; they were only first.
+#
+# ⚠ AND THE FIRST FIX CLAIMED MORE THAN IT DID. Its comment said "EVERY DIRECTORY NAME FROM
+# THAT TEMPLATE IS NOW ANCHORED" while `dist/` sat two lines above `/build/`, still bare.
+# A false claim written into a comment while fixing a false-claim issue — which is why the
+# rule is now enforced by `tests/test_gitignore_anchoring.py` rather than stated here.
+#
+# RECURSIVE BY DESIGN, and the test knows their names: `__pycache__/` and the build-artifact
+# directories (`model_tflite/`, `synth_output/`, …) SHOULD match at any depth. Anchoring them
+# would be the opposite error. Adding to that list is a decision made in the test, not a
+# slip made here.
 /lib/
 /lib64/
 /parts/
 /sdist/
 /var/
 /wheels/
-share/python-wheels/
+/share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -44,20 +54,20 @@ share/python-wheels/
 *.ckpt
 *.pt
 *.pth
-outputs
+/outputs
 /data
-logs
+/logs
 .lightning/
-lightning_logs/
+/lightning_logs/
 
 # Environments
 .env
 .venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+/env/
+/venv/
+/ENV/
+/env.bak/
+/venv.bak/
 
 # IDEs
 .vscode/
@@ -65,7 +75,7 @@ venv.bak/
 .DS_Store
 
 # Unit test / coverage reports
-htmlcov/
+/htmlcov/
 .tox/
 .nox/
 .coverage

@@ -865,11 +865,25 @@ def director_tag(chunk, retries=2):
         tag["engine"] = engine
         # Second pass: casting + delivery, written in the chosen engine's own
         # language. Dia has no direction channel, so it is skipped entirely.
+        # ⚠ AXES ARE VALIDATED HERE, INSIDE THE RETRY LOOP — the only place a bad emission
+        # can be RE-ASKED (issue #100). Validating only at the manifest write was fatal by
+        # construction: `to_bank_line` runs three statements after this loop RETURNS, in a
+        # function with no retry and inside no `try`, so one unreadable or out-of-range axis
+        # killed the whole ingest run. The tag was never repaired and never re-asked.
+        #
+        # This is the same shape the off-roster engine check above uses, and for the same
+        # reason: retry, and if the retries are spent, drop the chunk loudly rather than
+        # substitute a choice. An ABSENT axis is not an error and does not reach here —
+        # `intended_vat` only refuses a value that is present and unusable.
+        try:
+            schemas.intended_vat(tag)
+        except schemas.SchemaError as e:
+            print(f"    unusable axis — retrying: {e}", flush=True)
+            continue
         if engine != "dia":
-            # Same validation as the manifest row below, so the casting pass is briefed
-            # with the labels that will actually be written rather than a second reading of
-            # the same tag. `strict=False`: a bad axis here should not abort the retry loop,
-            # it should be absent — the manifest write is where it becomes fatal.
+            # Briefed with the labels that will actually be written, rather than a second
+            # reading of the same tag. OMITTING an absent axis rather than passing None:
+            # `casting_pass` guards with `if k in labels` and formats with `:+.2f`.
             _vat = schemas.intended_labels(tag)
             cast = casting_pass(chunk["text"], engine, labels={
                 **_vat, "register": tag.get("register", "")})
@@ -1107,10 +1121,18 @@ def casting_pass(text, engine, labels=None, retries=2):
     user = f"Target engine: {engine}\n\nThe line to be performed:\n“{text}”"
     if labels:
         vat = ", ".join(f"{k}={labels[k]:+.2f}" for k in ("V", "A", "T") if k in labels)
+        # ⚠ AN EMPTY AXIS LINE IS WORSE THAN NO AXIS LINE (issue #99). When the director's
+        # first pass emits no axis at all — legal, since that pass sends no `format` schema —
+        # `vat` is "" and this block used to brief the second pass with
+        # `valence/arousal/tension: ` under a heading reading "treat as FIXED CONTEXT you must
+        # serve". A labelled field followed by nothing is not neutral: it is an instruction to
+        # serve something, with the something missing. That is this branch's own thesis
+        # inverted — forged-neutral was replaced by a crash, and the crash by a blank.
+        axis_line = f"  valence/arousal/tension: {vat}\n" if vat else ""
         user += ("\n\nAlready decided for this line — treat as FIXED CONTEXT you must "
                  "serve, never restate:\n"
                  f"  register: {labels.get('register', 'unspecified')}\n"
-                 f"  valence/arousal/tension: {vat}\n"
+                 f"{axis_line}"
                  "Your direction must FIT THIS LINE. Direction identical to what you "
                  "would write for a different register is a failure.")
     for _ in range(retries):

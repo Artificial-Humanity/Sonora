@@ -122,9 +122,27 @@ def design_gender(design: str) -> str:
 
 
 def _vat(v):
-    return {"V": v.get("V", v.get("valence", 0)),
-            "A": v.get("A", v.get("arousal", v.get("energy", 0))),
-            "T": v.get("T", v.get("tension", 0))}
+    """The three axes as numbers, for DISTANCE RANKING only.
+
+    ⚠ `0` HERE MEANS "NO INFORMATION", NOT "NEUTRAL". This is a ranking helper: an unknown
+    axis contributes nothing to the distance rather than pulling the match toward neutral on
+    purpose. It has always defaulted an ABSENT axis to 0; it must not be read as a labeller.
+
+    ⚠ A PRESENT-BUT-NULL KEY IS THE TRAP, and `.get(k, 0)` does not catch it (issue #92).
+    `{"V": None}.get("V", 0)` is `None`, not `0` — the default only fires when the key is
+    MISSING. `intended.V/A/T` may be null since 2026-08-17, so `want[a] - kv[a]` in
+    `select_reference` raised `TypeError`. The three synth callers catch
+    `(LookupError, ValueError)`, which does not include `TypeError`, so one null axis killed
+    that engine's entire remaining bank rather than one clip.
+    """
+    def _n(*candidates):
+        for c in candidates:
+            if isinstance(c, (int, float)) and not isinstance(c, bool):
+                return float(c)
+        return 0.0
+    return {"V": _n(v.get("V"), v.get("valence")),
+            "A": _n(v.get("A"), v.get("arousal"), v.get("energy")),
+            "T": _n(v.get("T"), v.get("tension"))}
 
 
 # Engines that must not receive bright / teen female casting. **EMPTY as of 2026-07-29**,

@@ -346,8 +346,21 @@ def main():
         # KeyError on an absent axis and ValueError on an unreadable one, both of which kill
         # the campaign mid-run, and it accepts an out-of-range value that is silently clamped
         # downstream. `intended_vat` is the one definition of what a legal axis is.
-        intended = {k: (round(v, 2) if v is not None else None)
-                    for k, v in schemas.intended_vat(lab).items()}
+        # ⚠ CAUGHT, NOT PROPAGATED — this loop has no checkpoint (issue #100). The bank is
+        # written only after every item completes, so one `SchemaError` here does not lose a
+        # line, it loses THE WHOLE CAMPAIGN, including every arm already rendered. Site 1 in
+        # `book_ingest` can afford to be fatal because its retry loop re-asks the director and
+        # its checkpoint survives a death; neither is true here.
+        #
+        # Skipping matches this loop's own idiom for an unusable pass ("SKIPPED (line pass
+        # failed)" above) and is counted, so a short campaign is visible rather than silent.
+        try:
+            intended = {k: (round(v, 2) if v is not None else None)
+                        for k, v in schemas.intended_vat(lab).items()}
+        except schemas.SchemaError as e:
+            print(f"    SKIPPED (unusable axis): {e}")
+            misses.append((key, "unusable axis", str(e)[:80]))
+            continue
         if register != expected_register:
             misses.append((key, expected_register, register))
         print(f"    line: {register}  V/A/T {intended['V']}/{intended['A']}/{intended['T']}",
