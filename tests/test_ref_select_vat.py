@@ -147,3 +147,15 @@ def test_the_rescale_does_not_advantage_a_sparsely_labelled_candidate():
     three_axis = {"V": 0.0, "A": 0.0, "T": 0.0}      # 0.5 off on each of three
     assert ref_select._vat_distance(want, one_axis) == pytest.approx(
         ref_select._vat_distance(want, three_axis))
+
+
+def test_vat_refuses_a_record_instead_of_reading_it_as_all_absent():
+    """⚠ THE #107 GUARD. A keeps record keeps its axes under `intended_vat`; `_vat` reads
+    `V`/`valence` at the top level. Handed the record it used to answer "no axes at all",
+    which is not an error anyone sees — the caller then ranks every candidate against the
+    same constant and still produces output. Refusing is the only way that surfaces."""
+    record = {"id": "x", "intended_vat": {"V": 0.8, "A": 0.1, "T": 0.0}, "file": "a.wav"}
+    with pytest.raises(TypeError, match="record, not an axis dict"):
+        ref_select._vat(record)
+    # the thing it is telling you to write must of course still work
+    assert ref_select._vat(record["intended_vat"]) == {"V": 0.8, "A": 0.1, "T": 0.0}

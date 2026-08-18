@@ -31,7 +31,7 @@ The helpers are imported now and the guards applied. The scoring stays local, be
 pool genuinely differs; the guards do not, because they encode heard failures that are
 true of a reference clip regardless of which file lists it.
 """
-import json, math, os, sys
+import json, os, sys
 from pathlib import Path
 
 # Sibling modules used to be reached with `sys.path.insert(0, dirname(__file__))`, which
@@ -51,6 +51,7 @@ from ref_select import (  # noqa: E402
     MAX_REF_EXCURSION,
     REF_BLACKLIST,
     _vat as keep_vat,
+    _vat_distance,
     design_gender,
 )
 
@@ -78,8 +79,11 @@ def complete_vat(d):
                for k in AXES)
 
 
-def vat_dist(a, b):
-    return math.sqrt(sum((a[k] - b[k]) ** 2 for k in AXES))
+# ⚠ `vat_dist` LIVED HERE AND IS GONE (2026-08-18, issue #107). It was
+# `math.sqrt(sum((a[k] - b[k]) ** 2 for k in AXES))` — a second definition of the distance
+# `select_reference` already owned, which is the drift this branch removed from `coerce_axis`
+# in three other places. `ref_select._vat_distance` is the one definition, and it skips an
+# axis neither side labels instead of subtracting `None`.
 
 rows = [json.loads(l) for l in SRC.open()]
 keeps = [json.loads(l) for l in KEEPS.open()]
@@ -110,7 +114,25 @@ for r in rows:
         exc = k.get("ref_excursion_hz")
         if exc is not None and float(exc) >= MAX_REF_EXCURSION:
             continue
-        score = vat_dist(r["intended"], keep_vat(k))
+        # ⚠⚠ `k["intended_vat"]`, NOT `k` — RESTORED 2026-08-18 (issue #107), AND THE WAY
+        # IT WENT MISSING IS THE POINT. This file's own `keep_vat` took a keeps RECORD and
+        # did `iv = k["intended_vat"]` itself. `98734f9` (2026-08-07, B-L7) replaced it with
+        # `_vat as keep_vat` to stop the fork keeping private copies — right intent — but
+        # `_vat` takes the AXIS DICT, not the record, and the two call sites were not
+        # changed. **A shared helper is only shared if its argument is the same thing.**
+        #
+        # From that day this scored every candidate against one constant: `_vat` looked for
+        # `V`/`valence` at the top level of a record that keeps them under `intended_vat`,
+        # found neither, and returned `{0.0, 0.0, 0.0}` for all 193 keeps. A constant
+        # cancels out of a comparison, so ENGINE_PREF and the `used` penalty decided the
+        # order by themselves — and nothing said so, because a bank still came out.
+        # `9bb3607` then changed that default to `None`, which is why it now raises
+        # `TypeError` instead of ranking badly in silence.
+        #
+        # Measured on the real data with the subscript restored: **9 of the 10 scoreable
+        # rows choose a different reference.** `select_reference` has always written
+        # `_vat(k["intended_vat"])`; B-L7 records two other guards this same fork dropped.
+        score = _vat_distance(r["intended"], keep_vat(k["intended_vat"]))
         score += ENGINE_PREF.get(k.get("engine"), 0.2)
         if k["file"] in used:
             score += 0.5          # prefer distinct refs across the 10 lines
@@ -136,7 +158,20 @@ for r in rows:
         "ref_text": ref["text"],
         "ref_meta": {"id": ref["id"], "register": ref["register"],
                      "engine": ref["engine"], "gender": ref["gender"],
-                     "intended_vat": keep_vat(ref), "score": round(cands[0][0], 3)},
+                     # ⚠ `ref["intended_vat"]`, NOT `ref` — same defect as the scorer
+                     # above (issue #107), and this half would WRITE IT TO THE ARTIFACT:
+                     # `ref_meta.intended_vat` recorded as `{V: 0, A: 0, T: 0}` for every
+                     # clip is a forged neutral in a manifest, the failure `schemas.py`
+                     # opens by naming and that #92 spent two passes taking out of the
+                     # writers.
+                     #
+                     # ⚠ NO SHIPPED BANK CARRIES IT — checked, not assumed. The only
+                     # `v3d_bank.json` on disk is dated 2026-07-23, two weeks BEFORE the
+                     # 98734f9 refactor that broke this, and its `ref_meta.intended_vat`
+                     # values are real and varied. The window between the break and this
+                     # fix contains no run. Nothing needs regenerating.
+                     "intended_vat": keep_vat(ref["intended_vat"]),
+                     "score": round(cands[0][0], 3)},
     })
 
 OUT_DIR.mkdir(exist_ok=True)

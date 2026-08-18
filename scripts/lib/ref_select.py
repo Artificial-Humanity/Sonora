@@ -149,7 +149,22 @@ def _vat(v):
 
     The alias chain is a fall-through, not a first-key-wins: an unreadable `V` still lets
     `valence` answer, which is what the `isinstance` version did and is worth keeping.
+
+    ⚠ IT TAKES THE AXIS DICT, NOT THE RECORD THAT CONTAINS ONE, and being handed the
+    wrong one of those is a silent no-op rather than an error — so it is refused here
+    (issue #107). `make_v3d_bank` kept a private `keep_vat` that took a keeps RECORD and
+    did the `["intended_vat"]` itself; `98734f9` pointed the alias at this function to stop
+    the fork duplicating helpers, and left both call sites passing records. Every axis then
+    read as absent, for all 193 keeps, and a constant cancels out of a distance comparison
+    — so the ranking silently stopped happening and a bank still came out. **A shared
+    helper is only shared if its argument is the same thing.**
     """
+    if isinstance(v, dict) and "intended_vat" in v:
+        raise TypeError(
+            "_vat was handed a record, not an axis dict: it carries an 'intended_vat' key, "
+            "so you almost certainly want _vat(rec['intended_vat']). Passing the record "
+            "reads every axis as absent and the caller ranks on a constant (issue #107).")
+
     def _n(*candidates):
         for c in candidates:
             n = schemas.coerce_axis(c)
