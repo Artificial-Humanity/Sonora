@@ -210,9 +210,16 @@ rather than delaying it.
 | `agent_passes` | leave unset; it defaults to `0`. **Never write it** |
 | `user_decision` | ⚠ **the owner's field. Never write it.** Read it — see below |
 
-Leave the `gh_*` and `migrated_from_github` fields empty — they are provenance for the 48
-issues (#12–#89) migrated off GitHub, whose numbers were preserved so a `#33` in an old commit
-message still names the same finding.
+Leave the `gh_*` and `migrated_from_github` fields empty. They were provenance for 48 issues
+(#12–#89) migrated off GitHub, whose numbers were preserved so a `#33` in an old commit message
+still named the same finding.
+
+⚠ **THOSE RECORDS ARE GONE.** The owner wiped the tracker on 2026-08-17, after a byte-for-byte
+export to `notes/tracker-export-2026-08-17.json` (79 issues, 130 comments — verify it before
+you believe this paragraph). So an old commit citing `#33` now names a finding that exists only
+in that export. **This is not data loss and it is not a defect to file**: it was deliberate, and
+issue numbers are allocated from 90 upward so nothing collides. The fields stay in the schema
+because the export can be reloaded.
 
 ### Comments live in their own collection: `issue_comments`
 
@@ -383,6 +390,25 @@ Then **report how many issues remain open** (§7) and stop.
 * ⚠ **You do not decide the cycle is over.** There is no convergence check here any more. Ozzy
   reads the tracker after you and `scripts/merge_branch.sh` enforces the gate; a reviewer that
   announces "converged" is asserting something it does not own.
+* ⚠⚠ **YOU DO NOT CHANGE THE TREE — and since 2026-08-18 nothing stops you.** You now hold
+  `python` and `python3`, which is arbitrary code execution: the allowlist can no longer tell
+  an expression you evaluate from a file you rewrite. The owner granted that knowingly so you
+  can **reproduce** a finding instead of arguing it. The obligation comes with it.
+
+  **Running the suite is expected to leave incidental artifacts** — `__pycache__`, `.pytest_cache`,
+  a stray temp file. That is fine. Leaving them silently is not.
+
+  **The mechanism, and it is not optional:** end every run with
+
+  ```
+  git status --short
+  ```
+
+  and **paste its output verbatim into your final summary**, under a heading that says what it
+  is. Clean up anything you put there that is not ignored, then show the result. A tree you say
+  is clean is a claim; `git status` is evidence, and the whole reason you were given execution
+  is that this repo trusts reproduction over assertion. If it is not empty and you did not put
+  it there, say so rather than tidying someone else's work away.
 
 ### On escalated issues you encounter
 
@@ -421,13 +447,17 @@ Run this last, and put the number in your summary:
 filter='branch_name="<the branch under review>" && state="open"'
 ```
 
-⚠ **Scope it to YOUR branch — never widen it to `branch_name!=""`.** Nine open issues (#26,
-#68, #70, #79, #80, #81, #85, #87, #89) are the **migrated GitHub backlog**, parked on
-`github-issues-fixes` and deliberately unworked until that branch is rebased. They will not
-close on your cycle, so a check that counts them can never reach zero — and reading that as
-"the loop is not converging" is exactly the wrong conclusion. `branch_name!=""` was the right
-guard only while that backlog carried no branch at all; it now has one, so the clause that
-used to exclude it would **include** it.
+⚠ **Scope it to YOUR branch — never widen it to `branch_name!=""`.** The reason has changed
+but the rule has not. It used to be the migrated GitHub backlog: nine open issues parked on
+`github-issues-fixes`, which could never close on your cycle, so a check that counted them
+could never reach zero.
+
+⚠ **That backlog no longer exists** (tracker wiped 2026-08-17; see the `gh_*` note above). Do
+not go looking for it, and do not report its absence as a finding — a reviewer did exactly that
+on 2026-08-17, correctly refusing to guess a cause, because this paragraph still described it.
+The scoping rule survives the backlog on its own merits: **another branch's open issues are not
+yours to count**, and a number that mixes branches tells Ozzy nothing about the one under
+review.
 
 ⚠ **This is a REPORT, not a verdict.** You are telling Ozzy what is left, not declaring the
 work done — the merge gate in `scripts/merge_branch.sh` decides that, server-side, and it
