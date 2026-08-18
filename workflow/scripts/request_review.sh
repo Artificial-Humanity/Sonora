@@ -77,7 +77,7 @@ request_review.sh — one-shot code review by Janis. Blocks; prints the review o
 filed. Janis writes issues one at a time as it goes, so a run that dies mid-way leaves real
 findings in the tracker. Before you conclude a failed run found nothing, query it:
 
-    branch_name="<this branch>" && state="open"
+    branch_name="<this branch>" && state!="closed"
 
 and read what is there. Then say what happened and push (AGENTS.md §1).
 USAGE
@@ -280,14 +280,21 @@ else
   fi
 fi
 
-# --- The changeset: a branch's local-only pull request ---------------------
-# ⚠ ALL WORK HAPPENS ON A BRANCH, AND THE BRANCH IS THE REVIEWABLE UNIT (owner, 2026-08-17).
-# A commit is too granular to review — a fix commit is not a change, it is part of one — and a
-# GitHub PR is the friction this lane exists to avoid. The middle is a branch with a record:
-# `scripts/changeset.sh` gives it an identity, a state and a merge event, and every issue a
-# review files is stamped with it. That is what makes "is this piece of work done?" a query
-# instead of something a session has to remember.
-CS_JSON="$(BRANCH="$BRANCH" REPO_SLUG="$REPO_SLUG" python3 "$REPO_ROOT/scripts/lib/find_changeset.py" 2>/dev/null || true)"
+# --- The branch IS the reviewable unit -------------------------------------
+# ⚠ ALL WORK HAPPENS ON A BRANCH (owner, 2026-08-17). A commit is too granular to review — a
+# fix commit is not a change, it is part of one — and a GitHub PR is the friction this lane
+# exists to avoid.
+#
+# ⚠ CHANGESETS WERE RETIRED 2026-08-17 and this block used to summon their ghost. It called
+# `scripts/lib/find_changeset.py`, which was DELETED in the same retirement, swallowed the
+# failure with `2>/dev/null || true`, and fell through to a brief section telling the reviewer
+# "this branch has no changeset record ... the work cannot be shown to be finished". Three
+# consecutive reviews dutifully reported that as a gap. It was the absence of a mechanism
+# somebody had deliberately removed. The record lives in `notes/changesets-retired-2026-08-17.json`.
+#
+# Nothing was lost with it: `branch_name` already ties a finding to the work, and
+# `merge_branch.sh` querying `state!="closed"` on that branch already IS the convergence check.
+# The changeset supplied an identity the branch name already had.
 
 # --- Sibling repos the reviewer may READ -----------------------------------
 # ⚠ WITHOUT THIS THE REVIEWER IS BLIND TO MECHANISMS THIS REPO ONLY DESCRIBES. Measured:
@@ -426,32 +433,21 @@ You will not be able to run the suite. Mark every finding that needed execution 
 "
 fi
 
-if [[ -n "$CS_JSON" ]]; then
-  CS_ID="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["id"])' "$CS_JSON")"
-  CS_NUM="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["number"])' "$CS_JSON")"
-  CS_TITLE="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["title"])' "$CS_JSON")"
-  BRIEF+="
-### The changeset this belongs to
+BRIEF+="
+### The unit of work is this branch
 
-Branch \`$BRANCH\` is **changeset #$CS_NUM — $CS_TITLE**.
-
-⚠ **Stamp \`branch_name\` = \`$BRANCH\` on every issue you file.** That is what ties a finding
-to this piece of work, and it is what decides whether the work is finished: an unstamped issue
-belongs to no unit and appears in no convergence check.
+⚠ **Stamp \`branch_name\` = \`$BRANCH\` on every issue you file.** That is what ties a
+finding to this piece of work. An unstamped issue belongs to nothing and no check will ever
+see it again.
 
 **To find what earlier passes on this branch already filed** — you have no memory of them —
-query \`branch_name=\"$BRANCH\" && state=\"open\"\`. That is every open finding on this
-changeset, whichever pass raised it. There is no list of prior ids to be handed any more.
-"
-else
-  BRIEF+="
-### No changeset
+query \`branch_name=\"$BRANCH\" && state!=\"closed\"\`.
 
-Branch \`$BRANCH\` has no open changeset record. File issues as normal, but **say so in your
-summary** — unstamped issues appear in no convergence check, so the work cannot be shown to be
-finished.
+⚠ **\`!=\"closed\"\`, not \`=\"open\"\`.** A fix pass moves every issue it addressed to
+\`review\`, so a query scoped to \`open\` returns NOTHING on exactly the branches that have
+been worked — and \`merge_branch.sh\` gates the merge on \`!=\"closed\"\`, so any narrower
+count disagrees with the thing that actually decides whether this work can land.
 "
-fi
 
 if [[ -n "$SIBLING" ]]; then
   BRIEF+="
@@ -693,6 +689,24 @@ else
 fi
 echo "request_review.sh: this blocks until the review completes." >&2
 
+# --- The tree, before and after ---------------------------------------------
+# ⚠ THE REVIEWER CAN NOW WRITE, AND ONLY THIS NOTICES (owner, 2026-08-18). It holds
+# `Bash(python:*)` so it can REPRODUCE a finding rather than argue it — a grant made on
+# measured evidence, after three findings in one pass went unverified for want of a one-line
+# snippet and a false claim survived a review because `git check-ignore` was refused.
+#
+# But `python -c` is arbitrary code execution: no prefix pattern separates evaluating an
+# expression from rewriting a file. `REVIEWER.md` tells the reviewer not to change the tree
+# and to paste `git status --short` into its summary — and both of those are the reviewer
+# reporting on ITSELF. AGENTS.md §1 is explicit that a rule is not an enforcement mechanism.
+# This is the mechanism: the launcher looks, so the answer does not depend on the reviewer's
+# cooperation or on its memory of an instruction.
+#
+# ⚠ IT REPORTS, IT DOES NOT REVERT. Discarding what a review touched could destroy the
+# owner's own uncommitted work, which is a far worse failure than a stray `__pycache__`. The
+# owner decides what to do; this only makes sure nobody has to wonder.
+TREE_BEFORE="$(git status --porcelain 2>/dev/null || true)"
+
 set +e
 claude -p "$PROMPT" \
   --system-prompt-file "$PERSONA" \
@@ -707,6 +721,18 @@ claude -p "$PROMPT" \
   ${ADD_DIR_ARGS[@]+"${ADD_DIR_ARGS[@]}"}
 STATUS=$?
 set -e
+
+TREE_AFTER="$(git status --porcelain 2>/dev/null || true)"
+if [[ "$TREE_BEFORE" != "$TREE_AFTER" ]]; then
+  echo "" >&2
+  echo "⚠ request_review.sh: THE WORKING TREE CHANGED DURING THE REVIEW." >&2
+  echo "  A reviewer reports; it does not edit. This is reported, never reverted —" >&2
+  echo "  discarding it could destroy your own uncommitted work. Inspect before you commit:" >&2
+  echo "" >&2
+  diff <(printf '%s\n' "$TREE_BEFORE") <(printf '%s\n' "$TREE_AFTER") \
+    | sed -n 's/^> /      new:  /p; s/^< /      gone: /p' >&2
+  echo "" >&2
+fi
 
 if [[ "$STATUS" -ne 0 ]]; then
   # ⚠ NOT "the review did not happen". Janis files incrementally, so a run that dies

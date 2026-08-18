@@ -444,8 +444,14 @@ Then **report how many issues remain open** (§7) and stop.
 Run this last, and put the number in your summary:
 
 ```
-filter='branch_name="<the branch under review>" && state="open"'
+filter='branch_name="<the branch under review>" && state!="closed"'
 ```
+
+⚠ **`!="closed"`, not `="open"` — the number you report must be the number that decides
+whether this work can land.** `merge_branch.sh` gates the merge on `state!="closed"`, so a
+count scoped to `open` can read zero while the gate still refuses: anything you left in
+`review`, or that is `escalated`, is invisible to it. Reporting "0 open" and having the merge
+refused is the worst of both, because it looks like the gate is broken rather than the count.
 
 ⚠ **Scope it to YOUR branch — never widen it to `branch_name!=""`.** The reason has changed
 but the rule has not. It used to be the migrated GitHub backlog: nine open issues parked on
