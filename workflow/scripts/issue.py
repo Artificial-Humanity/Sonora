@@ -34,6 +34,7 @@ Reads PocketBase credentials from ~/.claude.json (mcpServers.pocketbase.env). St
 """
 
 import argparse
+import datetime
 import json
 import os
 import re
@@ -132,7 +133,12 @@ class PB:
         st, r = self.call(
             "/api/collections/issues/records?perPage=1&filter="
             + urllib.parse.quote('repo="%s" && number=%d' % (args.repo, number)))
-        items = (r.get("items") or []) if st == 200 else []
+        # ⚠ A REFUSED QUERY IS NOT A MISSING ISSUE. `if st == 200 else []` collapsed the two
+        # into one message, and "no issue #100 in ..." sends the reader to look for a record
+        # that is sitting right there (2026-08-18).
+        if st != 200:
+            die("lookup refused by the tracker: %s" % json.dumps(r)[:400])
+        items = r.get("items") or []
         if not items:
             die("no issue #%d in %s" % (number, args.repo))
         return items[0]
@@ -151,8 +157,15 @@ class PB:
         if len(text) > COMMENT_MAX:
             die("comment is %d characters; the cap is %d. Put detail in the issue body, which "
                 "allows 200,000." % (len(text), COMMENT_MAX))
+        # ⚠ `posted_at` IS STAMPED HERE BECAUSE NOTHING ELSE STAMPS IT. This collection has
+        # no `created` system field -- it was built to mirror the imported GitHub comments,
+        # which carried their own timestamps. A comment written through this script had
+        # `posted_at=""` and `seq=0`, so a reader sorting by time got every agent comment in
+        # one undifferentiated block ahead of the imported ones (2026-08-18).
         st, r = self.call("/api/collections/issue_comments/records", "POST",
-                          {"issue": rec["id"], "author": author, "body": text})
+                          {"issue": rec["id"], "author": author, "body": text,
+                           "posted_at": datetime.datetime.now(datetime.timezone.utc)
+                           .strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] + "Z"})
         if st >= 300:
             die("comment refused: %s" % json.dumps(r)[:400])
 
@@ -209,10 +222,26 @@ def cmd_show(pb, args):
     if (rec.get("user_decision") or "").strip():
         print("\nUSER DECISION (the owner's; outranks any finding)\n%s" % rec["user_decision"])
     print("\n%s" % (rec.get("body") or "")[:4000])
-    st, r = pb.call("/api/collections/issue_comments/records?perPage=100&sort=created&filter="
-                    + urllib.parse.quote('issue="%s"' % rec["id"]))
-    for c in (r.get("items") or []):
-        print("\n--- %s (%s)\n%s" % (c.get("author"), (c.get("created") or "")[:19], c.get("body")))
+    # ⚠⚠ THIS QUERY RETURNED HTTP 400 FOR EVERY ISSUE, AND THE STATUS WAS DISCARDED, SO
+    # `show` PRINTED ZERO COMMENTS FROM THE DAY IT WAS WRITTEN. `issue_comments` has no
+    # `created` system field, and PocketBase refuses a sort on a field that does not exist.
+    # Measured 2026-08-18: 28 comment records in the collection, #92 had four and #100 had
+    # two, and `show` displayed none of them for any issue. That is the whole reopen->fix
+    # channel -- `reopen` and `escalate` REFUSE to run without a comment, and the worker
+    # could not read the one thing the reviewer was required to write.
+    #
+    # ⚠ The status is checked now. An empty comment list and a refused query must not print
+    # the same thing; that is the same silent-negative this script exists to remove.
+    st, r = pb.call("/api/collections/issue_comments/records?perPage=100&sort=posted_at,seq"
+                    "&filter=" + urllib.parse.quote('issue="%s"' % rec["id"]))
+    if st != 200:
+        die("comment query refused: %s" % json.dumps(r)[:400])
+    items = r.get("items") or []
+    if not items:
+        print("\n(no comments)")
+    for c in items:
+        print("\n--- %s (%s)\n%s"
+              % (c.get("author"), (c.get("posted_at") or "")[:19], c.get("body")))
 
 
 def cmd_file(pb, args):
@@ -228,6 +257,12 @@ def cmd_file(pb, args):
     for attempt in range(6):
         st, r = pb.call("/api/collections/issues/records?perPage=1&sort=-number&fields=number"
                         "&filter=" + urllib.parse.quote('repo="%s"' % args.repo))
+        # ⚠ Checked, because the consequence of not checking is not an error message. A
+        # refused query leaves `rows` empty, `n` becomes 1, and the POST below collides with
+        # issue #1 six times before dying with "could not allocate a free issue number" --
+        # a message about numbering, for a fault that has nothing to do with numbering.
+        if st != 200:
+            die("number lookup refused: %s" % json.dumps(r)[:400])
         rows = r.get("items") or []
         n = (rows[0]["number"] if rows else 0) + 1 + attempt
         st, rec = pb.call("/api/collections/issues/records", "POST", {
@@ -344,7 +379,12 @@ def cmd_escalated(pb, args):
                     "&fields=number,state,title,agent_passes,branch_name,user_decision"
                     "&filter=" + urllib.parse.quote(
                         'repo="%s" && state="escalated"' % args.repo))
-    items = (r.get("items") or []) if st == 200 else []
+    # ⚠ NOT `if st == 200 else []`. This is the queue the OWNER reads to find what is
+    # waiting on a decision, and degrading a refused query to an empty list prints
+    # "nothing is escalated" -- the most reassuring possible rendering of a broken query.
+    if st != 200:
+        die("escalation query refused: %s" % json.dumps(r)[:400])
+    items = r.get("items") or []
     if not items:
         print("nothing is escalated")
         return

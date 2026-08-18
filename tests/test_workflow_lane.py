@@ -337,3 +337,107 @@ def test_the_reviewer_persona_knows_about_full_reviews():
 def test_full_review_is_declared_in_the_manifest():
     manifest = (REPO / "scripts" / "pipeline_manifest.py").read_text(encoding="utf-8")
     assert "workflow/scripts/full_review.sh" in manifest
+
+
+# --------------------------------------------------------------------------------------
+# The tracker script must not degrade a refused query into an empty answer.
+#
+# WHY (2026-08-18). `cmd_show` queried `issue_comments` with `sort=created`, which that
+# collection does not have, so PocketBase answered HTTP 400 for EVERY issue. The status was
+# assigned to `st` and never read, so `show` printed zero comments from the day it was
+# written -- while 28 comment records sat in the collection, four of them on #92 and two on
+# #100. `reopen` and `escalate` REFUSE to run without a comment; the one channel the rules
+# make mandatory was the one the worker could not read.
+#
+# `cmd_escalated` had the other half of the shape: `(r.get("items") or []) if st == 200
+# else []`, which renders a broken query as "nothing is escalated" -- the most reassuring
+# possible output for the queue the owner reads to find what is waiting on them.
+#
+# ⚠ AST, NOT A TEXT SCAN. This comment contains both offending idioms verbatim, and a text
+# scan would match it -- the trailing-comment defect this repo keeps re-learning.
+
+def _call_status_targets(tree):
+    """-> [(status_name, lineno, enclosing_function)] for every `st, x = ....call(...)`."""
+    out = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            tgt, val = node.targets[0], node.value
+            if not (isinstance(tgt, ast.Tuple) and len(tgt.elts) == 2):
+                continue
+            if not (isinstance(val, ast.Call) and isinstance(val.func, ast.Attribute)
+                    and val.func.attr == "call"):
+                continue
+            if isinstance(tgt.elts[0], ast.Name):
+                out.append((tgt.elts[0].id, node.lineno, fn))
+    return out
+
+
+def test_every_tracker_response_status_is_read():
+    """A status captured and never read is a query whose failure has no consequence."""
+    tree = ast.parse(ISSUE_SRC)
+    targets = _call_status_targets(tree)
+    assert len(targets) >= 6, f"only {len(targets)} .call() sites found — is the walk working?"
+    unread = []
+    for name, lineno, fn in targets:
+        # the window ends at the next assignment to the same name in the same function
+        later = [ln for nm, ln, f in targets if f is fn and nm == name and ln > lineno]
+        end = min(later) if later else 10 ** 9
+        reads = [n for n in ast.walk(fn)
+                 if isinstance(n, ast.Name) and n.id == name
+                 and isinstance(n.ctx, ast.Load) and lineno < n.lineno < end]
+        if not reads:
+            unread.append(f"  {fn.name}:{lineno} captures {name!r} and never reads it")
+    assert not unread, (
+        "these tracker queries discard their HTTP status, so a refused query is "
+        "indistinguishable from an empty answer:\n" + "\n".join(unread))
+
+
+def test_no_reader_degrades_a_refused_query_to_an_empty_result():
+    """The `... if st == 200 else []` shape, as an AST pattern rather than a string.
+
+    A refused query and a genuine zero must not print the same thing. This is the same
+    silent-negative that made a crash handler report "0 issues filed" with five present.
+    """
+    tree = ast.parse(ISSUE_SRC)
+    statuses = {name for name, _l, _f in _call_status_targets(tree)}
+    offenders = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.IfExp):
+            continue
+        names = {n.id for n in ast.walk(node.test)
+                 if isinstance(n, ast.Name) and n.id in statuses}
+        if not names:
+            continue
+        for branch in (node.body, node.orelse):
+            empty = ((isinstance(branch, (ast.List, ast.Tuple)) and not branch.elts)
+                     or (isinstance(branch, ast.Dict) and not branch.keys))
+            if empty:
+                offenders.append(
+                    f"  line {node.lineno}: a conditional on {sorted(names)} falls back to "
+                    f"an empty literal")
+    assert not offenders, (
+        "a refused tracker query must fail loudly, not read as 'nothing matched':\n"
+        + "\n".join(offenders))
+
+
+def test_the_comment_query_does_not_sort_on_a_field_that_collection_lacks():
+    """⚠ MEASURED, NOT STYLISTIC. `issue_comments` carries author/body/issue/posted_at/seq
+    and no `created` — PocketBase returns 400 on a sort by a missing field, and that 400 is
+    what hid every comment in the tracker."""
+    tree = ast.parse(ISSUE_SRC)
+    bad = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        if "issue_comments" in node.value and "sort=created" in node.value:
+            bad.append(node.lineno)
+        # the sort may be split across adjacent implicitly-concatenated literals
+        if node.value.startswith("&sort=created") or node.value == "sort=created":
+            bad.append(node.lineno)
+    assert not bad, (
+        f"issue_comments has no `created` field; sorting on it returns HTTP 400 "
+        f"(lines {sorted(set(bad))}). Sort on `posted_at,seq`.")
