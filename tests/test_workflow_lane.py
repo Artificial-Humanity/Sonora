@@ -533,13 +533,28 @@ def test_moving_to_review_checks_that_the_pass_was_counted():
     ⚠ A WARNING, NOT A REFUSAL. Zero is also what the owner's dial reads after a deliberate
     re-arm, and refusing would make the tooling argue with them.
     """
+    # ⚠ THE BRANCH, NOT THE FUNCTION'S TEXT (issue #172). The first version asserted
+    # `"die(" not in ast.unparse(fn)` over the WHOLE function, which constrains the
+    # implementation rather than the behaviour: it would fire on an unrelated `die()` added
+    # for some other fault, and it would miss a refusal spelled `sys.exit` or `raise`. What
+    # matters is narrower and checkable — the counter is READ, and the path taken when it is
+    # zero informs rather than stops.
     tree = ast.parse(ISSUE_SRC)
     fn = next(n for n in ast.walk(tree)
               if isinstance(n, ast.FunctionDef) and n.name == "cmd_review")
-    src = ast.unparse(fn)
-    assert "agent_passes" in src, (
-        "cmd_review no longer looks at agent_passes — a pass that spent no attempt moves to "
-        "`review` unremarked again")
-    assert "die(" not in src, (
-        "cmd_review REFUSES on agent_passes now; it must only warn, because 0 is also the "
-        "owner's deliberate re-arm value")
+
+    guards = [n for n in ast.walk(fn)
+              if isinstance(n, ast.If) and "agent_passes" in ast.unparse(n.test)]
+    assert guards, (
+        "cmd_review no longer branches on agent_passes — a pass that spent no attempt moves "
+        "to `review` unremarked again")
+
+    body = "\n".join(ast.unparse(st) for g in guards for st in g.body)
+    assert "print(" in body, (
+        "the agent_passes branch no longer says anything; a guard that notices silently is "
+        "not a guard")
+    for stop in ("die(", "sys.exit", "raise "):
+        assert stop not in body, (
+            f"the agent_passes branch {stop!r}s. It must only WARN: 0 is also the value the "
+            f"owner's dial reads after a deliberate re-arm, and refusing would make the "
+            f"tooling argue with them.")

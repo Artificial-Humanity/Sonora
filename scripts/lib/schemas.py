@@ -34,9 +34,9 @@ reverse is that `environments/training-container.txt` carries `fastapi==0.141.1`
 `mlflow`, which the compose prep chain installs explicitly before `-e .` and which is the only
 candidate there (that chain installs NO extras, and no core dependency requires `fastapi` —
 measured in this venv); on a dev box **by a route this repo has not identified**. ⚠ Three
-attempts named one and all three were wrong (issues #155, #160, #167): `vocalizer` needs
-gradio and uvicorn, `dev` needs pre-commit, and none of those is installed here — and
-measured across all 67 installed distributions, **not one declares an unconditional
+attempts were made and all three were wrong (issues #155, #160, #167): two NAMED an extra —
+`vocalizer` needs gradio and uvicorn, `dev` needs pre-commit, and none of those is installed
+here — and measured across all 67 installed distributions, **not one declares an unconditional
 `Requires-Dist: fastapi`**. `fastapi 0.141.1` is present by something this venv no longer
 records. Saying "some extra" was the third wrong answer, because it still asserts the part
 the measurement refuses.
