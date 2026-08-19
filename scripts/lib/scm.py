@@ -6,6 +6,8 @@ instrument decode (utterance VAT within `VAT_TOL`; spans activate when the span 
 layer lands). Interpretive fields (style, direction) are never load-bearing.
 """
 
+import math
+
 import schemas
 
 VAT_TOL = 0.35  # ratified tolerance (owner amendment 2026-07-19: widened from
@@ -79,8 +81,24 @@ def validate(obj, lexicon):
             # ⚠ The TYPE check above stays separate and strict, because that is the
             # contract question (#117): a JSON string is a violation even though
             # `coerce_axis("0.7")` is 0.7.
-            errs.append(f"vat.{ch} is {_show(v)}, not a finite number — re-derive it from the "
-                        f"instrument, or write the axis as null if it was never measured")
+            # ⚠ TWO DIAGNOSES, BECAUSE `coerce_axis` RETURNS None FOR TWO DIFFERENT THINGS
+            # (issue #145). It refuses NaN and the infinities, AND it refuses a value that
+            # cannot be converted to a float at all — a JSON integer larger than float64
+            # can hold, which is #141's own case. `10**400` IS a finite number; it is an
+            # exact Python int. Telling its author it "is not a finite number" is false of
+            # the value in front of them, and the repair differs: a NaN comes from a broken
+            # instrument, an oversized int comes from a wrong SCALE.
+            #
+            # ⚠ NO "write it as null" (issue #144). The branch four lines above rejects a
+            # null axis outright — "the sidecar must carry all three axes" — and the
+            # ratified brief has no null form for `utterance.vat`. Sending the reader there
+            # is one validator handing out two contradictory instructions.
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                errs.append(f"vat.{ch} is {_show(v)}, not a finite number — re-derive it "
+                            f"from the instrument")
+            else:
+                errs.append(f"vat.{ch} is {_show(v)}, too large to represent as a float — "
+                            f"re-derive it on the clamped per-speaker z scale")
         elif not schemas.AXIS_MIN <= v <= schemas.AXIS_MAX:
             errs.append(f"vat.{ch} is {_show(v)}, out of "
                         f"[{schemas.AXIS_MIN:g},{schemas.AXIS_MAX:g}] — clamp it to the "

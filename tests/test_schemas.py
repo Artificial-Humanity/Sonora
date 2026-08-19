@@ -357,10 +357,11 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
     #
     # ⚠ NO FILE-LEVEL ENTRY FOR `schemas.py` (issue #118). It had one, and the file is not
     # single-purpose: `fmt_axis` was a SECOND reader inside it, disagreeing with the
-    # definition on `"0.7"`, invisible to this scan, and beyond the staleness assertion
-    # below — which only covers entries carrying a line. The guard was switched off for
-    # precisely the file most likely to grow the next copy. `fmt_axis` now only the definition itself needs naming, and it is named like every other entry — by
-    # its enclosing FUNCTION, not by a line (see the paragraph below).
+    # definition on `"0.7"` and invisible to this scan — so the guard was switched off for
+    # precisely the file most likely to grow the next copy. **`fmt_axis` delegates to
+    # `coerce_axis` now**, which is why nothing in this module needs a file-level entry:
+    # only the definition itself is exempt, keyed like every other entry by its enclosing
+    # FUNCTION.
     # ⚠ KEYED ON THE ENCLOSING FUNCTION, NOT ON A LINE NUMBER. Line-keyed entries drifted
     # three times in one session — every edit above a site invalidates it — and worse, the
     # staleness check CANNOT see the failure that matters: two of these reasons were
@@ -391,7 +392,16 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
         # the contract forbids — reverted 2026-08-19 after checking the brief.
         ("scripts/lib/scm.py", "validate"): "schema conformance, not axis coercion",
     }
-    EXEMPT_FILES = {f for f, fn in EXEMPT if fn is None}
+
+    # ⚠ NO FILE-LEVEL EXEMPTIONS, AND THE MECHANISM IS GONE WITH THEM (issue #147). An
+    # `EXEMPT_FILES` set and its `continue` survived the #118 re-key that emptied it, so
+    # three lines of skip logic sat in this scan that could never fire. Unreachable code
+    # reads as load-bearing to the next editor, who has to work out what it defends against
+    # before touching the loop — the same argument that removed a dead `.replace()` from
+    # `test_the_writers_no_longer_default_an_axis_to_zero`. `schemas.py` is the file that
+    # proved the bar for a whole-file exemption is higher than it looks; if one is ever
+    # earned again it should arrive with its own reason and its own test, not as a dormant
+    # branch waiting for a tenant.
 
     def enclosing(tree):
         """line -> the innermost function containing it, else '<module>'.
@@ -412,8 +422,6 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
     seen = set()
     for path in sorted((REPO / "scripts").rglob("*.py")):
         rel = path.relative_to(REPO).as_posix()
-        if rel in EXEMPT_FILES:
-            continue
         try:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:
@@ -444,8 +452,6 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
     # with someone else's reason attached. Latent today (checked: no exempted name is
     # duplicated in its file), and refused here so it stays that way.
     for rel_f, fname in EXEMPT:
-        if fname is None:
-            continue
         try:
             t = ast.parse((REPO / rel_f).read_text(encoding="utf-8"))
         except OSError:
@@ -457,7 +463,7 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
             f"it covers all of them — including ones nobody reasoned about. Rename one, or "
             f"key this entry more precisely.")
 
-    stale = {k for k in EXEMPT if k[1] is not None} - seen
+    stale = set(EXEMPT) - seen
     assert not stale, (
         f"these exemptions name a (file, function) that no longer contains an "
         f"`isinstance(x, (int, float))`: {sorted(stale)}. Re-point or delete them — an "

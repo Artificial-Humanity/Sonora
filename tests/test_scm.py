@@ -166,21 +166,29 @@ def test_each_repair_gets_its_own_message(vat, expect):
 # whatever branch produced them. Collapsing two branches into one template would have kept
 # the set at four. The test could not detect the thing its docstring promised.
 BRANCH_MARKERS = {
-    "missing": ("is missing", {"A": 0.1, "T": 0.0}),
-    "wrong type": ("not a number — the sidecar stores", {"V": "0.7", "A": 0.1, "T": 0.0}),
-    "non-finite": ("not a finite number", {"V": float("nan"), "A": 0.1, "T": 0.0}),
-    "out of range": ("out of [-1,1]", {"V": 1.5, "A": 0.1, "T": 0.0}),
+    #  branch          distinctive diagnosis            the repair it must name        probe
+    "missing":      ("is missing",            "must carry all three axes",
+                     {"A": 0.1, "T": 0.0}),
+    "wrong type":   ("not a number — the sidecar stores", "Emit it as a JSON number",
+                     {"V": "0.7", "A": 0.1, "T": 0.0}),
+    "non-finite":   ("not a finite number",   "re-derive it from the instrument",
+                     {"V": float("nan"), "A": 0.1, "T": 0.0}),
+    "unrepresentable": ("too large to represent as a float",
+                        "re-derive it on the clamped per-speaker z scale",
+                        {"V": 10 ** 400, "A": 0.1, "T": 0.0}),
+    "out of range": ("out of [-1,1]",         "clamp it to the trained range",
+                     {"V": 1.5, "A": 0.1, "T": 0.0}),
 }
 
 
 @pytest.mark.parametrize("branch", sorted(BRANCH_MARKERS))
 def test_each_branch_says_something_no_other_branch_says(branch):
     """Collapsing any two branches makes one marker appear in two messages — which this
-    catches and a set of whole messages cannot."""
-    marker, probe = BRANCH_MARKERS[branch]
+    catches and a set of whole messages cannot (issue #143)."""
+    marker, _repair, probe = BRANCH_MARKERS[branch]
     mine = _vat_errors(probe)[0]
     assert marker in mine, f"{branch}: {marker!r} not in {mine!r}"
-    for other, (_m, other_probe) in BRANCH_MARKERS.items():
+    for other, (_m, _r, other_probe) in BRANCH_MARKERS.items():
         if other == branch:
             continue
         assert marker not in _vat_errors(other_probe)[0], (
@@ -188,20 +196,31 @@ def test_each_branch_says_something_no_other_branch_says(branch):
             f"branches have collapsed into one template")
 
 
-def test_every_branch_names_a_repair():
-    """⚠ #144. A diagnosis without an instruction leaves the reader to infer one, and the
-    non-finite branch shipped with its repair written only in the comment above the string."""
-    for branch, (_marker, probe) in BRANCH_MARKERS.items():
+@pytest.mark.parametrize("branch", sorted(BRANCH_MARKERS))
+def test_each_branch_names_ITS_OWN_repair(branch):
+    """⚠ THE REPAIR IS PINNED PER BRANCH, NOT LOOKED FOR IN A WORD LIST (issue #146).
+
+    The first version was `any(w in msg for w in ("must", "Emit", "re-derive", "clamp"))`
+    across all branches at once, which passes as long as SOME branch-agnostic verb survives
+    anywhere in the string — so swapping one branch's repair for another's, or leaving a
+    single "re-derive" behind after deleting the sentence that made it specific, kept it
+    green. That is the same defect as #143 one level up: a check that cannot distinguish the
+    thing it is named for.
+    """
+    _marker, repair, probe = BRANCH_MARKERS[branch]
+    msg = _vat_errors(probe)[0]
+    assert repair in msg, f"{branch} no longer names its repair {repair!r}: {msg!r}"
+
+
+def test_no_branch_sends_the_reader_to_a_state_another_branch_rejects():
+    """⚠ #144's second half, as a property. The non-finite message once ended "or write the
+    axis as null if it was never measured", and the missing branch four lines above rejects
+    exactly that — one validator handing out contradictory instructions. The brief has no
+    null form for `utterance.vat`, so no message may recommend one."""
+    for branch, (_m, _r, probe) in BRANCH_MARKERS.items():
         msg = _vat_errors(probe)[0]
-        assert any(w in msg for w in ("must", "Emit", "re-derive", "clamp")), (
-            f"{branch} names no repair: {msg!r}")
-
-
-def test_a_wrong_type_and_an_out_of_range_value_both_name_the_value():
-    """#137: the range message printed no value while the two beside it did."""
-    assert "'0.7'" in _vat_errors({"V": "0.7", "A": 0.1, "T": 0.0})[0]
-    assert "1.5" in _vat_errors({"V": 1.5, "A": 0.1, "T": 0.0})[0]
-    assert "nan" in _vat_errors({"V": float("nan"), "A": 0.1, "T": 0.0})[0]
+        assert "null" not in msg.lower(), (
+            f"{branch} recommends a null axis, which the missing branch rejects: {msg!r}")
 
 
 def test_validate_returns_a_list_rather_than_raising_on_an_oversized_integer():
@@ -218,7 +237,10 @@ def test_validate_returns_a_list_rather_than_raising_on_an_oversized_integer():
     """
     huge = 10 ** 400
     errs = scm.validate(_obj({"V": huge, "A": 0.1, "T": 0.0}), LEX)   # must not raise
-    assert any("not a finite number" in e for e in errs), errs
+    # ⚠ The diagnosis is "too large to represent as a float", NOT "not a finite number":
+    # 10**400 is an exact int and is perfectly finite (issue #145). What this test pins is
+    # that `validate` RETURNS the violation rather than raising it.
+    assert any("too large to represent" in e for e in errs), errs
 
 
 def test_an_oversized_value_is_truncated_in_the_message():
