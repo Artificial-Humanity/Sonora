@@ -14,6 +14,8 @@ assertions below are specific about it.
 
 import ast
 import re
+
+import pytest
 import subprocess
 from pathlib import Path
 
@@ -623,28 +625,57 @@ def test_the_zero_warning_does_not_refuse():
 
 LANE_FILES = sorted(list((REPO / "workflow").rglob("*.sh")) + list((REPO / "workflow").rglob("*.py")))
 
-# A repo-relative path to a concrete file. Deliberately narrow: it must start at a real
-# top-level directory and end in a known extension, so prose and constructed names do not
-# match. Measured when written: 38 literals in code across the lane, 0 of them absent.
+# A repo-relative path to a concrete file: a real top-level directory, then a known
+# extension. Measured when written: 38 literals across the lane, 0 absent.
+#
+# ⚠ `ya?ml` IS IN THE LIST BECAUSE `configs` IS (issue #179). The directory list and the
+# extension list are one rule, and `configs/` holds YAML almost exclusively — so naming the
+# directory while omitting its extension made the guard claim a coverage its pattern did not
+# deliver. Measured before widening: 38 hits either way, 0 absent, so this adds reach without
+# adding noise today.
 _LANE_PATH = re.compile(
     r'(?:\$REPO_ROOT/|\$\{REPO_ROOT\}/|"\s*)?'
-    r'((?:scripts|workflow|tests|matcha|configs)/[A-Za-z0-9_./-]+\.(?:py|sh|json|md|env))')
+    r'((?:scripts|workflow|tests|matcha|configs)/[A-Za-z0-9_./-]+\.(?:py|sh|json|md|env|ya?ml))')
 
 
-def _lane_path_literals():
-    """(file, line, path) for every repo-relative path named in LANE code, comments excluded."""
+def _lane_path_literals(root=None):
+    """(file, line, path) for every repo-relative path named in LANE code, comments excluded.
+
+    ⚠ `root` EXISTS SO THE EXTRACTOR CAN BE TESTED (issues #178, #161, #172). Three guards on
+    this branch were written by copying the scan into the test, which asserts about a
+    reimplementation: change the real one and the test stays green. Measured — both mutants
+    of the first version of this pair were MISSED for exactly that reason.
+    """
     out = []
-    for f in LANE_FILES:
+    files = (LANE_FILES if root is None else
+             sorted(list((root / "workflow").rglob("*.sh")) + list((root / "workflow").rglob("*.py"))))
+    base = REPO if root is None else root
+    for f in files:
         for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
-            # ⚠ Comments are stripped, because three comments in this very file quote the
-            # deleted `find_changeset.py` path to explain the defect. A text scan that read
-            # its own explanation as a violation is the trailing-comment trap, and this repo
-            # has paid for it more than once.
-            if line.lstrip().startswith("#"):
-                continue
+            # ⚠ THE RULE IS "EXPLANATORY `#` COMMENTS ARE EXEMPT; EVERYTHING THE LANE
+            # EMITS OR RUNS IS NOT" — and the first version of this comment described only
+            # half of it (issue #178). `#` comments are stripped because three of them in
+            # this file QUOTE the deleted `find_changeset.py` path to explain the defect; a
+            # scan that read its own explanation as a violation is the trailing-comment trap.
+            #
+            # ⚠ PROSE INSIDE A STRING IS DELIBERATELY *NOT* EXEMPT, and that is a choice
+            # rather than an oversight. The eight such sites in the lane today — brief text
+            # telling the reviewer to read `workflow/REVIEWER.md`, `merge_branch.sh`'s help
+            # naming `request_review.sh`, `issue.py`'s docstring naming `workflow/config.env`
+            # — are all LIVE POINTERS A READER FOLLOWS. A stale one is the same defect as a
+            # stale probe, and #175 on this very branch was exactly that: a comment citing
+            # the wrong REVIEWER.md section. The commit that added this called the exclusion
+            # "mutation-tested both directions" when both directions tested were `#`
+            # comments; `test_prose_naming_a_missing_path_is_caught` below is the direction
+            # that was missing.
+            # ⚠ ONE MECHANISM, NOT TWO. A `startswith("#")` early-continue stood here and
+            # was DEAD: `split("#", 1)[0]` already yields "" for a whole-line comment, so
+            # removing the guard changed nothing — measured, the mutant was a no-op. Dead
+            # code reads as load-bearing to the next editor, which is the argument that took
+            # `EXEMPT_FILES` out of test_schemas.py (issue #147).
             code = line.split("#", 1)[0]
             for m in _LANE_PATH.finditer(code):
-                out.append((f.relative_to(REPO).as_posix(), i, m.group(1)))
+                out.append((f.relative_to(base).as_posix(), i, m.group(1)))
     return out
 
 
@@ -666,3 +697,48 @@ def test_every_path_the_lane_names_exists():
     assert not missing, (
         "the lane names paths that do not exist. Each is a probe, deny or call that cannot "
         "do anything, and nothing at runtime will say so:\n" + "\n".join(missing))
+
+
+def test_prose_naming_a_missing_path_is_caught(tmp_path):
+    """⚠ THE DIRECTION `6a9f7bc` CLAIMED TO HAVE TESTED AND HAD NOT (issue #178).
+
+    It reported the comment exclusion "mutation-tested both directions"; both directions were
+    `#` comments. Prose inside a shell string — the brief, help text, a docstring — was
+    scanned as code and never exercised. It still is scanned, on purpose: those are pointers a
+    reader follows, and this branch exists because one of them went stale. So the behaviour is
+    asserted rather than assumed.
+    """
+    lane = tmp_path / "workflow" / "scripts"
+    lane.mkdir(parents=True)
+    (lane / "fake.sh").write_text(
+        '#!/usr/bin/env bash\n'
+        '# scripts/lib/gone_from_a_comment.py must NOT count\n'
+        'BRIEF="read scripts/lib/gone_from_prose.py for the rules"\n',
+        encoding="utf-8")
+
+    found = [p for _f, _i, p in _lane_path_literals(tmp_path)]   # ⚠ THE REAL EXTRACTOR
+
+    assert "scripts/lib/gone_from_prose.py" in found, (
+        "a path named in brief prose is no longer scanned — the reviewer can be sent to a "
+        "file that does not exist, which is the defect this branch was opened for")
+    assert "scripts/lib/gone_from_a_comment.py" not in found, (
+        "a path quoted in a `#` comment is being scanned — comments in this lane quote "
+        "deleted paths to explain them, and flagging that is the trailing-comment trap")
+
+
+@pytest.mark.parametrize("sample", [
+    "scripts/lib/schemas.py", "workflow/scripts/issue.py", "tests/test_scm.py",
+    "matcha/delivery.py", "workflow/config.env", "notes/x.md".replace("notes", "workflow"),
+    "configs/data/libritts.yaml", "configs/model/matcha.yml", "scripts/assets/x.json",
+])
+def test_the_pattern_covers_every_directory_and_extension_the_rule_claims(sample):
+    """⚠ #179's DEFECT AS A PROPERTY. `configs` was in the directory list while `yaml` was
+    absent from the extensions, so the guard claimed a coverage its pattern did not deliver —
+    and nothing detected the omission, because the lane happens to name no YAML today. A
+    coverage claim that only holds by accident of the current tree is not a guard.
+
+    Every combination the rule advertises is asserted here, so narrowing either list fails.
+    """
+    assert _LANE_PATH.search(sample), (
+        f"{sample!r} is inside the directories and extensions this guard claims to cover, and "
+        f"the pattern does not match it")
