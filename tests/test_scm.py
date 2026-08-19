@@ -86,22 +86,92 @@ def test_the_TOLERANT_readers_still_do_not_crash_on_an_unvalidated_string():
     assert "V+0.20" in scm.render_inline(obj)
 
 
-def test_the_tolerance_is_not_restated_anywhere_in_the_module():
-    """⚠ THE FIRST VERSION OF THIS TEST WAS ITSELF A SECOND LITERAL (issue #133).
+def restatements(src, value):
+    """How many times `value` appears in `src` beyond its own definition.
 
-    It was named `..._is_not_restated_in_this_file` and its body was `assert scm.VAT_TOL ==
-    0.35` — a restatement, in a test asserting there are none. It also missed the one that
-    mattered: `scm.py`'s own module docstring gave the tolerance as `±0.35` five lines above
-    the constant, and nothing could see it, because `test_doc_claims.docs()` builds its file
-    set from `notes/*.md`, the root README and `configs/data/*.yaml` — no `.py` at all.
-
-    So the assertion is now about ABSENCE, and it names no number of its own.
+    Extracted so the rule can be EXERCISED rather than only applied — a check that only ever
+    runs against the real file cannot be shown to still work after the value changes, which
+    is precisely how v2 of this test went vacuous (issue #135).
     """
-    src = SCRIPTS.src("scm.py")
-    body = src.split("VAT_TOL", 1)[0]      # everything above the definition, i.e. the docstring
-    assert str(scm.VAT_TOL) not in body, (
-        f"scm.py's docstring restates the tolerance ({scm.VAT_TOL}) above the constant that "
-        f"defines it. Point at `VAT_TOL` instead; a value in two places drifts, and the "
-        f"doc-claims gate cannot read .py files.")
-    assert "±0.35" not in src and "0.35" not in src.replace("VAT_TOL = 0.35", "", 1), \
-        "the tolerance appears in scm.py somewhere other than its definition"
+    definition = f"VAT_TOL = {value}"
+    if definition not in src:
+        raise AssertionError(f"no `{definition}` in the source")
+    return src.replace(definition, "", 1).count(value)
+
+
+def test_the_tolerance_is_not_restated_anywhere_in_the_module():
+    """⚠ THIS TEST HAS NOW BEEN WRONG TWICE, IN OPPOSITE DIRECTIONS.
+
+    v1 was `assert scm.VAT_TOL == 0.35` under the name `..._is_not_restated_in_this_file` —
+    a restatement, in a test asserting there are none (issue #133).
+
+    v2 replaced it with `"±0.35" not in src` plus a `replace("VAT_TOL = 0.35", "", 1)`, which
+    put the literal back THREE times while its docstring and the brief both claimed it named
+    none — and went **vacuous the moment the constant is amended**: at `VAT_TOL = 0.4` the
+    replace matches nothing and the search string `0.35` is absent from a file that now
+    restates `0.4` everywhere. A guard a value change silently disarms is §5b's whole
+    subject (issue #135).
+
+    v3 derives everything from `scm.VAT_TOL`, so amending the constant re-aims the test.
+    """
+    assert restatements(SCRIPTS.src("scm.py"), str(scm.VAT_TOL)) == 0, (
+        f"{scm.VAT_TOL} appears in scm.py somewhere other than its definition. A value in "
+        f"two places drifts, and the doc-claims gate cannot read .py files, so nothing else "
+        f"would catch it.")
+
+
+@pytest.mark.parametrize("value", ["0.35", "0.4", "0.25", "0.5"])
+def test_the_restatement_rule_still_bites_at_any_value(value):
+    """⚠ THE LIVENESS CHECK, and the thing #135 was actually about.
+
+    The failure mode is not "the assertion is wrong" but "the assertion stops applying". So
+    the rule is run against synthetic sources at several values: a clean one must pass and a
+    restating one must be caught, whatever the constant happens to be.
+    """
+    clean = f"VAT_TOL = {value}  # the only mention\ndef f():\n    return VAT_TOL\n"
+    dirty = f'"""docstring says within ±{value}."""\nVAT_TOL = {value}\n'
+    assert restatements(clean, value) == 0
+    assert restatements(dirty, value) == 1
+
+
+def test_the_restatement_rule_refuses_a_source_with_no_definition():
+    """A rule that silently passes when it cannot find its anchor is disarmed, not clean."""
+    with pytest.raises(AssertionError, match="no `VAT_TOL"):
+        restatements("nothing here\n", "0.35")
+
+
+# --- the messages, one per repair (issues #132, #137, #138) ----------------------------
+#
+# ⚠ #138: the #132 split added three messages and no assertion that could tell them apart,
+# so collapsing them back into one would have kept the suite green. Each repair is a
+# different action for the operator, which is the whole reason they are separate strings.
+
+@pytest.mark.parametrize("vat,expect", [
+    ({"A": 0.1, "T": 0.0},                      "is missing"),
+    ({"V": None, "A": 0.1, "T": 0.0},           "is missing"),
+    ({"V": "0.7", "A": 0.1, "T": 0.0},          "not a number"),
+    ({"V": True, "A": 0.1, "T": 0.0},           "not a number"),
+    ({"V": float("nan"), "A": 0.1, "T": 0.0},   "not a finite number"),
+    ({"V": float("inf"), "A": 0.1, "T": 0.0},   "not a finite number"),
+    ({"V": 1.5, "A": 0.1, "T": 0.0},            "out of"),
+])
+def test_each_repair_gets_its_own_message(vat, expect):
+    errs = _vat_errors(vat)
+    assert len(errs) == 1 and expect in errs[0], errs
+
+
+def test_the_four_messages_are_all_distinct():
+    """Collapsing any two back together must fail here, which is what #138 asked for."""
+    msgs = {_vat_errors(v)[0] for v in (
+        {"A": 0.1, "T": 0.0},
+        {"V": "0.7", "A": 0.1, "T": 0.0},
+        {"V": float("nan"), "A": 0.1, "T": 0.0},
+        {"V": 1.5, "A": 0.1, "T": 0.0})}
+    assert len(msgs) == 4, msgs
+
+
+def test_a_wrong_type_and_an_out_of_range_value_both_name_the_value():
+    """#137: the range message printed no value while the two beside it did."""
+    assert "'0.7'" in _vat_errors({"V": "0.7", "A": 0.1, "T": 0.0})[0]
+    assert "1.5" in _vat_errors({"V": 1.5, "A": 0.1, "T": 0.0})[0]
+    assert "nan" in _vat_errors({"V": float("nan"), "A": 0.1, "T": 0.0})[0]

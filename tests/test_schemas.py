@@ -435,8 +435,28 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
                 continue
             offenders.append(f"  {rel}:{node.lineno} in {key[1]}  {ast.unparse(node)}")
 
-    # ⚠ AN EXEMPTION WHOSE SITE HAS MOVED IS A HIDING PLACE WAITING FOR A NEW TENANT. Line
-    # numbers drift, so a stale entry silently exempts whatever now sits on that line.
+    # ⚠ AN EXEMPTION WHOSE SITE IS GONE IS A HIDING PLACE WAITING FOR A NEW TENANT. The key
+    # is the enclosing FUNCTION (see EXEMPT), so this no longer fires on line drift — it
+    # fires when the named function stops containing the construct, which is the case where
+    # the reason has stopped describing anything.
+    # ⚠ A FUNCTION NAME IS NOT A SITE (issue #140). One entry covers every function of that
+    # name in the file, so a second `_clamp` — a plausible name — would be exempt on arrival
+    # with someone else's reason attached. Latent today (checked: no exempted name is
+    # duplicated in its file), and refused here so it stays that way.
+    for rel_f, fname in EXEMPT:
+        if fname is None:
+            continue
+        try:
+            t = ast.parse((REPO / rel_f).read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        dupes = [n for n in ast.walk(t)
+                 if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == fname]
+        assert len(dupes) <= 1, (
+            f"{rel_f} defines {len(dupes)} functions named {fname!r}, so the exemption for "
+            f"it covers all of them — including ones nobody reasoned about. Rename one, or "
+            f"key this entry more precisely.")
+
     stale = {k for k in EXEMPT if k[1] is not None} - seen
     assert not stale, (
         f"these exemptions name a (file, function) that no longer contains an "
@@ -526,3 +546,39 @@ def test_the_removed_delivery_validator_has_not_come_back():
     assert not hasattr(schemas, "validate_delivery_label"), (
         "schemas.py is re-implementing the delivery rule again — import check_assignable from "
         "matcha.delivery instead")
+
+
+# --- non-finite axis values (issues #134, #136, #141) ----------------------------------
+#
+# ⚠ #136: `_finite` went in with NO test anywhere — deleting it left 1292 green. The fix was
+# real (NaN propagates through a clamp, and `nan < best_score` is False, so a candidate left
+# a ranking with no message) and it was unguarded, which is the same shape as the defect.
+
+@pytest.mark.parametrize("bad", [
+    float("nan"), float("-nan"), float("inf"), float("-inf"),
+    "nan", "NaN", "inf", "-inf", "Infinity",
+])
+def test_a_non_finite_value_carries_no_number(bad):
+    assert schemas.coerce_axis(bad) is None
+
+
+@pytest.mark.parametrize("good,want", [(0.0, 0.0), (-1.0, -1.0), (1.0, 1.0),
+                                       (1e300, 1e300), ("0.7", 0.7)])
+def test_finite_values_are_untouched(good, want):
+    assert schemas.coerce_axis(good) == want
+
+
+def test_an_integer_too_large_for_a_float_is_refused_rather_than_raising():
+    """⚠ #141. `json.loads("1" + "0"*400)` is an ordinary Python int, and `float()` on it
+    raises OverflowError — not SchemaError, so it escaped `book_ingest`'s retry and killed
+    the run from inside the one function whose job is to answer with None."""
+    assert schemas.coerce_axis(10 ** 400) is None
+    assert schemas.coerce_axis("1e400") is None
+    assert schemas.coerce_axis(-(10 ** 400)) is None
+
+
+def test_the_non_finite_refusal_is_reachable_from_ordinary_json():
+    """Not a synthetic worry: Python's decoder accepts the bare literals by default."""
+    import json
+    assert schemas.coerce_axis(json.loads('{"V": NaN}')["V"]) is None
+    assert schemas.coerce_axis(json.loads('{"V": Infinity}')["V"]) is None

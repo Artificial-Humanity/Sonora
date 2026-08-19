@@ -6,6 +6,8 @@ instrument decode (utterance VAT within `VAT_TOL`; spans activate when the span 
 layer lands). Interpretive fields (style, direction) are never load-bearing.
 """
 
+import math
+
 import schemas
 
 VAT_TOL = 0.35  # ratified tolerance (owner amendment 2026-07-19: widened from
@@ -53,8 +55,17 @@ def validate(obj, lexicon):
             errs.append(f"vat.{ch} is {type(v).__name__} {v!r}, not a number — the sidecar "
                         f"stores VAT continuous (markup-schema-brief.md, RATIFIED v0.1). "
                         f"Emit it as a JSON number, not a string.")
+        elif math.isnan(v) or math.isinf(v):
+            # ⚠ A FOURTH REPAIR, AND IT WORE THE THIRD ONE'S INSTRUCTION (issue #137).
+            # `isinstance(nan, float)` is True, so NaN passed the type check and then failed
+            # the range comparison — every comparison against NaN is False — and was reported
+            # as "out of [-1,1]". It is not out of range; it is not a number, and the repair
+            # is to find out why the instrument emitted one. The message also prints the
+            # value, which the two beside it do and this one did not.
+            errs.append(f"vat.{ch} is {v!r}, which is not a finite number — the sidecar "
+                        f"stores VAT continuous (markup-schema-brief.md, RATIFIED v0.1)")
         elif not schemas.AXIS_MIN <= v <= schemas.AXIS_MAX:
-            errs.append(f"vat.{ch} out of "
+            errs.append(f"vat.{ch} is {v!r}, out of "
                         f"[{schemas.AXIS_MIN:g},{schemas.AXIS_MAX:g}]")
     reg = utt.get("register")
     if reg is not None and reg not in lexicon:

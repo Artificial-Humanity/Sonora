@@ -215,13 +215,19 @@ def coerce_axis(v):
     """
     if v is None or isinstance(v, bool):
         return None
-    if isinstance(v, (int, float)):
-        return _finite(float(v))
-    if isinstance(v, str):
-        try:
+    # ⚠ `OverflowError` TOO, NOT JUST `ValueError` (issue #141). A JSON document can carry
+    # an integer larger than any float — `json.loads("1" + "0"*400)` is an ordinary Python
+    # int — and `float()` on it raises `OverflowError: int too large to convert to float`.
+    # That is not a `SchemaError`, so it escaped `book_ingest`'s `except SchemaError` retry
+    # and `make_teacher_ab_bank`'s skip, and killed the run from inside the one function
+    # that exists to answer "is this a usable number" with None.
+    try:
+        if isinstance(v, (int, float)):
+            return _finite(float(v))
+        if isinstance(v, str):
             return _finite(float(v.strip()))
-        except ValueError:
-            return None
+    except (ValueError, OverflowError):
+        return None
     return None
 
 
