@@ -687,16 +687,23 @@ def test_the_path_scan_still_finds_the_lane():
 
 
 def test_every_path_the_lane_names_exists():
-    """⚠ A PATH THAT DOES NOT EXIST IS NOT A PROBE, A DENY, OR A CALL — it is a silent no-op.
+    """⚠ A PATH THAT DOES NOT EXIST DOES NOTHING — silently if it is executed, misleadingly
+    if it is read.
 
-    `2>/dev/null` on a command hides a missing file exactly as well as it hides a failed
-    query, which is why the original went unseen for two days and was reported for twenty.
+    Two halves, and the guard covers both: a probe, deny or call becomes a no-op —
+    `2>/dev/null` hides a missing file exactly as well as it hides a failed query, which is
+    why the original went unseen for two days and was reported for twenty — and a path named
+    in prose sends a reader somewhere that is not there, which is #175 on this branch.
     """
     missing = [f"  {f}:{i}  {p}" for f, i, p in _lane_path_literals()
                if not (REPO / p).exists()]
     assert not missing, (
-        "the lane names paths that do not exist. Each is a probe, deny or call that cannot "
-        "do anything, and nothing at runtime will say so:\n" + "\n".join(missing))
+        "the lane names paths that do not exist:\n" + "\n".join(missing) +
+        "\n\nEach is either a probe, deny or call that cannot do anything — and nothing at "
+        "runtime will say so — OR a sentence sending a reader to a file that is not there. "
+        "⚠ Check which before repairing: eight of these sites are prose (the brief, "
+        "merge_branch.sh's help, issue.py's docstring), where nothing executes and the fix "
+        "is the sentence.")
 
 
 def test_prose_naming_a_missing_path_is_caught(tmp_path):
@@ -726,11 +733,44 @@ def test_prose_naming_a_missing_path_is_caught(tmp_path):
         "deleted paths to explain them, and flagging that is the trailing-comment trap")
 
 
-@pytest.mark.parametrize("sample", [
-    "scripts/lib/schemas.py", "workflow/scripts/issue.py", "tests/test_scm.py",
-    "matcha/delivery.py", "workflow/config.env", "notes/x.md".replace("notes", "workflow"),
-    "configs/data/libritts.yaml", "configs/model/matcha.yml", "scripts/assets/x.json",
-])
+# One sample per directory and one per extension the rule advertises. ⚠ `.sh` was ABSENT
+# from the first version while the test was named for covering every extension (issue #180) —
+# a coverage claim checked against a list that did not cover it. The completeness of THIS
+# table is asserted below against the pattern itself, so widening the pattern without adding
+# a sample now fails rather than quietly narrowing what is proved.
+_COVERAGE_SAMPLES = [
+    "scripts/lib/schemas.py",         # scripts · py
+    "workflow/scripts/issue.py",      # workflow
+    "tests/test_scm.py",              # tests
+    "matcha/delivery.py",             # matcha
+    "configs/data/libritts.yaml",     # configs · yaml
+    "workflow/scripts/merge_branch.sh",  # sh   <- the one #180 caught missing
+    "workflow/config.env",            # env
+    "workflow/WORKFLOW.md",           # md
+    "scripts/assets/bulk_bank.json",  # json
+    "configs/model/matcha.yml",       # yml
+]
+
+
+def test_the_coverage_table_names_every_token_the_pattern_advertises():
+    """⚠ THE TABLE IS ITSELF A CLAIM, AND #180 IS WHAT HAPPENS WHEN NOTHING CHECKS IT.
+
+    The samples below assert "the pattern covers what it advertises". That is only true while
+    the table is complete, and it was not: `.sh` was missing while the test's own name said
+    every extension. So the tokens are read out of the pattern and every one must appear.
+    """
+    dirs = re.search(r"\(\?:([a-z|]+)\)/", _LANE_PATH.pattern).group(1).split("|")
+    exts = re.search(r"\\.\(\?:([a-z?|]+)\)", _LANE_PATH.pattern).group(1).split("|")
+    joined = " ".join(_COVERAGE_SAMPLES)
+    for d in dirs:
+        assert f"{d}/" in joined, f"no sample exercises the {d!r} directory"
+    for e in exts:
+        # `ya?ml` advertises two spellings; both must be sampled
+        for spelling in (["yaml", "yml"] if e == "ya?ml" else [e]):
+            assert f".{spelling}" in joined, f"no sample exercises the .{spelling} extension"
+
+
+@pytest.mark.parametrize("sample", _COVERAGE_SAMPLES)
 def test_the_pattern_covers_every_directory_and_extension_the_rule_claims(sample):
     """⚠ #179's DEFECT AS A PROPERTY. `configs` was in the directory list while `yaml` was
     absent from the extensions, so the guard claimed a coverage its pattern did not deliver —
