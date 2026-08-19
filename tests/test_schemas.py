@@ -374,6 +374,15 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
         # NOT an axis: an ASR word error rate, guarded so a missing measure does not
         # TypeError the whole registration
         ("scripts/stages/register_audition.py", 405): "asr_wer, a measure not a label",
+        # ⚠ AN AXIS, AND STILL EXEMPT — the one entry here that is not "different rule" but
+        # "different QUESTION". `scm.validate` certifies conformance to a ratified wire
+        # format, and markup-schema-brief.md says the sidecar stores VAT **continuous**. So
+        # a JSON string is a violation there even though `coerce_axis("0.7")` is 0.7:
+        # `coerce_axis` asks "is this a usable number for a LABEL" (tolerant, for director
+        # output), `validate` asks "does this conform to the contract" (strict, for
+        # storage). Routing it through `coerce_axis` made the validator certify a sidecar
+        # the contract forbids — reverted 2026-08-19 after checking the brief.
+        ("scripts/lib/scm.py", 44): "scm.validate: schema conformance, not axis coercion",
     }
     # Kept as a mechanism rather than deleted: a genuinely single-purpose file could earn
     # one. Nothing does today, and `schemas.py` proved why the bar is high.

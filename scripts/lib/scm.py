@@ -23,16 +23,29 @@ def validate(obj, lexicon):
         errs.append("scm version missing/wrong")
     utt = obj.get("utterance") or {}
     vat = utt.get("vat") or {}
-    # ⚠ `schemas.coerce_axis` AND `schemas.AXIS_MIN/MAX`, not a local test and not literal
-    # bounds (issue #113's class, found by the guard written for it). This was the FIFTH
-    # copy of "what counts as an axis number" and it disagreed with the definition on the
-    # one input #58 ruled on: `"0.7"` is a label, and `isinstance("0.7", (int, float))` is
-    # False, so a numeric string in a sidecar was reported as a MISSING axis. The range was
-    # a second literal of a constant `schemas` already owns.
+    # ⚠⚠ STRICT ON TYPE, AND THAT IS NOT THE SAME QUESTION `coerce_axis` ANSWERS.
+    # Corrected 2026-08-19 after checking the ratified brief, which the first fix did not:
+    # `notes/markup-schema-brief.md` §"Field semantics" says `utterance.vat` is
+    # **continuous [−1,1]**, and §"Numbers vs symbols" says the sidecar keeps VAT
+    # continuous because IT IS THE CONTRACT — symbols are presentation, never storage.
+    #
+    # So a JSON string is a schema violation here even though `coerce_axis("0.7")` is 0.7.
+    # `coerce_axis` answers "is this a usable number for a LABEL", which is the tolerant
+    # question a director's output gets asked. `validate` answers "does this sidecar
+    # conform to a ratified wire format", which is the strict one. Routing this through
+    # `coerce_axis` (issue #117's fix) collapsed the two and made the validator CERTIFY a
+    # sidecar the contract forbids — the same over-broad move #113's own guard had to be
+    # narrowed to avoid, made one file over.
+    #
+    # ⚠ The BOUNDS still come from `schemas`, because those genuinely are one constant and
+    # a literal here was a second copy of them.
     for ch in schemas.AXES:
-        v = schemas.coerce_axis(vat.get(ch))
-        if v is None or not schemas.AXIS_MIN <= v <= schemas.AXIS_MAX:
-            errs.append(f"vat.{ch} missing or out of "
+        v = vat.get(ch)
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            errs.append(f"vat.{ch} missing or not a number — the sidecar stores VAT "
+                        f"continuous (markup-schema-brief.md, RATIFIED v0.1)")
+        elif not schemas.AXIS_MIN <= v <= schemas.AXIS_MAX:
+            errs.append(f"vat.{ch} out of "
                         f"[{schemas.AXIS_MIN:g},{schemas.AXIS_MAX:g}]")
     reg = utt.get("register")
     if reg is not None and reg not in lexicon:

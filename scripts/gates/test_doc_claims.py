@@ -136,6 +136,32 @@ def comma(n):
     return f"{n:,}"
 
 
+def const(module_rel, name):
+    """A module-level constant, read by AST from a SOURCE FILE rather than a data artifact.
+
+    ⚠ THE REGISTRY WAS CORPUS-ONLY AND THAT WAS THE GAP (2026-08-19). Every fact here read a
+    number off `/data`, so a number that lives in CODE and is restated in prose had no
+    mechanism at all — and one had drifted: `notes/markup-schema-brief.md` gave the SCM
+    verifier tolerance as `±0.25` in its field-semantics table while §5 item 6 of the SAME
+    FILE recorded the owner's same-day amendment to `±0.35`, which is what `scm.VAT_TOL`
+    implements. The document contradicted itself for a month and nothing could see it,
+    because the gate only ever compared docs to corpora.
+
+    AST rather than import: importing `scm` pulls in `schemas` and the sibling-path setup,
+    and a gate that needs the package layout to be correct in order to check a docstring is
+    a gate with a second failure mode.
+    """
+    import ast
+
+    path = os.path.join(REPO, "scripts", "lib", module_rel)
+    tree = ast.parse(open(path, encoding="utf-8").read())
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise KeyError(f"{name} is not a module-level constant of {module_rel}")
+
+
 # --- the registry -------------------------------------------------------------------
 #
 # Each fact: how to READ it from disk, WHICH FILES that read needs, and the phrasings that
@@ -151,6 +177,21 @@ def comma(n):
 # `exempt` lines are skipped and announced. They exist for deliberate historical mentions
 # ("this cell read X until <date>"), which the repo writes on purpose.
 FACTS = [
+    {
+        # ⚠ THE FIRST FACT HERE THAT IS NOT A CORPUS NUMBER. Its artifact is a source file,
+        # which is the point: a constant restated in prose drifts exactly like a row count,
+        # and until 2026-08-19 nothing checked that class. See `const` above for the drift
+        # that prompted it.
+        "name": "SCM verifier tolerance (scm.VAT_TOL)",
+        "truth": lambda: const("scm.py", "VAT_TOL"),
+        "artifacts": [os.path.join(REPO, "scripts", "lib", "scm.py")],
+        "scope": r"VAT_TOL|verifier tolerance|within tolerance|vat\.[VAT] claimed",
+        "patterns": [r"±\s*([\d.]+)", r"tolerance = ±?([\d.]+)"],
+        # The amendment RECORD legitimately names the superseded value; that is history,
+        # not a claim about today. Narrow on purpose — a bare "0.25" exemption would blind
+        # the fact to the very table cell that was wrong.
+        "exempt": ["table above said `±0.25`", "(originally ±0.25)"],
+    },
     {
         "name": "v5 TRAIN rows",
         "truth": lambda: rows(V5_TRAIN),
