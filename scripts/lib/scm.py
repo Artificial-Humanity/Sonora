@@ -6,6 +6,8 @@ instrument decode (utterance VAT within ±0.35; spans activate when the span dec
 layer lands). Interpretive fields (style, direction) are never load-bearing.
 """
 
+import schemas
+
 VAT_TOL = 0.35  # ratified tolerance (owner amendment 2026-07-19: widened from
                 # 0.25 to match the 0.4 quantizer bin width; copy-through declined)
 SPAN_TYPES = {"emphasis", "pause_after", "pace", "pitch_move", "nonverbal", "quote"}
@@ -21,10 +23,17 @@ def validate(obj, lexicon):
         errs.append("scm version missing/wrong")
     utt = obj.get("utterance") or {}
     vat = utt.get("vat") or {}
-    for ch in ("V", "A", "T"):
-        v = vat.get(ch)
-        if not isinstance(v, (int, float)) or not -1.0 <= v <= 1.0:
-            errs.append(f"vat.{ch} missing or out of [-1,1]")
+    # ⚠ `schemas.coerce_axis` AND `schemas.AXIS_MIN/MAX`, not a local test and not literal
+    # bounds (issue #113's class, found by the guard written for it). This was the FIFTH
+    # copy of "what counts as an axis number" and it disagreed with the definition on the
+    # one input #58 ruled on: `"0.7"` is a label, and `isinstance("0.7", (int, float))` is
+    # False, so a numeric string in a sidecar was reported as a MISSING axis. The range was
+    # a second literal of a constant `schemas` already owns.
+    for ch in schemas.AXES:
+        v = schemas.coerce_axis(vat.get(ch))
+        if v is None or not schemas.AXIS_MIN <= v <= schemas.AXIS_MAX:
+            errs.append(f"vat.{ch} missing or out of "
+                        f"[{schemas.AXIS_MIN:g},{schemas.AXIS_MAX:g}]")
     reg = utt.get("register")
     if reg is not None and reg not in lexicon:
         errs.append(f"register '{reg}' not in controlled lexicon")

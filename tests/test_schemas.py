@@ -318,6 +318,85 @@ def test_the_coercion_rule_has_exactly_one_definition():
     assert ast.unparse(body[0].value).startswith("schemas.coerce_axis")
 
 
+def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
+    """⚠ THE SAME RULE AS ABOVE, BUT NOT SCOPED TO ONE FILE — which is why it kept happening.
+
+    `test_the_coercion_rule_has_exactly_one_definition` pins `qc_verdict.coerce_axis` and is
+    blind to every other module, so it passed while a THIRD copy went into `ref_select._n`
+    (#104) and stayed passing while a FOURTH sat in `make_v3d_bank.complete_vat` (#113) —
+    eight lines above a comment congratulating that same commit for removing this exact
+    class of drift.
+
+    The shape is always `isinstance(x, (int, float))`, and it is always wrong in the same
+    direction: it reads the numeric string `"0.7"` as not-a-number, which is the one input
+    issue #58 ruled on. `schemas.coerce_axis` is the definition; everything else asks it.
+
+    ⚠ AST, not a text scan — three of the comments explaining this defect quote the offending
+    expression verbatim, and a text scan matches its own explanation.
+    """
+    import ast
+
+    # ⚠ EXEMPTIONS ARE PER SITE AND CARRY A REASON, because the syntactic shape is shared by
+    # checks that are NOT this rule. Running the scan the first time returned six hits and
+    # only ONE was an axis — so a blanket ban would have forced durations and engine
+    # parameters through a function about V/A/T, which is a worse error than the one being
+    # fixed. Explicit so that adding to it is a decision rather than a slip, the same shape
+    # `RECURSIVE_BY_DESIGN` and the doc-claims exemptions use.
+    EXEMPT = {
+        # the single definition itself
+        ("scripts/lib/schemas.py", None): "the definition",
+        # NOT axes: an 8-float zonos emotion vector, and engine parameter ranges
+        ("scripts/lib/book_ingest.py", 1036): "_in_range: engine params (pitch_std, cfg_weight)",
+        ("scripts/lib/book_ingest.py", 1046): "zonos emotion vector element, not an axis",
+        ("scripts/lib/book_ingest.py", 1050): "_clamp: generic engine-param clamp",
+        ("scripts/lib/book_ingest.py", 1069): "_l1: zonos emotion vector, not an axis",
+        # NOT an axis: a duration, with its own documented None-vs-0.0 reasoning
+        ("scripts/lib/synth_common.py", 598): "book duration in seconds, not an axis",
+        # NOT an axis: an ASR word error rate, guarded so a missing measure does not
+        # TypeError the whole registration
+        ("scripts/stages/register_audition.py", 405): "asr_wer, a measure not a label",
+    }
+    EXEMPT_FILES = {f for f, ln in EXEMPT if ln is None}
+
+    offenders = []
+    seen = set()
+    for path in sorted((REPO / "scripts").rglob("*.py")):
+        rel = path.relative_to(REPO).as_posix()
+        if rel in EXEMPT_FILES:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                    and node.func.id == "isinstance" and len(node.args) == 2):
+                continue
+            types = node.args[1]
+            names = {e.id for e in getattr(types, "elts", [])
+                     if isinstance(e, ast.Name)} or (
+                        {types.id} if isinstance(types, ast.Name) else set())
+            if not {"int", "float"} <= names:
+                continue
+            if (rel, node.lineno) in EXEMPT:
+                seen.add((rel, node.lineno))
+                continue
+            offenders.append(f"  {rel}:{node.lineno}  {ast.unparse(node)}")
+
+    # ⚠ AN EXEMPTION WHOSE SITE HAS MOVED IS A HIDING PLACE WAITING FOR A NEW TENANT. Line
+    # numbers drift, so a stale entry silently exempts whatever now sits on that line.
+    stale = {k for k in EXEMPT if k[1] is not None} - seen
+    assert not stale, (
+        f"these exemptions no longer point at an `isinstance(x, (int, float))`: "
+        f"{sorted(stale)}. Re-point or delete them — an exemption that matches nothing "
+        f"exempts nothing, and one that has drifted exempts the wrong thing.")
+
+    assert not offenders, (
+        "these read a number by hand instead of asking `schemas.coerce_axis`, which is the "
+        "single definition. Each disagrees with it on a numeric string — issue #58's input, "
+        "and the reason #104 and #113 exist:\n" + "\n".join(offenders))
+
+
 def test_the_writers_no_longer_default_an_axis_to_zero():
     """The literal that caused it, gone from both sites. Read as code — the new comments
     quote the old expression to explain it."""

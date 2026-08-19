@@ -47,6 +47,7 @@ _SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspa
 for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
+import schemas  # noqa: E402  -- the single definition of what counts as an axis number
 from ref_select import (  # noqa: E402
     MAX_REF_EXCURSION,
     REF_BLACKLIST,
@@ -65,18 +66,32 @@ FT_VOICE = {"F": "tara", "M": "leo"}
 AXES = ("V", "A", "T")
 
 
-def complete_vat(d):
-    """True when all three axes carry a real number.
+def rankable_vat(d):
+    """True when AT LEAST ONE axis carries a usable number.
 
-    ⚠ `intended.V/A/T` MAY BE `null` SINCE 2026-08-17 (issue #92). `book_ingest` used to write
-    `tag.get("valence", 0.0)`, so every row arrived with three floats and this file was written
-    against that. An absent axis is now recorded honestly as `null` instead of being invented
-    as a neutral 0.0 — which is the right call at the writer and makes the arithmetic below a
-    `TypeError` here. A bool is refused too: `True - 0.4` is perfectly legal arithmetic and
-    silently wrong.
+    ⚠ IT USED TO REQUIRE ALL THREE, AND THAT STOPPED BEING RIGHT ON 2026-08-18 (issue #112).
+    It was written when the arithmetic below subtracted axes directly, so one `null` was a
+    `TypeError` and the row genuinely could not be scored. `0e3b831` replaced that with
+    `ref_select._vat_distance`, which ranks on the axes both sides label — so a row with V
+    labelled and A/T null is now scored on V, perfectly well, and this gate was still
+    throwing it away. The message even sent the operator off to re-direct those lines: a
+    31B inference per line, to fix something that was no longer broken.
+
+    ⚠ ONE axis is the floor rather than zero because zero is a different thing. A row that
+    labels nothing scores `_vat_distance` = 0.0 against EVERY candidate — they all tie, the
+    VAT term leaves the ranking, and `ENGINE_PREF` alone picks the reference. That is the
+    silent degrade this file's guard exists to catch, so a row with no axes at all is still
+    dropped, and now for the reason that is actually true.
+
+    ⚠ DELEGATES TO `schemas.coerce_axis`, WHICH IS THE SINGLE DEFINITION (issue #113). The
+    `isinstance(d.get(k), (int, float))` this replaces was the FOURTH copy of "what counts
+    as a number" and disagreed with the definition on the one input #58 was filed about:
+    `coerce_axis("0.7")` is `0.7`, the old test here said `False`. `0e3b831` came into this
+    file to remove exactly this class of drift, took out the duplicated DISTANCE, and walked
+    past the duplicated NUMBER TEST eight lines above the comment it wrote saying so.
+    `coerce_axis` refuses bools, which the old test also had to say out loud.
     """
-    return all(isinstance(d.get(k), (int, float)) and not isinstance(d.get(k), bool)
-               for k in AXES)
+    return any(schemas.coerce_axis(d.get(k)) is not None for k in AXES)
 
 
 # ⚠ `vat_dist` LIVED HERE AND IS GONE (2026-08-18, issue #107). It was
@@ -90,14 +105,17 @@ keeps = [json.loads(l) for l in KEEPS.open()]
 
 bank = []
 used = set()
-# ⚠ SKIPPED AND COUNTED, NEVER SILENTLY DROPPED. A line whose intended vector is incomplete
-# cannot be distance-ranked against anything, so it has no place in this bank — but a bank
-# that is quietly short is the failure this repo keeps paying for, so the count is printed.
-unscoreable = [r for r in rows if not complete_vat(r["intended"])]
-rows = [r for r in rows if complete_vat(r["intended"])]
+# ⚠ SKIPPED AND COUNTED, NEVER SILENTLY DROPPED. A line that labels NO axis cannot be
+# distance-ranked against anything — every candidate would tie and ENGINE_PREF would pick
+# the reference by itself — so it has no place in this bank. But a bank that is quietly
+# short is the failure this repo keeps paying for, so the count is printed.
+unscoreable = [r for r in rows if not rankable_vat(r["intended"])]
+rows = [r for r in rows if rankable_vat(r["intended"])]
 if unscoreable:
-    print(f"  ⚠ {len(unscoreable)} line(s) skipped: intended V/A/T is incomplete, so they "
-          f"cannot be ranked by distance. Re-direct them or accept a shorter bank.")
+    print(f"  ⚠ {len(unscoreable)} line(s) skipped: intended V/A/T labels no axis at all, so "
+          f"every reference would score identically. A PARTIALLY labelled line is fine and "
+          f"is kept — it ranks on the axes it has (issue #112). Re-direct these, or accept "
+          f"a shorter bank.")
 for r in rows:
     g = design_gender(r["direction"]["design"])
     cands = []
