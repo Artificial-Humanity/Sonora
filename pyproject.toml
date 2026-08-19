@@ -55,7 +55,10 @@ dependencies = [
   # ⚠ CORE, NOT TRANSITIVE, AND NOT OPTIONAL. `scripts/lib/schemas.py` imports it at module
   # scope and `book_ingest` imports that, so it sits on the teacher-synthesis path every
   # container takes. It was previously reachable ONLY through `fastapi`, which lives in the
-  # `vocalizer` extra below, AND as a transitive of `mlflow` in the training container.
+  # `vocalizer` extra below — and by the `dev` extra, which declares it too — AND as a
+  # transitive of `mlflow` in the training container. ⚠ Which of those actually supplied it
+  # on any given box is NOT measured and is not claimed here (issue #160/#155): naming one
+  # is a claim about every package in it, and both namings tried so far were wrong.
   # MIT, so no friction with Apache-2.0.
   #
   # ⚠ THIS COMMENT HAS NAMED THE WRONG LANE TWICE (issue #154). v1 said a dev box had it

@@ -23,6 +23,7 @@ One `compile()` per file, no imports, no side effects — so it covers exactly t
 nothing else can.
 """
 
+import os
 import pathlib
 import subprocess
 
@@ -46,9 +47,19 @@ def _tracked_python():
     green number as a failure.** `--exclude-standard` keeps .gitignore honoured, so this does
     not start compiling build output.
     """
+    return _enumerate(REPO)
+
+
+def _enumerate(root):
+    """The enumeration itself, parameterised by root SO THAT IT CAN BE TESTED (issue #161).
+
+    ⚠ The first regression guard for this hardcoded its own copy of the flags and passed
+    while the real command was reverted — the defect #161 filed, reproduced inside its own
+    fix. A guard that does not call the code under test is asserting about a string.
+    """
     out = subprocess.run(
         ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "*.py"],
-        cwd=REPO, capture_output=True, text=True, check=True,
+        cwd=root, capture_output=True, text=True, check=True,
     )
     return sorted(p for p in out.stdout.split("\0") if p)
 
@@ -59,6 +70,37 @@ FILES = _tracked_python()
 def test_the_enumeration_found_the_tree():
     """Every case below is parametrized off this list, so an empty one reports green."""
     assert len(FILES) >= 150, f"only {len(FILES)} .py files — is the listing working?"
+
+
+def test_the_enumeration_would_see_an_untracked_module(tmp_path):
+    """⚠ THE REGRESSION GUARD #159 SHIPPED WITHOUT (issue #161).
+
+    Reverting the `--cached --others --exclude-standard` flags changes nothing observable:
+    every file is tracked right now, so the count is identical either way and the revert is
+    invisible — which is the exact "smaller green number nobody reads as a failure" that
+    #159's own docstring names. A fix for an unfalsifiable guard that is itself
+    unfalsifiable is the shape §5b exists for.
+
+    So this runs the real command against a scratch repo holding one tracked and one
+    untracked module, and asserts both come back.
+    """
+    import subprocess as sp
+
+    env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
+    sp.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=env)
+    (tmp_path / "tracked.py").write_text("x = 1\n", encoding="utf-8")
+    sp.run(["git", "add", "tracked.py"], cwd=tmp_path, check=True, env=env)
+    (tmp_path / "untracked.py").write_text("y = 2\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("ignored.py\n", encoding="utf-8")
+    (tmp_path / "ignored.py").write_text("z = 3\n", encoding="utf-8")
+
+    seen = set(_enumerate(tmp_path))          # ⚠ THE REAL FUNCTION, not a copy of its flags
+    assert "tracked.py" in seen
+    assert "untracked.py" in seen, (
+        "the enumeration no longer sees untracked modules — a new file goes uncompiled "
+        "exactly while it is most likely to be broken (issues #110, #159)")
+    assert "ignored.py" not in seen, (
+        "--exclude-standard is gone; the enumeration has started compiling ignored files")
 
 
 @pytest.mark.parametrize("rel", FILES, ids=FILES)

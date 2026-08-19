@@ -214,6 +214,14 @@ Leave the `gh_*` and `migrated_from_github` fields empty — they are provenance
 issues (#12–#89) migrated off GitHub, whose numbers were preserved so a `#33` in an old commit
 message still names the same finding.
 
+⚠⚠ **THOSE RECORDS ARE NO LONGER IN THE LIVE TRACKER, AND THIS FILE SAID THEY WERE** (2026-08-19).
+The instance holds only issues numbered 90+; `#12–#89` are **not there**. They were exported
+before the tracker was wiped and live in `notes/tracker-export-2026-08-17.json` — 79 issue
+records, numbers 12–120 — so nothing was lost, but a reviewer who queries for them finds
+nothing and cannot tell that from data loss. Measured by a reviewer this branch, who correctly
+declined to file it because this file was outside its range. **The numbers stay reserved: the
+export is the record that they were used.**
+
 ### Comments live in their own collection: `issue_comments`
 
 ⚠ **The `comments` JSON field on `issues` is FROZEN legacy** (2026-08-14). It still holds a
@@ -261,7 +269,8 @@ pb_record_list  collection="issues"  perPage=1  sort="-number"  fields="number"
 ```
 
 A collision returns `400` on the unique index — **re-read and retry rather than overwriting.**
-Do not reuse a number below 90; `#12–#89` are taken.
+Do not reuse a number below 90; `#12–#89` are taken — **by the export, not by the live
+collection** (see above). The absence of a `#33` record is not permission to allocate one.
 
 ### ⚠ Two defaults on `pb_record_list` that will mislead you
 
@@ -421,11 +430,18 @@ Run this last, and put the number in your summary:
 filter='branch_name="<the branch under review>" && state="open"'
 ```
 
-⚠ **Scope it to YOUR branch — never widen it to `branch_name!=""`.** Nine open issues (#26,
-#68, #70, #79, #80, #81, #85, #87, #89) are the **migrated GitHub backlog**, parked on
-`github-issues-fixes` and deliberately unworked until that branch is rebased. They will not
-close on your cycle, so a check that counts them can never reach zero — and reading that as
-"the loop is not converging" is exactly the wrong conclusion. `branch_name!=""` was the right
+⚠ **Scope it to YOUR branch — never widen it to `branch_name!=""`.**
+
+⚠⚠ **THE NINE ISSUES THIS PARAGRAPH USED TO NAME NO LONGER EXIST** (2026-08-19). It cited
+#26, #68, #70, #79, #80, #81, #85, #87 and #89 as a migrated backlog parked on
+`github-issues-fixes`; the live tracker holds nothing below #90. A reviewer following it
+scopes its count away from records that are not there, and — worse — reads the instruction as
+evidence that a backlog it cannot see is out there unworked. The rule below is unchanged and
+still right; only its example was stale.
+
+The reason to scope stays the same: another branch's open issues will not close on your
+cycle, so a check that counts them can never reach zero — and reading that as "the loop is
+not converging" is exactly the wrong conclusion. `branch_name!=""` was the right
 guard only while that backlog carried no branch at all; it now has one, so the clause that
 used to exclude it would **include** it.
 

@@ -253,12 +253,15 @@ def cmd_show(pb, args):
     # ⚠ THE FIRST VERSION OF THIS PARAGRAPH EXPLAINED IT WRONGLY, TWICE (issue #156). It
     # asserted a mechanism — "the two writers stamp posted_at from different clocks" —
     # which is a guess about how the other writer works, not something measured from here.
-    # And it said `posted_at` is "the tiebreak for the imported GitHub comments, which share
-    # seq values from the migration". Measured across the collection: **20 comments carry
-    # `seq = 0`, and they are the AGENT-written ones from before #109 stamped it**; the
-    # imported comments carry real per-issue sequences. So the tiebreak matters for that
-    # zero block, which is the opposite population from the one named. `seq` is per issue,
-    # so values repeat across issues by design and that is not a migration artifact.
+    # v2 then blamed "the imported GitHub comments", a population with ZERO records in this
+    # instance: the collection holds 70 issues, all numbered 90+ and all on this branch.
+    #
+    # ⚠ MEASURED, AND `posted_at` DOES NOT RESCUE THE ZERO BLOCK. 20 comments carry
+    # `seq = 0` — the agent-written ones from before #109 stamped it — and **14 of those 20
+    # also carry `posted_at = ""`**, so the second key is a constant for them; two issues
+    # hold two rows tied on BOTH keys. Their order is unrecoverable, which is why a `seq`
+    # backfill stays on the table rather than being closed off by this sort. `seq` is per
+    # issue, so values repeat across issues by design and that is not a migration artifact.
     st, r = pb.call("/api/collections/issue_comments/records?perPage=100&sort=seq,posted_at"
                     "&filter=" + urllib.parse.quote('issue="%s"' % rec["id"]))
     if st != 200:

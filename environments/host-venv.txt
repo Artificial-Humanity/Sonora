@@ -24,12 +24,16 @@
 # environments/ tests/` returns no matches — so the rule had no mechanism and the review
 # that caught it was looking at a diff, not at this file.
 #
-# The added lines are the pydantic chain plus fastapi/starlette. ⚠ NOT the `vocalizer`
-# extra, which the first version of this note claimed (issue #155): that extra is
-# `gradio, fastapi, uvicorn, starlette`, and NEITHER gradio NOR uvicorn is installed here.
-# What is installed is `fastapi`, `pysbd` and `pytest` — the `dev` extra. This file records
-# WHAT ACTUALLY RAN rather than what the resolver would pick, per the header above, and the
-# note explaining it is held to the same standard.
+# The added lines are the pydantic chain plus fastapi/starlette.
+#
+# ⚠ NO EXTRA IS NAMED, AND THAT IS THE FIX (issue #155, twice). v1 said the `vocalizer`
+# extra put fastapi here — but `gradio` and `uvicorn` are absent. v2 said the `dev` extra —
+# but `pre-commit` and its whole chain (cfgv, identify, nodeenv, virtualenv) are absent too.
+# Naming an extra is a claim about EVERY package in it, and someone reproducing this lane
+# from the name would install the rest and stop matching this snapshot. The route is not
+# measured and this file does not need it: what it records is that the chain IS here.
+# This file records WHAT ACTUALLY RAN rather than what the resolver would pick, per the
+# header above, and the note explaining it is held to the same standard.
 ai-edge-litert==2.1.6
 annotated-doc==0.0.5
 annotated-types==0.8.0
