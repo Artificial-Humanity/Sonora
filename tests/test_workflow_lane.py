@@ -522,7 +522,7 @@ def test_issue_numbers_are_floored_against_the_export():
         "NUMBER_FLOOR is defined but the allocation no longer uses it")
 
 
-def test_moving_to_review_checks_that_the_pass_was_counted():
+def test_moving_to_review_warns_at_zero_and_is_silent_above_it():
     """⚠ `agent_passes` IS THE CAP'S MECHANISM AND NOTHING WATCHED IT (2026-08-19).
 
     A full fix pass went by with `take` skipped: four issues were fixed, commented and moved
@@ -530,31 +530,78 @@ def test_moving_to_review_checks_that_the_pass_was_counted():
     `review_cycle.sh` treats "the worker failed to advance agent_passes" as a stop condition,
     so an unattended run would have halted on it.
 
-    ⚠ A WARNING, NOT A REFUSAL. Zero is also what the owner's dial reads after a deliberate
-    re-arm, and refusing would make the tooling argue with them.
+    ⚠⚠ THIS IS BEHAVIOURAL BECAUSE TWO STRUCTURAL VERSIONS BOTH FAILED, AND FAILED IN THE
+    WAYS THIS REPO ALREADY HAD NAMES FOR.
+
+      * v1 asserted `"die(" not in ast.unparse(fn)` over the whole function — constraining
+        the implementation, not the behaviour, and blind to `sys.exit` or `raise` (#172).
+      * v2 scoped that to the branch and scanned `ast.unparse(body)` for stop tokens — but
+        the branch's one statement is a `print` whose argument is a five-line operator
+        message, and `unparse` emits literals verbatim, **so the scan ran over the prose**
+        (#174). A TEXT SCAN OVER CODE, inside a guard, in the repo whose doc-claims gate
+        exists because of exactly that.
+      * and neither constrained the PREDICATE: `== -1`, `> 3` and `and False` all satisfy
+        "the test mentions agent_passes, the body prints, no stop token appears", while the
+        warning never fires again (#172, returned).
+
+    Running it settles all three at once and scans nothing. The property is one sentence:
+    **warns at 0, silent at 1 and above.**
     """
-    # ⚠ THE BRANCH, NOT THE FUNCTION'S TEXT (issue #172). The first version asserted
-    # `"die(" not in ast.unparse(fn)` over the WHOLE function, which constrains the
-    # implementation rather than the behaviour: it would fire on an unrelated `die()` added
-    # for some other fault, and it would miss a refusal spelled `sys.exit` or `raise`. What
-    # matters is narrower and checkable — the counter is READ, and the path taken when it is
-    # zero informs rather than stops.
-    tree = ast.parse(ISSUE_SRC)
-    fn = next(n for n in ast.walk(tree)
-              if isinstance(n, ast.FunctionDef) and n.name == "cmd_review")
+    import contextlib
+    import importlib.util
+    import io
+    import types
 
-    guards = [n for n in ast.walk(fn)
-              if isinstance(n, ast.If) and "agent_passes" in ast.unparse(n.test)]
-    assert guards, (
-        "cmd_review no longer branches on agent_passes — a pass that spent no attempt moves "
-        "to `review` unremarked again")
+    spec = importlib.util.spec_from_file_location("_issue_under_test", ISSUE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
 
-    body = "\n".join(ast.unparse(st) for g in guards for st in g.body)
-    assert "print(" in body, (
-        "the agent_passes branch no longer says anything; a guard that notices silently is "
-        "not a guard")
-    for stop in ("die(", "sys.exit", "raise "):
-        assert stop not in body, (
-            f"the agent_passes branch {stop!r}s. It must only WARN: 0 is also the value the "
-            f"owner's dial reads after a deliberate re-arm, and refusing would make the "
-            f"tooling argue with them.")
+    def run(passes):
+        """-> what cmd_review wrote to stderr for an issue at this counter."""
+        rec = {"id": "x", "number": 1, "state": "open", "agent_passes": passes}
+        fake = types.SimpleNamespace(
+            find=lambda args, number: rec,
+            patch=lambda rec_id, body: None,
+            add_comment=lambda args, r, text, author: None,
+        )
+        args = types.SimpleNamespace(number=1, repo="r", comment="", author="Ozzy")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            mod.cmd_review(fake, args)
+        return err.getvalue()
+
+    assert "agent_passes = 0" in run(0), (
+        "moving an issue to `review` at agent_passes = 0 says nothing — a pass that spent no "
+        "attempt is unrecorded, and review_cycle.sh halts on exactly that")
+    for counted in (1, 2, 3):
+        assert run(counted) == "", (
+            f"the warning fires at agent_passes = {counted}; it must be silent once the pass "
+            f"has been counted, or it is noise and gets ignored")
+
+
+def test_the_zero_warning_does_not_refuse():
+    """⚠ A WARNING, NOT A REFUSAL. Zero is also what the owner's dial reads after a
+    deliberate re-arm, and refusing would make the tooling argue with them. Asserted by
+    RUNNING it — the transition must still happen."""
+    import contextlib
+    import importlib.util
+    import io
+    import types
+
+    spec = importlib.util.spec_from_file_location("_issue_under_test2", ISSUE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    patched = {}
+    rec = {"id": "x", "number": 1, "state": "open", "agent_passes": 0}
+    fake = types.SimpleNamespace(
+        find=lambda args, number: rec,
+        patch=lambda rec_id, body: patched.update(body),
+        add_comment=lambda args, r, text, author: None,
+    )
+    args = types.SimpleNamespace(number=1, repo="r", comment="", author="Ozzy")
+    with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+        mod.cmd_review(fake, args)
+    assert patched.get("state") == "review", (
+        "cmd_review refused the transition at agent_passes = 0. It must only warn — 0 is "
+        "also the owner's deliberate re-arm value")
