@@ -64,7 +64,11 @@ OUT_DIR = DS / "quote-pilot-v3d"
 ENGINE_PREF = {"moss85": 0.0, "longcat": 0.05, "qwen": 0.15, "dia": 0.3}
 FT_VOICE = {"F": "tara", "M": "leo"}
 
-AXES = ("V", "A", "T")
+# ⚠ A LOCAL `AXES = ("V", "A", "T")` LIVED HERE AND IS GONE (2026-08-19). Its last reader
+# went when `rankable_vat` started asking `_vat`, leaving a constant whose only surviving
+# mention was inside a comment — and a duplicate of `schemas.AXES` besides. Raised as a nit
+# rather than filed; recorded here because a dead constant reads as load-bearing to the
+# next editor, which is the argument the `.replace("intended_vat", "")` removal already made.
 
 
 def rankable_vat(d):
@@ -94,7 +98,11 @@ def rankable_vat(d):
     """
     # ⚠ THROUGH `_vat`, THE SAME NORMALISER THE SCORER USES (issue #123). Reading
     # `d.get("V")` directly made this gate short-key-only while the scorer became
-    # alias-aware in `0e3b831`, so a long-form `{"valence": 0.7}` block was DROPPED here
+    # alias-aware in `cecf8f0` — NOT `0e3b831`, which the first version of this comment
+    # blamed (issue #126). At `0e3b831` the want side was still passed RAW, so the gate and
+    # the scorer agreed; `cecf8f0`'s #116 fix wrapped it in `_vat` and opened the gap. #123's
+    # own body says so, and I mis-attributed it while quoting that body. So a long-form
+    # `{"valence": 0.7}` block was DROPPED here
     # and told "labels no axis at all — re-direct these" — a 31B inference for a row the
     # scorer eight lines below can rank perfectly well. The divergence is one-directional
     # and silent, which is the worst shape. Asking the scorer's own normaliser makes the

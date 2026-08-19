@@ -12,6 +12,7 @@ engine" — is RESOLVED as of 2026-08-02. The upgrade this docstring asked for
 per speaker, merged with the 193 synthetic clips whose expressive registers still
 have no real-audio equivalent. Built by `build_reference_pool.py`.
 """
+import itertools
 import json
 import math
 import re
@@ -176,6 +177,22 @@ def _vat(v):
             "T": _n(v.get("T"), v.get("tension"))}
 
 
+def _far_endpoint(w):
+    """The end of the trained range furthest from `w` — the worst a labelled axis can be."""
+    return (schemas.AXIS_MIN if abs(w - schemas.AXIS_MIN) > abs(w - schemas.AXIS_MAX)
+            else schemas.AXIS_MAX)
+
+
+def _euclid(want, kv, axes):
+    """The rescaled distance over `axes`. ⚠ ONE EXPRESSION, TWO CALLERS, ON PURPOSE.
+
+    Both the real comparison and the no-information bound run through here, so the bound is
+    computed by the code it has to beat rather than by an algebraic restatement of it
+    (issue #125). If this line changes, the bound follows it automatically.
+    """
+    return math.sqrt(sum((want[a] - kv[a]) ** 2 for a in axes) * 3.0 / len(axes))
+
+
 def _vat_distance(want, kv):
     """Euclidean distance over the axes BOTH sides label, rescaled to three axes.
 
@@ -207,9 +224,10 @@ def _vat_distance(want, kv):
     expressive the target was; then it was REWARDED in the same proportion.
 
     An unrankable candidate now costs the supremum of what ANY labelled candidate could
-    score against this target, PLUS ONE ULP. Finite on purpose, so it is still selectable when the pool offers nothing else —
-    quietly shrinking the pool is the failure this module keeps paying for — but never
-    preferred over, and never TIED WITH, a clip that actually carries labels.
+    score against this target, PLUS ONE ULP. Finite on purpose, so it is still selectable
+    when the pool offers nothing else — quietly shrinking the pool is the failure this
+    module keeps paying for — but never preferred over, and never TIED WITH, a clip that
+    actually carries labels.
 
     ⚠ THE ULP IS THE WHOLE POINT AND THE FIRST VERSION OMITTED IT (issue #120). "The worst
     its labelled axes could justify" is bit-identical to what the labelled branch returns
@@ -234,13 +252,26 @@ def _vat_distance(want, kv):
         # labelled clip lose to the unlabelled one — the exact inversion #114 was about,
         # surviving the fix for it because the fix bounded the wrong maximum.
         #
-        # The supremum over subsets is reached by the single worst axis: for any subset S,
-        # sqrt(sum_{a in S} e_a^2 * 3/|S|) <= max_a(e_a) * sqrt(3), with equality when every
-        # axis in S has that error. So bound by that, plus one ULP for strictness.
-        worst = max(max(abs(want[a] - schemas.AXIS_MIN),
-                        abs(want[a] - schemas.AXIS_MAX)) for a in wanted) * math.sqrt(3.0)
+        # ⚠⚠ THE BOUND IS EVALUATED BY THE LABELLED BRANCH ITSELF (issue #125). The
+        # previous version computed `max_a(e_a) * sqrt(3)` — algebraically the supremum,
+        # but a DIFFERENT EXPRESSION from `sqrt(sum(e^2) * 3/n)`. #120's one-ULP margin was
+        # only ever a derivation because the two sides were bit-identical; against a
+        # differently-rounded value it is a guess, and floating point does not owe us the
+        # inequality: `1.5 * (2x)` and `3 * x` may disagree in the last place. A one-ULP
+        # disagreement reproduces #120 (a tie, decided by pool order under the strict
+        # `score < best_score`); two reproduces #122.
+        #
+        # So: build the worst candidate for every non-empty subset, score each through
+        # `_euclid` — the same code the labelled branch runs — and take the largest.
+        # `_euclid` is monotone in every |want[a] - kv[a]|, so the per-axis extreme is that
+        # subset's maximum, and seven subsets is a closed set worth enumerating rather than
+        # reasoning about. `nextafter` on that value is exact again.
+        worst = max(
+            _euclid(want, {a: _far_endpoint(want[a]) for a in subset}, list(subset))
+            for n in range(1, len(wanted) + 1)
+            for subset in itertools.combinations(wanted, n))
         return math.nextafter(worst, math.inf)
-    return math.sqrt(sum((want[a] - kv[a]) ** 2 for a in axes) * 3.0 / len(axes))
+    return _euclid(want, kv, axes)
 
 
 # Engines that must not receive bright / teen female casting. **EMPTY as of 2026-07-29**,

@@ -24,9 +24,50 @@ import ref_select  # noqa: E402
 
 
 def test_the_module_imports_without_touching_the_data_volume():
-    """⚠ THE POINT OF #124. If this ever regresses, every test below stops existing —
-    an import that reads `/data` fails collection on any machine without the mount, and a
-    collection error aborts the whole session rather than failing one module."""
+    """⚠ THE POINT OF #124, CHECKED STRUCTURALLY RATHER THAN BY A PROXY (issue #127).
+
+    The first version asserted `callable(v3d.main)`, which is not the property in its own
+    name: a module-scope read added *beside* `main` satisfies it. On a host with `/data`
+    mounted that passes in silence while the suite writes `v3d_bank.json` on every run; on
+    a host without it, collection dies and takes the whole session with it. Neither shows
+    up as this test failing.
+
+    So the assertion is on the module BODY: nothing at top level may do work. Imports,
+    constants, defs and the `__main__` guard only.
+    """
+    import ast
+
+    # ⚠ NAMED I/O CALLS, NOT "ANY CALL". The first version of this assertion flagged
+    # `_SONORA_REPO = os.path.dirname(...)`, the `for _p in ...: sys.path.insert(...)`
+    # idiom every script in this repo uses, and `DS = Path("/data/...")` — none of which
+    # touches the filesystem. That is #113's mistake in a new place: a rule broad enough to
+    # catch the shape rather than the behaviour condemns code that is not doing the thing.
+    IO_CALLS = {"open", "read_text", "write_text", "read_bytes", "write_bytes",
+                "mkdir", "load", "dump", "glob", "rglob", "iterdir", "unlink",
+                "makedirs", "listdir", "system", "run", "check_output"}
+
+    tree = ast.parse(SCRIPTS.src("make_v3d_bank.py"))
+    offenders = []
+    for node in tree.body:
+        # ⚠ Function and class bodies are NOT module scope — walking into them flagged
+        # `main()`'s own reads, which are the entire point of moving them there.
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        if isinstance(node, ast.If) and "__name__" in ast.unparse(node.test):
+            continue
+        for sub in ast.walk(node):
+            if not isinstance(sub, ast.Call):
+                continue
+            name = (sub.func.attr if isinstance(sub.func, ast.Attribute)
+                    else getattr(sub.func, "id", None))
+            if name in IO_CALLS:
+                offenders.append(f"  line {sub.lineno}: {ast.unparse(sub)[:72]}")
+    assert not offenders, (
+        "make_v3d_bank touches the filesystem at module scope again, so importing it has "
+        "side effects: on a host with /data mounted the suite rewrites the bank on every "
+        "run, and on one without it collection dies and takes the whole session. Neither "
+        "shows up as this test failing unless the check is structural:\n"
+        + "\n".join(offenders))
     assert callable(v3d.main), "the body must live in main(), not at module scope"
 
 
