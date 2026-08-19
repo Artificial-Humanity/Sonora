@@ -55,16 +55,22 @@ dependencies = [
   # ⚠ CORE, NOT TRANSITIVE, AND NOT OPTIONAL. `scripts/lib/schemas.py` imports it at module
   # scope and `book_ingest` imports that, so it sits on the teacher-synthesis path every
   # container takes. It was previously reachable ONLY through `fastapi`, which lives in the
-  # `vocalizer` extra below — so every lane that had it, had it by accident, and any lane
-  # built without that extra would have failed with an ImportError in a container rather
-  # than anywhere a test could see. MIT, so no friction with Apache-2.0.
+  # `vocalizer` extra below, AND as a transitive of `mlflow` in the training container.
+  # MIT, so no friction with Apache-2.0.
   #
-  # ⚠ THE FIRST VERSION OF THIS COMMENT NAMED THE WRONG LANE (issue #154). It said a dev box
-  # had it while "a training or eval image would not have had it at all". The measured
-  # reverse: `environments/training-container.txt` carries `fastapi==0.141.1` and therefore
-  # `pydantic==2.13.4`, while `environments/host-venv.txt` — recorded 2026-08-06 — carried
-  # neither. A reader acting on the old sentence would have gone looking for the gap in the
-  # container, which is the one lane the snapshot shows was covered.
+  # ⚠ THIS COMMENT HAS NAMED THE WRONG LANE TWICE (issue #154). v1 said a dev box had it
+  # while "a training or eval image would not have had it at all". v2 said "any lane built
+  # without that extra would have failed with an ImportError" — still false in the same
+  # direction, because the container's prep chain
+  # (`uv pip install … Cython mlflow` then `-e .`, AI-Lab-AMD/docker-compose.yml) installs
+  # NO extras and its freeze carries `fastapi==0.141.1` and `pydantic==2.13.4` anyway.
+  #
+  # Measured: no core dependency requires `fastapi` in this venv, and the prep chain adds
+  # only `mlflow` before `-e .`, so `mlflow` is the container's route. `host-venv.txt` as
+  # recorded 2026-08-06 carried neither. The honest statement is the one above — every lane
+  # that had it, had it by accident, through a DIFFERENT accident each time — and the case
+  # for declaring it core is the lane that has neither: an eval or minimal image, where the
+  # failure is an ImportError in a container and no test can see it.
   "pydantic>=2",
 ]
 

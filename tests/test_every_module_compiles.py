@@ -1,4 +1,4 @@
-"""Every tracked `.py` must COMPILE — not merely parse.
+"""Every `.py` this repo owns must COMPILE — not merely parse, and tracked or not.
 
 ⚠ This exists because `ast.parse` is not enough, and the gap cost a shipped `SyntaxError`.
 
@@ -32,8 +32,22 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _tracked_python():
+    """Every .py this repo owns, TRACKED OR NOT.
+
+    ⚠ `--cached --others --exclude-standard` — THE SAME FIX AS #110 (issue #159). That fix
+    corrected `test_stage_coverage`'s enumeration and left this one, which is the same
+    `git ls-files` blind spot in the same class of guard: a new module is invisible until it
+    is tracked, so it goes uncompiled exactly while it is most likely to be broken.
+
+    ⚠ IT WAS FOUND BY A ONE-TEST COUNT DISCREPANCY, not by anything failing.
+    `tests/test_declared_dependencies.py` was untracked when its own commit's suite ran, so
+    the 1360 reported as that commit's evidence became 1361 the moment it was committed. **A
+    guard that silently covers less reports a SMALLER number, and nobody reads a smaller
+    green number as a failure.** `--exclude-standard` keeps .gitignore honoured, so this does
+    not start compiling build output.
+    """
     out = subprocess.run(
-        ["git", "ls-files", "-z", "*.py"],
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "*.py"],
         cwd=REPO, capture_output=True, text=True, check=True,
     )
     return sorted(p for p in out.stdout.split("\0") if p)
@@ -44,7 +58,7 @@ FILES = _tracked_python()
 
 def test_the_enumeration_found_the_tree():
     """Every case below is parametrized off this list, so an empty one reports green."""
-    assert len(FILES) >= 150, f"only {len(FILES)} tracked .py files — is the listing working?"
+    assert len(FILES) >= 150, f"only {len(FILES)} .py files — is the listing working?"
 
 
 @pytest.mark.parametrize("rel", FILES, ids=FILES)

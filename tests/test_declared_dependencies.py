@@ -81,10 +81,18 @@ def test_the_host_snapshot_records_every_declared_dependency_it_actually_has():
     if not venv.exists():
         pytest.skip("no .venv in this checkout — the host snapshot cannot be compared, and "
                     "that is NOT a pass")
-    r = subprocess.run(["uv", "pip", "freeze", "--python", str(venv)],
-                       cwd=REPO, capture_output=True, text=True)
+    # ⚠ `FileNotFoundError`, NOT a non-zero return (issue #158). If `uv` is not on PATH,
+    # `subprocess.run` RAISES — it does not come back with a returncode — so the skip guard
+    # written for "uv unavailable" was the one case it could not handle, and the test would
+    # ERROR on exactly the machine it was meant to step aside on.
+    try:
+        r = subprocess.run(["uv", "pip", "freeze", "--python", str(venv)],
+                           cwd=REPO, capture_output=True, text=True)
+    except OSError as e:
+        pytest.skip(f"`uv` is not runnable here ({e}) — the host snapshot cannot be "
+                    f"compared, and that is NOT a pass")
     if r.returncode != 0:
-        pytest.skip(f"`uv pip freeze` unavailable ({r.stderr.strip()[:80]}) — NOT a pass")
+        pytest.skip(f"`uv pip freeze` failed ({r.stderr.strip()[:80]}) — NOT a pass")
     live = {_norm(l) for l in r.stdout.splitlines() if l.strip()}
     recorded = _snapshot("host-venv")
     unrecorded = sorted(d for d in _declared() if d in live and d not in recorded)

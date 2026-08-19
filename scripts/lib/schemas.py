@@ -26,9 +26,16 @@ engine"); this module is the same decision for the axes that were left behind.
 paragraph said the opposite (issue #96) — "already an installed dependency (2.13.4,
 transitively), so nothing here adds one" — while `pyproject.toml` in the SAME COMMIT added it
 to `[project.dependencies]` and explained why. Both statements cannot be true, and the
-reassuring one was false in the way that matters: pydantic was reachable only through
-`fastapi`, which lives in the `vocalizer` extra, so a dev box had it by accident and a
-training or eval image would not have had it at all. `book_ingest` imports this module at
+reassuring one was false in the way that matters. ⚠ SO WAS ITS FIRST CORRECTION (issue
+#154, twice): both said a training image "would not have had it at all", and the measured
+reverse is that `environments/training-container.txt` carries `fastapi==0.141.1` and
+`pydantic==2.13.4`. pydantic was reachable ONLY as a transitive of `fastapi`, and
+`fastapi` arrives by different accidents in different lanes: in the training container via
+`mlflow`, which the compose prep chain installs explicitly before `-e .` and which is the only
+candidate there (that chain installs NO extras, and no core dependency requires `fastapi` —
+measured in this venv); on a dev box via the `vocalizer` or `dev` extra, which both name it.
+So every lane that had it, had it by accident, and a lane that installed neither `mlflow` nor
+an extra — an eval image, a minimal container — had nothing. `book_ingest` imports this module at
 module scope, which puts it on the teacher-synthesis path every container takes. The failure
 would have been an `ImportError` in a container, where no test could see it.
 

@@ -7,7 +7,9 @@
 # Deliberately NO torch: the host lane is espeak-free CPU tooling (op_g2p is a
 # TFLite graph), and every model-touching job runs in the ROCm container.
 #
-# Rebuild:  uv venv && uv pip install --python .venv/bin/python -r env/host-venv.txt
+# Rebuild:  uv venv && uv pip install --python .venv/bin/python -r environments/host-venv.txt
+#           (⚠ the path said `env/` until 2026-08-19 — issue #157. The directory is
+#            `environments/`, and the command as written could never have run.)
 # Refresh:  uv pip freeze --python .venv/bin/python  (keep this header)
 #
 # Scripts run as .venv/bin/python, never `uv run` — uv run binds to pyproject.toml
@@ -22,9 +24,12 @@
 # environments/ tests/` returns no matches — so the rule had no mechanism and the review
 # that caught it was looking at a diff, not at this file.
 #
-# The added lines are the pydantic chain plus fastapi/starlette: the `vocalizer` extra is
-# installed in this venv, and this file records WHAT ACTUALLY RAN rather than what the
-# resolver would pick, per the header above.
+# The added lines are the pydantic chain plus fastapi/starlette. ⚠ NOT the `vocalizer`
+# extra, which the first version of this note claimed (issue #155): that extra is
+# `gradio, fastapi, uvicorn, starlette`, and NEITHER gradio NOR uvicorn is installed here.
+# What is installed is `fastapi`, `pysbd` and `pytest` — the `dev` extra. This file records
+# WHAT ACTUALLY RAN rather than what the resolver would pick, per the header above, and the
+# note explaining it is held to the same standard.
 ai-edge-litert==2.1.6
 annotated-doc==0.0.5
 annotated-types==0.8.0
