@@ -51,6 +51,10 @@ from book_ingest import (MIN_CLIP_CHARS, MIN_CLIP_SECONDS, DIRECTOR_SYSTEM,
                          MODEL, OLLAMA, _merge, _extract_json)
 
 CAMPAIGN = "teacher-ab-v1"
+# ⚠ Named rather than defaulted at the call site, so the summary can say how many
+# attempts a lost arm actually cost. Two matches `book_ingest.director_tag` and
+# `casting_pass`, which handle the same failure (issue #111).
+DIRECT_RETRIES = 2
 
 ITEMS = [   # (key, expected_register, casting/scene brief for Gemma, text)
     ("victory", "victory_peak",
@@ -271,8 +275,22 @@ def label_line(text, model, url):
     return d
 
 
-def direct(brief, text, engine, model, url):
-    """Pass 2 — per engine. Casting/delivery only, governed by the skill file."""
+def direct(brief, text, engine, model, url, retries=2):
+    """Pass 2 — per engine. Casting/delivery only, governed by the skill file.
+
+    ⚠ IT RETRIES, AS OF 2026-08-19 (owner decision on issue #111). One `_ollama` call
+    decided an arm: a dropped connection, a truncated generation or a missing `instruct`
+    key cost that engine's whole arm for the line, and the item went into the bank with
+    three of four. The failure is transient far more often than it is a bad line — this is
+    a 31B local director — so spending the arm on the first refusal was throwing away the
+    comparison the campaign exists to make.
+
+    `retries=2` and the loop shape are `book_ingest.director_tag`'s, deliberately: the same
+    failure was already being handled two files over, and its comment states the rule this
+    now follows — retry, and if the retries are spent, drop it LOUDLY rather than
+    substitute a choice. A missing required key is an unusable emission exactly like a dead
+    call, so both re-ask; only a spent budget returns None.
+    """
     system = (TARGETED_SYSTEM
               + "\nOutput ONLY compact minified JSON, no markdown, with EXACTLY "
               + "these keys:\n" + SCHEMA[engine] + "\n"
@@ -280,15 +298,19 @@ def direct(brief, text, engine, model, url):
     user = (f"Target engine: {engine}\n\n"
             f"Casting and delivery brief from the producer:\n{brief}\n\n"
             f"The line to be performed:\n\u201c{text}\u201d")
-    d = _ollama(system, user, model, url, num_predict=900)
-    if d is None:
-        return None
     required = ("voice_design", "instruct") if engine == "vibevoice" else ("instruct",)
-    for k in required:
-        if k not in d:
-            print(f"    director missing key {k}")
-            return None
-    return d
+    for attempt in range(retries):
+        d = _ollama(system, user, model, url, num_predict=900)
+        if d is None:
+            print(f"    director call failed ({engine}), attempt {attempt + 1}/{retries}")
+            continue
+        missing = [k for k in required if k not in d]
+        if missing:
+            print(f"    director missing key {', '.join(missing)} ({engine}), "
+                  f"attempt {attempt + 1}/{retries}")
+            continue
+        return d
+    return None
 
 
 def pick_dia_tags(text, model, url):
@@ -418,10 +440,10 @@ def main():
                 lines.append(row)
                 continue
 
-            d = direct(brief, text, engine, args.model, args.ollama)
+            d = direct(brief, text, engine, args.model, args.ollama, DIRECT_RETRIES)
             if d is None:
                 print(f"    {engine}: SKIPPED (director failed)")
-                lost_arms.append((key, engine, "director failed"))
+                lost_arms.append((key, engine, f"director failed after {DIRECT_RETRIES} attempts"))
                 continue
             # Routing is checked HERE, not at the top of the loop: the rule reads the
             # voice_design the director just wrote, which does not exist until now.
