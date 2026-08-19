@@ -229,7 +229,11 @@ def test_every_branch_names_the_offending_value(branch):
     _marker, _repair, probe = BRANCH_MARKERS[branch]
     msg = _vat_errors(probe)[0]
     if branch == "missing":
-        return          # there is no value to name; that IS the finding
+        # ⚠ `skip`, NOT a bare `return` (issue #151). A `return` reports PASSED for the one
+        # case this test deliberately does not check, so the count says five checked when
+        # four were — and the commit message called it "skipping" while the skip total sat
+        # unmoved at 9. The exclusion is right; saying so in the result is the point.
+        pytest.skip("the missing branch has no offending value to name — that IS the finding")
     value = probe["V"]
     shown = repr(value)
     assert (shown[:20] in msg) or (str(value)[:20] in msg), (

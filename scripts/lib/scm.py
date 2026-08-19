@@ -83,11 +83,16 @@ def validate(obj, lexicon):
             # been filed about, one module over.
             #
             # ⚠ `math.isnan` DOES appear below, and that is not a contradiction (issue
-            # #149): inside this branch `v` has already been proved a `float` by the
-            # `isinstance` test above, so the conversion cannot overflow. What was unsafe is
-            # asking it of an ARBITRARY value; what is safe is asking it of a float. The
-            # first version of this paragraph forbade the call outright, three lines above
-            # the line that makes it.
+            # #149). What makes it safe is the `isinstance(v, float)` CONJUNCT ON THAT LINE
+            # — not anything above it. The only `isinstance` above is `(int, float)`, which
+            # admits the oversized int, and that int reaches here: `coerce_axis` catches its
+            # `OverflowError` and returns None, which is why the `else:` below exists at all.
+            #
+            # ⚠ SO DO NOT DELETE THAT CONJUNCT AS REDUNDANT. It is the whole guard: without
+            # it `math.isnan(10**400)` raises and #142 is back. Reading the `else:` as dead
+            # undoes #145 the same way. A previous version of this paragraph said `v` was
+            # "already proved a float by the isinstance test above", which is false and
+            # invited exactly those two edits.
             #
             # ⚠ The TYPE check above stays separate and strict, because that is the
             # contract question (#117): a JSON string is a violation even though
