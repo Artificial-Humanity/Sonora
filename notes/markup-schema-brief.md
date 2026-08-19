@@ -77,9 +77,18 @@ in review, and map 1-N onto phone alignments when the span layer lands.
 ⚠ **THIS DOCUMENT CONTRADICTED ITSELF ON THE TOLERANCE UNTIL 2026-08-19.** The field-semantics
 table above said `±0.25`; §5 item 6 below records the owner's same-day amendment to `±0.35`,
 and `scm.VAT_TOL` implements it. A reader consulting the contract table got the superseded
-number. The table now points at the constant rather than restating one — **the amendment is
-recorded in exactly one place in this file, below, and the value in exactly one place in the
-code.** Adding a third statement of it here was the first thing tried and is the same mistake.
+number. The table now points at the constant rather than restating one, and the amendment is
+recorded in exactly one place in this file — below. Adding a third statement of it here was
+the first thing tried and is the same mistake.
+
+⚠ **The clause that once stood here — "and the value in exactly one place in the code" — was
+false when written** (issue #133). It was in three: the constant, a test that asserted
+`== 0.35` while being *named* for the absence of restatements, and `scm.py`'s own module
+docstring five lines above the definition. The sweep that found this brief contradicting
+itself walked straight past a restatement inside the very module it was about, because
+`test_doc_claims.docs()` reads `notes/*.md`, the root README and `configs/data/*.yaml` — and
+no `.py` files at all. **A sweep is not a mechanism.** `tests/test_scm.py` asserts the absence
+now instead of restating the value.
 
 Found by sweeping the docs after a code change rather than by anything failing, which is why
 `AGENTS.md` §5b now makes that sweep the rule: fixing the comment beside the code is not the

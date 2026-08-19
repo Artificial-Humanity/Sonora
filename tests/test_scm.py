@@ -86,6 +86,22 @@ def test_the_TOLERANT_readers_still_do_not_crash_on_an_unvalidated_string():
     assert "V+0.20" in scm.render_inline(obj)
 
 
-def test_the_tolerance_is_not_restated_in_this_file():
-    """`scm.VAT_TOL` is the value; the brief points at it and so must anything else."""
-    assert scm.VAT_TOL == 0.35
+def test_the_tolerance_is_not_restated_anywhere_in_the_module():
+    """⚠ THE FIRST VERSION OF THIS TEST WAS ITSELF A SECOND LITERAL (issue #133).
+
+    It was named `..._is_not_restated_in_this_file` and its body was `assert scm.VAT_TOL ==
+    0.35` — a restatement, in a test asserting there are none. It also missed the one that
+    mattered: `scm.py`'s own module docstring gave the tolerance as `±0.35` five lines above
+    the constant, and nothing could see it, because `test_doc_claims.docs()` builds its file
+    set from `notes/*.md`, the root README and `configs/data/*.yaml` — no `.py` at all.
+
+    So the assertion is now about ABSENCE, and it names no number of its own.
+    """
+    src = SCRIPTS.src("scm.py")
+    body = src.split("VAT_TOL", 1)[0]      # everything above the definition, i.e. the docstring
+    assert str(scm.VAT_TOL) not in body, (
+        f"scm.py's docstring restates the tolerance ({scm.VAT_TOL}) above the constant that "
+        f"defines it. Point at `VAT_TOL` instead; a value in two places drifts, and the "
+        f"doc-claims gate cannot read .py files.")
+    assert "±0.35" not in src and "0.35" not in src.replace("VAT_TOL = 0.35", "", 1), \
+        "the tolerance appears in scm.py somewhere other than its definition"

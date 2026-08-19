@@ -41,6 +41,7 @@ literals, and this is the file most likely to become the second literal for all 
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from typing import List
@@ -183,6 +184,25 @@ AXES = ("V", "A", "T")
 AXIS_MIN, AXIS_MAX = -1.0, 1.0
 
 
+def _finite(x):
+    """`x`, or None when it is NaN or an infinity.
+
+    ⚠ NAN IS NOT A NUMBER FOR ANY PURPOSE THIS MODULE HAS, AND IT PROPAGATES SILENTLY
+    (issue #134). `float("nan")` parses, `min(max(nan, -1.0), 1.0)` is `nan` — the clamp
+    added for #129 pins nothing — and every comparison against it is False, so
+    `select_reference`'s `score < best_score` never fires and the clip is dropped from
+    consideration with no message. A candidate silently removed from a ranking is the exact
+    silent degrade this module exists to refuse.
+
+    ⚠ IT IS REACHABLE FROM JSON. `json.loads('{"V": NaN}')` succeeds — Python's decoder
+    accepts the bare literal by default — and `coerce_axis("nan")` accepted the string form
+    too. Refused here rather than at `_clamp_axis` because this is the one definition of
+    "a usable number", and #104/#113/#118 are the record of what fixing it anywhere else
+    costs.
+    """
+    return None if math.isnan(x) or math.isinf(x) else x
+
+
 def coerce_axis(v):
     """One axis value as a float, or None when it carries no usable number.
 
@@ -196,10 +216,10 @@ def coerce_axis(v):
     if v is None or isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
-        return float(v)
+        return _finite(float(v))
     if isinstance(v, str):
         try:
-            return float(v.strip())
+            return _finite(float(v.strip()))
         except ValueError:
             return None
     return None

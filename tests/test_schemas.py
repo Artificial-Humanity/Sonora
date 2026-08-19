@@ -361,19 +361,26 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
     # below — which only covers entries carrying a line. The guard was switched off for
     # precisely the file most likely to grow the next copy. `fmt_axis` now delegates, so
     # only the definition itself needs naming, and it is named BY LINE like everything else.
+    # ⚠ KEYED ON THE ENCLOSING FUNCTION, NOT ON A LINE NUMBER. Line-keyed entries drifted
+    # three times in one session — every edit above a site invalidates it — and worse, the
+    # staleness check CANNOT see the failure that matters: two of these reasons were
+    # attached to the wrong sites (`_in_range`'s reason sat on `_validate_casting`'s line
+    # and vice versa) and both lines still held an `isinstance`, so it stayed green. An
+    # exemption that has drifted exempts the wrong thing, which is the hazard the check was
+    # written for; keying on the function makes the reason and the site verifiable together.
     EXEMPT = {
         # the single definition itself
-        ("scripts/lib/schemas.py", 198): "coerce_axis: the definition",
+        ("scripts/lib/schemas.py", "coerce_axis"): "the definition",
         # NOT axes: an 8-float zonos emotion vector, and engine parameter ranges
-        ("scripts/lib/book_ingest.py", 1036): "_in_range: engine params (pitch_std, cfg_weight)",
-        ("scripts/lib/book_ingest.py", 1046): "zonos emotion vector element, not an axis",
-        ("scripts/lib/book_ingest.py", 1050): "_clamp: generic engine-param clamp",
-        ("scripts/lib/book_ingest.py", 1069): "_l1: zonos emotion vector, not an axis",
+        ("scripts/lib/book_ingest.py", "_validate_casting"): "zonos emotion vector element",
+        ("scripts/lib/book_ingest.py", "_in_range"): "engine params (pitch_std, cfg_weight)",
+        ("scripts/lib/book_ingest.py", "_clamp"): "generic engine-param clamp",
+        ("scripts/lib/book_ingest.py", "_l1"): "zonos emotion vector, not an axis",
         # NOT an axis: a duration, with its own documented None-vs-0.0 reasoning
-        ("scripts/lib/synth_common.py", 598): "book duration in seconds, not an axis",
+        ("scripts/lib/synth_common.py", "parse_playtime"): "book duration in seconds",
         # NOT an axis: an ASR word error rate, guarded so a missing measure does not
         # TypeError the whole registration
-        ("scripts/stages/register_audition.py", 405): "asr_wer, a measure not a label",
+        ("scripts/stages/register_audition.py", "_qc_triage"): "asr_wer, a measure not a label",
         # ⚠ AN AXIS, AND STILL EXEMPT — the one entry here that is not "different rule" but
         # "different QUESTION". `scm.validate` certifies conformance to a ratified wire
         # format, and markup-schema-brief.md says the sidecar stores VAT **continuous**. So
@@ -382,11 +389,24 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
         # output), `validate` asks "does this conform to the contract" (strict, for
         # storage). Routing it through `coerce_axis` made the validator certify a sidecar
         # the contract forbids — reverted 2026-08-19 after checking the brief.
-        ("scripts/lib/scm.py", 44): "scm.validate: schema conformance, not axis coercion",
+        ("scripts/lib/scm.py", "validate"): "schema conformance, not axis coercion",
     }
-    # Kept as a mechanism rather than deleted: a genuinely single-purpose file could earn
-    # one. Nothing does today, and `schemas.py` proved why the bar is high.
-    EXEMPT_FILES = {f for f, ln in EXEMPT if ln is None}
+    EXEMPT_FILES = {f for f, fn in EXEMPT if fn is None}
+
+    def enclosing(tree):
+        """line -> the innermost function containing it, else '<module>'.
+
+        ⚠ The key is the FUNCTION, not the line (see EXEMPT above): line numbers drifted
+        three times in one session, and a drifted line still holding an `isinstance` keeps
+        the staleness check green while the reason describes a different site.
+        """
+        out = {}
+        for fn in ast.walk(tree):
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for n in ast.walk(fn):
+                    if hasattr(n, "lineno"):
+                        out[n.lineno] = fn.name
+        return out
 
     offenders = []
     seen = set()
@@ -398,6 +418,7 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
+        owner = enclosing(tree)
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                     and node.func.id == "isinstance" and len(node.args) == 2):
@@ -408,18 +429,20 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
                         {types.id} if isinstance(types, ast.Name) else set())
             if not {"int", "float"} <= names:
                 continue
-            if (rel, node.lineno) in EXEMPT:
-                seen.add((rel, node.lineno))
+            key = (rel, owner.get(node.lineno, "<module>"))
+            if key in EXEMPT:
+                seen.add(key)
                 continue
-            offenders.append(f"  {rel}:{node.lineno}  {ast.unparse(node)}")
+            offenders.append(f"  {rel}:{node.lineno} in {key[1]}  {ast.unparse(node)}")
 
     # ⚠ AN EXEMPTION WHOSE SITE HAS MOVED IS A HIDING PLACE WAITING FOR A NEW TENANT. Line
     # numbers drift, so a stale entry silently exempts whatever now sits on that line.
     stale = {k for k in EXEMPT if k[1] is not None} - seen
     assert not stale, (
-        f"these exemptions no longer point at an `isinstance(x, (int, float))`: "
-        f"{sorted(stale)}. Re-point or delete them — an exemption that matches nothing "
-        f"exempts nothing, and one that has drifted exempts the wrong thing.")
+        f"these exemptions name a (file, function) that no longer contains an "
+        f"`isinstance(x, (int, float))`: {sorted(stale)}. Re-point or delete them — an "
+        f"exemption that matches nothing exempts nothing, and one naming the wrong function "
+        f"exempts the wrong thing.")
 
     assert not offenders, (
         "these read a number by hand instead of asking `schemas.coerce_axis`, which is the "

@@ -2,7 +2,7 @@
 
 Sidecar-canonical: these helpers validate a sidecar object, render the human-facing
 inline projection (never parsed back), and verify measurable claims against the
-instrument decode (utterance VAT within ±0.35; spans activate when the span decode
+instrument decode (utterance VAT within `VAT_TOL`; spans activate when the span decode
 layer lands). Interpretive fields (style, direction) are never load-bearing.
 """
 
@@ -41,9 +41,18 @@ def validate(obj, lexicon):
     # a literal here was a second copy of them.
     for ch in schemas.AXES:
         v = vat.get(ch)
-        if not isinstance(v, (int, float)) or isinstance(v, bool):
-            errs.append(f"vat.{ch} missing or not a number — the sidecar stores VAT "
-                        f"continuous (markup-schema-brief.md, RATIFIED v0.1)")
+        # ⚠ THREE MESSAGES, BECAUSE THERE ARE THREE REPAIRS (issue #132). "missing or not a
+        # number" told an operator holding `"0.7"` that their axis was ABSENT — so the
+        # obvious action is to go and produce a label that is already there, and the actual
+        # fault (a string where the contract wants a number) goes unread. The classification
+        # was right and the instruction beside it was wrong, which is this branch's most
+        # expensive recurring shape.
+        if ch not in vat or v is None:
+            errs.append(f"vat.{ch} is missing — the sidecar must carry all three axes")
+        elif not isinstance(v, (int, float)) or isinstance(v, bool):
+            errs.append(f"vat.{ch} is {type(v).__name__} {v!r}, not a number — the sidecar "
+                        f"stores VAT continuous (markup-schema-brief.md, RATIFIED v0.1). "
+                        f"Emit it as a JSON number, not a string.")
         elif not schemas.AXIS_MIN <= v <= schemas.AXIS_MAX:
             errs.append(f"vat.{ch} out of "
                         f"[{schemas.AXIS_MIN:g},{schemas.AXIS_MAX:g}]")

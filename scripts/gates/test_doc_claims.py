@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Gate: the notes' corpus/checkpoint numbers must agree with the artifacts on disk.
+"""Gate: the notes' checkable numbers must agree with what they describe on disk — corpus
+and checkpoint artifacts, and since 2026-08-19 module-level CODE CONSTANTS too.
 
 WHY THIS EXISTS (2026-08-09, owner-commissioned)
 ------------------------------------------------
@@ -31,7 +32,11 @@ reproduced it.
 
 WHAT IT DOES NOT COVER — read this before trusting a pass
 ---------------------------------------------------------
-* **Only corpus/checkpoint numbers** (owner scope, 2026-08-09). Not statuses, not prose, not
+* **Only checkable numbers** — corpus/checkpoint artifacts (owner scope, 2026-08-09) and,
+  since 2026-08-19, module-level code constants via `const()`. ⚠ The registry was widened
+  and these four scope statements were not (issue #131), so the gate described a narrower
+  job than it did while `AGENTS.md` §5b told agents to use the wider one.
+  Not statuses, not prose, not
   the sequencing claims that made up most of the review's product findings.
 * **Only phrasings the patterns match.** A number written in a form no pattern recognises is
   invisible here — a silent miss, not an error. When a check goes green it means "no
@@ -526,7 +531,7 @@ def main():
                                     f"artifact says {comma(truth)!r}\n"
                                     f"      {line.strip()[:110]}")
 
-    print(f"checked {checked} of {len(FACTS)} corpus/checkpoint facts against the "
+    print(f"checked {checked} of {len(FACTS)} facts against the "
           f"artifacts on disk")
     print(f"  {len(files)} documents scanned, {matched} recognised statements, "
           f"{exempted} exempted line(s)")
@@ -567,7 +572,8 @@ def main():
 
     print("\nPASS — every recognised claim matches disk.")
     print("⚠ This does NOT mean the docs are correct: only recognised phrasings are seen, "
-          "and\n  scope is corpus/checkpoint numbers only (owner, 2026-08-09). A green run "
+          "and\n  scope is corpus/checkpoint numbers and registered code constants (owner,\n"
+          "  2026-08-09; widened 2026-08-19). A green run "
           "means\n  'nothing recognised disagrees'.")
     if skipped:
         print(f"⚠ …and {len(skipped)} of {len(FACTS)} facts were NOT CHECKED here (listed "
