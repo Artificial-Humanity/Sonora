@@ -370,6 +370,25 @@ def transition(pb, args, action, new_state, author):
 
 
 def cmd_review(pb, args):
+    # ⚠ WARN IF THE PASS WAS NEVER TAKEN. `agent_passes` is the cap's whole mechanism and it
+    # is incremented by the WORKER, first thing — but nothing checked, and on 2026-08-19 a
+    # full fix pass went by with `take` skipped entirely: four issues were fixed, commented
+    # and moved to `review` with one of them still reading 0. The reviewer noticed, not the
+    # tooling, and `review_cycle.sh` treats "the worker failed to advance agent_passes" as a
+    # stop condition — so an unattended run would have halted on it.
+    #
+    # ⚠ A WARNING, NOT A REFUSAL, and that is deliberate. Zero is also what the OWNER's dial
+    # reads after a deliberate re-arm, and refusing here would make the tooling argue with
+    # them. It is also too late to fix by then: the honest response is to say so in the pass
+    # notes, not to backfill a counter, which would be writing a number to make the record
+    # look right.
+    rec = pb.find(args, args.number)
+    if int(rec.get("agent_passes") or 0) == 0:
+        print("issue.py: ⚠ #%d is moving to `review` with agent_passes = 0.\n"
+              "  Either `take` was skipped this pass — the counter is the cap's mechanism and\n"
+              "  a pass that spent no attempt is not recorded — or the owner re-armed it\n"
+              "  deliberately, in which case ignore this. Do NOT backfill it to look right;\n"
+              "  say which it was in the pass notes." % args.number, file=sys.stderr)
     transition(pb, args, "review", "review", args.author)
 
 

@@ -287,8 +287,10 @@ pb_record_list  collection="issues"  perPage=1  sort="-number"  fields="number"
 ```
 
 A collision returns `400` on the unique index — **re-read and retry rather than overwriting.**
-Do not reuse a number below 90; `#12–#89` are taken — **by the export, not by the live
-collection** (see above). The absence of a `#33` record is not permission to allocate one.
+⚠ **That index sees LIVE records only.** `#12–#89` are taken by the export, not by the
+collection (see above), so an absent `#33` produces no collision and no warning — it is not
+permission to allocate one. `issue.py file` is floored at `NUMBER_FLOOR = 120` for exactly
+this reason (issue #168); if you allocate by hand, apply the same floor yourself.
 
 ### ⚠ Two defaults on `pb_record_list` that will mislead you
 

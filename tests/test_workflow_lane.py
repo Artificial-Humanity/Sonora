@@ -496,15 +496,23 @@ def test_issue_numbers_are_floored_against_the_export():
                   and isinstance(n.value, ast.Constant)), None)
     assert floor is not None, "NUMBER_FLOOR is gone — allocation is unfloored again"
 
+    # ⚠ NOT `if export.exists():` (issue #171). The export is the ONLY thing that makes the
+    # floor a measurement rather than a guess, so wrapping the comparison in a silent
+    # conditional made the one real assertion optional — and it would vanish exactly on a
+    # checkout where the file was lost, which is the case where a wrong floor does damage.
+    # The file is tracked, so its absence is a fault to report, not a reason to check less.
+    import json
+
     export = REPO / "notes" / "tracker-export-2026-08-17.json"
-    if export.exists():
-        import json
-        data = json.loads(export.read_text(encoding="utf-8"))
-        rows = data["issues"] if isinstance(data, dict) and "issues" in data else data
-        highest = max(int(r["number"]) for r in rows)
-        assert floor >= highest, (
-            f"NUMBER_FLOOR is {floor} but the export reaches #{highest}; allocation could "
-            f"reissue a number that already names a different finding")
+    assert export.exists(), (
+        f"{export.name} is missing — it is tracked, and without it NUMBER_FLOOR cannot be "
+        f"checked against anything. This test would otherwise pass while proving nothing.")
+    data = json.loads(export.read_text(encoding="utf-8"))
+    rows = data["issues"] if isinstance(data, dict) and "issues" in data else data
+    highest = max(int(r["number"]) for r in rows)
+    assert floor >= highest, (
+        f"NUMBER_FLOOR is {floor} but the export reaches #{highest}; allocation could "
+        f"reissue a number that already names a different finding")
 
     # the floor must actually be APPLIED, not merely defined
     assign = [n for n in ast.walk(tree)
@@ -512,3 +520,26 @@ def test_issue_numbers_are_floored_against_the_export():
               and isinstance(n.targets[0], ast.Name) and n.targets[0].id == "n"]
     assert any("NUMBER_FLOOR" in ast.unparse(a.value) for a in assign), (
         "NUMBER_FLOOR is defined but the allocation no longer uses it")
+
+
+def test_moving_to_review_checks_that_the_pass_was_counted():
+    """⚠ `agent_passes` IS THE CAP'S MECHANISM AND NOTHING WATCHED IT (2026-08-19).
+
+    A full fix pass went by with `take` skipped: four issues were fixed, commented and moved
+    to `review`, one of them still reading 0. The REVIEWER noticed, not the tooling — and
+    `review_cycle.sh` treats "the worker failed to advance agent_passes" as a stop condition,
+    so an unattended run would have halted on it.
+
+    ⚠ A WARNING, NOT A REFUSAL. Zero is also what the owner's dial reads after a deliberate
+    re-arm, and refusing would make the tooling argue with them.
+    """
+    tree = ast.parse(ISSUE_SRC)
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == "cmd_review")
+    src = ast.unparse(fn)
+    assert "agent_passes" in src, (
+        "cmd_review no longer looks at agent_passes — a pass that spent no attempt moves to "
+        "`review` unremarked again")
+    assert "die(" not in src, (
+        "cmd_review REFUSES on agent_passes now; it must only warn, because 0 is also the "
+        "owner's deliberate re-arm value")

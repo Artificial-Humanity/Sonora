@@ -58,10 +58,13 @@ dependencies = [
   # `vocalizer` extra below and by the `dev` extra, and pulled into the TRAINING CONTAINER
   # by `mlflow`. ⚠ The container route IS measured (by elimination: the prep chain adds only
   # `mlflow` before `-e .`, that chain installs no extras, and no core dependency requires
-  # `fastapi`). ⚠ The HOST route is NOT, and is not claimed: naming an extra is a claim about
-  # every package in it, and both namings tried so far were wrong — `vocalizer` needs gradio
-  # and uvicorn, `dev` needs pre-commit, and none of those is installed (issues #155, #160,
-  # #166). The disclaimer is scoped to the host on purpose; it never applied to `mlflow`.
+  # `fastapi`). ⚠ The HOST route is UNIDENTIFIED — not merely unclaimed. THREE namings were
+  # tried and all three were wrong: `vocalizer` needs gradio and uvicorn, `dev` needs
+  # pre-commit, none of those is installed, and measured across all 67 installed
+  # distributions **not one declares an unconditional `Requires-Dist: fastapi`** (issues
+  # #155, #160, #166, #167, #170). `fastapi 0.141.1` is here by something this venv no
+  # longer records. The disclaimer is scoped to the host on purpose; it never applied to
+  # `mlflow`, whose route IS measured above.
   # MIT, so no friction with Apache-2.0.
   #
   # ⚠ THIS COMMENT HAS NAMED THE WRONG LANE TWICE (issue #154). v1 said a dev box had it
