@@ -279,7 +279,14 @@ def fmt_axis(v, spec="+.1f", absent="  · "):
     with the offending row already durable: resume skipped it, then died on the next chunk
     missing an axis. A run made exactly one chunk of progress per restart (issue #91).
     """
-    return format(v, spec) if isinstance(v, (int, float)) and not isinstance(v, bool) else absent
+    # ⚠ THROUGH `coerce_axis`, NOT A SECOND `isinstance` (issue #118). This was the one
+    # other reader inside this module, and it disagreed with the definition eighty lines
+    # above it on the input #58 ruled on: `coerce_axis("0.7")` is `0.7`, and this printed
+    # the "director said nothing" placeholder for it. It was also invisible to the
+    # repo-wide guard, because that guard exempts this FILE rather than the definition's
+    # line — so the next copy added here would have been exempt on arrival.
+    n = coerce_axis(v)
+    return format(n, spec) if n is not None else absent
 
 
 # --- delivery lanes: DELIBERATELY NOT HERE ---------------------------------------------

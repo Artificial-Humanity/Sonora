@@ -206,19 +206,30 @@ def _vat_distance(want, kv):
     `9bb3607` an unlabelled candidate scored ‖want‖ and was PENALISED in proportion to how
     expressive the target was; then it was REWARDED in the same proportion.
 
-    An unrankable candidate now costs the worst its labelled axes could justify. Finite on
-    purpose, so it is still selectable when the pool offers nothing else — quietly shrinking
-    the pool is the failure this module keeps paying for — but never preferred over a clip
-    that actually carries labels.
+    An unrankable candidate now costs the worst its labelled axes could justify, PLUS ONE
+    ULP. Finite on purpose, so it is still selectable when the pool offers nothing else —
+    quietly shrinking the pool is the failure this module keeps paying for — but never
+    preferred over, and never TIED WITH, a clip that actually carries labels.
+
+    ⚠ THE ULP IS THE WHOLE POINT AND THE FIRST VERSION OMITTED IT (issue #120). "The worst
+    its labelled axes could justify" is bit-identical to what the labelled branch returns
+    for a candidate sitting at the opposite endpoint on every axis — the same terms summed
+    in the same order. `select_reference` keeps the best on `score < best_score`, a STRICT
+    comparison, so an exact tie is resolved by pool iteration order rather than by which
+    clip carries labels. `±1.0` is reachable: `AXIS_MIN/AXIS_MAX` are exactly that, and
+    derivation clamps per-speaker z-scores at 2 sigma, so a clamped speaker lands on the
+    endpoint. `math.nextafter` makes the inequality strict while keeping the scaling — the
+    cost of "unknown" still rises with how much the target asked for.
     """
     wanted = [a for a in "VAT" if want.get(a) is not None]
     if not wanted:
         return 0.0
     axes = [a for a in wanted if kv.get(a) is not None]
     if not axes:
-        return math.sqrt(sum(max(abs(want[a] - schemas.AXIS_MIN),
-                                 abs(want[a] - schemas.AXIS_MAX)) ** 2 for a in wanted)
-                         * 3.0 / len(wanted))
+        worst = math.sqrt(sum(max(abs(want[a] - schemas.AXIS_MIN),
+                                  abs(want[a] - schemas.AXIS_MAX)) ** 2 for a in wanted)
+                          * 3.0 / len(wanted))
+        return math.nextafter(worst, math.inf)
     return math.sqrt(sum((want[a] - kv[a]) ** 2 for a in axes) * 3.0 / len(axes))
 
 

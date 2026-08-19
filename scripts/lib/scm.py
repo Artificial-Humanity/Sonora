@@ -71,8 +71,15 @@ def verify_vat(obj, measured):
     """Check utterance VAT against instrument values {V,A,T}; returns (ok, flags)."""
     flags = []
     vat = (obj.get("utterance") or {}).get("vat") or {}
-    for ch in ("V", "A", "T"):
-        m, c = measured.get(ch), vat.get(ch)
+    # ⚠ ALL THREE READERS IN THIS MODULE GO THROUGH `coerce_axis` (issue #117). Only
+    # `validate` was delegated on 2026-08-19, which made it CERTIFY a numeric-string axis
+    # that these two still crashed on — `abs("0.7" - m)` is a TypeError and the renderer
+    # below raises "Sign not allowed in string format specifier". Before that change all
+    # three refused a string together; after it, "no schema violations" stopped implying
+    # "this module can process it", and `tag_spike` writes `verified: true` beside a value
+    # its own renderer cannot format.
+    for ch in schemas.AXES:
+        m, c = schemas.coerce_axis(measured.get(ch)), schemas.coerce_axis(vat.get(ch))
         if m is None or c is None:
             continue
         if abs(c - m) > VAT_TOL:
@@ -84,7 +91,8 @@ def render_inline(obj):
     """Deterministic inline projection (view only, single line for the audit note)."""
     utt = obj.get("utterance") or {}
     vat = utt.get("vat") or {}
-    head = "[" + " ".join(f"{c}{vat.get(c, 0):+.2f}" for c in ("V", "A", "T"))
+    # ⚠ `coerce_axis`, and `or 0.0` for the absent case — see verify_vat above (issue #117).
+    head = "[" + " ".join(f"{c}{schemas.coerce_axis(vat.get(c)) or 0.0:+.2f}" for c in ("V", "A", "T"))
     if utt.get("register"):
         head += f" · {utt['register']}"
     if utt.get("style"):

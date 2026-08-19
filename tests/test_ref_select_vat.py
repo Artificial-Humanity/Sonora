@@ -214,3 +214,29 @@ def test_the_penalty_scales_with_how_much_the_target_asked_for():
     strong = ref_select._vat_distance({"V": 1.0, "A": 1.0, "T": 1.0}, UNLABELLED)
     mild = ref_select._vat_distance({"V": 0.1, "A": 0.1, "T": 0.1}, UNLABELLED)
     assert strong > mild
+
+
+def test_the_unrankable_penalty_is_STRICTLY_worse_than_the_worst_labelled_clip():
+    """⚠ A TIE IS NOT A LOSS (issue #120). `select_reference` keeps the best on
+    `score < best_score` — strict — so an exact tie is broken by pool iteration order, not
+    by which clip carries labels. The first version of the penalty returned bit-identically
+    what the labelled branch returns for a candidate at the opposite endpoint on every axis:
+    the same terms, summed in the same order.
+
+    `±1.0` is reachable rather than theoretical: AXIS_MIN/AXIS_MAX are exactly those, and
+    derivation clamps per-speaker z-scores at 2 sigma, so a clamped speaker lands there.
+    """
+    want = {"V": 0.8, "A": 0.8, "T": 0.65}
+    worst_labelled = ref_select._vat_distance(want, {"V": -1.0, "A": -1.0, "T": -1.0})
+    unrankable = ref_select._vat_distance(want, UNLABELLED)
+    assert unrankable > worst_labelled, (
+        f"a candidate with no labels ({unrankable!r}) does not lose to one at the far "
+        f"endpoint of every axis ({worst_labelled!r}); a tie is decided by pool order")
+
+
+def test_the_penalty_is_strictly_worse_at_the_extreme_target_too():
+    """The boundary the arithmetic collapses at: want on an endpoint, candidate on the other."""
+    for want in ({"V": 1.0, "A": 1.0, "T": 1.0}, {"V": -1.0, "A": -1.0, "T": -1.0}):
+        opposite = {k: -v for k, v in want.items()}
+        assert ref_select._vat_distance(want, UNLABELLED) > \
+            ref_select._vat_distance(want, opposite)

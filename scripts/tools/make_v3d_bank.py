@@ -51,6 +51,7 @@ import schemas  # noqa: E402  -- the single definition of what counts as an axis
 from ref_select import (  # noqa: E402
     MAX_REF_EXCURSION,
     REF_BLACKLIST,
+    _vat,
     _vat as keep_vat,
     _vat_distance,
     design_gender,
@@ -150,7 +151,18 @@ for r in rows:
         # Measured on the real data with the subscript restored: **9 of the 10 scoreable
         # rows choose a different reference.** `select_reference` has always written
         # `_vat(k["intended_vat"])`; B-L7 records two other guards this same fork dropped.
-        score = _vat_distance(r["intended"], keep_vat(k["intended_vat"]))
+        # ⚠ BOTH SIDES NORMALISED, and only one of them was (issue #116). This passed
+        # `r["intended"]` RAW while normalising the candidate, so the target kept whatever
+        # the manifest happened to hold. `select_reference:842` writes `_vat(intended)` for
+        # the same reason; this fork normalised the half it had just been fixing.
+        #
+        # ⚠ IT BECAME REACHABLE BECAUSE OF #113's OWN FIX. The old all-or-nothing
+        # `isinstance` gate rejected any row with a non-float axis, which — entirely by
+        # accident — was what protected this subtraction. Routing the gate through
+        # `coerce_axis` admitted the numeric string `"0.7"` that #58 ruled IS a label, and
+        # `"0.7" - 0.5` is a `TypeError` at module scope: the whole bank build dies on the
+        # first such row. `True - 0.5` is worse, scoring 0.5 in silence.
+        score = _vat_distance(_vat(r["intended"]), keep_vat(k["intended_vat"]))
         score += ENGINE_PREF.get(k.get("engine"), 0.2)
         if k["file"] in used:
             score += 0.5          # prefer distinct refs across the 10 lines

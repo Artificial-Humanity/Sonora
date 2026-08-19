@@ -337,14 +337,24 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
     import ast
 
     # ⚠ EXEMPTIONS ARE PER SITE AND CARRY A REASON, because the syntactic shape is shared by
-    # checks that are NOT this rule. Running the scan the first time returned six hits and
-    # only ONE was an axis — so a blanket ban would have forced durations and engine
-    # parameters through a function about V/A/T, which is a worse error than the one being
-    # fixed. Explicit so that adding to it is a decision rather than a slip, the same shape
-    # `RECURSIVE_BY_DESIGN` and the doc-claims exemptions use.
+    # checks that are NOT this rule. **Measured at `1d9c184^`: eleven hits, three of them
+    # axes.** (Nine if `schemas.py` is skipped, which is what the first version of this
+    # comment reported as "six hits, one axis" — a number taken from a truncated first look
+    # and wrong twice over. Issue #119; corrected by re-running the scan at that revision
+    # rather than by re-reading the note.) A blanket ban would have forced durations and
+    # engine parameters through a function about V/A/T, which is a worse error than the one
+    # being fixed. Explicit so that adding to it is a decision rather than a slip, the same
+    # shape `RECURSIVE_BY_DESIGN` and the doc-claims exemptions use.
+    #
+    # ⚠ NO FILE-LEVEL ENTRY FOR `schemas.py` (issue #118). It had one, and the file is not
+    # single-purpose: `fmt_axis` was a SECOND reader inside it, disagreeing with the
+    # definition on `"0.7"`, invisible to this scan, and beyond the staleness assertion
+    # below — which only covers entries carrying a line. The guard was switched off for
+    # precisely the file most likely to grow the next copy. `fmt_axis` now delegates, so
+    # only the definition itself needs naming, and it is named BY LINE like everything else.
     EXEMPT = {
         # the single definition itself
-        ("scripts/lib/schemas.py", None): "the definition",
+        ("scripts/lib/schemas.py", 198): "coerce_axis: the definition",
         # NOT axes: an 8-float zonos emotion vector, and engine parameter ranges
         ("scripts/lib/book_ingest.py", 1036): "_in_range: engine params (pitch_std, cfg_weight)",
         ("scripts/lib/book_ingest.py", 1046): "zonos emotion vector element, not an axis",
@@ -356,6 +366,8 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
         # TypeError the whole registration
         ("scripts/stages/register_audition.py", 405): "asr_wer, a measure not a label",
     }
+    # Kept as a mechanism rather than deleted: a genuinely single-purpose file could earn
+    # one. Nothing does today, and `schemas.py` proved why the bar is high.
     EXEMPT_FILES = {f for f, ln in EXEMPT if ln is None}
 
     offenders = []

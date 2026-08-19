@@ -51,9 +51,12 @@ from book_ingest import (MIN_CLIP_CHARS, MIN_CLIP_SECONDS, DIRECTOR_SYSTEM,
                          MODEL, OLLAMA, _merge, _extract_json)
 
 CAMPAIGN = "teacher-ab-v1"
-# ⚠ SEMANTIC retries only — how many times the director is re-asked for a well-formed
+# ⚠ SEMANTIC retries only — how many times the director is RE-ASKED for a well-formed
 # answer that was missing a required key. Transport retries belong to `_ollama` and are
 # counted by `OLLAMA_RETRIES`; nesting the two silently multiplied them (issue #115).
+# ⚠ The two still multiply on the flaky-endpoint path, by design: worst case for one arm
+# is DIRECT_RETRIES * OLLAMA_RETRIES = 6 model calls (issue #121). Bounded, and stated
+# wherever a number is printed, rather than hidden behind an "attempt" count.
 DIRECT_RETRIES = 2
 
 ITEMS = [   # (key, expected_register, casting/scene brief for Gemma, text)
@@ -299,7 +302,17 @@ def direct(brief, text, engine, model, url, retries=2):
         failure that has just been retried to exhaustion, so this returns immediately.
       * **a well-formed answer missing a required key** — a SEMANTIC failure `_ollama`
         cannot see, and a fresh generation is exactly what might fix it. This is what
-        `retries` counts, and the number it prints is the number of model calls it made.
+        `retries` counts.
+
+    ⚠ `retries` COUNTS DIRECTOR ASKS, NOT MODEL CALLS, AND THE FIRST VERSION OF THIS
+    PARAGRAPH SAID OTHERWISE (issue #121). `_ollama` retries on any exception and on
+    unparseable JSON, returning as soon as one attempt parses — so a well-formed answer
+    missing a key can be the 1st, 2nd or 3rd model call of a single ask. The honest bound
+    for one arm is `DIRECT_RETRIES * OLLAMA_RETRIES` = **6 model calls**, which is exactly
+    the figure #115 was filed about; what #115 actually removed is the DEAD-endpoint case,
+    where it is now 3 rather than 6. A flaky endpoint can still reach 6, and at
+    `_ollama`'s 300 s timeout that is a bounded but long stall on one arm. Stated rather
+    than fixed: capping it is a budget decision, not a defect.
     """
     system = (TARGETED_SYSTEM
               + "\nOutput ONLY compact minified JSON, no markdown, with EXACTLY "
@@ -317,8 +330,11 @@ def direct(brief, text, engine, model, url, retries=2):
             return None
         missing = [k for k in required if k not in d]
         if missing:
+            # ⚠ "ask", not "attempt" (issue #121): this counts director ASKS, and each
+            # ask may have cost up to OLLAMA_RETRIES model calls inside `_ollama`.
             print(f"    director missing key {', '.join(missing)} ({engine}), "
-                  f"attempt {attempt + 1}/{retries}")
+                  f"ask {attempt + 1}/{retries} "
+                  f"(each ask is up to {OLLAMA_RETRIES} model calls)")
             continue
         return d
     return None
