@@ -19,9 +19,14 @@ AGE_BANDS = {"child", "young", "adult", "senior"}
 
 
 def _show(v, limit=40):
-    """`repr(v)`, truncated. ⚠ The value that motivated the non-finite branch is a JSON
-    integer too large for a float — its repr is 400 digits, and an error message that
-    scrolls the terminal hides the three messages printed beside it."""
+    """`repr(v)`, truncated.
+
+    ⚠ The value that motivated this is a JSON integer too large for a float: its repr runs
+    to 400 digits, and an error message that scrolls the terminal hides the ones printed
+    beside it. That case has had **its own branch** since issue #145 — it is not
+    "non-finite", which this docstring called it until #150; `10**400` is an exact int and
+    perfectly finite. What it cannot do is fit in a float64.
+    """
     r = repr(v)
     return r if len(r) <= limit else r[:limit] + f"… ({len(r)} chars)"
 
@@ -69,14 +74,20 @@ def validate(obj, lexicon):
             # the range comparison — every comparison against NaN is False — and was
             # reported as "out of [-1,1]". It is not out of range; it is not a number.
             #
-            # ⚠⚠ `coerce_axis`, NOT `math.isnan(v) or math.isinf(v)` (issue #142). That was
-            # the remedy #137 suggested, marked UNVERIFIED, and I implemented it verbatim
-            # without checking it: `math.isnan` CONVERTS its argument to a float first, so
-            # on a JSON integer too large for one it raises `OverflowError` — and
-            # `scm.validate`, whose contract is to RETURN a list of violations, raised
-            # instead. The identical conversion is what #141 had just been filed about, one
-            # module over. `coerce_axis` already answers this exactly, including the
-            # overflow, and asking it keeps one definition rather than two.
+            # ⚠⚠ THE OUTER TEST IS `coerce_axis`, NOT `math.isnan(v) or math.isinf(v)`
+            # (issue #142). That was the remedy #137 suggested, marked UNVERIFIED, and I
+            # implemented it verbatim without checking it: `math.isnan` CONVERTS its
+            # argument to a float first, so on a JSON integer too large for one it raises
+            # `OverflowError` — and `scm.validate`, whose contract is to RETURN a list of
+            # violations, raised instead. The identical conversion is what #141 had just
+            # been filed about, one module over.
+            #
+            # ⚠ `math.isnan` DOES appear below, and that is not a contradiction (issue
+            # #149): inside this branch `v` has already been proved a `float` by the
+            # `isinstance` test above, so the conversion cannot overflow. What was unsafe is
+            # asking it of an ARBITRARY value; what is safe is asking it of a float. The
+            # first version of this paragraph forbade the call outright, three lines above
+            # the line that makes it.
             #
             # ⚠ The TYPE check above stays separate and strict, because that is the
             # contract question (#117): a JSON string is a violation even though

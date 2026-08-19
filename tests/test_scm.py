@@ -212,6 +212,30 @@ def test_each_branch_names_ITS_OWN_repair(branch):
     assert repair in msg, f"{branch} no longer names its repair {repair!r}: {msg!r}"
 
 
+@pytest.mark.parametrize("branch", sorted(BRANCH_MARKERS))
+def test_every_branch_names_the_offending_value(branch):
+    """⚠ #137'S REGRESSION TEST, RESTORED (issue #148).
+
+    It existed as `test_a_wrong_type_and_an_out_of_range_value_both_name_the_value` and I
+    DELETED it — not deliberately: I replaced a span of this file by slicing between two
+    markers, and it sat inside the span. A slice edit removes whatever is in the range
+    whether or not you looked at it, and the suite got greener by one test rather than
+    redder, so nothing said so.
+
+    The property is #137's: the range message was once the only one that printed no value,
+    and a diagnosis without the value leaves the reader grepping their own sidecar for which
+    of three axes it meant.
+    """
+    _marker, _repair, probe = BRANCH_MARKERS[branch]
+    msg = _vat_errors(probe)[0]
+    if branch == "missing":
+        return          # there is no value to name; that IS the finding
+    value = probe["V"]
+    shown = repr(value)
+    assert (shown[:20] in msg) or (str(value)[:20] in msg), (
+        f"{branch} does not name the offending value: {msg!r}")
+
+
 def test_no_branch_sends_the_reader_to_a_state_another_branch_rejects():
     """⚠ #144's second half, as a property. The non-finite message once ended "or write the
     axis as null if it was never measured", and the missing branch four lines above rejects
