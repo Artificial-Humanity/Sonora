@@ -255,3 +255,47 @@ def test_the_penalty_is_strictly_worse_at_the_extreme_target_too():
         opposite = {k: -v for k, v in want.items()}
         assert ref_select._vat_distance(want, UNLABELLED) > \
             ref_select._vat_distance(want, opposite)
+
+
+# ------------------------------------------- out-of-range labels (issue #129)
+#
+# ⚠ THE BOUND'S OTHER PREMISE. `_far_endpoint` promises an endpoint is "the worst a labelled
+# axis can be", and nothing on the read path enforced it: `schemas.intended_vat` range-checks
+# at the WRITER, but `_vat` calls `coerce_axis`, which answers "is this a number", not "is
+# this legal". A manifest written before that check — or by another tool — hands this module
+# a value outside [-1, 1], and the bound is then simply wrong.
+
+def test_an_out_of_range_candidate_does_not_beat_the_no_information_bound():
+    """Measured before the fix: want V=0.1 vs a candidate at V=1.5 scored 2.42487 against a
+    bound of 1.90526 — a clip that LABELS its axes losing to one that labels none."""
+    want = {"V": 0.1, "A": None, "T": None}
+    assert ref_select._vat_distance(want, {"V": 1.5, "A": None, "T": None}) \
+        < ref_select._vat_distance(want, UNLABELLED)
+
+
+def test_an_out_of_range_axis_scores_as_its_clamped_value():
+    """Clamped, not refused: this is a RANKING helper, and 1.5 cannot mean more than 1.0 to
+    a model trained on [-1, 1]. Refusing an out-of-range LABEL is the writer's job, and
+    `schemas.intended_vat` already does it."""
+    want = {"V": 0.1, "A": 0.2, "T": -0.3}
+    for raw, clamped in ((1.5, 1.0), (-4.0, -1.0), (99.0, 1.0)):
+        assert ref_select._vat_distance(want, {"V": raw, "A": 0.2, "T": -0.3}) == \
+            ref_select._vat_distance(want, {"V": clamped, "A": 0.2, "T": -0.3})
+
+
+def test_the_TARGET_is_clamped_too():
+    """Both sides, or the bound is computed from a `want` the endpoints do not bracket."""
+    assert ref_select._vat_distance({"V": 9.0, "A": None, "T": None}, {"V": 1.0, "A": None, "T": None}) == \
+        ref_select._vat_distance({"V": 1.0, "A": None, "T": None}, {"V": 1.0, "A": None, "T": None})
+
+
+def test_the_subset_sweep_still_holds_with_out_of_range_candidates():
+    """The #122 sweep, re-run over values the range does not contain."""
+    for want in ({"V": 0.1, "A": 0.2, "T": -0.3}, {"V": 0.8, "A": 0.8, "T": 0.65}):
+        penalty = ref_select._vat_distance(want, UNLABELLED)
+        for size in (1, 2, 3):
+            for subset in itertools.combinations("VAT", size):
+                for vals in itertools.product((-9.0, -1.5, 1.5, 9.0), repeat=size):
+                    kv = dict.fromkeys("VAT")
+                    kv.update(dict(zip(subset, vals)))
+                    assert ref_select._vat_distance(want, kv) < penalty

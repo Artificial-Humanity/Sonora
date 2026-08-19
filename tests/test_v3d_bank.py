@@ -48,14 +48,31 @@ def test_the_module_imports_without_touching_the_data_volume():
 
     tree = ast.parse(SCRIPTS.src("make_v3d_bank.py"))
     offenders = []
+    def at_import(node):
+        """Every node reached while the module is being imported.
+
+        ⚠ A FUNCTION BODY IS DEFERRED; A CLASS BODY IS NOT (issue #130). The first version
+        skipped `ast.ClassDef` in the same tuple as `ast.FunctionDef`, on a reason that only
+        holds for functions — a class body EXECUTES at import, so
+        `class _X: ROWS = json.loads(SRC.read_text())` reproduced #124 and stayed green.
+        Decorators and default arguments are the same hole one level down: they evaluate
+        when the `def` is executed, which is at import. So functions are pruned at the BODY
+        rather than at the node.
+        """
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for part in (node.decorator_list, node.args.defaults,
+                         [d for d in node.args.kw_defaults if d is not None]):
+                for sub in part:
+                    yield from ast.walk(sub)
+            return
+        yield node
+        for child in ast.iter_child_nodes(node):
+            yield from at_import(child)
+
     for node in tree.body:
-        # ⚠ Function and class bodies are NOT module scope — walking into them flagged
-        # `main()`'s own reads, which are the entire point of moving them there.
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            continue
         if isinstance(node, ast.If) and "__name__" in ast.unparse(node.test):
             continue
-        for sub in ast.walk(node):
+        for sub in at_import(node):
             if not isinstance(sub, ast.Call):
                 continue
             name = (sub.func.attr if isinstance(sub.func, ast.Attribute)

@@ -177,8 +177,32 @@ def _vat(v):
             "T": _n(v.get("T"), v.get("tension"))}
 
 
+def _clamp_axis(v):
+    """An axis value pinned into the trained range, or None.
+
+    ⚠ NOTHING ON THE READ PATH RANGE-CHECKS, AND THE BOUND DEPENDS ON IT (issue #129).
+    `schemas.intended_vat` refuses an out-of-range axis at the WRITER; `coerce_axis`, which
+    is what `_vat` calls, does not — it answers "is this a number", not "is this legal".
+    So a manifest written before that check, or by another tool, can hand this module a
+    `V = 1.5`, and then `_far_endpoint`'s promise that an endpoint is "the worst a labelled
+    axis can be" is simply false. Measured: want `V = 0.1` against a candidate at `V = 1.5`
+    scores 2.42487 against a no-information bound of 1.90526, so a clip that LABELS ITS
+    AXES loses to one that labels none — #114's inversion again, through a door the fix for
+    it did not close.
+
+    Clamping rather than refusing, because this is a RANKING helper and 1.5 cannot mean
+    more than 1.0 to a model trained on [-1, 1]: the same value clamped scores 1.55885,
+    comfortably inside the bound and correct on the merits. The place to refuse an
+    out-of-range label is the writer, and `intended_vat` already does.
+    """
+    return None if v is None else min(max(v, schemas.AXIS_MIN), schemas.AXIS_MAX)
+
+
 def _far_endpoint(w):
-    """The end of the trained range furthest from `w` — the worst a labelled axis can be."""
+    """The end of the trained range furthest from `w` — the worst a labelled axis can be.
+
+    ⚠ True only because both sides are clamped before they reach here (issue #129).
+    """
     return (schemas.AXIS_MIN if abs(w - schemas.AXIS_MIN) > abs(w - schemas.AXIS_MAX)
             else schemas.AXIS_MAX)
 
@@ -229,16 +253,22 @@ def _vat_distance(want, kv):
     module keeps paying for — but never preferred over, and never TIED WITH, a clip that
     actually carries labels.
 
-    ⚠ THE ULP IS THE WHOLE POINT AND THE FIRST VERSION OMITTED IT (issue #120). "The worst
-    its labelled axes could justify" is bit-identical to what the labelled branch returns
-    for a candidate sitting at the opposite endpoint on every axis — the same terms summed
-    in the same order. `select_reference` keeps the best on `score < best_score`, a STRICT
+    ⚠ THE ULP IS THE WHOLE POINT AND THE FIRST VERSION OMITTED IT (issue #120). The bound is
+    bit-identical to what the labelled branch returns for the candidate that reaches it —
+    **which is the SINGLE largest-error axis, not the all-three case** (issue #128; the
+    paragraph here named the wrong one until 2026-08-19). For want (0.8, 0.8, 0.65) the
+    bound is 3.117691, reached by one axis at the far endpoint; the all-three candidate
+    scores 3.033562. A reader checking whether the ULP is still needed against the wrong
+    candidate finds 0.084 of headroom, removes the margin, and reinstates #120. `select_reference` keeps the best on `score < best_score`, a STRICT
     comparison, so an exact tie is resolved by pool iteration order rather than by which
     clip carries labels. `±1.0` is reachable: `AXIS_MIN/AXIS_MAX` are exactly that, and
     derivation clamps per-speaker z-scores at 2 sigma, so a clamped speaker lands on the
     endpoint. `math.nextafter` makes the inequality strict while keeping the scaling — the
     cost of "unknown" still rises with how much the target asked for.
     """
+    # ⚠ CLAMPED FIRST, BOTH SIDES (issue #129) — see `_clamp_axis`.
+    want = {a: _clamp_axis(want.get(a)) for a in "VAT"}
+    kv = {a: _clamp_axis(kv.get(a)) for a in "VAT"}
     wanted = [a for a in "VAT" if want.get(a) is not None]
     if not wanted:
         return 0.0
