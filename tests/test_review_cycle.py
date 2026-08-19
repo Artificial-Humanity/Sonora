@@ -156,8 +156,9 @@ def test_convergence_is_scoped_to_the_branch_under_review():
     ⚠ This docstring cited "the migrated GitHub backlog … on `github-issues-fixes`" until
     2026-08-19. Those records are not in the live tracker (it holds nothing below #90); they
     are in `notes/tracker-export-2026-08-17.json`. The property under test is unchanged —
-    only the example was stale, and it was the third of three copies, the other two being
-    `workflow/REVIEWER.md` and `review_cycle.sh --help` (issue #163).
+    only the example was stale. ⚠ It was one of FOUR copies, not three: `workflow/REVIEWER.md`
+    carried it twice — the retraction was added beside one and the other survived another two
+    passes (issue #163). Counting the copies before claiming completeness is the lesson.
     """
     flt = _open_filter()
     assert 'branch_name=\\"$BRANCH\\"' in flt, flt

@@ -223,10 +223,22 @@ declined to file it because this file was outside its range.
 
 **The numbers stay reserved.** ⚠ But the export is NOT the whole record of which are taken
 (issue #164): it is a 2026-08-17 SNAPSHOT holding 79 records, of which 48 are below 90 and
-**31 are 90+** — and numbers allocated since are in the live collection only, which is
-already past #160. So: **the export covers everything below 90; the live collection covers
-the rest; neither alone tells you the next free number.** `issue.py file` allocates from the
-live maximum and retries on collision, which is why that is the only safe route.
+**31 are numbered 90–120** — and numbers allocated since are in the live collection only,
+which is already past #160.
+
+⚠⚠ **SO 90–120 IS DOUBLE-BOOKED, AND THE TWO RECORDS NAME DIFFERENT FINDINGS THERE.** The
+export's `#110` is "No test exercises request_review.sh"; the live `#110` is a
+`git ls-files` enumeration finding on this branch. Measured: 14 commits on `main` cite that
+band. **So a `#N` in a commit message between 90 and 120 is ambiguous, and both lookups
+succeed with nothing signalling the mismatch** — check the commit's date against the
+2026-08-17 wipe before trusting either. Below 90, only the export has it; above 120, only the
+live collection.
+
+For ALLOCATION, use `issue.py file`. ⚠ Its retry protects against LIVE collisions only — the
+unique index cannot see the export — so it is also floored at `NUMBER_FLOOR = 120`, the
+highest number any record has ever used. Without that floor an empty collection would allocate
+from 1 and march cleanly through the reserved band, which is reachable: this collection was
+wiped once, on 2026-08-17 (issue #168).
 
 ### Comments live in their own collection: `issue_comments`
 
@@ -447,9 +459,11 @@ still right; only its example was stale.
 
 The reason to scope stays the same: another branch's open issues will not close on your
 cycle, so a check that counts them can never reach zero — and reading that as "the loop is
-not converging" is exactly the wrong conclusion. `branch_name!=""` was the right
-guard only while that backlog carried no branch at all; it now has one, so the clause that
-used to exclude it would **include** it.
+not converging" is exactly the wrong conclusion. `branch_name!=""` was the right guard only while
+another branch's issues carried no branch at all; once they carry one, the clause that used
+to exclude them would **include** them. ⚠ This sentence said "that backlog … it now has one"
+in the present tense, six lines below the paragraph retracting it, until 2026-08-19 — the
+fourth copy of a claim I corrected in three places (issue #163).
 
 ⚠ **This is a REPORT, not a verdict.** You are telling Ozzy what is left, not declaring the
 work done — the merge gate in `scripts/merge_branch.sh` decides that, server-side, and it

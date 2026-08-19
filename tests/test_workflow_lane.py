@@ -476,3 +476,39 @@ def test_a_written_comment_carries_both_ordering_fields():
             f"a comment is written without {sorted(missing)}. `seq` and `posted_at` are the "
             f"only ordering this collection has; a comment missing either is unplaceable in "
             f"its own thread.")
+
+
+def test_issue_numbers_are_floored_against_the_export():
+    """⚠ THE UNIQUE INDEX CANNOT SEE A FILE ON DISK (issue #168).
+
+    `cmd_file`'s six-attempt retry is the whole of its collision safety, and it only fires on
+    a LIVE record. `notes/tracker-export-2026-08-17.json` holds 79 records numbered 12–120;
+    nothing on the allocation path opens it. So on an empty collection — `items: []`, HTTP
+    200, no error, no warning — allocation started at 1 and marched cleanly up through the
+    reserved band, reissuing numbers that name different findings in the export.
+
+    Reachable rather than theoretical: this collection was wiped once, on 2026-08-17.
+    """
+    tree = ast.parse(ISSUE_SRC)
+    floor = next((n.value.value for n in ast.walk(tree)
+                  if isinstance(n, ast.Assign)
+                  and any(isinstance(t, ast.Name) and t.id == "NUMBER_FLOOR" for t in n.targets)
+                  and isinstance(n.value, ast.Constant)), None)
+    assert floor is not None, "NUMBER_FLOOR is gone — allocation is unfloored again"
+
+    export = REPO / "notes" / "tracker-export-2026-08-17.json"
+    if export.exists():
+        import json
+        data = json.loads(export.read_text(encoding="utf-8"))
+        rows = data["issues"] if isinstance(data, dict) and "issues" in data else data
+        highest = max(int(r["number"]) for r in rows)
+        assert floor >= highest, (
+            f"NUMBER_FLOOR is {floor} but the export reaches #{highest}; allocation could "
+            f"reissue a number that already names a different finding")
+
+    # the floor must actually be APPLIED, not merely defined
+    assign = [n for n in ast.walk(tree)
+              if isinstance(n, ast.Assign) and len(n.targets) == 1
+              and isinstance(n.targets[0], ast.Name) and n.targets[0].id == "n"]
+    assert any("NUMBER_FLOOR" in ast.unparse(a.value) for a in assign), (
+        "NUMBER_FLOOR is defined but the allocation no longer uses it")

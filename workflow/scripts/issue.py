@@ -46,6 +46,12 @@ import urllib.request
 
 socket.setdefaulttimeout(20)
 
+# ⚠ THE HIGHEST NUMBER ANY RECORD HAS EVER USED, live or exported. Allocation never goes at
+# or below it (issue #168). `notes/tracker-export-2026-08-17.json` holds 79 records numbered
+# 12–120 and the live collection cannot see them, so the unique index alone does not protect
+# the range — and the collection has been wiped once already.
+NUMBER_FLOOR = 120
+
 def _config():
     """workflow/config.env, plus a derived repo slug. See that file for why it is derived.
 
@@ -297,7 +303,17 @@ def cmd_file(pb, args):
         if st != 200:
             die("number lookup refused: %s" % json.dumps(r)[:400])
         rows = r.get("items") or []
-        n = (rows[0]["number"] if rows else 0) + 1 + attempt
+        # ⚠ FLOORED, BECAUSE THE UNIQUE INDEX CANNOT SEE THE EXPORT (issue #168). The retry
+        # below is the whole of the collision safety, and it only fires on a live record —
+        # `notes/tracker-export-2026-08-17.json` is a file on disk and nothing on this path
+        # opens it. So on an EMPTY collection (`items: []`, HTTP 200, no error) this used to
+        # start at 1 and march cleanly up through #12–#120, reissuing numbers that name
+        # different findings in the export. That is not hypothetical: this collection HAS
+        # been wiped once, on 2026-08-17.
+        #
+        # 120 is the export's maximum, not 90: 90–120 is double-booked between the two
+        # records already (issue #164), so it is the first number that is unambiguous.
+        n = max((rows[0]["number"] if rows else 0), NUMBER_FLOOR) + 1 + attempt
         st, rec = pb.call("/api/collections/issues/records", "POST", {
             "repo": args.repo, "number": n, "title": args.title, "body": body,
             "state": "open", "agent_passes": 0, "branch_name": branch,

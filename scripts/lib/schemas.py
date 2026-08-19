@@ -33,11 +33,18 @@ reverse is that `environments/training-container.txt` carries `fastapi==0.141.1`
 `fastapi` arrives by different accidents in different lanes: in the training container via
 `mlflow`, which the compose prep chain installs explicitly before `-e .` and which is the only
 candidate there (that chain installs NO extras, and no core dependency requires `fastapi` —
-measured in this venv); on a dev box via SOME extra — `vocalizer` and `dev` both declare
-`fastapi`, and WHICH ONE is deliberately not claimed, because naming an extra is a claim about
-every package in it and both namings tried so far were wrong (issues #155, #160, #167).
-So every lane that had it, had it by accident, and a lane that installed neither `mlflow` nor
-an extra — an eval image, a minimal container — had nothing. `book_ingest` imports this module at
+measured in this venv); on a dev box **by a route this repo has not identified**. ⚠ Three
+attempts named one and all three were wrong (issues #155, #160, #167): `vocalizer` needs
+gradio and uvicorn, `dev` needs pre-commit, and none of those is installed here — and
+measured across all 67 installed distributions, **not one declares an unconditional
+`Requires-Dist: fastapi`**. `fastapi 0.141.1` is present by something this venv no longer
+records. Saying "some extra" was the third wrong answer, because it still asserts the part
+the measurement refuses.
+So every lane that had it, had it by accident, and a lane with neither `mlflow` nor an extra
+is not GUARANTEED to have it. ⚠ Not "had nothing", which this said until 2026-08-19: the host
+venv has neither and DOES have it, by the unidentified route above (issue #167, second site in
+this same paragraph). The case for declaring it core is that nothing guarantees it — not that
+any lane provably lacked it. `book_ingest` imports this module at
 module scope, which puts it on the teacher-synthesis path every container takes. The failure
 would have been an `ImportError` in a container, where no test could see it.
 
