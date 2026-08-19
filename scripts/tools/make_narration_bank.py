@@ -51,6 +51,7 @@ for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in 
 
 import book_ingest as bi  # noqa: E402
 import ref_select  # noqa: E402
+import schemas  # noqa: E402  -- the single definition of what counts as an axis number
 
 BOOKS = pathlib.Path("/data/model-training/datasets/book-prose")
 CAMPAIGN = "delivery-v1-narration-r2"
@@ -208,8 +209,18 @@ def main():
         if engine is None:
             skipped["no engine left in lane"] += 1
             continue
-        labels = {"V": src["intended"]["V"], "A": src["intended"]["A"],
-                  "T": src["intended"]["T"], "register": src.get("register", "")}
+        # ⚠ OMIT AN ABSENT AXIS, do not pass `None` (issue #92). `intended.V/A/T` may be
+        # `null` since 2026-08-17, and `casting_pass` formats each label with `:+.2f` under a
+        # pre-existing `if k in labels` guard — a guard written for exactly this case. Passing
+        # the key with a `None` value satisfies `in` and then raises in `__format__`.
+        # ⚠ `schemas.intended_labels`, WHICH IS THE FUNCTION FOR THIS (issue #113's class).
+        # The comprehension this replaces re-spelled both halves — the omit-if-absent rule
+        # AND `isinstance(v, (int, float))`, a sixth copy of "what counts as a number" that
+        # disagreed with `schemas.coerce_axis` on `"0.7"`. A numeric-string axis was dropped
+        # from the brief entirely, so the director was told nothing about an axis the row
+        # actually carried. `intended_labels` was added to this very branch to own this.
+        labels = schemas.intended_labels(src["intended"])
+        labels["register"] = src.get("register", "")
         cast = bi.casting_pass(src["text"], engine, labels=labels)
         if cast is None:
             skipped[f"{engine}: casting_pass failed"] += 1

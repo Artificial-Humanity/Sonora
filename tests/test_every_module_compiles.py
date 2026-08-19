@@ -1,4 +1,4 @@
-"""Every tracked `.py` must COMPILE — not merely parse.
+"""Every `.py` this repo owns must COMPILE — not merely parse, and tracked or not.
 
 ⚠ This exists because `ast.parse` is not enough, and the gap cost a shipped `SyntaxError`.
 
@@ -23,6 +23,7 @@ One `compile()` per file, no imports, no side effects — so it covers exactly t
 nothing else can.
 """
 
+import os
 import pathlib
 import subprocess
 
@@ -32,9 +33,33 @@ REPO = pathlib.Path(__file__).resolve().parent.parent
 
 
 def _tracked_python():
+    """Every .py this repo owns, TRACKED OR NOT.
+
+    ⚠ `--cached --others --exclude-standard` — THE SAME FIX AS #110 (issue #159). That fix
+    corrected `test_stage_coverage`'s enumeration and left this one, which is the same
+    `git ls-files` blind spot in the same class of guard: a new module is invisible until it
+    is tracked, so it goes uncompiled exactly while it is most likely to be broken.
+
+    ⚠ IT WAS FOUND BY A ONE-TEST COUNT DISCREPANCY, not by anything failing.
+    `tests/test_declared_dependencies.py` was untracked when its own commit's suite ran, so
+    the 1360 reported as that commit's evidence became 1361 the moment it was committed. **A
+    guard that silently covers less reports a SMALLER number, and nobody reads a smaller
+    green number as a failure.** `--exclude-standard` keeps .gitignore honoured, so this does
+    not start compiling build output.
+    """
+    return _enumerate(REPO)
+
+
+def _enumerate(root):
+    """The enumeration itself, parameterised by root SO THAT IT CAN BE TESTED (issue #161).
+
+    ⚠ The first regression guard for this hardcoded its own copy of the flags and passed
+    while the real command was reverted — the defect #161 filed, reproduced inside its own
+    fix. A guard that does not call the code under test is asserting about a string.
+    """
     out = subprocess.run(
-        ["git", "ls-files", "-z", "*.py"],
-        cwd=REPO, capture_output=True, text=True, check=True,
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "*.py"],
+        cwd=root, capture_output=True, text=True, check=True,
     )
     return sorted(p for p in out.stdout.split("\0") if p)
 
@@ -44,7 +69,38 @@ FILES = _tracked_python()
 
 def test_the_enumeration_found_the_tree():
     """Every case below is parametrized off this list, so an empty one reports green."""
-    assert len(FILES) >= 150, f"only {len(FILES)} tracked .py files — is the listing working?"
+    assert len(FILES) >= 150, f"only {len(FILES)} .py files — is the listing working?"
+
+
+def test_the_enumeration_would_see_an_untracked_module(tmp_path):
+    """⚠ THE REGRESSION GUARD #159 SHIPPED WITHOUT (issue #161).
+
+    Reverting the `--cached --others --exclude-standard` flags changes nothing observable:
+    every file is tracked right now, so the count is identical either way and the revert is
+    invisible — which is the exact "smaller green number nobody reads as a failure" that
+    #159's own docstring names. A fix for an unfalsifiable guard that is itself
+    unfalsifiable is the shape §5b exists for.
+
+    So this runs the real command against a scratch repo holding one tracked and one
+    untracked module, and asserts both come back.
+    """
+    import subprocess as sp
+
+    env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null", GIT_CONFIG_SYSTEM="/dev/null")
+    sp.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=env)
+    (tmp_path / "tracked.py").write_text("x = 1\n", encoding="utf-8")
+    sp.run(["git", "add", "tracked.py"], cwd=tmp_path, check=True, env=env)
+    (tmp_path / "untracked.py").write_text("y = 2\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("ignored.py\n", encoding="utf-8")
+    (tmp_path / "ignored.py").write_text("z = 3\n", encoding="utf-8")
+
+    seen = set(_enumerate(tmp_path))          # ⚠ THE REAL FUNCTION, not a copy of its flags
+    assert "tracked.py" in seen
+    assert "untracked.py" in seen, (
+        "the enumeration no longer sees untracked modules — a new file goes uncompiled "
+        "exactly while it is most likely to be broken (issues #110, #159)")
+    assert "ignored.py" not in seen, (
+        "--exclude-standard is gone; the enumeration has started compiling ignored files")
 
 
 @pytest.mark.parametrize("rel", FILES, ids=FILES)

@@ -337,3 +337,271 @@ def test_the_reviewer_persona_knows_about_full_reviews():
 def test_full_review_is_declared_in_the_manifest():
     manifest = (REPO / "scripts" / "pipeline_manifest.py").read_text(encoding="utf-8")
     assert "workflow/scripts/full_review.sh" in manifest
+
+
+# --------------------------------------------------------------------------------------
+# The tracker script must not degrade a refused query into an empty answer.
+#
+# WHY (2026-08-18). `cmd_show` queried `issue_comments` with `sort=created`, which that
+# collection does not have, so PocketBase answered HTTP 400 for EVERY issue. The status was
+# assigned to `st` and never read, so `show` printed zero comments from the day it was
+# written -- while 28 comment records sat in the collection, four of them on #92 and two on
+# #100. `reopen` and `escalate` REFUSE to run without a comment; the one channel the rules
+# make mandatory was the one the worker could not read.
+#
+# `cmd_escalated` had the other half of the shape: `(r.get("items") or []) if st == 200
+# else []`, which renders a broken query as "nothing is escalated" -- the most reassuring
+# possible output for the queue the owner reads to find what is waiting on them.
+#
+# ⚠ AST, NOT A TEXT SCAN. This comment contains both offending idioms verbatim, and a text
+# scan would match it -- the trailing-comment defect this repo keeps re-learning.
+
+def _call_status_targets(tree):
+    """-> [(status_name, lineno, enclosing_function)] for every `st, x = ....call(...)`."""
+    out = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for node in ast.walk(fn):
+            if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+                continue
+            tgt, val = node.targets[0], node.value
+            if not (isinstance(tgt, ast.Tuple) and len(tgt.elts) == 2):
+                continue
+            if not (isinstance(val, ast.Call) and isinstance(val.func, ast.Attribute)
+                    and val.func.attr == "call"):
+                continue
+            if isinstance(tgt.elts[0], ast.Name):
+                out.append((tgt.elts[0].id, node.lineno, fn))
+    return out
+
+
+def test_every_tracker_response_status_is_read():
+    """A status captured and never read is a query whose failure has no consequence."""
+    tree = ast.parse(ISSUE_SRC)
+    targets = _call_status_targets(tree)
+    assert len(targets) >= 6, f"only {len(targets)} .call() sites found — is the walk working?"
+    unread = []
+    for name, lineno, fn in targets:
+        # the window ends at the next assignment to the same name in the same function
+        later = [ln for nm, ln, f in targets if f is fn and nm == name and ln > lineno]
+        end = min(later) if later else 10 ** 9
+        reads = [n for n in ast.walk(fn)
+                 if isinstance(n, ast.Name) and n.id == name
+                 and isinstance(n.ctx, ast.Load) and lineno < n.lineno < end]
+        if not reads:
+            unread.append(f"  {fn.name}:{lineno} captures {name!r} and never reads it")
+    assert not unread, (
+        "these tracker queries discard their HTTP status, so a refused query is "
+        "indistinguishable from an empty answer:\n" + "\n".join(unread))
+
+
+def test_no_reader_degrades_a_refused_query_to_an_empty_result():
+    """The `... if st == 200 else []` shape, as an AST pattern rather than a string.
+
+    A refused query and a genuine zero must not print the same thing. This is the same
+    silent-negative that made a crash handler report "0 issues filed" with five present.
+    """
+    tree = ast.parse(ISSUE_SRC)
+    statuses = {name for name, _l, _f in _call_status_targets(tree)}
+    offenders = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.IfExp):
+            continue
+        names = {n.id for n in ast.walk(node.test)
+                 if isinstance(n, ast.Name) and n.id in statuses}
+        if not names:
+            continue
+        for branch in (node.body, node.orelse):
+            empty = ((isinstance(branch, (ast.List, ast.Tuple)) and not branch.elts)
+                     or (isinstance(branch, ast.Dict) and not branch.keys))
+            if empty:
+                offenders.append(
+                    f"  line {node.lineno}: a conditional on {sorted(names)} falls back to "
+                    f"an empty literal")
+    assert not offenders, (
+        "a refused tracker query must fail loudly, not read as 'nothing matched':\n"
+        + "\n".join(offenders))
+
+
+def test_the_comment_query_does_not_sort_on_a_field_that_collection_lacks():
+    """⚠ MEASURED, NOT STYLISTIC. `issue_comments` carries author/body/issue/posted_at/seq
+    and no `created` — PocketBase returns 400 on a sort by a missing field, and that 400 is
+    what hid every comment in the tracker."""
+    tree = ast.parse(ISSUE_SRC)
+    bad = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        if "issue_comments" in node.value and "sort=created" in node.value:
+            bad.append(node.lineno)
+        # the sort may be split across adjacent implicitly-concatenated literals
+        if node.value.startswith("&sort=created") or node.value == "sort=created":
+            bad.append(node.lineno)
+    assert not bad, (
+        f"issue_comments has no `created` field; sorting on it returns HTTP 400 "
+        f"(lines {sorted(set(bad))}). Sort on `posted_at,seq`.")
+
+
+def test_a_written_comment_carries_both_ordering_fields():
+    """⚠ `seq` IS THE FIELD THE REVIEWER'S DOCUMENTED QUERY SORTS ON (issue #109).
+
+    `issue_comments` has no `created`/`updated` system field — measured: its columns are
+    exactly id, issue, author, body, posted_at, seq — so nothing stamps an order unless this
+    script does. It stamped `posted_at` and not `seq`, which fixed `show` and left
+    `REVIEWER.md` §4's `sort="seq"` returning every agent comment ahead of the findings it
+    answers. AST, because the comment above names both fields and a text scan would match it.
+    """
+    tree = ast.parse(ISSUE_SRC)
+    posts = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "call" and len(node.args) >= 2):
+            continue
+        path = node.args[0]
+        if not (isinstance(path, ast.Constant) and isinstance(path.value, str)
+                and "issue_comments" in path.value):
+            continue
+        method = node.args[1]
+        if not (isinstance(method, ast.Constant) and method.value == "POST"):
+            continue
+        body = node.args[2] if len(node.args) > 2 else None
+        keys = {k.value for k in body.keys
+                if isinstance(k, ast.Constant)} if isinstance(body, ast.Dict) else set()
+        posts.append(keys)
+    assert posts, "no POST to issue_comments found — has the writer moved?"
+    for keys in posts:
+        missing = {"seq", "posted_at", "issue", "author", "body"} - keys
+        assert not missing, (
+            f"a comment is written without {sorted(missing)}. `seq` and `posted_at` are the "
+            f"only ordering this collection has; a comment missing either is unplaceable in "
+            f"its own thread.")
+
+
+def test_issue_numbers_are_floored_against_the_export():
+    """⚠ THE UNIQUE INDEX CANNOT SEE A FILE ON DISK (issue #168).
+
+    `cmd_file`'s six-attempt retry is the whole of its collision safety, and it only fires on
+    a LIVE record. `notes/tracker-export-2026-08-17.json` holds 79 records numbered 12–120;
+    nothing on the allocation path opens it. So on an empty collection — `items: []`, HTTP
+    200, no error, no warning — allocation started at 1 and marched cleanly up through the
+    reserved band, reissuing numbers that name different findings in the export.
+
+    Reachable rather than theoretical: this collection was wiped once, on 2026-08-17.
+    """
+    tree = ast.parse(ISSUE_SRC)
+    floor = next((n.value.value for n in ast.walk(tree)
+                  if isinstance(n, ast.Assign)
+                  and any(isinstance(t, ast.Name) and t.id == "NUMBER_FLOOR" for t in n.targets)
+                  and isinstance(n.value, ast.Constant)), None)
+    assert floor is not None, "NUMBER_FLOOR is gone — allocation is unfloored again"
+
+    # ⚠ NOT `if export.exists():` (issue #171). The export is the ONLY thing that makes the
+    # floor a measurement rather than a guess, so wrapping the comparison in a silent
+    # conditional made the one real assertion optional — and it would vanish exactly on a
+    # checkout where the file was lost, which is the case where a wrong floor does damage.
+    # The file is tracked, so its absence is a fault to report, not a reason to check less.
+    import json
+
+    export = REPO / "notes" / "tracker-export-2026-08-17.json"
+    assert export.exists(), (
+        f"{export.name} is missing — it is tracked, and without it NUMBER_FLOOR cannot be "
+        f"checked against anything. This test would otherwise pass while proving nothing.")
+    data = json.loads(export.read_text(encoding="utf-8"))
+    rows = data["issues"] if isinstance(data, dict) and "issues" in data else data
+    highest = max(int(r["number"]) for r in rows)
+    assert floor >= highest, (
+        f"NUMBER_FLOOR is {floor} but the export reaches #{highest}; allocation could "
+        f"reissue a number that already names a different finding")
+
+    # the floor must actually be APPLIED, not merely defined
+    assign = [n for n in ast.walk(tree)
+              if isinstance(n, ast.Assign) and len(n.targets) == 1
+              and isinstance(n.targets[0], ast.Name) and n.targets[0].id == "n"]
+    assert any("NUMBER_FLOOR" in ast.unparse(a.value) for a in assign), (
+        "NUMBER_FLOOR is defined but the allocation no longer uses it")
+
+
+def test_moving_to_review_warns_at_zero_and_is_silent_above_it():
+    """⚠ `agent_passes` IS THE CAP'S MECHANISM AND NOTHING WATCHED IT (2026-08-19).
+
+    A full fix pass went by with `take` skipped: four issues were fixed, commented and moved
+    to `review`, one of them still reading 0. The REVIEWER noticed, not the tooling — and
+    `review_cycle.sh` treats "the worker failed to advance agent_passes" as a stop condition,
+    so an unattended run would have halted on it.
+
+    ⚠⚠ THIS IS BEHAVIOURAL BECAUSE TWO STRUCTURAL VERSIONS BOTH FAILED, AND FAILED IN THE
+    WAYS THIS REPO ALREADY HAD NAMES FOR.
+
+      * v1 asserted `"die(" not in ast.unparse(fn)` over the whole function — constraining
+        the implementation, not the behaviour, and blind to `sys.exit` or `raise` (#172).
+      * v2 scoped that to the branch and scanned `ast.unparse(body)` for stop tokens — but
+        the branch's one statement is a `print` whose argument is a five-line operator
+        message, and `unparse` emits literals verbatim, **so the scan ran over the prose**
+        (#174). A TEXT SCAN OVER CODE, inside a guard, in the repo whose doc-claims gate
+        exists because of exactly that.
+      * and neither constrained the PREDICATE: `== -1`, `> 3` and `and False` all satisfy
+        "the test mentions agent_passes, the body prints, no stop token appears", while the
+        warning never fires again (#172, returned).
+
+    Running it settles all three at once and scans nothing. The property is one sentence:
+    **warns at 0, silent at 1 and above.**
+    """
+    import contextlib
+    import importlib.util
+    import io
+    import types
+
+    spec = importlib.util.spec_from_file_location("_issue_under_test", ISSUE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    def run(passes):
+        """-> what cmd_review wrote to stderr for an issue at this counter."""
+        rec = {"id": "x", "number": 1, "state": "open", "agent_passes": passes}
+        fake = types.SimpleNamespace(
+            find=lambda args, number: rec,
+            patch=lambda rec_id, body: None,
+            add_comment=lambda args, r, text, author: None,
+        )
+        args = types.SimpleNamespace(number=1, repo="r", comment="", author="Ozzy")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            mod.cmd_review(fake, args)
+        return err.getvalue()
+
+    assert "agent_passes = 0" in run(0), (
+        "moving an issue to `review` at agent_passes = 0 says nothing — a pass that spent no "
+        "attempt is unrecorded, and review_cycle.sh halts on exactly that")
+    for counted in (1, 2, 3):
+        assert run(counted) == "", (
+            f"the warning fires at agent_passes = {counted}; it must be silent once the pass "
+            f"has been counted, or it is noise and gets ignored")
+
+
+def test_the_zero_warning_does_not_refuse():
+    """⚠ A WARNING, NOT A REFUSAL. Zero is also what the owner's dial reads after a
+    deliberate re-arm, and refusing would make the tooling argue with them. Asserted by
+    RUNNING it — the transition must still happen."""
+    import contextlib
+    import importlib.util
+    import io
+    import types
+
+    spec = importlib.util.spec_from_file_location("_issue_under_test2", ISSUE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    patched = {}
+    rec = {"id": "x", "number": 1, "state": "open", "agent_passes": 0}
+    fake = types.SimpleNamespace(
+        find=lambda args, number: rec,
+        patch=lambda rec_id, body: patched.update(body),
+        add_comment=lambda args, r, text, author: None,
+    )
+    args = types.SimpleNamespace(number=1, repo="r", comment="", author="Ozzy")
+    with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+        mod.cmd_review(fake, args)
+    assert patched.get("state") == "review", (
+        "cmd_review refused the transition at agent_passes = 0. It must only warn — 0 is "
+        "also the owner's deliberate re-arm value")

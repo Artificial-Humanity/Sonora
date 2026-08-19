@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Gate: the notes' corpus/checkpoint numbers must agree with the artifacts on disk.
+"""Gate: the notes' checkable numbers must agree with what they describe on disk — corpus
+and checkpoint artifacts, and since 2026-08-19 module-level CODE CONSTANTS too.
 
 WHY THIS EXISTS (2026-08-09, owner-commissioned)
 ------------------------------------------------
@@ -31,7 +32,11 @@ reproduced it.
 
 WHAT IT DOES NOT COVER — read this before trusting a pass
 ---------------------------------------------------------
-* **Only corpus/checkpoint numbers** (owner scope, 2026-08-09). Not statuses, not prose, not
+* **Only checkable numbers** — corpus/checkpoint artifacts (owner scope, 2026-08-09) and,
+  since 2026-08-19, module-level code constants via `const()`. ⚠ The registry was widened
+  and these four scope statements were not (issue #131), so the gate described a narrower
+  job than it did while `AGENTS.md` §5b told agents to use the wider one.
+  Not statuses, not prose, not
   the sequencing claims that made up most of the review's product findings.
 * **Only phrasings the patterns match.** A number written in a form no pattern recognises is
   invisible here — a silent miss, not an error. When a check goes green it means "no
@@ -136,6 +141,32 @@ def comma(n):
     return f"{n:,}"
 
 
+def const(module_rel, name):
+    """A module-level constant, read by AST from a SOURCE FILE rather than a data artifact.
+
+    ⚠ THE REGISTRY WAS CORPUS-ONLY AND THAT WAS THE GAP (2026-08-19). Every fact here read a
+    number off `/data`, so a number that lives in CODE and is restated in prose had no
+    mechanism at all — and one had drifted: `notes/markup-schema-brief.md` gave the SCM
+    verifier tolerance as `±0.25` in its field-semantics table while §5 item 6 of the SAME
+    FILE recorded the owner's same-day amendment to `±0.35`, which is what `scm.VAT_TOL`
+    implements. The document contradicted itself for a month and nothing could see it,
+    because the gate only ever compared docs to corpora.
+
+    AST rather than import: importing `scm` pulls in `schemas` and the sibling-path setup,
+    and a gate that needs the package layout to be correct in order to check a docstring is
+    a gate with a second failure mode.
+    """
+    import ast
+
+    path = os.path.join(REPO, "scripts", "lib", module_rel)
+    tree = ast.parse(open(path, encoding="utf-8").read())
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise KeyError(f"{name} is not a module-level constant of {module_rel}")
+
+
 # --- the registry -------------------------------------------------------------------
 #
 # Each fact: how to READ it from disk, WHICH FILES that read needs, and the phrasings that
@@ -151,6 +182,21 @@ def comma(n):
 # `exempt` lines are skipped and announced. They exist for deliberate historical mentions
 # ("this cell read X until <date>"), which the repo writes on purpose.
 FACTS = [
+    {
+        # ⚠ THE FIRST FACT HERE THAT IS NOT A CORPUS NUMBER. Its artifact is a source file,
+        # which is the point: a constant restated in prose drifts exactly like a row count,
+        # and until 2026-08-19 nothing checked that class. See `const` above for the drift
+        # that prompted it.
+        "name": "SCM verifier tolerance (scm.VAT_TOL)",
+        "truth": lambda: const("scm.py", "VAT_TOL"),
+        "artifacts": [os.path.join(REPO, "scripts", "lib", "scm.py")],
+        "scope": r"VAT_TOL|verifier tolerance|within tolerance|vat\.[VAT] claimed",
+        "patterns": [r"±\s*([\d.]+)", r"tolerance = ±?([\d.]+)"],
+        # The amendment RECORD legitimately names the superseded value; that is history,
+        # not a claim about today. Narrow on purpose — a bare "0.25" exemption would blind
+        # the fact to the very table cell that was wrong.
+        "exempt": ["table above said `±0.25`", "(originally ±0.25)"],
+    },
     {
         "name": "v5 TRAIN rows",
         "truth": lambda: rows(V5_TRAIN),
@@ -485,7 +531,7 @@ def main():
                                     f"artifact says {comma(truth)!r}\n"
                                     f"      {line.strip()[:110]}")
 
-    print(f"checked {checked} of {len(FACTS)} corpus/checkpoint facts against the "
+    print(f"checked {checked} of {len(FACTS)} facts against the "
           f"artifacts on disk")
     print(f"  {len(files)} documents scanned, {matched} recognised statements, "
           f"{exempted} exempted line(s)")
@@ -526,7 +572,8 @@ def main():
 
     print("\nPASS — every recognised claim matches disk.")
     print("⚠ This does NOT mean the docs are correct: only recognised phrasings are seen, "
-          "and\n  scope is corpus/checkpoint numbers only (owner, 2026-08-09). A green run "
+          "and\n  scope is corpus/checkpoint numbers and registered code constants (owner,\n"
+          "  2026-08-09; widened 2026-08-19). A green run "
           "means\n  'nothing recognised disagrees'.")
     if skipped:
         print(f"⚠ …and {len(skipped)} of {len(FACTS)} facts were NOT CHECKED here (listed "

@@ -60,6 +60,14 @@ import sys
 import numpy as np
 
 REPO = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+
+# ⚠ The sibling-bucket path, the same shape every other stage script uses. `schemas` owns the
+# single definition of `coerce_axis`; keeping a second copy here is what issue #58 would look
+# like on its second outing.
+for _p in (os.path.abspath(REPO), os.path.abspath(os.path.join(REPO, "scripts", "lib"))):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+import schemas  # noqa: E402
 LIB_MEASURES = os.path.join(REPO, "data/libritts_r_vat_v2/measures.jsonl")
 LIB_EIV = "/data/model-training/sonora/eiv_scores/corpus_v1.jsonl"
 LIB_FAM = "/data/model-training/sonora/eiv_scores/corpus_families.jsonl"
@@ -118,27 +126,21 @@ def required_heads():
 def coerce_axis(v):
     """One `intended` value as a float — None when it carries no usable number.
 
-    A JSON string that spells a number IS a label ("0.7" is 0.7); a string that spells
-    anything else is not, and the difference has to be visible. The old test was
-    `isinstance(v, (int, float))`, so `"0.7"` was dropped as silently as `"very sad"` —
-    and since --count-directed counts rows with usable labels, a whole directed bank
-    could count as ZERO and be announced as real audio (issue #58).
+    ⚠ DELEGATES TO `schemas.coerce_axis`, WHICH IS THE SINGLE DEFINITION. Two copies of
+    "what counts as a number" would drift, and the drift would be invisible: both sides
+    return floats for every easy case, so only an odd input would reveal the disagreement,
+    and by then it is in a manifest.
 
-    `book_ingest.py` writes `{"V": tag.get("valence", 0.0), ...}` straight out of the LLM
-    and validates only `register` and `engine`, so a string-valued axis is one malformed
-    generation away rather than hypothetical. bool is excluded deliberately: `True` is not
-    a valence of 1.0, it is a label somebody built wrong.
+    The rule is unchanged. A JSON string that spells a number IS a label ("0.7" is 0.7); a
+    string that spells anything else is not, and the difference has to stay visible — the old
+    `isinstance(v, (int, float))` dropped "0.7" as silently as "very sad", so a whole directed
+    bank counted as ZERO and was announced as real audio (issue #58).
+
+    ⚠ The root of #58 is now fixed at the WRITER too (`book_ingest` validates through
+    `schemas.intended_vat`), but this stays: `qc_measures.jsonl` files written before that
+    change still exist, and six other readers still rely on it.
     """
-    if v is None or isinstance(v, bool):
-        return None
-    if isinstance(v, (int, float)):
-        return float(v)
-    if isinstance(v, str):
-        try:
-            return float(v.strip())
-        except ValueError:
-            return None
-    return None
+    return schemas.coerce_axis(v)
 
 
 def intended_labels(row, unusable=None):

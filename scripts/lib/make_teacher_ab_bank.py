@@ -45,11 +45,19 @@ for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in 
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
 
+import schemas  # noqa: E402  (the validated loaders; see scripts/lib/schemas.py)
 from ref_select import route_engines
 from book_ingest import (MIN_CLIP_CHARS, MIN_CLIP_SECONDS, DIRECTOR_SYSTEM,
                          MODEL, OLLAMA, _merge, _extract_json)
 
 CAMPAIGN = "teacher-ab-v1"
+# ⚠ SEMANTIC retries only — how many times the director is RE-ASKED for a well-formed
+# answer that was missing a required key. Transport retries belong to `_ollama` and are
+# counted by `OLLAMA_RETRIES`; nesting the two silently multiplied them (issue #115).
+# ⚠ The two still multiply on the flaky-endpoint path, by design: worst case for one arm
+# is DIRECT_RETRIES * OLLAMA_RETRIES = 6 model calls (issue #121). Bounded, and stated
+# wherever a number is printed, rather than hidden behind an "attempt" count.
+DIRECT_RETRIES = 2
 
 ITEMS = [   # (key, expected_register, casting/scene brief for Gemma, text)
     ("victory", "victory_peak",
@@ -161,7 +169,10 @@ DIA_TAG_SYSTEM = (
 ENGINES = [("moss_vg", "MVG"), ("qwen", "QWN"), ("vibevoice", "VV"), ("dia", "DIA")]
 
 
-def _ollama(system, user, model, url, retries=3, num_predict=400):
+OLLAMA_RETRIES = 3   # transport/parse attempts inside _ollama itself
+
+
+def _ollama(system, user, model, url, retries=OLLAMA_RETRIES, num_predict=400):
     for _ in range(retries):
         body = json.dumps({
             "model": model, "stream": False, "think": False,
@@ -189,8 +200,11 @@ SKILL_DIR = os.path.join(_SONORA_REPO, "scripts", "assets", "director_skills")
 # identical casting brief across arms; the direction itself is deliberately
 # tailored, because a lowest-common-denominator string would handicap every engine
 # at once and tell us nothing about which deserves render time.
-LEXICON = json.load(open(os.path.join(_SONORA_REPO, "scripts", "assets", "register_lexicon.json"),
-    encoding="utf-8"))["lexicon"]
+# ⚠ ONE VALIDATED LOADER, shared with `book_ingest`. The bare `json.load(...)["lexicon"]`
+# this replaces failed loudly rather than silently — but it raised `KeyError: 'lexicon'` or a
+# `JSONDecodeError` at import time, naming neither the file nor what it was for, and it
+# accepted an empty, unsorted or duplicated vocabulary without a word.
+LEXICON = schemas.load_register_lexicon()
 
 # TWO PASSES, deliberately. V/A/T and register are properties of the LINE;
 # voice_design and instruct are properties of the ENGINE. Asking one call for all
@@ -267,8 +281,39 @@ def label_line(text, model, url):
     return d
 
 
-def direct(brief, text, engine, model, url):
-    """Pass 2 — per engine. Casting/delivery only, governed by the skill file."""
+def direct(brief, text, engine, model, url, retries=2):
+    """Pass 2 — per engine. Casting/delivery only, governed by the skill file.
+
+    ⚠ IT RETRIES, AS OF 2026-08-19 (owner decision on issue #111). One `_ollama` call
+    decided an arm: a truncated generation or a missing `instruct` key cost that engine's
+    whole arm for the line, and the item went into the bank with three of four.
+
+    ⚠⚠ IT RETRIES ONLY THE FAILURE `_ollama` CANNOT (issue #115). The first version looped
+    over `_ollama` — which has its own retry loop, default 3 — so a dead endpoint cost up
+    to SIX model calls and was reported as "attempt 2/2". That docstring also claimed the
+    shape was `book_ingest.director_tag`'s "same loop, same number": it is not, and the
+    difference is the point. `director_tag` wraps a RAW `urlopen`, so its 2 really is 2.
+    `_ollama` is already a retrying client.
+
+    So the two loops now own two different failure classes:
+
+      * **transport or unparseable JSON** — `_ollama`'s own business, and by the time it
+        returns `None` it has already tried `OLLAMA_RETRIES` times. Asking again repeats a
+        failure that has just been retried to exhaustion, so this returns immediately.
+      * **a well-formed answer missing a required key** — a SEMANTIC failure `_ollama`
+        cannot see, and a fresh generation is exactly what might fix it. This is what
+        `retries` counts.
+
+    ⚠ `retries` COUNTS DIRECTOR ASKS, NOT MODEL CALLS, AND THE FIRST VERSION OF THIS
+    PARAGRAPH SAID OTHERWISE (issue #121). `_ollama` retries on any exception and on
+    unparseable JSON, returning as soon as one attempt parses — so a well-formed answer
+    missing a key can be the 1st, 2nd or 3rd model call of a single ask. The honest bound
+    for one arm is `DIRECT_RETRIES * OLLAMA_RETRIES` = **6 model calls**, which is exactly
+    the figure #115 was filed about; what #115 actually removed is the DEAD-endpoint case,
+    where it is now 3 rather than 6. A flaky endpoint can still reach 6, and at
+    `_ollama`'s 300 s timeout that is a bounded but long stall on one arm. Stated rather
+    than fixed: capping it is a budget decision, not a defect.
+    """
     system = (TARGETED_SYSTEM
               + "\nOutput ONLY compact minified JSON, no markdown, with EXACTLY "
               + "these keys:\n" + SCHEMA[engine] + "\n"
@@ -276,15 +321,23 @@ def direct(brief, text, engine, model, url):
     user = (f"Target engine: {engine}\n\n"
             f"Casting and delivery brief from the producer:\n{brief}\n\n"
             f"The line to be performed:\n\u201c{text}\u201d")
-    d = _ollama(system, user, model, url, num_predict=900)
-    if d is None:
-        return None
     required = ("voice_design", "instruct") if engine == "vibevoice" else ("instruct",)
-    for k in required:
-        if k not in d:
-            print(f"    director missing key {k}")
+    for attempt in range(retries):
+        d = _ollama(system, user, model, url, num_predict=900)
+        if d is None:
+            print(f"    director call failed ({engine}) — _ollama already spent its "
+                  f"{OLLAMA_RETRIES} attempts, not re-asking")
             return None
-    return d
+        missing = [k for k in required if k not in d]
+        if missing:
+            # ⚠ "ask", not "attempt" (issue #121): this counts director ASKS, and each
+            # ask may have cost up to OLLAMA_RETRIES model calls inside `_ollama`.
+            print(f"    director missing key {', '.join(missing)} ({engine}), "
+                  f"ask {attempt + 1}/{retries} "
+                  f"(each ask is up to {OLLAMA_RETRIES} model calls)")
+            continue
+        return d
+    return None
 
 
 def pick_dia_tags(text, model, url):
@@ -327,22 +380,67 @@ def main():
         raise SystemExit(f"texts below the {MIN_CLIP_SECONDS}s floor "
                          f"({MIN_CLIP_CHARS} chars): {short}")
 
-    lines, misses = [], []
+    lines, misses, unusable, no_line, lost_arms = [], [], [], [], []
     for idx, (key, expected_register, brief, text) in enumerate(ITEMS):
         print(f"[{idx + 1}/{len(ITEMS)}] {key}", flush=True)
         # ---- pass 1: label the LINE once. Shared verbatim by every arm. ----
         lab = label_line(text, args.model, args.ollama)
         if lab is None:
             print("    SKIPPED (line pass failed)")
+            no_line.append(key)
             continue
         register = lab["register"]
-        intended = {"V": round(float(lab["valence"]), 2),
-                    "A": round(float(lab["arousal"]), 2),
-                    "T": round(float(lab["tension"]), 2)}
+        # ⚠ THE SECOND WRITER OF `intended`, and it was left behind (issue #93). The whole
+        # argument for validating at the writer is "one place instead of seven readers" —
+        # which only holds if every writer goes through it. `intended_vat` is the one
+        # definition of what a legal axis is.
+        #
+        # ⚠ WHAT THE OLD `float(lab["valence"])` ACTUALLY DID, corrected 2026-08-18 (issue
+        # #100). The comment here used to claim it raised "KeyError on an absent axis";
+        # **that case is unreachable** and always was. `label_line` returns None if any of
+        # valence/arousal/tension/register is missing, and the `continue` above sends the
+        # item away before this line. Measured by stubbing the model call: all four missing
+        # keys are refused at the line pass. What genuinely arrives here is an axis that is
+        # present and out of range, or present and unreadable — and neither used to be
+        # refused: `float("1.5")` is 1.5, and the value was clamped silently downstream.
+        # That silent clamp is the ONE thing the change fixed. It did not remove a mid-run
+        # death; it swapped a ValueError for a SchemaError and, until this was caught,
+        # widened the set of values that cause one.
+        #
+        # ⚠ CAUGHT, NOT PROPAGATED — this loop has no checkpoint (issue #100). The bank is
+        # written only after every item completes, so one `SchemaError` here does not lose a
+        # line, it loses THE WHOLE CAMPAIGN, including every arm already rendered — each of
+        # which is a 31B inference. Site 1 in `book_ingest` can afford to be fatal because
+        # its retry loop re-asks the director and its checkpoint survives a death; neither
+        # is true here.
+        #
+        # Skipping matches this loop's own idiom for an unusable pass ("SKIPPED (line pass
+        # failed)" above). ⚠ THERE ARE FOUR WAYS OUT OF THIS LOOP, NOT TWO (issue #111):
+        # two item-level (line pass failed, unusable axis) and two arm-level (director
+        # failed, routed away). All four are counted and named at the end now; the comment
+        # here said "BOTH" while two of them left no trace at all (issues #105, #111).
+        try:
+            intended = {k: (round(v, 2) if v is not None else None)
+                        for k, v in schemas.intended_vat(lab).items()}
+        except schemas.SchemaError as e:
+            print(f"    SKIPPED (unusable axis): {e}")
+            # ⚠ NOT `misses` (issue #105). That list has one reader, which prints
+            # "expected {exp}, lexicon pick {got}" — so an axis skip filed there both
+            # inflates the ONE number this campaign reports about register quality and
+            # renders as "expected unusable axis, lexicon pick <error text>", with the
+            # tuple positions inverted and the cause truncated mid-sentence at 80 chars.
+            # A skip that is not a register mismatch does not belong in the register
+            # mismatch list, however much it wants a home.
+            unusable.append((key, str(e)))
+            continue
         if register != expected_register:
             misses.append((key, expected_register, register))
-        print(f"    line: {register}  V/A/T {intended['V']}/{intended['A']}/{intended['T']}",
-              flush=True)
+        # ⚠ `fmt_axis`, NOT a bare `{}` (issue #100). An absent axis is legal here since
+        # 8d8f986 and `f"{None}"` renders it as the word "None" — which reads as a value the
+        # director produced rather than as one it declined to give. `fmt_axis` is in this
+        # range for exactly that, and its own test asserts "a placeholder, not the word None".
+        print(f"    line: {register}  V/A/T " + "/".join(
+            schemas.fmt_axis(intended[k]) for k in ("V", "A", "T")), flush=True)
 
         tags = pick_dia_tags(text, args.model, args.ollama)
         dia_text = _place_tags(text, tags)
@@ -369,9 +467,13 @@ def main():
                 lines.append(row)
                 continue
 
-            d = direct(brief, text, engine, args.model, args.ollama)
+            d = direct(brief, text, engine, args.model, args.ollama, DIRECT_RETRIES)
             if d is None:
                 print(f"    {engine}: SKIPPED (director failed)")
+                # ⚠ No attempt count here (issue #115). The two failure paths inside
+                # `direct` spend different numbers of calls, so one number stated at this
+                # site would be wrong for one of them. `direct` prints which it was.
+                lost_arms.append((key, engine, "director produced nothing usable"))
                 continue
             # Routing is checked HERE, not at the top of the loop: the rule reads the
             # voice_design the director just wrote, which does not exist until now.
@@ -382,6 +484,7 @@ def main():
             if not _kept:
                 for _e, _why in _dropped:
                     print(f"    {_e}: ROUTED AWAY — {_why}")
+                    lost_arms.append((key, _e, _why))
                 continue
             if engine == "vibevoice":
                 # design verbatim so ref_select can parse gender + age band;
@@ -405,12 +508,42 @@ def main():
     secs = [len(t) / 14.0 for _k, _r, _b, t in ITEMS]
     tagged = sum(1 for l in lines if l["engine"] == "dia" and l["direction"].get("dia_tags"))
     print(f"\nwrote {args.out}")
-    print(f"  {len(lines) // len(ENGINES)} items x {len(ENGINES)} engines = {len(lines)} renders")
+    # ⚠ THREE NUMBERS, NOT AN IDENTITY (issue #111). This read
+    # `{len(lines) // len(ENGINES)} items x {len(ENGINES)} engines = {len(lines)} renders`,
+    # which asserts a relationship that stops holding the moment ONE arm is dropped: ten
+    # items, four engines and a single director failure printed "9 items x 4 engines = 39
+    # renders". 9 x 4 is 36. The integer division absorbs the remainder in silence, and it
+    # understates the ITEM count — sending a reader to re-direct a line when what was lost
+    # was one engine's arm. The two have different remedies, which is why the line has to
+    # stop guessing and report what it actually counted.
+    attempted = len(ITEMS)
+    directed = attempted - len(unusable) - len(no_line)
+    print(f"  {attempted} items attempted, {directed} directed, "
+          f"{len(lines)} renders across {len(ENGINES)} engines "
+          f"({directed * len(ENGINES)} if every arm had survived)")
     print(f"  est. length {min(secs):.1f}-{max(secs):.1f}s (floor {MIN_CLIP_SECONDS}s)")
     print(f"  dia lines carrying a non-verbal tag: {tagged}")
     print(f"  director register mismatches vs expectation: {len(misses)}")
     for k, exp, got in misses:
         print(f"      {k}: expected {exp}, lexicon pick {got}")
+    # ⚠ PRINTED EVEN WHEN ZERO. A skipped item is a hole in the campaign, and the count
+    # of renders above cannot show it — 8 items x 4 engines and 10 items x 4 engines are
+    # both just "a number of renders" to the reader. Reported in full, not truncated:
+    # the whole point of the message is which axis and what value.
+    print(f"  items skipped, unusable axis: {len(unusable)}")
+    for k, msg in unusable:
+        print(f"      {k}: {msg}")
+    print(f"  items skipped, line pass failed: {len(no_line)}")
+    for k in no_line:
+        print(f"      {k}")
+    # ⚠ ARM-LEVEL LOSSES, WHICH ARE NOT ITEM-LEVEL ONES. `direct()` returns None whenever
+    # ollama fails or the model omits `instruct` — routine for a 31B local director, not
+    # exotic — and `route_engines` can drop an arm on the voice_design it just read. Both
+    # left the loop silently until 2026-08-18. An item missing one arm is still in the
+    # bank; whether it BELONGS there is a campaign-design question and is not decided here.
+    print(f"  arms lost after direction: {len(lost_arms)}")
+    for k, eng, why in lost_arms:
+        print(f"      {k} [{eng}]: {why}")
 
 
 if __name__ == "__main__":

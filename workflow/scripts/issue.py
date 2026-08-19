@@ -34,6 +34,7 @@ Reads PocketBase credentials from ~/.claude.json (mcpServers.pocketbase.env). St
 """
 
 import argparse
+import datetime
 import json
 import os
 import re
@@ -44,6 +45,12 @@ import urllib.parse
 import urllib.request
 
 socket.setdefaulttimeout(20)
+
+# ⚠ THE HIGHEST NUMBER ANY RECORD HAS EVER USED, live or exported. Allocation never goes at
+# or below it (issue #168). `notes/tracker-export-2026-08-17.json` holds 79 records numbered
+# 12–120 and the live collection cannot see them, so the unique index alone does not protect
+# the range — and the collection has been wiped once already.
+NUMBER_FLOOR = 120
 
 def _config():
     """workflow/config.env, plus a derived repo slug. See that file for why it is derived.
@@ -132,7 +139,12 @@ class PB:
         st, r = self.call(
             "/api/collections/issues/records?perPage=1&filter="
             + urllib.parse.quote('repo="%s" && number=%d' % (args.repo, number)))
-        items = (r.get("items") or []) if st == 200 else []
+        # ⚠ A REFUSED QUERY IS NOT A MISSING ISSUE. `if st == 200 else []` collapsed the two
+        # into one message, and "no issue #100 in ..." sends the reader to look for a record
+        # that is sitting right there (2026-08-18).
+        if st != 200:
+            die("lookup refused by the tracker: %s" % json.dumps(r)[:400])
+        items = r.get("items") or []
         if not items:
             die("no issue #%d in %s" % (number, args.repo))
         return items[0]
@@ -151,8 +163,27 @@ class PB:
         if len(text) > COMMENT_MAX:
             die("comment is %d characters; the cap is %d. Put detail in the issue body, which "
                 "allows 200,000." % (len(text), COMMENT_MAX))
+        # ⚠ `posted_at` IS STAMPED HERE BECAUSE NOTHING ELSE STAMPS IT. This collection has
+        # no `created` system field -- it was built to mirror the imported GitHub comments,
+        # which carried their own timestamps. A comment written through this script had
+        # `posted_at=""` and `seq=0`, so a reader sorting by time got every agent comment in
+        # one undifferentiated block ahead of the imported ones (2026-08-18).
+        # ⚠ `seq` IS STAMPED TOO, AND IT IS THE ORDERING FIELD THE READERS USE (issue #109).
+        # Stamping only `posted_at` fixed `show` and left the documented query wrong:
+        # `REVIEWER.md` §4 gives `sort="seq"` verbatim, and every comment this script had
+        # ever written carried the schema default of `0`. Measured on #92 — four comments —
+        # Ozzy's replies came back ahead of the Janis findings they answer, so the thread
+        # read backwards for the one role that is told to run that query.
+        st, prev = self.call(
+            "/api/collections/issue_comments/records?perPage=200&fields=seq&filter="
+            + urllib.parse.quote('issue="%s"' % rec["id"]))
+        if st != 200:
+            die("could not read the comment sequence: %s" % json.dumps(prev)[:400])
+        nxt = max([int(c.get("seq") or 0) for c in (prev.get("items") or [])], default=0) + 1
         st, r = self.call("/api/collections/issue_comments/records", "POST",
-                          {"issue": rec["id"], "author": author, "body": text})
+                          {"issue": rec["id"], "author": author, "body": text, "seq": nxt,
+                           "posted_at": datetime.datetime.now(datetime.timezone.utc)
+                           .strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] + "Z"})
         if st >= 300:
             die("comment refused: %s" % json.dumps(r)[:400])
 
@@ -209,10 +240,47 @@ def cmd_show(pb, args):
     if (rec.get("user_decision") or "").strip():
         print("\nUSER DECISION (the owner's; outranks any finding)\n%s" % rec["user_decision"])
     print("\n%s" % (rec.get("body") or "")[:4000])
-    st, r = pb.call("/api/collections/issue_comments/records?perPage=100&sort=created&filter="
-                    + urllib.parse.quote('issue="%s"' % rec["id"]))
-    for c in (r.get("items") or []):
-        print("\n--- %s (%s)\n%s" % (c.get("author"), (c.get("created") or "")[:19], c.get("body")))
+    # ⚠⚠ THIS QUERY RETURNED HTTP 400 FOR EVERY ISSUE, AND THE STATUS WAS DISCARDED, SO
+    # `show` PRINTED ZERO COMMENTS FROM THE DAY IT WAS WRITTEN. `issue_comments` has no
+    # `created` system field, and PocketBase refuses a sort on a field that does not exist.
+    # Measured 2026-08-18: 28 comment records in the collection, #92 had four and #100 had
+    # two, and `show` displayed none of them for any issue. That is the whole reopen->fix
+    # channel -- `reopen` and `escalate` REFUSE to run without a comment, and the worker
+    # could not read the one thing the reviewer was required to write.
+    #
+    # ⚠ The status is checked now. An empty comment list and a refused query must not print
+    # the same thing; that is the same silent-negative this script exists to remove.
+    # ⚠ `seq` FIRST — IT IS THE DOCUMENTED ORDER AND THE ONLY RELIABLE ONE (issue #152).
+    # Sorting `posted_at,seq` put a reply ABOVE the comment it answers: reproduced live on
+    # #149, where `posted_at` order reads seq 1, 3, 2, 4. `REVIEWER.md` §4 gives
+    # `sort="seq"` as the canonical query, and `seq` has been stamped per issue since #109
+    # precisely so that this is answerable.
+    #
+    # ⚠ THE FIRST VERSION OF THIS PARAGRAPH EXPLAINED IT WRONGLY, TWICE (issue #156). It
+    # asserted a mechanism — "the two writers stamp posted_at from different clocks" —
+    # which is a guess about how the other writer works, not something measured from here.
+    # v2 then blamed "the imported GitHub comments", a population with ZERO records in this
+    # instance: the collection holds nothing numbered below 90. ⚠ An exact count stood here
+    # and was stale within a day — the loop that writes this file also files issues into the
+    # collection it was counting (issue #165). A number that its own subject changes does not
+    # belong in a comment.
+    #
+    # ⚠ MEASURED, AND `posted_at` DOES NOT RESCUE THE ZERO BLOCK. 20 comments carry
+    # `seq = 0` — the agent-written ones from before #109 stamped it — and **14 of those 20
+    # also carry `posted_at = ""`**, so the second key is a constant for them; two issues
+    # hold two rows tied on BOTH keys. Their order is unrecoverable, which is why a `seq`
+    # backfill stays on the table rather than being closed off by this sort. `seq` is per
+    # issue, so values repeat across issues by design and that is not a migration artifact.
+    st, r = pb.call("/api/collections/issue_comments/records?perPage=100&sort=seq,posted_at"
+                    "&filter=" + urllib.parse.quote('issue="%s"' % rec["id"]))
+    if st != 200:
+        die("comment query refused: %s" % json.dumps(r)[:400])
+    items = r.get("items") or []
+    if not items:
+        print("\n(no comments)")
+    for c in items:
+        print("\n--- %s (%s)\n%s"
+              % (c.get("author"), (c.get("posted_at") or "")[:19], c.get("body")))
 
 
 def cmd_file(pb, args):
@@ -228,8 +296,24 @@ def cmd_file(pb, args):
     for attempt in range(6):
         st, r = pb.call("/api/collections/issues/records?perPage=1&sort=-number&fields=number"
                         "&filter=" + urllib.parse.quote('repo="%s"' % args.repo))
+        # ⚠ Checked, because the consequence of not checking is not an error message. A
+        # refused query leaves `rows` empty, `n` becomes 1, and the POST below collides with
+        # issue #1 six times before dying with "could not allocate a free issue number" --
+        # a message about numbering, for a fault that has nothing to do with numbering.
+        if st != 200:
+            die("number lookup refused: %s" % json.dumps(r)[:400])
         rows = r.get("items") or []
-        n = (rows[0]["number"] if rows else 0) + 1 + attempt
+        # ⚠ FLOORED, BECAUSE THE UNIQUE INDEX CANNOT SEE THE EXPORT (issue #168). The retry
+        # below is the whole of the collision safety, and it only fires on a live record —
+        # `notes/tracker-export-2026-08-17.json` is a file on disk and nothing on this path
+        # opens it. So on an EMPTY collection (`items: []`, HTTP 200, no error) this used to
+        # start at 1 and march cleanly up through #12–#120, reissuing numbers that name
+        # different findings in the export. That is not hypothetical: this collection HAS
+        # been wiped once, on 2026-08-17.
+        #
+        # 120 is the export's maximum, not 90: 90–120 is double-booked between the two
+        # records already (issue #164), so it is the first number that is unambiguous.
+        n = max((rows[0]["number"] if rows else 0), NUMBER_FLOOR) + 1 + attempt
         st, rec = pb.call("/api/collections/issues/records", "POST", {
             "repo": args.repo, "number": n, "title": args.title, "body": body,
             "state": "open", "agent_passes": 0, "branch_name": branch,
@@ -286,6 +370,25 @@ def transition(pb, args, action, new_state, author):
 
 
 def cmd_review(pb, args):
+    # ⚠ WARN IF THE PASS WAS NEVER TAKEN. `agent_passes` is the cap's whole mechanism and it
+    # is incremented by the WORKER, first thing — but nothing checked, and on 2026-08-19 a
+    # full fix pass went by with `take` skipped entirely: four issues were fixed, commented
+    # and moved to `review` with one of them still reading 0. The reviewer noticed, not the
+    # tooling, and `review_cycle.sh` treats "the worker failed to advance agent_passes" as a
+    # stop condition — so an unattended run would have halted on it.
+    #
+    # ⚠ A WARNING, NOT A REFUSAL, and that is deliberate. Zero is also what the OWNER's dial
+    # reads after a deliberate re-arm, and refusing here would make the tooling argue with
+    # them. It is also too late to fix by then: the honest response is to say so in the pass
+    # notes, not to backfill a counter, which would be writing a number to make the record
+    # look right.
+    rec = pb.find(args, args.number)
+    if int(rec.get("agent_passes") or 0) == 0:
+        print("issue.py: ⚠ #%d is moving to `review` with agent_passes = 0.\n"
+              "  Either `take` was skipped this pass — the counter is the cap's mechanism and\n"
+              "  a pass that spent no attempt is not recorded — or the owner re-armed it\n"
+              "  deliberately, in which case ignore this. Do NOT backfill it to look right;\n"
+              "  say which it was in the pass notes." % args.number, file=sys.stderr)
     transition(pb, args, "review", "review", args.author)
 
 
@@ -344,7 +447,12 @@ def cmd_escalated(pb, args):
                     "&fields=number,state,title,agent_passes,branch_name,user_decision"
                     "&filter=" + urllib.parse.quote(
                         'repo="%s" && state="escalated"' % args.repo))
-    items = (r.get("items") or []) if st == 200 else []
+    # ⚠ NOT `if st == 200 else []`. This is the queue the OWNER reads to find what is
+    # waiting on a decision, and degrading a refused query to an empty list prints
+    # "nothing is escalated" -- the most reassuring possible rendering of a broken query.
+    if st != 200:
+        die("escalation query refused: %s" % json.dumps(r)[:400])
+    items = r.get("items") or []
     if not items:
         print("nothing is escalated")
         return

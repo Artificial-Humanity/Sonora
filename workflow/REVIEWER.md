@@ -214,6 +214,32 @@ Leave the `gh_*` and `migrated_from_github` fields empty — they are provenance
 issues (#12–#89) migrated off GitHub, whose numbers were preserved so a `#33` in an old commit
 message still names the same finding.
 
+⚠⚠ **THOSE RECORDS ARE NO LONGER IN THE LIVE TRACKER, AND THIS FILE SAID THEY WERE** (2026-08-19).
+The instance holds only issues numbered 90+; `#12–#89` are **not there**. They were exported
+before the tracker was wiped and live in `notes/tracker-export-2026-08-17.json` — 79 issue
+records, numbers 12–120 — so nothing was lost, but a reviewer who queries for them finds
+nothing and cannot tell that from data loss. Measured by a reviewer this branch, who correctly
+declined to file it because this file was outside its range.
+
+**The numbers stay reserved.** ⚠ But the export is NOT the whole record of which are taken
+(issue #164): it is a 2026-08-17 SNAPSHOT holding 79 records, of which 48 are below 90 and
+**31 are numbered 90–120** — and numbers allocated since are in the live collection only,
+which is already past #160.
+
+⚠⚠ **SO 90–120 IS DOUBLE-BOOKED, AND THE TWO RECORDS NAME DIFFERENT FINDINGS THERE.** The
+export's `#110` is "No test exercises request_review.sh"; the live `#110` is a
+`git ls-files` enumeration finding on this branch. Measured: 14 commits on `main` cite that
+band. **So a `#N` in a commit message between 90 and 120 is ambiguous, and both lookups
+succeed with nothing signalling the mismatch** — check the commit's date against the
+2026-08-17 wipe before trusting either. Below 90, only the export has it; above 120, only the
+live collection.
+
+For ALLOCATION, use `issue.py file`. ⚠ Its retry protects against LIVE collisions only — the
+unique index cannot see the export — so it is also floored at `NUMBER_FLOOR = 120`, the
+highest number any record has ever used. Without that floor an empty collection would allocate
+from 1 and march cleanly through the reserved band, which is reachable: this collection was
+wiped once, on 2026-08-17 (issue #168).
+
 ### Comments live in their own collection: `issue_comments`
 
 ⚠ **The `comments` JSON field on `issues` is FROZEN legacy** (2026-08-14). It still holds a
@@ -261,7 +287,10 @@ pb_record_list  collection="issues"  perPage=1  sort="-number"  fields="number"
 ```
 
 A collision returns `400` on the unique index — **re-read and retry rather than overwriting.**
-Do not reuse a number below 90; `#12–#89` are taken.
+⚠ **That index sees LIVE records only.** `#12–#89` are taken by the export, not by the
+collection (see above), so an absent `#33` produces no collision and no warning — it is not
+permission to allocate one. `issue.py file` is floored at `NUMBER_FLOOR = 120` for exactly
+this reason (issue #168); if you allocate by hand, apply the same floor yourself.
 
 ### ⚠ Two defaults on `pb_record_list` that will mislead you
 
@@ -421,13 +450,22 @@ Run this last, and put the number in your summary:
 filter='branch_name="<the branch under review>" && state="open"'
 ```
 
-⚠ **Scope it to YOUR branch — never widen it to `branch_name!=""`.** Nine open issues (#26,
-#68, #70, #79, #80, #81, #85, #87, #89) are the **migrated GitHub backlog**, parked on
-`github-issues-fixes` and deliberately unworked until that branch is rebased. They will not
-close on your cycle, so a check that counts them can never reach zero — and reading that as
-"the loop is not converging" is exactly the wrong conclusion. `branch_name!=""` was the right
-guard only while that backlog carried no branch at all; it now has one, so the clause that
-used to exclude it would **include** it.
+⚠ **Scope it to YOUR branch — never widen it to `branch_name!=""`.**
+
+⚠⚠ **THE NINE ISSUES THIS PARAGRAPH USED TO NAME NO LONGER EXIST** (2026-08-19). It cited
+#26, #68, #70, #79, #80, #81, #85, #87 and #89 as a migrated backlog parked on
+`github-issues-fixes`; the live tracker holds nothing below #90. A reviewer following it
+scopes its count away from records that are not there, and — worse — reads the instruction as
+evidence that a backlog it cannot see is out there unworked. The rule below is unchanged and
+still right; only its example was stale.
+
+The reason to scope stays the same: another branch's open issues will not close on your
+cycle, so a check that counts them can never reach zero — and reading that as "the loop is
+not converging" is exactly the wrong conclusion. `branch_name!=""` was the right guard only while
+another branch's issues carried no branch at all; once they carry one, the clause that used
+to exclude them would **include** them. ⚠ This sentence said "that backlog … it now has one"
+in the present tense, six lines below the paragraph retracting it, until 2026-08-19 — the
+fourth copy of a claim I corrected in three places (issue #163).
 
 ⚠ **This is a REPORT, not a verdict.** You are telling Ozzy what is left, not declaring the
 work done — the merge gate in `scripts/merge_branch.sh` decides that, server-side, and it

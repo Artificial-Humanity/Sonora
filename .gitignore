@@ -8,19 +8,44 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
+/build/
+/develop-eggs/
+/dist/
+/downloads/
+/eggs/
 .eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
+# ⚠ ANCHORED WITH A LEADING SLASH. These come from the standard Python template, where
+# they mean the TOP-LEVEL setuptools build directories. Unanchored, `lib/` also matches
+# `scripts/lib/` — a first-class source directory with ten tracked modules — so every
+# NEW file added there was silently skipped by `git add`, with no message and no entry
+# in `git status`. Measured twice on 2026-08-17: `scripts/lib/find_changeset.py` existed
+# in no commit at all, and `scripts/lib/schemas.py` was invisible to a guard that
+# enumerates via `git ls-files`. Existing files stayed tracked, which is what kept it
+# hidden: the rule only ever ate the next one.
+#
+# ⚠ THE TEMPLATE NAMES ARE ANCHORED; A SHORT LIST IS DELIBERATELY NOT (issue #98).
+# Fixing `lib/` and `lib64/` alone treated a general defect as two incidents — `build/`,
+# `dist/`, `parts/`, `var/`, `wheels/`, `env/`, `venv/`, `logs`, `outputs` and the rest are
+# the same unanchored shape from the same Python template, and `scripts/build/` or
+# `matcha/var/` would be eaten exactly as `scripts/lib/` was: silently, absent from
+# `git status`. The two that bit were not special; they were only first.
+#
+# ⚠ AND THE FIRST FIX CLAIMED MORE THAN IT DID. Its comment said "EVERY DIRECTORY NAME FROM
+# THAT TEMPLATE IS NOW ANCHORED" while `dist/` sat two lines above `/build/`, still bare.
+# A false claim written into a comment while fixing a false-claim issue — which is why the
+# rule is now enforced by `tests/test_gitignore_anchoring.py` rather than stated here.
+#
+# RECURSIVE BY DESIGN, and the test knows their names: `__pycache__/` and the build-artifact
+# directories (`model_tflite/`, `synth_output/`, …) SHOULD match at any depth. Anchoring them
+# would be the opposite error. Adding to that list is a decision made in the test, not a
+# slip made here.
+/lib/
+/lib64/
+/parts/
+/sdist/
+/var/
+/wheels/
+/share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
@@ -29,20 +54,20 @@ share/python-wheels/
 *.ckpt
 *.pt
 *.pth
-outputs
+/outputs
 /data
-logs
+/logs
 .lightning/
-lightning_logs/
+/lightning_logs/
 
 # Environments
 .env
 .venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+/env/
+/venv/
+/ENV/
+/env.bak/
+/venv.bak/
 
 # IDEs
 .vscode/
@@ -50,14 +75,14 @@ venv.bak/
 .DS_Store
 
 # Unit test / coverage reports
-htmlcov/
+/htmlcov/
 .tox/
 .nox/
 .coverage
 .coverage.*
 .cache
-nosetests.xml
-coverage.xml
+/nosetests.xml
+/coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
@@ -66,7 +91,9 @@ coverage.xml
 # Cython compiled files
 matcha/utils/monotonic_align/core.c
 
-# Ignoring hifigan checkpoint
+# Ignoring hifigan checkpoint. UNANCHORED ON PURPOSE and declared in
+# tests/test_gitignore_anchoring.RECURSIVE_BY_DESIGN: build_matcha.py downloads
+# these into its own work directory, so they are not repo-root files.
 generator_v1
 g_02500000
 gradio_cached_examples/
@@ -76,8 +103,8 @@ synth_output/
 model_tflite/
 model_e2e_tflite/
 model_e2e_test_tflite/
-replace.json
-utterance_001.npy
-utterance_001.png
-utterance_001.wav
+/replace.json
+/utterance_001.npy
+/utterance_001.png
+/utterance_001.wav
 *.onnx

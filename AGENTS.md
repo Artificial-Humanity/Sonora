@@ -467,6 +467,37 @@ campaigns" unregenerated — it was re-run and is still 13, so the note was righ
 exactly why the habit is dangerous: being right this time costs nothing and teaches the wrong
 lesson. **If a fix touches an input to a stated number, re-derive the number.**
 
+⚠⚠ **A DOCS-VS-CODE FINDING IS A SWEEP, NOT A LINE EDIT** (owner, 2026-08-19: *"we should
+always check the overall docs to ensure that the code's state is not recorded in a
+contradicting document somewhere. We've run into cases of that before."*).
+
+When a comment, docstring or commit message turns out to disagree with the code, **the fix is
+not finished when that sentence is corrected.** Search the whole `.md` surface for the same
+claim before closing it — the number, the behaviour, the function's contract. This repo has
+paid for the other half repeatedly: a deleted `CLAUDE.md` went on being obeyed from memory for
+eight commits, and three doc-vs-artifact drifts turned up in a single day.
+
+**Measured the day the rule was written.** Fixing `scm.validate` to agree with
+`schemas.coerce_axis` looked complete and consistent at the call site. It was wrong:
+`notes/markup-schema-brief.md` — the RATIFIED SCM v0.1 contract, three directories away —
+says the sidecar stores VAT **continuous**, so the "fix" made the validator certify a sidecar
+the contract forbids. Nothing failed; the comment beside the code was accurate. **The same
+sweep found the brief contradicting ITSELF**: its field-semantics table gave the verifier
+tolerance as `±0.25` while §5 item 6 of the same file recorded the owner's same-day amendment
+to `±0.35`, which is what `scm.VAT_TOL` implements. That stood for a month.
+
+* ⚠ **Prefer a POINTER to a restatement.** The table cell now names `scm.VAT_TOL` instead of
+  repeating a number. A value in two places drifts; that is §5b's whole argument, applied to
+  documents rather than to code.
+* ⚠ **Do not add a third copy while fixing the second.** The first attempt at the amendment
+  note above restated the history that §5 item 6 already carried. Point at the existing
+  record.
+* ⚠ **The registry can hold a CODE constant, not only a corpus number** —
+  `scripts/gates/test_doc_claims.py`'s `const()` reads one by AST. A number that lives in
+  code and is quoted in prose is exactly as driftable as a row count, and until 2026-08-19
+  the gate could not see that class at all. **Register it rather than trusting the sweep to
+  happen again.**
+
 ### 5c. A pipeline stage is WIRED, or it is merely WRITTEN ABOUT
 
 `scripts/` holds **100 non-test `.py` files** (106 tracked, less the 6 gate scripts) and

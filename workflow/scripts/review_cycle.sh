@@ -55,9 +55,13 @@ STOPS ON, in order of precedence:
 CONVERGENCE means: branch_name="<the current branch>" && state="open"  ->  empty.
 ⚠ There is no `escalated=false` clause. Escalation is a VALUE OF `state`, not a flag beside it
 (owner, 2026-08-17) — an escalated issue is not `open`, so it leaves this count on its own.
-⚠ Scoped to the CURRENT BRANCH, which is what keeps another branch's backlog out of this
-cycle's gate: the 48 migrated GitHub issues sit on `github-issues-fixes` and nobody is working
-them, and a check that counted them would never reach zero.
+⚠ Scoped to the CURRENT BRANCH, which keeps another branch's open issues out of this
+cycle's gate: they will not close on this cycle, so a check that counted them could never
+reach zero.
+⚠ This paragraph used to cite "the 48 migrated GitHub issues on `github-issues-fixes`" as
+the example. Those records are NOT in the live tracker (2026-08-19) — it holds nothing below
+#90; they are in `notes/tracker-export-2026-08-17.json`. The rule is unchanged; the example
+was stale, and an operator reading `--help` was told a backlog exists that they cannot see.
 USAGE
 }
 

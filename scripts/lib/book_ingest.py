@@ -39,6 +39,11 @@ for _p in (_SONORA_REPO, _os.path.join(_SONORA_REPO, "scripts", "lib")):
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
 
+# ⚠ IMPORTED HERE, NOT WITH THE OTHER SIBLINGS FURTHER DOWN. `_lexicon()` runs at module
+# scope around line 130, well before the `synth_common` import block, so a `schemas` import
+# placed beside that one would be a NameError at import time rather than a missing feature.
+import schemas  # noqa: E402
+
 
 UA = "Mozilla/5.0 (book_ingest prototype; contact lmcfarlin)"
 OLLAMA = "http://localhost:11434/api/chat"
@@ -119,13 +124,22 @@ def _lexicon():
     governed by the app's Recategorize flow; it was never enforced, and by
     2026-07-25 ratings.csv held 138 distinct labels across 554 keeps. Regenerate
     with build_register_lexicon.py.
+
+    ⚠⚠ THIS WAS `except Exception: return []`, AND IT FAILED IN TWO PLACES AT ONCE.
+    An unreadable, renamed or malformed asset produced an empty list, and then:
+
+      * the director's prompt below said "`register` MUST be copied EXACTLY from this
+        controlled lexicon:" followed by NOTHING; and
+      * the off-lexicon guard in the tagging pass reads `if REGISTER_LEXICON and ...`, so an
+        empty list SWITCHED THAT GUARD OFF — every invented register passed through
+        unreported.
+
+    Both halves degraded in the same direction with nothing on stdout, so an empty vocabulary
+    is not a weaker vocabulary; it is the absence of the entire mechanism. This is the same
+    silent-fallback shape `build_direction()` already treats as fatal on the ENGINE axis
+    below, applied to the axis that was left behind.
     """
-    path = os.path.join(_SONORA_REPO, "scripts", "assets", "register_lexicon.json")
-    try:
-        with open(path, encoding="utf-8") as f:
-            return json.load(f)["lexicon"]
-    except Exception:
-        return []
+    return schemas.load_register_lexicon()
 
 
 REGISTER_LEXICON = _lexicon()
@@ -824,7 +838,14 @@ def director_tag(chunk, retries=2):
         tag = _extract_json(content)
         if not tag:
             continue
-        if REGISTER_LEXICON and tag.get("register") not in REGISTER_LEXICON:
+        # ⚠ THE `REGISTER_LEXICON and` GUARD IS GONE, AND ITS REMOVAL IS THE POINT.
+        # It read as harmless defensiveness and was in fact the off switch: the only way the
+        # lexicon could be empty was the loader's `except Exception: return []`, so the one
+        # circumstance that emptied the vocabulary ALSO disabled the check on the consequence.
+        # `schemas.load_register_lexicon()` now refuses to return an empty list, so a
+        # short-circuit here could no longer protect anything — it could only hide a future
+        # regression in the loader.
+        if tag.get("register") not in REGISTER_LEXICON:
             print(f"    off-lexicon register {tag.get('register')!r} -> neutral")
             tag["register"] = "neutral"
         # This used to default to "vibevoice" and coerce any unrecognised name to
@@ -844,10 +865,28 @@ def director_tag(chunk, retries=2):
         tag["engine"] = engine
         # Second pass: casting + delivery, written in the chosen engine's own
         # language. Dia has no direction channel, so it is skipped entirely.
+        # ⚠ AXES ARE VALIDATED HERE, INSIDE THE RETRY LOOP — the only place a bad emission
+        # can be RE-ASKED (issue #100). Validating only at the manifest write was fatal by
+        # construction: `to_bank_line` runs three statements after this loop RETURNS, in a
+        # function with no retry and inside no `try`, so one unreadable or out-of-range axis
+        # killed the whole ingest run. The tag was never repaired and never re-asked.
+        #
+        # This is the same shape the off-roster engine check above uses, and for the same
+        # reason: retry, and if the retries are spent, drop the chunk loudly rather than
+        # substitute a choice. An ABSENT axis is not an error and does not reach here —
+        # `intended_vat` only refuses a value that is present and unusable.
+        try:
+            schemas.intended_vat(tag)
+        except schemas.SchemaError as e:
+            print(f"    unusable axis — retrying: {e}", flush=True)
+            continue
         if engine != "dia":
+            # Briefed with the labels that will actually be written, rather than a second
+            # reading of the same tag. OMITTING an absent axis rather than passing None:
+            # `casting_pass` guards with `if k in labels` and formats with `:+.2f`.
+            _vat = schemas.intended_labels(tag)
             cast = casting_pass(chunk["text"], engine, labels={
-                "V": tag.get("valence", 0.0), "A": tag.get("arousal", 0.0),
-                "T": tag.get("tension", 0.0), "register": tag.get("register", "")})
+                **_vat, "register": tag.get("register", "")})
             if cast is None:
                 continue
             tag.update(cast)
@@ -1082,10 +1121,18 @@ def casting_pass(text, engine, labels=None, retries=2):
     user = f"Target engine: {engine}\n\nThe line to be performed:\n“{text}”"
     if labels:
         vat = ", ".join(f"{k}={labels[k]:+.2f}" for k in ("V", "A", "T") if k in labels)
+        # ⚠ AN EMPTY AXIS LINE IS WORSE THAN NO AXIS LINE (issue #99). When the director's
+        # first pass emits no axis at all — legal, since that pass sends no `format` schema —
+        # `vat` is "" and this block used to brief the second pass with
+        # `valence/arousal/tension: ` under a heading reading "treat as FIXED CONTEXT you must
+        # serve". A labelled field followed by nothing is not neutral: it is an instruction to
+        # serve something, with the something missing. That is this branch's own thesis
+        # inverted — forged-neutral was replaced by a crash, and the crash by a blank.
+        axis_line = f"  valence/arousal/tension: {vat}\n" if vat else ""
         user += ("\n\nAlready decided for this line — treat as FIXED CONTEXT you must "
                  "serve, never restate:\n"
                  f"  register: {labels.get('register', 'unspecified')}\n"
-                 f"  valence/arousal/tension: {vat}\n"
+                 f"{axis_line}"
                  "Your direction must FIT THIS LINE. Direction identical to what you "
                  "would write for a different register is a failure.")
     for _ in range(retries):
@@ -1322,7 +1369,13 @@ def to_bank_line(idx, chunk, tag, slug, seed=1234):
         "engine": engine,
         "register": tag.get("register", "unspecified"),
         "chunk_type": chunk["chunk_type"],
-        "intended": {"V": tag.get("valence", 0.0), "A": tag.get("arousal", 0.0), "T": tag.get("tension", 0.0)},
+        # ⚠ `tag.get("valence", 0.0)` TURNED SILENCE INTO A NEUTRAL LABEL. An axis the
+        # director never produced was written as 0.0 — indistinguishable from one it
+        # deliberately called neutral — which made `qc_verdict`'s careful absent-vs-unreadable
+        # branch unreachable from this writer. And an unparseable value ("0.7" as a string, or
+        # "very sad") went straight into the file, where issue #58 had to be fixed in the
+        # READER. Validating here keeps it out of the file for all seven readers.
+        "intended": schemas.intended_vat(tag),
         "seed": seed,
         "text": text,
         "direction": direction,
@@ -1442,8 +1495,10 @@ def main():
                                         ensure_ascii=False) + "\n")
             checkpoint.flush()
             os.fsync(checkpoint.fileno())
+            _i = line["intended"]
             print(f"  [{i}] {chunk['chunk_type']:9} eng={line['engine']:6} "
-                  f"V={line['intended']['V']:+.1f} A={line['intended']['A']:+.1f} T={line['intended']['T']:+.1f} "
+                  f"V={schemas.fmt_axis(_i['V'])} A={schemas.fmt_axis(_i['A'])} "
+                  f"T={schemas.fmt_axis(_i['T'])} "
                   f"{line['register']:22} | {chunk['text'][:55]}", flush=True)
     if resumed:
         print(f"  reused {resumed} directed chunk(s) from the checkpoint", flush=True)
