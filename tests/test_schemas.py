@@ -337,11 +337,20 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
     import ast
 
     # ⚠ EXEMPTIONS ARE PER SITE AND CARRY A REASON, because the syntactic shape is shared by
-    # checks that are NOT this rule. **Measured at `1d9c184^`: eleven hits, three of them
-    # axes.** (Nine if `schemas.py` is skipped, which is what the first version of this
-    # comment reported as "six hits, one axis" — a number taken from a truncated first look
-    # and wrong twice over. Issue #119; corrected by re-running the scan at that revision
-    # rather than by re-reading the note.) A blanket ban would have forced durations and
+    # checks that are NOT this rule. **Measured at `1d9c184^`, over every file this scan
+    # reads: eleven hits, FIVE of them axes** (`schemas.py:198`, `schemas.py:282`,
+    # `scm.py:26`, `make_narration_bank.py:216`, `make_v3d_bank.py:78`).
+    #
+    # ⚠ ONE SCOPING, STATED WHOLE. The first version of this comment said "six hits, one
+    # axis" — from a truncated first look at the output. The correction said "eleven hits,
+    # three axes", which pairs a count that INCLUDES `schemas.py` with a count that
+    # EXCLUDES it, and contradicts the note four lines below establishing `fmt_axis` as a
+    # second axis reader in that same file. Nine and three is the other consistent pair,
+    # for the scoping that skips the file. Issue #119, twice: the first correction was
+    # made by re-running the instrument and still mis-stated, because I re-ran it under
+    # two scopings and quoted one number from each.
+    #
+    # A blanket ban would have forced durations and
     # engine parameters through a function about V/A/T, which is a worse error than the one
     # being fixed. Explicit so that adding to it is a decision rather than a slip, the same
     # shape `RECURSIVE_BY_DESIGN` and the doc-claims exemptions use.

@@ -206,8 +206,8 @@ def _vat_distance(want, kv):
     `9bb3607` an unlabelled candidate scored ‖want‖ and was PENALISED in proportion to how
     expressive the target was; then it was REWARDED in the same proportion.
 
-    An unrankable candidate now costs the worst its labelled axes could justify, PLUS ONE
-    ULP. Finite on purpose, so it is still selectable when the pool offers nothing else —
+    An unrankable candidate now costs the supremum of what ANY labelled candidate could
+    score against this target, PLUS ONE ULP. Finite on purpose, so it is still selectable when the pool offers nothing else —
     quietly shrinking the pool is the failure this module keeps paying for — but never
     preferred over, and never TIED WITH, a clip that actually carries labels.
 
@@ -226,9 +226,19 @@ def _vat_distance(want, kv):
         return 0.0
     axes = [a for a in wanted if kv.get(a) is not None]
     if not axes:
-        worst = math.sqrt(sum(max(abs(want[a] - schemas.AXIS_MIN),
-                                  abs(want[a] - schemas.AXIS_MAX)) ** 2 for a in wanted)
-                          * 3.0 / len(wanted))
+        # ⚠ THE BOUND IS OVER EVERY SUBSET A CANDIDATE MIGHT LABEL, NOT OVER ALL THREE
+        # (issue #122). The labelled branch divides by `len(axes)`, so a candidate that
+        # labels FEWER axes can score HIGHER: with want = (0.8, 0.8, 0.65), one labelled
+        # axis at the far endpoint gives 1.8 * sqrt(3) = 3.117691, while the all-three
+        # worst case is 3.033562. Bounding by the all-three case therefore let a partially
+        # labelled clip lose to the unlabelled one — the exact inversion #114 was about,
+        # surviving the fix for it because the fix bounded the wrong maximum.
+        #
+        # The supremum over subsets is reached by the single worst axis: for any subset S,
+        # sqrt(sum_{a in S} e_a^2 * 3/|S|) <= max_a(e_a) * sqrt(3), with equality when every
+        # axis in S has that error. So bound by that, plus one ULP for strictness.
+        worst = max(max(abs(want[a] - schemas.AXIS_MIN),
+                        abs(want[a] - schemas.AXIS_MAX)) for a in wanted) * math.sqrt(3.0)
         return math.nextafter(worst, math.inf)
     return math.sqrt(sum((want[a] - kv[a]) ** 2 for a in axes) * 3.0 / len(axes))
 

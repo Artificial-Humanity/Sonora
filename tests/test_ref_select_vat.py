@@ -21,6 +21,7 @@ would_be_caught` and `test_reverting_the_isinstance_test_would_be_caught` are wr
 falsifiers, against the specific expression that was there before.
 """
 
+import itertools
 import math
 
 import pytest
@@ -216,22 +217,36 @@ def test_the_penalty_scales_with_how_much_the_target_asked_for():
     assert strong > mild
 
 
-def test_the_unrankable_penalty_is_STRICTLY_worse_than_the_worst_labelled_clip():
-    """⚠ A TIE IS NOT A LOSS (issue #120). `select_reference` keeps the best on
-    `score < best_score` — strict — so an exact tie is broken by pool iteration order, not
-    by which clip carries labels. The first version of the penalty returned bit-identically
-    what the labelled branch returns for a candidate at the opposite endpoint on every axis:
-    the same terms, summed in the same order.
+def test_the_unrankable_penalty_beats_EVERY_labelled_candidate_not_just_the_fully_labelled_one():
+    """⚠ A TIE IS NOT A LOSS (issue #120), AND "WORST" MEANS OVER EVERY SUBSET (issue #122).
 
-    `±1.0` is reachable rather than theoretical: AXIS_MIN/AXIS_MAX are exactly those, and
-    derivation clamps per-speaker z-scores at 2 sigma, so a clamped speaker lands there.
+    `select_reference` keeps the best on `score < best_score` — strict — so an exact tie is
+    decided by pool iteration order rather than by which clip carries labels.
+
+    ⚠ The first version of this test was NAMED for the property and checked only the
+    all-three-axes case, which is not the maximum. The labelled branch divides by
+    `len(axes)`, so a candidate labelling FEWER axes can score HIGHER: with
+    want = (0.8, 0.8, 0.65), one axis at the far endpoint gives 1.8 * sqrt(3) = 3.117691
+    against the all-three worst of 3.033562. The penalty was bounded by the wrong maximum
+    and a partially labelled clip lost to an unlabelled one — the very inversion #114 was
+    filed about, surviving its own fix.
+
+    So this sweeps every subset and every endpoint rather than asserting one case.
     """
-    want = {"V": 0.8, "A": 0.8, "T": 0.65}
-    worst_labelled = ref_select._vat_distance(want, {"V": -1.0, "A": -1.0, "T": -1.0})
-    unrankable = ref_select._vat_distance(want, UNLABELLED)
-    assert unrankable > worst_labelled, (
-        f"a candidate with no labels ({unrankable!r}) does not lose to one at the far "
-        f"endpoint of every axis ({worst_labelled!r}); a tie is decided by pool order")
+    for want in ({"V": 0.8, "A": 0.8, "T": 0.65},
+                 {"V": 1.0, "A": 1.0, "T": 1.0},
+                 {"V": -1.0, "A": 0.0, "T": 1.0},
+                 {"V": 0.1, "A": -0.9, "T": 0.3}):
+        penalty = ref_select._vat_distance(want, UNLABELLED)
+        for size in (1, 2, 3):
+            for subset in itertools.combinations("VAT", size):
+                for vals in itertools.product((-1.0, 1.0, 0.0), repeat=size):
+                    kv = dict.fromkeys("VAT")
+                    kv.update(dict(zip(subset, vals)))
+                    d = ref_select._vat_distance(want, kv)
+                    assert d < penalty, (
+                        f"a candidate labelling {subset} as {vals} scores {d!r}, which is "
+                        f"not better than the no-information penalty {penalty!r}")
 
 
 def test_the_penalty_is_strictly_worse_at_the_extreme_target_too():
