@@ -159,3 +159,58 @@ def test_vat_refuses_a_record_instead_of_reading_it_as_all_absent():
         ref_select._vat(record)
     # the thing it is telling you to write must of course still work
     assert ref_select._vat(record["intended_vat"]) == {"V": 0.8, "A": 0.1, "T": 0.0}
+
+
+# ----------------------------------------------- the candidate side of "no information"
+#
+# ⚠ #114: `_vat_distance` returned 0.0 whenever the two sides shared no axis, and 0.0 is the
+# FLOOR of a quantity select_reference MINIMISES. So an unlabelled CANDIDATE tied a perfect
+# match and beat every labelled clip that was off by anything — #103's substitution one level
+# up, in the function written to fix #103. The tests below stop exactly where the earlier
+# ones stopped: `test_the_rescale_does_not_advantage_a_sparsely_labelled_candidate` covers
+# one-of-three axes and never reaches zero-of-three.
+
+UNLABELLED = {"V": None, "A": None, "T": None}
+
+
+def test_a_candidate_that_labels_nothing_never_beats_one_that_does():
+    """The finding, as one ordering assertion."""
+    want = {"V": 0.8, "A": 0.8, "T": 0.65}
+    for kv in ({"V": 0.8, "A": 0.8, "T": 0.65},      # perfect
+               {"V": 0.5, "A": 0.5, "T": 0.4},       # close
+               {"V": -0.9, "A": -0.9, "T": -0.9},    # about as far as the range allows
+               {"V": 0.0, "A": 0.0, "T": 0.0}):      # flat, but labelled flat
+        assert ref_select._vat_distance(want, kv) < ref_select._vat_distance(want, UNLABELLED)
+
+
+def test_an_unrankable_candidate_stays_finite_and_therefore_selectable():
+    """⚠ NOT `inf`. Quietly shrinking the pool is the failure this module keeps paying for
+    (see `select_reference`'s note on unmeasured F0), so an unrankable clip must still win
+    when it is the only clip."""
+    d = ref_select._vat_distance({"V": 0.8, "A": 0.8, "T": 0.65}, UNLABELLED)
+    assert math.isfinite(d)
+
+
+def test_when_the_TARGET_labels_nothing_every_candidate_ties():
+    """The other half of "no shared axis", and the half where 0.0 is right: nothing was
+    asked for, so no candidate is preferred and the term genuinely leaves the ranking."""
+    a = ref_select._vat_distance(UNLABELLED, {"V": 0.9, "A": 0.9, "T": 0.9})
+    b = ref_select._vat_distance(UNLABELLED, {"V": -0.9, "A": -0.9, "T": -0.9})
+    assert a == b == 0.0
+
+
+def test_reverting_the_candidate_side_to_zero_would_be_caught():
+    """Falsifier written against the pre-fix expression, not the current shape.
+
+    Pre-fix, both branches returned 0.0 and this equalled the perfect match's score.
+    """
+    want = {"V": 0.8, "A": 0.8, "T": 0.65}
+    assert ref_select._vat_distance(want, UNLABELLED) != ref_select._vat_distance(want, want)
+
+
+def test_the_penalty_scales_with_how_much_the_target_asked_for():
+    """An expressive target has more to lose from an unlabelled reference than a mild one
+    does, so the cost of "unknown" is not a flat constant."""
+    strong = ref_select._vat_distance({"V": 1.0, "A": 1.0, "T": 1.0}, UNLABELLED)
+    mild = ref_select._vat_distance({"V": 0.1, "A": 0.1, "T": 0.1}, UNLABELLED)
+    assert strong > mild

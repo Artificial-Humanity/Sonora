@@ -187,12 +187,38 @@ def _vat_distance(want, kv):
     the 197 in-window female clips, ordering unchanged and max score delta 2.2e-16. So this
     does not recalibrate the ranking against `ENGINE_PREF` or `AGE_WEIGHT`.
 
-    No shared axis at all -> `0.0`, and the VAT term genuinely drops out of the ranking. That
-    is the honest reading of "no information", and it is what the old docstring promised.
+    ⚠⚠ "NO SHARED AXIS" IS TWO DIFFERENT SITUATIONS AND THIS RETURNED `0.0` FOR BOTH
+    (issue #114). `0.0` is the FLOOR of a quantity `select_reference` MINIMISES, so it is not
+    a neutral value — it is the best score available. Handing it to one candidate does not
+    drop the term out of the ranking; it exempts that candidate from a cost every other
+    candidate still pays. The two cases:
+
+      * **the TARGET labels nothing** — every candidate scores `0.0`, they all tie, and the
+        term really does drop out. That is correct and is what the sentence meant.
+      * **the target labels something this candidate does not** — only that candidate scores
+        `0.0`, so a reference clip with no labels at all TIES A PERFECT MATCH and BEATS every
+        labelled clip that is off by any amount. Measured: want (0.8, 0.8, 0.65) against a
+        perfect match scores 0.0, against an unlabelled candidate 0.0, against a close-but-
+        inexact candidate 0.4924.
+
+    This is #103 one level up, in the function written to fix #103: an unknown replaced by a
+    number that happens to mean "ideal". The direction of the bias even inverted — before
+    `9bb3607` an unlabelled candidate scored ‖want‖ and was PENALISED in proportion to how
+    expressive the target was; then it was REWARDED in the same proportion.
+
+    An unrankable candidate now costs the worst its labelled axes could justify. Finite on
+    purpose, so it is still selectable when the pool offers nothing else — quietly shrinking
+    the pool is the failure this module keeps paying for — but never preferred over a clip
+    that actually carries labels.
     """
-    axes = [a for a in "VAT" if want.get(a) is not None and kv.get(a) is not None]
-    if not axes:
+    wanted = [a for a in "VAT" if want.get(a) is not None]
+    if not wanted:
         return 0.0
+    axes = [a for a in wanted if kv.get(a) is not None]
+    if not axes:
+        return math.sqrt(sum(max(abs(want[a] - schemas.AXIS_MIN),
+                                 abs(want[a] - schemas.AXIS_MAX)) ** 2 for a in wanted)
+                         * 3.0 / len(wanted))
     return math.sqrt(sum((want[a] - kv[a]) ** 2 for a in axes) * 3.0 / len(axes))
 
 
