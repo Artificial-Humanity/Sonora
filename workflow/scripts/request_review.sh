@@ -280,8 +280,12 @@ fi
 # run and the brief took its "no changeset" arm, telling every reviewer the work "cannot be
 # shown to be finished". They reported it, correctly, on more than twenty consecutive passes.
 #
-# The cost was not the missing record — `branch_name` replaced it and the brief sets that at
-# the SCOPE line above. The cost was a warning that always fires, in the file that generates
+# The cost was not the missing record — `branch_name` replaced it, and the brief sets it in
+# the `branch_name for THIS pass` bullet BELOW, which is its own line rather than part of
+# `${SCOPE_LINES}`. ⚠ This said "the SCOPE line above" and was wrong both ways a reader could
+# take it (issue #176): the brief is assembled below this comment, not above it, and
+# `${SCOPE_LINES}` emits only the range. The cost was a warning that always fires, in the
+# file that generates
 # the brief instructing reviewers to hunt for claims that outlived their subject (AGENTS.md
 # §5b). `2>/dev/null` on a path is why it was invisible: it hides a missing file exactly as
 # well as it hides a failed query.
@@ -426,8 +430,12 @@ fi
 # ⚠ NO CHANGESET SECTION. Both arms are gone with the probe above. The live arm was noise;
 # the other could not fire. Nothing is lost: the stamping instruction the dead arm carried is
 # emitted unconditionally at the `branch_name for THIS pass` line, and the "query
-# branch_name && state=open to find earlier passes" guidance is REVIEWER.md §4, which every
-# review demonstrably runs. Checked before deleting rather than assumed.
+# branch_name && state=open to find earlier passes" guidance is REVIEWER.md §5 ("Which
+# review is this? — ask the tracker, not yourself"), which every review demonstrably runs.
+# ⚠ This said §4 — that is "Filing — the tracker is the report", a different section (issue
+# #175). The sentence exists so a future reader can confirm nothing was lost by the deletion,
+# so pointing it at the wrong section defeats the one job it has.
+# Checked before deleting rather than assumed.
 
 if [[ -n "$SIBLING" ]]; then
   BRIEF+="

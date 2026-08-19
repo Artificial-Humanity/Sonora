@@ -605,3 +605,64 @@ def test_the_zero_warning_does_not_refuse():
     assert patched.get("state") == "review", (
         "cmd_review refused the transition at agent_passes = 0. It must only warn — 0 is "
         "also the owner's deliberate re-arm value")
+
+
+# --- every path the lane names must exist ------------------------------------------------
+#
+# ⚠ WHY (2026-08-19, issue #177). `request_review.sh` ran
+# `python3 "$REPO_ROOT/scripts/lib/find_changeset.py" 2>/dev/null || true` against a file
+# deleted with the mechanism it probed. The redirect swallowed `No such file`, so the variable
+# was empty on every run and the brief silently took its fallback arm — telling every reviewer
+# the work "cannot be shown to be finished", on more than twenty consecutive passes.
+#
+# The closest existing guard says this finding almost verbatim:
+# `test_review_cycle.py::test_every_denied_script_actually_exists` — "⚠ A DENY ON A PATH THAT
+# DOES NOT EXIST IS NOT A DENY. The failure above was invisible because nothing tied the deny
+# list to the filesystem." It is scoped to one array in one file. This is the same rule for
+# every path the lane names.
+
+LANE_FILES = sorted(list((REPO / "workflow").rglob("*.sh")) + list((REPO / "workflow").rglob("*.py")))
+
+# A repo-relative path to a concrete file. Deliberately narrow: it must start at a real
+# top-level directory and end in a known extension, so prose and constructed names do not
+# match. Measured when written: 38 literals in code across the lane, 0 of them absent.
+_LANE_PATH = re.compile(
+    r'(?:\$REPO_ROOT/|\$\{REPO_ROOT\}/|"\s*)?'
+    r'((?:scripts|workflow|tests|matcha|configs)/[A-Za-z0-9_./-]+\.(?:py|sh|json|md|env))')
+
+
+def _lane_path_literals():
+    """(file, line, path) for every repo-relative path named in LANE code, comments excluded."""
+    out = []
+    for f in LANE_FILES:
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            # ⚠ Comments are stripped, because three comments in this very file quote the
+            # deleted `find_changeset.py` path to explain the defect. A text scan that read
+            # its own explanation as a violation is the trailing-comment trap, and this repo
+            # has paid for it more than once.
+            if line.lstrip().startswith("#"):
+                continue
+            code = line.split("#", 1)[0]
+            for m in _LANE_PATH.finditer(code):
+                out.append((f.relative_to(REPO).as_posix(), i, m.group(1)))
+    return out
+
+
+def test_the_path_scan_still_finds_the_lane():
+    """The assertion below is "nothing is missing", which an empty scan satisfies for free."""
+    found = _lane_path_literals()
+    assert len(LANE_FILES) >= 4, f"only {len(LANE_FILES)} lane scripts — is the walk working?"
+    assert len(found) >= 20, f"only {len(found)} path literals found — is the pattern working?"
+
+
+def test_every_path_the_lane_names_exists():
+    """⚠ A PATH THAT DOES NOT EXIST IS NOT A PROBE, A DENY, OR A CALL — it is a silent no-op.
+
+    `2>/dev/null` on a command hides a missing file exactly as well as it hides a failed
+    query, which is why the original went unseen for two days and was reported for twenty.
+    """
+    missing = [f"  {f}:{i}  {p}" for f, i, p in _lane_path_literals()
+               if not (REPO / p).exists()]
+    assert not missing, (
+        "the lane names paths that do not exist. Each is a probe, deny or call that cannot "
+        "do anything, and nothing at runtime will say so:\n" + "\n".join(missing))
