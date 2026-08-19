@@ -267,14 +267,24 @@ else
   fi
 fi
 
-# --- The changeset: a branch's local-only pull request ---------------------
+# --- The changeset: RETIRED, and this is where its last probe lived --------
 # ⚠ ALL WORK HAPPENS ON A BRANCH, AND THE BRANCH IS THE REVIEWABLE UNIT (owner, 2026-08-17).
-# A commit is too granular to review — a fix commit is not a change, it is part of one — and a
-# GitHub PR is the friction this lane exists to avoid. The middle is a branch with a record:
-# `scripts/changeset.sh` gives it an identity, a state and a merge event, and every issue a
-# review files is stamped with it. That is what makes "is this piece of work done?" a query
-# instead of something a session has to remember.
-CS_JSON="$(BRANCH="$BRANCH" REPO_SLUG="$REPO_SLUG" python3 "$REPO_ROOT/scripts/lib/find_changeset.py" 2>/dev/null || true)"
+# That much is unchanged. What is gone is the second record of it: a `changesets` collection
+# gave a branch an identity and stamped every issue with it, and the owner retired it the same
+# day — "a branch already has an identity, and its issues already carry its state; the record
+# was a second place for the same truth" (WORKFLOW.md).
+#
+# ⚠⚠ THE PROBE OUTLIVED THE MECHANISM BY TWO DAYS AND NOBODY COULD SEE IT. This ran
+# `python3 "$REPO_ROOT/scripts/lib/find_changeset.py" 2>/dev/null || true` — a file deleted
+# with the mechanism. The redirect swallowed `No such file`, so `CS_JSON` was empty on every
+# run and the brief took its "no changeset" arm, telling every reviewer the work "cannot be
+# shown to be finished". They reported it, correctly, on more than twenty consecutive passes.
+#
+# The cost was not the missing record — `branch_name` replaced it and the brief sets that at
+# the SCOPE line above. The cost was a warning that always fires, in the file that generates
+# the brief instructing reviewers to hunt for claims that outlived their subject (AGENTS.md
+# §5b). `2>/dev/null` on a path is why it was invisible: it hides a missing file exactly as
+# well as it hides a failed query.
 
 # --- Sibling repos the reviewer may READ -----------------------------------
 # ⚠ WITHOUT THIS THE REVIEWER IS BLIND TO MECHANISMS THIS REPO ONLY DESCRIBES. Measured:
@@ -413,32 +423,11 @@ You will not be able to run the suite. Mark every finding that needed execution 
 "
 fi
 
-if [[ -n "$CS_JSON" ]]; then
-  CS_ID="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["id"])' "$CS_JSON")"
-  CS_NUM="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["number"])' "$CS_JSON")"
-  CS_TITLE="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["title"])' "$CS_JSON")"
-  BRIEF+="
-### The changeset this belongs to
-
-Branch \`$BRANCH\` is **changeset #$CS_NUM — $CS_TITLE**.
-
-⚠ **Stamp \`branch_name\` = \`$BRANCH\` on every issue you file.** That is what ties a finding
-to this piece of work, and it is what decides whether the work is finished: an unstamped issue
-belongs to no unit and appears in no convergence check.
-
-**To find what earlier passes on this branch already filed** — you have no memory of them —
-query \`branch_name=\"$BRANCH\" && state=\"open\"\`. That is every open finding on this
-changeset, whichever pass raised it. There is no list of prior ids to be handed any more.
-"
-else
-  BRIEF+="
-### No changeset
-
-Branch \`$BRANCH\` has no open changeset record. File issues as normal, but **say so in your
-summary** — unstamped issues appear in no convergence check, so the work cannot be shown to be
-finished.
-"
-fi
+# ⚠ NO CHANGESET SECTION. Both arms are gone with the probe above. The live arm was noise;
+# the other could not fire. Nothing is lost: the stamping instruction the dead arm carried is
+# emitted unconditionally at the `branch_name for THIS pass` line, and the "query
+# branch_name && state=open to find earlier passes" guidance is REVIEWER.md §4, which every
+# review demonstrably runs. Checked before deleting rather than assumed.
 
 if [[ -n "$SIBLING" ]]; then
   BRIEF+="
