@@ -6,8 +6,6 @@ instrument decode (utterance VAT within `VAT_TOL`; spans activate when the span 
 layer lands). Interpretive fields (style, direction) are never load-bearing.
 """
 
-import math
-
 import schemas
 
 VAT_TOL = 0.35  # ratified tolerance (owner amendment 2026-07-19: widened from
@@ -16,6 +14,14 @@ SPAN_TYPES = {"emphasis", "pause_after", "pace", "pitch_move", "nonverbal", "quo
 PAUSE_BINS = {"micro", "short", "med", "long"}
 GENDERS = {"Male", "Female", "Undefined"}
 AGE_BANDS = {"child", "young", "adult", "senior"}
+
+
+def _show(v, limit=40):
+    """`repr(v)`, truncated. ⚠ The value that motivated the non-finite branch is a JSON
+    integer too large for a float — its repr is 400 digits, and an error message that
+    scrolls the terminal hides the three messages printed beside it."""
+    r = repr(v)
+    return r if len(r) <= limit else r[:limit] + f"… ({len(r)} chars)"
 
 
 def validate(obj, lexicon):
@@ -52,21 +58,33 @@ def validate(obj, lexicon):
         if ch not in vat or v is None:
             errs.append(f"vat.{ch} is missing — the sidecar must carry all three axes")
         elif not isinstance(v, (int, float)) or isinstance(v, bool):
-            errs.append(f"vat.{ch} is {type(v).__name__} {v!r}, not a number — the sidecar "
+            errs.append(f"vat.{ch} is {type(v).__name__} {_show(v)}, not a number — the sidecar "
                         f"stores VAT continuous (markup-schema-brief.md, RATIFIED v0.1). "
                         f"Emit it as a JSON number, not a string.")
-        elif math.isnan(v) or math.isinf(v):
+        elif schemas.coerce_axis(v) is None:
             # ⚠ A FOURTH REPAIR, AND IT WORE THE THIRD ONE'S INSTRUCTION (issue #137).
             # `isinstance(nan, float)` is True, so NaN passed the type check and then failed
-            # the range comparison — every comparison against NaN is False — and was reported
-            # as "out of [-1,1]". It is not out of range; it is not a number, and the repair
-            # is to find out why the instrument emitted one. The message also prints the
-            # value, which the two beside it do and this one did not.
-            errs.append(f"vat.{ch} is {v!r}, which is not a finite number — the sidecar "
-                        f"stores VAT continuous (markup-schema-brief.md, RATIFIED v0.1)")
+            # the range comparison — every comparison against NaN is False — and was
+            # reported as "out of [-1,1]". It is not out of range; it is not a number.
+            #
+            # ⚠⚠ `coerce_axis`, NOT `math.isnan(v) or math.isinf(v)` (issue #142). That was
+            # the remedy #137 suggested, marked UNVERIFIED, and I implemented it verbatim
+            # without checking it: `math.isnan` CONVERTS its argument to a float first, so
+            # on a JSON integer too large for one it raises `OverflowError` — and
+            # `scm.validate`, whose contract is to RETURN a list of violations, raised
+            # instead. The identical conversion is what #141 had just been filed about, one
+            # module over. `coerce_axis` already answers this exactly, including the
+            # overflow, and asking it keeps one definition rather than two.
+            #
+            # ⚠ The TYPE check above stays separate and strict, because that is the
+            # contract question (#117): a JSON string is a violation even though
+            # `coerce_axis("0.7")` is 0.7.
+            errs.append(f"vat.{ch} is {_show(v)}, not a finite number — re-derive it from the "
+                        f"instrument, or write the axis as null if it was never measured")
         elif not schemas.AXIS_MIN <= v <= schemas.AXIS_MAX:
-            errs.append(f"vat.{ch} is {v!r}, out of "
-                        f"[{schemas.AXIS_MIN:g},{schemas.AXIS_MAX:g}]")
+            errs.append(f"vat.{ch} is {_show(v)}, out of "
+                        f"[{schemas.AXIS_MIN:g},{schemas.AXIS_MAX:g}] — clamp it to the "
+                        f"trained range or re-derive it")
     reg = utt.get("register")
     if reg is not None and reg not in lexicon:
         errs.append(f"register '{reg}' not in controlled lexicon")

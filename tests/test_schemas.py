@@ -359,8 +359,8 @@ def test_no_module_keeps_its_own_idea_of_what_counts_as_a_number():
     # single-purpose: `fmt_axis` was a SECOND reader inside it, disagreeing with the
     # definition on `"0.7"`, invisible to this scan, and beyond the staleness assertion
     # below — which only covers entries carrying a line. The guard was switched off for
-    # precisely the file most likely to grow the next copy. `fmt_axis` now delegates, so
-    # only the definition itself needs naming, and it is named BY LINE like everything else.
+    # precisely the file most likely to grow the next copy. `fmt_axis` now only the definition itself needs naming, and it is named like every other entry — by
+    # its enclosing FUNCTION, not by a line (see the paragraph below).
     # ⚠ KEYED ON THE ENCLOSING FUNCTION, NOT ON A LINE NUMBER. Line-keyed entries drifted
     # three times in one session — every edit above a site invalidates it — and worse, the
     # staleness check CANNOT see the failure that matters: two of these reasons were

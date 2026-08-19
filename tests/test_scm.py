@@ -160,14 +160,41 @@ def test_each_repair_gets_its_own_message(vat, expect):
     assert len(errs) == 1 and expect in errs[0], errs
 
 
-def test_the_four_messages_are_all_distinct():
-    """Collapsing any two back together must fail here, which is what #138 asked for."""
-    msgs = {_vat_errors(v)[0] for v in (
-        {"A": 0.1, "T": 0.0},
-        {"V": "0.7", "A": 0.1, "T": 0.0},
-        {"V": float("nan"), "A": 0.1, "T": 0.0},
-        {"V": 1.5, "A": 0.1, "T": 0.0})}
-    assert len(msgs) == 4, msgs
+# ⚠ MARKERS, NOT A SET OF WHOLE MESSAGES (issue #143). The first version built
+# `{_vat_errors(v)[0] for v in …}` and asserted `len(msgs) == 4` — but every message embeds
+# the offending VALUE, and the four probes carry four different values, so the strings differ
+# whatever branch produced them. Collapsing two branches into one template would have kept
+# the set at four. The test could not detect the thing its docstring promised.
+BRANCH_MARKERS = {
+    "missing": ("is missing", {"A": 0.1, "T": 0.0}),
+    "wrong type": ("not a number — the sidecar stores", {"V": "0.7", "A": 0.1, "T": 0.0}),
+    "non-finite": ("not a finite number", {"V": float("nan"), "A": 0.1, "T": 0.0}),
+    "out of range": ("out of [-1,1]", {"V": 1.5, "A": 0.1, "T": 0.0}),
+}
+
+
+@pytest.mark.parametrize("branch", sorted(BRANCH_MARKERS))
+def test_each_branch_says_something_no_other_branch_says(branch):
+    """Collapsing any two branches makes one marker appear in two messages — which this
+    catches and a set of whole messages cannot."""
+    marker, probe = BRANCH_MARKERS[branch]
+    mine = _vat_errors(probe)[0]
+    assert marker in mine, f"{branch}: {marker!r} not in {mine!r}"
+    for other, (_m, other_probe) in BRANCH_MARKERS.items():
+        if other == branch:
+            continue
+        assert marker not in _vat_errors(other_probe)[0], (
+            f"{branch}'s marker {marker!r} also appears in {other}'s message — the two "
+            f"branches have collapsed into one template")
+
+
+def test_every_branch_names_a_repair():
+    """⚠ #144. A diagnosis without an instruction leaves the reader to infer one, and the
+    non-finite branch shipped with its repair written only in the comment above the string."""
+    for branch, (_marker, probe) in BRANCH_MARKERS.items():
+        msg = _vat_errors(probe)[0]
+        assert any(w in msg for w in ("must", "Emit", "re-derive", "clamp")), (
+            f"{branch} names no repair: {msg!r}")
 
 
 def test_a_wrong_type_and_an_out_of_range_value_both_name_the_value():
@@ -175,3 +202,26 @@ def test_a_wrong_type_and_an_out_of_range_value_both_name_the_value():
     assert "'0.7'" in _vat_errors({"V": "0.7", "A": 0.1, "T": 0.0})[0]
     assert "1.5" in _vat_errors({"V": 1.5, "A": 0.1, "T": 0.0})[0]
     assert "nan" in _vat_errors({"V": float("nan"), "A": 0.1, "T": 0.0})[0]
+
+
+def test_validate_returns_a_list_rather_than_raising_on_an_oversized_integer():
+    """⚠ #142, AND THE MUTATION BATTERY IS WHAT FOUND IT MISSING.
+
+    `validate`'s contract is to RETURN violations. The #137 fix branched on
+    `math.isnan(v) or math.isinf(v)`, which CONVERTS its argument to a float first — so on a
+    JSON integer too large for one it raised `OverflowError` out of the validator. That is
+    the identical conversion #141 had just been filed about, one module over, and the remedy
+    was implemented from an UNVERIFIED suggestion without being run.
+
+    Nothing caught it: re-introducing `math.isnan` here passed the whole file until this
+    test existed.
+    """
+    huge = 10 ** 400
+    errs = scm.validate(_obj({"V": huge, "A": 0.1, "T": 0.0}), LEX)   # must not raise
+    assert any("not a finite number" in e for e in errs), errs
+
+
+def test_an_oversized_value_is_truncated_in_the_message():
+    """A 400-digit repr scrolls the three messages printed beside it off the screen."""
+    msg = _vat_errors({"V": 10 ** 400, "A": 0.1, "T": 0.0})[0]
+    assert "chars)" in msg and len(msg) < 200, len(msg)
