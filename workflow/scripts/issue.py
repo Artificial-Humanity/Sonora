@@ -244,7 +244,15 @@ def cmd_show(pb, args):
     #
     # ⚠ The status is checked now. An empty comment list and a refused query must not print
     # the same thing; that is the same silent-negative this script exists to remove.
-    st, r = pb.call("/api/collections/issue_comments/records?perPage=100&sort=posted_at,seq"
+    # ⚠ `seq` FIRST — IT IS THE DOCUMENTED ORDER AND THE ONLY RELIABLE ONE (issue #152).
+    # Sorting `posted_at,seq` put a reply ABOVE the comment it answers: the two writers
+    # stamp `posted_at` from different clocks (Janis through the MCP, Ozzy through this
+    # script), so wall-clock order is not thread order. Reproduced live on #149: sorted by
+    # `posted_at` the thread reads seq 1, 3, 2. `REVIEWER.md` §4 gives `sort="seq"` as the
+    # canonical query, and `seq` has been stamped per issue since #109 precisely so that
+    # this is answerable. `posted_at` stays as the tiebreak for the imported GitHub
+    # comments, which share seq values from the migration.
+    st, r = pb.call("/api/collections/issue_comments/records?perPage=100&sort=seq,posted_at"
                     "&filter=" + urllib.parse.quote('issue="%s"' % rec["id"]))
     if st != 200:
         die("comment query refused: %s" % json.dumps(r)[:400])

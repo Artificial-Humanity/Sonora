@@ -55,9 +55,16 @@ dependencies = [
   # ⚠ CORE, NOT TRANSITIVE, AND NOT OPTIONAL. `scripts/lib/schemas.py` imports it at module
   # scope and `book_ingest` imports that, so it sits on the teacher-synthesis path every
   # container takes. It was previously reachable ONLY through `fastapi`, which lives in the
-  # `vocalizer` extra below — so a dev box had it by accident while a training or eval image
-  # would not have had it at all, and the failure would have been an ImportError in a
-  # container rather than anywhere a test could see. MIT, so no friction with Apache-2.0.
+  # `vocalizer` extra below — so every lane that had it, had it by accident, and any lane
+  # built without that extra would have failed with an ImportError in a container rather
+  # than anywhere a test could see. MIT, so no friction with Apache-2.0.
+  #
+  # ⚠ THE FIRST VERSION OF THIS COMMENT NAMED THE WRONG LANE (issue #154). It said a dev box
+  # had it while "a training or eval image would not have had it at all". The measured
+  # reverse: `environments/training-container.txt` carries `fastapi==0.141.1` and therefore
+  # `pydantic==2.13.4`, while `environments/host-venv.txt` — recorded 2026-08-06 — carried
+  # neither. A reader acting on the old sentence would have gone looking for the gap in the
+  # container, which is the one lane the snapshot shows was covered.
   "pydantic>=2",
 ]
 

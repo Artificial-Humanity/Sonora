@@ -1,5 +1,5 @@
 # Sonora host venv (.venv) — the environment that derives corpora and runs the
-# synthesis/audit scripts. Recorded 2026-08-06 from the live venv (T4/G-1).
+# synthesis/audit scripts. Recorded 2026-08-06, refreshed 2026-08-19 from the live venv (T4/G-1).
 #
 # This is the venv that produced libritts_r_vat v1..v3c and every render campaign,
 # and until now it was recorded nowhere. NOT a resolver output — a snapshot of what
@@ -13,7 +13,21 @@
 # Scripts run as .venv/bin/python, never `uv run` — uv run binds to pyproject.toml
 # and ignores the inline PEP 723 blocks the scripts carry (owner decision 2026-08-01).
 
+#
+# ⚠ REFRESHED 2026-08-19 BECAUSE A DEPENDENCY CHANGED AND THIS FILE DID NOT (issue #153).
+# The `pydantic-boundaries` branch added `pydantic>=2` to [project.dependencies] and left
+# both snapshots alone, which is the exact case the Refreshing section of README.md names:
+# "Refresh both after any dependency change… a stale snapshot asserting the wrong versions
+# is the failure mode these files exist to prevent." Nothing enforced it — `grep -rn
+# environments/ tests/` returns no matches — so the rule had no mechanism and the review
+# that caught it was looking at a diff, not at this file.
+#
+# The added lines are the pydantic chain plus fastapi/starlette: the `vocalizer` extra is
+# installed in this venv, and this file records WHAT ACTUALLY RAN rather than what the
+# resolver would pick, per the header above.
 ai-edge-litert==2.1.6
+annotated-doc==0.0.5
+annotated-types==0.8.0
 anyio==4.14.2
 audioread==3.1.0
 av==18.0.0
@@ -26,6 +40,7 @@ click==8.4.2
 ctranslate2==4.8.1
 decorator==5.3.1
 ebooklib==0.20
+fastapi==0.141.1
 faster-whisper==1.2.1
 filelock==3.32.2
 flatbuffers==25.12.19
@@ -54,6 +69,8 @@ pluggy==1.6.0
 pooch==1.9.0
 protobuf==7.35.1
 pycparser==3.0
+pydantic==2.13.4
+pydantic-core==2.46.4
 pygments==2.20.0
 pyloudnorm==0.2.0
 pysbd==0.3.4
@@ -67,9 +84,11 @@ six==1.17.0
 soundfile==0.14.0
 soupsieve==2.9.1
 soxr==1.1.0
+starlette==1.6.0
 threadpoolctl==3.6.0
 tokenizers==0.23.1
 tqdm==4.70.0
 typing-extensions==4.16.0
+typing-inspection==0.4.2
 unidecode==1.4.0
 urllib3==2.7.0
