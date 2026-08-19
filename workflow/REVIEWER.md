@@ -219,8 +219,14 @@ The instance holds only issues numbered 90+; `#12–#89` are **not there**. They
 before the tracker was wiped and live in `notes/tracker-export-2026-08-17.json` — 79 issue
 records, numbers 12–120 — so nothing was lost, but a reviewer who queries for them finds
 nothing and cannot tell that from data loss. Measured by a reviewer this branch, who correctly
-declined to file it because this file was outside its range. **The numbers stay reserved: the
-export is the record that they were used.**
+declined to file it because this file was outside its range.
+
+**The numbers stay reserved.** ⚠ But the export is NOT the whole record of which are taken
+(issue #164): it is a 2026-08-17 SNAPSHOT holding 79 records, of which 48 are below 90 and
+**31 are 90+** — and numbers allocated since are in the live collection only, which is
+already past #160. So: **the export covers everything below 90; the live collection covers
+the rest; neither alone tells you the next free number.** `issue.py file` allocates from the
+live maximum and retries on collision, which is why that is the only safe route.
 
 ### Comments live in their own collection: `issue_comments`
 

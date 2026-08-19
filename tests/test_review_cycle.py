@@ -148,10 +148,16 @@ def _open_filter():
 def test_convergence_is_scoped_to_the_branch_under_review():
     """Convergence must count THIS branch's issues and no others.
 
-    ⚠ The old guard was `branch_name!=""`, which excluded the migrated GitHub backlog only
-    while that backlog carried no branch at all. It now sits on `github-issues-fixes`, so the
-    clause that once dropped it would sweep it in — and since nobody works it until that
-    branch is rebased, the loop could never see itself converge.
+    ⚠ The old guard was `branch_name!=""`, which excluded another branch's issues only
+    while they carried no branch at all. Once they carry one, the clause that dropped them
+    sweeps them in — and since nobody works another branch on this cycle, the loop could
+    never see itself converge.
+
+    ⚠ This docstring cited "the migrated GitHub backlog … on `github-issues-fixes`" until
+    2026-08-19. Those records are not in the live tracker (it holds nothing below #90); they
+    are in `notes/tracker-export-2026-08-17.json`. The property under test is unchanged —
+    only the example was stale, and it was the third of three copies, the other two being
+    `workflow/REVIEWER.md` and `review_cycle.sh --help` (issue #163).
     """
     flt = _open_filter()
     assert 'branch_name=\\"$BRANCH\\"' in flt, flt

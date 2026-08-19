@@ -55,10 +55,13 @@ dependencies = [
   # ⚠ CORE, NOT TRANSITIVE, AND NOT OPTIONAL. `scripts/lib/schemas.py` imports it at module
   # scope and `book_ingest` imports that, so it sits on the teacher-synthesis path every
   # container takes. It was previously reachable ONLY through `fastapi`, which lives in the
-  # `vocalizer` extra below — and by the `dev` extra, which declares it too — AND as a
-  # transitive of `mlflow` in the training container. ⚠ Which of those actually supplied it
-  # on any given box is NOT measured and is not claimed here (issue #160/#155): naming one
-  # is a claim about every package in it, and both namings tried so far were wrong.
+  # `vocalizer` extra below and by the `dev` extra, and pulled into the TRAINING CONTAINER
+  # by `mlflow`. ⚠ The container route IS measured (by elimination: the prep chain adds only
+  # `mlflow` before `-e .`, that chain installs no extras, and no core dependency requires
+  # `fastapi`). ⚠ The HOST route is NOT, and is not claimed: naming an extra is a claim about
+  # every package in it, and both namings tried so far were wrong — `vocalizer` needs gradio
+  # and uvicorn, `dev` needs pre-commit, and none of those is installed (issues #155, #160,
+  # #166). The disclaimer is scoped to the host on purpose; it never applied to `mlflow`.
   # MIT, so no friction with Apache-2.0.
   #
   # ⚠ THIS COMMENT HAS NAMED THE WRONG LANE TWICE (issue #154). v1 said a dev box had it

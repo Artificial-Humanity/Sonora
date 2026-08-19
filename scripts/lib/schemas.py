@@ -33,7 +33,9 @@ reverse is that `environments/training-container.txt` carries `fastapi==0.141.1`
 `fastapi` arrives by different accidents in different lanes: in the training container via
 `mlflow`, which the compose prep chain installs explicitly before `-e .` and which is the only
 candidate there (that chain installs NO extras, and no core dependency requires `fastapi` —
-measured in this venv); on a dev box via the `vocalizer` or `dev` extra, which both name it.
+measured in this venv); on a dev box via SOME extra — `vocalizer` and `dev` both declare
+`fastapi`, and WHICH ONE is deliberately not claimed, because naming an extra is a claim about
+every package in it and both namings tried so far were wrong (issues #155, #160, #167).
 So every lane that had it, had it by accident, and a lane that installed neither `mlflow` nor
 an extra — an eval image, a minimal container — had nothing. `book_ingest` imports this module at
 module scope, which puts it on the teacher-synthesis path every container takes. The failure

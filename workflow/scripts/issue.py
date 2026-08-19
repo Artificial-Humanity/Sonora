@@ -254,7 +254,10 @@ def cmd_show(pb, args):
     # asserted a mechanism — "the two writers stamp posted_at from different clocks" —
     # which is a guess about how the other writer works, not something measured from here.
     # v2 then blamed "the imported GitHub comments", a population with ZERO records in this
-    # instance: the collection holds 70 issues, all numbered 90+ and all on this branch.
+    # instance: the collection holds nothing numbered below 90. ⚠ An exact count stood here
+    # and was stale within a day — the loop that writes this file also files issues into the
+    # collection it was counting (issue #165). A number that its own subject changes does not
+    # belong in a comment.
     #
     # ⚠ MEASURED, AND `posted_at` DOES NOT RESCUE THE ZERO BLOCK. 20 comments carry
     # `seq = 0` — the agent-written ones from before #109 stamped it — and **14 of those 20
