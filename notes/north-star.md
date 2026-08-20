@@ -66,7 +66,8 @@ Four things about this arc that are load-bearing, and are not obvious from the t
 * **1 and 2 are the same capability at two scales.** Goal 2 is not "add voices" — it is deliberately
   crossing the line single-narrator reading must never cross, because a large enough excursion in
   speaker space *is* a cast change. The contract's separation of identity (a vector) from emotion
-  (V/A/T) is what makes that a threshold policy rather than a hope.
+  (V/A/T) is what makes that a threshold policy rather than a hope. ⚠ **And it is two capabilities,
+  not one — see below.**
 * **3 and 4 change the MODEL but live in Prosodia.** That is the one genuinely blurred spot in the
   split, and it is recorded rather than tidied — they accumulated their history there. If the series
   is ever reorganised, those two move.
@@ -78,6 +79,34 @@ Four things about this arc that are load-bearing, and are not obvious from the t
   defect class **today** and stays one; requested singing is the ambition. VibeVoice and Dia were
   benched for **uncontrollability, not inability** — a capability you cannot withhold is not a
   capability — so progress on 7 is never evidence about them.
+
+### The distinction inside goal 2 — portrayal is not casting
+
+⚠ **The owner's two-layer model (2026-07-22), and the smaller layer is the one that comes first.**
+[casting-attribute-norms-brief.md § Identity vs. portrayal](casting-attribute-norms-brief.md) owns it.
+
+Most books are single-narrator, and **the narrator's identity persists *through* cross-gender
+portrayal**: a female narrator deepens her pitch and sounds bigger for a male character's quoted
+lines, and the voice remains female. So every clip carries **two casting layers, never conflated**:
+
+| layer | what it is | how it moves |
+|---|---|---|
+| **identity** | the narrator's own gender / age / accent | the 64-d speaker vector; **constant across a whole book** |
+| **portrayal** | the character being *emulated within* that voice | a **delivery modification** — pitch, size, register — **not an identity change** |
+
+* **The two are separated by magnitude, and that threshold does not exist yet.** Portrayal is a
+  *bounded* excursion in speaker space; a cast change is an unbounded one. Goal 2 needs an explicit
+  threshold policy, and writing it is work nobody has done.
+* **One-voice-many-characters is what an audiobook narrator actually does**, so it is reachable
+  before full cast is — and it is what makes goal 2 an *evolution* of goal 1 rather than a
+  different model.
+* ⚠ **A one-layer instrument reads portrayal as noise.** The valence audit flagged exactly this
+  phenomenon ("acted character voices") as confusion, and it stops being noise only once the two
+  layers are separate metadata. That is a corpus-labelling consequence, not a modelling one.
+* **Narrated dialogue is embodiment in the wild** — narrator-within-narrator, with the shift
+  boundary already marked by the quote marks — which is the same thing the span-FiLM deferral in §4
+  is waiting on evidence for. The training material for this exists license-clean: the owner-pinned
+  full-cast LibriVox readings and stage plays.
 
 ---
 
