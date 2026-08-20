@@ -289,7 +289,8 @@ refuses without one, because the owner cannot answer a question that was not ask
 ⚠ **It is a `state`, so escalating is a TRANSITION, not a flag you raise beside the old one**
 (owner, 2026-08-17). Setting `state: "escalated"` takes the issue out of `open`, and so out of
 your queue and out of Janis's re-review in one move. ⚠ **It does NOT take it out of the merge
-gate** — that counts `open`, `review` *and* `escalated`, so an escalation holds the branch.
+gate** — `escalated` blocks at **any severity**, including LOW, so an escalation holds the
+branch even when the same finding would otherwise have ridden past the floor.
 
 * ⚠ **A worker escalation takes the issue out of RE-REVIEW, not out of the RECORD** (owner,
   2026-08-14: *"there's really no reason both developer and reviewer should be blocked on any

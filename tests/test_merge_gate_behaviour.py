@@ -98,8 +98,12 @@ def test_output_the_gate_cannot_classify_refuses_and_says_so(gate):
     described as a finding with an issue number to grade (#209) — there is no number."""
     rc, out = gate("surprise: the tracker changed shape\n")
     assert rc != 0
-    assert "does" in out and "not recognise" in out
-    assert "nothing to grade" in out
+    assert "not recognise" in out
+    # ⚠ Anchored on "no issue number", not on a whole sentence. The literal was
+    # "nothing to grade" until #210 reworded this path, and the assertion went red on a
+    # rewording rather than a behaviour change — which is the failure mode the sibling
+    # guard in test_workflow_lane.py already carries a comment about.
+    assert "no issue number" in out
     assert "below the merge floor" not in out
 
 
@@ -123,3 +127,30 @@ def test_a_missing_floor_module_names_itself_rather_than_the_tracker(gate):
     assert rc != 0
     assert "merge_floor.py is missing" in out
     assert "NOT a tracker problem" in out
+
+
+def test_mixed_output_does_not_tell_you_there_is_nothing_to_grade(gate):
+    """⚠ #210: #209's defect with the sign flipped, inside #209's own fix.
+
+    The branch was chosen on "ANY line is unrecognised" and then printed a message asserting
+    "ALL of this is unrecognised" — so a list holding both a stray line and a real finding got
+    "there is nothing to grade" printed directly beneath a gradeable issue number.
+
+    Both causes must be named, separately. A reader told "nothing to grade" while findings sit
+    in the same block will believe the half that lets them stop looking.
+    """
+    rc, out = gate("surprise: the tracker changed shape\n"
+                   "BLOCK  #1     open       medium   a real finding\n")
+    assert rc != 0
+    assert "not recognise" in out          # the stray line is named
+    assert "these ARE findings below the floor" in out   # and so are the real ones
+    assert "#1" in out
+
+
+def test_unrecognised_output_alone_does_not_invent_findings(gate):
+    """The other side of #210: with no BLOCK lines, the findings paragraph must not appear —
+    or the gate would report findings that do not exist, which is the same lie inverted."""
+    rc, out = gate("surprise: the tracker changed shape\n")
+    assert rc != 0
+    assert "not recognise" in out
+    assert "these ARE findings below the floor" not in out

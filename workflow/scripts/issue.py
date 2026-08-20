@@ -566,8 +566,12 @@ def main():
     add("escalated").set_defaults(fn=cmd_escalated)
 
     args = p.parse_args()
+    # ⚠ EVERY WRITING SUBCOMMAND BELONGS IN THIS TUPLE. `grade` was added 2026-08-20 and the
+    # tuple was not extended (#211), so a grade could land unattributed — and severity is the
+    # field the merge gate reads, which makes "who decided this blocks?" a question someone
+    # will ask. A new write subcommand must be added here in the same commit that adds it.
     if not args.author and args.cmd in ("file", "review", "escalate", "close", "reopen",
-                                        "comment"):
+                                        "comment", "grade"):
         die("--author is required for writes (Janis or Ozzy), or set $ISSUE_AUTHOR. "
             "An unattributed comment cannot be answered.")
     args.fn(PB(), args)

@@ -196,13 +196,26 @@ if [[ -n "${BLOCKING//[[:space:]]/}" ]]; then
   # property #205 restored. But it is NOT a finding, so "these block: … grade one" told the
   # reader to run `issue.py grade <N>` for an <N> that does not exist. Right refusal, wrong
   # remedy, and `:97-100` argues against exactly this shape eighty lines up.
-  if printf '%s\n' "$BLOCKING" | grep -qv '^BLOCK '; then
+  # ⚠ SEPARATE THE TWO CAUSES BEFORE SPEAKING ABOUT EITHER (#210). The first version branched
+  # on "ANY line is unrecognised" and then printed a message asserting "ALL of this is
+  # unrecognised" — so a mixed list got "there is nothing to grade" printed directly beneath
+  # findings that were gradeable. #209's defect with the sign flipped, in #209's own fix.
+  UNKNOWN="$(printf '%s\n' "$BLOCKING" | grep -v '^BLOCK ' || true)"
+  FINDINGS="$(printf '%s\n' "$BLOCKING" | grep '^BLOCK ' || true)"
+  if [[ -n "${UNKNOWN//[[:space:]]/}" ]]; then
     echo "merge_branch.sh: refusing '$BRANCH' — the tracker returned output this gate does" >&2
     echo "  not recognise, so it cannot tell a settled branch from an unsettled one:" >&2
-    echo "$BLOCKING" >&2
-    die "this is NOT a list of findings and there is nothing to grade. Unrecognised output
-     means the gate or the tracker changed shape — read the lines above, and fix the cause
-     rather than the symptom. Refusing is the designed behaviour, not a failure."
+    echo "$UNKNOWN" >&2
+    echo "  ⚠ these lines are NOT findings and have no issue number to grade. Unrecognised" >&2
+    echo "    output means the gate or the tracker changed shape — fix that, not a symptom." >&2
+    if [[ -n "${FINDINGS//[[:space:]]/}" ]]; then
+      # Both causes at once. Say so, and show them apart — a reader told "nothing to grade"
+      # while real findings sit in the same block will believe the wrong half.
+      echo "  AND, separately, these ARE findings below the floor:" >&2
+      echo "$FINDINGS" >&2
+      echo "    grade or close them too:  workflow/scripts/issue.py grade <N> --severity …" >&2
+    fi
+    die "refusing is the designed behaviour here, not a failure."
   fi
   echo "merge_branch.sh: '$BRANCH' is below the merge floor — these block:" >&2
   echo "$BLOCKING" >&2
