@@ -12,9 +12,14 @@ personas, the workflow map, a manifest and a test docstring, and nothing compare
 
 ⚠ THIS IS A TEXT SCAN, WITH THE LIMITS TEXT SCANS HAVE. It catches the phrasings below and is
 blind to any other way of saying the same wrong thing — a silent miss, not an error. It is
-worth having anyway: a check that catches the three spellings that actually occurred is
-strictly better than the nothing that let them accumulate. When a green run says "no
-RECOGNISED description disagrees", it never says "every description is right".
+worth having anyway: a check that catches the spellings that actually occurred is strictly
+better than the nothing that let them accumulate. When a green run says "no RECOGNISED
+description disagrees", it never says "every description is right".
+
+⚠ **NO COUNT IS GIVEN HERE ON PURPOSE.** The first version said "the three spellings" while
+defining six patterns, and the commit message said six (#214) — a number in prose beside a
+list is a number that goes stale the next time the list grows, which it did within one review.
+Count `STALE` if you need the figure.
 """
 import os
 import re
@@ -33,6 +38,16 @@ STALE = [
     re.compile(r"every issue on the branch is closed"),
     re.compile(r"anything unclosed on it"),
     re.compile(r"no issue in `open`"),
+    # ⚠ ADDED AFTER THE GUARD SHIPPED GREEN WHILE MISSING A SITE (#213). DEVELOPER.md said
+    # the gate "counts `escalated` alongside `open` and `review`" — a description of the old
+    # rule that none of the six patterns above matched. The guard had the same defect as the
+    # three sweeps it replaced, one level up: a list assembled from what had been FOUND, not
+    # from what could be SAID. Every pattern below came from a real site, and that is exactly
+    # why the docstring refuses to call the list complete.
+    re.compile(r"counts `escalated` alongside"),
+    re.compile(r"counts `open`, `review`"),
+    re.compile(r"while any of its issues is (?:open|unclosed)"),
+    re.compile(r"any (?:open|unclosed) issue blocks"),
 ]
 
 # ⚠ EXEMPTIONS ARE PER-LINE SUBSTRINGS AND ARE PRINTED, following the doc-claims gate's

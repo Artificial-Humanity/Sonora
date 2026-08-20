@@ -7,8 +7,14 @@ verdict this glue computes is the sole decision gating every merge to `main`.
 **Two defects landed in exactly this glue on a green 1391-test suite.** #201: the rule module
 was never committed, so the import died on any fresh checkout. #205: `BLOCKING` was built with
 `grep '^BLOCK '`, which silently dropped any line matching neither prefix, in the same commit
-that removed the catch-all `die` protecting it. Neither is visible to a text scan, and both are
-trivially visible to one run.
+that removed the catch-all `die` protecting it.
+
+⚠ **Of those two, THIS FILE CATCHES ONLY #205** — and an earlier revision of this paragraph
+claimed it caught both, fifteen lines above the passage explaining why it cannot (#212). #201
+is a missing import target; the import lives inside the heredoc, and the fixture stubs the
+heredoc away. **#201 belongs to #207's tracked-dependency check, not to anything here.**
+Getting a coverage claim wrong in the file written to document a coverage limit is why that
+limit is now stated in two places.
 
 HERMETIC BY CONSTRUCTION, the same pattern as `test_request_review.py`: `python3` is stubbed
 onto PATH so the gate reads canned tracker output instead of PocketBase, `--dry-run` stops

@@ -313,8 +313,8 @@ branch even when the same finding would otherwise have ridden past the floor.
     measurement into a ban. **Bound what you measured; do not widen it.**
 * ⚠ **ESCALATION IS NOW A BLOCKER, AND THAT REVERSED ON 2026-08-17.** This file said the
   opposite for its whole life — *"the work still pushes; escalation means this can live on
-  `main` but I cannot choose"* — and the merge gate now counts `escalated` alongside `open` and
-  `review`. The branch waits for the owner. **Do not restore the old reading**; it is the
+  `main` but I cannot choose"* — and the merge gate **blocks on `escalated` at any severity**,
+  including a LOW that would otherwise ride past the floor. The branch waits for the owner. **Do not restore the old reading**; it is the
   difference between an unanswered question being a note and being a stop.
   * Still distinct from the **abort** in AGENTS.md §1. Escalation = *"I cannot choose"*; the
     abort = *"this must not land"*, which stops everything and goes to the owner immediately
