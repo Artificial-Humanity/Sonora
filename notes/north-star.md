@@ -140,7 +140,9 @@ lines, and the voice remains female. So every clip carries **two casting layers,
 **The target is not a parameter count; it is a phone.** The anchor is **mobile capability — iPhone
 17+ and equivalent Android** — and legacy devices are explicitly not targeted. The numbers below
 follow from that anchor rather than the other way round.
-⚠ **[model-decisions.md](model-decisions.md) owns every figure in this section.**
+⚠ **Each row names the file that owns its figure; a row that names none is
+[model-decisions.md](model-decisions.md)'s.** Two here are not — the parameter count and the
+artifact size — and both cite their own owner in place.
 
 | target | value | note |
 |---|---|---|
@@ -242,7 +244,7 @@ down so it becomes an answer rather than an omission ([todo.md § 3](todo.md)):
 LibriTTS-R is the base corpus. Replacing them is a decision with a record
 — [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](model-decisions.md) holds
 the criteria, and they still apply — not a default. Matcha was **reaffirmed 2026-07-29**
-([§ The base model](model-decisions.md)) on the teacher campaign's central lesson: *an engine's usable range is set by its conditioning
+([model-decisions.md § The base model](model-decisions.md)) on the teacher campaign's central lesson: *an engine's usable range is set by its conditioning
 interface, not its raw quality* — which argues for a base whose conditioning surface we define.
 
 **Ours, and the reason the repo exists:**
