@@ -140,9 +140,9 @@ lines, and the voice remains female. So every clip carries **two casting layers,
 **The target is not a parameter count; it is a phone.** The anchor is **mobile capability — iPhone
 17+ and equivalent Android** — and legacy devices are explicitly not targeted. The numbers below
 follow from that anchor rather than the other way round.
-⚠ **Each row names the file that owns its figure; a row that names none is
-[model-decisions.md](model-decisions.md)'s.** Two here are not — the parameter count and the
-artifact size — and both cite their own owner in place.
+⚠ **A row that names no file is [model-decisions.md](model-decisions.md)'s; a row that names one
+belongs to the file it names.** Nothing to keep in step — a future row with a different owner only
+has to cite it.
 
 | target | value | note |
 |---|---|---|
@@ -270,10 +270,14 @@ Prosodia to exist.
 **Data, not architecture, and not the vocoder.**
 
 Measured: the acoustic model carries the gap, and Emilia's volume increase moved the clean holdout
-by an order of magnitude more than the threshold that cleared the previous gate — so the corpus is
-**data-limited, not capacity-limited**, and the next rung proceeds ([quality-gap-plan.md](quality-gap-plan.md)
-§ Phase 1, rung 1 — both figures are cited there rather than restated here, because a number in two
-places drifts).
+far enough to clear rung 1's gate — so the corpus is **data-limited, not capacity-limited**, and the
+next rung proceeds ([quality-gap-plan.md](quality-gap-plan.md) § Phase 1, rung 1 — the figures are
+cited there rather than restated here, because a number in two places drifts).
+
+⚠ **There is no numeric holdout threshold, and gate 0a did not set one.** It asked whether retained
+checkpoints separate *at all* on never-trained audio, and was answered by **a confidence interval
+excluding zero**. The effect it measured is a result, not a bar — do not quote it downstream as the
+delta a rung must beat.
 
 ⚠ That verdict is **a measurement with an expiry, not a law.** The same instrument is what would say
 "capacity-limited" at a later rung, and if it does, the Phase 2 decoder spike moves onto the
@@ -303,20 +307,29 @@ into the guards rather than the culture:
 
 ## 8. Load-Bearing Constraints
 
-These are settled and should not be re-litigated without a record:
+These are settled and should not be re-litigated **without a record** — so the record is named
+for each. This section is where the header rule earns its keep: a constraint whose owner you
+cannot reach is one nobody can check, and the preamble said "without a record" while pointing
+at none.
 
-| constraint | why |
-|---|---|
-| **Apache-2.0, no patent track** | defensive posture; every new repo and crate ships Apache-2.0 unless the owner says otherwise |
-| **Corpus bar = unrestricted open redistribution** | stricter than the old commercial test; NC licences do not clear it |
-| **A licence rejection is permanent; a quality rejection is not** | revisit engines on quality, never on licence |
-| **Repo licence ≠ weights licence** | check the weights and the training-data terms separately — the trap is real and named in the record |
-| **Minimum 4 s of speech per clip** | owner floor; the keep-rate cliff is measured exactly there |
-| **A clip's text must be a complete utterance** | the score cannot detect this defect |
-| **Unrequested singing is a defect** | singing is ambition 7, and wanting it does not make an unasked-for performance correct |
-| **Every new capability ships with a Vocalizer dial** | the standing vetting surface |
-| **Execute from the repo; `/data` holds data, not source** | with the deploy clone the single documented exception |
-| **Make the first success boring** | the ordering rule behind base choice, phase 0 and every spike gate |
+⚠ **THREE OF THESE ARE OWNED BY CODE, NOT BY A NOTE**, and saying so is the honest state
+rather than an oversight. For those the precedence rule leads to a Python constant that a
+reader of `notes/` has no reason to open — change the constant and this table becomes a stale
+copy that nothing compares. The doc-claims gate *can* check a code constant (it does for
+`scm.VAT_TOL`) and none of the three is registered; filed as **#189**.
+
+| constraint | why | the record |
+|---|---|---|
+| **Apache-2.0, no patent track** | defensive posture; every new repo and crate ships Apache-2.0 unless the owner says otherwise | [high-ambition-6](high-ambition-6-audience-conveyance-stt.md) — "settled project-wide: no patent track, ever" |
+| **Corpus bar = unrestricted open redistribution** | stricter than the old commercial test; NC licences do not clear it | [training-sources.md](training-sources.md) · [dataset-landscape.md](dataset-landscape.md) |
+| **A licence rejection is permanent; a quality rejection is not** | revisit engines on quality, never on licence | [tts-engine-onboarding.md](tts-engine-onboarding.md) |
+| **Repo licence ≠ weights licence** | check the weights and the training-data terms separately — the trap is real and named in the record | [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](model-decisions.md) |
+| **Minimum 4 s of speech per clip** | owner floor; the keep-rate cliff is measured exactly there | ⚠ **code** — `SPEECH_MIN_SECONDS` in `scripts/stages/qc_gate.py` |
+| **A clip's text must be a complete utterance** | the score cannot detect this defect | ⚠ **code** — `scripts/lib/synth_common.py`, gated by `scripts/gates/test_text_selection.py` |
+| **Unrequested singing is a defect** | singing is ambition 7, and wanting it does not make an unasked-for performance correct | [high-ambition-7-singing.md](high-ambition-7-singing.md) |
+| **Every new capability ships with a Vocalizer dial** | the standing vetting surface | ⚠ **code** — `matcha/direction.py` |
+| **Execute from the repo; `/data` holds data, not source** | with the deploy clone the single documented exception | `AGENTS.md` § 6 |
+| **Make the first success boring** | the ordering rule behind base choice, phase 0 and every spike gate | [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](model-decisions.md) |
 
 ---
 
