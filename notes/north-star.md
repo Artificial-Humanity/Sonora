@@ -86,10 +86,16 @@ Four things about this arc that are load-bearing, and are not obvious from the t
 [high-ambition-index.md](high-ambition-index.md), the SSOT for what has standing and what does not). The adjacent *policy* has an
 owning file — [audiobook-corpus-policy.md](audiobook-corpus-policy.md), the SSOT for the likeness
 boundary **as it applies to the personally-acquired audiobook corpus**, which is the only corpus it
-scopes — and the exact words below matter,
-because this is the kind of note that gets hardened into a ruling by whoever reads it next:
-**not forbidden, not off the table, and not a goal.** Those are three separate statements and
-**none of them may be upgraded into the others.**
+scopes — and the owner's exact words matter, because this is the kind of note that gets hardened
+into a ruling by whoever reads it next:
+
+> *"It's not forbidden and it's not off the table. It's just not a focus of mine."*
+
+**Not forbidden, not off the table, not a focus — three separate statements, and none of them may
+be upgraded into the others.** ⚠ **"Not a goal" is NOT among them.** That is the repo's own record
+— no goal for cloning has ever been filed in the series — and it is checkable in
+[high-ambition-index.md](high-ambition-index.md), which owns both claims and keeps them apart. It
+must never be quoted as something the owner said.
 
 It is written down because it is an *absence*, and an absence is the one thing a reader cannot check
 by looking: someone scanning the seven ambitions for cloning and not finding it cannot tell
