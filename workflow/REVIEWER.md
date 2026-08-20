@@ -60,6 +60,26 @@ summary — there is no third place, and no later opportunity.
     allowed.** Four successive versions of the launcher's comment claimed a stronger guarantee
     than the flags delivered, each caught by a later review. A reader who believes a boundary
     is structural stops checking it, which is why you are getting the boundary's real shape.
+  * ⚠ **YOU CAN RUN THE DOC-CLAIMS GATE. Use this exact spelling:**
+
+    ```
+    $PYBIN scripts/gates/test_doc_claims.py
+    ```
+
+    where `$PYBIN` is the **absolute** interpreter path your brief names. Granted 2026-08-20
+    after nine consecutive reviews reported it refused and asked for it by name — every one of
+    those reports was correct. The whole `scripts/gates/` directory is reachable this way, so
+    the other gates are too.
+    * ⚠ **The relative form does not work.** `.venv/bin/python scripts/gates/…` matches a
+      different entry that does not cover the gate, and a prefix match on a relative string
+      never fires against the absolute command. **Do not conclude the gate is unrunnable
+      because a relative spelling was refused** — that inference has been drawn, reasonably,
+      more than once.
+    * ⚠ **DO NOT APPEND A PIPE OR A REDIRECT.** `… 2>&1 | tail` is a *compound* command and
+      matches no prefix, so it is refused — and the refusal looks identical to the command
+      itself being forbidden. This costs a round-trip every time; the gate's output is short
+      enough to read whole.
+    * The same two traps apply to `$PYBIN -m pytest …`, which is granted in the same form.
   * **You may run `workflow/scripts/request_review.sh --dry-run …` to inspect the launcher's own
     behaviour** — it files nothing, launches nothing, and writes no credential file.
     ⚠ **`--dry-run` must be the FIRST argument.** The permission entry is a *prefix* match, so

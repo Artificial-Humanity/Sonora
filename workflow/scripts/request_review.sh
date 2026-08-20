@@ -594,7 +594,23 @@ REVIEWER_ALLOW=(
 # ⚠ A GRANT THAT DOES NOT MATCH IS INDISTINGUISHABLE FROM NO GRANT, and it is worse, because
 # the comment above it says the trade was accepted. Verified after this change by having the
 # reviewer run one.
-[[ -n "$PYBIN" ]] && REVIEWER_ALLOW+=("Bash($PYBIN:*)")
+#
+# ⚠ NARROWED 2026-08-20 (owner): grant THE COMMAND, not the interpreter. Nine consecutive
+# reviews asked for exactly one thing — `$PYBIN scripts/gates/test_doc_claims.py` — and named
+# it each time. The 2026-08-19 ruling granted four SPECIFIC things, one of which was "the
+# doc-claims gate invocation"; `Bash($PYBIN:*)` was broader than what was ratified, so this is
+# a return to the ruling rather than a reversal of it.
+#
+# ⚠⚠ AND IT DOES NOT NARROW THE POSTURE ON ITS OWN. `Bash(python:*)` and `Bash(python3:*)` are
+# still in the static list above, ratified 2026-08-18, and either spelling still executes
+# arbitrary code. What this DOES buy is that the run-mode rule (AGENTS.md §3: host scripts run
+# `.venv/bin/python`) and the allowlist now agree — a reviewer following the rule reaches the
+# gate, and does not need an interpreter to do it. Removing the two broad entries is a
+# separate decision and is the owner's, since they took it knowingly.
+if [[ -n "$PYBIN" ]]; then
+  REVIEWER_ALLOW+=("Bash($PYBIN -m pytest:*)")
+  REVIEWER_ALLOW+=("Bash($PYBIN scripts/gates/:*)")
+fi
 
 # Explicit denials. Schema and instance administration are not a reviewer's business —
 # pb_collection_delete would drop the tracker itself.
