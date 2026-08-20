@@ -23,6 +23,18 @@ PRODUCT — what the app does with a model it already has — live in `Prosodia/
 | 6 | [Audience: conveyance-aware STT](high-ambition-6-audience-conveyance-stt.md) | Sonora | live — the reverse lane; perceive prosody rather than dictate it |
 | 7 | [Singing](high-ambition-7-singing.md) | Sonora | **added 2026-08-09** — down the road, behind the quality ladder. ⚠ *Unrequested* singing is a DEFECT and stays one |
 
+⚠ **Cloning real people is NOT a goal, and has never been one** (owner, 2026-08-20). The owner's
+words, because the distinctions are the point: *"It's not forbidden and it's not off the table.
+It's just not a focus of mine."* **Three separate statements — not forbidden, not off the table,
+not a goal — and none may be upgraded into the others.** The standing is *unprioritised attention*,
+the weakest and most reversible form: if it ever becomes a focus that is a change of interest, not
+a reversal, and it needs no repeal. This is recorded here rather than left as an absence because a
+reader scanning seven goals for it cannot otherwise tell "ruled out" from "nobody has raised it".
+
+⚠ **Do not read this as a policy.** The likeness *policy* that does exist is
+[audiobook-corpus-policy.md](audiobook-corpus-policy.md), scoped to the personally-acquired
+audiobook corpus. It is a separate thing from this ruling and is not evidence about it.
+
 Three things a reader should know before following the numbers:
 
 - **5 is retired, not pending** — its design note was deleted with the notes `archive/`

@@ -82,9 +82,11 @@ Four things about this arc that are load-bearing, and are not obvious from the t
 
 ### Not a focus — cloning real people
 
-⚠ **Cloning real people is not a focus of the owner's** (2026-08-20). The adjacent *policy* has an
+⚠ **Cloning real people is not a focus of the owner's** (2026-08-20 — recorded in
+[high-ambition-index.md](high-ambition-index.md), the SSOT for what has standing and what does not). The adjacent *policy* has an
 owning file — [audiobook-corpus-policy.md](audiobook-corpus-policy.md), the SSOT for the likeness
-boundary — and the exact words below matter,
+boundary **as it applies to the personally-acquired audiobook corpus**, which is the only corpus it
+scopes — and the exact words below matter,
 because this is the kind of note that gets hardened into a ruling by whoever reads it next:
 **not forbidden, not off the table, and not a goal.** Those are three separate statements and
 **none of them may be upgraded into the others.**
@@ -280,8 +282,9 @@ Prosodia to exist.
 
 Measured: the acoustic model carries the gap, and Emilia's volume increase cleared rung 1's gate on
 the clean holdout — so the corpus is **data-limited, not capacity-limited**, and the next rung
-proceeds. **The deltas live in [quality-gap-plan.md](quality-gap-plan.md) § Phase 1, rung 1** and are
-not restated here, because a number in two places drifts.
+proceeds. **The deltas live in [quality-gap-plan.md](quality-gap-plan.md) § Gates between phases**, the
+table that records what each gate asked and what it measured; § Phase 0 holds the instrument's
+resolution floor. They are not restated here, because a number in two places drifts.
 
 ⚠ **There is no numeric holdout threshold, and gate 0a did not set one.** It asked whether retained
 checkpoints separate *at all* on never-trained audio, and was answered by **a confidence interval
