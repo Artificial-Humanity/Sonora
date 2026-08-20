@@ -163,6 +163,23 @@ are in circulation (*age/masculinity/strain* vs *gender/age/accent*) and the sta
 define our own measurable norms makes
 [casting-attribute-norms-brief.md](casting-attribute-norms-brief.md)'s the live one.
 
+**Deferred with a trigger, not forgotten — the conditioning chain past the contract.** Each of these
+is decided far enough that the *decision* is recorded; none is scheduled, and the trigger is written
+down so it becomes an answer rather than an omission ([todo.md § 3](todo.md)):
+
+* **Embodiment → span-FiLM** — delivery that *changes partway through an utterance*, on the same
+  zero-init path expanded through the duration alignment. Its plumbing prerequisite is already met,
+  so it waits on **evidence** (the embodiment bank across the surviving engines), not on code.
+  ⚠ Standing rule: embodiment clips stay **delivery-blank** and outside the lane percentages, and
+  the encoding refuses any label outside the closed five — so the lane cannot arrive by accident.
+* **A categorical emotion block (3 continuous + 8 categorical)** — genuinely **undecided**, and
+  gated on Phase 1's valence read: valence is the one dimension acoustics alone cannot reach, it
+  failed its standing test once, and the corpus growth is the experiment that separates a
+  label limit from an architectural one. **If it is ever spiked it APPENDS as channels 8+** —
+  reordering is the one edit that must never happen, because position is the wire format.
+* **Multilingual** — plan only, and sequenced *after* English production quality rather than beside
+  it. Neither teacher built multilingual first either.
+
 ---
 
 ## 5. What Is Actually Ours (and what is rented)
