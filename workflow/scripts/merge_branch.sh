@@ -185,7 +185,7 @@ if [[ -n "${BLOCKING//[[:space:]]/}" ]]; then
   die "resolve them first. MEDIUM and above must be closed; UNGRADED must be graded (or
      closed) because a floor cannot pass what it cannot read; escalated means the owner
      owes a decision at any severity (workflow/WORKFLOW.md §4).
-       Grade one:  workflow/scripts/issue.py  — severity is set at filing, by the reviewer."
+       Grade one:  workflow/scripts/issue.py grade <N> --severity low|medium|high|critical"
 fi
 
 echo "merge_branch.sh: '$BRANCH' clears the merge floor — nothing MEDIUM or above,

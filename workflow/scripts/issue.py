@@ -444,6 +444,29 @@ def cmd_reopen(pb, args):
     transition(pb, args, "reopen", "open", args.author)
 
 
+def cmd_grade(pb, args):
+    """Set `severity` on an issue that has none, or correct one that is wrong.
+
+    ⚠ THIS EXISTS BECAUSE THE FIELD ARRIVED AFTER THE ISSUES DID. 111 records predate it and
+    are ungraded, and the merge floor blocks on ungraded — so without this the gate could
+    refuse a branch and offer no way to clear it but closing a real finding. A gate whose
+    remedy is unreachable teaches people to bypass the gate.
+
+    ⚠ IT DOES NOT TOUCH `state`. Grading is a judgement about how bad a finding is; it is not
+    a way to move an issue through the loop, and conflating the two would let a grade close
+    something.
+    """
+    rec = pb.find(args, args.number)
+    was = (rec.get("severity") or "").strip() or "UNGRADED"
+    st, r = pb.call("/api/collections/issues/records/" + rec["id"], "PATCH",
+                    {"severity": args.severity})
+    if st >= 300:
+        die("grade refused by the tracker: %s" % json.dumps(r)[:400])
+    if args.comment:
+        pb.add_comment(args, rec, args.comment, args.author)
+    print("#%d graded: %s -> %s" % (args.number, was, args.severity))
+
+
 def cmd_comment(pb, args):
     rec = pb.find(args, args.number)
     pb.add_comment(args, rec, args.text, args.author)
@@ -515,6 +538,12 @@ def main():
     # finding that only ever existed in a summary. The MERGE GATE is where it bites.
     s.add_argument("--severity", choices=["low", "medium", "high", "critical"])
     s.set_defaults(fn=cmd_file)
+
+    s = add("grade"); s.add_argument("number", type=int)
+    s.add_argument("--severity", required=True,
+                   choices=["low", "medium", "high", "critical"])
+    s.add_argument("--comment")
+    s.set_defaults(fn=cmd_grade)
 
     s = add("take"); s.add_argument("numbers", type=int, nargs="+")
     s.set_defaults(fn=cmd_take)
