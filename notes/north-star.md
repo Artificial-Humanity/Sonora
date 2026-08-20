@@ -80,24 +80,30 @@ Four things about this arc that are load-bearing, and are not obvious from the t
   benched for **uncontrollability, not inability** — a capability you cannot withhold is not a
   capability — so progress on 7 is never evidence about them.
 
-### Not on the arc — cloning real people
+### Not a focus — cloning real people
 
-⚠ **There is no goal for voice cloning real people** (owner, 2026-08-20). Recorded because it is an
-*absence*, and an absence is the one thing a reader cannot check by looking: someone scanning seven
-ambitions for it and not finding it cannot tell "decided against" from "nobody has raised it yet".
+⚠ **Cloning real people is not a focus of the owner's** (2026-08-20) — and the exact words matter,
+because this is the kind of note that gets hardened into a ruling by whoever reads it next:
+**not forbidden, not off the table, and not a goal.** Those are three separate statements and
+**none of them may be upgraded into the others.**
 
-Two things this does **not** say, and neither should be inferred:
+It is written down because it is an *absence*, and an absence is the one thing a reader cannot check
+by looking: someone scanning the seven ambitions for cloning and not finding it cannot tell
+"ruled out" from "set aside" from "nobody has raised it". It is none of those. It is **unprioritised
+attention**, which is the weakest and most reversible form — if it ever becomes a focus, that is a
+change of interest, not a reversal of a decision, and it needs no repeal.
 
-* **It is not a prohibition.** The owner stated a scope, not a rule. A ban — with the consent and
-  likeness policy that would have to come with it — would be its own ruling, and nobody has made
-  one. Do not cite this paragraph as if it were one.
-* **It is not a statement about the teacher engines.** Several of them clone, and some are evaluated
-  precisely as clone-multipliers. That is a **tool** we point at a corpus, not a capability being
-  built into the actor.
+Two inferences to refuse:
 
-What we do instead is the positive form of the same sentence: casting is **synthesised from our own
-measured norms** — never derived from a target person, and never inherited from another model's
-habits.
+* **This is not a policy.** There is no ban, and there is no consent or likeness position — writing
+  one would be its own work, and nobody has done it. Do not cite this paragraph as if a rule existed.
+* **This is not about the teacher engines.** Several of them clone, and one is evaluated precisely as
+  a clone-multiplier. That is a **tool pointed at a corpus**, not a capability being built into the
+  actor, and its standing is unaffected by anything here.
+
+What the project does pursue instead is the positive form of the same sentence: casting is
+**synthesised from our own measured norms** — not derived from a target person, and not inherited
+from another model's habits.
 
 ### The distinction inside goal 2 — portrayal is not casting
 
