@@ -104,22 +104,24 @@ def _commits(repo=REPO, boundary=GRANDFATHERED_THROUGH):
     if anc.returncode != 0:
         return []
     r = subprocess.run(
+        # ⚠ `%(trailers)` AS WELL AS `%B` — git's own parse, not a substring of the body.
+        # See test_no_commit_carries_the_ziggy_trailer for why.
         ["git", "log", "--no-merges", f"{base}..HEAD", f"^{boundary}",
-         "--format=%H%x1f%an%x1f%ae%x1f%B%x1e"],
+         "--format=%H%x1f%an%x1f%ae%x1f%(trailers)%x1f%B%x1e"],
         cwd=repo, capture_output=True, text=True)
     out = []
     for rec in r.stdout.split("\x1e"):
         rec = rec.strip("\n")
         if not rec:
             continue
-        sha, name, email, body = rec.split("\x1f", 3)
+        sha, name, email, trailers, body = rec.split("\x1f", 4)
         # ⚠ FULL SHA, TRUNCATED ONLY WHERE IT IS PRINTED (issue #108). This used to store
         # `sha[:9]`, and the regression test below then compared that set against `%h`
         # output — seven characters here, because `core.abbrev=auto` scales with repo size.
         # A nine-character string never equals a seven-character one, so BOTH of its
         # assertions were incapable of failing, whatever the range contained. Comparing
         # full object names removes the question rather than picking a matching width.
-        out.append((sha, name, email, body))
+        out.append((sha, name, email, trailers, body))
     return out
 
 
@@ -128,15 +130,15 @@ def _short(sha):
 
 
 def test_no_commit_carries_the_ziggy_trailer():
-    bad = [f"  {_short(sha)}  {name}" for sha, name, _e, body in _commits()
-           if BAD_TRAILER in body]
+    bad = [f"  {_short(sha)}  {name}" for sha, name, _e, trailers, _b in _commits()
+           if BAD_TRAILER in trailers]
     assert not bad, (
         "commits carry a `Co-Authored-By: Ziggy` trailer, which DEVELOPER.md §1 rules out "
         "inside Sonora — you are the author:\n" + "\n".join(bad))
 
 
 def test_commits_are_authored_as_the_developer():
-    bad = [f"  {_short(sha)}  {name} <{email}>" for sha, name, email, _b in _commits()
+    bad = [f"  {_short(sha)}  {name} <{email}>" for sha, name, email, _t, _b in _commits()
            if (name, email) != DEVELOPER]
     assert not bad, (
         "unmerged commits on this branch are not authored as the developer:\n"
@@ -236,16 +238,14 @@ def landed_branch(tmp_path):
 
 def test_a_merge_commit_never_enters_the_range(landed_branch):
     """The failure #102 was filed about, reproduced in miniature."""
-    shas = {sha for sha, _n, _e, _b in
-            _commits(landed_branch["repo"], landed_branch["boundary"])}
+    shas = {sha for sha, _n, _e, _t, _b in _commits(landed_branch["repo"], landed_branch["boundary"])}
     assert landed_branch["merge"] not in shas, (
         "the merge commit is in the range, so the author check will fail on it — and it is "
         "made by merge_branch.sh with the owner's configured identity, on purpose")
 
 
 def test_a_commit_already_on_the_base_branch_never_enters_the_range(landed_branch):
-    shas = {sha for sha, _n, _e, _b in
-            _commits(landed_branch["repo"], landed_branch["boundary"])}
+    shas = {sha for sha, _n, _e, _t, _b in _commits(landed_branch["repo"], landed_branch["boundary"])}
     assert landed_branch["owner_on_base"] not in shas, (
         "a commit already on the base branch is in the range. That is history this guard "
         "has no mandate over, and the owner is 388 of 396 commits there")
@@ -255,8 +255,7 @@ def test_the_branch_own_work_DOES_enter_the_range(landed_branch):
     """⚠ THE CONTROL. Both assertions above are 'X is not in a set', which an empty set
     satisfies for free — the exact way the first version of this test passed while checking
     nothing. This one fails if the range has gone inert."""
-    shas = {sha for sha, _n, _e, _b in
-            _commits(landed_branch["repo"], landed_branch["boundary"])}
+    shas = {sha for sha, _n, _e, _t, _b in _commits(landed_branch["repo"], landed_branch["boundary"])}
     assert landed_branch["dev"] in shas, (
         "the branch's own commit is NOT in the range, so the two exclusion tests above are "
         "passing on an empty set and prove nothing")
@@ -272,7 +271,7 @@ def test_the_range_excludes_what_it_is_not_a_guard_over():
     base = _base_ref()
     if base is None or _on_base_branch():
         pytest.skip("no branch range to check here")
-    shas = {sha for sha, _n, _e, _b in _commits()}
+    shas = {sha for sha, _n, _e, _t, _b in _commits()}
     if not shas:
         pytest.skip("no unmerged commits after the boundary on this branch")
     assert all(len(s) == 40 for s in shas), "expected full object names from --format=%H"

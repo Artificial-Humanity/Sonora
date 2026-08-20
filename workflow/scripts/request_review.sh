@@ -584,7 +584,17 @@ REVIEWER_ALLOW=(
 # ⚠ Scoped to `-m pytest`. A bare `Bash($PYBIN:*)` — which the #96 fix added — pre-approved
 # `python -c '<anything>'`, so the remedy for "the reviewer cannot run the tests" handed it
 # an arbitrary interpreter. This grants exactly the verification that was missing.
-[[ -n "$PYBIN" ]] && REVIEWER_ALLOW+=("Bash($PYBIN -m pytest:*)")
+# ⚠ THE ABSOLUTE PATH, AND NOT SCOPED TO `-m pytest` ANY MORE. The owner granted arbitrary
+# python on 2026-08-18 (see the block above) — but the grant listed `Bash(.venv/bin/python:*)`,
+# the RELATIVE form, while every brief hands the reviewer `$PYBIN`, which is ABSOLUTE. A
+# prefix match on the relative string never fires against an absolute command, so the grant
+# read as given and behaved as refused: the reviewer reported `python -c` refused on twenty-two
+# consecutive passes AFTER it was granted, and each report was correct.
+#
+# ⚠ A GRANT THAT DOES NOT MATCH IS INDISTINGUISHABLE FROM NO GRANT, and it is worse, because
+# the comment above it says the trade was accepted. Verified after this change by having the
+# reviewer run one.
+[[ -n "$PYBIN" ]] && REVIEWER_ALLOW+=("Bash($PYBIN:*)")
 
 # Explicit denials. Schema and instance administration are not a reviewer's business —
 # pb_collection_delete would drop the tracker itself.
