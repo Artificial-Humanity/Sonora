@@ -82,7 +82,9 @@ Four things about this arc that are load-bearing, and are not obvious from the t
 
 ### Not a focus — cloning real people
 
-⚠ **Cloning real people is not a focus of the owner's** (2026-08-20) — and the exact words matter,
+⚠ **Cloning real people is not a focus of the owner's** (2026-08-20). The adjacent *policy* has an
+owning file — [audiobook-corpus-policy.md](audiobook-corpus-policy.md), the SSOT for the likeness
+boundary — and the exact words below matter,
 because this is the kind of note that gets hardened into a ruling by whoever reads it next:
 **not forbidden, not off the table, and not a goal.** Those are three separate statements and
 **none of them may be upgraded into the others.**
@@ -95,8 +97,15 @@ change of interest, not a reversal of a decision, and it needs no repeal.
 
 Two inferences to refuse:
 
-* **This is not a policy.** There is no ban, and there is no consent or likeness position — writing
-  one would be its own work, and nobody has done it. Do not cite this paragraph as if a rule existed.
+* **This is not a ban — but it is NOT a policy vacuum either, and an earlier revision of this
+  paragraph wrongly said it was.** ⚠ **A likeness position exists and is adopted**:
+  [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (owner-initiated 2026-07-17) names
+  right of publicity as its own legal layer, records the owner's no-cloning intent — *"I want
+  dynamic voicing from the model"* — and makes it **architecturally enforceable**, because identity
+  and delivery are separate inputs. Within its scope, the personally-acquired audiobook corpus, it
+  is **absolute**: no selectable identities, speaker conditioning discarded or held out so the model
+  cannot render "narrator X", and nothing from that lineage ever reaching the public one. What does
+  **not** exist is a general consent framework for a cloning capability the project is not building.
 * **This is not about the teacher engines.** Several of them clone, and one is evaluated precisely as
   a clone-multiplier. That is a **tool pointed at a corpus**, not a capability being built into the
   actor, and its standing is unaffected by anything here.
@@ -269,10 +278,10 @@ Prosodia to exist.
 
 **Data, not architecture, and not the vocoder.**
 
-Measured: the acoustic model carries the gap, and Emilia's volume increase moved the clean holdout
-far enough to clear rung 1's gate — so the corpus is **data-limited, not capacity-limited**, and the
-next rung proceeds ([quality-gap-plan.md](quality-gap-plan.md) § Phase 1, rung 1 — the figures are
-cited there rather than restated here, because a number in two places drifts).
+Measured: the acoustic model carries the gap, and Emilia's volume increase cleared rung 1's gate on
+the clean holdout — so the corpus is **data-limited, not capacity-limited**, and the next rung
+proceeds. **The deltas live in [quality-gap-plan.md](quality-gap-plan.md) § Phase 1, rung 1** and are
+not restated here, because a number in two places drifts.
 
 ⚠ **There is no numeric holdout threshold, and gate 0a did not set one.** It asked whether retained
 checkpoints separate *at all* on never-trained audio, and was answered by **a confidence interval
