@@ -21,7 +21,7 @@ Two conventions that surprise readers:
 |---|---|---|
 | 1 | [north-star.md](north-star.md) | **why any of this exists** — the vision, the seven-ambition arc, the size/hardware envelope and the load-bearing constraints. Owns nothing but its §1; every figure names the file that does |
 | 2 | [STATE.md](STATE.md) | **what is true now**, per front |
-| 3 | [quality-gap-plan.md](quality-gap-plan.md) | **what happens next**, and in what order — the SSOT for sequencing. **Its § the pathway is the whole route in one table**, Phase 0 → the four corpus rungs → decoder spike → the deferred conditioning chain and multilingual |
+| 3 | [quality-gap-plan.md](quality-gap-plan.md) | **what happens next**, and in what order — the SSOT for sequencing. **Its § the pathway is the whole route in one table**, Phase 0 → the five corpus rungs → decoder spike → the deferred conditioning chain and multilingual |
 | 4 | [todo.md](todo.md) | open *residue* — code-review findings and the ears queue. Not the plan |
 | 5 | [ARCHITECTURE.md](ARCHITECTURE.md) | **canon** — the Director↔Actor contract (v2), corpus rules, gates, promotion |
 

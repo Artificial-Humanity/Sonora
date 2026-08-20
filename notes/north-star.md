@@ -57,7 +57,7 @@ is orientation, not a second status board.**
 | **2** | [Dramatic Reader / full-cast audiobooks](high-ambition-2-dramatic-reader.md) | Sonora | many identities in one performance, stable across chapters — needs 1 first |
 | 3 | [Child voices](../../../Prosodia/notes/high-ambition-3-child-voices.md) | Prosodia | casting range downward |
 | 4 | [Multilingual G2P](../../../Prosodia/notes/high-ambition-4-multilingual-g2p.md) | Prosodia | after English production quality, not beside it |
-| ~~5~~ | StyleTTS2-Lite re-platform | git history | **RETIRED 2026-07-29** — the quality-ceiling escape hatch is now a scaled flow-matching backbone ([model-decisions.md §5](model-decisions.md)) |
+| ~~5~~ | StyleTTS2-Lite re-platform | git history | **RETIRED 2026-07-29** — the quality-ceiling escape hatch is now a scaled flow-matching backbone ([model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](model-decisions.md)) |
 | 6 | [The Audience — conveyance-aware STT](high-ambition-6-audience-conveyance-stt.md) | Sonora | the **reverse lane**: perceive prosody rather than dictate it |
 | 7 | [Singing](high-ambition-7-singing.md) | Sonora | down the road, behind the quality ladder |
 
@@ -240,8 +240,9 @@ down so it becomes an answer rather than an omission ([todo.md § 3](todo.md)):
 
 **Rented — and deliberately so.** Matcha-TTS is the acoustic backbone; HiFi-GAN is the vocoder;
 LibriTTS-R is the base corpus. Replacing them is a decision with a record
-([model-decisions.md §5](model-decisions.md)), not a default. Matcha was **reaffirmed 2026-07-29**
-on the teacher campaign's central lesson: *an engine's usable range is set by its conditioning
+— [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](model-decisions.md) holds
+the criteria, and they still apply — not a default. Matcha was **reaffirmed 2026-07-29**
+([§ The base model](model-decisions.md)) on the teacher campaign's central lesson: *an engine's usable range is set by its conditioning
 interface, not its raw quality* — which argues for a base whose conditioning surface we define.
 
 **Ours, and the reason the repo exists:**
