@@ -19,10 +19,11 @@ Two conventions that surprise readers:
 
 | # | file | is |
 |---|---|---|
-| 1 | [STATE.md](STATE.md) | **what is true now**, per front — read this first |
-| 2 | [quality-gap-plan.md](quality-gap-plan.md) | **what happens next**, and in what order — the SSOT for sequencing. **Its § the pathway is the whole route in one table**, Phase 0 → the four corpus rungs → decoder spike → the deferred conditioning chain and multilingual |
-| 3 | [todo.md](todo.md) | open *residue* — code-review findings and the ears queue. Not the plan |
-| 4 | [ARCHITECTURE.md](ARCHITECTURE.md) | **canon** — the Director↔Actor contract (v2), corpus rules, gates, promotion |
+| 1 | [north-star.md](north-star.md) | **why any of this exists** — the vision, the seven-ambition arc, the size/hardware envelope and the load-bearing constraints. Owns nothing but its §1; every figure names the file that does |
+| 2 | [STATE.md](STATE.md) | **what is true now**, per front |
+| 3 | [quality-gap-plan.md](quality-gap-plan.md) | **what happens next**, and in what order — the SSOT for sequencing. **Its § the pathway is the whole route in one table**, Phase 0 → the five corpus rungs → decoder spike → the deferred conditioning chain and multilingual |
+| 4 | [todo.md](todo.md) | open *residue* — code-review findings and the ears queue. Not the plan |
+| 5 | [ARCHITECTURE.md](ARCHITECTURE.md) | **canon** — the Director↔Actor contract (v2), corpus rules, gates, promotion |
 
 _**Where the front is today** (2026-08-10): Phase 1 **rung 2** — `libritts_r_emilia_vat_v5`
 trained to `ep019` and rung 1's holdout gate **PASSED** (−0.0606, data-limited not
@@ -101,6 +102,7 @@ so do not renumber or rename them.
 
 | file | is |
 |---|---|
+| [north-star.md](north-star.md) | the **arc** the seven goals decompose from, and the envelope they must fit inside. Orientation — the index below is the SSOT for any goal's standing |
 | [high-ambition-index.md](high-ambition-index.md) | the seven-goal map, and which repo each lives in |
 | [high-ambition-1-matcha-actor.md](high-ambition-1-matcha-actor.md) | goal 1 — the directable production actor (**live**; this is the project) |
 | [high-ambition-2-dramatic-reader.md](high-ambition-2-dramatic-reader.md) | goal 2 — full-cast audiobooks (design, needs 1 first) |
