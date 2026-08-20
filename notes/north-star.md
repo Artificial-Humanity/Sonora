@@ -80,6 +80,25 @@ Four things about this arc that are load-bearing, and are not obvious from the t
   benched for **uncontrollability, not inability** — a capability you cannot withhold is not a
   capability — so progress on 7 is never evidence about them.
 
+### Not on the arc — cloning real people
+
+⚠ **There is no goal for voice cloning real people** (owner, 2026-08-20). Recorded because it is an
+*absence*, and an absence is the one thing a reader cannot check by looking: someone scanning seven
+ambitions for it and not finding it cannot tell "decided against" from "nobody has raised it yet".
+
+Two things this does **not** say, and neither should be inferred:
+
+* **It is not a prohibition.** The owner stated a scope, not a rule. A ban — with the consent and
+  likeness policy that would have to come with it — would be its own ruling, and nobody has made
+  one. Do not cite this paragraph as if it were one.
+* **It is not a statement about the teacher engines.** Several of them clone, and some are evaluated
+  precisely as clone-multipliers. That is a **tool** we point at a corpus, not a capability being
+  built into the actor.
+
+What we do instead is the positive form of the same sentence: casting is **synthesised from our own
+measured norms** — never derived from a target person, and never inherited from another model's
+habits.
+
 ### The distinction inside goal 2 — portrayal is not casting
 
 ⚠ **The owner's two-layer model (2026-07-22), and the smaller layer is the one that comes first.**
