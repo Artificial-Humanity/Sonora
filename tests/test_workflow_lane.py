@@ -7,9 +7,11 @@ rule in a file is not an enforcement mechanism**, so what is pinned here is the 
 the wording.
 
 ⚠ `merge_branch.sh` is the only thing in the repo that reaches `main` on its own. Until
-2026-08-17 the property that made the lane safe was "nothing here can push"; now it is "nothing
-merges while an issue is open, review or escalated". A narrower guard, and the reason the
-assertions below are specific about it.
+2026-08-17 the property that made the lane safe was "nothing here can push"; then it became
+"nothing merges while an issue is open, review or escalated"; **since 2026-08-20 it is a
+SEVERITY FLOOR** — nothing merges while a finding sits at MEDIUM or above, is ungraded, or is
+escalated, while a LOW rides to a follow-up. Each restatement is narrower than the last, and
+the reason the assertions below are specific about which one is in force.
 """
 
 import ast

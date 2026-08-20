@@ -191,6 +191,19 @@ if [[ -n "${RIDING//[[:space:]]/}" ]]; then
 fi
 
 if [[ -n "${BLOCKING//[[:space:]]/}" ]]; then
+  # ⚠ TWO DIFFERENT REFUSALS SHARE THIS BLOCK, AND THEY NEED DIFFERENT INSTRUCTIONS (#209).
+  # A line the classifier did not recognise lands here by design — that is the fail-closed
+  # property #205 restored. But it is NOT a finding, so "these block: … grade one" told the
+  # reader to run `issue.py grade <N>` for an <N> that does not exist. Right refusal, wrong
+  # remedy, and `:97-100` argues against exactly this shape eighty lines up.
+  if printf '%s\n' "$BLOCKING" | grep -qv '^BLOCK '; then
+    echo "merge_branch.sh: refusing '$BRANCH' — the tracker returned output this gate does" >&2
+    echo "  not recognise, so it cannot tell a settled branch from an unsettled one:" >&2
+    echo "$BLOCKING" >&2
+    die "this is NOT a list of findings and there is nothing to grade. Unrecognised output
+     means the gate or the tracker changed shape — read the lines above, and fix the cause
+     rather than the symptom. Refusing is the designed behaviour, not a failure."
+  fi
   echo "merge_branch.sh: '$BRANCH' is below the merge floor — these block:" >&2
   echo "$BLOCKING" >&2
   die "resolve them first. MEDIUM and above must be closed; UNGRADED must be graded (or
