@@ -204,8 +204,11 @@ def require_comment(args, action):
 
 
 def show_row(i):
-    return "  #%-5s %-10s passes=%-2s %s" % (
-        i.get("number"), i.get("state"), i.get("agent_passes") or 0, (i.get("title") or "")[:66])
+    # `--` rather than blank for an ungraded issue: blank reads as "nothing to say here",
+    # and this column is the one the merge gate blocks on.
+    return "  #%-5s %-10s %-8s passes=%-2s %s" % (
+        i.get("number"), i.get("state"), i.get("severity") or "--",
+        i.get("agent_passes") or 0, (i.get("title") or "")[:52])
 
 
 def cmd_list(pb, args):
@@ -217,7 +220,7 @@ def cmd_list(pb, args):
     elif not args.all:
         clauses.append('state!="closed"')
     st, r = pb.call("/api/collections/issues/records?perPage=200&skipTotal=false&sort=number"
-                    "&fields=number,state,title,agent_passes,branch_name&filter="
+                    "&fields=number,state,title,agent_passes,branch_name,severity&filter="
                     + urllib.parse.quote(" && ".join(clauses)))
     if st != 200:
         die("query refused: %s" % json.dumps(r)[:300])
@@ -235,7 +238,8 @@ def cmd_list(pb, args):
 
 def cmd_show(pb, args):
     rec = pb.find(args, args.number)
-    for k in ("number", "state", "agent_passes", "branch_name", "author", "labels", "title"):
+    for k in ("number", "state", "severity", "agent_passes", "branch_name", "author",
+              "labels", "title"):
         print("%-13s %s" % (k, rec.get(k)))
     if (rec.get("user_decision") or "").strip():
         print("\nUSER DECISION (the owner's; outranks any finding)\n%s" % rec["user_decision"])
@@ -318,6 +322,10 @@ def cmd_file(pb, args):
             "repo": args.repo, "number": n, "title": args.title, "body": body,
             "state": "open", "agent_passes": 0, "branch_name": branch,
             "author": args.author, "labels": [args.label] if args.label else [],
+            # ⚠ THE MERGE GATE READS THIS. An issue filed without it is UNGRADED, and
+            # merge_branch.sh blocks on ungraded exactly as it blocks on MEDIUM — a floor
+            # that lets an unknown through is not a floor. See REVIEWER.md § severity.
+            "severity": args.severity or "",
         })
         if st < 300:
             print("filed #%d on %s (state=open, agent_passes=0)" % (n, branch))
@@ -502,6 +510,10 @@ def main():
     s.add_argument("--title", required=True); s.add_argument("--body")
     s.add_argument("--body-file"); s.add_argument("--branch")
     s.add_argument("--label", choices=["bug", "documentation", "enhancement"])
+    # Not `required=True`: a refusal here would push a reviewer mid-review into filing
+    # nothing rather than filing ungraded, and an ungraded finding on the tracker beats a
+    # finding that only ever existed in a summary. The MERGE GATE is where it bites.
+    s.add_argument("--severity", choices=["low", "medium", "high", "critical"])
     s.set_defaults(fn=cmd_file)
 
     s = add("take"); s.add_argument("numbers", type=int, nargs="+")

@@ -52,13 +52,22 @@ def test_an_unreachable_tracker_refuses_the_merge():
     """Unreachable is not clear. The opposite choice lands unreviewed work whenever
     PocketBase happens to be down — the failure being silent is what makes it serious."""
     assert "TRACKER_UNREACHABLE" in MERGE_SRC
-    # ⚠ Anchored on the `$UNSETTLED` emptiness TEST, however it is spelled. Pinning the literal
-    # `if [[ -n "$UNSETTLED"` broke the moment the condition grew a whitespace strip — a test
-    # that fails on a rewording rather than a behaviour change.
-    empty_check = re.search(r'if \[\[ -n "\$\{?UNSETTLED', MERGE_CODE)
-    assert empty_check, "the emptiness check on $UNSETTLED was not found"
+    # ⚠ Anchored on the BLOCKING emptiness TEST, however it is spelled. Pinning a literal
+    # broke once already when the condition grew a whitespace strip — a test that fails on a
+    # rewording rather than a behaviour change. It moved again on 2026-08-20 when the severity
+    # floor split `$UNSETTLED` into `$BLOCKING` and `$RIDING`; the PROPERTY is unchanged, and
+    # that is the point of anchoring on the check rather than on its name.
+    empty_check = re.search(r'if \[\[ -n "\$\{?BLOCKING', MERGE_CODE)
+    assert empty_check, "the emptiness check on $BLOCKING was not found"
     assert MERGE_CODE.index("TRACKER_UNREACHABLE:*") < empty_check.start(), \
         "the unreachable check must precede the emptiness check, or 'down' reads as 'clear'"
+    # ⚠ THE SAME TRAP, ONE LAYER DOWN (2026-08-20). If merge_floor.py is missing the floor
+    # cannot be evaluated at all, and that must refuse too — separately, because routing it
+    # through TRACKER_UNREACHABLE sent the reader to PocketBase for a missing file. Measured:
+    # the first version of this did exactly that.
+    assert "FLOOR_MODULE_MISSING" in MERGE_CODE
+    assert MERGE_CODE.index("FLOOR_MODULE_MISSING:*") < empty_check.start(), \
+        "a missing floor module must refuse before anything is judged clear"
 
 
 def test_a_branch_with_no_issues_at_all_is_refused():

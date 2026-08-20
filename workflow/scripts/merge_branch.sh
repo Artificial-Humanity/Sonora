@@ -71,9 +71,33 @@ cd "$REPO_ROOT"
 # FAIL-CLOSED BY CHOICE. If a fifth state is ever added, `!="closed"` blocks the merge until
 # someone decides what it means, whereas `open||review||escalated` would silently ignore it and
 # let the branch land. A merge gate should fail towards refusing.
-UNSETTLED="$(python3 - "$REPO_SLUG" "$BRANCH" <<'PY'
+#
+# ⚠ SINCE 2026-08-20 THIS IS A SEVERITY FLOOR, NOT ZERO-OPEN-ISSUES (owner, ratified
+# 2026-08-19, built here). MEDIUM and above blocks; LOW rides to a follow-up branch. The
+# ruling had lived as prose in the personas and in AI-Lab-AMD's blueprint for a day short of
+# a fortnight while this script kept the old behaviour, and nothing failed — because a
+# stricter gate never goes red. That is the whole reason the ruling needed a mechanism.
+#
+# ⚠ UNGRADED BLOCKS, exactly as MEDIUM does. Every issue filed before 2026-08-20 has
+# severity="" (measured: 111 records), and a floor that waves through what it cannot grade
+# is not a floor. The three ways to clear an ungraded issue are: close it, grade it LOW, or
+# decide it is not LOW.
+#
+# ⚠ ESCALATED BLOCKS AT ANY SEVERITY. It means the owner owes a decision; severity says how
+# bad the finding is, not whether someone is waiting on a human.
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UNSETTLED="$(python3 - "$REPO_SLUG" "$BRANCH" "$_SCRIPT_DIR" <<'PY'
 import json, os, socket, sys, urllib.parse, urllib.request
 socket.setdefaulttimeout(20)
+# ⚠ IMPORTED OUTSIDE THE try, DELIBERATELY. Inside it, a missing merge_floor.py surfaced as
+# "cannot read the tracker" — fail-closed, so the merge was still refused, but the message
+# sent the reader to PocketBase for a missing file. An error that misnames its own cause
+# costs the next person an hour in the wrong place.
+sys.path.insert(0, sys.argv[3])
+try:
+    from merge_floor import rides as _rides
+except ImportError as e:
+    print("FLOOR_MODULE_MISSING: %s" % e); raise SystemExit(0)
 try:
     env = json.load(open(os.path.expanduser("~/.claude.json")))["mcpServers"]["pocketbase"]["env"]
     base = env.get("PB_URL", "http://127.0.0.1:8090")
@@ -100,12 +124,21 @@ try:
     flt = urllib.parse.quote('repo="%s" && branch_name="%s" && state!="closed"'
                              % (repo, branch))
     r = call("/api/collections/issues/records?perPage=200&skipTotal=false&sort=number"
-             "&fields=number,state,title&filter=" + flt, token=tok)
+             "&fields=number,state,title,severity&filter=" + flt, token=tok)
     items = r.get("items") or []
     if r.get("totalItems", 0) > len(items):
         raise RuntimeError("paged: %d of %d" % (len(items), r["totalItems"]))
+    # The floor. Anything not positively known to be LOW-and-not-escalated blocks — an
+    # unrecognised severity value lands here too, deliberately, so widening the field's
+    # values in PocketBase cannot silently widen what this gate permits.
+    # ⚠ IMPORTED, NOT RESTATED. merge_floor.py is the one copy of the rule and is unit-
+    # tested there; a floor written out twice is one that disagrees with itself eventually.
     for i in items:
-        print("  #%-5s %-10s %s" % (i["number"], i["state"], i["title"][:70]))
+        sev = (i.get("severity") or "").strip().lower()
+        rides = _rides(i.get("state"), sev)
+        print("%s  #%-5s %-10s %-8s %s"
+              % ("RIDE " if rides else "BLOCK", i["number"], i["state"],
+                 sev or "UNGRADED", i["title"][:60]))
 except Exception as e:
     # ⚠ UNREACHABLE IS NOT CLEAR. A tracker that cannot be read must refuse the merge, not
     # wave it through — the failure mode of the opposite choice is landing unreviewed work
@@ -113,6 +146,12 @@ except Exception as e:
     print("TRACKER_UNREACHABLE: %s" % e)
 PY
 )"
+
+if [[ "$UNSETTLED" == FLOOR_MODULE_MISSING:* ]]; then
+  die "workflow/scripts/merge_floor.py is missing or unreadable, so the severity floor cannot
+     be evaluated. This is a broken installation, NOT a tracker problem and NOT a clean
+     branch. (${UNSETTLED#FLOOR_MODULE_MISSING: })"
+fi
 
 if [[ "$UNSETTLED" == TRACKER_UNREACHABLE:* ]]; then
   die "cannot read the tracker, so cannot tell a settled branch from an unsettled one.
@@ -128,19 +167,39 @@ if [[ "$UNSETTLED" == *NEVER_REVIEWED* ]]; then
   UNSETTLED="${UNSETTLED/NEVER_REVIEWED/}"
 fi
 
-if [[ -n "${UNSETTLED//[[:space:]]/}" ]]; then
-  echo "merge_branch.sh: '$BRANCH' is not settled — these issues are not closed:" >&2
-  echo "$UNSETTLED" >&2
-  die "resolve them first. open -> Ozzy fixes it; review -> Janis has not verified it yet;
-     escalated -> the owner owes a decision (workflow/WORKFLOW.md §4)."
+BLOCKING="$(printf '%s\n' "$UNSETTLED" | grep '^BLOCK ' || true)"
+RIDING="$(printf '%s\n' "$UNSETTLED" | grep '^RIDE ' || true)"
+
+# ⚠ NAME WHAT RIDES. "LOW rides to a follow-up" is only true if someone can see what rode;
+# a gate that drops findings without printing them is how the follow-up never happens.
+if [[ -n "${RIDING//[[:space:]]/}" ]]; then
+  echo "merge_branch.sh: these LOW issues RIDE past the floor and stay open after the merge:"
+  echo "$RIDING"
+  echo "  ⚠ they do NOT disappear — move them to a follow-up branch, or they sit on a"
+  echo "    branch_name that no longer has a branch."
 fi
 
-echo "merge_branch.sh: '$BRANCH' is settled — every issue on it is closed."
+if [[ -n "${BLOCKING//[[:space:]]/}" ]]; then
+  echo "merge_branch.sh: '$BRANCH' is below the merge floor — these block:" >&2
+  echo "$BLOCKING" >&2
+  die "resolve them first. MEDIUM and above must be closed; UNGRADED must be graded (or
+     closed) because a floor cannot pass what it cannot read; escalated means the owner
+     owes a decision at any severity (workflow/WORKFLOW.md §4).
+       Grade one:  workflow/scripts/issue.py  — severity is set at filing, by the reviewer."
+fi
+
+echo "merge_branch.sh: '$BRANCH' clears the merge floor — nothing MEDIUM or above,
+  nothing ungraded, nothing escalated."
 # ⚠ SAY WHAT THIS DOES NOT PROVE. Closed issues show that a review ran at SOME point, not that
 # one covered the commit about to land: nothing records which tip was reviewed. Ozzy is
 # responsible for having requested a review of the range being merged; this gate only refuses
 # to land KNOWN-open findings. Stating the limit here so the line above is not read as more.
-echo "  ⚠ this proves no finding is outstanding — NOT that a review covered $(git rev-parse --short HEAD)."
+# ⚠ THIS LINE SAID "no finding is outstanding" UNTIL THE FLOOR EXISTED, and the floor made
+# it false: LOW findings ride, so they ARE outstanding and the branch lands anyway. A gate
+# whose success message overstates what it checked is how the check gets trusted for more
+# than it does — the exact defect this repo keeps paying for.
+echo "  ⚠ this proves nothing MEDIUM+ is outstanding — NOT that no finding is (LOW rides),
+    and NOT that a review covered $(git rev-parse --short HEAD)."
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "  would: git checkout $BASE && git merge --no-ff $BRANCH"

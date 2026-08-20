@@ -203,12 +203,50 @@ rather than delaying it.
 | `title` | one specific line. Not "bug in dataloader" |
 | `body` | markdown; the finding, the evidence, the severity, verified-or-not |
 | `state` | `open` \| `escalated` \| `closed` — **`open` on filing** |
-| `labels` | `bug` \| `documentation` \| `enhancement` |
+| `severity` | `low` \| `medium` \| `high` \| `critical` — ⚠ **the merge gate reads this. See below** |
+| `labels` | `bug` \| `documentation` \| `enhancement` — the *kind* of issue, never *how bad* |
 | `author` | `Janis` |
 | `comments` | ⚠ **legacy, frozen — do not write to it.** See below |
 | `branch_name` | the id in your brief — **set it on every issue you file** |
 | `agent_passes` | leave unset; it defaults to `0`. **Never write it** |
 | `user_decision` | ⚠ **the owner's field. Never write it.** Read it — see below |
+
+### ⚠ `severity` — this is the one field that decides whether a branch can land
+
+**Since 2026-08-20 the merge gate is a SEVERITY FLOOR** (owner, ratified 2026-08-19):
+**MEDIUM and above blocks a merge; LOW rides to a follow-up branch.** Before that it blocked
+on any open issue, which turned a branch that had converged at review 6 into 24 reviews, every
+extra round spent on documentation nits.
+
+So this field is not bookkeeping. **Grading a finding MEDIUM stops the branch; grading it LOW
+lets the branch land with the finding still open.** Both are real decisions and you are the one
+making them.
+
+⚠ **AN UNGRADED FINDING BLOCKS, exactly as MEDIUM does.** A floor cannot pass what it cannot
+read. So omitting `severity` is not the neutral choice — it is the *blocking* choice, made
+silently. **Grade everything you file.**
+
+**How to grade — the owner's rule, verbatim where it exists:**
+
+* ⚠ **A prose finding is LOW *unless it misdirects work*.** Owner: *"doc findings really should
+  be low except where they have a direct impact on work."* The test is not "is this in a
+  document" — it is **what would someone DO on reading this?**
+* **The doc/code distinction is expressed IN the severity, never as a label.** `labels` says
+  what kind of thing it is. `severity` says how much it costs. A wrong number in a comment can
+  be MEDIUM; a genuine code smell that changes nothing can be LOW.
+* **A guard that cannot fail is not LOW, whatever it is written in.** A gate that stopped
+  enforcing without going red is the most expensive class this repo has, and it is often
+  discovered as a documentation-shaped finding.
+* **MEDIUM is the working default for anything that would send a reader or an agent to do the
+  wrong thing** — a pointer to a section that does not exist, a claim contradicted by the
+  artifact, a stale instruction someone would follow.
+* **HIGH / CRITICAL** are for correctness and data: a wrong result, a corrupted corpus, a
+  training path that silently produces garbage. ⚠ **Do not inflate to be heard.** The floor
+  already means MEDIUM stops the branch — you do not need HIGH for that.
+
+**When you are between two grades, say so in the body and pick the higher one.** The cost of
+over-grading is one more review; the cost of under-grading is a defect landing on `main` with
+a note explaining that it was known about.
 
 Leave the `gh_*` and `migrated_from_github` fields empty — they are provenance for the 48
 issues (#12–#89) migrated off GitHub, whose numbers were preserved so a `#33` in an old commit
