@@ -97,6 +97,52 @@ def test_no_tracked_file_describes_the_pre_floor_merge_gate():
         "(MEDIUM+ blocks, LOW rides):\n  " + "\n  ".join(hits))
 
 
+# The owner's second requirement (2026-08-20): "make this simple to reconfigure in a single
+# place, should we ever pivot again." A document that names the threshold is a second place.
+HARDCODED = [
+    re.compile(r"MEDIUM (?:and|or) above"),
+    re.compile(r"MEDIUM\+"),
+    re.compile(r"\bLOW rides\b"),
+    re.compile(r"medium (?:and|or) above", re.I),
+]
+
+# Where naming the value is the point rather than a copy: config.env DEFINES it, merge_floor
+# and its tests EXERCISE the ladder, and this file lists the spellings it hunts.
+VALUE_OWNERS = (
+    "workflow/config.env",
+    "workflow/scripts/merge_floor.py",
+    "tests/test_merge_floor.py",
+    "tests/test_merge_gate_description.py",
+)
+
+
+def test_no_document_hardcodes_the_configured_threshold():
+    """⚠ THE OWNER'S RULING, AS A CHECK. The floor moved into `workflow/config.env` so a pivot
+    is one edit. That only holds while no document repeats the value — and the history here is
+    unambiguous: the same rule spelled out in prose survived three sweeps and a first guard.
+
+    A pointer ("the floor set in workflow/config.env") never goes stale. "MEDIUM and above
+    blocks" goes stale the moment someone changes the setting, and nothing would say so.
+    """
+    hits = []
+    for rel in _tracked():
+        if rel.startswith(VALUE_OWNERS):
+            continue
+        path = os.path.join(REPO, rel)
+        try:
+            text = open(path, encoding="utf-8").read()
+        except (UnicodeDecodeError, FileNotFoundError):
+            continue
+        if "merge_branch.sh" not in text and "merge gate" not in text.lower():
+            continue
+        for n, line in enumerate(text.splitlines(), 1):
+            if any(p.search(line) for p in HARDCODED):
+                hits.append(f"{rel}:{n}: {line.strip()[:100]}")
+    assert not hits, (
+        "these name the merge floor's threshold instead of pointing at MERGE_SEVERITY_FLOOR "
+        "in workflow/config.env, which is the single place it is set:\n  " + "\n  ".join(hits))
+
+
 def test_the_guard_can_actually_fail():
     """⚠ A guard that cannot go red is the defect it exists to prevent — AGENTS.md §5b."""
     assert any(p.search("it refuses while an issue is open, review or escalated")

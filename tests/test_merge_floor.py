@@ -102,3 +102,43 @@ def test_the_two_rideable_states_still_ride(state):
     returns whatever was written, and a hand-set `"OPEN "` means the same thing as `"open"`.
     """
     assert merge_floor.rides(state, "low")
+
+
+# --------------------------------------------------------------------------- #
+# the floor is CONFIGURED, not compiled in (owner, 2026-08-20)
+# --------------------------------------------------------------------------- #
+def test_the_threshold_comes_from_config_not_from_this_module():
+    """⚠ The owner's ruling: settle the rule everywhere it surfaces, AND make it
+    reconfigurable from a single place. `workflow/config.env` is that place."""
+    assert merge_floor.floor_setting() == "medium"
+
+
+def test_a_pivot_to_a_different_floor_needs_no_code_change():
+    """The whole point of the ruling. Changing one config line must move the boundary, with
+    no edit to this module, to merge_branch.sh, or to any document."""
+    assert merge_floor.rides("open", "medium", floor="high")     # medium rides under a high floor
+    assert not merge_floor.rides("open", "high", floor="high")
+    assert not merge_floor.rides("open", "low", floor="low")     # nothing rides under a low floor
+    assert merge_floor.rides("open", "low", floor="critical")
+    assert merge_floor.rides("open", "high", floor="critical")
+
+
+@pytest.mark.parametrize("bad", ["", "medum", "MEDIUM-ISH", "none", "off", "0", None])
+def test_an_unusable_floor_setting_blocks_everything(bad):
+    """⚠ THERE IS DELIBERATELY NO "OFF". A typo in config must not quietly open the gate, and
+    "none"/"off"/"0" are the spellings someone reaching for one would try. All block."""
+    for sev in ("low", "medium", "high", "critical"):
+        assert not merge_floor.rides("open", sev, floor=bad)
+
+
+def test_a_missing_config_file_blocks_rather_than_defaults(tmp_path):
+    """An unreadable config is indistinguishable from a config that says nothing, and both
+    must refuse. Defaulting here would mean a broken install merges as though configured."""
+    assert merge_floor.floor_setting(str(tmp_path / "absent.env")) == ""
+    assert not merge_floor.rides("open", "low", floor="")
+
+
+def test_the_ladder_is_ordered_and_the_order_is_the_comparison():
+    """Position in LADDER *is* the severity comparison, so a reorder silently changes every
+    verdict. Pinned so that reordering fails here rather than at a merge."""
+    assert merge_floor.LADDER == ("low", "medium", "high", "critical")

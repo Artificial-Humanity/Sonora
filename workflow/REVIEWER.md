@@ -214,7 +214,9 @@ rather than delaying it.
 ### ⚠ `severity` — this is the one field that decides whether a branch can land
 
 **Since 2026-08-20 the merge gate is a SEVERITY FLOOR** (owner, ratified 2026-08-19):
-**MEDIUM and above blocks a merge; LOW rides to a follow-up branch.** Before that it blocked
+**a finding at or above the severity floor set in `workflow/config.env` blocks a merge; anything below
+it rides to a follow-up branch.** ⚠ Read the current value there rather than assuming one —
+it is configurable precisely so that it can change without every document being wrong. Before that it blocked
 on any open issue, which turned a branch that had converged at review 6 into 24 reviews, every
 extra round spent on documentation nits.
 

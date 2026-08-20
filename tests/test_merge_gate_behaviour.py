@@ -30,8 +30,8 @@ the floor back into the zero-open-issues gate — leaves **all seven of these pa
 is covered by `tests/test_merge_floor.py`, which imports and calls it directly.
 
 Naming that split matters more than it looks. `test_a_low_finding_rides_and_the_merge_proceeds`
-reads like end-to-end proof that a LOW rides. It is not. It proves the shell does the right
-thing **when handed a line the rule already marked RIDE**. Believing otherwise would leave the
+reads like end-to-end proof that a below-floor finding rides. It is not. It proves the shell
+does the right thing **when handed a line the rule already marked RIDE**. Believing otherwise would leave the
 most important behaviour in the lane covered by a test that cannot see it — which is the
 finding this file was written for.
 """

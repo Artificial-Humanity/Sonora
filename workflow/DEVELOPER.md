@@ -247,8 +247,8 @@ review 3 starts at `0` and gets its own three passes.
 workflow/scripts/merge_branch.sh          # refuses unless the branch clears the SEVERITY FLOOR
 ```
 
-**The branch is done when it clears the SEVERITY FLOOR** — nothing MEDIUM or above,
-nothing ungraded, nothing escalated. ⚠ **A LOW may still be open**: it rides to a follow-up
+**The branch is done when it clears the severity floor set in `workflow/config.env`** — nothing at or
+above the configured threshold, nothing ungraded, nothing escalated. ⚠ **A LOW may still be open**: it rides to a follow-up
 branch rather than blocking (owner, ratified 2026-08-19, built 2026-08-20), so move it to
 one or it sits on a `branch_name` with no branch. Then merge to
 `main` and push — and this is the one thing in the repo that reaches `main` on its own.

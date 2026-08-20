@@ -9,8 +9,9 @@
 # legitimately is one whose push is unremarkable, so this pushes by default. What it will not
 # do is merge a branch that still carries a finding at or above the floor.
 #
-# ⚠ SINCE 2026-08-20 THAT IS A SEVERITY FLOOR, NOT ZERO-OPEN-ISSUES: MEDIUM and above
-# blocks, LOW rides to a follow-up, and UNGRADED or ESCALATED block at any severity. This
+# ⚠ SINCE 2026-08-20 THAT IS A SEVERITY FLOOR, NOT ZERO-OPEN-ISSUES. The threshold is
+# MERGE_SEVERITY_FLOOR in workflow/config.env and is deliberately NOT repeated here; at or
+# above it blocks, below it rides, and UNGRADED or ESCALATED block at any severity. This
 # header described the old gate for the length of the branch that replaced it (#202) —
 # which is the same defect the branch was fixing, one file up.
 #
@@ -78,12 +79,12 @@ cd "$REPO_ROOT"
 # let the branch land. A merge gate should fail towards refusing.
 #
 # ⚠ SINCE 2026-08-20 THIS IS A SEVERITY FLOOR, NOT ZERO-OPEN-ISSUES (owner, ratified
-# 2026-08-19, built here). MEDIUM and above blocks; LOW rides to a follow-up branch. The
+# 2026-08-19, built here). The threshold lives in config.env, not in this file. The
 # ruling had lived as prose in the personas and in AI-Lab-AMD's blueprint for a day short of
 # a fortnight while this script kept the old behaviour, and nothing failed — because a
 # stricter gate never goes red. That is the whole reason the ruling needed a mechanism.
 #
-# ⚠ UNGRADED BLOCKS, exactly as MEDIUM does. Every issue filed before 2026-08-20 has
+# ⚠ UNGRADED BLOCKS, exactly as a finding at the floor does. Every issue filed before 2026-08-20 has
 # severity="" (measured: 111 records), and a floor that waves through what it cannot grade
 # is not a floor. The three ways to clear an ungraded issue are: close it, grade it LOW, or
 # decide it is not LOW.
@@ -91,6 +92,9 @@ cd "$REPO_ROOT"
 # ⚠ ESCALATED BLOCKS AT ANY SEVERITY. It means the owner owes a decision; severity says how
 # bad the finding is, not whether someone is waiting on a human.
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# The configured floor, for the messages only — merge_floor.py is what ENFORCES it, and
+# reads config itself. This is display, never a second source of truth.
+_FLOOR="${MERGE_SEVERITY_FLOOR:-<unset — everything blocks>}"
 UNSETTLED="$(python3 - "$REPO_SLUG" "$BRANCH" "$_SCRIPT_DIR" <<'PY'
 import json, os, socket, sys, urllib.parse, urllib.request
 socket.setdefaulttimeout(20)
@@ -181,7 +185,8 @@ fi
 RIDING="$(printf '%s\n' "$UNSETTLED" | grep '^RIDE ' || true)"
 BLOCKING="$(printf '%s\n' "$UNSETTLED" | grep -v '^RIDE ' | grep -v '^[[:space:]]*$' || true)"
 
-# ⚠ NAME WHAT RIDES. "LOW rides to a follow-up" is only true if someone can see what rode;
+# ⚠ NAME WHAT RIDES. "below-floor findings ride to a follow-up" is only true if someone can
+# see what rode;
 # a gate that drops findings without printing them is how the follow-up never happens.
 if [[ -n "${RIDING//[[:space:]]/}" ]]; then
   echo "merge_branch.sh: these LOW issues RIDE past the floor and stay open after the merge:"
@@ -219,14 +224,14 @@ if [[ -n "${BLOCKING//[[:space:]]/}" ]]; then
   fi
   echo "merge_branch.sh: '$BRANCH' is below the merge floor — these block:" >&2
   echo "$BLOCKING" >&2
-  die "resolve them first. MEDIUM and above must be closed; UNGRADED must be graded (or
-     closed) because a floor cannot pass what it cannot read; escalated means the owner
-     owes a decision at any severity (workflow/WORKFLOW.md §4).
+  die "resolve them first. Anything at or above the configured floor must be closed.
+     UNGRADED must be graded (or closed) because a floor cannot pass what it cannot read;
+     escalated means the owner owes a decision at any severity (workflow/WORKFLOW.md §4).
        Grade one:  workflow/scripts/issue.py grade <N> --severity low|medium|high|critical"
 fi
 
-echo "merge_branch.sh: '$BRANCH' clears the merge floor — nothing MEDIUM or above,
-  nothing ungraded, nothing escalated."
+echo "merge_branch.sh: '$BRANCH' clears the merge floor (MERGE_SEVERITY_FLOOR=$_FLOOR) —
+  nothing at or above it, nothing ungraded, nothing escalated."
 # ⚠ SAY WHAT THIS DOES NOT PROVE. Closed issues show that a review ran at SOME point, not that
 # one covered the commit about to land: nothing records which tip was reviewed. Ozzy is
 # responsible for having requested a review of the range being merged; this gate only refuses
@@ -235,7 +240,7 @@ echo "merge_branch.sh: '$BRANCH' clears the merge floor — nothing MEDIUM or ab
 # it false: LOW findings ride, so they ARE outstanding and the branch lands anyway. A gate
 # whose success message overstates what it checked is how the check gets trusted for more
 # than it does — the exact defect this repo keeps paying for.
-echo "  ⚠ this proves nothing MEDIUM+ is outstanding — NOT that no finding is (LOW rides),
+echo "  ⚠ this proves nothing AT OR ABOVE THE FLOOR is outstanding — NOT that no finding is,
     and NOT that a review covered $(git rev-parse --short HEAD)."
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
