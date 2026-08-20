@@ -7,17 +7,18 @@
 > [high-ambition-index.md](high-ambition-index.md) · [model-decisions.md](model-decisions.md) ·
 > [STATE.md](STATE.md)
 >
-> ⚠ **DRAFTED BY AN AGENT 2026-08-19, §1 AWAITING OWNER RATIFICATION.** Everything below is
-> assembled from the repo's measured record and standing rulings; §1 is the one section that is an
-> *inference about intent* rather than a citation, and it is the section everything else is judged
-> against. Correct it before it is relied on. The failure this warning exists to prevent is on the
-> record: an agent wrote "a deliberate owner ruling" about a retirement nobody could later verify.
+> ⚠ **§1 IS THE OWNER'S AND WAS RATIFIED 2026-08-20.** Every other section is assembled from this
+> repo's measured record and standing rulings. §1 could not be — it is the statement of intent that
+> all the others are judged against — so an agent drafted it, marked it unratified, and the owner
+> rewrote it. **Keep that order for any future edit to §1.** The failure this procedure exists to
+> prevent is on the record: an agent once wrote "a deliberate owner ruling" about a decision nobody
+> could later verify, and it read as settled fact for two days.
 
 ---
 
 ## 1. The Vision (the thing everything serves)
 
-**A voice actor that takes direction.** Not a voice that sounds good — a voice that performs *the
+**A voice actor that takes direction.** A voice that not only sounds good — a voice that performs *the
 reading you asked for*, and a different one when you ask differently.
 
 Sonora produces the actor. It does not produce the reader, the app, or the book. What it ships is
@@ -29,10 +30,11 @@ The acceptance test is the ear, not a metric:
 > named — and are recognisably the same voice — the actor works. If they differ in some other way,
 > or not at all, it does not, whatever the loss says.
 
-⚠ **This is the section drafted rather than cited.** The evidence for it is
+⚠ **RATIFIED BY THE OWNER 2026-08-20**, who rewrote it. An agent drafted this section and marked
+it unratified; that warning is gone because it is no longer true, and leaving it would have made a
+settled statement read as provisional. The supporting record is
 [high-ambition-1](high-ambition-1-matcha-actor.md) ("the first actor model we actually ship and the
-foundation the others build on"), `AGENTS.md`'s statement of purpose, and the direction contract —
-but the *sentence* is mine, and it is the one thing here that should be the owner's.
+foundation the others build on"), `AGENTS.md`'s statement of purpose, and the direction contract.
 
 ---
 
