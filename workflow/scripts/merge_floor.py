@@ -24,15 +24,28 @@ with two additions that the ruling implies but does not say, both fail-closed:
   * ESCALATED blocks at ANY severity. Severity says how bad a finding is; `escalated` says a
     human is waiting. They are different questions and the second one is not the floor's to
     overrule.
+
+⚠ BOTH INPUTS ARE WHITELISTS, AND THAT IS THE WHOLE DESIGN. The first version blacklisted
+`escalated` and whitelisted severity, so an unrecognised SEVERITY blocked (right) while an
+unrecognised STATE rode (wrong) — `rides("frobnicated", "low")` returned True. That inverted
+the fail-closed property `merge_branch.sh` claims for its own filter, which says in terms that
+a fifth state must block "until someone decides what it means". Caught in review as #204. A
+guard with one blacklist in it has a hole shaped like the future.
 """
 
 # Only `low` rides. Everything else — including a value added to the PocketBase field later
 # and never taught to this file — falls through to blocking, which is the safe direction.
 RIDES = frozenset({"low"})
 
+# ⚠ AND ONLY THESE STATES. `closed` never reaches here (the query excludes it) and `escalated`
+# must block, so these two are the whole rideable set. A state added to the PocketBase field
+# later is unknown to this file and must block until someone teaches it — same reasoning as
+# RIDES, and the reason this is a set rather than a `!= "escalated"`.
+RIDEABLE_STATES = frozenset({"open", "review"})
+
 
 def rides(state, severity):
     """True if this unclosed issue may ride past the floor and let the branch land."""
-    if (state or "").strip().lower() == "escalated":
+    if (state or "").strip().lower() not in RIDEABLE_STATES:
         return False
     return (severity or "").strip().lower() in RIDES

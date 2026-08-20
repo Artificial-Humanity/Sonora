@@ -106,9 +106,12 @@ Ozzy fixed some, and this is the next review.
 ## 3. Ozzy, after the review
 
 1. Ozzy reads the issues for this branch.
-2. **Nothing left in `open`, `review` or `escalated` → merge to `main`, push, and the workflow
-   ends.** Use `workflow/scripts/merge_branch.sh`, which re-checks the tracker server-side and refuses
-   otherwise. ⚠ **The gate is on the MERGE, not the push** (owner, 2026-08-17): a branch that
+2. **Clears the SEVERITY FLOOR → merge to `main`, push, and the workflow ends.** Use
+   `workflow/scripts/merge_branch.sh`, which re-checks the tracker server-side and refuses
+   otherwise. ⚠ **The floor is not zero-open-issues** (owner, ratified 2026-08-19, built
+   2026-08-20): **MEDIUM and above blocks; LOW rides to a follow-up branch**; ungraded and
+   escalated block at any severity. A LOW that rides is still open — move it to a follow-up
+   branch, or it sits on a `branch_name` that no longer has a branch. ⚠ **The gate is on the MERGE, not the push** (owner, 2026-08-17): a branch that
    merged legitimately is one whose push is unremarkable.
 3. For each issue, in order:
    * **Needs an owner decision, OR `agent_passes` is already 3 → `escalated`.** ⚠ **A comment

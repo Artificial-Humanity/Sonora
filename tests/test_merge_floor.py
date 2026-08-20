@@ -69,3 +69,36 @@ def test_case_and_whitespace_do_not_change_the_verdict():
     assert merge_floor.rides("open", "LOW")
     assert merge_floor.rides("open", " low ")
     assert not merge_floor.rides("ESCALATED", "low")
+
+
+@pytest.mark.parametrize("state", ["frobnicated", "", "   ", None, "closed"])
+def test_an_unknown_state_blocks_rather_than_rides(state):
+    """⚠ #204: the first version blacklisted `escalated` and whitelisted severity, so
+    `rides("frobnicated", "low")` was True.
+
+    `merge_branch.sh` documents the opposite property for its own filter — a fifth state must
+    block "until someone decides what it means". A guard with one blacklist in it has a hole
+    shaped like the future, and this is the test that would have caught it.
+
+    `closed` is included because it must never ride even though the query is supposed to
+    exclude it — the floor does not get to assume its caller filtered correctly.
+
+    ⚠ `"OPEN "` is deliberately NOT here. The first draft of this test asserted it should
+    block, contradicting its own docstring: the strip-and-fold applies to state exactly as it
+    does to severity, so `"OPEN "` normalises to a rideable state and rides. The test was
+    wrong, not the code. It is covered below instead.
+    """
+    assert not merge_floor.rides(state, "low")
+
+
+@pytest.mark.parametrize("state", ["open", "review", "OPEN ", " Review"])
+def test_the_two_rideable_states_still_ride(state):
+    """The other half of #204: whitelisting must not have narrowed the floor to nothing.
+
+    An issue Ozzy has fixed sits in `review` until Janis verifies it. If that blocked, a LOW
+    could never ride and the floor would silently be the zero-open-issues gate it replaced.
+
+    The odd spellings check that the normalisation is symmetric with severity's — PocketBase
+    returns whatever was written, and a hand-set `"OPEN "` means the same thing as `"open"`.
+    """
+    assert merge_floor.rides(state, "low")

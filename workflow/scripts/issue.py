@@ -328,7 +328,12 @@ def cmd_file(pb, args):
             "severity": args.severity or "",
         })
         if st < 300:
-            print("filed #%d on %s (state=open, agent_passes=0)" % (n, branch))
+            # ⚠ SAY THE SEVERITY, INCLUDING WHEN THERE IS NONE. The line reported the two
+            # fields that are always the same on a new issue and stayed silent about the one
+            # that decides whether a branch can merge — so filing ungraded looked identical
+            # to filing graded, and the consequence surfaced later at the gate (#206).
+            print("filed #%d on %s (state=open, agent_passes=0, severity=%s)"
+                  % (n, branch, args.severity or "UNGRADED — this BLOCKS the merge"))
             return
         if "number" not in json.dumps(rec):
             die("filing refused: %s" % json.dumps(rec)[:400])

@@ -244,7 +244,7 @@ review 3 starts at `0` and gets its own three passes.
 ### Step 5 — when nothing is left, merge
 
 ```bash
-workflow/scripts/merge_branch.sh          # refuses unless every issue on the branch is closed
+workflow/scripts/merge_branch.sh          # refuses unless the branch clears the SEVERITY FLOOR
 ```
 
 **The branch is done when it has no issue in `open`, `review` or `escalated`.** Then merge to

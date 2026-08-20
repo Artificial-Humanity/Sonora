@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 #
-# merge_branch.sh — merge the current branch to main, but only once its issues are settled.
+# merge_branch.sh — merge the current branch to main, but only once it clears the SEVERITY FLOOR.
 #
 #     workflow/scripts/merge_branch.sh [--branch B] [--base main] [--no-push] [--dry-run]
 #                              [--allow-unreviewed]
 #
 # ⚠ THE GATE IS ON THE MERGE, NOT THE PUSH (owner, 2026-08-17). A branch that merged
 # legitimately is one whose push is unremarkable, so this pushes by default. What it will not
-# do is merge a branch that still has issues in `open`, `review` or `escalated`.
+# do is merge a branch that still carries a finding at or above the floor.
+#
+# ⚠ SINCE 2026-08-20 THAT IS A SEVERITY FLOOR, NOT ZERO-OPEN-ISSUES: MEDIUM and above
+# blocks, LOW rides to a follow-up, and UNGRADED or ESCALATED block at any severity. This
+# header described the old gate for the length of the branch that replaced it (#202) —
+# which is the same defect the branch was fixing, one file up.
 #
 # That is the whole safety model now, and it is narrower than the one it replaces. Until today
 # the worker was denied `git push` outright and nothing it ran could reach `main`. Now it can —
@@ -167,8 +172,14 @@ if [[ "$UNSETTLED" == *NEVER_REVIEWED* ]]; then
   UNSETTLED="${UNSETTLED/NEVER_REVIEWED/}"
 fi
 
-BLOCKING="$(printf '%s\n' "$UNSETTLED" | grep '^BLOCK ' || true)"
+# ⚠ BLOCKING IS "EVERYTHING THAT IS NOT A RIDE", NOT "EVERYTHING TAGGED BLOCK" (#205).
+# The first version grepped '^BLOCK ', which quietly DROPPED any line matching neither
+# prefix — and the catch-all `die` on non-empty $UNSETTLED that used to make the imprecise
+# checks above safe had been removed in the same commit. So an unrecognised line, a stray
+# warning on stdout, or a future tag this classifier has not been taught would have let the
+# branch land. Only a line the python explicitly marked RIDE may be discarded here.
 RIDING="$(printf '%s\n' "$UNSETTLED" | grep '^RIDE ' || true)"
+BLOCKING="$(printf '%s\n' "$UNSETTLED" | grep -v '^RIDE ' | grep -v '^[[:space:]]*$' || true)"
 
 # ⚠ NAME WHAT RIDES. "LOW rides to a follow-up" is only true if someone can see what rode;
 # a gate that drops findings without printing them is how the follow-up never happens.
