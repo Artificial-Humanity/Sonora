@@ -193,9 +193,12 @@ NOT_ORCHESTRATORS = {
         "the worker it spawns."
     ),
     "workflow/scripts/merge_branch.sh": (
-        "Review lane: the merge gate. Refuses to merge a branch into main while any of its "
-        "issues is open, review or escalated; then merges and pushes. ⚠ The only thing in this "
-        "repo that reaches `main` on its own — see workflow/WORKFLOW.md §3."
+        "Review lane: the merge gate. Refuses to merge a branch into main unless it clears "
+        "the SEVERITY FLOOR set in workflow/config.env — at or above it blocks, below it rides "
+        "to a follow-up, ungraded and escalated block at any severity (owner 2026-08-19, "
+        "built 2026-08-20); then merges "
+        "and pushes. ⚠ The only thing in this repo that reaches `main` on its own — see "
+        "workflow/WORKFLOW.md §3."
     ),
     "workflow/scripts/full_review.sh": (
         "Review lane: the periodic WHOLE-CODEBASE sweep. Cuts `review-YYYY-MM-DD` from main and "

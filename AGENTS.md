@@ -229,7 +229,11 @@ the simple version that holds until then. Do not build tooling on its shape.
   * ⚠ **The rules are also MECHANISMS now, which is why restating them here is worse than
     useless.** `workflow/scripts/issue.py` refuses an escalation or a reopen with no comment,
     refuses to take an issue at the cap, and refuses an illegal state transition;
-    `workflow/scripts/merge_branch.sh` refuses to merge a branch with anything unclosed on it.
+    `workflow/scripts/merge_branch.sh` refuses to merge a branch that carries a finding at or
+    above the **severity floor** — the threshold is `MERGE_SEVERITY_FLOOR` in
+    `workflow/config.env` and is deliberately not repeated here; anything below it rides to a
+    follow-up; ungraded and escalated block at any severity (owner, ratified 2026-08-19, built
+    2026-08-20).
     A paraphrase in this file cannot refuse anything, and a reader who believes it over the
     script is being misled by the more authoritative-looking document.
 
