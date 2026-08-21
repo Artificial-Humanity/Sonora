@@ -527,10 +527,17 @@ def cmd_grade(pb, args):
     thing the split buys" — and there was no such sentence for `grade` in any file, while the
     gate's own refusal text told the blocked party to run it with `low` listed first.
 
-    So: raising is open to anyone; grading an UNGRADED issue is open to anyone EXCEPT where
-    the reviewer filed it, because that is the case the gate cannot distinguish from a legacy
-    record and the case its own message points at; and LOWERING an existing grade is the
-    reviewer's alone.
+    So, as implemented (see `ungraded_guard_blocks` for the predicate itself):
+
+      * RAISING is open to anyone — grading up cannot clear a gate;
+      * grading an UNGRADED issue is open to anyone EXCEPT all four of: the caller is not the
+        reviewer, the finding is the reviewer's, it is stamped with the branch being merged,
+        and the new grade is below the floor;
+      * LOWERING an existing grade is the reviewer's alone.
+
+    ⚠ The middle clause said "except where the reviewer filed it" until #235 — the rule from
+    before the branch scope existed, and broader than the code by two conditions. A docstring
+    stating a rule the function does not implement is what #212 and #225 were, in this file.
 
     ⚠ THIS IS A CONVENTION, NOT A MECHANISM, AND AN EARLIER VERSION OF THIS DOCSTRING CLAIMED
     OTHERWISE (#225). It said "no direction that can clear a gate is self-served", which does

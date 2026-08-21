@@ -262,3 +262,55 @@ def test_grade_is_listed_in_the_usage_block_with_the_other_writes():
     for cmd in ("list", "show", "file", "grade", "take", "review", "escalate", "close",
                 "reopen", "comment", "escalated"):
         assert f"issue.py {cmd}" in usage, f"{cmd} missing from the usage block"
+
+
+def test_cmd_grade_actually_CALLS_the_guard_not_merely_defines_it():
+    """⚠ #234: `13cfcbe` extracted `ungraded_guard_blocks` and, in the same commit, deleted the
+    only assertion that `cmd_grade` is wired to it. The predicate was then well covered and the
+    WIRING was covered by nothing — a guard that exists and is never called is the shape this
+    whole branch has been about.
+
+    ⚠ #233 is why this is a RUN and not a read. `13cfcbe`'s message claimed the branch-scope
+    condition was "verified by regrading #181, a legacy record the previous version would have
+    refused." #181 was ALREADY `low` when I ran that, and the guard only fires on UNGRADED
+    records — so the command exercised nothing and I reported it twice. This test is the
+    verification that claim should have been.
+
+    Run against a fake tracker, following `test_workflow_lane.py`'s idiom: no live record, so
+    nothing to clean up server-side afterwards.
+    """
+    import contextlib
+    import importlib.util
+    import io
+    import types
+
+    spec = importlib.util.spec_from_file_location(
+        "_issue_grade_wiring", os.path.join(REPO, "workflow", "scripts", "issue.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    reviewer = mod.REVIEWER_NAME
+    here = mod.current_branch()
+    patched = {}
+    # UNGRADED, filed by the reviewer, stamped with the branch we are on — the exact case.
+    rec = {"id": "x", "number": 1, "severity": "", "author": reviewer, "branch_name": here}
+    fake = types.SimpleNamespace(
+        find=lambda args, number: rec,
+        call=lambda path, method=None, body=None: patched.update(body or {}) or (200, {}),
+        add_comment=lambda args, r, text, author: None,
+    )
+    args = types.SimpleNamespace(number=1, repo="r", comment="", author="Ozzy",
+                                 severity="low")
+
+    with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+        with pytest.raises(SystemExit):
+            mod.cmd_grade(fake, args)
+    assert not patched, "cmd_grade wrote the severity despite the guard refusing"
+
+    # …and the same command succeeds once any single condition is false — here, the caller.
+    patched.clear()
+    args.author = reviewer
+    with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+        mod.cmd_grade(fake, args)
+    assert patched.get("severity") == "low", (
+        "the reviewer was refused too — that is #228, which this branch fixed")
