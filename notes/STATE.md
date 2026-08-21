@@ -7,7 +7,7 @@ architecture canon is [ARCHITECTURE.md](../docs/ARCHITECTURE.md); open work is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
-_Last updated: 2026-08-10._
+_Last updated: 2026-08-21._
 
 ---
 
@@ -24,7 +24,7 @@ _Last updated: 2026-08-10._
 > ear; converged by epoch 9, so epochs 10–39 were net worse and the run is closed —
 > `logs/train/vat5_finetune/SELECTED.md` refuses a relaunch). Rung 1's gate **PASSED**:
 > `ep019 − vat5_init` = **−0.0606** on the clean holdout, improved on 82.1% of 5,463 clips,
-> an order of magnitude past the −0.0111 that cleared gate 0a. **Data-limited, not
+> roughly 5× the −0.0111 that cleared gate 0a. **Data-limited, not
 > capacity-limited — the 10× proceeds.** ep019 is the warm-start donor for v6.
 >
 > **It is a merge, not a derivation** (`scripts/tools/merge_emilia_corpus.py`), and the two halves
@@ -293,8 +293,13 @@ The ordered plan and the gate between each phase is
 **[quality-gap-plan.md](quality-gap-plan.md)** — the SSOT for sequencing. This is only its
 headline; open items are in [todo.md](todo.md).
 
-1. **Phase 1 rung 2 — build v6** (+expressive-registers): decided, NOT built, warm start
-   from **`ep019`**. The append set is settled at **832 rows** (822 delivery-labelled + 10
+1. ~~**Phase 1 rung 2 — build v6**~~ ✅ **DONE 2026-08-10/11** — built, trained 10 epochs,
+   holdout-scored, **`ep008` selected**, run closed (`logs/train/vat6_finetune/SELECTED.md`).
+   ⚠ **The next action is item 2.** This entry said *"decided, NOT built"* until 2026-08-21,
+   twenty-five lines above its own `✅ BUILT` line (#200); it is kept, past tense, for the
+   derivation below, which nothing else carries in this detail. Warm-started from **`ep019`**.
+
+   The append set is settled at **832 rows** (822 delivery-labelled + 10
    blank) = 1,004 eligible − 158 whose audio is already in v5 — **three disjoint duplicate
    classes needing opposite treatment** (91 dropped, 45 excluded because v5 holds their
    labels, 22 `mk_` twins resolved to one row), not the 91 originally recorded. Those 846
@@ -335,10 +340,15 @@ headline; open items are in [todo.md](todo.md).
    ⚠ **The licence wall REFUSED the first build** — the staged 24 kHz tree was undeclared.
    `sonora_expressive_registers` is now in `configs/data_licenses.yaml`, verified by path:
    **0 of the 832 clips resolve into `LibriTTS_R` or any `emilia*` tree.**
-   ⚠ **TWO IN-CONTAINER STEPS REMAIN, neither optional**: `data_statistics` must be
-   **re-measured** (they cannot be inherited from v5 — this changes the audio set *and*
-   the split), and `scripts/gates/test_vat_dim_seams.py` must pass. `vat_dim` is unchanged at 8,
-   so **`ep019` warm-starts with no widening.**
+   ⚠ **TWO IN-CONTAINER STEPS, AND NEITHER HAS A RECORDED RESULT** — status genuinely
+   unverified, not "outstanding": `data_statistics` had to be **re-measured** (they cannot be
+   inherited from v5 — this changes the audio set *and* the split), and
+   `scripts/gates/test_vat_dim_seams.py` had to pass. The run has since trained 10 epochs and
+   holdout-scored, which it could not have done without usable statistics; **the seam gate is
+   the one with no evidence either way, and #197 has since measured that nothing in the suite
+   runs it** — so its "outstanding" was never a status anything could have cleared. Whoever
+   next touches rung 2's corpus should run it and record the count, as v5's `30/30` is.
+   `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
 2. **Rung 3 — the 10×** (LibriTTS-R full, ~615 h). Ungated: rung 1 passed. ~2.25 h/epoch,
