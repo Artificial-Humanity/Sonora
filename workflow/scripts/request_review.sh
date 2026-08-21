@@ -542,7 +542,29 @@ REVIEWER_ALLOW=(
   "Bash(git rev-list:*)" "Bash(git rev-parse:*)" "Bash(git blame:*)"
   "Bash(git merge-base:*)" "Bash(git ls-files:*)" "Bash(git ls-tree:*)"
   "Bash(git cat-file:*)" "Bash(git describe:*)" "Bash(git shortlog:*)"
+  "Bash(git check-ignore:*)" "Bash(git grep:*)" "Bash(git for-each-ref:*)"
+  "Bash(git diff-tree:*)" "Bash(git count-objects:*)"
+  # ⚠ `git symbolic-ref` WAS HERE AND IS MUTATING (#240). `symbolic-ref <name> <ref>` repoints
+  # a ref and `--delete` removes one — so it sat directly above a comment claiming these verbs
+  # are "enumerable and genuinely non-mutating", which was the justification for granting them
+  # as a block. A reviewer needing the current branch has `git rev-parse --abbrev-ref HEAD`,
+  # which is already granted and reads only.
   "Bash(pytest:*)" "Bash(ls:*)" "Bash(rg:*)" "Bash(wc:*)"
+  # ⚠ ARBITRARY PYTHON, GRANTED DELIBERATELY AND WITH ITS EYES OPEN (owner, 2026-08-18).
+  # This is NOT the same kind of entry as the git verbs above. Those are enumerable and
+  # genuinely non-mutating; `python -c` is arbitrary code execution, and one line of it can
+  # delete the tree. There is no prefix pattern that separates "evaluate this expression"
+  # from "rewrite this file", so what stops a reviewer writing is now the PERSONA, not the
+  # allowlist — a rule rather than a mechanism, which AGENTS.md §1 is explicit is a weaker
+  # thing. The owner accepted that trade knowingly.
+  #
+  # WHY IT IS WORTH IT, measured rather than argued: without it the reviewer must REASON where
+  # it could REPRODUCE. On 2026-08-17 that cost three findings their verification (#90, #91,
+  # #94 — all three later reproduced in seconds), and a FALSE CLAIM in a fix comment survived
+  # a whole review pass (#98) because `git check-ignore`, its direct falsifier, was refused.
+  # Against that: the reviewer twice declined to route around the restriction when it could
+  # have (it noted, unprompted, that it did not use `rg --pre`).
+  "Bash(python:*)" "Bash(python3:*)" "Bash(.venv/bin/python:*)"
   # ⚠ SCOPED TO --dry-run, AND THE SCOPING IS THE POINT. Added because a review asked for it
   # (the repair path this allowlist is supposed to have) — but the first version granted the
   # WHOLE script while the comment justified only the dry run. That grant let the reviewer
@@ -567,7 +589,76 @@ REVIEWER_ALLOW=(
 # ⚠ Scoped to `-m pytest`. A bare `Bash($PYBIN:*)` — which the #96 fix added — pre-approved
 # `python -c '<anything>'`, so the remedy for "the reviewer cannot run the tests" handed it
 # an arbitrary interpreter. This grants exactly the verification that was missing.
-[[ -n "$PYBIN" ]] && REVIEWER_ALLOW+=("Bash($PYBIN -m pytest:*)")
+# ⚠ THE ABSOLUTE PATH, AND NOT SCOPED TO `-m pytest` ANY MORE. The owner granted arbitrary
+# python on 2026-08-18 (see the block above) — but the grant listed `Bash(.venv/bin/python:*)`,
+# the RELATIVE form, while every brief hands the reviewer `$PYBIN`, which is ABSOLUTE. A
+# prefix match on the relative string never fires against an absolute command, so the grant
+# read as given and behaved as refused: the reviewer reported `python -c` refused on twenty-two
+# consecutive passes AFTER it was granted, and each report was correct.
+#
+# ⚠ A GRANT THAT DOES NOT MATCH IS INDISTINGUISHABLE FROM NO GRANT, and it is worse, because
+# the comment above it says the trade was accepted. Verified after this change by having the
+# reviewer run one.
+#
+# ⚠ NARROWED 2026-08-20 (owner): grant THE COMMAND, not the interpreter. Nine consecutive
+# reviews asked for exactly one thing — `$PYBIN scripts/gates/test_doc_claims.py` — and named
+# it each time. The 2026-08-19 ruling granted four SPECIFIC things, one of which was "the
+# doc-claims gate invocation"; `Bash($PYBIN:*)` was broader than what was ratified, so this is
+# a return to the ruling rather than a reversal of it.
+#
+# ⚠⚠ AND IT DOES NOT NARROW THE POSTURE ON ITS OWN. `Bash(python:*)` and `Bash(python3:*)` are
+# still in the static list above, ratified 2026-08-18, and either spelling still executes
+# arbitrary code. What this DOES buy is that the run-mode rule (AGENTS.md §3: host scripts run
+# `.venv/bin/python`) and the allowlist now agree — a reviewer following the rule reaches the
+# gate, and does not need an interpreter to do it. Removing the two broad entries is a
+# separate decision and is the owner's, since they took it knowingly.
+#
+# ⚠⚠ AN ENTRY MUST END ON A TOKEN BOUNDARY. `Bash($PYBIN scripts/gates/:*)` did not — the real
+# token is `scripts/gates/test_doc_claims.py`, so a prefix ending mid-token could never match
+# and the gate was refused for the whole life of the branch that granted it (#239). Rows 3/4
+# of that issue are the controls: the same interpreter ran under `-m pytest`, and the same
+# script ran under the relative spelling, so only the entry was at fault.
+#
+# ⚠ THIS REPO ALREADY PINNED THAT RULE, from the deny side —
+# `tests/test_request_review.py::test_value_taking_git_options_are_denied_in_both_spellings`:
+# "The matcher tokenises on whitespace, so an entry can name an option and still miss it —
+# which is worse than an absent entry, because it reads as covered." I wrote an allow entry
+# that breaks the rule its own suite documents.
+#
+# Gates are named individually now — each entry ends on a token boundary.
+#
+# ⚠⚠ THE LIST IS GLOBBED FROM DISK, NOT TYPED (#247). The first version wrote out four names
+# while the directory held six, so `test_film_export_gate.py` and `test_vat_identity.py` were
+# REFUSED — measured by the reviewer, from inside a review — while REVIEWER.md §1 told that
+# same reviewer the whole directory was reachable. A hand-kept list beside a directory is a
+# copy that goes stale the moment a gate is added, and it went stale on the commit that
+# created it.
+#
+# ⚠ THIS IS NOT A WIDENING OF CAPABILITY, and it would be worth refusing if it were. The
+# reviewer already holds `python` and `python3` — REVIEWER.md §1 calls that arbitrary code
+# execution in as many words — so every one of these files was already runnable by another
+# spelling. What the named entries buy is that the INTENDED commands work without the reviewer
+# having to reach for the general one, which is why a gap here reads as "not allowed to" rather
+# than "spell it differently".
+#
+# ⚠ WHAT PROTECTS THE EMPTY-DIRECTORY CASE IS `[[ -f "$_g" ]] || continue`, AND NOTHING ELSE
+# (#255). An earlier version of this comment credited two things that do not do the job: the
+# `-d` guard only proves the directory exists, not that it holds a gate; and "a path that
+# matches nothing refuses safely" is a guess about the matcher this repo has never tested —
+# `nullglob` is unset, so an empty directory leaves `$_g` as the LITERAL string
+# `scripts/gates/test_*.py`, and an allow entry containing `*` has unknown semantics rather
+# than safe ones. The `-f` test drops that literal before it can become an entry. Do not
+# remove it on the strength of the `-d` guard above.
+if [[ -n "$PYBIN" ]]; then
+  REVIEWER_ALLOW+=("Bash($PYBIN -m pytest:*)")
+  if [[ -d scripts/gates ]]; then
+    for _g in scripts/gates/test_*.py; do
+      [[ -f "$_g" ]] || continue
+      REVIEWER_ALLOW+=("Bash($PYBIN $_g:*)")
+    done
+    unset _g
+  fi
+fi
 
 # Explicit denials. Schema and instance administration are not a reviewer's business —
 # pb_collection_delete would drop the tracker itself.

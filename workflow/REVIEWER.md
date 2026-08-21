@@ -60,6 +60,43 @@ summary — there is no third place, and no later opportunity.
     allowed.** Four successive versions of the launcher's comment claimed a stronger guarantee
     than the flags delivered, each caught by a later review. A reader who believes a boundary
     is structural stops checking it, which is why you are getting the boundary's real shape.
+  * ⚠ **YOU CAN RUN THE DOC-CLAIMS GATE. Use this exact spelling:**
+
+    ```
+    $PYBIN scripts/gates/test_doc_claims.py
+    ```
+
+    where `$PYBIN` is the **absolute** interpreter path your brief names. Granted 2026-08-20
+    after nine consecutive reviews reported it refused and asked for it by name — every one of
+    those reports was correct. The whole `scripts/gates/` directory is reachable this way, so
+    the other gates are too.
+    * ⚠ **BOTH SPELLINGS WORK, AND AN EARLIER VERSION OF THIS FILE SAID THE OPPOSITE.** It
+      claimed the relative form failed and the absolute one worked; **that was exactly
+      backwards** (#239). The relative `.venv/bin/python scripts/gates/…` runs — it is covered
+      by the bare-interpreter entry — and `AGENTS.md` §3 names it as the run mode for host
+      scripts, so it is the spelling to prefer. The absolute form is granted too, per gate.
+    * ⚠ **The harm of the old wording was not that it was wrong; it is that it told you to
+      DISBELIEVE the form that works.** A reviewer following it would try the absolute form,
+      be refused, and then decline to try the relative one because this file said not to
+      bother. Right classification, wrong instruction — the shape this repo keeps paying for.
+    * ⚠⚠ **THIS BULLET USED TO SAY "DO NOT APPEND A PIPE OR A REDIRECT … it is refused". THAT
+      WAS FALSE, AND IT WAS THE SAME DEFECT THE TWO BULLETS ABOVE EXIST TO RETRACT** — a
+      working form named and forbidden, so a reviewer would decline to try the thing that
+      works. Measured by a reviewer, mid-review (#254): `<abs>/.venv/bin/python -m pytest
+      tests/ -q 2>&1 | tail -30` **ran**, and so did the same shape on a gate.
+    * **What was actually refused was a `;` SEQUENCE** — `… | head -5; echo "rc=$?"` came back
+      *"contains multiple operations"*.
+      ⚠ **Do not read that as a rule about pipes versus semicolons.** The reviewer that
+      measured it could not separate *"the matcher permits pipes"* from *"this session carries
+      defaults broader than `REVIEWER_ALLOW`"*, because `sed`, `grep`, `head` and `tail` all
+      ran and none of them is in the allowlist either. **The honest statement is: try it, and
+      believe what happens.** A refusal here is cheap and reversible; declining to try because
+      a document predicted a refusal is what cost this repo the round-trips.
+    * **The relative/absolute trap above does apply to `$PYBIN -m pytest …`**, which is granted
+      in the same form.
+      ⚠ **`$PYBIN -c …` is NOT granted** — the absolute-path entries are scoped to `-m pytest`
+      and the named gates. The relative `.venv/bin/python -c …` is granted by the bare-
+      interpreter entry and works. The asymmetry is real and cost a reviewer a round-trip.
   * **You may run `workflow/scripts/request_review.sh --dry-run …` to inspect the launcher's own
     behaviour** — it files nothing, launches nothing, and writes no credential file.
     ⚠ **`--dry-run` must be the FIRST argument.** The permission entry is a *prefix* match, so
@@ -250,16 +287,27 @@ silently. **Grade everything you file.**
 over-grading is one more review; the cost of under-grading is a defect landing on `main` with
 a note explaining that it was known about.
 
-Leave the `gh_*` and `migrated_from_github` fields empty — they are provenance for the 48
-issues (#12–#89) migrated off GitHub, whose numbers were preserved so a `#33` in an old commit
-message still names the same finding.
+Leave the `gh_*` and `migrated_from_github` fields empty. They were provenance for 48 issues
+(#12–#89) migrated off GitHub, whose numbers were preserved so a `#33` in an old commit message
+still named the same finding.
 
-⚠⚠ **THOSE RECORDS ARE NO LONGER IN THE LIVE TRACKER, AND THIS FILE SAID THEY WERE** (2026-08-19).
-The instance holds only issues numbered 90+; `#12–#89` are **not there**. They were exported
-before the tracker was wiped and live in `notes/tracker-export-2026-08-17.json` — 79 issue
-records, numbers 12–120 — so nothing was lost, but a reviewer who queries for them finds
-nothing and cannot tell that from data loss. Measured by a reviewer this branch, who correctly
-declined to file it because this file was outside its range.
+⚠⚠ **THOSE RECORDS ARE NO LONGER IN THE LIVE TRACKER, AND THIS FILE ONCE SAID THEY WERE.** The
+owner wiped it on 2026-08-17 after a byte-for-byte export; the instance now holds only issues
+numbered 90+, and `#12–#89` are **not there**. They live in
+`notes/tracker-export-2026-08-17.json` — 79 issue records, 130 comments, numbers 12–120 —
+so an old commit citing `#33` names a finding that exists only in that export.
+
+**This is not data loss and it is not a defect to file**: it was deliberate, numbers are
+allocated from 90 upward so nothing collides, and the `gh_*` fields stay in the schema because
+the export can be reloaded. ⚠ But **a reviewer who queries for them finds nothing and cannot
+tell that from data loss** — which is why this paragraph exists. Verify the export before
+believing any of it.
+
+⚠ **This was TWO consecutive paragraphs making one announcement** (#243), one from each side of
+`18baa00`'s merge combine. Both said the records were gone, both named the export, both gave a
+count — read as two separate events, in escalating type. That is the failure mode of combining
+rather than choosing, and it is why a combine needs the resulting TEXT read, not just a check
+that each side survived.
 
 **The numbers stay reserved.** ⚠ But the export is NOT the whole record of which are taken
 (issue #164): it is a 2026-08-17 SNAPSHOT holding 79 records, of which 48 are below 90 and
@@ -441,6 +489,46 @@ mostly repairs of its own repairs, and **two fixes in one commit once cancelled 
 out**. A follow-up that only verified would structurally never see any of that. New findings
 are filed exactly as in §5a — `open`, counter `0`, this branch.
 
+#### ⚠⚠ Route the finding to the right record — and routing is NOT withholding
+
+**Owner, 2026-08-21.** On a follow-up, much of what you see is not new: it is a defect already
+described by an issue on this branch, still present or only half repaired. Filing it again
+makes a second record of one defect, and the two then need separate verification, separate
+grading and separate closing — while the branch cannot converge until both are settled. **Use
+the issue that already exists wherever the finding falls inside its scope. Open a new one only
+for a defect that is genuinely novel** — introduced by the fix pass, or described by no open
+issue here.
+
+Decide in this order:
+
+1. **An issue in `review` whose fix does not hold?** Then it is not a new finding at all — it
+   is Job 1 above. Send that issue back to `open` with the mandatory comment saying precisely
+   what is still wrong.
+2. **Inside the scope of an issue already `open` on this branch?** Comment on that issue with
+   what you now see, and do not file. It is already in Ozzy's queue and already blocks.
+3. **Genuinely new?** File it, exactly as in §5a.
+
+⚠ **A `closed` issue whose defect has returned cannot be reopened, and that is the tool's
+shape rather than a preference:** `issue.py reopen` moves an issue from `review` only, so a
+closed record is out of its reach. File a new issue and cite the old number in the body.
+**Do not describe such a finding as "reopened"** — nothing was. (The owner is deciding whether
+that should change; until it does, this is the whole of it.)
+
+⚠⚠ **THIS IS A ROUTING RULE. IT IS NOT A QUOTA, AND IT MUST NOT BECOME ONE.** Nothing here
+reduces what you report: every defect you find still gets written down, on one record or
+another. The choice is *which record*, never *whether*.
+
+⚠⚠ **SO WHEN YOU CANNOT DECIDE WHETHER A FINDING FITS AN EXISTING ISSUE, FILE IT.** A
+duplicate costs one comment to merge. A defect you talked yourself out of recording costs the
+branch — and *"it was probably covered by #N"* is precisely how one is lost, because it leaves
+no trace to find later. **Squeezing a second defect into one issue's comments is also a
+merge-gate defect in its own right:** the gate reads one `severity` per record, so a HIGH
+folded into a LOW's thread rides past a floor that would have stopped it.
+
+⚠ **See §5's note on the two prohibitions no owner ever asked for** — *"the reviewer never
+files"* was the first, written after a 25-issue afternoon. This rule is the obvious shape of a
+third. It is about **de-duplication**, and it is bounded to that.
+
 Then **report how many issues remain open** (§7) and stop.
 
 ### What you do NOT do on any review
@@ -452,6 +540,25 @@ Then **report how many issues remain open** (§7) and stop.
 * ⚠ **You do not decide the cycle is over.** There is no convergence check here any more. Ozzy
   reads the tracker after you and `scripts/merge_branch.sh` enforces the gate; a reviewer that
   announces "converged" is asserting something it does not own.
+* ⚠⚠ **YOU DO NOT CHANGE THE TREE — and since 2026-08-18 nothing stops you.** You now hold
+  `python` and `python3`, which is arbitrary code execution: the allowlist can no longer tell
+  an expression you evaluate from a file you rewrite. The owner granted that knowingly so you
+  can **reproduce** a finding instead of arguing it. The obligation comes with it.
+
+  **Running the suite is expected to leave incidental artifacts** — `__pycache__`, `.pytest_cache`,
+  a stray temp file. That is fine. Leaving them silently is not.
+
+  **The mechanism, and it is not optional:** end every run with
+
+  ```
+  git status --short
+  ```
+
+  and **paste its output verbatim into your final summary**, under a heading that says what it
+  is. Clean up anything you put there that is not ignored, then show the result. A tree you say
+  is clean is a claim; `git status` is evidence, and the whole reason you were given execution
+  is that this repo trusts reproduction over assertion. If it is not empty and you did not put
+  it there, say so rather than tidying someone else's work away.
 
 ### On escalated issues you encounter
 
@@ -492,20 +599,34 @@ filter='branch_name="<the branch under review>" && state="open"'
 
 ⚠ **Scope it to YOUR branch — never widen it to `branch_name!=""`.**
 
-⚠⚠ **THE NINE ISSUES THIS PARAGRAPH USED TO NAME NO LONGER EXIST** (2026-08-19). It cited
-#26, #68, #70, #79, #80, #81, #85, #87 and #89 as a migrated backlog parked on
-`github-issues-fixes`; the live tracker holds nothing below #90. A reviewer following it
-scopes its count away from records that are not there, and — worse — reads the instruction as
-evidence that a backlog it cannot see is out there unworked. The rule below is unchanged and
-still right; only its example was stale.
+⚠⚠ **AND HERE IS WHY THAT PARTICULAR FILTER, WHICH LOOKS HARMLESS.** `branch_name!=""` reads
+like a "has a branch" sanity check. It was the right guard only while other branches' issues
+carried no branch at all; **once they carry one, the clause that used to EXCLUDE them
+INCLUDES them.** It inverted. Measured 2026-08-21: of 27 open issues in this repo, **all 27
+carry a non-empty `branch_name`**, so that filter now matches every one of them.
 
-The reason to scope stays the same: another branch's open issues will not close on your
-cycle, so a check that counts them can never reach zero — and reading that as "the loop is
-not converging" is exactly the wrong conclusion. `branch_name!=""` was the right guard only while
-another branch's issues carried no branch at all; once they carry one, the clause that used
-to exclude them would **include** them. ⚠ This sentence said "that backlog … it now has one"
-in the present tense, six lines below the paragraph retracting it, until 2026-08-19 — the
-fourth copy of a claim I corrected in three places (issue #163).
+That sentence was deleted by `6e89848` and restored by #244 — it is the only text that ever
+explained the mechanism, and an unexplained prohibition is the kind the next agent tidies away
+or reasons around (`AGENTS.md` §5c). The same commit also claimed *"the rule has not changed;
+its reason has"* while leaving the reason verbatim identical three paragraphs below, which sent
+a reader looking for a new justification that was never written.
+
+⚠⚠ **THE BACKLOG THIS PARAGRAPH USED TO NAME DOES NOT EXIST.** It cited nine open issues —
+#26, #68, #70, #79, #80, #81, #85, #87, #89 — as a migrated GitHub backlog parked on
+`github-issues-fixes` that could never close on your cycle. The tracker was wiped on
+2026-08-17 and holds nothing below #90; the records are in
+`notes/tracker-export-2026-08-17.json`.
+
+⚠ **DO NOT GO LOOKING FOR IT, AND DO NOT REPORT ITS ABSENCE AS A FINDING.** A reviewer did
+exactly that on 2026-08-17 — correctly refusing to guess a cause, because this paragraph still
+described the backlog as live. That is this file misleading its own reader, and it is the
+second time: the same claim survived here in the present tense six lines below its own
+retraction until 2026-08-19 (issue #163).
+
+The scoping rule survives the backlog on its own merits: **another branch's open issues are
+not yours to count.** They will not close on your cycle, so a check that counts them can never
+reach zero — and reading that as "the loop is not converging" is exactly the wrong conclusion.
+A number that mixes branches tells the worker nothing about the one under review.
 
 ⚠ **This is a REPORT, not a verdict.** You are telling Ozzy what is left, not declaring the
 work done — the merge gate in `scripts/merge_branch.sh` decides that, server-side, and it

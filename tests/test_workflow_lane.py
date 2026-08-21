@@ -618,3 +618,48 @@ def test_the_zero_warning_does_not_refuse():
     assert patched.get("state") == "review", (
         "cmd_review refused the transition at agent_passes = 0. It must only warn — 0 is "
         "also the owner's deliberate re-arm value")
+
+
+# --- the reviewer's routing rule (owner, 2026-08-21) --------------------------------------
+
+REVIEWER_MD = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
+
+
+def test_the_reviewer_is_not_told_to_reopen_from_a_state_the_code_refuses():
+    """§5b tells Janis a closed issue cannot be reopened. That is a claim about `TRANSITIONS`.
+
+    ⚠ DERIVED, NOT RESTATED. The owner is deciding whether `reopen` should accept `closed`
+    (2026-08-21). If it does and this paragraph is left behind, the persona instructs the
+    reviewer to file a new issue for a regression the tool could have reopened — and the
+    reviewer has no way to discover that, because a persona is the one document it cannot
+    check against the code. This test is what makes the two move together.
+
+    ⚠ `workflow/*.md` IS OUTSIDE THE DOC-CLAIMS GATE, which enumerates `notes/*.md`, the root
+    README and `configs/data` (scripts/gates/test_doc_claims.py:476-485). So no existing
+    mechanism would have caught this drift; assuming the gate covers a persona is itself the
+    error this pins.
+    """
+    froms = _transitions()["reopen"]["from"]
+    claim = "`issue.py reopen` moves an issue from `review` only"
+    if tuple(froms) == ("review",):
+        assert claim in REVIEWER_MD, (
+            "REVIEWER.md must carry the restriction while the code enforces it")
+    else:
+        assert claim not in REVIEWER_MD, (
+            "reopen now accepts %s — REVIEWER.md §5b still tells Janis it is review-only, so "
+            "a regression gets a duplicate issue instead of the reopen the tool allows"
+            % (tuple(froms),))
+
+
+def test_the_routing_rule_says_to_file_when_in_doubt():
+    """⚠ THE THIRD PROHIBITION NOBODY ASKED FOR IS THE FAILURE MODE HERE.
+
+    "Prefer the existing issue" is one edit away from "do not file", and this repo has already
+    retired one over-broad reviewer ban ("the reviewer never files") and had a second invented
+    outright. The owner's instruction was de-duplication; the tie-break that keeps it from
+    widening into suppression is the instruction to FILE when the call is unclear, so that
+    sentence is load-bearing rather than reassurance.
+    """
+    assert "WHEN YOU CANNOT DECIDE WHETHER A FINDING FITS AN EXISTING ISSUE, FILE IT" \
+        in REVIEWER_MD
+    assert "IT IS NOT A QUOTA" in REVIEWER_MD

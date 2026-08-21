@@ -89,7 +89,13 @@ def _on_base_branch(repo=REPO):
 
 
 def _commits(repo=REPO, boundary=GRANDFATHERED_THROUGH):
-    """(sha, author, email, body) for THIS BRANCH'S own unmerged commits after the boundary.
+    """(sha, author, email, trailers, body) for THIS BRANCH'S own unmerged commits after the
+    boundary.
+
+    ⚠ FIVE FIELDS, NOT FOUR (#251). `0afe042` added `%(trailers)` and updated every caller,
+    but left this line reading `(sha, author, email, body)` — so the next caller written from
+    the docstring unpacks four values and raises `ValueError`. Nothing was broken at the time,
+    which is exactly why it survived: the cost lands on whoever writes the next caller.
 
     ⚠ `--no-merges`, and scoped to `BASE..HEAD` (issue #102). A merge commit is made by
     `merge_branch.sh` without a `-c` pair and carries the configured identity, which is the
@@ -104,22 +110,24 @@ def _commits(repo=REPO, boundary=GRANDFATHERED_THROUGH):
     if anc.returncode != 0:
         return []
     r = subprocess.run(
+        # ⚠ `%(trailers)` AS WELL AS `%B` — git's own parse, not a substring of the body.
+        # See test_no_commit_carries_the_ziggy_trailer for why.
         ["git", "log", "--no-merges", f"{base}..HEAD", f"^{boundary}",
-         "--format=%H%x1f%an%x1f%ae%x1f%B%x1e"],
+         "--format=%H%x1f%an%x1f%ae%x1f%(trailers)%x1f%B%x1e"],
         cwd=repo, capture_output=True, text=True)
     out = []
     for rec in r.stdout.split("\x1e"):
         rec = rec.strip("\n")
         if not rec:
             continue
-        sha, name, email, body = rec.split("\x1f", 3)
+        sha, name, email, trailers, body = rec.split("\x1f", 4)
         # ⚠ FULL SHA, TRUNCATED ONLY WHERE IT IS PRINTED (issue #108). This used to store
         # `sha[:9]`, and the regression test below then compared that set against `%h`
         # output — seven characters here, because `core.abbrev=auto` scales with repo size.
         # A nine-character string never equals a seven-character one, so BOTH of its
         # assertions were incapable of failing, whatever the range contained. Comparing
         # full object names removes the question rather than picking a matching width.
-        out.append((sha, name, email, body))
+        out.append((sha, name, email, trailers, body))
     return out
 
 
@@ -127,16 +135,46 @@ def _short(sha):
     return sha[:9]
 
 
+def carries_bad_trailer(trailers, body):
+    """True if this commit carries the forbidden co-author line, by EITHER mechanism.
+
+    ⚠ TWO CHECKS, BECAUSE EACH ALONE HAS A MEASURED HOLE (#242).
+
+    `%(trailers)` is git's own parse and is the right primary: it excludes a mention of the
+    name in ordinary prose, which the old substring check flagged as a violation — that is
+    why the mechanism changed, and it was the correct change.
+
+    But git only parses a trailer block in the LAST paragraph. A commit whose message is
+    `…trailer…` + blank line + one closing sentence carries the line verbatim and parses as
+    having no trailers at all. Measured over four shapes in a throwaway repo; that one is the
+    gap, and the old substring check caught it.
+
+    So: the parsed field, OR a LINE-ANCHORED match on the body. Line-anchored is what keeps
+    prose out — `Suite: 1429 passed` mentioning the name mid-sentence does not start a line
+    with `Co-Authored-By:`.
+    ⚠ THE SECOND CHECK MUST MATCH THE TRAILER'S SHAPE, NOT ITS WORDS. A first version used
+    `re.match(r"\s*Co-Authored-By:.*Ziggy", line)` and immediately flagged `6e89848` — whose
+    message QUOTES the trailer while explaining it, and whose prose wraps so that the phrase
+    begins a line. That is the defect `0afe042` removed, reintroduced by its own fix.
+
+    A real trailer is `Key: Name <address>` alone on its line. Prose is not, however it wraps.
+    """
+    if BAD_TRAILER in trailers:
+        return True
+    return any(re.fullmatch(r"Co-Authored-By:\s*Ziggy\s*<[^>]+>\s*", line, re.I)
+               for line in body.splitlines())
+
+
 def test_no_commit_carries_the_ziggy_trailer():
-    bad = [f"  {_short(sha)}  {name}" for sha, name, _e, body in _commits()
-           if BAD_TRAILER in body]
+    bad = [f"  {_short(sha)}  {name}" for sha, name, _e, trailers, body in _commits()
+           if carries_bad_trailer(trailers, body)]
     assert not bad, (
         "commits carry a `Co-Authored-By: Ziggy` trailer, which DEVELOPER.md §1 rules out "
         "inside Sonora — you are the author:\n" + "\n".join(bad))
 
 
 def test_commits_are_authored_as_the_developer():
-    bad = [f"  {_short(sha)}  {name} <{email}>" for sha, name, email, _b in _commits()
+    bad = [f"  {_short(sha)}  {name} <{email}>" for sha, name, email, _t, _b in _commits()
            if (name, email) != DEVELOPER]
     assert not bad, (
         "unmerged commits on this branch are not authored as the developer:\n"
@@ -236,16 +274,14 @@ def landed_branch(tmp_path):
 
 def test_a_merge_commit_never_enters_the_range(landed_branch):
     """The failure #102 was filed about, reproduced in miniature."""
-    shas = {sha for sha, _n, _e, _b in
-            _commits(landed_branch["repo"], landed_branch["boundary"])}
+    shas = {sha for sha, _n, _e, _t, _b in _commits(landed_branch["repo"], landed_branch["boundary"])}
     assert landed_branch["merge"] not in shas, (
         "the merge commit is in the range, so the author check will fail on it — and it is "
         "made by merge_branch.sh with the owner's configured identity, on purpose")
 
 
 def test_a_commit_already_on_the_base_branch_never_enters_the_range(landed_branch):
-    shas = {sha for sha, _n, _e, _b in
-            _commits(landed_branch["repo"], landed_branch["boundary"])}
+    shas = {sha for sha, _n, _e, _t, _b in _commits(landed_branch["repo"], landed_branch["boundary"])}
     assert landed_branch["owner_on_base"] not in shas, (
         "a commit already on the base branch is in the range. That is history this guard "
         "has no mandate over, and the owner is 388 of 396 commits there")
@@ -255,8 +291,7 @@ def test_the_branch_own_work_DOES_enter_the_range(landed_branch):
     """⚠ THE CONTROL. Both assertions above are 'X is not in a set', which an empty set
     satisfies for free — the exact way the first version of this test passed while checking
     nothing. This one fails if the range has gone inert."""
-    shas = {sha for sha, _n, _e, _b in
-            _commits(landed_branch["repo"], landed_branch["boundary"])}
+    shas = {sha for sha, _n, _e, _t, _b in _commits(landed_branch["repo"], landed_branch["boundary"])}
     assert landed_branch["dev"] in shas, (
         "the branch's own commit is NOT in the range, so the two exclusion tests above are "
         "passing on an empty set and prove nothing")
@@ -272,7 +307,7 @@ def test_the_range_excludes_what_it_is_not_a_guard_over():
     base = _base_ref()
     if base is None or _on_base_branch():
         pytest.skip("no branch range to check here")
-    shas = {sha for sha, _n, _e, _b in _commits()}
+    shas = {sha for sha, _n, _e, _t, _b in _commits()}
     if not shas:
         pytest.skip("no unmerged commits after the boundary on this branch")
     assert all(len(s) == 40 for s in shas), "expected full object names from --format=%H"
@@ -295,3 +330,64 @@ def test_the_range_excludes_what_it_is_not_a_guard_over():
     assert not overlap, f"the range reaches commits already on {base}: {sorted(overlap)}"
     assert not (shas & _log("--merges", f"{base}..HEAD")), \
         "the range includes a merge commit"
+
+
+@pytest.mark.parametrize("shape,message,should_fire,trailers_carry", [
+    ("A — trailer as the last paragraph",
+     "fix: something\n\nCo-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n", True, True),
+    ("B — trailer, then a closing sentence",
+     "fix: something\n\nCo-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n\n"
+     "And some closing prose here.\n", True, False),
+    # ⚠ C CARRIES THE LITERAL `Co-Authored-By: Ziggy` IN MID-SENTENCE PROSE, deliberately
+    # (#241). The earlier version wrote only "a Ziggy trailer", so `BAD_TRAILER in body` was
+    # False for it — and a revert of this guard to the old substring check stayed green on all
+    # four shapes. With the full phrase present but not alone on its line, the line-anchored
+    # match still returns False while a substring revert turns red, which is what C is for.
+    ("C — the phrase in prose only",
+     "fix: something\n\nThis explains why a Co-Authored-By: Ziggy trailer is forbidden.\n\n"
+     "Suite: 1429 passed.\n", False, False),
+    ("D — alongside another trailer",
+     "fix: something\n\nSigned-off-by: Someone <s@example.com>\n"
+     "Co-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n", True, True),
+])
+def test_the_trailer_detection_actually_fires(tmp_path, shape, message, should_fire,
+                                              trailers_carry):
+    """⚠ THE CONTROL #241 SAID WAS MISSING, AND IT WAS RIGHT.
+
+    `0afe042` moved this guard onto `%(trailers)` — an unvalidated git format field — and
+    added no proof the field is ever non-empty. If it returned "" for every commit (an older
+    git, a typo in the format, a field reorder, a change to BAD_TRAILER's spelling) the guard
+    would pass green forever while checking nothing.
+
+    That hazard is what this entire FILE is built around: three of its tests exist solely as
+    controls, and its module docstring narrates issue #108, where both assertions of a guard
+    were incapable of failing whatever the range contained. The one assertion with no control
+    was the one that grew a new dependency.
+
+    ⚠ The `landed_branch` fixture cannot serve: every commit it builds has a one-line message,
+    so `%(trailers)` is empty for all of them. It exercises the RANGE, never the FIELD.
+
+    Shapes A–D are the four measured in #242. B is the one `%(trailers)` alone misses.
+    """
+    repo = tmp_path / "t"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", BASE_BRANCH)
+    (repo / "f.txt").write_text(shape, encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "-c", f"user.name={DEVELOPER[0]}", "-c", f"user.email={DEVELOPER[1]}",
+         "commit", "-q", "-m", message)
+    trailers = _git(repo, "log", "-1", "--format=%(trailers)")
+    body = _git(repo, "log", "-1", "--format=%B")
+
+    # ⚠⚠ THE TWO BRANCHES ARE PINNED SEPARATELY, AND THE COMBINED CALL IS NOT ENOUGH (#241).
+    # `carries_bad_trailer` is an OR, and the body regex alone returns the right answer for all
+    # four shapes — so forcing `trailers=""` changed NO result and the first version of this
+    # control could not fail if `%(trailers)` broke, which is the whole of #241. The trailers
+    # branch is not redundant: `Co-Authored-By: Ziggy` with no `<address>` is caught by it and
+    # missed by the `<[^>]+>` regex, and that coverage could vanish with nothing going red.
+    assert (BAD_TRAILER in trailers) is trailers_carry, (
+        f"shape {shape}: `%(trailers)` did not parse as expected — got {trailers!r}. This is "
+        "the field the guard's primary branch reads; if it is empty for every shape the guard "
+        "is checking nothing.")
+    assert carries_bad_trailer(trailers, body) is should_fire, (
+        f"shape {shape}: detection returned the wrong answer")

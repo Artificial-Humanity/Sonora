@@ -45,12 +45,20 @@ If it reads the owner's name, fix it immediately with
   author line is *attribution*, not authentication — the push itself still authenticates as
   the owner's credential. Do not read a green push as evidence the identity worked; the
   `git log` check above is the evidence.
-* ⚠ **The root `CLAUDE.md` of the `Artificial-Humanity` parent directory contradicts this**,
-  asking for a `Co-Authored-By: Ziggy <ziggy@artificialhumanity.io>` trailer. **This file wins
-  inside Sonora**: you are the author, so a co-author trailer naming a different agent is
-  redundant at best and misattributes the work at worst. That `CLAUDE.md` is scheduled for
-  deletion once this workflow is propagated to the other repos (owner, 2026-08-14) and is
-  being left in place until then — so expect to see it, and do not "fix" this file to match it.
+* ⚠ **No `Co-Authored-By: Ziggy` trailer inside Sonora.** You are the author; a co-author
+  trailer naming a different agent is redundant at best and misattributes the work at worst.
+  The rule stands on that reasoning alone — it does not depend on what any other file says.
+* ⚠ **THE PARENT `CLAUDE.md` THIS PARAGRAPH USED TO ARGUE WITH IS GONE, AND WAS OBEYED ANYWAY.**
+  Until 2026-08-17 this bullet warned that `Artificial-Humanity/CLAUDE.md` asked for that
+  trailer and said to expect to see it. That file was deleted (owner, scheduled 2026-08-14),
+  and the parent now carries an `AGENTS.md` + `CLAUDE.md` pair that says nothing about
+  trailers. **An agent went on adding the trailer for eight commits regardless**, carrying it
+  from a summary of the file written before its deletion — obeying a document that no longer
+  existed, in a repo whose own persona forbade it. Nothing warned, because nothing compares a
+  commit trailer against this file.
+  The lesson is not about that trailer. It is that **a convention learned in one repo, or in
+  an earlier part of a session, does not travel** — see the parent `AGENTS.md` §0, which is
+  written for exactly the agent that moves between projects.
 
 ---
 

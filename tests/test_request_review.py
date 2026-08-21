@@ -41,6 +41,7 @@ the network and independent of whether PocketBase is up.
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -226,7 +227,11 @@ def test_auto_permission_mode_is_not_used():
 def test_the_allowlist_has_no_git_wildcard():
     """#92: `Bash(git:*)` pre-approved push, commit and reset for the one role that must
     never write to main."""
-    allow = _array("REVIEWER_ALLOW")
+    # ⚠ RENDERED, NOT `_array` (#249). `_array` reads only the array literal and cannot see a
+    # `+=` append — 35 entries of the 40 the matcher receives. A wildcard added by an append
+    # was invisible to this guard, which is the one that keeps push/commit/reset away from the
+    # role that must never write to main.
+    allow = _rendered_allowlist()
     assert "Bash(git:*)" not in allow
     assert not any(a.startswith("Bash(git)") or a == "Bash(git *)" for a in allow)
 
@@ -312,8 +317,15 @@ def test_the_launcher_grant_is_scoped_to_dry_run():
     1094 tests green. Four fixes in this cycle have now been correct-but-unpinned (#110, #118,
     #119, and the #80 shape) — and this is the first where the unpinned guard protected a
     CAPABILITY rather than the accuracy of a sentence.
+
+    ⚠⚠ AND IT WAS STILL ON THE BLIND INSTRUMENT UNTIL #249. #245 built
+    `_rendered_allowlist()` — which parses what the matcher actually receives — and used it for
+    the two NEW tests while leaving this one, and the git-wildcard guard, on `_array`. So a
+    whole-script launcher grant introduced as a `+=` append would have been invisible to the
+    guard written to prevent exactly that, in the same file, thirty lines from the instrument
+    that would have caught it.
     """
-    launcher = [a for a in _array("REVIEWER_ALLOW") if "request_review.sh" in a]
+    launcher = [a for a in _rendered_allowlist() if "request_review.sh" in a]
     assert launcher, "the reviewer needs to be able to dry-run the launcher it reviews"
     for entry in launcher:
         assert "--dry-run" in entry, (
@@ -350,3 +362,88 @@ def test_the_sibling_repo_is_offered_read_only_and_never_writable():
     for t in ("Edit", "Write", "NotebookEdit"):
         assert t not in tools, f"{t} in --tools would make --add-dir a write grant"
         assert t in _array("REVIEWER_DENY")
+
+
+def _rendered_allowlist():
+    """The allowlist AS THE MATCHER WILL SEE IT — parsed from `--dry-run`, not from source.
+
+    ⚠⚠ THIS REPLACED A SOURCE SCAN THAT WAS BLIND TO EVERY GATE PATH (#245). The scan read the
+    array literal plus `REVIEWER_ALLOW+=("...")` appends by regex. The same commit that fixed
+    #239 moved the gate paths into a `for _g in ...` word list, so the only text the regex
+    could reach was the append's literal `Bash($PYBIN $_g:*)` — an unexpanded shell variable.
+    No gate path was visible to it at all, and reverting the loop list to the #239 defect left
+    the test GREEN.
+
+    ⚠ THE LESSON IS NOT "ADD THE LOOP TO THE REGEX". A scanner has to model shell expansion and
+    will be wrong again at the next restructure — that is twice inside one commit already
+    (`_array` missed appends; the regex then missed the loop). `--dry-run` renders the array
+    through the same code path the real call uses, so there is nothing left to model. It is the
+    precedent `tests/test_review_cycle.py` set for the same reason (#231).
+    """
+    r = subprocess.run([str(SCRIPT), "--dry-run", "--range", "origin/main..HEAD",
+                        "--developer", "Ozzy"],
+                       cwd=REPO, capture_output=True, text=True)
+    assert r.returncode == 0, f"--dry-run failed, so this test proves nothing: {r.stderr}"
+    for line in r.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("--allowedTools"):
+            body = stripped.removeprefix("--allowedTools").rstrip()
+            return shlex.split(body.removesuffix("\\"))
+    raise AssertionError("--dry-run printed no --allowedTools line")
+
+
+def test_no_allow_entry_ends_mid_token():
+    """⚠ #239: `Bash($PYBIN scripts/gates/:*)` could never match, because the real token is
+    `scripts/gates/test_doc_claims.py` and the matcher tokenises on whitespace. The gate was
+    refused for the entire life of the branch that granted it.
+
+    ⚠ THIS REPO ALREADY PINNED THE RULE FROM THE DENY SIDE — see
+    `test_value_taking_git_options_are_denied_in_both_spellings`: "an entry can name an option
+    and still miss it — which is worse than an absent entry, because it reads as covered."
+    The allow side had no equivalent, so the same mistake was available and I made it.
+
+    A trailing `/` is the checkable case: a path fragment is definitionally mid-token. This
+    does not catch every mid-token prefix — `--outp` would pass — and the docstring says so
+    rather than implying coverage it does not have.
+    """
+    bad = [e for e in _rendered_allowlist()
+           if e.startswith("Bash(") and e.removesuffix(":*)").endswith("/")]
+    assert not bad, (
+        "these allow entries end mid-token and can never match a real command; name the file "
+        f"rather than the directory: {bad}")
+
+
+def test_every_gate_on_disk_is_granted():
+    """⚠⚠ #247: the grant named FOUR gates while `scripts/gates/` held SIX.
+
+    `test_film_export_gate.py` and `test_vat_identity.py` were refused — measured by the
+    reviewer, mid-review — while `REVIEWER.md` §1 told that same reviewer the whole directory
+    was reachable. A hand-kept list beside a directory goes stale the moment a gate is added,
+    and this one was stale on the commit that wrote it.
+
+    ⚠ DERIVED FROM DISK ON BOTH SIDES. Asserting a list of six names here would be the same
+    defect one layer up: the next gate added would leave the grant and this test agreeing with
+    each other and disagreeing with the directory.
+    """
+    on_disk = sorted(p.name for p in (REPO / "scripts" / "gates").glob("test_*.py"))
+    assert on_disk, "no gates found — this test would pass vacuously"
+    granted = _rendered_allowlist()
+    missing = [g for g in on_disk if not any(g in e for e in granted)]
+    assert not missing, (
+        "these gates exist on disk but are not in the rendered allowlist, so the reviewer is "
+        f"refused when it runs them: {missing}")
+
+
+def test_the_gate_entries_reach_the_rendered_allowlist():
+    """The control for the test above — prove the data it inspects is actually there.
+
+    ⚠⚠ WITHOUT THIS, AN EMPTY PARSE PASSES FOREVER. The test above asserts a NEGATIVE, so a
+    `_rendered_allowlist()` returning `[]` — a renamed flag, a changed print format, a moved
+    line — satisfies it silently. That is precisely how #245 survived: a green negative
+    evaluated over data that was not in the string being searched.
+    """
+    entries = _rendered_allowlist()
+    gates = [e for e in entries if "scripts/gates/" in e]
+    assert gates, f"no gate entry in the rendered allowlist at all: {entries}"
+    for e in gates:
+        assert e.endswith(".py:*)"), f"a gate entry does not name a file: {e}"

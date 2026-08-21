@@ -14,6 +14,7 @@ a *capability* rather than a sentence, reverting it would have restored unbounde
 reviews (#115).
 """
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -242,3 +243,226 @@ def test_it_is_classified_in_the_pipeline_manifest():
 
 def test_the_script_parses():
     assert subprocess.run(["bash", "-n", str(SCRIPT)]).returncode == 0
+
+
+def _ported_lane(tmp_path):
+    """A minimal repo holding `workflow/` and NOTHING ELSE — the ported-lane shape.
+
+    ⚠ NO `.gitignore`, DELIBERATELY. WORKFLOW.md's "Porting this lane" says to copy
+    `workflow/` into the new repo, so a ported copy has no ignore entry for the driver's
+    runtime files. A fixture that copied this repo's `.gitignore` would make the test pass
+    for a reason the ported lane does not have, which is the failure mode `_array` had.
+    """
+    (tmp_path / "workflow" / "scripts").mkdir(parents=True)
+    for name in ("request_review.sh",):
+        p = tmp_path / "workflow" / "scripts" / name
+        p.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        p.chmod(0o755)
+    dst = tmp_path / "workflow" / "scripts" / "review_cycle.sh"
+    dst.write_text(SOURCE, encoding="utf-8")
+    dst.chmod(0o755)
+    (tmp_path / "workflow" / "DEVELOPER.md").write_text("persona\n", encoding="utf-8")
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(git + ["commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+    return tmp_path
+
+
+def _commit_all(repo, msg):
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t",
+                    "commit", "-q", "-m", msg], cwd=repo, check=True)
+
+
+def _real_startup(repo, *extra):
+    """Run the driver for real — no `--dry-run` — and stop it right after startup.
+
+    ⚠ `--dry-run` CAN NO LONGER BE THE VEHICLE (#248). The old test ran the dry run and
+    asserted the files were gone, so the suite asserted the very deletion that broke
+    `--help`'s "files nothing" promise. A test has to reach a REAL startup to see the clear.
+
+    ⚠ HOME IS REDIRECTED SO THE TRACKER LOOKUP FAILS ON PURPOSE. `pb()` reads
+    `~/.claude.json`; with it absent the helper prints "unreachable" and the driver stops with
+    exit 4, which makes this deterministic and offline rather than dependent on a live tracker.
+
+    ⚠⚠ BUT EXIT 4 ARRIVES *AFTER* `request_review.sh`, NOT BEFORE (#253). An earlier version of
+    this docstring said "before it can spawn `claude`", which is false and expensively so: the
+    `pb` call whose "unreachable" produces exit 4 sits INSIDE the review loop, one statement
+    below the launcher invocation. **The only thing keeping a real, paid, unattended `claude
+    -p` out of this test is the stub `request_review.sh` that `_ported_lane` writes** — never
+    the HOME redirect. Anyone reusing this helper against a lane with a REAL launcher would
+    spawn a live review, and the docstring told them it was safe.
+    """
+    env = dict(os.environ, HOME=str(repo / "fake-home"))
+    (repo / "fake-home").mkdir(exist_ok=True)
+    return subprocess.run(["bash", "workflow/scripts/review_cycle.sh", *extra],
+                          cwd=repo, capture_output=True, text=True, env=env)
+
+
+@pytest.mark.parametrize("runtime_file", [".review_cycle.notes", ".review_cycle.stop"])
+def test_a_stale_runtime_file_does_not_block_the_next_run(tmp_path, runtime_file):
+    """⚠⚠ THE DRIVER USED TO RUN EXACTLY ONCE PER MANUAL CLEANUP, and nothing said so.
+
+    The worker's brief, step 5, tells it to write `.review_cycle.notes`; nothing removed the
+    file; and the dirty-tree check refuses to start when the tree is not clean, which an
+    untracked file made it. Run 1 succeeded and run 2 died at the door — blaming "your
+    uncommitted edits", which is not what was there.
+
+    ⚠ PARAMETRISED OVER BOTH RUNTIME FILES (#246). The first fix moved the notes `rm` above the
+    refusal and left the stop file's below it, so the identical death survived one filename
+    over, while the commit's own reasoning covered both.
+
+    ⚠ THIS RUNS THE SCRIPT INSTEAD OF READING IT. A source scan for the `rm` passes with it
+    placed AFTER the dirty-tree check, where it can never be reached — the ordering IS the fix,
+    and only execution sees ordering (#231).
+    """
+    repo = _ported_lane(tmp_path)
+    (repo / runtime_file).write_text("left over from a previous cycle\n", encoding="utf-8")
+
+    r = _real_startup(repo)
+    assert r.returncode == 4, (
+        f"expected the tracker-unreachable stop (4) after startup, got {r.returncode}: "
+        f"{r.stderr[-400:]}")
+    assert not (repo / runtime_file).exists(), (
+        f"{runtime_file} survived a real startup, so the next run starts from a poisoned tree")
+
+
+@pytest.mark.parametrize("runtime_file", [".review_cycle.notes", ".review_cycle.stop"])
+def test_a_dry_run_does_not_touch_the_runtime_files(tmp_path, runtime_file):
+    """⚠⚠ #248: `--help` says a dry run "Spends nothing, files nothing" — it deleted both.
+
+    Two real losses, and both silent. The notes file is the loop's ONLY memory across passes
+    (DEVELOPER.md §3: without it "the next review cannot tell a fix from an omission"), so
+    checking the plan between a worker pass and the next review destroyed the brief. And the
+    stop file is the documented halt control, so a dry run in a second terminal DISARMED a
+    halt an operator had deliberately armed, and the cycle kept spending.
+
+    ⚠ THE PREVIOUS TEST HERE ASSERTED THE DELETION AS A REQUIREMENT. It used `--dry-run` as a
+    cheap way to reach startup and then asserted the files were gone — so the suite positively
+    agreed with the defect, and nobody weighed that assertion against `--help`. That is why
+    this is written as a promise about the FLAG rather than a by-product of the fixture.
+    """
+    repo = _ported_lane(tmp_path)
+    (repo / runtime_file).write_text("armed by the operator\n", encoding="utf-8")
+
+    r = subprocess.run(["bash", "workflow/scripts/review_cycle.sh", "--dry-run"],
+                       cwd=repo, capture_output=True, text=True)
+    assert r.returncode == 0, f"the dry run refused: {r.stderr[-400:]}"
+    assert (repo / runtime_file).exists(), (
+        f"--dry-run deleted {runtime_file}, but --help promises it files nothing")
+
+
+def test_a_dry_run_is_not_refused_by_its_own_leftovers(tmp_path):
+    """The exclusion in the dirty-tree check, pinned as behaviour.
+
+    A ported lane has no `.gitignore` entry for these files, so without the pathspec exclusion
+    a dry run over a leftover notes file would die on the dirty-tree refusal — reporting a
+    failure the real run does not hit, because the real run clears them first.
+    """
+    repo = _ported_lane(tmp_path)
+    (repo / ".review_cycle.notes").write_text("stale\n", encoding="utf-8")
+    (repo / ".review_cycle.stop").write_text("armed\n", encoding="utf-8")
+    r = subprocess.run(["bash", "workflow/scripts/review_cycle.sh", "--dry-run"],
+                       cwd=repo, capture_output=True, text=True)
+    assert r.returncode == 0, f"leftovers alone refused the dry run: {r.stderr[-400:]}"
+
+
+@pytest.mark.parametrize("stop_flag,dirt", [
+    # ⚠⚠ THE DIRT IS CHOSEN PER CASE SO EACH ONE DISCRIMINATES. A first draft used the same
+    # two dirty files everywhere; the glob and basename-collision rows then passed against the
+    # VULNERABLE script too, because the exclusion hid one file and the other still reported
+    # the tree as dirty. Two of five "controls" could not fail — the same green-negative defect
+    # #245 and #248 were about, committed inside the fix for #252. Each row's dirt is now
+    # exactly what that row's exclusion would have hidden.
+    pytest.param([], ["a.md"], id="default"),
+    pytest.param(["--stop-file", "/tmp/somedir/"], ["a.md"],
+                 id="trailing-slash-empty-basename"),
+    pytest.param(["--stop-file", "/tmp/*.md"], ["a.md"], id="glob-in-basename"),
+    pytest.param(["--stop-file", "/tmp/halt.txt"], ["halt.txt"],
+                 id="basename-collides-with-tracked-file"),
+    pytest.param(["--stop-file", "sub/halt"], ["a.md"], id="stop-file-below-the-root"),
+])
+def test_real_dirt_still_refuses(tmp_path, stop_flag, dirt):
+    """⚠ THE CONTROL ON THE EXCLUSION — it must hide the driver's two files and NOTHING else.
+
+    The dirty-tree check is what stops the unattended worker absorbing edits nobody wrote a
+    message for, and the driver spawns that worker with auto-mode and commit rights.
+
+    ⚠⚠ PARAMETRISED BECAUSE THE FIRST VERSION OF THIS CONTROL ONLY EVER RAN THE DEFAULT FLAG,
+    and stayed green through all three failures below (#252). The exclusion was built from
+    `${STOPFILE##*/}` — the BASENAME of an operator-supplied path — dropped into a git
+    pathspec unvalidated:
+
+      * a TRAILING SLASH made the basename empty, and `git status --porcelain -- . ':(exclude)'`
+        exits 0 with no output on ANY tree — the guard did not narrow, it VANISHED, silently;
+      * a GLOB hid every matching file at any depth (fnmatch without FNM_PATHNAME);
+      * a plain BASENAME COLLISION hid a tracked, modified file at the repo root.
+
+    `sub/halt` is the opposite failure: it excluded `halt`, never matched `sub/halt`, and the
+    driver died with the wrong-cause message #246 was filed about.
+    """
+    repo = _ported_lane(tmp_path)
+    (repo / "sub").mkdir(exist_ok=True)
+    (repo / "sub" / "keep.txt").write_text("k\n", encoding="utf-8")
+    for name in ("a.md", "halt.txt"):
+        (repo / name).write_text("original\n", encoding="utf-8")
+    _commit_all(repo, "fixture")
+    for name in dirt:
+        (repo / name).write_text("CHANGED\n", encoding="utf-8")
+
+    r = _real_startup(repo, *stop_flag)
+    assert r.returncode == 1, (
+        f"dirt {dirt} was not refused with {stop_flag or '(default)'}: "
+        f"rc={r.returncode}\n{r.stderr[-500:]}")
+    assert ("working tree is dirty" in r.stderr
+            or "must name a file" in r.stderr), r.stderr[-500:]
+
+
+def test_the_drivers_own_files_are_not_read_as_dirt(tmp_path):
+    """The other half: the exclusion must actually exclude, or #246 comes straight back.
+
+    A stop file below the repo root is the case the basename version got wrong in this
+    direction — it excluded `halt`, never matched `sub/halt`, and refused the run.
+    """
+    repo = _ported_lane(tmp_path)
+    (repo / "sub").mkdir(exist_ok=True)
+    (repo / "sub" / "keep.txt").write_text("k\n", encoding="utf-8")
+    _commit_all(repo, "fixture")
+    (repo / ".review_cycle.notes").write_text("stale\n", encoding="utf-8")
+    (repo / "sub" / "halt").write_text("armed\n", encoding="utf-8")
+
+    r = subprocess.run(["bash", "workflow/scripts/review_cycle.sh", "--dry-run",
+                        "--stop-file", "sub/halt"],
+                       cwd=repo, capture_output=True, text=True)
+    assert r.returncode == 0, (
+        f"the driver's own runtime files were read as dirt: {r.stderr[-500:]}")
+
+
+@pytest.mark.parametrize("var", ["$NOTES_FILE", "$STOPFILE"])
+def test_each_runtime_file_is_cleared_before_the_dirty_tree_check(var):
+    """Ordering, pinned separately — the behavioural test cannot name WHY it failed.
+
+    ⚠⚠ SEARCHING FOR `rm -f "$STOPFILE"` IS THE WRONG INSTRUMENT, and the first draft of this
+    test used it and failed against a correct script. That exact string DOES occur — inside
+    `check_stop`, which removes the file on the halt path, 90 lines BELOW the refusal. The
+    startup clear takes both files on one line, so a string search finds the wrong `rm`.
+
+    Scanning LINES for an `rm -f` naming the variable, and requiring one before the refusal,
+    is indifferent to how the two are grouped — one line or two, either order.
+    """
+    lines = [l.split("#", 1)[0] for l in SOURCE.splitlines()]
+    dirty = next(i for i, l in enumerate(lines) if "working tree is dirty" in l)
+    cleared = [i for i, l in enumerate(lines)
+               if l.strip().startswith("rm -f") and var in l]
+    assert cleared, f"nothing clears {var} at all"
+    assert min(cleared) < dirty, (
+        f"{var} is only cleared at line {min(cleared) + 1}, below the dirty-tree refusal at "
+        f"line {dirty + 1} — where it cannot stop the refusal it exists to prevent")
+
+
+def test_the_notes_path_has_one_definition():
+    """It was written out three times; the `rm` was added against one of the copies."""
+    code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
+    assert code.count(".review_cycle.notes") == 1, (
+        "the literal path belongs in NOTES_FILE alone; every other use reads the variable")

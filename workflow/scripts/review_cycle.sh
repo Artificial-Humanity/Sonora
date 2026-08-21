@@ -92,19 +92,114 @@ say() { echo "── review_cycle: $*" >&2; }
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository."
 cd "$REPO_ROOT"
 [[ -z "$STOPFILE" ]] && STOPFILE="$REPO_ROOT/.review_cycle.stop"
+# ⚠ NORMALISED AND VALIDATED HERE, because everything downstream treats it as a file path
+# (#252). `--stop-file` is the one operator-supplied path in this script.
+#   * A DIRECTORY, or anything with a trailing slash, is refused: `rm -f` on it fails under
+#     `set -e` and kills the run with a message about `rm`, and its basename is empty, which
+#     is what silenced the dirty-tree guard entirely.
+#   * A RELATIVE path is made absolute against the repo root — the script has already `cd`ed
+#     there, so it already resolved that way; making it explicit is what lets the exclusion
+#     below compare whole paths instead of guessing.
+[[ "$STOPFILE" == */ || -d "$STOPFILE" ]] && die "--stop-file must name a file, not a
+     directory: $STOPFILE"
+[[ "$STOPFILE" != /* ]] && STOPFILE="$REPO_ROOT/$STOPFILE"
 [[ -x workflow/scripts/request_review.sh ]] || die "workflow/scripts/request_review.sh not found or not executable"
 [[ -r workflow/DEVELOPER.md ]] || die "workflow/DEVELOPER.md not readable"
 [[ "$MAX_REVIEWS" =~ ^[1-4]$ ]] || die "--max-reviews must be 1-4 (three fix passes need four reviews)"
 
+NOTES_FILE="$REPO_ROOT/.review_cycle.notes"
+
+# ⚠⚠ CLEARED BEFORE THE DIRTY-TREE CHECK, AND THAT ORDER IS THE WHOLE FIX. The worker is told
+# to write `.review_cycle.notes` (step 5 of its brief); nothing used to remove it. So run 1
+# left it behind, and run 2 died at the check below — reporting a dirty tree and pointing at
+# "your uncommitted edits", which named the wrong cause and sent the reader to look for edits
+# they had not made. The obvious remedy, committing it, is worse: it puts cycle notes inside
+# the range under review. THE DRIVER RAN EXACTLY ONCE PER MANUAL CLEANUP.
+#
+# ⚠ Removing it also ends a second, quieter failure: the file is read before EVERY review,
+# including review 1, so a surviving file briefed the first review of the NEXT cycle with the
+# LAST cycle's fix notes — describing fixes to a different range as though they were this one's.
+#
+# ⚠ THE `rm` IS LOAD-BEARING EVEN THOUGH `.gitignore` NOW LISTS THE FILE, because porting this
+# lane copies `workflow/` and nothing else (WORKFLOW.md, "Porting this lane"). A ported copy
+# gets no `.gitignore` entry, so a driver that leaned on ignoring alone would arrive in the new
+# repo with the once-only bug intact. Ignoring keeps it out of `git status`; this keeps it out
+# of the next cycle.
+#
+# ⚠⚠ BOTH RUNTIME FILES, NOT JUST THE NOTES (#246). The first version of this fix moved the
+# notes `rm` up here and left `rm -f "$STOPFILE"` below the refusal, where it cannot do its
+# job — while arguing, three lines above, that the ported lane is exactly why the `rm` matters.
+# The argument is equally true of the stop file and was applied to one of the two files the
+# same commit ignored. A stop file survives whenever the cycle ends by any of the seven routes
+# in `--help` OTHER than the stop file itself (`check_stop` removes it on that one path only),
+# or when it is created while no cycle is running; in a ported lane it is then untracked, the
+# tree is dirty, and the next run dies at the check below naming the same wrong cause.
+#
+# ⚠⚠ NOT ON A DRY RUN (#248). `--help` promises "Print the plan and exit. Spends nothing,
+# files nothing", and an unconditional clear broke that promise twice over: it destroyed the
+# loop's only cross-pass memory, and it DISARMED THE HALT CONTROL — an operator who arms the
+# stop file to stop a running cycle and then opens a second terminal to check the plan would
+# silently un-arm it and the cycle would keep spending. `--stop-file` also takes an arbitrary
+# path, so the unguarded form was an `rm -f` on operator-supplied input in the mode advertised
+# as inert. The first version of this fix was pinned by a test that asserted the deletion as a
+# REQUIREMENT, so the suite agreed with the bug.
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  rm -f "$NOTES_FILE" "$STOPFILE"
+fi
+
 # ⚠ Refuse a dirty tree. The worker commits, so uncommitted edits would be swept into a
 # commit nobody wrote a message for — and the range under review would stop matching the
 # range that was read.
-if [[ -n "$(git status --porcelain)" ]]; then
+#
+# ⚠ THE DRIVER'S OWN RUNTIME FILES ARE EXCLUDED, and that is what lets the clear above be
+# skipped on a dry run without changing what a dry run reports. They are never part of the
+# range and never something the worker could commit, so they are not "dirt" in the sense this
+# check means. Without the exclusion, `--dry-run` in a ported lane (no `.gitignore` entry, a
+# notes file left by the last cycle) would die here and report a refusal THE REAL RUN WOULD
+# NOT HIT — the real run clears them one line up. Measured: the pathspec hides these two and
+# still reports every other change.
+# ⚠⚠ EXACT REPO-RELATIVE PATHS, COMPARED AS STRINGS — NOT A GIT PATHSPEC (#252). The first
+# version excluded `":(exclude)${STOPFILE##*/}"`, putting the BASENAME of an operator-supplied
+# path into a pathspec unvalidated, and it failed three ways — all measured:
+#
+#   * `--stop-file /tmp/somedir/` made the basename EMPTY, and `git status --porcelain --
+#     . ':(exclude)'` exits 0 with NO output on any tree. The guard did not narrow, it
+#     VANISHED — silently, with nothing to notice it by. A trailing slash is an ordinary typo.
+#   * `--stop-file /tmp/*.md` put a glob in the pathspec. Matching is fnmatch WITHOUT
+#     FNM_PATHNAME, so it hid every `.md` in the tree at any depth.
+#   * `--stop-file /tmp/halt.txt` hid a TRACKED, MODIFIED `halt.txt` at the repo root, because
+#     a basename cannot tell those two files apart.
+#
+# And it was over-narrow in the other direction: `--stop-file sub/halt` excluded `halt` rather
+# than `sub/halt`, so the file never matched and the run died with the wrong-cause message
+# #246 was filed about.
+#
+# String equality on the whole repo-relative path has none of those degrees of freedom: no
+# pattern syntax, no depth ambiguity, and a path outside the repo simply never matches — which
+# is correct, because git will not report it either.
+_repo_relative() {  # prints the path relative to REPO_ROOT, or nothing when it is outside
+  [[ "$1" == "$REPO_ROOT/"* ]] || return 0
+  printf '%s' "${1#"$REPO_ROOT"/}"
+}
+
+tree_has_real_dirt() {
+  local rel_notes rel_stop line path
+  rel_notes="$(_repo_relative "$NOTES_FILE")"
+  rel_stop="$(_repo_relative "$STOPFILE")"
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    path="${line:3}"          # porcelain v1 is `XY<space>path`
+    [[ -n "$rel_notes" && "$path" == "$rel_notes" ]] && continue
+    [[ -n "$rel_stop"  && "$path" == "$rel_stop"  ]] && continue
+    return 0
+  done < <(git status --porcelain)
+  return 1
+}
+
+if tree_has_real_dirt; then
   die "working tree is dirty. Commit or stash first — the worker commits, and it would
      otherwise absorb your uncommitted edits into a review it never read."
 fi
-
-rm -f "$STOPFILE"
 
 # --- tracker helper --------------------------------------------------------
 pb() {  # $1 = pocketbase filter -> prints totalItems, or "unreachable"
@@ -235,7 +330,7 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
 
   say "review $review of $MAX_REVIEWS over $RANGE"
   NOTES_ARG=()
-  [[ -f "$REPO_ROOT/.review_cycle.notes" ]] && NOTES_ARG=(--notes-file "$REPO_ROOT/.review_cycle.notes")
+  [[ -f "$NOTES_FILE" ]] && NOTES_ARG=(--notes-file "$NOTES_FILE")
 
   set +e
   OUT="$(workflow/scripts/request_review.sh --range "$RANGE" --developer "$DEVELOPER" \
@@ -300,7 +395,7 @@ you do not filter them out, and you do not work them.
 3. Escalate anything that needs an owner decision; it drops out of re-review.
 4. **Commit** as \`git -c user.name=$DEVELOPER -c user.email=${DEVELOPER,,}@artificialhumanity.io\`.
    ⚠ **DO NOT PUSH.** It is denied, and this loop converges without it.
-5. Write what you did to \`$REPO_ROOT/.review_cycle.notes\` — the next review is briefed from
+5. Write what you did to \`$NOTES_FILE\` — the next review is briefed from
    that file and cannot otherwise tell a fix from an omission.
 "
 

@@ -108,3 +108,19 @@ model_e2e_test_tflite/
 /utterance_001.png
 /utterance_001.wav
 *.onnx
+
+# review_cycle.sh runtime files, ANCHORED so they match at the repo root and nowhere else.
+#
+# ⚠ The notes path IS built from `git rev-parse --show-toplevel` and is always here. The stop
+# file is NOT: `--stop-file <PATH>` takes any path, and the repo-root default applies only when
+# it is left empty (#250 — an earlier version of this comment claimed both were repo-root "by
+# construction", which was a false premise offered as the justification). Anchoring is still
+# right: a stop file placed elsewhere is the operator's own file in their own location, and
+# hiding every `.review_cycle.stop` anywhere in the tree is not this file's business.
+#
+# ⚠ The driver ALSO `rm -f`s the notes file at startup, and that is not redundant: porting
+# this lane copies `workflow/` alone, so a ported copy has no entry here. Ignoring keeps the
+# file out of the dirty-tree check; the `rm` keeps the last cycle's notes out of the next
+# cycle's first review.
+/.review_cycle.notes
+/.review_cycle.stop
