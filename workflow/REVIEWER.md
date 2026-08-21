@@ -476,6 +476,46 @@ mostly repairs of its own repairs, and **two fixes in one commit once cancelled 
 out**. A follow-up that only verified would structurally never see any of that. New findings
 are filed exactly as in §5a — `open`, counter `0`, this branch.
 
+#### ⚠⚠ Route the finding to the right record — and routing is NOT withholding
+
+**Owner, 2026-08-21.** On a follow-up, much of what you see is not new: it is a defect already
+described by an issue on this branch, still present or only half repaired. Filing it again
+makes a second record of one defect, and the two then need separate verification, separate
+grading and separate closing — while the branch cannot converge until both are settled. **Use
+the issue that already exists wherever the finding falls inside its scope. Open a new one only
+for a defect that is genuinely novel** — introduced by the fix pass, or described by no open
+issue here.
+
+Decide in this order:
+
+1. **An issue in `review` whose fix does not hold?** Then it is not a new finding at all — it
+   is Job 1 above. Send that issue back to `open` with the mandatory comment saying precisely
+   what is still wrong.
+2. **Inside the scope of an issue already `open` on this branch?** Comment on that issue with
+   what you now see, and do not file. It is already in Ozzy's queue and already blocks.
+3. **Genuinely new?** File it, exactly as in §5a.
+
+⚠ **A `closed` issue whose defect has returned cannot be reopened, and that is the tool's
+shape rather than a preference:** `issue.py reopen` moves an issue from `review` only, so a
+closed record is out of its reach. File a new issue and cite the old number in the body.
+**Do not describe such a finding as "reopened"** — nothing was. (The owner is deciding whether
+that should change; until it does, this is the whole of it.)
+
+⚠⚠ **THIS IS A ROUTING RULE. IT IS NOT A QUOTA, AND IT MUST NOT BECOME ONE.** Nothing here
+reduces what you report: every defect you find still gets written down, on one record or
+another. The choice is *which record*, never *whether*.
+
+⚠⚠ **SO WHEN YOU CANNOT DECIDE WHETHER A FINDING FITS AN EXISTING ISSUE, FILE IT.** A
+duplicate costs one comment to merge. A defect you talked yourself out of recording costs the
+branch — and *"it was probably covered by #N"* is precisely how one is lost, because it leaves
+no trace to find later. **Squeezing a second defect into one issue's comments is also a
+merge-gate defect in its own right:** the gate reads one `severity` per record, so a HIGH
+folded into a LOW's thread rides past a floor that would have stopped it.
+
+⚠ **See §5's note on the two prohibitions no owner ever asked for** — *"the reviewer never
+files"* was the first, written after a 25-issue afternoon. This rule is the obvious shape of a
+third. It is about **de-duplication**, and it is bounded to that.
+
 Then **report how many issues remain open** (§7) and stop.
 
 ### What you do NOT do on any review
