@@ -2,7 +2,7 @@
 
 > The settled answers to *what shape is the model*, and only what they still direct.
 > Live architecture canon is [ARCHITECTURE.md](ARCHITECTURE.md); training operations are in
-> [training-operations.md](training-operations.md). The decisions here were made between
+> [training-operations.md](../notes/training-operations.md). The decisions here were made between
 > 2026-06-14 and 2026-08-02 and the reasoning that produced them is in git history.
 
 ## The size ladder — mini / mid / heavy
@@ -108,7 +108,7 @@ failure mode does not carry over — despite training on ≤16 s clips.
 ⚠ **The cross-chunk SEAM is a separate, open problem.** Bounding chunk length fixes
 degradation; it does nothing for continuity across the cut (consistent pacing and prosody,
 or a deliberate pause rather than a hard join). The silence-padding pattern from
-[high-ambition-2-dramatic-reader.md](high-ambition-2-dramatic-reader.md) is the precedent
+[high-ambition-2-dramatic-reader.md](../notes/high-ambition-2-dramatic-reader.md) is the precedent
 worth reusing.
 
 **To raise the ceiling — two-tier export is the recommended default:** keep 256/512 for
@@ -167,7 +167,7 @@ Train DiT-mini and hold it to the same gates the U-Net decoder passed, plus expo
 ⚠ **The parity gate must run against a U-Net baseline trained on the SAME expanded
 corpus**, frozen as the last act of Phase 1 — otherwise data and architecture confound each
 other and the run teaches nothing about either. Sequencing lives in
-[quality-gap-plan.md § Phase 2](quality-gap-plan.md).
+[quality-gap-plan.md § Phase 2](../notes/quality-gap-plan.md).
 
 **Pass → decoder v2 is the family backbone. Stall → the stock decoder runs the corpus** and
 the spike parks with its findings. The schedule never waits on the swap.

@@ -57,7 +57,7 @@ is orientation, not a second status board.**
 | **2** | [Dramatic Reader / full-cast audiobooks](high-ambition-2-dramatic-reader.md) | Sonora | many identities in one performance, stable across chapters — needs 1 first |
 | 3 | [Child voices](../../../Prosodia/notes/high-ambition-3-child-voices.md) | Prosodia | casting range downward |
 | 4 | [Multilingual G2P](../../../Prosodia/notes/high-ambition-4-multilingual-g2p.md) | Prosodia | after English production quality, not beside it |
-| ~~5~~ | StyleTTS2-Lite re-platform | git history | **RETIRED 2026-07-29** — the quality-ceiling escape hatch is now a scaled flow-matching backbone ([model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](model-decisions.md)) |
+| ~~5~~ | StyleTTS2-Lite re-platform | git history | **RETIRED 2026-07-29** — the quality-ceiling escape hatch is now a scaled flow-matching backbone ([model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](../docs/model-decisions.md)) |
 | 6 | [The Audience — conveyance-aware STT](high-ambition-6-audience-conveyance-stt.md) | Sonora | the **reverse lane**: perceive prosody rather than dictate it |
 | 7 | [Singing](high-ambition-7-singing.md) | Sonora | down the road, behind the quality ladder |
 
@@ -84,7 +84,7 @@ Four things about this arc that are load-bearing, and are not obvious from the t
 
 ⚠ **Cloning real people is not a focus of the owner's** (2026-08-20 — recorded in
 [high-ambition-index.md](high-ambition-index.md), the SSOT for what has standing and what does not). The adjacent *policy* has an
-owning file — [audiobook-corpus-policy.md](audiobook-corpus-policy.md), the SSOT for the likeness
+owning file — [audiobook-corpus-policy.md](../docs/audiobook-corpus-policy.md), the SSOT for the likeness
 boundary **as it applies to the personally-acquired audiobook corpus**, which is the only corpus it
 scopes — and the owner's exact words matter, because this is the kind of note that gets hardened
 into a ruling by whoever reads it next:
@@ -107,7 +107,7 @@ Two inferences to refuse:
 
 * **This is not a ban — but it is NOT a policy vacuum either, and an earlier revision of this
   paragraph wrongly said it was.** ⚠ **A likeness position exists and is adopted**:
-  [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (owner-initiated 2026-07-17) names
+  [audiobook-corpus-policy.md](../docs/audiobook-corpus-policy.md) (owner-initiated 2026-07-17) names
   right of publicity as its own legal layer, records the owner's no-cloning intent — *"I want
   dynamic voicing from the model"* — and makes it **architecturally enforceable**, because identity
   and delivery are separate inputs. Within its scope, the personally-acquired audiobook corpus, it
@@ -157,7 +157,7 @@ lines, and the voice remains female. So every clip carries **two casting layers,
 **The target is not a parameter count; it is a phone.** The anchor is **mobile capability — iPhone
 17+ and equivalent Android** — and legacy devices are explicitly not targeted. The numbers below
 follow from that anchor rather than the other way round.
-⚠ **A row that names no file is [model-decisions.md](model-decisions.md)'s; a row that names one
+⚠ **A row that names no file is [model-decisions.md](../docs/model-decisions.md)'s; a row that names one
 belongs to the file it names.** Nothing to keep in step — a future row with a different owner only
 has to cite it.
 
@@ -259,9 +259,9 @@ down so it becomes an answer rather than an omission ([todo.md § 3](todo.md)):
 
 **Rented — and deliberately so.** Matcha-TTS is the acoustic backbone; HiFi-GAN is the vocoder;
 LibriTTS-R is the base corpus. Replacing them is a decision with a record
-— [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](model-decisions.md) holds
+— [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](../docs/model-decisions.md) holds
 the criteria, and they still apply — not a default. Matcha was **reaffirmed 2026-07-29**
-([model-decisions.md § The base model](model-decisions.md)) on the teacher campaign's central lesson: *an engine's usable range is set by its conditioning
+([model-decisions.md § The base model](../docs/model-decisions.md)) on the teacher campaign's central lesson: *an engine's usable range is set by its conditioning
 interface, not its raw quality* — which argues for a base whose conditioning surface we define.
 
 **Ours, and the reason the repo exists:**
@@ -340,14 +340,14 @@ copy that nothing compares. The doc-claims gate *can* check a code constant (it 
 |---|---|---|
 | **Apache-2.0, no patent track** | defensive posture; every new repo and crate ships Apache-2.0 unless the owner says otherwise | [high-ambition-6](high-ambition-6-audience-conveyance-stt.md) — "settled project-wide: no patent track, ever" |
 | **Corpus bar = unrestricted open redistribution** | stricter than the old commercial test; NC licences do not clear it | [training-sources.md](training-sources.md) · [dataset-landscape.md](dataset-landscape.md) |
-| **A licence rejection is permanent; a quality rejection is not** | revisit engines on quality, never on licence | [tts-engine-onboarding.md](tts-engine-onboarding.md) |
-| **Repo licence ≠ weights licence** | check the weights and the training-data terms separately — the trap is real and named in the record | [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](model-decisions.md) |
+| **A licence rejection is permanent; a quality rejection is not** | revisit engines on quality, never on licence | [tts-engine-onboarding.md](../docs/tts-engine-onboarding.md) |
+| **Repo licence ≠ weights licence** | check the weights and the training-data terms separately — the trap is real and named in the record | [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](../docs/model-decisions.md) |
 | **Minimum 4 s of speech per clip** | owner floor; the keep-rate cliff is measured exactly there | ⚠ **code** — `SPEECH_MIN_SECONDS` in `scripts/stages/qc_gate.py` |
 | **A clip's text must be a complete utterance** | the score cannot detect this defect | ⚠ **code** — `scripts/lib/synth_common.py`, gated by `scripts/gates/test_text_selection.py` |
 | **Unrequested singing is a defect** | singing is ambition 7, and wanting it does not make an unasked-for performance correct | [high-ambition-7-singing.md](high-ambition-7-singing.md) |
 | **Every new capability ships with a Vocalizer dial** | the standing vetting surface | ⚠ **code** — `matcha/direction.py` |
 | **Execute from the repo; `/data` holds data, not source** | with the deploy clone the single documented exception | `AGENTS.md` § 6 |
-| **Make the first success boring** | the ordering rule behind base choice, phase 0 and every spike gate | [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](model-decisions.md) |
+| **Make the first success boring** | the ordering rule behind base choice, phase 0 and every spike gate | [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](../docs/model-decisions.md) |
 
 ---
 

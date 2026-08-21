@@ -2,7 +2,7 @@
 
 _The operational "how" of model training: what runs where, how to launch/observe/stop/resume,
 and the standing verification gates. Model **selection** rationale lives in
-[model-decisions.md §5](model-decisions.md); machine provisioning in
+[model-decisions.md §5](../docs/model-decisions.md); machine provisioning in
 [AI-Lab-AMD/notes/machine-setup.md](../../../AI-Lab-AMD/notes/machine-setup.md); stack config is
 [AI-Lab-AMD/docker-compose.yml](../../../AI-Lab-AMD/docker-compose.yml). What to run **next** and
 why is [quality-gap-plan.md](quality-gap-plan.md). Created 2026-07-14 during the de-risk phase
@@ -144,7 +144,7 @@ derisk checkpoint + 24k vocoder to the split-graph lane (graph inputs `spk(1,64)
 vector + `vat(1,3,T)`; decoder `t_emb` is 224-dim, not 160 — multi-speaker widens the U-Net) at
 per-graph corr 1.000000, e2e waveform corr ≥ 0.9993, energy monotonic through TFLite, all graphs
 GPU-clean. Shapes stay 256/512 pending the
-[model-decisions.md § The size target](model-decisions.md) ceiling options. **Re-run it after any
+[model-decisions.md § The size target](../docs/model-decisions.md) ceiling options. **Re-run it after any
 fine-tune**, and note the lane's gates currently *report* rather than *refuse*
 ([todo.md §2](todo.md)).
 
@@ -326,14 +326,14 @@ rw mount for the matcha install).
 9. **Renders run as ai-mgr (105:109), not root**, in throwaway `rocm/pytorch` containers via
    `scripts/container_as_ai_mgr.sh` + `umask 002`. MIOpen's find-db must be **owned**
    by that user — chmod checks ownership, not write bits — hence the separate `miopen-ai-mgr`
-   cache. See the gotchas section of [tts-engine-onboarding.md](tts-engine-onboarding.md).
+   cache. See the gotchas section of [tts-engine-onboarding.md](../docs/tts-engine-onboarding.md).
 
 ## Cross-references
 
 [quality-gap-plan.md](quality-gap-plan.md) (what to run next) ·
 [training-sources.md](training-sources.md) (what it trains on) ·
-[model-decisions.md § Sample rate](model-decisions.md) ·
-[vat-channels.md](vat-channels.md) · [STATE.md](STATE.md) ·
+[model-decisions.md § Sample rate](../docs/model-decisions.md) ·
+[vat-channels.md](../docs/vat-channels.md) · [STATE.md](STATE.md) ·
 [next-steps §B](../../../Prosodia/notes/next-steps.md) ·
 [AI-Lab-AMD/notes/machine-setup.md](../../../AI-Lab-AMD/notes/machine-setup.md)
 

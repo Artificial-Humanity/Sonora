@@ -70,7 +70,7 @@ expected — normalise before any A/B listening test, or the louder engine wins 
 **Standing rule:** no TTS model enters the portfolio without a studied interface (verified at the
 renderer call site, not from the README) and a Gemma skill-file adapter in
 `../director_skills/`. Pattern and known gotchas:
-[notes/tts-engine-onboarding.md](../../../notes/tts-engine-onboarding.md). The watch-list triggers
+[docs/tts-engine-onboarding.md](../../../notes/tts-engine-onboarding.md). The watch-list triggers
 below are subject to it.
 
 ## Provenance

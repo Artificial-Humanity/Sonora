@@ -452,5 +452,5 @@ director model, stages) · [synthesis-pipeline.md](synthesis-pipeline.md) (the p
 front-ends, and the standing directive on the living CC-BY-4.0 dataset) ·
 [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md) (ratified portfolio +
 license wall) · [dataset-landscape.md](dataset-landscape.md) (continuity-vs-range framing;
-LibriVox/MLS lineage) · [audiobook-corpus-policy.md](audiobook-corpus-policy.md)
+LibriVox/MLS lineage) · [audiobook-corpus-policy.md](../docs/audiobook-corpus-policy.md)
 (public-vs-private lineage).

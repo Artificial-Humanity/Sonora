@@ -30,7 +30,7 @@ transcription discards exactly the channel Prosodia is built to control.
 
 We do not need a new representation. The typed control contract
 (`crates/stage/src/prosody_payload.rs`; publicly disclosed in the
-[defensive publication](../../../Prosodia/Docs/defensive-publication-expressive-control.md)) works as
+[defensive publication](../../../Prosodia/docs/defensive-publication-expressive-control.md)) works as
 an *annotation* format exactly as well as a *dictation* format:
 
 ```

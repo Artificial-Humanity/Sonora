@@ -67,6 +67,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # one level deeper since #26 step 3 moved the gates into scripts/gates/
 REPO = os.path.dirname(os.path.dirname(HERE))
 NOTES = os.path.join(REPO, "notes")
+# ⚠ THE M0 SPLIT MOVED SEVEN CANON DOCUMENTS OUT OF THIS GATE'S REACH. `docs()`
+# enumerated `notes/` alone, so relocating ARCHITECTURE, model-decisions,
+# audiobook-corpus-policy, markup-schema-brief, vat-channels,
+# direction-interface-brief and tts-engine-onboarding silently un-enforced every
+# claim in them — caught only because `scm.VAT_TOL` then matched nothing and the
+# liveness test went red. A move is a scope change even when no line is edited.
+DOCS = os.path.join(REPO, "docs")
 V5 = os.path.join(REPO, "data", "libritts_r_emilia_vat_v5")
 V6 = os.path.join(REPO, "data", "libritts_r_emilia_expressive_vat_v6")
 V4 = os.path.join(REPO, "data", "libritts_r_vat_v4")
@@ -474,9 +481,12 @@ def docs():
     enforced without anyone remembering to come back here.
     """
     out = []
-    for name in sorted(os.listdir(NOTES)):
-        if name.endswith(".md"):
-            out.append(os.path.join(NOTES, name))
+    for base in (NOTES, DOCS):
+        if not os.path.isdir(base):
+            continue
+        for name in sorted(os.listdir(base)):
+            if name.endswith(".md"):
+                out.append(os.path.join(base, name))
     out.append(os.path.join(REPO, "README.md"))
     cfg = os.path.join(REPO, "configs", "data")
     if os.path.isdir(cfg):

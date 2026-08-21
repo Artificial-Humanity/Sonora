@@ -122,4 +122,4 @@ prompt adherence is unreliable — casting via measured, owner-defined norms is 
 Sonora-native alternative.
 
 Linked: [[teacher-synthesis-portfolio]] (engine traits) · [[vat-audit-verdicts]] ·
-[[rename-on-tag-mismatch]] · notes/vat-channels.md (FiLM pattern).
+[[rename-on-tag-mismatch]] · docs/vat-channels.md (FiLM pattern).

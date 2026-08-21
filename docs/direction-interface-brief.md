@@ -137,11 +137,11 @@ DiffusionGemma serving analysis for a model that never became servable.
 
 | question | answer | lives in |
 |---|---|---|
-| Labeler model? | **e4b for volume, 31b for judgement.** Measured twice — the MoE emits 13/100 malformed JSON where dense emits 0/100 (2026-07-29), and on skill-file *obedience* the 31b scored 24/24 where the MoE managed 8/24 and e4b 5/24 (2026-08-02). **e4b was tested and is NOT the director.** DiffusionGemma was never servable (`diffusion_gemma` unsupported by ollama; upstream lives in an unmerged llama.cpp PR as a CLI) and is not pursued. | [book-prose-lane.md § Director model](book-prose-lane.md) |
+| Labeler model? | **e4b for volume, 31b for judgement.** Measured twice — the MoE emits 13/100 malformed JSON where dense emits 0/100 (2026-07-29), and on skill-file *obedience* the 31b scored 24/24 where the MoE managed 8/24 and e4b 5/24 (2026-08-02). **e4b was tested and is NOT the director.** DiffusionGemma was never servable (`diffusion_gemma` unsupported by ollama; upstream lives in an unmerged llama.cpp PR as a CLI) and is not pursued. | [book-prose-lane.md § Director model](../notes/book-prose-lane.md) |
 | Inline tags vs sidecar JSON? | **Sidecar is canonical; inline is a rendered projection**, never authored, never parsed back. Ratified v0.1. | [markup-schema-brief.md §1](markup-schema-brief.md) |
 | Which corpus first? | The certified synthetic set — smaller, intended direction known, closes the loop fastest. Ran as the 100-clip spike: **PASS at 93%**, 89/96 kept. | [markup-schema-brief.md §5](markup-schema-brief.md) |
-| Does the Audience listener train from the same pairs now or later? | **Later.** Goal 6 is a parked vision note; nothing is scheduled. | [high-ambition-6](high-ambition-6-audience-conveyance-stt.md) |
-| Where does reverse-conveyance run? | `scripts/tools/derive_markup_measures.py` is the notation half and exists (30,541 rows). ⚠ It is **frozen at v2 paths** and mis-keys the contiguous v2 index under `"speaker"` — a trap for the span-markup spike (D-L5). | [todo.md §8](todo.md) |
+| Does the Audience listener train from the same pairs now or later? | **Later.** Goal 6 is a parked vision note; nothing is scheduled. | [high-ambition-6](../notes/high-ambition-6-audience-conveyance-stt.md) |
+| Where does reverse-conveyance run? | `scripts/tools/derive_markup_measures.py` is the notation half and exists (30,541 rows). ⚠ It is **frozen at v2 paths** and mis-keys the contiguous v2 index under `"speaker"` — a trap for the span-markup spike (D-L5). | [todo.md §8](../notes/todo.md) |
 
 **Still genuinely open**, and it is the one thing this brief did not solve: the **span
 decode layer**. Per-token pitch/energy/duration and pause structure do not exist in the
@@ -150,7 +150,7 @@ schema, unverifiable in practice. That is §6 item 3, and Contract v2 puts the s
 spike ahead of span-FiLM.
 
 Cross-refs: [vat-channels.md](vat-channels.md) ·
-[book-prose-lane.md § Part 1 — Operations](book-prose-lane.md) (director-pass) ·
-[high-ambition-1-matcha-actor.md](high-ambition-1-matcha-actor.md) (contract-lock) ·
-[high-ambition-6-audience-conveyance-stt.md](high-ambition-6-audience-conveyance-stt.md) ·
-[dataset-landscape.md](dataset-landscape.md) §Strategy.
+[book-prose-lane.md § Part 1 — Operations](../notes/book-prose-lane.md) (director-pass) ·
+[high-ambition-1-matcha-actor.md](../notes/high-ambition-1-matcha-actor.md) (contract-lock) ·
+[high-ambition-6-audience-conveyance-stt.md](../notes/high-ambition-6-audience-conveyance-stt.md) ·
+[dataset-landscape.md](../notes/dataset-landscape.md) §Strategy.

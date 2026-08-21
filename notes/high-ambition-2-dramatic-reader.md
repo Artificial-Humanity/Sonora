@@ -37,7 +37,7 @@ and each character audibly distinct, emotionally directable, and stable.
    to characters (`{"speaker": "narrator", …}` / `{"speaker": "john_hushed", …}`).
    This is exactly the cast-sheet pass + SCM `cast` map already designed
    ([casting-attribute-norms-brief.md](casting-attribute-norms-brief.md) § cast sheet;
-   [markup-schema-brief.md](markup-schema-brief.md) `quote`/`cast`), and the book-lane
+   [markup-schema-brief.md](../docs/markup-schema-brief.md) `quote`/`cast`), and the book-lane
    director-pass dogfoods it offline today.
 4. **Acoustic boundary transitions.** Voice switches at quote boundaries risk pops,
    gain/F0 jumps, and unnatural timing. Runtime seam design (still the plan): short
@@ -46,7 +46,7 @@ and each character audibly distinct, emotionally directable, and stable.
    the same pause-based join pattern the chunking contract uses (ARCHITECTURE §1).
 5. **Capacity.** Many high-fidelity voices in a ~150M-ceiling family without mutual
    degradation — the reason multi-speaker range is trained early (LibriTTS-R's 247
-   speakers) and the reason a mid tier exists ([model-decisions.md](model-decisions.md)).
+   speakers) and the reason a mid tier exists ([model-decisions.md](../docs/model-decisions.md)).
 
 ## Training-data implication
 

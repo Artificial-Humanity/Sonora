@@ -89,10 +89,10 @@ record is only worth what its provenance is worth.
 > through `revisit-v1` and all three are now in the live portfolio — chatterbox
 > trusted-provisional, zonos and orpheus normal tier. The void verdicts were void.
 > **The list below is kept as the method and the evidence**, not as open work; live
-> standing is [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md)
-> and the remaining tier questions are [todo.md §4](todo.md).
+> standing is [teacher-tts-audition-shortlist.md](../notes/teacher-tts-audition-shortlist.md)
+> and the remaining tier questions are [todo.md §4](../notes/todo.md).
 
-Source of record: [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md)
+Source of record: [teacher-tts-audition-shortlist.md](../notes/teacher-tts-audition-shortlist.md)
 (owner ears, 2026-07-17—) plus the `engine` column of ratings.csv. Every verdict
 below was formed while direction was not reaching the engines as intended, so none
 of them was safe as-is.
