@@ -129,9 +129,39 @@ def _short(sha):
     return sha[:9]
 
 
+def carries_bad_trailer(trailers, body):
+    """True if this commit carries the forbidden co-author line, by EITHER mechanism.
+
+    ⚠ TWO CHECKS, BECAUSE EACH ALONE HAS A MEASURED HOLE (#242).
+
+    `%(trailers)` is git's own parse and is the right primary: it excludes a mention of the
+    name in ordinary prose, which the old substring check flagged as a violation — that is
+    why the mechanism changed, and it was the correct change.
+
+    But git only parses a trailer block in the LAST paragraph. A commit whose message is
+    `…trailer…` + blank line + one closing sentence carries the line verbatim and parses as
+    having no trailers at all. Measured over four shapes in a throwaway repo; that one is the
+    gap, and the old substring check caught it.
+
+    So: the parsed field, OR a LINE-ANCHORED match on the body. Line-anchored is what keeps
+    prose out — `Suite: 1429 passed` mentioning the name mid-sentence does not start a line
+    with `Co-Authored-By:`.
+    ⚠ THE SECOND CHECK MUST MATCH THE TRAILER'S SHAPE, NOT ITS WORDS. A first version used
+    `re.match(r"\s*Co-Authored-By:.*Ziggy", line)` and immediately flagged `6e89848` — whose
+    message QUOTES the trailer while explaining it, and whose prose wraps so that the phrase
+    begins a line. That is the defect `0afe042` removed, reintroduced by its own fix.
+
+    A real trailer is `Key: Name <address>` alone on its line. Prose is not, however it wraps.
+    """
+    if BAD_TRAILER in trailers:
+        return True
+    return any(re.fullmatch(r"Co-Authored-By:\s*Ziggy\s*<[^>]+>\s*", line, re.I)
+               for line in body.splitlines())
+
+
 def test_no_commit_carries_the_ziggy_trailer():
-    bad = [f"  {_short(sha)}  {name}" for sha, name, _e, trailers, _b in _commits()
-           if BAD_TRAILER in trailers]
+    bad = [f"  {_short(sha)}  {name}" for sha, name, _e, trailers, body in _commits()
+           if carries_bad_trailer(trailers, body)]
     assert not bad, (
         "commits carry a `Co-Authored-By: Ziggy` trailer, which DEVELOPER.md §1 rules out "
         "inside Sonora — you are the author:\n" + "\n".join(bad))
@@ -294,3 +324,47 @@ def test_the_range_excludes_what_it_is_not_a_guard_over():
     assert not overlap, f"the range reaches commits already on {base}: {sorted(overlap)}"
     assert not (shas & _log("--merges", f"{base}..HEAD")), \
         "the range includes a merge commit"
+
+
+@pytest.mark.parametrize("shape,message,should_fire", [
+    ("A — trailer as the last paragraph",
+     "fix: something\n\nCo-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n", True),
+    ("B — trailer, then a closing sentence",
+     "fix: something\n\nCo-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n\n"
+     "And some closing prose here.\n", True),
+    ("C — the name in prose only",
+     "fix: something\n\nThis explains why a Ziggy trailer is forbidden here.\n\n"
+     "Suite: 1429 passed.\n", False),
+    ("D — alongside another trailer",
+     "fix: something\n\nSigned-off-by: Someone <s@example.com>\n"
+     "Co-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n", True),
+])
+def test_the_trailer_detection_actually_fires(tmp_path, shape, message, should_fire):
+    """⚠ THE CONTROL #241 SAID WAS MISSING, AND IT WAS RIGHT.
+
+    `0afe042` moved this guard onto `%(trailers)` — an unvalidated git format field — and
+    added no proof the field is ever non-empty. If it returned "" for every commit (an older
+    git, a typo in the format, a field reorder, a change to BAD_TRAILER's spelling) the guard
+    would pass green forever while checking nothing.
+
+    That hazard is what this entire FILE is built around: three of its tests exist solely as
+    controls, and its module docstring narrates issue #108, where both assertions of a guard
+    were incapable of failing whatever the range contained. The one assertion with no control
+    was the one that grew a new dependency.
+
+    ⚠ The `landed_branch` fixture cannot serve: every commit it builds has a one-line message,
+    so `%(trailers)` is empty for all of them. It exercises the RANGE, never the FIELD.
+
+    Shapes A–D are the four measured in #242. B is the one `%(trailers)` alone misses.
+    """
+    repo = tmp_path / "t"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", BASE_BRANCH)
+    (repo / "f.txt").write_text(shape, encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "-c", f"user.name={DEVELOPER[0]}", "-c", f"user.email={DEVELOPER[1]}",
+         "commit", "-q", "-m", message)
+    trailers = _git(repo, "log", "-1", "--format=%(trailers)")
+    body = _git(repo, "log", "-1", "--format=%B")
+    assert carries_bad_trailer(trailers, body) is should_fire, (
+        f"shape {shape}: detection returned the wrong answer")

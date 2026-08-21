@@ -543,7 +543,12 @@ REVIEWER_ALLOW=(
   "Bash(git merge-base:*)" "Bash(git ls-files:*)" "Bash(git ls-tree:*)"
   "Bash(git cat-file:*)" "Bash(git describe:*)" "Bash(git shortlog:*)"
   "Bash(git check-ignore:*)" "Bash(git grep:*)" "Bash(git for-each-ref:*)"
-  "Bash(git diff-tree:*)" "Bash(git count-objects:*)" "Bash(git symbolic-ref:*)"
+  "Bash(git diff-tree:*)" "Bash(git count-objects:*)"
+  # ⚠ `git symbolic-ref` WAS HERE AND IS MUTATING (#240). `symbolic-ref <name> <ref>` repoints
+  # a ref and `--delete` removes one — so it sat directly above a comment claiming these verbs
+  # are "enumerable and genuinely non-mutating", which was the justification for granting them
+  # as a block. A reviewer needing the current branch has `git rev-parse --abbrev-ref HEAD`,
+  # which is already granted and reads only.
   "Bash(pytest:*)" "Bash(ls:*)" "Bash(rg:*)" "Bash(wc:*)"
   # ⚠ ARBITRARY PYTHON, GRANTED DELIBERATELY AND WITH ITS EYES OPEN (owner, 2026-08-18).
   # This is NOT the same kind of entry as the git verbs above. Those are enumerable and
