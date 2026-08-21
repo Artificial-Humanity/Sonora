@@ -233,7 +233,15 @@ FACTS = [
         "truth": lambda: const("scripts/stages/qc_gate.py", "SPEECH_MIN_SECONDS"),
         "artifacts": [os.path.join(REPO, "scripts", "stages", "qc_gate.py")],
         "scope": r"SPEECH_MIN_SECONDS|floor via Silero",
-        "patterns": [r"Minimum\s+([\d.]+)\s*s\b", r"([\d.]+)\s*s floor"],
+        # ⚠ THE FLOOR PATTERN ALLOWS UP TO TWO WORDS BEFORE "floor", AND THAT IS NOT COSMETIC.
+        # `([\d.]+)\s*s floor` required the words to be adjacent, so "4 s **speech** floor" and
+        # "4 s **owner** floor" matched NOTHING — the two sites #256 identified. Adding the
+        # constant name to those lines put them in SCOPE and left them unenforced, because
+        # scope selects the line and a pattern is still what reads the number. Caught by
+        # mutating the constant and seeing only 2 of 4 sites go red; a scope-only fix would
+        # have shipped looking done. Bounded at two words, and every line is already
+        # scope-gated on the constant's name, so the widening cannot reach unrelated prose.
+        "patterns": [r"Minimum\s+([\d.]+)\s*s\b", r"([\d.]+)\s*s(?:\s+[a-z]+){0,2}\s+floor"],
         "exempt": [],
     },
     {

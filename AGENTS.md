@@ -25,8 +25,12 @@ in [notes/README.md](notes/README.md). Before starting work, read
   The 2026-07-25 relay audit found rich direction had been silently dropped by every engine.
   **Standing rule:** no TTS model enters the portfolio without a studied interface and a
   Gemma skill-file adapter — see [docs/tts-engine-onboarding.md](docs/tts-engine-onboarding.md),
-  which also carries the known-gotchas reference. Minimum clip length is **4 s of estimated
-  speech**, gating input text (not render duration).
+  which also carries the known-gotchas reference. Minimum clip length is 4 s of estimated
+  speech (`MIN_CLIP_SECONDS`), gating input text (not render duration). ⚠ **This line is NOT
+  gate-enforced**: `docs()` in `scripts/gates/test_doc_claims.py` scans `notes/`, `docs/`,
+  `README.md` and `configs/data/` — not this file. Naming the constant removes the other two
+  blockers (no constant on the line, and `**` breaking the number pattern), so widening
+  `docs()` would now enrol it; that widening is a scope decision nobody has taken.
 * **Core Framework:** PyTorch & Matcha-TTS (conditional flow-matching).
 * **Environment:** AMD ROCm PyTorch Docker container (optimized for Ryzen AI Max+).
 

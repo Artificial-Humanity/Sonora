@@ -315,7 +315,8 @@ def test_a_section_citation_into_a_file_with_that_heading_is_fine(tmp_path):
         "notes/a.md": "see [t.md §2](t.md)\n",
         "notes/t.md": "# T\n\n## 1 · one\n\n## 2 · two\n",
     })
-    assert gate.section_citations(root) == []
+    dangling, examined, skipped = gate.section_citations(root)
+    assert dangling == [] and examined == 1 and skipped == []
 
 
 def test_a_section_citation_into_a_missing_section_is_reported(tmp_path):
@@ -324,7 +325,9 @@ def test_a_section_citation_into_a_missing_section_is_reported(tmp_path):
         "notes/a.md": "see [t.md §6](t.md)\n",
         "notes/t.md": "# T\n\n## 1 · one\n\n## 2 · two\n",
     })
-    (rel, lineno, target, n, available), = gate.section_citations(root)
+    dangling, examined, skipped = gate.section_citations(root)
+    (rel, lineno, target, n, available), = dangling
+    assert examined == 1 and skipped == []
     assert (os.path.basename(rel), lineno, target, n) == ("a.md", 1, "t.md", "6")
     assert available == ["1", "2"], "the message must name what the file DOES have"
 
@@ -338,7 +341,8 @@ def test_a_section_citation_into_a_file_with_no_numbers_is_reported(tmp_path):
         "notes/a.md": "see [t.md §5](t.md)\n",
         "notes/t.md": "# T\n\n## Why not Kokoro\n\n## The base model\n",
     })
-    (_rel, _lineno, _target, n, available), = gate.section_citations(root)
+    dangling, _examined, _skipped = gate.section_citations(root)
+    (_rel, _lineno, _target, n, available), = dangling
     assert n == "5" and available == []
 
 
@@ -352,7 +356,7 @@ def test_scripts_assets_is_scanned_for_citations_though_not_for_links(tmp_path):
         "scripts/assets/director_skills/x.md": "traps in [t.md §6](../../../notes/t.md)\n",
         "notes/t.md": "# T\n\n## 1 · one\n",
     })
-    found = gate.section_citations(root)
+    found, _examined, _skipped = gate.section_citations(root)
     assert len(found) == 1 and "director_skills" in found[0][0]
 
 
@@ -360,7 +364,12 @@ def test_a_citation_naming_a_file_this_repo_does_not_hold_is_left_to_the_link_ha
     """Reporting it here would duplicate the dead-link failure under a worse message — one
     that talks about sections when the actual problem is the filename."""
     root = tree(tmp_path, {"notes/a.md": "see [nowhere.md §3](nowhere.md)\n"})
-    assert gate.section_citations(root) == []
+    dangling, examined, skipped = gate.section_citations(root)
+    assert dangling == [] and examined == 0
+    # ⚠ #255: it used to vanish here. Skipping is still right — this half cannot resolve a
+    # name the repo does not hold — but it must be COUNTED, because the caller cannot
+    # otherwise tell "nothing dangles" from "nothing was looked at".
+    assert skipped == [("notes/a.md", 1, "nowhere.md", "3")]
 
 
 def test_a_shared_basename_resolves_as_a_union(tmp_path):
@@ -372,4 +381,21 @@ def test_a_shared_basename_resolves_as_a_union(tmp_path):
         "notes/README.md": "# N\n\n## 1 · one\n",
         "docs/README.md": "# D\n\n## 4 · four\n",
     })
-    assert gate.section_citations(root) == []
+    dangling, examined, _skipped = gate.section_citations(root)
+    assert dangling == [] and examined == 1
+
+
+def test_the_examined_count_is_what_the_floor_must_watch(tmp_path):
+    """⚠ #255's secondary: a floor on FILES SCANNED cannot see a citation scan that reads
+    nothing. This branch wrote that lesson down for the shell heredocs — "all 14 could be
+    enumerated while `_embedded_python` silently matched none of them" — and then put the
+    floor on the outer population here anyway. Files and examined-citations move
+    independently, so the floor watches the inner one."""
+    root = tree(tmp_path, {
+        "notes/a.md": "prose with no citations at all\n",
+        "notes/b.md": "more prose\n",
+        "notes/t.md": "# T\n\n## 1 · one\n",
+    })
+    dangling, examined, skipped = gate.section_citations(root)
+    assert dangling == [] and skipped == []
+    assert examined == 0, "three files scanned, zero citations read — a file floor sees 3"

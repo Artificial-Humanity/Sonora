@@ -237,7 +237,8 @@ of 0.000 is exactly as true of a flat, lifeless read as of a good one.
 > 37 keeps from 38 heard). Step 7 is done for these three.
 
 **Open defect found by the render: cap Zonos's `speaking_rate`.** Two clips landed
-below the 4 s owner floor (`rev_00_victory_ZON` 3.5 s, `rev_09_goodnews_ZON` 3.4 s)
+below the 4 s owner floor (`SPEECH_MIN_SECONDS`; `rev_00_victory_ZON` 3.5 s,
+`rev_09_goodnews_ZON` 3.4 s)
 and they are precisely the only two the director wrote at `speaking_rate` 24.0. The
 schema permits 5–30 and the skill file quotes the docs' "~15 normal, 30 very fast",
 but on ~95-character lines anything above ~20 undershoots the floor. Cap the band

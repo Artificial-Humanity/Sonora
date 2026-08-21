@@ -268,13 +268,28 @@ def test_every_gate_script_is_enumerated_exactly_once():
     """
     on_disk = {f for f in os.listdir(GATES)
                if f.startswith("test_") and f.endswith(".py")}
-    # ⚠ AN EMPTY DIRECTORY MUST BE RED, NOT SILENT. With `on_disk` empty every assertion
-    # below is vacuously true and this test reports green having checked nothing — which is
-    # precisely the defect it was written for, one level up. 7 measured 2026-08-21.
+    # ⚠ WHAT THIS FLOOR ACTUALLY BUYS — measured, after the first version of this comment
+    # claimed something false (#257). With `on_disk` empty and the floor bypassed:
+    #
+    #     assert not missing -> PASSES        (nothing on disk to be unnamed)
+    #     assert not phantom -> FAILS, len=7  (every LIST entry now names a missing script)
+    #     assert not twice   -> PASSES
+    #
+    # So an emptying directory ALREADY went red, via `phantom`, and this floor was not what
+    # caught it. Two of the three assertions are vacuous; the third is not. The commit that
+    # added the floor listed "empty dir fails" as its proof — a true observation of the test
+    # as a whole, misattributed to the new line, in a commit whose whole subject was guards
+    # that pass for reasons unrelated to their subject.
+    #
+    # The case NOTHING else sees is BOTH SIDES THINNING TOGETHER: scripts deleted from disk
+    # and dropped from the lists in one edit. Then `missing` and `phantom` are both empty and
+    # only this fires. ⚠ Set at >= 6 against 7 on disk, so it tolerates losing exactly one
+    # that way — deliberate, so adding or retiring a single gate is not a merge blocker.
     assert len(on_disk) >= 6, (
         f"only {len(on_disk)} gate script(s) found in {GATES}, from the 7 measured on "
-        f"2026-08-21. Every check below is vacuous at this count — suspect the directory "
-        f"or the listing before lowering this floor.")
+        f"2026-08-21. `phantom` catches a directory that empties while the lists stand; this "
+        f"floor is what catches both thinning together. Suspect the directory or the listing "
+        f"before lowering it.")
     enumerated = {}
     for name, bucket in (("FAST", FAST), ("TORCH_ONLY", TORCH_ONLY)):
         for s in bucket:

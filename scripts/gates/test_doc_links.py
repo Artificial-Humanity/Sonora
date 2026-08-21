@@ -138,13 +138,27 @@ CITATION_DIRS = ("notes", "docs", "scripts/assets")
 
 
 def section_citations(root=REPO):
-    """-> [(rel, lineno, target, n, available)] for every `<file>.md §N` naming no such section.
+    """-> (dangling, examined, skipped) for the `<file>.md §N` citations in this repo.
 
-    ⚠ Basenames are resolved as a UNION when several files share one (`README.md` exists in
-    both `notes/` and `docs/`). That is deliberately permissive: this check should fail on a
-    section that exists NOWHERE under that name, never on the ambiguity of which copy was
-    meant. A citation that resolves against the wrong twin is a weaker defect than the class
-    being caught here, and making it fail would need the citation to carry a path it does not.
+    `dangling` is [(rel, lineno, target, n, available)] — the failures. `examined` counts the
+    citations actually CHECKED. `skipped` is [(rel, lineno, target, n)] for citations whose
+    target file is outside the scanned set, which nothing checks (#255).
+
+    ⚠ **THE THREE ARE RETURNED TOGETHER ON PURPOSE.** An empty `dangling` means "nothing
+    dangles" and "there was nothing to read" identically, and the caller cannot tell them
+    apart from the failures alone. This gate already treats an absent sibling as a printed
+    skip rather than a pass; a citation nobody checked deserves the same.
+
+    ⚠ **CROSS-REPO `§N` IS DELIBERATELY NOT CHECKED, and that is a scope call, not an
+    oversight.** Four of the five skipped citations point into Prosodia. Resolving them would
+    mean walking a sibling checkout for a bare basename and failing on ANOTHER repo's heading
+    numbers — and the sibling is absent on most machines, so the common case would be a skip
+    anyway. It is now REPORTED instead, which is what #255 identified as missing. If the owner
+    wants it enforced, it is a follow-up with its own design, not a widened constant.
+
+    Basenames are resolved as a UNION when several files share one (`README.md` exists in both
+    `notes/` and `docs/`). Deliberately permissive: this should fail on a section that exists
+    NOWHERE under that name, never on the ambiguity of which copy was meant.
     """
     files = markdown_files(root, dirs=CITATION_DIRS, roots=ROOT_DOCS)
     by_name = {}
@@ -159,20 +173,26 @@ def section_citations(root=REPO):
                 nums |= set(NUMBERED_HEADING.findall(fh.read()))
         headings[name] = nums
 
-    out = []
+    out, examined, skipped = [], 0, []
     for path in files:
         rel = os.path.relpath(path, root)
         with open(path, encoding="utf-8") as fh:
             for lineno, line in enumerate(fh, 1):
                 for target, n in SECTION_CITE.findall(line):
-                    # A name this repo does not hold is the LINK half's business, not this
-                    # one's — reporting it here would duplicate that failure under a worse
-                    # message.
+                    # ⚠ A TARGET OUTSIDE THIS SET IS NOT CHECKED BY ANYTHING, AND SAYING SO
+                    # IS THE POINT. This used to `continue` under a comment claiming the LINK
+                    # half would catch it. Measured (#255): 5 of 38 live citations land here,
+                    # and FOUR are Prosodia targets whose links RESOLVE — so the link half is
+                    # green, this half defers to it, and nobody looks at the section at all.
+                    # The hand-off is only real when the file is MISSING. Now counted and
+                    # printed, so a green run cannot be read as full coverage.
                     if target not in headings:
+                        skipped.append((rel, lineno, target, n))
                         continue
+                    examined += 1
                     if n not in headings[target]:
                         out.append((rel, lineno, target, n, sorted(headings[target], key=int)))
-    return out
+    return out, examined, skipped
 
 
 def targets(text):
@@ -302,18 +322,34 @@ def main():
     for rel, lineno, raw in bad:
         failures.append(f"{rel}:{lineno} — link target does not exist: {raw}")
 
-    stale = section_citations()
+    stale, examined, skipped = section_citations()
     cited_files = markdown_files(REPO, dirs=CITATION_DIRS)
-    print(f"checked the `<file>.md §N` citations in {len(cited_files)} markdown files "
-          f"(+scripts/assets/, -workflow/ — this check only)")
-    # ⚠ NO FILES IS A FAILURE, NOT A CLEAN RUN. `section_citations()` returning [] means
-    # "nothing dangles" and "there was nothing to read" identically, and the second must not
-    # print PASS. 47 measured 2026-08-21.
-    if len(cited_files) < 25:
+    print(f"checked {examined} `<file>.md §N` citation(s) in {len(cited_files)} markdown "
+          f"files (+scripts/assets/, -workflow/ — this check only)")
+
+    # ⚠ PRINTED, NEVER SILENT — the same treatment an absent sibling gets above. Grouped by
+    # target so five lines do not read as five unrelated problems.
+    if skipped:
+        by_target = {}
+        for rel, lineno, target, n in skipped:
+            by_target.setdefault(target, []).append(f"{rel}:{lineno} §{n}")
+        print(f"  ~ {len(skipped)} citation(s) NOT CHECKED — target outside the scanned set, "
+              f"so nothing verifies the section:")
+        for target in sorted(by_target):
+            print(f"       {target}: {', '.join(sorted(by_target[target]))}")
+
+    # ⚠⚠ THE FLOOR IS ON CITATIONS EXAMINED, NOT FILES SCANNED — #255's secondary, and the
+    # lesson this branch already wrote down for the shell heredocs and then failed to apply
+    # here: "all 14 could be enumerated while `_embedded_python` silently matched none of
+    # them — a floor on the outer list would not notice." Measured then: neutering
+    # SECTION_CITE left `dangling: 0`, rc 0 and an unchanged file count. A floor on the wrong
+    # population cannot fire. 33 examined of 38 found, 2026-08-21.
+    if examined < 25:
         failures.append(
-            f"only {len(cited_files)} markdown file(s) reached the §N citation check, from "
-            f"the 44 measured on 2026-08-21 — at this count a clean result means the scan "
-            f"found nothing to read, not that the citations are sound.")
+            f"only {examined} §N citation(s) were CHECKED, from the 33 measured on "
+            f"2026-08-21 ({len(cited_files)} files scanned). At this count a clean result "
+            f"means the scan found nothing to read, not that the citations are sound — "
+            f"suspect SECTION_CITE or CITATION_DIRS before believing the citations went away.")
     for rel, lineno, target, n, available in stale:
         have = ", ".join(f"§{x}" for x in available) if available else "NO numbered headings"
         failures.append(
@@ -374,10 +410,18 @@ def main():
         return 1
 
     print("\nPASS — every relative link this repo owns resolves.")
+    # ⚠ THE NUMBERS ARE INTERPOLATED, NOT WRITTEN DOWN. This banner said "except
+    # `<file>.md §N`, whose NUMBER is checked" — unconditional, and true of 33 of 38 (#255).
+    # A banner asserting coverage the run did not have is AGENTS.md §5b's subject, and a
+    # hardcoded count here would drift the way every count on this branch already has.
     print("⚠ Existence only: `#anchor` fragments are stripped and not verified, and external "
           "URLs\n  are not fetched. A green run does not mean a citation points at the right "
-          "section —\n  except `<file>.md §N`, whose NUMBER is checked against the target's "
-          "headings (#181,\n  #185). A citation by NAME is still unverified.")
+          "section.")
+    print(f"⚠ `<file>.md §N` is the one exception and it is PARTIAL: {examined} of "
+          f"{examined + len(skipped)} citation(s) had their\n  number checked against the "
+          f"target's headings (#181, #185). The other {len(skipped)} name a file outside\n"
+          f"  the scanned set and are listed above — nothing verifies those. A citation by "
+          f"NAME is\n  never verified, and cross-repo `§N` is not checked at all.")
     if reported:
         print(f"⚠ …and {reported} link(s) INTO this repo are dead. They are not this repo's "
               f"to fix,\n  so they do not fail — but nothing else in either tree is looking "
