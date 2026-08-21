@@ -97,6 +97,14 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 _SCAN_EXCLUDE = ("workflow/",)
 
 
+def _tracked_top_dirs(root=REPO):
+    """Top-level directory names git actually carries. -> sorted list."""
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=root,
+                         capture_output=True, text=True, check=True)
+    return sorted({rel.split("/", 1)[0] for rel in out.stdout.split("\0")
+                   if rel and "/" in rel})
+
+
 def repo_markdown(root=REPO):
     """Every tracked `.md` in this repo except the excluded prefixes. -> sorted abs paths.
 
@@ -153,7 +161,12 @@ INBOUND = re.compile(r"/Sonora/.*?/((?:notes|docs)/[^)\s]+\.md)")
 # ZERO numbered headings; two named a `todo.md` section that exists but is the wrong one. Two
 # of the six were in SHIPPED director skill files under `scripts/assets/`.
 SECTION_CITE = re.compile(r"([A-Za-z0-9_.-]+\.md)\s*§+\s*(\d+)")
-NUMBERED_HEADING = re.compile(r"^#+\s+(\d+)[.)]?\s", re.M)
+# ⚠ THE `§` IS OPTIONAL IN THE HEADING TOO. `docs/vat-channels.md` writes `## §1 Mechanism`,
+# and requiring the digit to follow the hashes directly made that file read as having NO
+# numbered sections — so a CORRECT citation to its §1 would have been failed, with the remedy
+# "cite by name" (#272). A guard that is wrong about the target is worse than one that is
+# silent about it: this one hands the reader an incorrect instruction.
+NUMBERED_HEADING = re.compile(r"^#+\s+§?\s*(\d+)[.)]?\s", re.M)
 
 
 def section_citations(root=REPO):
@@ -362,25 +375,24 @@ def main():
         for target in sorted(by_target):
             print(f"       {target}: {', '.join(sorted(by_target[target]))}")
 
-    # ⚠⚠ THE BLINDNESS CHECK IS "READ NOTHING", NOT "READ FEWER THAN 37".
+    # ⚠⚠ ZERO CITATIONS IS NOT A FAILURE, AND THIS GATE CANNOT ADJUDICATE IT.
     #
-    # #255's secondary was real — the floor had been on FILES SCANNED, and neutering
-    # SECTION_CITE left rc 0 with an unchanged file count. But the fix put a LIVE-REPO
-    # MAGNITUDE (`examined < 25`, "from the 37 measured") inside a gate that must run on any
-    # tree. Measured 2026-08-21: it made `main()` FAIL on every small repo, including the
-    # fixtures written to test `main()` at all (#267) — a gate that cannot be exercised is
-    # the thing this branch keeps filing issues about.
+    # This has now been wrong twice in the same place. First the floor counted FILES, so
+    # neutering SECTION_CITE left rc 0 (#255). Then it counted CITATIONS with a live-repo
+    # magnitude (`< 25`), which failed every small tree (#267). The rewrite moved the
+    # threshold to 1 — and **1 is still a magnitude** (#269): a markdown tree with clean docs
+    # and no `§N` citation at all is a legitimate state, and the gate called it a breach,
+    # with a remedy telling the reader to suspect a regex that is working.
     #
-    # The portable question is "did the scan read anything?", and it still catches the
-    # original defect: neuter SECTION_CITE and `examined` is 0 while files were scanned.
-    # The repo-specific RATCHET (a partial blinding, 37 -> 5) is a property of THIS tree and
-    # lives in the suite, where it can be re-derived — `test_the_live_citation_count_holds`.
+    # The gate genuinely CANNOT distinguish "this tree has no citations" from "SECTION_CITE
+    # is broken" — both produce zero, and no portable threshold separates them. So it says
+    # so, and does not fail. The repo-specific ratchet that CAN tell (because it knows this
+    # tree has 37) lives in the suite: `test_the_live_citation_count_holds`. Printed, never
+    # silent, exactly as an absent sibling is treated.
     if cited_files and not examined:
-        failures.append(("coverage",
-            f"{len(cited_files)} markdown file(s) were scanned and NOT ONE `<file>.md §N` "
-            f"citation was read. A clean result here means the scan found nothing to look "
-            f"at, not that the citations are sound — suspect SECTION_CITE or "
-            f"`repo_markdown()` before believing the citations went away."))
+        print(f"  ~ 0 citations read across {len(cited_files)} file(s). Either this tree has "
+              f"none, or SECTION_CITE\n    is broken — THIS GATE CANNOT TELL. The ratchet "
+              f"that can is tests/test_doc_links_gate.py.")
     for rel, lineno, target, n, available in stale:
         have = ", ".join(f"§{x}" for x in available) if available else "NO numbered headings"
         failures.append(("section",
@@ -433,7 +445,14 @@ def main():
             # one problem or two. Measured false-positive risk: with siblings forced absent,
             # 0 of 36 real cross-repo links are flagged — real sibling names (`Prosodia`,
             # `AI-Lab-AMD`) are not directories in this repo.
-            local_dir = next((e for e in os.listdir(REPO) if e.lower() == name), None)
+            # ⚠ TRACKED DIRECTORIES, AND `isdir` — `os.listdir` alone reads the WORKING TREE,
+            # so an untracked directory that happens to share a sibling's name flipped a
+            # printed skip into a hard FAIL, and a top-level FILE named like a sibling was
+            # reported as "IS a directory in this repo" (#271). The tell is about the repo's
+            # own shape, which is an index question.
+            local_dir = next(
+                (d for d in _tracked_top_dirs()
+                 if d.lower() == name and os.path.isdir(os.path.join(REPO, d))), None)
             depth_bugs = [] if local_dir is None else list(out[name])
             for rel, lineno, tail, raw in depth_bugs:
                 failures.append(("depth", f"{rel}:{lineno} — {raw}\n"
@@ -489,9 +508,6 @@ def main():
         ("depth", "link(s) written at the WRONG DEPTH — they escape the repo",
          "These are not cross-repo links. Count the `../` against the file's own depth: a\n"
          "file two directories deep reaches the repo root with `../../`, not `../../../`."),
-        ("coverage", "coverage breach(es) — NOTHING in the docs is broken",
-         "No document needs editing. The SCAN stopped reading: suspect SECTION_CITE\nor "
-         "`repo_markdown()` before you believe the citations went away."),
     ]
     if failures:
         for kind, heading, remedy in KINDS:

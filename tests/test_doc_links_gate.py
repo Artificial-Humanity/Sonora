@@ -389,12 +389,16 @@ def test_a_section_citation_into_a_file_with_no_numbers_is_reported(tmp_path):
     assert n == "5" and available == []
 
 
-def test_scripts_assets_is_scanned_for_citations_though_not_for_links(tmp_path):
+def test_scripts_assets_is_scanned(tmp_path):
     """⚠ TWO OF THE SIX `todo.md` DEFECTS WERE IN SHIPPED DIRECTOR SKILL FILES under
-    `scripts/assets/`, which is outside PROSE_DIRS. A guard blind to the files that motivated
-    it is not a guard — so this check, and ONLY this check, is widened to reach them. The link
-    half must stay where it was: changing which paths it resolves is a scope change, and this
-    repo has already paid for one of those made silently."""
+    `scripts/assets/`. A guard blind to the files that motivated it is not a guard.
+
+    ⚠ The name and docstring said "though not for links", and instructed that the link half
+    "must stay where it was" — a scope this branch then REMOVED (#270). Both halves now scan
+    `repo_markdown()`; the asymmetry they described was itself the defect (#261), because the
+    link half's blind spot is what produced #260. A test whose name asserts the opposite of
+    what the code does is worse than no test: it is an instruction to restore the bug.
+    """
     root = tree(tmp_path, {
         "scripts/assets/director_skills/x.md": "traps in [t.md §6](../../../notes/t.md)\n",
         "notes/t.md": "# T\n\n## 1 · one\n",
@@ -475,6 +479,17 @@ def _gate_repo(tmp_path, files):
     return root, run
 
 
+def failure_headings(stdout):
+    """Every `FAIL — …` heading in a run. -> list, in order.
+
+    ⚠ THE REASON THIS EXISTS. The first version of these fixtures asserted `rc == 1` plus one
+    substring and never that the failure was the ONLY one — so two of the four emitted a
+    SPURIOUS coverage breach and passed anyway (#267/#269). A test that tolerates an extra
+    failure cannot notice the gate inventing one, which is the exact class this file guards.
+    """
+    return [ln.strip() for ln in stdout.split("\n") if ln.startswith("FAIL — ")]
+
+
 def test_main_is_green_on_a_clean_fixture(tmp_path):
     _root, run = _gate_repo(tmp_path, {
         "notes/a.md": "see [t.md](t.md) and [t.md §1](t.md)\n",
@@ -482,14 +497,16 @@ def test_main_is_green_on_a_clean_fixture(tmp_path):
     })
     r = run()
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "PASS" in r.stdout
+    assert "PASS" in r.stdout and not failure_headings(r.stdout)
 
 
 def test_main_reports_a_dead_link_under_the_link_heading(tmp_path):
     _root, run = _gate_repo(tmp_path, {"notes/a.md": "[x](gone.md)\n", "notes/t.md": "# T\n"})
     r = run()
     assert r.returncode == 1
-    assert "dead link(s) — the target file does not exist" in r.stdout
+    heads = failure_headings(r.stdout)
+    assert len(heads) == 1, f"expected exactly one failure, got {heads}\n{r.stdout}"
+    assert "dead link(s) — the target file does not exist" in heads[0]
     assert "restore the file" in r.stdout
 
 
@@ -502,7 +519,9 @@ def test_main_reports_a_dangling_section_with_the_opposite_remedy(tmp_path):
     })
     r = run()
     assert r.returncode == 1
-    assert "the LINK RESOLVES, the section does not" in r.stdout
+    heads = failure_headings(r.stdout)
+    assert len(heads) == 1, f"expected exactly one failure, got {heads}\n{r.stdout}"
+    assert "the LINK RESOLVES, the section does not" in heads[0]
     assert "Do NOT 'fix the link'" in r.stdout
 
 
@@ -517,7 +536,9 @@ def test_main_reports_a_wrong_depth_link_and_names_the_second_cause(tmp_path):
     })
     r = run()
     assert r.returncode == 1
-    assert "WRONG DEPTH" in r.stdout
+    heads = failure_headings(r.stdout)
+    assert len(heads) == 1, f"expected exactly one failure, got {heads}\n{r.stdout}"
+    assert "WRONG DEPTH" in heads[0]
     assert "README.md:1" in r.stdout and "README.md:2" in r.stdout, (
         "both links must be caught — the tell is the NAME colliding with a local directory, "
         "not the tail resolving:\n" + r.stdout)
@@ -545,3 +566,47 @@ def test_the_live_citation_count_holds():
     assert examined + len(skipped) >= 35, (
         f"only {examined + len(skipped)} citation(s) were FOUND at all (42 measured) — "
         f"suspect the regex before believing the citations went away.")
+
+
+def test_main_does_not_fail_a_tree_that_simply_has_no_citations(tmp_path):
+    """⚠ ZERO `§N` CITATIONS IS A LEGITIMATE STATE, and the gate called it a breach (#269).
+
+    The blindness check has been wrong here twice: it counted FILES (so neutering SECTION_CITE
+    left rc 0, #255), then counted CITATIONS against a live-repo magnitude (`< 25`, failing
+    every small tree, #267). The rewrite moved the threshold to 1 — and **1 is still a
+    magnitude**. Clean docs with no citation now PASS, with a printed notice saying the gate
+    cannot distinguish "none here" from "regex broken".
+    """
+    _root, run = _gate_repo(tmp_path, {
+        "notes/a.md": "see [t.md](t.md) — no section citation anywhere\n",
+        "notes/t.md": "# T\n",
+    })
+    r = run()
+    assert r.returncode == 0, f"a clean tree with no citations must PASS:\n{r.stdout}"
+    assert not failure_headings(r.stdout)
+    assert "THIS GATE CANNOT TELL" in r.stdout, (
+        "zero citations must be reported, not silent — it is the one thing the gate cannot "
+        "adjudicate")
+
+
+def test_main_routes_an_unknown_kind_and_keeps_its_message(tmp_path):
+    """The unrouted-kind catch (#263), which was named in #267's title and had zero coverage.
+
+    ⚠ Its whole point is that the FAILURE keeps its message, not just the run. The first
+    version printed the kind label and swallowed the text; nothing in the suite performed the
+    mutation that would have shown it, so the fix rested on a hand-run nobody preserved.
+    """
+    root, run = _gate_repo(tmp_path, {"notes/a.md": "[x](gone.md)\n", "notes/t.md": "# T\n"})
+    gate_py = os.path.join(root, "scripts", "gates", "test_doc_links.py")
+    src = open(gate_py, encoding="utf-8").read()
+    mutated = src.replace('("link", "dead link(s)', '("XlinkX", "dead link(s)', 1)
+    assert mutated != src, "the KINDS entry to mutate was not found — this test is stale"
+    open(gate_py, "w", encoding="utf-8").write(mutated)
+
+    r = run()
+    assert r.returncode == 1
+    assert "whose kind has no heading" in r.stdout, r.stdout
+    assert "[link]" in r.stdout, "the kind label is not shown"
+    assert "gone.md" in r.stdout, (
+        "the FAILURE lost its message — the run is red but the reader is not told what "
+        "broke, which is the defect the catch was written to close:\n" + r.stdout)
