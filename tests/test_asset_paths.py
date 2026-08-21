@@ -29,6 +29,7 @@ it matters.
 import ast
 import os
 import pathlib
+import re
 import subprocess
 
 import pytest
@@ -62,7 +63,54 @@ def _tracked_basenames():
     return names
 
 
+def _tracked_paths():
+    """Every repo-relative path `git ls-files` knows, plus each of their parent directories.
+
+    Parents are included because an asset target is often a DIRECTORY —
+    `scripts/assets/director_skills` — which `ls-files` never lists on its own.
+    """
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, check=True)
+    paths = set()
+    for rel in out.stdout.split("\0"):
+        if not rel:
+            continue
+        p = pathlib.PurePosixPath(rel)
+        paths.add(rel)
+        for parent in p.parents:
+            if parent.name:
+                paths.add(str(parent))
+    return paths
+
+
+def _forgotten_paths(tracked_paths):
+    """Paths that exist, are NOT tracked, and are NOT ignored — i.e. someone forgot `git add`.
+
+    ⚠ THE DISCRIMINATOR IS `--exclude-standard`, AND IT IS THE WHOLE DESIGN. A runtime output
+    is untracked *because it is gitignored*; a forgotten file is untracked because nobody
+    added it. Only the second is a defect, and conflating them would make this guard red on
+    every generated bank — a guard that goes red on correct code gets switched off, which is
+    the outcome this file's docstring exists to avoid.
+    """
+    out = subprocess.run(
+        ["git", "ls-files", "-z", "--others", "--exclude-standard"],
+        cwd=REPO, capture_output=True, text=True, check=True,
+    )
+    paths = set()
+    for rel in out.stdout.split("\0"):
+        if not rel:
+            continue
+        paths.add(rel)
+        # A directory counts as forgotten only if git carries NOTHING in it — otherwise it is
+        # a tracked directory that merely happens to contain an untracked file.
+        for parent in pathlib.PurePosixPath(rel).parents:
+            if parent.name and str(parent) not in tracked_paths:
+                paths.add(str(parent))
+    return paths
+
+
 TRACKED = _tracked_basenames()
+TRACKED_PATHS = _tracked_paths()
+FORGOTTEN = _forgotten_paths(TRACKED_PATHS)
 
 
 def _eval(node, here, env):
@@ -266,15 +314,57 @@ def test_the_guard_actually_asserts_something():
 
 @pytest.mark.parametrize("rel", SCRIPTS, ids=SCRIPTS)
 def test_in_repo_asset_paths_resolve(rel):
-    """If the tail names something in this repo, the built path must point at it."""
+    """If the tail names something in this repo, the built path must point at it — IN THE INDEX.
+
+    ⚠ `Path.exists()` IS A QUESTION ABOUT THE WORKING TREE, AND TRACKED-NESS IS A QUESTION
+    ABOUT THE INDEX. They disagree in exactly the case that matters: an untracked file sitting
+    on disk answers `True`, so the guard confirmed "this path resolves for me, right now" when
+    the property worth guarding is "this path resolves for anyone who clones this."
+
+    Measured 2026-08-20 (#207), on the mistake that produced #201:
+
+        git rm --cached -q workflow/scripts/merge_floor.py   # untracked, still on disk
+        .venv/bin/python -m pytest -q
+        -> 1391 passed, 10 skipped
+
+    The whole suite passed while `merge_branch.sh` imported a module the repo did not
+    contain. On a fresh checkout that gate dies `FLOOR_MODULE_MISSING` and no branch can
+    merge. The resolution is now `git ls-files`, and "exists but untracked" gets its OWN
+    message: it is a different mistake from "does not exist" and sends the reader somewhere
+    different — `git add`, not "fix the path".
+    """
     broken = []
     for name, lineno, value in _path_constants(rel):
         tail = pathlib.PurePosixPath(value).name
-        if tail not in TRACKED:
-            continue  # names nothing in the tree — a runtime output, not an asset
         target = pathlib.Path(value)
         if not target.is_absolute():
             target = REPO / target
+        try:
+            rel_target = pathlib.PurePosixPath(target.resolve().relative_to(REPO)).as_posix()
+        except ValueError:
+            rel_target = None   # outside this checkout; `ls-files` cannot speak for it
+
+        # (A) FORGOTTEN — runs FIRST and is deliberately NOT gated on the tail heuristic.
+        # ⚠ The tail heuristic reads `git ls-files`, so untracking a file removes its basename
+        # from TRACKED and the check below skips it as "a runtime output". Measured while
+        # fixing this: `git rm --cached scripts/assets/register_lexicon.json` left the suite
+        # GREEN through an index-aware version of (B), because (B) never got to run. A guard
+        # whose selector goes blind to precisely the file that went missing is the disarm
+        # shape in AGENTS.md §5b, so the question is asked here on its own terms.
+        if rel_target is not None and rel_target in FORGOTTEN:
+            broken.append(
+                f"  {rel}:{lineno}  {name} = {value}\n"
+                f"      EXISTS BUT IS NOT TRACKED ({rel_target}), and is not gitignored.\n"
+                f"      It resolves for you and for nobody who clones this repo — on a fresh\n"
+                f"      checkout this path is absent. `Path.exists()` cannot see this: it asks\n"
+                f"      about the WORKING TREE, and this is a question about the INDEX.\n"
+                f"      Fix with `git add {rel_target}`, NOT by changing the path."
+            )
+            continue
+
+        # (B) WRONG DEPTH — the original check, unchanged in meaning.
+        if tail not in TRACKED:
+            continue  # names nothing in the tree — a runtime output, not an asset
         if not target.exists():
             broken.append(
                 f"  {rel}:{lineno}  {name} = {value}\n"
@@ -282,3 +372,97 @@ def test_in_repo_asset_paths_resolve(rel):
                 f"      so this path is built at the wrong depth for where {rel} now lives."
             )
     assert not broken, f"{rel} builds path(s) that do not resolve:\n" + "\n".join(broken)
+
+
+# ─────────────────────────────────────────────────────────────────────────────────────────
+# Shell scripts — the half of #201 that fixing `Path.exists()` alone would still have missed
+# ─────────────────────────────────────────────────────────────────────────────────────────
+# ⚠ THE ENUMERATION ABOVE IS `scripts/*.py` AND `scripts/**/*.py`, SO `workflow/scripts/*.sh`
+# WAS ENTIRELY OUTSIDE IT — and `merge_branch.sh`'s `from merge_floor import rides` is
+# precisely the dependency that broke. Both gaps in #207 are real and independent: an
+# index-aware check that never looks at shell scripts still reports green on #201.
+#
+# These scripts reach Python through an embedded heredoc that puts the script's own directory
+# on `sys.path`:
+#
+#     UNSETTLED="$(python3 - "$REPO_SLUG" "$BRANCH" "$_SCRIPT_DIR" <<'PY'
+#     sys.path.insert(0, sys.argv[3])
+#     from merge_floor import rides as _rides
+#
+# so a sibling `.py` that is on disk but not in the index imports fine here and is absent on
+# a fresh clone. That is the same working-tree-vs-index confusion as above, in the language
+# the AST evaluator cannot read.
+
+SHELL_SCRIPTS = sorted(
+    p for p in subprocess.run(
+        ["git", "ls-files", "-z", "*.sh"],
+        cwd=REPO, capture_output=True, text=True, check=True,
+    ).stdout.split("\0") if p
+)
+
+_HEREDOC_START = re.compile(r"<<-?\s*'?([A-Za-z_][A-Za-z0-9_]*)'?")
+
+
+def _embedded_python(text):
+    """Every `python … <<'MARKER' … MARKER` heredoc body in a shell script, with its offset."""
+    lines = text.split("\n")
+    blocks, i = [], 0
+    while i < len(lines):
+        line = lines[i]
+        m = _HEREDOC_START.search(line)
+        if m and "python" in line:
+            marker, start = m.group(1), i + 1
+            j = start
+            while j < len(lines) and lines[j].strip() != marker:
+                j += 1
+            blocks.append((start + 1, "\n".join(lines[start:j])))
+            i = j
+        i += 1
+    return blocks
+
+
+@pytest.mark.parametrize("rel", SHELL_SCRIPTS, ids=SHELL_SCRIPTS)
+def test_shell_scripts_import_only_tracked_modules(rel):
+    """A module a shell script imports from its own directory must be IN THE INDEX.
+
+    Reproduce the failure this exists for:
+
+        git rm --cached -q workflow/scripts/merge_floor.py   # untracked, still on disk
+        .venv/bin/python -m pytest tests/test_asset_paths.py -q
+
+    ⚠ Checked against `git ls-files`, never `Path.exists()` — the module sits on disk in
+    exactly the case worth catching, so existence answers `True` and proves nothing.
+    """
+    text = (REPO / rel).read_text(encoding="utf-8")
+    script_dir = pathlib.PurePosixPath(rel).parent
+    broken = []
+    for offset, body in _embedded_python(text):
+        try:
+            tree = ast.parse(body)
+        except SyntaxError:
+            # A heredoc that is not valid Python on its own (templated, or not Python at all)
+            # is skipped rather than failed — this guard is about tracked-ness, and guessing
+            # at unparseable text is how a guard starts reporting things that are not defects.
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module] if node.level == 0 and node.module else []
+            else:
+                continue
+            for dotted in names:
+                mod = dotted.split(".")[0]
+                sibling = str(script_dir / f"{mod}.py")
+                # Only a module this script could resolve from its OWN directory. A stdlib or
+                # site-packages import has no sibling file and is not this guard's business.
+                if not (REPO / sibling).exists():
+                    continue
+                if sibling not in TRACKED_PATHS:
+                    broken.append(
+                        f"  {rel}: the embedded python at line ~{offset + node.lineno - 1} "
+                        f"imports `{mod}`,\n"
+                        f"      which resolves to {sibling} — ON DISK BUT NOT TRACKED.\n"
+                        f"      It imports for you and fails on a fresh clone. `git add {sibling}`."
+                    )
+    assert not broken, f"{rel} imports untracked module(s):\n" + "\n".join(broken)
