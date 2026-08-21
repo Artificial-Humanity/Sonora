@@ -153,7 +153,7 @@ def const(module_rel, name):
 
     ⚠ THE REGISTRY WAS CORPUS-ONLY AND THAT WAS THE GAP (2026-08-19). Every fact here read a
     number off `/data`, so a number that lives in CODE and is restated in prose had no
-    mechanism at all — and one had drifted: `notes/markup-schema-brief.md` gave the SCM
+    mechanism at all — and one had drifted: `docs/markup-schema-brief.md` gave the SCM
     verifier tolerance as `±0.25` in its field-semantics table while §5 item 6 of the SAME
     FILE recorded the owner's same-day amendment to `±0.35`, which is what `scm.VAT_TOL`
     implements. The document contradicted itself for a month and nothing could see it,

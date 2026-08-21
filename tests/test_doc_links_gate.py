@@ -18,6 +18,7 @@ either way is silent. Too strict and the gate is ignored; too loose and it finds
 
 import importlib.util
 import os
+import subprocess
 
 import pytest
 
@@ -36,11 +37,21 @@ gate = _load()
 
 
 def tree(tmp_path, files):
-    """Build a synthetic repo. `files` maps relative path -> contents."""
+    """Build a synthetic repo. `files` maps relative path -> contents.
+
+    ⚠ IT IS A REAL GIT REPO WITH THE FILES STAGED, and that is not ceremony. The gate scans
+    `git ls-files`, so a fixture that only wrote to disk would exercise a code path production
+    never takes — and would have to be served by a working-tree fallback whose behaviour then
+    differs from the real gate's. `git add` needs no identity configured (only `commit` does),
+    so this stays hermetic.
+    """
     for rel, text in files.items():
         p = tmp_path / rel
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text, encoding="utf-8")
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True,
+                   capture_output=True, text=True)
     return str(tmp_path)
 
 
@@ -197,13 +208,39 @@ def test_the_live_repo_has_no_in_repo_dead_links():
     assert bad == [], "\n".join(f"{r}:{n} -> {t}" for r, n, t in bad)
 
 
-def test_both_prose_directories_are_scanned():
+def test_the_scan_is_every_tracked_markdown_except_workflow():
     """⚠ FULL PATHS, NOT SUBSTRINGS — a guard written as a substring stays green when its
-    subject moves, which is how three checks went quiet in this repo on 2026-08-17."""
-    scanned = set(gate.markdown_files(REPO))
-    for rel in ("notes/README.md", "docs/README.md", "docs/ARCHITECTURE.md",
-                "notes/STATE.md", "workflow/WORKFLOW.md"):
+    subject moves, which is how three checks went quiet in this repo on 2026-08-17.
+
+    ⚠ The set widened on 2026-08-21 (#261): it was `notes/`+`docs/`+`workflow/`+3 root files,
+    38 of 53 tracked markdown files, and **7 dead links were living in one of the 15 it never
+    opened**. Both halves of the gate now scan `repo_markdown()`. `workflow/` is excluded by
+    owner ruling — the review lane is retired and a dead link in `REVIEWER.md` must not fail
+    a Sonora merge.
+    """
+    scanned = set(gate.repo_markdown(REPO))
+    for rel in ("notes/README.md", "docs/README.md", "docs/ARCHITECTURE.md", "notes/STATE.md",
+                # the four that the old PROSE_DIRS set never opened — #260 lived in the last
+                "README-Matcha.md", "audition/README.md", "scripts/README.md",
+                "scripts/teacher_audition/README.md"):
         assert os.path.join(REPO, rel) in scanned, f"{rel} is not scanned"
+    for rel in ("workflow/WORKFLOW.md", "workflow/REVIEWER.md", "workflow/DEVELOPER.md"):
+        assert os.path.join(REPO, rel) not in scanned, (
+            f"{rel} IS scanned — the retired lane is back in a Sonora merge gate")
+
+
+def test_the_scan_reads_the_index_not_the_working_tree(tmp_path):
+    """An untracked markdown file must not be scanned: reporting on a file no clone has is
+    the working-tree-vs-index confusion this repo has already paid for."""
+    stray = os.path.join(REPO, "zz_untracked_probe.md")
+    assert stray not in set(gate.repo_markdown(REPO)), (
+        "the probe path exists in the index — rename it; this test assumes it does not")
+    open(stray, "w").close()
+    try:
+        assert stray not in set(gate.repo_markdown(REPO)), (
+            "an untracked .md was scanned — repo_markdown reads the working tree")
+    finally:
+        os.remove(stray)
 
 
 @pytest.mark.parametrize("rel", ["docs/ARCHITECTURE.md", "docs/vat-channels.md",

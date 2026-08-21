@@ -63,8 +63,13 @@ name**. Moving them breaks links that no checker in this repo would ever see. Me
 2026-08-17: Prosodia holds 37 links into Sonora's prose, and moving the series would have
 broken 21 of them.
 
-⚠ **10 of those 37 were already dead** when the split was made — `notes/archive/` was removed
-on 2026-08-02 and neither repo noticed for a fortnight.
-`scripts/gates/test_doc_links.py` reports them on every run. It does not *fail* on them: they
-are Prosodia's lines to fix, and a check no commit here can turn green is one everybody learns
-to ignore.
+⚠ **10 of those 37 were dead when the split was made** — `notes/archive/` was removed on
+2026-08-02 and neither repo noticed for a fortnight. ⚠ **They have since been REPAIRED on
+Prosodia's side, and the gate reports 0 today** (re-measured 2026-08-21: 31 relative links in,
+all resolving; the archive references are now prose naming the deletion, not links). This
+sentence said the gate "reports them on every run" until then — a claim that stopped being
+true when someone else fixed their own files (#264).
+
+The mechanism still stands and is the part worth keeping: inbound links are **reported, never
+failed**. They are Prosodia's lines to fix, and a check no commit here can turn green is one
+everybody learns to ignore.

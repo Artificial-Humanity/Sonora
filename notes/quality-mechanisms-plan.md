@@ -91,7 +91,8 @@ Measured: **Prosodia holds 37 links into `Sonora/…/notes/`, and they resolve.*
 7-file split breaks **3** — `vat-channels.md` (2) and `model-decisions.md` (1) — which are
 repaired on Prosodia's side as part of this work rather than left to rot.
 
-**And 10 of the 37 already dangle**: `notes/archive/high-ambition-5-styletts2-lite.md` (5),
+**And 10 of the 37 dangled when this was written** (since repaired — 0 as of 2026-08-21,
+#264): `notes/archive/high-ambition-5-styletts2-lite.md` (5),
 `notes/archive/exploit-before-train-measurement.md` (3), `notes/actor-model-and-training.md`
 (2). The `archive/` directory was removed 2026-08-02 and neither repo noticed. That is the
 strongest single argument for the checker: the cross-repo surface has been rotting silently for
@@ -115,8 +116,9 @@ about, so the move must not be done by hand.
 2. **A link checker, and it is the durable part** — the split is the occasion, not the product.
    Every relative link in `docs/` and `notes/` must resolve to a file on disk.
    * ⚠ **Cross-repo aware.** Checking only Sonora's outbound links leaves the larger and
-     already-rotting surface untouched — 10 dead links prove that surface is the one that
-     actually fails. Sibling checkouts are already configured for the reviewer in
+     already-rotting surface untouched — the 10 dead links found there **when this was
+     written** proved that surface is the one that actually fails. (They were repaired; the
+     count is 0 today. The argument rests on the rot having happened, not on it persisting.) Sibling checkouts are already configured for the reviewer in
      `workflow/config.env` (`SIBLING_REPO_CANDIDATES`); the checker uses the same idea and
      **reports rather than fails when a sibling is absent**, because a laptop without Prosodia
      checked out has not found a defect.
@@ -150,8 +152,18 @@ at all.
 ### Acceptance
 
 Moving a file without fixing its inbound links must turn the checker red — proven by doing it
-and watching it fail, the same way M1 was. The 10 pre-existing cross-repo dead links must be
-reported on the first run; if they are not, the checker is not looking where the rot is.
+and watching it fail, the same way M1 was.
+
+⚠ **THIS CRITERION USED TO SAY "the 10 pre-existing cross-repo dead links must be reported on
+the first run; if they are not, the checker is not looking where the rot is." DO NOT RUN IT —
+it now returns 0 and hands you the wrong diagnosis** (#264). Prosodia repaired those links, so
+0 is the correct answer and the conclusion attached to it is false. ⚠ There is even a
+plausible-looking culprit in reach for anyone who believes it: `INBOUND` requires a path
+segment between `/Sonora/` and `notes/`, so a sibling writing `../../Sonora/notes/x.md` would
+not match — nothing uses that shape today, so "fixing" it would be work done on a false alarm.
+
+**An acceptance criterion written against a number someone else can repair expires without
+notice.** Assert the MECHANISM instead: move a file, confirm red; restore, confirm green.
 
 ---
 

@@ -40,7 +40,7 @@ def validate(obj, lexicon):
     vat = utt.get("vat") or {}
     # ⚠⚠ STRICT ON TYPE, AND THAT IS NOT THE SAME QUESTION `coerce_axis` ANSWERS.
     # Corrected 2026-08-19 after checking the ratified brief, which the first fix did not:
-    # `notes/markup-schema-brief.md` §"Field semantics" says `utterance.vat` is
+    # `docs/markup-schema-brief.md` §"Field semantics" says `utterance.vat` is
     # **continuous [−1,1]**, and §"Numbers vs symbols" says the sidecar keeps VAT
     # continuous because IT IS THE CONTRACT — symbols are presentation, never storage.
     #

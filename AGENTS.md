@@ -492,7 +492,7 @@ eight commits, and three doc-vs-artifact drifts turned up in a single day.
 
 **Measured the day the rule was written.** Fixing `scm.validate` to agree with
 `schemas.coerce_axis` looked complete and consistent at the call site. It was wrong:
-`notes/markup-schema-brief.md` — the RATIFIED SCM v0.1 contract, three directories away —
+`docs/markup-schema-brief.md` — the RATIFIED SCM v0.1 contract, three directories away —
 says the sidecar stores VAT **continuous**, so the "fix" made the validator certify a sidecar
 the contract forbids. Nothing failed; the comment beside the code was accurate. **The same
 sweep found the brief contradicting ITSELF**: its field-semantics table gave the verifier
