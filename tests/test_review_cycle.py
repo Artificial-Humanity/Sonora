@@ -269,7 +269,13 @@ def _ported_lane(tmp_path):
     return tmp_path
 
 
-def _real_startup(repo):
+def _commit_all(repo, msg):
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t",
+                    "commit", "-q", "-m", msg], cwd=repo, check=True)
+
+
+def _real_startup(repo, *extra):
     """Run the driver for real — no `--dry-run` — and stop it right after startup.
 
     ⚠ `--dry-run` CAN NO LONGER BE THE VEHICLE (#248). The old test ran the dry run and
@@ -278,12 +284,19 @@ def _real_startup(repo):
 
     ⚠ HOME IS REDIRECTED SO THE TRACKER LOOKUP FAILS ON PURPOSE. `pb()` reads
     `~/.claude.json`; with it absent the helper prints "unreachable" and the driver stops with
-    exit 4 — after the startup clear and before it can spawn `claude`. That makes this
-    deterministic and offline rather than dependent on a live tracker.
+    exit 4, which makes this deterministic and offline rather than dependent on a live tracker.
+
+    ⚠⚠ BUT EXIT 4 ARRIVES *AFTER* `request_review.sh`, NOT BEFORE (#253). An earlier version of
+    this docstring said "before it can spawn `claude`", which is false and expensively so: the
+    `pb` call whose "unreachable" produces exit 4 sits INSIDE the review loop, one statement
+    below the launcher invocation. **The only thing keeping a real, paid, unattended `claude
+    -p` out of this test is the stub `request_review.sh` that `_ported_lane` writes** — never
+    the HOME redirect. Anyone reusing this helper against a lane with a REAL launcher would
+    spawn a live review, and the docstring told them it was safe.
     """
     env = dict(os.environ, HOME=str(repo / "fake-home"))
     (repo / "fake-home").mkdir(exist_ok=True)
-    return subprocess.run(["bash", "workflow/scripts/review_cycle.sh"],
+    return subprocess.run(["bash", "workflow/scripts/review_cycle.sh", *extra],
                           cwd=repo, capture_output=True, text=True, env=env)
 
 
@@ -355,17 +368,75 @@ def test_a_dry_run_is_not_refused_by_its_own_leftovers(tmp_path):
     assert r.returncode == 0, f"leftovers alone refused the dry run: {r.stderr[-400:]}"
 
 
-def test_real_dirt_still_refuses(tmp_path):
-    """⚠ THE CONTROL FOR THE EXCLUSION — it must hide the two runtime files and nothing else.
+@pytest.mark.parametrize("stop_flag,dirt", [
+    # ⚠⚠ THE DIRT IS CHOSEN PER CASE SO EACH ONE DISCRIMINATES. A first draft used the same
+    # two dirty files everywhere; the glob and basename-collision rows then passed against the
+    # VULNERABLE script too, because the exclusion hid one file and the other still reported
+    # the tree as dirty. Two of five "controls" could not fail — the same green-negative defect
+    # #245 and #248 were about, committed inside the fix for #252. Each row's dirt is now
+    # exactly what that row's exclusion would have hidden.
+    pytest.param([], ["a.md"], id="default"),
+    pytest.param(["--stop-file", "/tmp/somedir/"], ["a.md"],
+                 id="trailing-slash-empty-basename"),
+    pytest.param(["--stop-file", "/tmp/*.md"], ["a.md"], id="glob-in-basename"),
+    pytest.param(["--stop-file", "/tmp/halt.txt"], ["halt.txt"],
+                 id="basename-collides-with-tracked-file"),
+    pytest.param(["--stop-file", "sub/halt"], ["a.md"], id="stop-file-below-the-root"),
+])
+def test_real_dirt_still_refuses(tmp_path, stop_flag, dirt):
+    """⚠ THE CONTROL ON THE EXCLUSION — it must hide the driver's two files and NOTHING else.
 
-    An over-broad pathspec would silence the dirty-tree check entirely, and the check is what
-    stops the worker committing edits nobody wrote a message for.
+    The dirty-tree check is what stops the unattended worker absorbing edits nobody wrote a
+    message for, and the driver spawns that worker with auto-mode and commit rights.
+
+    ⚠⚠ PARAMETRISED BECAUSE THE FIRST VERSION OF THIS CONTROL ONLY EVER RAN THE DEFAULT FLAG,
+    and stayed green through all three failures below (#252). The exclusion was built from
+    `${STOPFILE##*/}` — the BASENAME of an operator-supplied path — dropped into a git
+    pathspec unvalidated:
+
+      * a TRAILING SLASH made the basename empty, and `git status --porcelain -- . ':(exclude)'`
+        exits 0 with no output on ANY tree — the guard did not narrow, it VANISHED, silently;
+      * a GLOB hid every matching file at any depth (fnmatch without FNM_PATHNAME);
+      * a plain BASENAME COLLISION hid a tracked, modified file at the repo root.
+
+    `sub/halt` is the opposite failure: it excluded `halt`, never matched `sub/halt`, and the
+    driver died with the wrong-cause message #246 was filed about.
     """
     repo = _ported_lane(tmp_path)
-    (repo / "somebody_elses_edit.txt").write_text("uncommitted\n", encoding="utf-8")
-    r = _real_startup(repo)
-    assert r.returncode == 1, f"a dirty tree was not refused: rc={r.returncode}"
-    assert "working tree is dirty" in r.stderr
+    (repo / "sub").mkdir(exist_ok=True)
+    (repo / "sub" / "keep.txt").write_text("k\n", encoding="utf-8")
+    for name in ("a.md", "halt.txt"):
+        (repo / name).write_text("original\n", encoding="utf-8")
+    _commit_all(repo, "fixture")
+    for name in dirt:
+        (repo / name).write_text("CHANGED\n", encoding="utf-8")
+
+    r = _real_startup(repo, *stop_flag)
+    assert r.returncode == 1, (
+        f"dirt {dirt} was not refused with {stop_flag or '(default)'}: "
+        f"rc={r.returncode}\n{r.stderr[-500:]}")
+    assert ("working tree is dirty" in r.stderr
+            or "must name a file" in r.stderr), r.stderr[-500:]
+
+
+def test_the_drivers_own_files_are_not_read_as_dirt(tmp_path):
+    """The other half: the exclusion must actually exclude, or #246 comes straight back.
+
+    A stop file below the repo root is the case the basename version got wrong in this
+    direction — it excluded `halt`, never matched `sub/halt`, and refused the run.
+    """
+    repo = _ported_lane(tmp_path)
+    (repo / "sub").mkdir(exist_ok=True)
+    (repo / "sub" / "keep.txt").write_text("k\n", encoding="utf-8")
+    _commit_all(repo, "fixture")
+    (repo / ".review_cycle.notes").write_text("stale\n", encoding="utf-8")
+    (repo / "sub" / "halt").write_text("armed\n", encoding="utf-8")
+
+    r = subprocess.run(["bash", "workflow/scripts/review_cycle.sh", "--dry-run",
+                        "--stop-file", "sub/halt"],
+                       cwd=repo, capture_output=True, text=True)
+    assert r.returncode == 0, (
+        f"the driver's own runtime files were read as dirt: {r.stderr[-500:]}")
 
 
 @pytest.mark.parametrize("var", ["$NOTES_FILE", "$STOPFILE"])

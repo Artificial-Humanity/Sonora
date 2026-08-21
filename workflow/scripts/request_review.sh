@@ -641,10 +641,14 @@ REVIEWER_ALLOW=(
 # having to reach for the general one, which is why a gap here reads as "not allowed to" rather
 # than "spell it differently".
 #
-# ⚠ The glob is quoted per-entry below, and `nullglob` is deliberately NOT set: if the
-# directory were empty the pattern would stay literal and the entry would be a path that
-# matches nothing, which refuses safely. It is guarded on `-d` so that case cannot arise
-# silently.
+# ⚠ WHAT PROTECTS THE EMPTY-DIRECTORY CASE IS `[[ -f "$_g" ]] || continue`, AND NOTHING ELSE
+# (#255). An earlier version of this comment credited two things that do not do the job: the
+# `-d` guard only proves the directory exists, not that it holds a gate; and "a path that
+# matches nothing refuses safely" is a guess about the matcher this repo has never tested —
+# `nullglob` is unset, so an empty directory leaves `$_g` as the LITERAL string
+# `scripts/gates/test_*.py`, and an allow entry containing `*` has unknown semantics rather
+# than safe ones. The `-f` test drops that literal before it can become an entry. Do not
+# remove it on the strength of the `-d` guard above.
 if [[ -n "$PYBIN" ]]; then
   REVIEWER_ALLOW+=("Bash($PYBIN -m pytest:*)")
   if [[ -d scripts/gates ]]; then

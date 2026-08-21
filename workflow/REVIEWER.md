@@ -79,11 +79,24 @@ summary — there is no third place, and no later opportunity.
       DISBELIEVE the form that works.** A reviewer following it would try the absolute form,
       be refused, and then decline to try the relative one because this file said not to
       bother. Right classification, wrong instruction — the shape this repo keeps paying for.
-    * ⚠ **DO NOT APPEND A PIPE OR A REDIRECT.** `… 2>&1 | tail` is a *compound* command and
-      matches no prefix, so it is refused — and the refusal looks identical to the command
-      itself being forbidden. This costs a round-trip every time; the gate's output is short
-      enough to read whole.
-    * The same two traps apply to `$PYBIN -m pytest …`, which is granted in the same form.
+    * ⚠⚠ **THIS BULLET USED TO SAY "DO NOT APPEND A PIPE OR A REDIRECT … it is refused". THAT
+      WAS FALSE, AND IT WAS THE SAME DEFECT THE TWO BULLETS ABOVE EXIST TO RETRACT** — a
+      working form named and forbidden, so a reviewer would decline to try the thing that
+      works. Measured by a reviewer, mid-review (#254): `<abs>/.venv/bin/python -m pytest
+      tests/ -q 2>&1 | tail -30` **ran**, and so did the same shape on a gate.
+    * **What was actually refused was a `;` SEQUENCE** — `… | head -5; echo "rc=$?"` came back
+      *"contains multiple operations"*.
+      ⚠ **Do not read that as a rule about pipes versus semicolons.** The reviewer that
+      measured it could not separate *"the matcher permits pipes"* from *"this session carries
+      defaults broader than `REVIEWER_ALLOW`"*, because `sed`, `grep`, `head` and `tail` all
+      ran and none of them is in the allowlist either. **The honest statement is: try it, and
+      believe what happens.** A refusal here is cheap and reversible; declining to try because
+      a document predicted a refusal is what cost this repo the round-trips.
+    * **The relative/absolute trap above does apply to `$PYBIN -m pytest …`**, which is granted
+      in the same form.
+      ⚠ **`$PYBIN -c …` is NOT granted** — the absolute-path entries are scoped to `-m pytest`
+      and the named gates. The relative `.venv/bin/python -c …` is granted by the bare-
+      interpreter entry and works. The asymmetry is real and cost a reviewer a round-trip.
   * **You may run `workflow/scripts/request_review.sh --dry-run …` to inspect the launcher's own
     behaviour** — it files nothing, launches nothing, and writes no credential file.
     ⚠ **`--dry-run` must be the FIRST argument.** The permission entry is a *prefix* match, so
