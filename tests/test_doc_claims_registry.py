@@ -459,3 +459,31 @@ def test_every_exemption_is_still_earning_its_place():
                         for line in open(path, encoding="utf-8"))
             assert found, (
                 f"{fact['name']} exempts {needle!r}, which no document contains any more")
+
+
+# --- the QC-floor fact's scope alternatives (#258) ---------------------------------------
+
+def test_the_silero_scope_alternative_is_load_bearing():
+    """⚠ `floor via Silero` IS NOT REDUNDANT WITH THE CONSTANT NAME, and a comment saying it
+    was invited its deletion as dead code (#258).
+
+    `notes/delivery-mix-campaign.md:304` names NEITHER constant and is enrolled ONLY through
+    this alternative. Measured: removing it drops the fact from 4 live sites to 3, and nothing
+    goes red — the gate simply stops looking at one document.
+
+    This test exists because the previous form of the claim was a SENTENCE. A sentence about
+    what is load-bearing cannot fail when someone acts against it; this can.
+    """
+    name = "QC speech floor (qc_gate.SPEECH_MIN_SECONDS)"
+    line = ("- QC before audition: loudnorm + objective gate (4 s floor via Silero, "
+            "WER deletions,")
+    assert "SPEECH_MIN_SECONDS" not in line and "MIN_CLIP_SECONDS" not in line
+    assert in_scope(name, line), (
+        "the live delivery-mix-campaign.md:304 wording left this fact's scope — if the "
+        "`floor via Silero` alternative was removed as redundant, it was not")
+    assert captures(name, line) == ["4"]
+
+    # And the constant-name alternative independently, so a future edit cannot drop EITHER
+    # half and still pass on the strength of the other.
+    named = "| **Minimum 4 s of speech per clip** | owner floor; `SPEECH_MIN_SECONDS`"
+    assert in_scope(name, named) and captures(name, named) == ["4"]

@@ -314,13 +314,18 @@ def inbound_dangling(sibling_root, root=REPO):
 
 
 def main():
+    # ⚠ (KIND, text). THREE UNRELATED FAILURES SHARED ONE HEADER AND ONE REMEDY (#259): a
+    # dead link, a `§N` whose link RESOLVES, and a coverage floor where nothing in the docs is
+    # broken at all. All three printed as "N dead link(s)" under "fix the link or restore the
+    # file" — wrong for the second, meaningless for the third. Each kind now carries its own
+    # count and its own remedy.
     failures = []
 
     scanned = markdown_files(REPO)
     bad = dangling()
     print(f"checked the relative links in {len(scanned)} markdown files")
     for rel, lineno, raw in bad:
-        failures.append(f"{rel}:{lineno} — link target does not exist: {raw}")
+        failures.append(("link", f"{rel}:{lineno} — link target does not exist: {raw}"))
 
     stale, examined, skipped = section_citations()
     cited_files = markdown_files(REPO, dirs=CITATION_DIRS)
@@ -345,19 +350,20 @@ def main():
     # SECTION_CITE left `dangling: 0`, rc 0 and an unchanged file count. A floor on the wrong
     # population cannot fire. 33 examined of 38 found, 2026-08-21.
     if examined < 25:
-        failures.append(
+        failures.append(("coverage",
             f"only {examined} §N citation(s) were CHECKED, from the 33 measured on "
             f"2026-08-21 ({len(cited_files)} files scanned). At this count a clean result "
             f"means the scan found nothing to read, not that the citations are sound — "
-            f"suspect SECTION_CITE or CITATION_DIRS before believing the citations went away.")
+            f"suspect SECTION_CITE or CITATION_DIRS before believing the citations went "
+            f"away."))
     for rel, lineno, target, n, available in stale:
         have = ", ".join(f"§{x}" for x in available) if available else "NO numbered headings"
-        failures.append(
+        failures.append(("section",
             f"{rel}:{lineno} — cites {target} §{n}, which does not exist ({target} has: {have})\n"
             f"      ⚠ The LINK still resolves — the target is the file and the section is only "
             f"the label,\n      so nothing goes red and the reader lands on the right document "
             f"to hunt for a\n      section that is not there. Retarget it by NAME "
-            f"(`§ Some Heading`) if the file is unnumbered.")
+            f"(`§ Some Heading`) if the file is unnumbered."))
 
     # ⚠ PRINTED, NEVER SILENT, exactly as the doc-claims gate treats an absent corpus. A
     # sibling that is not checked out reduces coverage, and a coverage reduction nobody can
@@ -379,8 +385,8 @@ def main():
         bad_out = outbound_dangling(path, out[name])
         print(f"  -> {name}: {n} outbound link(s), {len(bad_out)} unresolved")
         for rel, lineno, tail, raw in bad_out:
-            failures.append(f"{rel}:{lineno} — {raw}\n"
-                            f"      '{name}' is checked out here and has no {tail}")
+            failures.append(("link", f"{rel}:{lineno} — {raw}\n"
+                             f"      '{name}' is checked out here and has no {tail}"))
 
     # ⚠ INBOUND IS REPORTED, NOT FAILED, AND THE ASYMMETRY IS DELIBERATE.
     # An outbound dead link is THIS repo's defect and a commit here fixes it. An inbound one
@@ -400,13 +406,36 @@ def main():
     if not found:
         print("  ~ no sibling checkout was found; the cross-repo half of this gate did NOT run")
 
+    # Each kind gets its own heading and its own remedy. ⚠ The remedy is the part that was
+    # actually wrong before: "fix the link or restore the file" is the OPPOSITE of what a
+    # dangling `§N` needs (the link resolves — the label is wrong), and it names no action at
+    # all for a coverage breach, where the docs are fine and the SCAN went blind.
+    KINDS = [
+        ("link", "dead link(s) — the target file does not exist",
+         "A broken markdown link does not error, it renders. Fix the link or restore the "
+         "file —\nand if the file was deliberately deleted, the citing line is what needs "
+         "rewriting."),
+        ("section", "dangling `§N` citation(s) — the LINK RESOLVES, the section does not",
+         "Do NOT 'fix the link': it already works. Retarget the label — `§ Some Heading` if "
+         "the\ntarget file has no numbered sections, or the section it actually meant."),
+        ("coverage", "coverage breach(es) — NOTHING in the docs is broken",
+         "No document needs editing. The SCAN stopped reading: suspect SECTION_CITE, "
+         "CITATION_DIRS\nor the file set before you believe the citations went away."),
+    ]
     if failures:
-        print(f"\nFAIL — {len(failures)} dead link(s):\n")
-        for f in failures:
-            print(f"  {f}")
-        print("\nA broken markdown link does not error, it renders. Fix the link or restore "
-              "the file —\nand if the file was deliberately deleted, the citing line is what "
-              "needs rewriting.")
+        for kind, heading, remedy in KINDS:
+            items = [text for k, text in failures if k == kind]
+            if not items:
+                continue
+            print(f"\nFAIL — {len(items)} {heading}:\n")
+            for text in items:
+                print(f"  {text}")
+            print(f"\n{remedy}")
+        # ⚠ A kind added above and forgotten here would print nothing and still return 1 —
+        # a failure with no message. Cheap to make impossible.
+        unknown = sorted({k for k, _ in failures} - {k for k, _h, _r in KINDS})
+        if unknown:
+            print(f"\nFAIL — {len(unknown)} failure kind(s) with no heading: {unknown}")
         return 1
 
     print("\nPASS — every relative link this repo owns resolves.")

@@ -232,6 +232,13 @@ FACTS = [
         "name": "QC speech floor (qc_gate.SPEECH_MIN_SECONDS)",
         "truth": lambda: const("scripts/stages/qc_gate.py", "SPEECH_MIN_SECONDS"),
         "artifacts": [os.path.join(REPO, "scripts", "stages", "qc_gate.py")],
+        # ⚠⚠ BOTH ALTERNATIVES ARE LOAD-BEARING — `floor via Silero` IS NOT REDUNDANT.
+        # `delivery-mix-campaign.md:304` names NO constant and is pinned only through it.
+        # Measured (#258): deleting it drops this fact from 4 enrolled sites to 3, silently.
+        # A comment here previously said "every line is already scope-gated on the constant's
+        # name", which invited exactly that deletion as dead code. `test_the_silero_scope_
+        # alternative_is_load_bearing` in tests/test_doc_claims_registry.py now fails if it
+        # goes — a claim about what is load-bearing needs a guard, not a sentence.
         "scope": r"SPEECH_MIN_SECONDS|floor via Silero",
         # ⚠ THE FLOOR PATTERN ALLOWS UP TO TWO WORDS BEFORE "floor", AND THAT IS NOT COSMETIC.
         # `([\d.]+)\s*s floor` required the words to be adjacent, so "4 s **speech** floor" and
@@ -239,8 +246,8 @@ FACTS = [
         # constant name to those lines put them in SCOPE and left them unenforced, because
         # scope selects the line and a pattern is still what reads the number. Caught by
         # mutating the constant and seeing only 2 of 4 sites go red; a scope-only fix would
-        # have shipped looking done. Bounded at two words, and every line is already
-        # scope-gated on the constant's name, so the widening cannot reach unrelated prose.
+        # have shipped looking done. Bounded at two words, and every line is already gated by
+        # this fact's `scope` above, so the widening cannot reach unrelated prose.
         "patterns": [r"Minimum\s+([\d.]+)\s*s\b", r"([\d.]+)\s*s(?:\s+[a-z]+){0,2}\s+floor"],
         "exempt": [],
     },

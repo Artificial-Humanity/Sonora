@@ -70,11 +70,17 @@ this sentence said it was not until 2026-08-21:
 `gates["speech_ok"] = speech_dur_vad >= SPEECH_MIN_SECONDS`.
 
 ⚠⚠ **THAT CONSTANT IS REGISTERED WITH THE DOC-CLAIMS GATE (#189), BUT REGISTRATION PINS
-*LINES*, NOT THE VALUE.** The gate matches its scope **per line**, and both 4 s facts require
-the constant's own name on the line — so **a `4 s` written without `SPEECH_MIN_SECONDS` or
-`MIN_CLIP_SECONDS` beside it is NOT pinned and will not go red.** This paragraph claimed the
-value "can no longer drift from these notes"; it pins **the lines that name a constant**, not
-the class (#256). The line you are reading now carries one precisely so that it is one of them.
+*LINES*, NOT THE VALUE.** A `4 s` is pinned only when **one line** carries both halves: a
+phrase the fact's `scope` recognises, and a number one of its `patterns` can read. Scope and
+pattern are matched per line, so a sentence that WRAPS between them is not pinned either.
+
+⚠ **"Pinned" is NOT the same as "names the constant", and this paragraph said it was
+until 2026-08-21 (#258).** A fact's `scope` is a set of alternatives and the constant's name
+is only one of them — `delivery-mix-campaign.md:304` is pinned through `floor via Silero`
+while naming no constant at all. **Read the fact in `scripts/gates/test_doc_claims.py`; do not
+trust a summary of it here.** This paragraph has now been wrong in both directions: first
+claiming the value "can no longer drift from these notes" (#256), then claiming less coverage
+than the gate has (#258).
 ⚠ No count is given here on purpose — a number in prose is the very drift this gate exists to
 catch, and this branch has already shipped three that went stale. Run the gate to enumerate.
 
