@@ -106,6 +106,66 @@ def markdown_files(root, dirs=PROSE_DIRS, roots=ROOT_DOCS):
     return sorted(out)
 
 
+# ⚠ A `§N` CITATION IS NOT A LINK, AND THAT IS THE WHOLE PROBLEM. Every one of the 19 this
+# check was written for is spelled `[todo.md §6](todo.md)` — the LINK TARGET IS THE FILE and
+# the section lives only in the label, so the link resolves, nothing renders red, and the
+# reader lands on the right document to hunt for a section that is not there. The existing
+# half of this gate says so in its own "what it does not cover" list: `#anchor` fragments are
+# stripped and not verified. This is the same blind spot approached from the label side.
+#
+# Measured 2026-08-20/21 (#181, #185): 19 dangling citations across 13 files. Six named a
+# `todo.md` section that has never existed; NINE named `model-decisions.md §5` in a file with
+# ZERO numbered headings; two named a `todo.md` section that exists but is the wrong one. Two
+# of the six were in SHIPPED director skill files under `scripts/assets/`.
+SECTION_CITE = re.compile(r"([A-Za-z0-9_.-]+\.md)\s*§+\s*(\d+)")
+NUMBERED_HEADING = re.compile(r"^#+\s+(\d+)[.)]?\s", re.M)
+
+# ⚠ WIDER THAN THE LINK HALF ABOVE, DELIBERATELY, AND ONLY FOR THIS CHECK. `scripts/assets/`
+# is outside PROSE_DIRS, but two of the six `todo.md` defects lived in director skill files
+# there — a guard blind to the files that motivated it is not a guard. The link half is NOT
+# widened with it: that would change which paths get resolved, and a move is a scope change
+# even when no line is edited.
+CITATION_DIRS = PROSE_DIRS + ("scripts/assets",)
+
+
+def section_citations(root=REPO):
+    """-> [(rel, lineno, target, n, available)] for every `<file>.md §N` naming no such section.
+
+    ⚠ Basenames are resolved as a UNION when several files share one (`README.md` exists in
+    both `notes/` and `docs/`). That is deliberately permissive: this check should fail on a
+    section that exists NOWHERE under that name, never on the ambiguity of which copy was
+    meant. A citation that resolves against the wrong twin is a weaker defect than the class
+    being caught here, and making it fail would need the citation to carry a path it does not.
+    """
+    files = markdown_files(root, dirs=CITATION_DIRS, roots=ROOT_DOCS)
+    by_name = {}
+    for path in files:
+        by_name.setdefault(os.path.basename(path), []).append(path)
+
+    headings = {}
+    for name, paths in by_name.items():
+        nums = set()
+        for path in paths:
+            with open(path, encoding="utf-8") as fh:
+                nums |= set(NUMBERED_HEADING.findall(fh.read()))
+        headings[name] = nums
+
+    out = []
+    for path in files:
+        rel = os.path.relpath(path, root)
+        with open(path, encoding="utf-8") as fh:
+            for lineno, line in enumerate(fh, 1):
+                for target, n in SECTION_CITE.findall(line):
+                    # A name this repo does not hold is the LINK half's business, not this
+                    # one's — reporting it here would duplicate that failure under a worse
+                    # message.
+                    if target not in headings:
+                        continue
+                    if n not in headings[target]:
+                        out.append((rel, lineno, target, n, sorted(headings[target], key=int)))
+    return out
+
+
 def targets(text):
     """-> [(raw target, path with any #anchor stripped)] for the checkable links on a line."""
     out = []
@@ -233,6 +293,19 @@ def main():
     for rel, lineno, raw in bad:
         failures.append(f"{rel}:{lineno} — link target does not exist: {raw}")
 
+    stale = section_citations()
+    print(f"checked the `<file>.md §N` citations in "
+          f"{len(markdown_files(REPO, dirs=CITATION_DIRS))} markdown files "
+          f"(widened to scripts/assets/ for this check only)")
+    for rel, lineno, target, n, available in stale:
+        have = ", ".join(f"§{x}" for x in available) if available else "NO numbered headings"
+        failures.append(
+            f"{rel}:{lineno} — cites {target} §{n}, which does not exist ({target} has: {have})\n"
+            f"      ⚠ The LINK still resolves — the target is the file and the section is only "
+            f"the label,\n      so nothing goes red and the reader lands on the right document "
+            f"to hunt for a\n      section that is not there. Retarget it by NAME "
+            f"(`§ Some Heading`) if the file is unnumbered.")
+
     # ⚠ PRINTED, NEVER SILENT, exactly as the doc-claims gate treats an absent corpus. A
     # sibling that is not checked out reduces coverage, and a coverage reduction nobody can
     # see is how a gate stops being one.
@@ -286,7 +359,8 @@ def main():
     print("\nPASS — every relative link this repo owns resolves.")
     print("⚠ Existence only: `#anchor` fragments are stripped and not verified, and external "
           "URLs\n  are not fetched. A green run does not mean a citation points at the right "
-          "section.")
+          "section —\n  except `<file>.md §N`, whose NUMBER is checked against the target's "
+          "headings (#181,\n  #185). A citation by NAME is still unverified.")
     if reported:
         print(f"⚠ …and {reported} link(s) INTO this repo are dead. They are not this repo's "
               f"to fix,\n  so they do not fail — but nothing else in either tree is looking "

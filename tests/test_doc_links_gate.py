@@ -300,3 +300,76 @@ def test_every_doc_path_constructed_in_python_resolves():
     # ⚠ A guard that matches nothing is not a passing guard. If the tree stops building doc
     # paths in code this can go, but it must be a decision rather than a silent drift to zero.
     assert seen, "this guard now examines NO path in the tree — it has stopped binding"
+
+
+# --- `<file>.md §N` citations (#181, #185) ---------------------------------------------
+#
+# ⚠ THESE ARE NOT LINKS, WHICH IS THE ENTIRE DEFECT. Every one of the 19 real instances is
+# spelled `[todo.md §6](todo.md)`: the link target is the FILE and the section lives only in
+# the label. The link resolves, nothing goes red, and the reader lands on the right document
+# to hunt for a section that is not there. So these tests exercise the LABEL, and the link
+# tests above are untouched by them.
+
+def test_a_section_citation_into_a_file_with_that_heading_is_fine(tmp_path):
+    root = tree(tmp_path, {
+        "notes/a.md": "see [t.md §2](t.md)\n",
+        "notes/t.md": "# T\n\n## 1 · one\n\n## 2 · two\n",
+    })
+    assert gate.section_citations(root) == []
+
+
+def test_a_section_citation_into_a_missing_section_is_reported(tmp_path):
+    """The #181 shape: the target file HAS numbered headings, just not that one."""
+    root = tree(tmp_path, {
+        "notes/a.md": "see [t.md §6](t.md)\n",
+        "notes/t.md": "# T\n\n## 1 · one\n\n## 2 · two\n",
+    })
+    (rel, lineno, target, n, available), = gate.section_citations(root)
+    assert (os.path.basename(rel), lineno, target, n) == ("a.md", 1, "t.md", "6")
+    assert available == ["1", "2"], "the message must name what the file DOES have"
+
+
+def test_a_section_citation_into_a_file_with_no_numbers_is_reported(tmp_path):
+    """The #185 shape, and the larger of the two: nine citations named `model-decisions.md §5`
+    in a file whose seven sections are all NAMED. `available` is empty, and the gate's message
+    turns that into "NO numbered headings" — a different remedy from a wrong number, because
+    the fix is to cite by name rather than to pick a different digit."""
+    root = tree(tmp_path, {
+        "notes/a.md": "see [t.md §5](t.md)\n",
+        "notes/t.md": "# T\n\n## Why not Kokoro\n\n## The base model\n",
+    })
+    (_rel, _lineno, _target, n, available), = gate.section_citations(root)
+    assert n == "5" and available == []
+
+
+def test_scripts_assets_is_scanned_for_citations_though_not_for_links(tmp_path):
+    """⚠ TWO OF THE SIX `todo.md` DEFECTS WERE IN SHIPPED DIRECTOR SKILL FILES under
+    `scripts/assets/`, which is outside PROSE_DIRS. A guard blind to the files that motivated
+    it is not a guard — so this check, and ONLY this check, is widened to reach them. The link
+    half must stay where it was: changing which paths it resolves is a scope change, and this
+    repo has already paid for one of those made silently."""
+    root = tree(tmp_path, {
+        "scripts/assets/director_skills/x.md": "traps in [t.md §6](../../../notes/t.md)\n",
+        "notes/t.md": "# T\n\n## 1 · one\n",
+    })
+    found = gate.section_citations(root)
+    assert len(found) == 1 and "director_skills" in found[0][0]
+
+
+def test_a_citation_naming_a_file_this_repo_does_not_hold_is_left_to_the_link_half(tmp_path):
+    """Reporting it here would duplicate the dead-link failure under a worse message — one
+    that talks about sections when the actual problem is the filename."""
+    root = tree(tmp_path, {"notes/a.md": "see [nowhere.md §3](nowhere.md)\n"})
+    assert gate.section_citations(root) == []
+
+
+def test_a_shared_basename_resolves_as_a_union(tmp_path):
+    """`README.md` exists in both `notes/` and `docs/`, and a citation carries no path. The
+    union is deliberately permissive: this check should fail on a section that exists NOWHERE
+    under that name, never on the ambiguity of which copy was meant."""
+    root = tree(tmp_path, {
+        "notes/a.md": "see [README.md §4](README.md)\n",
+        "notes/README.md": "# N\n\n## 1 · one\n",
+        "docs/README.md": "# D\n\n## 4 · four\n",
+    })
+    assert gate.section_citations(root) == []

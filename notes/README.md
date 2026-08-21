@@ -124,4 +124,4 @@ so do not renumber or rename them.
 | [high-ambition-7-singing.md](high-ambition-7-singing.md) | goal 7 — singing (**down the road**, gated behind the quality ladder). ⚠ *unrequested* singing is a defect and stays one |
 
 _(Goal 5, the StyleTTS2-Lite re-platform, was **retired 2026-07-29** and its note deleted
-2026-08-02. The decision record is [model-decisions.md §5](../docs/model-decisions.md).)_
+2026-08-02. The decision record is [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](../docs/model-decisions.md).)_

@@ -226,7 +226,7 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
 - **Atomic writes** across all 8 renderers (`synth_common.py`); orpheus voice ban and
   zonos `emotion: null` are code, not markdown; loudnorm failure is fatal.
 - teacher-ab-v1 keeps normalized to −23 LUFS (the 5.99 dB engine spread confounded the
-  Qwen-vs-VV ranking; re-test is now possible — [todo.md §6](todo.md)).
+  Qwen-vs-VV ranking; re-test is now possible — [todo.md §4](todo.md)).
 
 ## Model architecture fronts
 

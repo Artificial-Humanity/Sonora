@@ -62,8 +62,13 @@ truncation and over-run send the auditor to opposite ends of the clip:
 - A manifest APPENDS a record per render, so a rerolled clip has several — **last
   record wins**; it is the take that exists on disk.
 
-Not yet built: a `head_ok` gate (nothing sees head truncation), and the 4 s speech
-floor has no hard gate on the Silero measure — see [todo.md §7](todo.md).
+Not yet built: a `head_ok` gate — nothing sees head truncation (`HEAD_LOST_MAX = None`
+in `scripts/stages/qc_gate.py`, left unset on evidence rather than by omission).
+⚠ **The 4 s speech floor IS hard-gated on the Silero measure**, and this sentence said it was
+not until 2026-08-21: `speech_dur_vad = silero_vad.speech_duration(wav16)` feeds
+`gates["speech_ok"] = speech_dur_vad >= SPEECH_MIN_SECONDS`. The constant is now registered
+with the doc-claims gate (#189), so its VALUE can no longer drift from these notes — but a
+sentence denying the gate exists is a class that gate still cannot see.
 
 ## Control interface — how text becomes *directed* audio (per engine)
 

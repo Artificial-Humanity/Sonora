@@ -138,11 +138,14 @@ teachers, and explicitly out of scope here:
   architecture** (High-Ambition 1). The student, not a teacher.
 - `semidark/StyleTTS2`, `IIEleven11/StyleTTS2FineTune` — the former **student
   re-platform** candidate. **RETIRED 2026-07-29**; the quality-ceiling escape hatch is
-  a scaled flow-matching backbone ([model-decisions.md §5](model-decisions.md)). On
+  a scaled flow-matching backbone ([model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](model-decisions.md)). On
   disk as reference only.
 - `semidark/kikiri-tts` — StyleTTS2/Kokoro side reference, same bucket.
-- `SWivid/F5-TTS` — appears only in the **architecture licence survey** in
-  model-decisions.md §5 (MIT ✅), alongside VITS/HiFi-GAN/PL-BERT. Student-side.
+- `SWivid/F5-TTS` — appeared only in the **architecture licence survey** (MIT ✅),
+  alongside VITS/HiFi-GAN/PL-BERT. Student-side. ⚠ **That survey is no longer in
+  `model-decisions.md`** — it went in `b99dce5`, the consolidation that cut the file 408 -> 186
+  lines, and this pointer named a §5 that file has never had. Nothing else in the repo carries
+  it; the record is git history.
 - `laion/Empathic-Insight-Voice-Large`, `laion/BUD-E-Whisper`,
   `mkrausio/EmoWhisper-AnS-Small-v0.1` — **instruments**, not TTS. EIV is the
   independent verifier the whole label pipeline leans on.

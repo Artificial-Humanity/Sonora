@@ -72,11 +72,11 @@ unscheduled ambition with no end-condition drifts into a forgotten one.
   norms, never inherit another model's gender conflation" is the standing ruling that the
   brief's vocabulary is the live one.
 - **Checked:** 2026-08-09.
-| **P3+** | conditioning: embodiment bank → span-FiLM | ⏸ deferred chain | evidence, not plumbing | [todo.md §4](todo.md) |
-| | categorical emotion block (3+8) | ⏸ **open decision** | P1's valence read | [todo.md §4](todo.md) |
+| **P3+** | conditioning: embodiment bank → span-FiLM | ⏸ deferred chain | evidence, not plumbing | [todo.md §3](todo.md) |
+| | categorical emotion block (3+8) | ⏸ **open decision** | P1's valence read | [todo.md §3](todo.md) |
 | | multilingual | ⏸ **plan only** | after rung 3 | [teacher-training-data.md § multilingual](teacher-training-data.md) |
 
-**Running alongside, needing no GPU:** the audit-quality pair in [todo.md §6](todo.md) — a
+**Running alongside, needing no GPU:** the audit-quality pair in [todo.md §4](todo.md) — a
 forced-ranking pass over the 46 ceiling-tied groups, and anchor exemplars in the audition
 app. Both came out of the 2026-08-08 finding that the 1–5 scale is saturated (`librivox`
 real audio means 5.00, and mean score ranks chatterbox above Qwen). They gate nothing, but

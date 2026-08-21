@@ -2,7 +2,7 @@
 
 _The operational "how" of model training: what runs where, how to launch/observe/stop/resume,
 and the standing verification gates. Model **selection** rationale lives in
-[model-decisions.md §5](../docs/model-decisions.md); machine provisioning in
+[model-decisions.md § The base model — Matcha, reaffirmed](../docs/model-decisions.md); machine provisioning in
 [AI-Lab-AMD/notes/machine-setup.md](../../../AI-Lab-AMD/notes/machine-setup.md); stack config is
 [AI-Lab-AMD/docker-compose.yml](../../../AI-Lab-AMD/docker-compose.yml). What to run **next** and
 why is [quality-gap-plan.md](quality-gap-plan.md). Created 2026-07-14 during the de-risk phase
@@ -99,7 +99,7 @@ moment vat3c was retired: starting the container resumed a checkpoint we had jus
 to throw away, and — the quiet one — because the glob and the experiment name were
 independent literals, launching **any successor run would silently have warm-started it
 from the retired ep099**. The container also refuses `SONORA_EXPERIMENT=vat3c_finetune`
-by name. Retirement rationale: [quality-gap-plan.md § 0a](quality-gap-plan.md).
+by name. Retirement rationale: [quality-gap-plan.md § Phase 0](quality-gap-plan.md), gate 0a.
 
 The idle-instead-of-exit is deliberate: `restart: unless-stopped` turns a fast exit into
 the 2,077-restart crash loop of 2026-08-04.

@@ -18,7 +18,9 @@ your system prompt it outranks everything here**, and the import above is not ad
 MEASURED 2026-08-17: `--system-prompt-file` replaces the *default assistant prompt*; it does
 **not** suppress this file, and imports come with it. So Janis is handed Ozzy's persona whether
 or not that is wanted, and **the precedence rule is the only thing separating the two roles.**
-It is therefore stated at three points on purpose — here, in REVIEWER.md §0, and again in the
+It is therefore stated at three points on purpose — here, in REVIEWER.md's opening
+**"YOU ARE ALSO CARRYING OZZY'S PERSONA"** block (that file is numbered §1-§7 and has no
+§0), and again in the
 brief the launcher appends at the call site.
 
 ⚠ **Do not try to infer your role from how you were invoked.** `-p` is not the test: Ozzy runs

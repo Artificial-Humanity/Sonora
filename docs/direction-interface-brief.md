@@ -141,7 +141,7 @@ DiffusionGemma serving analysis for a model that never became servable.
 | Inline tags vs sidecar JSON? | **Sidecar is canonical; inline is a rendered projection**, never authored, never parsed back. Ratified v0.1. | [markup-schema-brief.md §1](markup-schema-brief.md) |
 | Which corpus first? | The certified synthetic set — smaller, intended direction known, closes the loop fastest. Ran as the 100-clip spike: **PASS at 93%**, 89/96 kept. | [markup-schema-brief.md §5](markup-schema-brief.md) |
 | Does the Audience listener train from the same pairs now or later? | **Later.** Goal 6 is a parked vision note; nothing is scheduled. | [high-ambition-6](../notes/high-ambition-6-audience-conveyance-stt.md) |
-| Where does reverse-conveyance run? | `scripts/tools/derive_markup_measures.py` is the notation half and exists (30,541 rows). ⚠ It is **frozen at v2 paths** and mis-keys the contiguous v2 index under `"speaker"` — a trap for the span-markup spike (D-L5). | [todo.md §8](../notes/todo.md) |
+| Where does reverse-conveyance run? | `scripts/tools/derive_markup_measures.py` is the notation half and exists (30,541 rows). ⚠ It is **frozen at v2 paths** and mis-keys the contiguous v2 index under `"speaker"` — a trap for the span-markup spike (D-L5). | ⚠ **D-L5 is no longer in [todo.md](../notes/todo.md)** — it left in `ccc9a04`, and the §8 this cited has never existed there. The span-FiLM work it feeds is [todo.md §3](../notes/todo.md); D-L5 itself is git history. |
 
 **Still genuinely open**, and it is the one thing this brief did not solve: the **span
 decode layer**. Per-token pitch/energy/duration and pause structure do not exist in the
