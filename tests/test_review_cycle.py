@@ -268,7 +268,8 @@ def _ported_lane(tmp_path):
     return tmp_path
 
 
-def test_a_stale_notes_file_does_not_block_the_next_run(tmp_path):
+@pytest.mark.parametrize("runtime_file", [".review_cycle.notes", ".review_cycle.stop"])
+def test_a_stale_runtime_file_does_not_block_the_next_run(tmp_path, runtime_file):
     """⚠⚠ THE DRIVER USED TO RUN EXACTLY ONCE PER MANUAL CLEANUP, and nothing said so.
 
     The worker's brief, step 5, tells it to write `.review_cycle.notes`; nothing removed the
@@ -276,33 +277,48 @@ def test_a_stale_notes_file_does_not_block_the_next_run(tmp_path):
     which an untracked file makes it. So run 1 succeeded and run 2 died at the door — blaming
     "your uncommitted edits", which is not what was there.
 
-    ⚠ THIS RUNS THE SCRIPT INSTEAD OF READING IT. A source scan for `rm -f "$NOTES_FILE"`
-    would pass with the `rm` placed AFTER the dirty-tree check, where it can never be reached
-    — the ordering IS the fix, and only execution sees ordering (#231).
+    ⚠ PARAMETRISED OVER BOTH RUNTIME FILES (#246). The first fix moved the notes `rm` above the
+    refusal and left the stop file's below it, so the identical death survived one filename
+    over. A test naming only the notes file could not see that, and the reasoning in the commit
+    covered both.
+
+    ⚠ THIS RUNS THE SCRIPT INSTEAD OF READING IT. A source scan for the `rm` would pass with it
+    placed AFTER the dirty-tree check, where it can never be reached — the ordering IS the fix,
+    and only execution sees ordering (#231).
     """
     repo = _ported_lane(tmp_path)
-    (repo / ".review_cycle.notes").write_text("last cycle's notes\n", encoding="utf-8")
+    (repo / runtime_file).write_text("left over from a previous cycle\n", encoding="utf-8")
     assert subprocess.run(["git", "status", "--porcelain"], cwd=repo,
                           capture_output=True, text=True).stdout.strip(), (
         "precondition: the stale file must make the tree dirty, or this proves nothing")
 
     r = subprocess.run(["bash", "workflow/scripts/review_cycle.sh", "--dry-run"],
                        cwd=repo, capture_output=True, text=True)
-    assert r.returncode == 0, f"the driver refused a second run: {r.stderr}"
-    assert not (repo / ".review_cycle.notes").exists(), (
-        "the stale notes file survived, so the next review would be briefed with it")
+    assert r.returncode == 0, f"the driver refused a second run over {runtime_file}: {r.stderr}"
+    assert not (repo / runtime_file).exists(), (
+        f"{runtime_file} survived, so the next run starts from a poisoned tree")
 
 
-def test_the_notes_file_is_cleared_before_the_dirty_tree_check():
-    """Ordering, pinned separately — the behavioural test above cannot name WHY it failed.
+@pytest.mark.parametrize("var", ["$NOTES_FILE", "$STOPFILE"])
+def test_each_runtime_file_is_cleared_before_the_dirty_tree_check(var):
+    """Ordering, pinned separately — the behavioural test cannot name WHY it failed.
 
-    A future edit that moves the `rm` below the refusal restores the bug, and the assertion
-    "the driver refused a second run" would not point at the cause.
+    ⚠⚠ SEARCHING FOR `rm -f "$STOPFILE"` IS THE WRONG INSTRUMENT, and the first draft of this
+    test used it and failed against a correct script. That exact string DOES occur — inside
+    `check_stop`, which removes the file on the halt path, 90 lines BELOW the refusal. The
+    startup clear takes both files on one line, so a string search finds the wrong `rm`.
+
+    Scanning LINES for an `rm -f` naming the variable, and requiring one before the refusal,
+    is indifferent to how the two are grouped — one line or two, either order.
     """
-    code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
-    rm = code.index('rm -f "$NOTES_FILE"')
-    dirty = code.index("working tree is dirty")
-    assert rm < dirty, "the notes file must be cleared BEFORE the dirty-tree refusal"
+    lines = [l.split("#", 1)[0] for l in SOURCE.splitlines()]
+    dirty = next(i for i, l in enumerate(lines) if "working tree is dirty" in l)
+    cleared = [i for i, l in enumerate(lines)
+               if l.strip().startswith("rm -f") and var in l]
+    assert cleared, f"nothing clears {var} at all"
+    assert min(cleared) < dirty, (
+        f"{var} is only cleared at line {min(cleared) + 1}, below the dirty-tree refusal at "
+        f"line {dirty + 1} — where it cannot stop the refusal it exists to prevent")
 
 
 def test_the_notes_path_has_one_definition():

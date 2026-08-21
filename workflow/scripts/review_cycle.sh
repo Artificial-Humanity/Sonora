@@ -114,7 +114,16 @@ NOTES_FILE="$REPO_ROOT/.review_cycle.notes"
 # gets no `.gitignore` entry, so a driver that leaned on ignoring alone would arrive in the new
 # repo with the once-only bug intact. Ignoring keeps it out of `git status`; this keeps it out
 # of the next cycle.
-rm -f "$NOTES_FILE"
+#
+# ⚠⚠ BOTH RUNTIME FILES, NOT JUST THE NOTES (#246). The first version of this fix moved the
+# notes `rm` up here and left `rm -f "$STOPFILE"` below the refusal, where it cannot do its
+# job — while arguing, three lines above, that the ported lane is exactly why the `rm` matters.
+# The argument is equally true of the stop file and was applied to one of the two files the
+# same commit ignored. A stop file survives whenever the cycle ends by any of the seven routes
+# in `--help` OTHER than the stop file itself (`check_stop` removes it on that one path only),
+# or when it is created while no cycle is running; in a ported lane it is then untracked, the
+# tree is dirty, and the next run dies at the check below naming the same wrong cause.
+rm -f "$NOTES_FILE" "$STOPFILE"
 
 # ⚠ Refuse a dirty tree. The worker commits, so uncommitted edits would be swept into a
 # commit nobody wrote a message for — and the range under review would stop matching the
@@ -123,8 +132,6 @@ if [[ -n "$(git status --porcelain)" ]]; then
   die "working tree is dirty. Commit or stash first — the worker commits, and it would
      otherwise absorb your uncommitted edits into a review it never read."
 fi
-
-rm -f "$STOPFILE"
 
 # --- tracker helper --------------------------------------------------------
 pb() {  # $1 = pocketbase filter -> prints totalItems, or "unreachable"

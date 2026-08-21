@@ -41,6 +41,7 @@ the network and independent of whether PocketBase is up.
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -352,6 +353,34 @@ def test_the_sibling_repo_is_offered_read_only_and_never_writable():
         assert t in _array("REVIEWER_DENY")
 
 
+def _rendered_allowlist():
+    """The allowlist AS THE MATCHER WILL SEE IT — parsed from `--dry-run`, not from source.
+
+    ⚠⚠ THIS REPLACED A SOURCE SCAN THAT WAS BLIND TO EVERY GATE PATH (#245). The scan read the
+    array literal plus `REVIEWER_ALLOW+=("...")` appends by regex. The same commit that fixed
+    #239 moved the gate paths into a `for _g in ...` word list, so the only text the regex
+    could reach was the append's literal `Bash($PYBIN $_g:*)` — an unexpanded shell variable.
+    No gate path was visible to it at all, and reverting the loop list to the #239 defect left
+    the test GREEN.
+
+    ⚠ THE LESSON IS NOT "ADD THE LOOP TO THE REGEX". A scanner has to model shell expansion and
+    will be wrong again at the next restructure — that is twice inside one commit already
+    (`_array` missed appends; the regex then missed the loop). `--dry-run` renders the array
+    through the same code path the real call uses, so there is nothing left to model. It is the
+    precedent `tests/test_review_cycle.py` set for the same reason (#231).
+    """
+    r = subprocess.run([str(SCRIPT), "--dry-run", "--range", "origin/main..HEAD",
+                        "--developer", "Ozzy"],
+                       cwd=REPO, capture_output=True, text=True)
+    assert r.returncode == 0, f"--dry-run failed, so this test proves nothing: {r.stderr}"
+    for line in r.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("--allowedTools"):
+            body = stripped.removeprefix("--allowedTools").rstrip()
+            return shlex.split(body.removesuffix("\\"))
+    raise AssertionError("--dry-run printed no --allowedTools line")
+
+
 def test_no_allow_entry_ends_mid_token():
     """⚠ #239: `Bash($PYBIN scripts/gates/:*)` could never match, because the real token is
     `scripts/gates/test_doc_claims.py` and the matcher tokenises on whitespace. The gate was
@@ -366,15 +395,23 @@ def test_no_allow_entry_ends_mid_token():
     does not catch every mid-token prefix — `--outp` would pass — and the docstring says so
     rather than implying coverage it does not have.
     """
-    # ⚠ `_array` READS ONLY THE ARRAY LITERAL — it stops at the closing `\n)`, so every
-    # `REVIEWER_ALLOW+=(...)` append is invisible to it. The #239 entry was an append, so the
-    # first version of this test passed against the very entry it was written for. Caught by
-    # mutating the script and watching the test stay green, which is the only reason it is
-    # not still doing that.
-    entries = list(_array("REVIEWER_ALLOW"))
-    entries += re.findall(r'REVIEWER_ALLOW\+=\(\s*"([^"]+)"', SOURCE)
-    bad = [e for e in entries
+    bad = [e for e in _rendered_allowlist()
            if e.startswith("Bash(") and e.removesuffix(":*)").endswith("/")]
     assert not bad, (
         "these allow entries end mid-token and can never match a real command; name the file "
         f"rather than the directory: {bad}")
+
+
+def test_the_gate_entries_reach_the_rendered_allowlist():
+    """The control for the test above — prove the data it inspects is actually there.
+
+    ⚠⚠ WITHOUT THIS, AN EMPTY PARSE PASSES FOREVER. The test above asserts a NEGATIVE, so a
+    `_rendered_allowlist()` returning `[]` — a renamed flag, a changed print format, a moved
+    line — satisfies it silently. That is precisely how #245 survived: a green negative
+    evaluated over data that was not in the string being searched.
+    """
+    entries = _rendered_allowlist()
+    gates = [e for e in entries if "scripts/gates/" in e]
+    assert gates, f"no gate entry in the rendered allowlist at all: {entries}"
+    for e in gates:
+        assert e.endswith(".py:*)"), f"a gate entry does not name a file: {e}"
