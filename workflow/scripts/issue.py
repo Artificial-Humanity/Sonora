@@ -4,6 +4,9 @@
     workflow/scripts/issue.py list      [--branch B] [--state S]
     workflow/scripts/issue.py show      N
     workflow/scripts/issue.py file      --title T (--body B | --body-file F) [--label L] [--branch B]
+    workflow/scripts/issue.py grade     N --severity low|medium|high|critical
+                                        writes the field the MERGE GATE reads. Raising is
+                                        open; lowering an existing grade is the reviewer's
     workflow/scripts/issue.py take      N [N ...]          Ozzy: agent_passes += 1, BEFORE any work
     workflow/scripts/issue.py review    N --comment C      Ozzy: addressed, awaiting Janis
     workflow/scripts/issue.py escalate  N --comment C      Ozzy: the owner must decide
@@ -464,6 +467,47 @@ def cmd_reopen(pb, args):
     transition(pb, args, "reopen", "open", args.author)
 
 
+
+def ungraded_guard_blocks(caller, rec_author, rec_branch, here, new_sev, floor,
+                          reviewer=None):
+    """Should `grade` refuse this write? Pure, so it can be tested without a tracker.
+
+    ⚠ EXTRACTED BECAUSE THE INLINE VERSION WAS WRONG TWICE AND ITS ONLY TEST WAS A SOURCE
+    SCAN (#231). A two-line `assert "SOME STRING" in src` cannot distinguish a guard that
+    works from a guard that is merely present — #228 and #229 were both live under one.
+
+    ⚠ AND BECAUSE THE ALTERNATIVE WAS LIVE FIXTURES. Proving the earlier version by hand meant
+    grading a real record on another branch, which Janis correctly flagged as a worker setting
+    severity on a reviewer's finding as a byproduct of a test. A pure function needs no record
+    to exist, and leaves nothing to clean up server-side.
+
+    All four conditions are necessary. Any one of them false and the write is allowed:
+
+      * the CALLER is not the reviewer   — the reviewer is exempt (#228: the first version
+                                           tested only the issue's author, so its own advice,
+                                           "ask Janis", sent Janis to Janis);
+      * the FINDING is the reviewer's    — a worker's own filing is its own to grade;
+      * it is stamped with THIS branch   — makes the legacy carve-out real rather than
+                                           rhetorical (#229: 102 of 102 ungraded records are
+                                           the reviewer's, so an author-only test caught the
+                                           whole legacy set it claimed to protect);
+      * the grade is BELOW the floor     — grading up cannot clear a gate.
+    """
+    reviewer = REVIEWER_NAME if reviewer is None else reviewer
+    if not reviewer:
+        return False                       # nobody is the reviewer; nothing to protect
+    if caller == reviewer:
+        return False
+    if (rec_author or "") != reviewer:
+        return False
+    if (rec_branch or "") != (here or ""):
+        return False
+    f, n = (floor or "").strip().lower(), (new_sev or "").strip().lower()
+    if f not in SEVERITY_LADDER or n not in SEVERITY_LADDER:
+        return False                       # not comparable; the caller's own checks apply
+    return SEVERITY_LADDER.index(n) < SEVERITY_LADDER.index(f)
+
+
 def cmd_grade(pb, args):
     """Set `severity` on an issue that has none, or correct one that is wrong.
 
@@ -503,20 +547,35 @@ def cmd_grade(pb, args):
     was = (rec.get("severity") or "").strip()
     new_sev = args.severity.strip().lower()
 
-    # ⚠ THE UNGRADED DOOR, CLOSED FOR REVIEWER FINDINGS (#225). #218 left grading an ungraded
-    # issue open to anyone, reasoning that the 111 legacy records are the worker's to clear.
-    # That holds for legacy records and NOT for an ungraded finding the reviewer filed on the
-    # branch being merged — which is exactly when merge_branch.sh prints the grade command.
-    if not was and (rec.get("author") or "") == REVIEWER_NAME and REVIEWER_NAME:
-        floor = (_MERGE_FLOOR.floor_setting() or "").strip().lower()
-        if floor in SEVERITY_LADDER and new_sev in SEVERITY_LADDER \
-                and SEVERITY_LADDER.index(new_sev) < SEVERITY_LADDER.index(floor):
-            die("refusing: #%d is an UNGRADED finding filed by %s, and grading it below the\n"
-                "     floor (%s) would make it RIDE past the merge gate without anyone having\n"
-                "     verified it. Grade it AT or ABOVE the floor, or ask %s to grade it.\n"
-                "       The ungraded-remedy exists for the legacy records, not for a finding\n"
-                "       the reviewer filed against the branch you are merging."
-                % (args.number, REVIEWER_NAME, floor, REVIEWER_NAME))
+    # ⚠ THE UNGRADED DOOR, NARROWED TO WHAT IT WAS ACTUALLY FOR (#225, corrected by #228/#229).
+    #
+    # The first version tested only `rec["author"]`, and it was wrong twice over:
+    #
+    #   * it never consulted the CALLER, so the refusal caught the reviewer too — and its own
+    #     remedy said "ask Janis to grade it", which sent Janis to Janis (#228);
+    #   * it described a narrow new class while MEASURING as the whole legacy set: 102 of 102
+    #     ungraded records are authored by the reviewer, so the carve-out it claimed to protect
+    #     was empty (#229). Together those made the below-floor remedy reachable by NOBODY, for
+    #     NO record — inside the file that argues an unreachable remedy teaches bypassing.
+    #
+    # Three conditions now, all necessary: the CALLER is not the reviewer, the FINDING is the
+    # reviewer's, and it is stamped with the branch being merged. That last one is what makes
+    # the legacy carve-out real instead of rhetorical — an old record carries an old
+    # branch_name and stays gradeable.
+    _here = current_branch()
+    floor = (_MERGE_FLOOR.floor_setting() or "").strip().lower()
+    if not was:
+        if ungraded_guard_blocks(args.author, rec.get("author"), rec.get("branch_name"),
+                                 _here, new_sev, floor):
+            die("refusing: #%d is an UNGRADED finding %s filed against '%s', the branch you\n"
+                "     are on. Grading it below the floor (%s) would make it RIDE past the merge\n"
+                "     gate without anyone having verified it.\n"
+                "       Grade it AT or ABOVE the floor, or have %s grade it — %s is exempt from\n"
+                "       this refusal, which the first version of this guard was not, so its\n"
+                "       advice looped (#228).\n"
+                "       Findings on OTHER branches, including every legacy record, are\n"
+                "       unaffected: this is scoped to the branch being merged."
+                % (args.number, REVIEWER_NAME, _here, floor, REVIEWER_NAME, REVIEWER_NAME))
 
     if was:
         try:

@@ -207,14 +207,58 @@ def test_the_grade_guard_is_documented_as_a_convention_not_a_mechanism():
     assert not claims, f"the stronger claim is asserted again, not quoted: {claims}"
 
 
-def test_an_ungraded_reviewer_finding_cannot_be_graded_below_the_floor_by_the_worker():
-    """⚠ #225's other half. #218 left UNGRADED→anything open, reasoning that the legacy records
-    are the worker's to clear. That holds for legacy records and NOT for a finding the reviewer
-    filed on the branch being merged — which is exactly when the gate prints the grade command.
+BR = "fix/merge-gate-severity-floor"
 
-    Pinned on the source because reproducing it needs a live tracker record; the behaviour was
-    falsified by hand against #178 on 2026-08-21 (refused below the floor, accepted at it).
+
+@pytest.mark.parametrize("caller,author,rec_branch,here,sev,floor,blocks,why", [
+    ("Ozzy",  "Janis", BR,      BR, "low",  "medium", True,
+     "the case the guard exists for"),
+    ("Janis", "Janis", BR,      BR, "low",  "medium", False,
+     "#228: the reviewer is exempt — the first version tested only the ISSUE's author, so its "
+     "own remedy 'ask Janis to grade it' sent Janis to Janis"),
+    ("Ozzy",  "Janis", "old/x", BR, "low",  "medium", False,
+     "#229: 102 of 102 ungraded records are the reviewer's, so an author-only test caught the "
+     "whole legacy set it claimed to carve out. Branch scope makes the carve-out real"),
+    ("Ozzy",  "Ozzy",  BR,      BR, "low",  "medium", False,
+     "a worker's own filing is its own to grade"),
+    ("Ozzy",  "Janis", BR,      BR, "high", "medium", False,
+     "grading UP cannot clear a gate"),
+    ("Ozzy",  "Janis", BR,      BR, "low",  "",       False,
+     "an uncomparable floor is the caller's own checks to make, not this one's"),
+])
+def test_the_ungraded_guard_blocks_exactly_the_intended_case(
+        caller, author, rec_branch, here, sev, floor, blocks, why):
+    """⚠ #231: this guard's only test was a two-line source scan, which cannot tell a guard
+    that WORKS from one that is merely PRESENT — #228 and #229 were both live underneath one.
+
+    ⚠ And the alternative to a pure predicate was live fixtures: proving the earlier version by
+    hand meant grading a real record on another branch, which Janis flagged as the worker
+    setting severity on a reviewer's finding as a byproduct of testing. A pure function needs
+    no record and leaves nothing to clean up server-side.
+    """
+    assert _issue_module().ungraded_guard_blocks(
+        caller, author, rec_branch, here, sev, floor, reviewer="Janis") is blocks, why
+
+
+def test_the_guard_is_inert_when_no_reviewer_is_configured():
+    """A repo that has not set REVIEWER_NAME has no reviewer to protect, and the guard must not
+    refuse everyone on the strength of an empty string matching an empty author."""
+    assert _issue_module().ungraded_guard_blocks(
+        "Ozzy", "", BR, BR, "low", "medium", reviewer="") is False
+
+
+def test_grade_is_listed_in_the_usage_block_with_the_other_writes():
+    """#224: `grade` was absent from issue.py's own usage block, so the one command that writes
+    the field the merge gate reads was undiscoverable beside its siblings.
+
+    ⚠ This REPLACED a source scan asserting two literal strings from the guard's body (#231).
+    That scan could not tell a guard that WORKS from one that is merely PRESENT — #228 and
+    #229 were both live underneath it — and it went red on the fix rather than on a defect.
+    The guard's behaviour is covered by the parametrised cases above; this pins only a
+    discoverability fact, which is the kind of thing a source check can honestly assert.
     """
     src = open(os.path.join(REPO, "workflow", "scripts", "issue.py"), encoding="utf-8").read()
-    assert "THE UNGRADED DOOR, CLOSED FOR REVIEWER FINDINGS" in src
-    assert 'if not was and (rec.get("author") or "") == REVIEWER_NAME' in src
+    usage = src.split('"""', 2)[1]
+    for cmd in ("list", "show", "file", "grade", "take", "review", "escalate", "close",
+                "reopen", "comment", "escalated"):
+        assert f"issue.py {cmd}" in usage, f"{cmd} missing from the usage block"
