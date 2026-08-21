@@ -483,13 +483,40 @@ def cmd_grade(pb, args):
     thing the split buys" — and there was no such sentence for `grade` in any file, while the
     gate's own refusal text told the blocked party to run it with `low` listed first.
 
-    So: raising is open to anyone, grading an UNGRADED issue is open to anyone (that is the
-    remedy the gate must keep reachable), and LOWERING an existing grade is the reviewer's
-    alone. The asymmetry is the point — no direction that can clear a gate is self-served.
+    So: raising is open to anyone; grading an UNGRADED issue is open to anyone EXCEPT where
+    the reviewer filed it, because that is the case the gate cannot distinguish from a legacy
+    record and the case its own message points at; and LOWERING an existing grade is the
+    reviewer's alone.
+
+    ⚠ THIS IS A CONVENTION, NOT A MECHANISM, AND AN EARLIER VERSION OF THIS DOCSTRING CLAIMED
+    OTHERWISE (#225). It said "no direction that can clear a gate is self-served", which does
+    not follow: `--author` is SELF-DECLARED, so anyone can pass `--author Janis` and the check
+    waves them through. There is no authentication here and none is available — `issue.py`
+    runs as whoever runs it, exactly as the git identity in DEVELOPER.md §1 is a convention
+    the repo cannot enforce.
+
+    What the check actually buys is that the bypass must be TYPED ON PURPOSE and leaves a
+    self-declared author on the record. That is worth having and it is not a guarantee; the
+    difference is the whole of #218's lesson applied to #218's own fix.
     """
     rec = pb.find(args, args.number)
     was = (rec.get("severity") or "").strip()
     new_sev = args.severity.strip().lower()
+
+    # ⚠ THE UNGRADED DOOR, CLOSED FOR REVIEWER FINDINGS (#225). #218 left grading an ungraded
+    # issue open to anyone, reasoning that the 111 legacy records are the worker's to clear.
+    # That holds for legacy records and NOT for an ungraded finding the reviewer filed on the
+    # branch being merged — which is exactly when merge_branch.sh prints the grade command.
+    if not was and (rec.get("author") or "") == REVIEWER_NAME and REVIEWER_NAME:
+        floor = (_MERGE_FLOOR.floor_setting() or "").strip().lower()
+        if floor in SEVERITY_LADDER and new_sev in SEVERITY_LADDER \
+                and SEVERITY_LADDER.index(new_sev) < SEVERITY_LADDER.index(floor):
+            die("refusing: #%d is an UNGRADED finding filed by %s, and grading it below the\n"
+                "     floor (%s) would make it RIDE past the merge gate without anyone having\n"
+                "     verified it. Grade it AT or ABOVE the floor, or ask %s to grade it.\n"
+                "       The ungraded-remedy exists for the legacy records, not for a finding\n"
+                "       the reviewer filed against the branch you are merging."
+                % (args.number, REVIEWER_NAME, floor, REVIEWER_NAME))
 
     if was:
         try:

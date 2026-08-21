@@ -181,3 +181,40 @@ def test_the_reviewer_name_is_read_from_config_not_hardcoded():
     cfg = open(os.path.join(REPO, "workflow", "config.env"), encoding="utf-8").read()
     assert f"REVIEWER_NAME={mod.REVIEWER_NAME}" in cfg, \
         "issue.py's REVIEWER_NAME does not match config.env — it is hardcoded somewhere"
+
+
+def test_the_grade_guard_is_documented_as_a_convention_not_a_mechanism():
+    """⚠ #225: the docstring claimed "no direction that can clear a gate is self-served".
+
+    It does not follow. `--author` is SELF-DECLARED — anyone may pass `--author Janis` — so the
+    check is a speed bump that leaves a self-declared name on the record, exactly like the git
+    identity DEVELOPER.md §1 calls a convention the repo cannot enforce.
+
+    Claiming a guarantee a guard does not provide is worse than the gap itself: a reader who
+    believes a boundary is structural stops checking it. This pins the honest wording so the
+    stronger claim cannot come back.
+    """
+    src = open(os.path.join(REPO, "workflow", "scripts", "issue.py"), encoding="utf-8").read()
+    assert "CONVENTION, NOT A MECHANISM" in src
+
+    # ⚠ THE PHRASE MAY APPEAR, BUT ONLY AS A QUOTATION OF THE OLD CLAIM. This repo's comments
+    # routinely explain a fix by quoting the defect, so a bare "not in src" fails on the
+    # correction itself — the third guard on this branch to fire on its own explanatory prose.
+    # What must not return is the phrase ASSERTED. A quoted line says so on the same line.
+    claims = [l for l in src.splitlines()
+              if "no direction that can clear a gate is self-served" in l
+              and "It said" not in l]
+    assert not claims, f"the stronger claim is asserted again, not quoted: {claims}"
+
+
+def test_an_ungraded_reviewer_finding_cannot_be_graded_below_the_floor_by_the_worker():
+    """⚠ #225's other half. #218 left UNGRADED→anything open, reasoning that the legacy records
+    are the worker's to clear. That holds for legacy records and NOT for a finding the reviewer
+    filed on the branch being merged — which is exactly when the gate prints the grade command.
+
+    Pinned on the source because reproducing it needs a live tracker record; the behaviour was
+    falsified by hand against #178 on 2026-08-21 (refused below the floor, accepted at it).
+    """
+    src = open(os.path.join(REPO, "workflow", "scripts", "issue.py"), encoding="utf-8").read()
+    assert "THE UNGRADED DOOR, CLOSED FOR REVIEWER FINDINGS" in src
+    assert 'if not was and (rec.get("author") or "") == REVIEWER_NAME' in src
