@@ -227,7 +227,11 @@ def test_auto_permission_mode_is_not_used():
 def test_the_allowlist_has_no_git_wildcard():
     """#92: `Bash(git:*)` pre-approved push, commit and reset for the one role that must
     never write to main."""
-    allow = _array("REVIEWER_ALLOW")
+    # ⚠ RENDERED, NOT `_array` (#249). `_array` reads only the array literal and cannot see a
+    # `+=` append — 35 entries of the 40 the matcher receives. A wildcard added by an append
+    # was invisible to this guard, which is the one that keeps push/commit/reset away from the
+    # role that must never write to main.
+    allow = _rendered_allowlist()
     assert "Bash(git:*)" not in allow
     assert not any(a.startswith("Bash(git)") or a == "Bash(git *)" for a in allow)
 
@@ -313,8 +317,15 @@ def test_the_launcher_grant_is_scoped_to_dry_run():
     1094 tests green. Four fixes in this cycle have now been correct-but-unpinned (#110, #118,
     #119, and the #80 shape) — and this is the first where the unpinned guard protected a
     CAPABILITY rather than the accuracy of a sentence.
+
+    ⚠⚠ AND IT WAS STILL ON THE BLIND INSTRUMENT UNTIL #249. #245 built
+    `_rendered_allowlist()` — which parses what the matcher actually receives — and used it for
+    the two NEW tests while leaving this one, and the git-wildcard guard, on `_array`. So a
+    whole-script launcher grant introduced as a `+=` append would have been invisible to the
+    guard written to prevent exactly that, in the same file, thirty lines from the instrument
+    that would have caught it.
     """
-    launcher = [a for a in _array("REVIEWER_ALLOW") if "request_review.sh" in a]
+    launcher = [a for a in _rendered_allowlist() if "request_review.sh" in a]
     assert launcher, "the reviewer needs to be able to dry-run the launcher it reviews"
     for entry in launcher:
         assert "--dry-run" in entry, (
@@ -400,6 +411,27 @@ def test_no_allow_entry_ends_mid_token():
     assert not bad, (
         "these allow entries end mid-token and can never match a real command; name the file "
         f"rather than the directory: {bad}")
+
+
+def test_every_gate_on_disk_is_granted():
+    """⚠⚠ #247: the grant named FOUR gates while `scripts/gates/` held SIX.
+
+    `test_film_export_gate.py` and `test_vat_identity.py` were refused — measured by the
+    reviewer, mid-review — while `REVIEWER.md` §1 told that same reviewer the whole directory
+    was reachable. A hand-kept list beside a directory goes stale the moment a gate is added,
+    and this one was stale on the commit that wrote it.
+
+    ⚠ DERIVED FROM DISK ON BOTH SIDES. Asserting a list of six names here would be the same
+    defect one layer up: the next gate added would leave the grant and this test agreeing with
+    each other and disagreeing with the directory.
+    """
+    on_disk = sorted(p.name for p in (REPO / "scripts" / "gates").glob("test_*.py"))
+    assert on_disk, "no gates found — this test would pass vacuously"
+    granted = _rendered_allowlist()
+    missing = [g for g in on_disk if not any(g in e for e in granted)]
+    assert not missing, (
+        "these gates exist on disk but are not in the rendered allowlist, so the reviewer is "
+        f"refused when it runs them: {missing}")
 
 
 def test_the_gate_entries_reach_the_rendered_allowlist():

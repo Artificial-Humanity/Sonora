@@ -89,7 +89,13 @@ def _on_base_branch(repo=REPO):
 
 
 def _commits(repo=REPO, boundary=GRANDFATHERED_THROUGH):
-    """(sha, author, email, body) for THIS BRANCH'S own unmerged commits after the boundary.
+    """(sha, author, email, trailers, body) for THIS BRANCH'S own unmerged commits after the
+    boundary.
+
+    ⚠ FIVE FIELDS, NOT FOUR (#251). `0afe042` added `%(trailers)` and updated every caller,
+    but left this line reading `(sha, author, email, body)` — so the next caller written from
+    the docstring unpacks four values and raises `ValueError`. Nothing was broken at the time,
+    which is exactly why it survived: the cost lands on whoever writes the next caller.
 
     ⚠ `--no-merges`, and scoped to `BASE..HEAD` (issue #102). A merge commit is made by
     `merge_branch.sh` without a `-c` pair and carries the configured identity, which is the
@@ -326,20 +332,26 @@ def test_the_range_excludes_what_it_is_not_a_guard_over():
         "the range includes a merge commit"
 
 
-@pytest.mark.parametrize("shape,message,should_fire", [
+@pytest.mark.parametrize("shape,message,should_fire,trailers_carry", [
     ("A — trailer as the last paragraph",
-     "fix: something\n\nCo-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n", True),
+     "fix: something\n\nCo-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n", True, True),
     ("B — trailer, then a closing sentence",
      "fix: something\n\nCo-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n\n"
-     "And some closing prose here.\n", True),
-    ("C — the name in prose only",
-     "fix: something\n\nThis explains why a Ziggy trailer is forbidden here.\n\n"
-     "Suite: 1429 passed.\n", False),
+     "And some closing prose here.\n", True, False),
+    # ⚠ C CARRIES THE LITERAL `Co-Authored-By: Ziggy` IN MID-SENTENCE PROSE, deliberately
+    # (#241). The earlier version wrote only "a Ziggy trailer", so `BAD_TRAILER in body` was
+    # False for it — and a revert of this guard to the old substring check stayed green on all
+    # four shapes. With the full phrase present but not alone on its line, the line-anchored
+    # match still returns False while a substring revert turns red, which is what C is for.
+    ("C — the phrase in prose only",
+     "fix: something\n\nThis explains why a Co-Authored-By: Ziggy trailer is forbidden.\n\n"
+     "Suite: 1429 passed.\n", False, False),
     ("D — alongside another trailer",
      "fix: something\n\nSigned-off-by: Someone <s@example.com>\n"
-     "Co-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n", True),
+     "Co-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n", True, True),
 ])
-def test_the_trailer_detection_actually_fires(tmp_path, shape, message, should_fire):
+def test_the_trailer_detection_actually_fires(tmp_path, shape, message, should_fire,
+                                              trailers_carry):
     """⚠ THE CONTROL #241 SAID WAS MISSING, AND IT WAS RIGHT.
 
     `0afe042` moved this guard onto `%(trailers)` — an unvalidated git format field — and
@@ -366,5 +378,16 @@ def test_the_trailer_detection_actually_fires(tmp_path, shape, message, should_f
          "commit", "-q", "-m", message)
     trailers = _git(repo, "log", "-1", "--format=%(trailers)")
     body = _git(repo, "log", "-1", "--format=%B")
+
+    # ⚠⚠ THE TWO BRANCHES ARE PINNED SEPARATELY, AND THE COMBINED CALL IS NOT ENOUGH (#241).
+    # `carries_bad_trailer` is an OR, and the body regex alone returns the right answer for all
+    # four shapes — so forcing `trailers=""` changed NO result and the first version of this
+    # control could not fail if `%(trailers)` broke, which is the whole of #241. The trailers
+    # branch is not redundant: `Co-Authored-By: Ziggy` with no `<address>` is caught by it and
+    # missed by the `<[^>]+>` regex, and that coverage could vanish with nothing going red.
+    assert (BAD_TRAILER in trailers) is trailers_carry, (
+        f"shape {shape}: `%(trailers)` did not parse as expected — got {trailers!r}. This is "
+        "the field the guard's primary branch reads; if it is empty for every shape the guard "
+        "is checking nothing.")
     assert carries_bad_trailer(trailers, body) is should_fire, (
         f"shape {shape}: detection returned the wrong answer")

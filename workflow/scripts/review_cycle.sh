@@ -123,12 +123,35 @@ NOTES_FILE="$REPO_ROOT/.review_cycle.notes"
 # in `--help` OTHER than the stop file itself (`check_stop` removes it on that one path only),
 # or when it is created while no cycle is running; in a ported lane it is then untracked, the
 # tree is dirty, and the next run dies at the check below naming the same wrong cause.
-rm -f "$NOTES_FILE" "$STOPFILE"
+#
+# ⚠⚠ NOT ON A DRY RUN (#248). `--help` promises "Print the plan and exit. Spends nothing,
+# files nothing", and an unconditional clear broke that promise twice over: it destroyed the
+# loop's only cross-pass memory, and it DISARMED THE HALT CONTROL — an operator who arms the
+# stop file to stop a running cycle and then opens a second terminal to check the plan would
+# silently un-arm it and the cycle would keep spending. `--stop-file` also takes an arbitrary
+# path, so the unguarded form was an `rm -f` on operator-supplied input in the mode advertised
+# as inert. The first version of this fix was pinned by a test that asserted the deletion as a
+# REQUIREMENT, so the suite agreed with the bug.
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  rm -f "$NOTES_FILE" "$STOPFILE"
+fi
 
 # ⚠ Refuse a dirty tree. The worker commits, so uncommitted edits would be swept into a
 # commit nobody wrote a message for — and the range under review would stop matching the
 # range that was read.
-if [[ -n "$(git status --porcelain)" ]]; then
+#
+# ⚠ THE DRIVER'S OWN RUNTIME FILES ARE EXCLUDED, and that is what lets the clear above be
+# skipped on a dry run without changing what a dry run reports. They are never part of the
+# range and never something the worker could commit, so they are not "dirt" in the sense this
+# check means. Without the exclusion, `--dry-run` in a ported lane (no `.gitignore` entry, a
+# notes file left by the last cycle) would die here and report a refusal THE REAL RUN WOULD
+# NOT HIT — the real run clears them one line up. Measured: the pathspec hides these two and
+# still reports every other change.
+# ⚠ The two names are DERIVED from the variables above rather than written out again — a
+# second literal copy of either path is the drift `test_the_notes_path_has_one_definition`
+# exists to stop, and it caught exactly that here.
+if [[ -n "$(git status --porcelain -- . \
+            ":(exclude)${NOTES_FILE##*/}" ":(exclude)${STOPFILE##*/}")" ]]; then
   die "working tree is dirty. Commit or stash first — the worker commits, and it would
      otherwise absorb your uncommitted edits into a review it never read."
 fi

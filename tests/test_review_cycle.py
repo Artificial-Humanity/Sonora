@@ -14,6 +14,7 @@ a *capability* rather than a sentence, reverting it would have restored unbounde
 reviews (#115).
 """
 
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -268,35 +269,103 @@ def _ported_lane(tmp_path):
     return tmp_path
 
 
+def _real_startup(repo):
+    """Run the driver for real — no `--dry-run` — and stop it right after startup.
+
+    ⚠ `--dry-run` CAN NO LONGER BE THE VEHICLE (#248). The old test ran the dry run and
+    asserted the files were gone, so the suite asserted the very deletion that broke
+    `--help`'s "files nothing" promise. A test has to reach a REAL startup to see the clear.
+
+    ⚠ HOME IS REDIRECTED SO THE TRACKER LOOKUP FAILS ON PURPOSE. `pb()` reads
+    `~/.claude.json`; with it absent the helper prints "unreachable" and the driver stops with
+    exit 4 — after the startup clear and before it can spawn `claude`. That makes this
+    deterministic and offline rather than dependent on a live tracker.
+    """
+    env = dict(os.environ, HOME=str(repo / "fake-home"))
+    (repo / "fake-home").mkdir(exist_ok=True)
+    return subprocess.run(["bash", "workflow/scripts/review_cycle.sh"],
+                          cwd=repo, capture_output=True, text=True, env=env)
+
+
 @pytest.mark.parametrize("runtime_file", [".review_cycle.notes", ".review_cycle.stop"])
 def test_a_stale_runtime_file_does_not_block_the_next_run(tmp_path, runtime_file):
     """⚠⚠ THE DRIVER USED TO RUN EXACTLY ONCE PER MANUAL CLEANUP, and nothing said so.
 
     The worker's brief, step 5, tells it to write `.review_cycle.notes`; nothing removed the
-    file; and the dirty-tree check refuses to start when `git status --porcelain` is non-empty,
-    which an untracked file makes it. So run 1 succeeded and run 2 died at the door — blaming
-    "your uncommitted edits", which is not what was there.
+    file; and the dirty-tree check refuses to start when the tree is not clean, which an
+    untracked file made it. Run 1 succeeded and run 2 died at the door — blaming "your
+    uncommitted edits", which is not what was there.
 
     ⚠ PARAMETRISED OVER BOTH RUNTIME FILES (#246). The first fix moved the notes `rm` above the
     refusal and left the stop file's below it, so the identical death survived one filename
-    over. A test naming only the notes file could not see that, and the reasoning in the commit
-    covered both.
+    over, while the commit's own reasoning covered both.
 
-    ⚠ THIS RUNS THE SCRIPT INSTEAD OF READING IT. A source scan for the `rm` would pass with it
+    ⚠ THIS RUNS THE SCRIPT INSTEAD OF READING IT. A source scan for the `rm` passes with it
     placed AFTER the dirty-tree check, where it can never be reached — the ordering IS the fix,
     and only execution sees ordering (#231).
     """
     repo = _ported_lane(tmp_path)
     (repo / runtime_file).write_text("left over from a previous cycle\n", encoding="utf-8")
-    assert subprocess.run(["git", "status", "--porcelain"], cwd=repo,
-                          capture_output=True, text=True).stdout.strip(), (
-        "precondition: the stale file must make the tree dirty, or this proves nothing")
+
+    r = _real_startup(repo)
+    assert r.returncode == 4, (
+        f"expected the tracker-unreachable stop (4) after startup, got {r.returncode}: "
+        f"{r.stderr[-400:]}")
+    assert not (repo / runtime_file).exists(), (
+        f"{runtime_file} survived a real startup, so the next run starts from a poisoned tree")
+
+
+@pytest.mark.parametrize("runtime_file", [".review_cycle.notes", ".review_cycle.stop"])
+def test_a_dry_run_does_not_touch_the_runtime_files(tmp_path, runtime_file):
+    """⚠⚠ #248: `--help` says a dry run "Spends nothing, files nothing" — it deleted both.
+
+    Two real losses, and both silent. The notes file is the loop's ONLY memory across passes
+    (DEVELOPER.md §3: without it "the next review cannot tell a fix from an omission"), so
+    checking the plan between a worker pass and the next review destroyed the brief. And the
+    stop file is the documented halt control, so a dry run in a second terminal DISARMED a
+    halt an operator had deliberately armed, and the cycle kept spending.
+
+    ⚠ THE PREVIOUS TEST HERE ASSERTED THE DELETION AS A REQUIREMENT. It used `--dry-run` as a
+    cheap way to reach startup and then asserted the files were gone — so the suite positively
+    agreed with the defect, and nobody weighed that assertion against `--help`. That is why
+    this is written as a promise about the FLAG rather than a by-product of the fixture.
+    """
+    repo = _ported_lane(tmp_path)
+    (repo / runtime_file).write_text("armed by the operator\n", encoding="utf-8")
 
     r = subprocess.run(["bash", "workflow/scripts/review_cycle.sh", "--dry-run"],
                        cwd=repo, capture_output=True, text=True)
-    assert r.returncode == 0, f"the driver refused a second run over {runtime_file}: {r.stderr}"
-    assert not (repo / runtime_file).exists(), (
-        f"{runtime_file} survived, so the next run starts from a poisoned tree")
+    assert r.returncode == 0, f"the dry run refused: {r.stderr[-400:]}"
+    assert (repo / runtime_file).exists(), (
+        f"--dry-run deleted {runtime_file}, but --help promises it files nothing")
+
+
+def test_a_dry_run_is_not_refused_by_its_own_leftovers(tmp_path):
+    """The exclusion in the dirty-tree check, pinned as behaviour.
+
+    A ported lane has no `.gitignore` entry for these files, so without the pathspec exclusion
+    a dry run over a leftover notes file would die on the dirty-tree refusal — reporting a
+    failure the real run does not hit, because the real run clears them first.
+    """
+    repo = _ported_lane(tmp_path)
+    (repo / ".review_cycle.notes").write_text("stale\n", encoding="utf-8")
+    (repo / ".review_cycle.stop").write_text("armed\n", encoding="utf-8")
+    r = subprocess.run(["bash", "workflow/scripts/review_cycle.sh", "--dry-run"],
+                       cwd=repo, capture_output=True, text=True)
+    assert r.returncode == 0, f"leftovers alone refused the dry run: {r.stderr[-400:]}"
+
+
+def test_real_dirt_still_refuses(tmp_path):
+    """⚠ THE CONTROL FOR THE EXCLUSION — it must hide the two runtime files and nothing else.
+
+    An over-broad pathspec would silence the dirty-tree check entirely, and the check is what
+    stops the worker committing edits nobody wrote a message for.
+    """
+    repo = _ported_lane(tmp_path)
+    (repo / "somebody_elses_edit.txt").write_text("uncommitted\n", encoding="utf-8")
+    r = _real_startup(repo)
+    assert r.returncode == 1, f"a dirty tree was not refused: rc={r.returncode}"
+    assert "working tree is dirty" in r.stderr
 
 
 @pytest.mark.parametrize("var", ["$NOTES_FILE", "$STOPFILE"])

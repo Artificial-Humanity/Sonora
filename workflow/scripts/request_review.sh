@@ -625,16 +625,35 @@ REVIEWER_ALLOW=(
 # which is worse than an absent entry, because it reads as covered." I wrote an allow entry
 # that breaks the rule its own suite documents.
 #
-# Gates are named individually now. That is more verbose than a directory and it is the point:
-# each one ends on a boundary, and adding a gate is a visible edit rather than a silent
-# widening.
+# Gates are named individually now — each entry ends on a token boundary.
+#
+# ⚠⚠ THE LIST IS GLOBBED FROM DISK, NOT TYPED (#247). The first version wrote out four names
+# while the directory held six, so `test_film_export_gate.py` and `test_vat_identity.py` were
+# REFUSED — measured by the reviewer, from inside a review — while REVIEWER.md §1 told that
+# same reviewer the whole directory was reachable. A hand-kept list beside a directory is a
+# copy that goes stale the moment a gate is added, and it went stale on the commit that
+# created it.
+#
+# ⚠ THIS IS NOT A WIDENING OF CAPABILITY, and it would be worth refusing if it were. The
+# reviewer already holds `python` and `python3` — REVIEWER.md §1 calls that arbitrary code
+# execution in as many words — so every one of these files was already runnable by another
+# spelling. What the named entries buy is that the INTENDED commands work without the reviewer
+# having to reach for the general one, which is why a gap here reads as "not allowed to" rather
+# than "spell it differently".
+#
+# ⚠ The glob is quoted per-entry below, and `nullglob` is deliberately NOT set: if the
+# directory were empty the pattern would stay literal and the entry would be a path that
+# matches nothing, which refuses safely. It is guarded on `-d` so that case cannot arise
+# silently.
 if [[ -n "$PYBIN" ]]; then
   REVIEWER_ALLOW+=("Bash($PYBIN -m pytest:*)")
-  for _g in scripts/gates/test_doc_claims.py scripts/gates/test_skill_files.py \
-            scripts/gates/test_text_selection.py scripts/gates/test_vat_dim_seams.py; do
-    REVIEWER_ALLOW+=("Bash($PYBIN $_g:*)")
-  done
-  unset _g
+  if [[ -d scripts/gates ]]; then
+    for _g in scripts/gates/test_*.py; do
+      [[ -f "$_g" ]] || continue
+      REVIEWER_ALLOW+=("Bash($PYBIN $_g:*)")
+    done
+    unset _g
+  fi
 fi
 
 # Explicit denials. Schema and instance administration are not a reviewer's business —
