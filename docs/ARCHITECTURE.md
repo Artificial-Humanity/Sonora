@@ -169,10 +169,14 @@ dial there in the same phase, so outputs stay vettable by ear at the current fea
   README (provenance: training run, stop signal, criterion + numbers, human-audit date, license
   statement), `gate_history.jsonl`, eval report, audited samples, render/export metadata.
 * Publish to HF (`artificial-humanity/Sonora`) on owner call only.
-* Tier naming: the current lineage is **sonora-mini** (150M ceiling, on-device;
-  [model-decisions.md § The size target](model-decisions.md)); mid/heavy tiers reuse this
-  architecture end-to-end with per-tier backbone, budget, and export target
-  ([model-decisions.md § The size ladder](model-decisions.md)).
+* Tier naming: ⚠ **the lineage name is not this file's to declare — read it off
+  [model-decisions.md § The size ladder](model-decisions.md)** at the moment you publish.
+  That section holds the rule *and* the condition it turns on, and a name copied to here is a
+  second copy that can be acted on after the original has moved. (It said **sonora-mini** until
+  2026-08-21, while every published artifact and the owning rule said unsuffixed.)
+  The 150M ceiling the current tier sits under is
+  [model-decisions.md § The size target](model-decisions.md); mid/heavy tiers reuse this
+  architecture end-to-end with per-tier backbone, budget, and export target.
 
 ## 8. Staged capability (any tier)
 
