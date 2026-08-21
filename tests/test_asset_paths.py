@@ -403,6 +403,35 @@ SHELL_SCRIPTS = sorted(
 _HEREDOC_START = re.compile(r"<<-?\s*'?([A-Za-z_][A-Za-z0-9_]*)'?")
 
 
+def test_the_shell_enumeration_is_not_empty():
+    """⚠ AN EMPTY ENUMERATION MUST BE RED, NOT ABSENT — measured, not assumed.
+
+    `@pytest.mark.parametrize` over an EMPTY list does not fail and does not error: pytest
+    reports `1 skipped` and exits 0. So if `git ls-files '*.sh'` ever returned nothing — the
+    directory thins out, the scripts move, the listing breaks — the guard below would
+    contribute a skip and the suite would stay green, having checked nothing. That is the
+    same silent-disarm shape the rest of this file exists to catch, one level up: not a wrong
+    assertion, but no assertion at all.
+
+    Floor, not equality: adding a shell script must not fail this, and losing most of them
+    must. 14 measured 2026-08-21, of which 4 carry embedded python heredocs.
+    """
+    assert len(SHELL_SCRIPTS) >= 10, (
+        f"only {len(SHELL_SCRIPTS)} shell script(s) enumerated, from the 14 measured on "
+        f"2026-08-21. Either `git ls-files '*.sh'` stopped working or they really moved — "
+        f"if the latter, re-derive this floor deliberately rather than lowering it to fit.")
+    with_heredocs = [rel for rel in SHELL_SCRIPTS
+                     if _embedded_python((REPO / rel).read_text(encoding="utf-8"))]
+    # ⚠ The population that MATTERS is the scripts with python in them. All 14 could be
+    # enumerated while the heredoc parser silently matched none of them — a floor on the
+    # outer list would not notice, and the import guard would pass on every file by having
+    # nothing to look at.
+    assert len(with_heredocs) >= 3, (
+        f"only {len(with_heredocs)} shell script(s) yielded a parseable python heredoc, from "
+        f"the 4 measured on 2026-08-21. The import guard has almost nothing to check — "
+        f"suspect `_embedded_python` before believing the scripts changed.")
+
+
 def _embedded_python(text):
     """Every `python … <<'MARKER' … MARKER` heredoc body in a shell script, with its offset."""
     lines = text.split("\n")

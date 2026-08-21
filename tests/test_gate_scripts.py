@@ -268,6 +268,13 @@ def test_every_gate_script_is_enumerated_exactly_once():
     """
     on_disk = {f for f in os.listdir(GATES)
                if f.startswith("test_") and f.endswith(".py")}
+    # ⚠ AN EMPTY DIRECTORY MUST BE RED, NOT SILENT. With `on_disk` empty every assertion
+    # below is vacuously true and this test reports green having checked nothing — which is
+    # precisely the defect it was written for, one level up. 7 measured 2026-08-21.
+    assert len(on_disk) >= 6, (
+        f"only {len(on_disk)} gate script(s) found in {GATES}, from the 7 measured on "
+        f"2026-08-21. Every check below is vacuous at this count — suspect the directory "
+        f"or the listing before lowering this floor.")
     enumerated = {}
     for name, bucket in (("FAST", FAST), ("TORCH_ONLY", TORCH_ONLY)):
         for s in bucket:

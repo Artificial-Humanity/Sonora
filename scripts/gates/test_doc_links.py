@@ -294,9 +294,17 @@ def main():
         failures.append(f"{rel}:{lineno} — link target does not exist: {raw}")
 
     stale = section_citations()
-    print(f"checked the `<file>.md §N` citations in "
-          f"{len(markdown_files(REPO, dirs=CITATION_DIRS))} markdown files "
+    cited_files = markdown_files(REPO, dirs=CITATION_DIRS)
+    print(f"checked the `<file>.md §N` citations in {len(cited_files)} markdown files "
           f"(widened to scripts/assets/ for this check only)")
+    # ⚠ NO FILES IS A FAILURE, NOT A CLEAN RUN. `section_citations()` returning [] means
+    # "nothing dangles" and "there was nothing to read" identically, and the second must not
+    # print PASS. 47 measured 2026-08-21.
+    if len(cited_files) < 30:
+        failures.append(
+            f"only {len(cited_files)} markdown file(s) reached the §N citation check, from "
+            f"the 47 measured on 2026-08-21 — at this count a clean result means the scan "
+            f"found nothing to read, not that the citations are sound.")
     for rel, lineno, target, n, available in stale:
         have = ", ".join(f"§{x}" for x in available) if available else "NO numbered headings"
         failures.append(
