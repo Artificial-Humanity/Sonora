@@ -162,10 +162,26 @@ def const(module_rel, name):
     AST rather than import: importing `scm` pulls in `schemas` and the sibling-path setup,
     and a gate that needs the package layout to be correct in order to check a docstring is
     a gate with a second failure mode.
+
+    ⚠ `module_rel` IS REPO-RELATIVE, AND WAS `scripts/lib`-RELATIVE UNTIL 2026-08-21 (#189).
+    The hardcoded directory meant this could only ever reach one bucket, so the constants
+    worth registering most — `SPEECH_MIN_SECONDS` in `scripts/stages/`, the direction dial in
+    `matcha/` — were unreachable, and the feature was wired for the single fact that motivated
+    it. Widening a path parameter is exactly the edit that can make a gate pass VACUOUSLY, so
+    two behaviours are asserted rather than assumed: a missing FILE and a missing NAME both
+    raise, and `main()` turns either into a failure ("a fact whose source is missing is not a
+    passing fact"). A registry entry that silently read the wrong file would be worse than no
+    entry, because it would report green.
     """
     import ast
 
-    path = os.path.join(REPO, "scripts", "lib", module_rel)
+    path = os.path.join(REPO, module_rel)
+    if not os.path.isfile(path):
+        # KeyError, not FileNotFoundError: `main()` catches (OSError, KeyError) and both are
+        # already handled — but naming the repo-relative path is what tells the reader the
+        # argument changed meaning, rather than that the file was deleted.
+        raise KeyError(f"{module_rel} is not a file in this repo (const() takes a "
+                       f"REPO-relative path since 2026-08-21, not a scripts/lib one)")
     tree = ast.parse(open(path, encoding="utf-8").read())
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
@@ -195,7 +211,7 @@ FACTS = [
         # and until 2026-08-19 nothing checked that class. See `const` above for the drift
         # that prompted it.
         "name": "SCM verifier tolerance (scm.VAT_TOL)",
-        "truth": lambda: const("scm.py", "VAT_TOL"),
+        "truth": lambda: const("scripts/lib/scm.py", "VAT_TOL"),
         "artifacts": [os.path.join(REPO, "scripts", "lib", "scm.py")],
         "scope": r"VAT_TOL|verifier tolerance|within tolerance|vat\.[VAT] claimed",
         "patterns": [r"±\s*([\d.]+)", r"tolerance = ±?([\d.]+)"],
@@ -203,6 +219,30 @@ FACTS = [
         # not a claim about today. Narrow on purpose — a bare "0.25" exemption would blind
         # the fact to the very table cell that was wrong.
         "exempt": ["table above said `±0.25`", "(originally ±0.25)"],
+    },
+    {
+        # ⚠ TWO DIFFERENT GATES SIT AT THE SAME VALUE, AND THEY ARE REGISTERED SEPARATELY.
+        # `qc_gate.SPEECH_MIN_SECONDS` is the QC hard gate on MEASURED VAD speech;
+        # `book_ingest.MIN_CLIP_SECONDS` (below) gates ESTIMATED speech in the INPUT TEXT
+        # before anything is rendered. Both read 4.0 today, which is exactly why one fact
+        # scoped to catch every "4 s" sentence would look right: it would compare each
+        # document to whichever constant it happened to be built from, and go green by
+        # coincidence. The day one moves, the coincidence becomes a false failure against the
+        # other. So each fact is scoped by ITS OWN constant name.
+        "name": "QC speech floor (qc_gate.SPEECH_MIN_SECONDS)",
+        "truth": lambda: const("scripts/stages/qc_gate.py", "SPEECH_MIN_SECONDS"),
+        "artifacts": [os.path.join(REPO, "scripts", "stages", "qc_gate.py")],
+        "scope": r"SPEECH_MIN_SECONDS|floor via Silero",
+        "patterns": [r"Minimum\s+([\d.]+)\s*s\b", r"([\d.]+)\s*s floor"],
+        "exempt": [],
+    },
+    {
+        "name": "Teacher-bank text floor (book_ingest.MIN_CLIP_SECONDS)",
+        "truth": lambda: const("scripts/lib/book_ingest.py", "MIN_CLIP_SECONDS"),
+        "artifacts": [os.path.join(REPO, "scripts", "lib", "book_ingest.py")],
+        "scope": r"MIN_CLIP_SECONDS",
+        "patterns": [r"Minimum clip length is ([\d.]+)\s*s\b"],
+        "exempt": [],
     },
     {
         "name": "v5 TRAIN rows",
@@ -517,6 +557,12 @@ def main():
                             "A fact whose source is missing is not a passing fact.")
             continue
         want = {comma(truth), str(truth)}
+        # ⚠ A FLOAT CONSTANT AND ITS PROSE SPELLING DIFFER, and the mismatch is silent until
+        # a fact is registered for one. `SPEECH_MIN_SECONDS = 4.0` is written "4 s" in every
+        # note, while `str(4.0)` is "4.0" — so the fact would have called every CORRECT
+        # sentence a drift. An integral float admits both spellings; 0.35 is untouched.
+        if isinstance(truth, float) and truth.is_integer():
+            want |= {comma(int(truth)), str(int(truth))}
         checked += 1
         for path in files:
             rel = os.path.relpath(path, REPO)
