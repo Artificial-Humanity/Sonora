@@ -278,19 +278,23 @@ Leave the `gh_*` and `migrated_from_github` fields empty. They were provenance f
 (#12–#89) migrated off GitHub, whose numbers were preserved so a `#33` in an old commit message
 still named the same finding.
 
-⚠ **THOSE RECORDS ARE GONE.** The owner wiped the tracker on 2026-08-17, after a byte-for-byte
-export to `notes/tracker-export-2026-08-17.json` (79 issues, 130 comments — verify it before
-you believe this paragraph). So an old commit citing `#33` now names a finding that exists only
-in that export. **This is not data loss and it is not a defect to file**: it was deliberate, and
-issue numbers are allocated from 90 upward so nothing collides. The fields stay in the schema
-because the export can be reloaded.
+⚠⚠ **THOSE RECORDS ARE NO LONGER IN THE LIVE TRACKER, AND THIS FILE ONCE SAID THEY WERE.** The
+owner wiped it on 2026-08-17 after a byte-for-byte export; the instance now holds only issues
+numbered 90+, and `#12–#89` are **not there**. They live in
+`notes/tracker-export-2026-08-17.json` — 79 issue records, 130 comments, numbers 12–120 —
+so an old commit citing `#33` names a finding that exists only in that export.
 
-⚠⚠ **THOSE RECORDS ARE NO LONGER IN THE LIVE TRACKER, AND THIS FILE SAID THEY WERE** (2026-08-19).
-The instance holds only issues numbered 90+; `#12–#89` are **not there**. They were exported
-before the tracker was wiped and live in `notes/tracker-export-2026-08-17.json` — 79 issue
-records, numbers 12–120 — so nothing was lost, but a reviewer who queries for them finds
-nothing and cannot tell that from data loss. Measured by a reviewer this branch, who correctly
-declined to file it because this file was outside its range.
+**This is not data loss and it is not a defect to file**: it was deliberate, numbers are
+allocated from 90 upward so nothing collides, and the `gh_*` fields stay in the schema because
+the export can be reloaded. ⚠ But **a reviewer who queries for them finds nothing and cannot
+tell that from data loss** — which is why this paragraph exists. Verify the export before
+believing any of it.
+
+⚠ **This was TWO consecutive paragraphs making one announcement** (#243), one from each side of
+`18baa00`'s merge combine. Both said the records were gone, both named the export, both gave a
+count — read as two separate events, in escalating type. That is the failure mode of combining
+rather than choosing, and it is why a combine needs the resulting TEXT read, not just a check
+that each side survived.
 
 **The numbers stay reserved.** ⚠ But the export is NOT the whole record of which are taken
 (issue #164): it is a 2026-08-17 SNAPSHOT holding 79 records, of which 48 are below 90 and
@@ -540,8 +544,19 @@ Run this last, and put the number in your summary:
 filter='branch_name="<the branch under review>" && state="open"'
 ```
 
-⚠ **Scope it to YOUR branch — never widen it to `branch_name!=""`.** The rule has not changed;
-its reason has.
+⚠ **Scope it to YOUR branch — never widen it to `branch_name!=""`.**
+
+⚠⚠ **AND HERE IS WHY THAT PARTICULAR FILTER, WHICH LOOKS HARMLESS.** `branch_name!=""` reads
+like a "has a branch" sanity check. It was the right guard only while other branches' issues
+carried no branch at all; **once they carry one, the clause that used to EXCLUDE them
+INCLUDES them.** It inverted. Measured 2026-08-21: of 27 open issues in this repo, **all 27
+carry a non-empty `branch_name`**, so that filter now matches every one of them.
+
+That sentence was deleted by `6e89848` and restored by #244 — it is the only text that ever
+explained the mechanism, and an unexplained prohibition is the kind the next agent tidies away
+or reasons around (`AGENTS.md` §5c). The same commit also claimed *"the rule has not changed;
+its reason has"* while leaving the reason verbatim identical three paragraphs below, which sent
+a reader looking for a new justification that was never written.
 
 ⚠⚠ **THE BACKLOG THIS PARAGRAPH USED TO NAME DOES NOT EXIST.** It cited nine open issues —
 #26, #68, #70, #79, #80, #81, #85, #87, #89 — as a migrated GitHub backlog parked on
