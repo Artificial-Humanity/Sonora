@@ -380,8 +380,17 @@ def _rendered_allowlist():
     through the same code path the real call uses, so there is nothing left to model. It is the
     precedent `tests/test_review_cycle.py` set for the same reason (#231).
     """
-    r = subprocess.run([str(SCRIPT), "--dry-run", "--range", "origin/main..HEAD",
-                        "--developer", "Ozzy"],
+    # ⚠⚠ `--full`, NOT A RANGE, AND THAT IS THE WHOLE OF THIS LINE'S HISTORY. The first
+    # version passed `--range origin/main..HEAD`, which is EMPTY on `main` — the launcher
+    # refuses an empty range, so all five tests that call this helper went red the moment the
+    # branch merged. They had only ever been run ON the branch, where the range is non-empty.
+    #
+    # ⚠ THAT IS THE SAME CLASS AS THE DEFECTS THEY EXIST TO CATCH: green for a reason
+    # unrelated to what is being asserted — here, the repo happening to be in a particular
+    # state. `--full` needs no commits ahead of main (the launcher says so in the very refusal
+    # this produced), and `REVIEWER_ALLOW` is built from PYBIN and the gates directory with no
+    # reference to RANGE, so the rendered list is identical either way.
+    r = subprocess.run([str(SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
                        cwd=REPO, capture_output=True, text=True)
     assert r.returncode == 0, f"--dry-run failed, so this test proves nothing: {r.stderr}"
     for line in r.stdout.splitlines():
