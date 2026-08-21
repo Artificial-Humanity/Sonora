@@ -607,9 +607,29 @@ REVIEWER_ALLOW=(
 # `.venv/bin/python`) and the allowlist now agree — a reviewer following the rule reaches the
 # gate, and does not need an interpreter to do it. Removing the two broad entries is a
 # separate decision and is the owner's, since they took it knowingly.
+#
+# ⚠⚠ AN ENTRY MUST END ON A TOKEN BOUNDARY. `Bash($PYBIN scripts/gates/:*)` did not — the real
+# token is `scripts/gates/test_doc_claims.py`, so a prefix ending mid-token could never match
+# and the gate was refused for the whole life of the branch that granted it (#239). Rows 3/4
+# of that issue are the controls: the same interpreter ran under `-m pytest`, and the same
+# script ran under the relative spelling, so only the entry was at fault.
+#
+# ⚠ THIS REPO ALREADY PINNED THAT RULE, from the deny side —
+# `tests/test_request_review.py::test_value_taking_git_options_are_denied_in_both_spellings`:
+# "The matcher tokenises on whitespace, so an entry can name an option and still miss it —
+# which is worse than an absent entry, because it reads as covered." I wrote an allow entry
+# that breaks the rule its own suite documents.
+#
+# Gates are named individually now. That is more verbose than a directory and it is the point:
+# each one ends on a boundary, and adding a gate is a visible edit rather than a silent
+# widening.
 if [[ -n "$PYBIN" ]]; then
   REVIEWER_ALLOW+=("Bash($PYBIN -m pytest:*)")
-  REVIEWER_ALLOW+=("Bash($PYBIN scripts/gates/:*)")
+  for _g in scripts/gates/test_doc_claims.py scripts/gates/test_skill_files.py \
+            scripts/gates/test_text_selection.py scripts/gates/test_vat_dim_seams.py; do
+    REVIEWER_ALLOW+=("Bash($PYBIN $_g:*)")
+  done
+  unset _g
 fi
 
 # Explicit denials. Schema and instance administration are not a reviewer's business —

@@ -350,3 +350,31 @@ def test_the_sibling_repo_is_offered_read_only_and_never_writable():
     for t in ("Edit", "Write", "NotebookEdit"):
         assert t not in tools, f"{t} in --tools would make --add-dir a write grant"
         assert t in _array("REVIEWER_DENY")
+
+
+def test_no_allow_entry_ends_mid_token():
+    """⚠ #239: `Bash($PYBIN scripts/gates/:*)` could never match, because the real token is
+    `scripts/gates/test_doc_claims.py` and the matcher tokenises on whitespace. The gate was
+    refused for the entire life of the branch that granted it.
+
+    ⚠ THIS REPO ALREADY PINNED THE RULE FROM THE DENY SIDE — see
+    `test_value_taking_git_options_are_denied_in_both_spellings`: "an entry can name an option
+    and still miss it — which is worse than an absent entry, because it reads as covered."
+    The allow side had no equivalent, so the same mistake was available and I made it.
+
+    A trailing `/` is the checkable case: a path fragment is definitionally mid-token. This
+    does not catch every mid-token prefix — `--outp` would pass — and the docstring says so
+    rather than implying coverage it does not have.
+    """
+    # ⚠ `_array` READS ONLY THE ARRAY LITERAL — it stops at the closing `\n)`, so every
+    # `REVIEWER_ALLOW+=(...)` append is invisible to it. The #239 entry was an append, so the
+    # first version of this test passed against the very entry it was written for. Caught by
+    # mutating the script and watching the test stay green, which is the only reason it is
+    # not still doing that.
+    entries = list(_array("REVIEWER_ALLOW"))
+    entries += re.findall(r'REVIEWER_ALLOW\+=\(\s*"([^"]+)"', SOURCE)
+    bad = [e for e in entries
+           if e.startswith("Bash(") and e.removesuffix(":*)").endswith("/")]
+    assert not bad, (
+        "these allow entries end mid-token and can never match a real command; name the file "
+        f"rather than the directory: {bad}")

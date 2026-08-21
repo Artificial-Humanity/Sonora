@@ -70,11 +70,15 @@ summary — there is no third place, and no later opportunity.
     after nine consecutive reviews reported it refused and asked for it by name — every one of
     those reports was correct. The whole `scripts/gates/` directory is reachable this way, so
     the other gates are too.
-    * ⚠ **The relative form does not work.** `.venv/bin/python scripts/gates/…` matches a
-      different entry that does not cover the gate, and a prefix match on a relative string
-      never fires against the absolute command. **Do not conclude the gate is unrunnable
-      because a relative spelling was refused** — that inference has been drawn, reasonably,
-      more than once.
+    * ⚠ **BOTH SPELLINGS WORK, AND AN EARLIER VERSION OF THIS FILE SAID THE OPPOSITE.** It
+      claimed the relative form failed and the absolute one worked; **that was exactly
+      backwards** (#239). The relative `.venv/bin/python scripts/gates/…` runs — it is covered
+      by the bare-interpreter entry — and `AGENTS.md` §3 names it as the run mode for host
+      scripts, so it is the spelling to prefer. The absolute form is granted too, per gate.
+    * ⚠ **The harm of the old wording was not that it was wrong; it is that it told you to
+      DISBELIEVE the form that works.** A reviewer following it would try the absolute form,
+      be refused, and then decline to try the relative one because this file said not to
+      bother. Right classification, wrong instruction — the shape this repo keeps paying for.
     * ⚠ **DO NOT APPEND A PIPE OR A REDIRECT.** `… 2>&1 | tail` is a *compound* command and
       matches no prefix, so it is refused — and the refusal looks identical to the command
       itself being forbidden. This costs a round-trip every time; the gate's output is short
