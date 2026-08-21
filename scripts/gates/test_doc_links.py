@@ -120,12 +120,21 @@ def markdown_files(root, dirs=PROSE_DIRS, roots=ROOT_DOCS):
 SECTION_CITE = re.compile(r"([A-Za-z0-9_.-]+\.md)\s*§+\s*(\d+)")
 NUMBERED_HEADING = re.compile(r"^#+\s+(\d+)[.)]?\s", re.M)
 
-# ⚠ WIDER THAN THE LINK HALF ABOVE, DELIBERATELY, AND ONLY FOR THIS CHECK. `scripts/assets/`
-# is outside PROSE_DIRS, but two of the six `todo.md` defects lived in director skill files
-# there — a guard blind to the files that motivated it is not a guard. The link half is NOT
-# widened with it: that would change which paths get resolved, and a move is a scope change
-# even when no line is edited.
-CITATION_DIRS = PROSE_DIRS + ("scripts/assets",)
+# ⚠ NOT THE SAME SET AS THE LINK HALF, IN BOTH DIRECTIONS, AND ONLY FOR THIS CHECK.
+#
+# WIDER: `scripts/assets/` is outside PROSE_DIRS, but two of the six `todo.md` defects lived
+# in director skill files there — a guard blind to the files that motivated it is not a guard.
+#
+# NARROWER: `workflow/` is excluded. The review lane was RETIRED by owner ruling 2026-08-21,
+# and this gate is scoped to Sonora's own code and docs; a citation into `REVIEWER.md` is not
+# a Sonora defect and must not fail a Sonora merge. ⚠ The consequence is real and is the
+# honest cost: `CLAUDE.md:21` cites `REVIEWER.md §0`, a section that does not exist, and this
+# check now steps over it. That is a live dangling pointer in the one file Claude Code
+# auto-loads — left deliberately, not missed.
+#
+# The LINK half is unchanged in either direction: altering which paths it resolves is a scope
+# change, and a move is a scope change even when no line is edited.
+CITATION_DIRS = ("notes", "docs", "scripts/assets")
 
 
 def section_citations(root=REPO):
@@ -296,14 +305,14 @@ def main():
     stale = section_citations()
     cited_files = markdown_files(REPO, dirs=CITATION_DIRS)
     print(f"checked the `<file>.md §N` citations in {len(cited_files)} markdown files "
-          f"(widened to scripts/assets/ for this check only)")
+          f"(+scripts/assets/, -workflow/ — this check only)")
     # ⚠ NO FILES IS A FAILURE, NOT A CLEAN RUN. `section_citations()` returning [] means
     # "nothing dangles" and "there was nothing to read" identically, and the second must not
     # print PASS. 47 measured 2026-08-21.
-    if len(cited_files) < 30:
+    if len(cited_files) < 25:
         failures.append(
             f"only {len(cited_files)} markdown file(s) reached the §N citation check, from "
-            f"the 47 measured on 2026-08-21 — at this count a clean result means the scan "
+            f"the 44 measured on 2026-08-21 — at this count a clean result means the scan "
             f"found nothing to read, not that the citations are sound.")
     for rel, lineno, target, n, available in stale:
         have = ", ".join(f"§{x}" for x in available) if available else "NO numbered headings"
