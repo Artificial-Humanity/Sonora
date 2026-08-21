@@ -4,6 +4,9 @@
     workflow/scripts/issue.py list      [--branch B] [--state S]
     workflow/scripts/issue.py show      N
     workflow/scripts/issue.py file      --title T (--body B | --body-file F) [--label L] [--branch B]
+    workflow/scripts/issue.py grade     N --severity low|medium|high|critical
+                                        writes the field the MERGE GATE reads. Raising is
+                                        open; lowering an existing grade is the reviewer's
     workflow/scripts/issue.py take      N [N ...]          Ozzy: agent_passes += 1, BEFORE any work
     workflow/scripts/issue.py review    N --comment C      Ozzy: addressed, awaiting Janis
     workflow/scripts/issue.py escalate  N --comment C      Ozzy: the owner must decide
@@ -35,6 +38,7 @@ Reads PocketBase credentials from ~/.claude.json (mcpServers.pocketbase.env). St
 
 import argparse
 import datetime
+import importlib.util
 import json
 import os
 import re
@@ -85,6 +89,20 @@ def _config():
 CFG = _config()
 REPO_SLUG = CFG.get("REPO_SLUG") or ""
 MAX_PASSES = int(CFG.get("MAX_PASSES") or 3)
+# ⚠ READ, NOT DECORATIVE. Until 2026-08-20 this setting existed and nothing consumed it
+# (#216). `cmd_grade` now uses it to decide who may LOWER a severity, which is the one
+# tracker write that can clear the merge gate without closing anything (#218).
+REVIEWER_NAME = (CFG.get("REVIEWER_NAME") or "").strip()
+# ⚠ IMPORTED, NOT REDECLARED. The first draft of this defined its own ("low", "medium",
+# "high", "critical") tuple "shared with merge_floor.LADDER" — a comment asserting a
+# relationship that nothing enforced. Two copies of a severity ORDER disagree silently: the
+# gate would rank one way and this refusal another, and the symptom would be a grade that is
+# accepted here and re-classified there. One copy, in the module that owns the comparison.
+_MF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "merge_floor.py")
+_SPEC = importlib.util.spec_from_file_location("merge_floor", _MF)
+_MERGE_FLOOR = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_MERGE_FLOOR)
+SEVERITY_LADDER = _MERGE_FLOOR.LADDER
 COMMENT_MAX = int(CFG.get("COMMENT_MAX") or 1500)
 OPEN_STATES = ("open", "review", "escalated")
 
@@ -204,8 +222,11 @@ def require_comment(args, action):
 
 
 def show_row(i):
-    return "  #%-5s %-10s passes=%-2s %s" % (
-        i.get("number"), i.get("state"), i.get("agent_passes") or 0, (i.get("title") or "")[:66])
+    # `--` rather than blank for an ungraded issue: blank reads as "nothing to say here",
+    # and this column is the one the merge gate blocks on.
+    return "  #%-5s %-10s %-8s passes=%-2s %s" % (
+        i.get("number"), i.get("state"), i.get("severity") or "--",
+        i.get("agent_passes") or 0, (i.get("title") or "")[:52])
 
 
 def cmd_list(pb, args):
@@ -217,7 +238,7 @@ def cmd_list(pb, args):
     elif not args.all:
         clauses.append('state!="closed"')
     st, r = pb.call("/api/collections/issues/records?perPage=200&skipTotal=false&sort=number"
-                    "&fields=number,state,title,agent_passes,branch_name&filter="
+                    "&fields=number,state,title,agent_passes,branch_name,severity&filter="
                     + urllib.parse.quote(" && ".join(clauses)))
     if st != 200:
         die("query refused: %s" % json.dumps(r)[:300])
@@ -235,7 +256,8 @@ def cmd_list(pb, args):
 
 def cmd_show(pb, args):
     rec = pb.find(args, args.number)
-    for k in ("number", "state", "agent_passes", "branch_name", "author", "labels", "title"):
+    for k in ("number", "state", "severity", "agent_passes", "branch_name", "author",
+              "labels", "title"):
         print("%-13s %s" % (k, rec.get(k)))
     if (rec.get("user_decision") or "").strip():
         print("\nUSER DECISION (the owner's; outranks any finding)\n%s" % rec["user_decision"])
@@ -318,9 +340,18 @@ def cmd_file(pb, args):
             "repo": args.repo, "number": n, "title": args.title, "body": body,
             "state": "open", "agent_passes": 0, "branch_name": branch,
             "author": args.author, "labels": [args.label] if args.label else [],
+            # ⚠ THE MERGE GATE READS THIS. An issue filed without it is UNGRADED, and
+            # merge_branch.sh blocks on ungraded exactly as it blocks on MEDIUM — a floor
+            # that lets an unknown through is not a floor. See REVIEWER.md § severity.
+            "severity": args.severity or "",
         })
         if st < 300:
-            print("filed #%d on %s (state=open, agent_passes=0)" % (n, branch))
+            # ⚠ SAY THE SEVERITY, INCLUDING WHEN THERE IS NONE. The line reported the two
+            # fields that are always the same on a new issue and stayed silent about the one
+            # that decides whether a branch can merge — so filing ungraded looked identical
+            # to filing graded, and the consequence surfaced later at the gate (#206).
+            print("filed #%d on %s (state=open, agent_passes=0, severity=%s)"
+                  % (n, branch, args.severity or "UNGRADED — this BLOCKS the merge"))
             return
         if "number" not in json.dumps(rec):
             die("filing refused: %s" % json.dumps(rec)[:400])
@@ -436,6 +467,150 @@ def cmd_reopen(pb, args):
     transition(pb, args, "reopen", "open", args.author)
 
 
+
+def ungraded_guard_blocks(caller, rec_author, rec_branch, here, new_sev, floor,
+                          reviewer=None):
+    """Should `grade` refuse this write? Pure, so it can be tested without a tracker.
+
+    ⚠ EXTRACTED BECAUSE THE INLINE VERSION WAS WRONG TWICE AND ITS ONLY TEST WAS A SOURCE
+    SCAN (#231). A two-line `assert "SOME STRING" in src` cannot distinguish a guard that
+    works from a guard that is merely present — #228 and #229 were both live under one.
+
+    ⚠ AND BECAUSE THE ALTERNATIVE WAS LIVE FIXTURES. Proving the earlier version by hand meant
+    grading a real record on another branch, which Janis correctly flagged as a worker setting
+    severity on a reviewer's finding as a byproduct of a test. A pure function needs no record
+    to exist, and leaves nothing to clean up server-side.
+
+    All four conditions are necessary. Any one of them false and the write is allowed:
+
+      * the CALLER is not the reviewer   — the reviewer is exempt (#228: the first version
+                                           tested only the issue's author, so its own advice,
+                                           "ask Janis", sent Janis to Janis);
+      * the FINDING is the reviewer's    — a worker's own filing is its own to grade;
+      * it is stamped with THIS branch   — makes the legacy carve-out real rather than
+                                           rhetorical (#229: 102 of 102 ungraded records are
+                                           the reviewer's, so an author-only test caught the
+                                           whole legacy set it claimed to protect);
+      * the grade is BELOW the floor     — grading up cannot clear a gate.
+    """
+    reviewer = REVIEWER_NAME if reviewer is None else reviewer
+    if not reviewer:
+        return False                       # nobody is the reviewer; nothing to protect
+    if caller == reviewer:
+        return False
+    if (rec_author or "") != reviewer:
+        return False
+    if (rec_branch or "") != (here or ""):
+        return False
+    f, n = (floor or "").strip().lower(), (new_sev or "").strip().lower()
+    if f not in SEVERITY_LADDER or n not in SEVERITY_LADDER:
+        return False                       # not comparable; the caller's own checks apply
+    return SEVERITY_LADDER.index(n) < SEVERITY_LADDER.index(f)
+
+
+def cmd_grade(pb, args):
+    """Set `severity` on an issue that has none, or correct one that is wrong.
+
+    ⚠ THIS EXISTS BECAUSE THE FIELD ARRIVED AFTER THE ISSUES DID. 111 records predate it and
+    are ungraded, and the merge floor blocks on ungraded — so without this the gate could
+    refuse a branch and offer no way to clear it but closing a real finding. A gate whose
+    remedy is unreachable teaches people to bypass the gate.
+
+    ⚠ IT DOES NOT TOUCH `state`. Grading is a judgement about how bad a finding is; it is not
+    a way to move an issue through the loop, and conflating the two would let a grade close
+    something.
+
+    ⚠⚠ AND LOWERING A SEVERITY IS THE WORKER MARKING ITS OWN HOMEWORK (#218). It does not
+    close the finding, but it does the merge-relevant half: the issue stays open, the gate
+    reclassifies it as RIDE, and the branch lands. DEVELOPER.md forbids the equivalent through
+    the other door — "CLOSE NOTHING … a worker closing its own findings … defeats the one
+    thing the split buys" — and there was no such sentence for `grade` in any file, while the
+    gate's own refusal text told the blocked party to run it with `low` listed first.
+
+    So, as implemented (see `ungraded_guard_blocks` for the predicate itself):
+
+      * RAISING is open to anyone — grading up cannot clear a gate;
+      * grading an UNGRADED issue is open to anyone EXCEPT all four of: the caller is not the
+        reviewer, the finding is the reviewer's, it is stamped with the branch being merged,
+        and the new grade is below the floor;
+      * LOWERING an existing grade is the reviewer's alone.
+
+    ⚠ The middle clause said "except where the reviewer filed it" until #235 — the rule from
+    before the branch scope existed, and broader than the code by two conditions. A docstring
+    stating a rule the function does not implement is what #212 and #225 were, in this file.
+
+    ⚠ THIS IS A CONVENTION, NOT A MECHANISM, AND AN EARLIER VERSION OF THIS DOCSTRING CLAIMED
+    OTHERWISE (#225). It said "no direction that can clear a gate is self-served", which does
+    not follow: `--author` is SELF-DECLARED, so anyone can pass `--author Janis` and the check
+    waves them through. There is no authentication here and none is available — `issue.py`
+    runs as whoever runs it, exactly as the git identity in DEVELOPER.md §1 is a convention
+    the repo cannot enforce.
+
+    What the check actually buys is that the bypass must be TYPED ON PURPOSE and leaves a
+    self-declared author on the record. That is worth having and it is not a guarantee; the
+    difference is the whole of #218's lesson applied to #218's own fix.
+    """
+    rec = pb.find(args, args.number)
+    was = (rec.get("severity") or "").strip()
+    new_sev = args.severity.strip().lower()
+
+    # ⚠ THE UNGRADED DOOR, NARROWED TO WHAT IT WAS ACTUALLY FOR (#225, corrected by #228/#229).
+    #
+    # The first version tested only `rec["author"]`, and it was wrong twice over:
+    #
+    #   * it never consulted the CALLER, so the refusal caught the reviewer too — and its own
+    #     remedy said "ask Janis to grade it", which sent Janis to Janis (#228);
+    #   * it described a narrow new class while MEASURING as the whole legacy set: 102 of 102
+    #     ungraded records are authored by the reviewer, so the carve-out it claimed to protect
+    #     was empty (#229). Together those made the below-floor remedy reachable by NOBODY, for
+    #     NO record — inside the file that argues an unreachable remedy teaches bypassing.
+    #
+    # Three conditions now, all necessary: the CALLER is not the reviewer, the FINDING is the
+    # reviewer's, and it is stamped with the branch being merged. That last one is what makes
+    # the legacy carve-out real instead of rhetorical — an old record carries an old
+    # branch_name and stays gradeable.
+    _here = current_branch()
+    floor = (_MERGE_FLOOR.floor_setting() or "").strip().lower()
+    if not was:
+        if ungraded_guard_blocks(args.author, rec.get("author"), rec.get("branch_name"),
+                                 _here, new_sev, floor):
+            die("refusing: #%d is an UNGRADED finding %s filed against '%s', the branch you\n"
+                "     are on. Grading it below the floor (%s) would make it RIDE past the merge\n"
+                "     gate without anyone having verified it.\n"
+                "       Grade it AT or ABOVE the floor, or have %s grade it — %s is exempt from\n"
+                "       this refusal, which the first version of this guard was not, so its\n"
+                "       advice looped (#228).\n"
+                "       Findings on OTHER branches, including every legacy record, are\n"
+                "       unaffected: this is scoped to the branch being merged."
+                % (args.number, REVIEWER_NAME, _here, floor, REVIEWER_NAME, REVIEWER_NAME))
+
+    if was:
+        try:
+            lowering = SEVERITY_LADDER.index(new_sev) < SEVERITY_LADDER.index(was.lower())
+        except ValueError:
+            # An unknown value on either side. Refuse rather than guess a direction — the
+            # gate blocks on unrecognised severities anyway, so guessing helps nobody.
+            die("cannot compare severity %r with the stored %r; both must be one of %s"
+                % (new_sev, was, ", ".join(SEVERITY_LADDER)))
+        if lowering and args.author != REVIEWER_NAME:
+            die("refusing: lowering %s -> %s makes a blocking finding RIDE past the merge\n"
+                "     gate, which is the worker marking its own homework. Only %s may lower a\n"
+                "     grade (workflow/config.env: REVIEWER_NAME).\n"
+                "       Disagree with the grade? Argue it in the issue's comments and let the\n"
+                "       reviewer regrade or refuse — a review is a report, not an order."
+                % (was, new_sev, REVIEWER_NAME or "the reviewer"))
+
+    st, r = pb.call("/api/collections/issues/records/" + rec["id"], "PATCH",
+                    {"severity": new_sev})
+    if st >= 300:
+        die("grade refused by the tracker: %s" % json.dumps(r)[:400])
+    # ⚠ COMMENT FIRST WOULD BE BETTER but the comment needs the record; if this write fails
+    # the grade stands with no record of who or why (#222, LOW — filed, riding to a follow-up).
+    if args.comment:
+        pb.add_comment(args, rec, args.comment, args.author)
+    print("#%d graded: %s -> %s" % (args.number, was or "UNGRADED", new_sev))
+
+
 def cmd_comment(pb, args):
     rec = pb.find(args, args.number)
     pb.add_comment(args, rec, args.text, args.author)
@@ -502,7 +677,18 @@ def main():
     s.add_argument("--title", required=True); s.add_argument("--body")
     s.add_argument("--body-file"); s.add_argument("--branch")
     s.add_argument("--label", choices=["bug", "documentation", "enhancement"])
+    # Not `required=True`: a refusal here would push a reviewer mid-review into filing
+    # nothing rather than filing ungraded, and an ungraded finding on the tracker beats a
+    # finding that only ever existed in a summary. The MERGE GATE is where it bites.
+    # ⚠ DERIVED. These were a third copy of the ladder; a value added to merge_floor.LADDER
+    # and not here would be rankable by the gate and rejected at the command line.
+    s.add_argument("--severity", choices=list(SEVERITY_LADDER))
     s.set_defaults(fn=cmd_file)
+
+    s = add("grade"); s.add_argument("number", type=int)
+    s.add_argument("--severity", required=True, choices=list(SEVERITY_LADDER))
+    s.add_argument("--comment")
+    s.set_defaults(fn=cmd_grade)
 
     s = add("take"); s.add_argument("numbers", type=int, nargs="+")
     s.set_defaults(fn=cmd_take)
@@ -520,8 +706,12 @@ def main():
     add("escalated").set_defaults(fn=cmd_escalated)
 
     args = p.parse_args()
+    # ⚠ EVERY WRITING SUBCOMMAND BELONGS IN THIS TUPLE. `grade` was added 2026-08-20 and the
+    # tuple was not extended (#211), so a grade could land unattributed — and severity is the
+    # field the merge gate reads, which makes "who decided this blocks?" a question someone
+    # will ask. A new write subcommand must be added here in the same commit that adds it.
     if not args.author and args.cmd in ("file", "review", "escalate", "close", "reopen",
-                                        "comment"):
+                                        "comment", "grade"):
         die("--author is required for writes (Janis or Ozzy), or set $ISSUE_AUTHOR. "
             "An unattributed comment cannot be answered.")
     args.fn(PB(), args)

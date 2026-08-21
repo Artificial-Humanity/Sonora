@@ -23,6 +23,26 @@ PRODUCT — what the app does with a model it already has — live in `Prosodia/
 | 6 | [Audience: conveyance-aware STT](high-ambition-6-audience-conveyance-stt.md) | Sonora | live — the reverse lane; perceive prosody rather than dictate it |
 | 7 | [Singing](high-ambition-7-singing.md) | Sonora | **added 2026-08-09** — down the road, behind the quality ladder. ⚠ *Unrequested* singing is a DEFECT and stays one |
 
+⚠ **Cloning real people is not a focus of the owner's** (2026-08-20). Their words, verbatim,
+because the distinctions are the whole point: *"It's not forbidden and it's not off the table.
+It's just not a focus of mine."* **Three separate statements — not forbidden, not off the table,
+not a focus — and none may be upgraded into the others.** The standing is *unprioritised
+attention*, the weakest and most reversible form: if it ever becomes a focus that is a change of
+interest, not a reversal, and it needs no repeal.
+
+⚠ **"Not a focus" is the owner's; "not a goal" is this repo's own record** — separate claims,
+and the second must not be quoted as the first. As a matter of record: **no goal for cloning has
+ever been filed in this series.** That is a fact about the series, checkable here; it is not a
+stronger version of what the owner said. Recorded because a reader scanning seven goals for
+cloning cannot otherwise tell "ruled out" from "nobody has raised it".
+
+⚠ **Neither of the above is a policy.** The likeness *policy* that exists is
+[audiobook-corpus-policy.md](audiobook-corpus-policy.md), scoped to the personally-acquired
+audiobook corpus. It is a **separate instrument with a narrower subject** — a corpus boundary,
+not a statement about this series — though it does record a compatible intent of the owner's
+(*"I want dynamic voicing from the model"*). **Do not read it as creating or removing a goal**,
+in either direction.
+
 Three things a reader should know before following the numbers:
 
 - **5 is retired, not pending** — its design note was deleted with the notes `archive/`

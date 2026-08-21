@@ -252,10 +252,13 @@ review 3 starts at `0` and gets its own three passes.
 ### Step 5 — when nothing is left, merge
 
 ```bash
-workflow/scripts/merge_branch.sh          # refuses unless every issue on the branch is closed
+workflow/scripts/merge_branch.sh          # refuses unless the branch clears the SEVERITY FLOOR
 ```
 
-**The branch is done when it has no issue in `open`, `review` or `escalated`.** Then merge to
+**The branch is done when it clears the severity floor set in `workflow/config.env`** — nothing at or
+above the configured threshold, nothing ungraded, nothing escalated. ⚠ **A finding BELOW the floor may still be open**: it rides to a
+follow-up branch rather than blocking (owner, ratified 2026-08-19, built 2026-08-20), so move it to
+one or it sits on a `branch_name` with no branch. Then merge to
 `main` and push — and this is the one thing in the repo that reaches `main` on its own.
 
 * ⚠ **THE GATE IS ON THE MERGE, NOT THE PUSH** (owner, 2026-08-17). A branch that merged
@@ -294,7 +297,8 @@ refuses without one, because the owner cannot answer a question that was not ask
 ⚠ **It is a `state`, so escalating is a TRANSITION, not a flag you raise beside the old one**
 (owner, 2026-08-17). Setting `state: "escalated"` takes the issue out of `open`, and so out of
 your queue and out of Janis's re-review in one move. ⚠ **It does NOT take it out of the merge
-gate** — that counts `open`, `review` *and* `escalated`, so an escalation holds the branch.
+gate** — `escalated` blocks at **any severity**, including LOW, so an escalation holds the
+branch even when the same finding would otherwise have ridden past the floor.
 
 * ⚠ **A worker escalation takes the issue out of RE-REVIEW, not out of the RECORD** (owner,
   2026-08-14: *"there's really no reason both developer and reviewer should be blocked on any
@@ -317,8 +321,8 @@ gate** — that counts `open`, `review` *and* `escalated`, so an escalation hold
     measurement into a ban. **Bound what you measured; do not widen it.**
 * ⚠ **ESCALATION IS NOW A BLOCKER, AND THAT REVERSED ON 2026-08-17.** This file said the
   opposite for its whole life — *"the work still pushes; escalation means this can live on
-  `main` but I cannot choose"* — and the merge gate now counts `escalated` alongside `open` and
-  `review`. The branch waits for the owner. **Do not restore the old reading**; it is the
+  `main` but I cannot choose"* — and the merge gate **blocks on `escalated` at any severity**,
+  including a LOW that would otherwise ride past the floor. The branch waits for the owner. **Do not restore the old reading**; it is the
   difference between an unanswered question being a note and being a stop.
   * Still distinct from the **abort** in AGENTS.md §1. Escalation = *"I cannot choose"*; the
     abort = *"this must not land"*, which stops everything and goes to the owner immediately

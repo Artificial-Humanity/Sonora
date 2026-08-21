@@ -3,9 +3,15 @@
 # review_cycle.sh — drive the review loop to convergence without a human in the middle.
 #
 # review → fix → review → … until every issue this cycle produced is closed, escalated, or
-# out of attempts. Built because the loop had no driver: every step was a person invoking
-# request_review.sh, reading it, fixing, re-invoking — so when that person stopped, the loop
-# stopped wherever it happened to be, leaving issues open that were merely mid-flight.
+# out of attempts. ⚠ THAT IS NOT THE MERGE GATE, and the two are easy to conflate: since
+# 2026-08-20 merge_branch.sh applies a SEVERITY FLOOR, so a finding below it does not stop
+# a merge. This loop still drives every issue to a resting state, which is a stricter goal
+# than the floor and deliberately so — a driver that stopped at the floor would leave LOWs
+# mid-flight, which is the condition it was built to end.
+#
+# Built because the loop had no driver: every step was a person invoking request_review.sh,
+# reading it, fixing, re-invoking — so when that person stopped, the loop stopped wherever it
+# happened to be, leaving issues open that were merely mid-flight.
 #
 # ⚠⚠ IT NEVER PUSHES. NOTHING HERE REACHES `main`.
 # `git push` is denied to the worker it spawns, and this script does not push either. The
