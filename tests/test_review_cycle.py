@@ -242,3 +242,71 @@ def test_it_is_classified_in_the_pipeline_manifest():
 
 def test_the_script_parses():
     assert subprocess.run(["bash", "-n", str(SCRIPT)]).returncode == 0
+
+
+def _ported_lane(tmp_path):
+    """A minimal repo holding `workflow/` and NOTHING ELSE — the ported-lane shape.
+
+    ⚠ NO `.gitignore`, DELIBERATELY. WORKFLOW.md's "Porting this lane" says to copy
+    `workflow/` into the new repo, so a ported copy has no ignore entry for the driver's
+    runtime files. A fixture that copied this repo's `.gitignore` would make the test pass
+    for a reason the ported lane does not have, which is the failure mode `_array` had.
+    """
+    (tmp_path / "workflow" / "scripts").mkdir(parents=True)
+    for name in ("request_review.sh",):
+        p = tmp_path / "workflow" / "scripts" / name
+        p.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        p.chmod(0o755)
+    dst = tmp_path / "workflow" / "scripts" / "review_cycle.sh"
+    dst.write_text(SOURCE, encoding="utf-8")
+    dst.chmod(0o755)
+    (tmp_path / "workflow" / "DEVELOPER.md").write_text("persona\n", encoding="utf-8")
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(git + ["commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
+    return tmp_path
+
+
+def test_a_stale_notes_file_does_not_block_the_next_run(tmp_path):
+    """⚠⚠ THE DRIVER USED TO RUN EXACTLY ONCE PER MANUAL CLEANUP, and nothing said so.
+
+    The worker's brief, step 5, tells it to write `.review_cycle.notes`; nothing removed the
+    file; and the dirty-tree check refuses to start when `git status --porcelain` is non-empty,
+    which an untracked file makes it. So run 1 succeeded and run 2 died at the door — blaming
+    "your uncommitted edits", which is not what was there.
+
+    ⚠ THIS RUNS THE SCRIPT INSTEAD OF READING IT. A source scan for `rm -f "$NOTES_FILE"`
+    would pass with the `rm` placed AFTER the dirty-tree check, where it can never be reached
+    — the ordering IS the fix, and only execution sees ordering (#231).
+    """
+    repo = _ported_lane(tmp_path)
+    (repo / ".review_cycle.notes").write_text("last cycle's notes\n", encoding="utf-8")
+    assert subprocess.run(["git", "status", "--porcelain"], cwd=repo,
+                          capture_output=True, text=True).stdout.strip(), (
+        "precondition: the stale file must make the tree dirty, or this proves nothing")
+
+    r = subprocess.run(["bash", "workflow/scripts/review_cycle.sh", "--dry-run"],
+                       cwd=repo, capture_output=True, text=True)
+    assert r.returncode == 0, f"the driver refused a second run: {r.stderr}"
+    assert not (repo / ".review_cycle.notes").exists(), (
+        "the stale notes file survived, so the next review would be briefed with it")
+
+
+def test_the_notes_file_is_cleared_before_the_dirty_tree_check():
+    """Ordering, pinned separately — the behavioural test above cannot name WHY it failed.
+
+    A future edit that moves the `rm` below the refusal restores the bug, and the assertion
+    "the driver refused a second run" would not point at the cause.
+    """
+    code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
+    rm = code.index('rm -f "$NOTES_FILE"')
+    dirty = code.index("working tree is dirty")
+    assert rm < dirty, "the notes file must be cleared BEFORE the dirty-tree refusal"
+
+
+def test_the_notes_path_has_one_definition():
+    """It was written out three times; the `rm` was added against one of the copies."""
+    code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
+    assert code.count(".review_cycle.notes") == 1, (
+        "the literal path belongs in NOTES_FILE alone; every other use reads the variable")

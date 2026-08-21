@@ -96,6 +96,26 @@ cd "$REPO_ROOT"
 [[ -r workflow/DEVELOPER.md ]] || die "workflow/DEVELOPER.md not readable"
 [[ "$MAX_REVIEWS" =~ ^[1-4]$ ]] || die "--max-reviews must be 1-4 (three fix passes need four reviews)"
 
+NOTES_FILE="$REPO_ROOT/.review_cycle.notes"
+
+# ⚠⚠ CLEARED BEFORE THE DIRTY-TREE CHECK, AND THAT ORDER IS THE WHOLE FIX. The worker is told
+# to write `.review_cycle.notes` (step 5 of its brief); nothing used to remove it. So run 1
+# left it behind, and run 2 died at the check below — reporting a dirty tree and pointing at
+# "your uncommitted edits", which named the wrong cause and sent the reader to look for edits
+# they had not made. The obvious remedy, committing it, is worse: it puts cycle notes inside
+# the range under review. THE DRIVER RAN EXACTLY ONCE PER MANUAL CLEANUP.
+#
+# ⚠ Removing it also ends a second, quieter failure: the file is read before EVERY review,
+# including review 1, so a surviving file briefed the first review of the NEXT cycle with the
+# LAST cycle's fix notes — describing fixes to a different range as though they were this one's.
+#
+# ⚠ THE `rm` IS LOAD-BEARING EVEN THOUGH `.gitignore` NOW LISTS THE FILE, because porting this
+# lane copies `workflow/` and nothing else (WORKFLOW.md, "Porting this lane"). A ported copy
+# gets no `.gitignore` entry, so a driver that leaned on ignoring alone would arrive in the new
+# repo with the once-only bug intact. Ignoring keeps it out of `git status`; this keeps it out
+# of the next cycle.
+rm -f "$NOTES_FILE"
+
 # ⚠ Refuse a dirty tree. The worker commits, so uncommitted edits would be swept into a
 # commit nobody wrote a message for — and the range under review would stop matching the
 # range that was read.
@@ -235,7 +255,7 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
 
   say "review $review of $MAX_REVIEWS over $RANGE"
   NOTES_ARG=()
-  [[ -f "$REPO_ROOT/.review_cycle.notes" ]] && NOTES_ARG=(--notes-file "$REPO_ROOT/.review_cycle.notes")
+  [[ -f "$NOTES_FILE" ]] && NOTES_ARG=(--notes-file "$NOTES_FILE")
 
   set +e
   OUT="$(workflow/scripts/request_review.sh --range "$RANGE" --developer "$DEVELOPER" \
@@ -300,7 +320,7 @@ you do not filter them out, and you do not work them.
 3. Escalate anything that needs an owner decision; it drops out of re-review.
 4. **Commit** as \`git -c user.name=$DEVELOPER -c user.email=${DEVELOPER,,}@artificialhumanity.io\`.
    ⚠ **DO NOT PUSH.** It is denied, and this loop converges without it.
-5. Write what you did to \`$REPO_ROOT/.review_cycle.notes\` — the next review is briefed from
+5. Write what you did to \`$NOTES_FILE\` — the next review is briefed from
    that file and cannot otherwise tell a fix from an omission.
 "
 
