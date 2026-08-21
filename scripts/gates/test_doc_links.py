@@ -67,10 +67,12 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 
-# The prose directories, and the root anchors. Used for the SIBLING side and by the tests;
-# this repo's own scan is `repo_markdown()` below.
-PROSE_DIRS = ("notes", "docs", "workflow")
-ROOT_DOCS = ("README.md", "AGENTS.md", "CLAUDE.md")
+# ⚠ THERE IS EXACTLY ONE SCAN SET AND IT IS `repo_markdown()`. `PROSE_DIRS`, `ROOT_DOCS` and
+# `markdown_files()` were deleted on 2026-08-21 (#266): after both halves moved to
+# `repo_markdown()` they had NO callers, while `markdown_files`'s docstring still said "Every
+# markdown file this gate reads" and its comment named callers that no longer existed — and
+# the tuple still listed `workflow/`, which the owner excluded. A second scan set is a second
+# thing to keep in sync; this gate has now had three and been wrong about which was live.
 
 # ⚠⚠ THIS REPO'S SCAN IS EVERY TRACKED `.md`, MINUS `workflow/` — one set for BOTH halves.
 #
@@ -139,19 +141,6 @@ SIBLING_DEFAULTS = (
 INBOUND = re.compile(r"/Sonora/.*?/((?:notes|docs)/[^)\s]+\.md)")
 
 
-def markdown_files(root, dirs=PROSE_DIRS, roots=ROOT_DOCS):
-    """Every markdown file this gate reads, as absolute paths."""
-    out = []
-    for d in dirs:
-        full = os.path.join(root, d)
-        if not os.path.isdir(full):
-            continue
-        for dirpath, _dirnames, names in os.walk(full):
-            out += [os.path.join(dirpath, n) for n in sorted(names) if n.endswith(".md")]
-    out += [os.path.join(root, n) for n in roots if os.path.isfile(os.path.join(root, n))]
-    return sorted(out)
-
-
 # ⚠ A `§N` CITATION IS NOT A LINK, AND THAT IS THE WHOLE PROBLEM. Every one of the 19 this
 # check was written for is spelled `[todo.md §6](todo.md)` — the LINK TARGET IS THE FILE and
 # the section lives only in the label, so the link resolves, nothing renders red, and the
@@ -165,6 +154,7 @@ def markdown_files(root, dirs=PROSE_DIRS, roots=ROOT_DOCS):
 # of the six were in SHIPPED director skill files under `scripts/assets/`.
 SECTION_CITE = re.compile(r"([A-Za-z0-9_.-]+\.md)\s*§+\s*(\d+)")
 NUMBERED_HEADING = re.compile(r"^#+\s+(\d+)[.)]?\s", re.M)
+
 
 def section_citations(root=REPO):
     """-> (dangling, examined, skipped) for the `<file>.md §N` citations in this repo.
@@ -372,19 +362,25 @@ def main():
         for target in sorted(by_target):
             print(f"       {target}: {', '.join(sorted(by_target[target]))}")
 
-    # ⚠⚠ THE FLOOR IS ON CITATIONS EXAMINED, NOT FILES SCANNED — #255's secondary, and the
-    # lesson this branch already wrote down for the shell heredocs and then failed to apply
-    # here: "all 14 could be enumerated while `_embedded_python` silently matched none of
-    # them — a floor on the outer list would not notice." Measured then: neutering
-    # SECTION_CITE left `dangling: 0`, rc 0 and an unchanged file count. A floor on the wrong
-    # population cannot fire. 37 examined of 42 found, 2026-08-21.
-    if examined < 25:
+    # ⚠⚠ THE BLINDNESS CHECK IS "READ NOTHING", NOT "READ FEWER THAN 37".
+    #
+    # #255's secondary was real — the floor had been on FILES SCANNED, and neutering
+    # SECTION_CITE left rc 0 with an unchanged file count. But the fix put a LIVE-REPO
+    # MAGNITUDE (`examined < 25`, "from the 37 measured") inside a gate that must run on any
+    # tree. Measured 2026-08-21: it made `main()` FAIL on every small repo, including the
+    # fixtures written to test `main()` at all (#267) — a gate that cannot be exercised is
+    # the thing this branch keeps filing issues about.
+    #
+    # The portable question is "did the scan read anything?", and it still catches the
+    # original defect: neuter SECTION_CITE and `examined` is 0 while files were scanned.
+    # The repo-specific RATCHET (a partial blinding, 37 -> 5) is a property of THIS tree and
+    # lives in the suite, where it can be re-derived — `test_the_live_citation_count_holds`.
+    if cited_files and not examined:
         failures.append(("coverage",
-            f"only {examined} §N citation(s) were CHECKED, from the 37 measured on "
-            f"2026-08-21 ({len(cited_files)} files scanned). At this count a clean result "
-            f"means the scan found nothing to read, not that the citations are sound — "
-            f"suspect SECTION_CITE or the scanned file set before believing the citations "
-            f"away."))
+            f"{len(cited_files)} markdown file(s) were scanned and NOT ONE `<file>.md §N` "
+            f"citation was read. A clean result here means the scan found nothing to look "
+            f"at, not that the citations are sound — suspect SECTION_CITE or "
+            f"`repo_markdown()` before believing the citations went away."))
     for rel, lineno, target, n, available in stale:
         have = ", ".join(f"§{x}" for x in available) if available else "NO numbered headings"
         failures.append(("section",
@@ -425,15 +421,30 @@ def main():
             # `todo.md` at the repo root — found nothing, and reported a clean PASS on the
             # very mutation it was written for. Matched case-insensitively against real
             # top-level entries because `classify` lowercases the sibling name.
+            # ⚠⚠ THE TELL IS THE NAME COLLIDING WITH A LOCAL DIRECTORY — NOT THE TAIL
+            # RESOLVING. Requiring `<name>/<tail>` to exist caught 6 of 7 and missed the one
+            # link this whole thread started from (#265): line 73 was at the wrong depth AND
+            # pointed at a file that had moved to `docs/`, so the tail did not resolve and it
+            # fell through to a "no checkout of it on this machine" skip — telling the reader
+            # to check out a repo that is this repo's own directory.
+            #
+            # A "sibling" with no checkout whose name IS a directory here is a depth error
+            # whatever the tail does. Whether the tail then resolves only changes the message:
+            # one problem or two. Measured false-positive risk: with siblings forced absent,
+            # 0 of 36 real cross-repo links are flagged — real sibling names (`Prosodia`,
+            # `AI-Lab-AMD`) are not directories in this repo.
             local_dir = next((e for e in os.listdir(REPO) if e.lower() == name), None)
-            depth_bugs = [] if local_dir is None else [
-                (rel, lineno, tail, raw) for rel, lineno, tail, raw in out[name]
-                if os.path.exists(os.path.join(REPO, local_dir, tail))]
+            depth_bugs = [] if local_dir is None else list(out[name])
             for rel, lineno, tail, raw in depth_bugs:
                 failures.append(("depth", f"{rel}:{lineno} — {raw}\n"
                                  f"      leaves the repo and names a sibling '{name}' that is "
-                                 f"not checked out,\n      but `{local_dir}/{tail}` DOES exist "
-                                 f"here. This is a local link with one `../` too many."))
+                                 f"not checked out,\n      but '{local_dir}' IS a directory in "
+                                 f"this repo. One `../` too many."
+                                 + ("" if os.path.exists(os.path.join(REPO, local_dir, tail))
+                                    else f"\n      ⚠ AND `{local_dir}/{tail}` does not exist "
+                                         f"either — the target moved or was deleted, so this "
+                                         f"link\n      needs BOTH the depth and the path "
+                                         f"fixed.")))
             remaining = n - len(depth_bugs)
             if remaining:
                 print(f"  ~ {remaining} outbound link(s) to '{name}' NOT CHECKED: no checkout "

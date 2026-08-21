@@ -18,7 +18,9 @@ either way is silent. Too strict and the gate is ignored; too loose and it finds
 
 import importlib.util
 import os
+import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -231,16 +233,20 @@ def test_the_scan_is_every_tracked_markdown_except_workflow():
 
 def test_the_scan_reads_the_index_not_the_working_tree(tmp_path):
     """An untracked markdown file must not be scanned: reporting on a file no clone has is
-    the working-tree-vs-index confusion this repo has already paid for."""
-    stray = os.path.join(REPO, "zz_untracked_probe.md")
-    assert stray not in set(gate.repo_markdown(REPO)), (
-        "the probe path exists in the index — rename it; this test assumes it does not")
+    the working-tree-vs-index confusion this repo has already paid for.
+
+    ⚠ Runs in the HERMETIC fixture, not the live checkout. The first version of this wrote a
+    probe into the repo root and removed it in a `finally` (#268) — a test that mutates the
+    tree it is asserting about, with a window where a concurrent `git status` sees junk, while
+    ignoring the `tmp_path` it had already asked for. `tree()` builds a real index; use it.
+    """
+    root = tree(tmp_path, {"notes/a.md": "prose\n"})
+    tracked = os.path.join(root, "notes", "a.md")
+    stray = os.path.join(root, "notes", "untracked.md")
     open(stray, "w").close()
-    try:
-        assert stray not in set(gate.repo_markdown(REPO)), (
-            "an untracked .md was scanned — repo_markdown reads the working tree")
-    finally:
-        os.remove(stray)
+    scanned = set(gate.repo_markdown(root))
+    assert tracked in scanned, "the tracked file was not scanned"
+    assert stray not in scanned, "an untracked .md was scanned — repo_markdown reads the tree"
 
 
 @pytest.mark.parametrize("rel", ["docs/ARCHITECTURE.md", "docs/vat-channels.md",
@@ -436,3 +442,106 @@ def test_the_examined_count_is_what_the_floor_must_watch(tmp_path):
     dangling, examined, skipped = gate.section_citations(root)
     assert dangling == [] and skipped == []
     assert examined == 0, "three files scanned, zero citations read — a file floor sees 3"
+
+
+# --- main(), executed end to end (#267) --------------------------------------------------
+#
+# ⚠ THE OBVIOUS TEST IS THE WRONG ONE, AND THAT IS WHY THIS CLASS HAD NO COVERAGE. `main()`
+# takes no `root`, and every helper defaults `root=REPO` bound at import — so monkeypatching
+# `gate.REPO` leaves half the inputs reading the LIVE checkout and the test passes for the
+# wrong reason. The gate is a standalone program with an exit code (that is how pipelines use
+# it), so it is run as one, inside a fixture repo, with `REPO` deriving from `__file__` the way
+# production does.
+#
+# Until 2026-08-21 the `depth` kind, the `KINDS` table, the unrouted-kind catch and the
+# coverage floor had ZERO automated coverage. Every one of them was verified by a hand-run
+# mutation that nothing preserved — which is exactly how this branch kept shipping guards that
+# were green for the wrong reason.
+
+def _gate_repo(tmp_path, files):
+    """A fixture repo with the real gate script installed at its real path. -> (root, run)."""
+    root = tree(tmp_path, files)
+    gates = os.path.join(root, "scripts", "gates")
+    os.makedirs(gates, exist_ok=True)
+    shutil.copy(GATE, os.path.join(gates, "test_doc_links.py"))
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True, capture_output=True)
+
+    def run():
+        # SONORA_SIBLING_REPOS -> a path that cannot exist, so the sibling half is a printed
+        # skip and never reaches out to the real Prosodia/AI-Lab-AMD checkouts.
+        env = dict(os.environ, SONORA_SIBLING_REPOS=os.path.join(root, "no-such-sibling"))
+        return subprocess.run([sys.executable, os.path.join(gates, "test_doc_links.py")],
+                              cwd=root, capture_output=True, text=True, env=env)
+    return root, run
+
+
+def test_main_is_green_on_a_clean_fixture(tmp_path):
+    _root, run = _gate_repo(tmp_path, {
+        "notes/a.md": "see [t.md](t.md) and [t.md §1](t.md)\n",
+        "notes/t.md": "# T\n\n## 1 · one\n",
+    })
+    r = run()
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "PASS" in r.stdout
+
+
+def test_main_reports_a_dead_link_under_the_link_heading(tmp_path):
+    _root, run = _gate_repo(tmp_path, {"notes/a.md": "[x](gone.md)\n", "notes/t.md": "# T\n"})
+    r = run()
+    assert r.returncode == 1
+    assert "dead link(s) — the target file does not exist" in r.stdout
+    assert "restore the file" in r.stdout
+
+
+def test_main_reports_a_dangling_section_with_the_opposite_remedy(tmp_path):
+    """⚠ The remedy is the assertion. For a dangling `§N` the link RESOLVES, so "fix the link"
+    is the wrong move — that mismatch was #259."""
+    _root, run = _gate_repo(tmp_path, {
+        "notes/a.md": "see [t.md §6](t.md)\n",
+        "notes/t.md": "# T\n\n## 1 · one\n",
+    })
+    r = run()
+    assert r.returncode == 1
+    assert "the LINK RESOLVES, the section does not" in r.stdout
+    assert "Do NOT 'fix the link'" in r.stdout
+
+
+def test_main_reports_a_wrong_depth_link_and_names_the_second_cause(tmp_path):
+    """The `depth` kind (#261), including the harder case the first tell missed (#265): a link
+    at the wrong depth whose target has ALSO moved. `notes/` exists here; `notes/gone.md`
+    does not, and the message must say so rather than falling through to a sibling skip."""
+    _root, run = _gate_repo(tmp_path, {
+        "scripts/teacher_audition/README.md":
+            "[a](../../../notes/t.md)\n[b](../../../notes/gone.md)\n",
+        "notes/t.md": "# T\n",
+    })
+    r = run()
+    assert r.returncode == 1
+    assert "WRONG DEPTH" in r.stdout
+    assert "README.md:1" in r.stdout and "README.md:2" in r.stdout, (
+        "both links must be caught — the tell is the NAME colliding with a local directory, "
+        "not the tail resolving:\n" + r.stdout)
+    assert "does not exist either" in r.stdout, "the second cause is not named for line 2"
+    assert "no checkout of it on this machine" not in r.stdout, (
+        "a wrong-depth link was reported as an absent sibling — the #265 miss")
+
+
+def test_the_live_citation_count_holds():
+    """The RATCHET that the gate deliberately does not carry (#267).
+
+    A partial blinding — 37 citations read dropping to 5 — is invisible to the gate's
+    "read nothing" check, and rightly so: the gate must run on any tree, and a magnitude from
+    THIS repo baked into it makes every smaller checkout red. The magnitude is a property of
+    this tree, so it is asserted here, against this tree, where it can be re-derived.
+
+    ⚠ Floor, not equality: adding documents must not fail this. 37 examined of 42 found,
+    measured 2026-08-21.
+    """
+    _dangling, examined, skipped = gate.section_citations(REPO)
+    assert examined >= 30, (
+        f"only {examined} §N citation(s) are read in this repo, from the 37 measured on "
+        f"2026-08-21. Either SECTION_CITE stopped matching or the scanned set shrank — "
+        f"re-derive this floor deliberately rather than lowering it to fit.")
+    assert examined + len(skipped) >= 35, (
+        f"only {examined + len(skipped)} citation(s) were FOUND at all (42 measured) — "
+        f"suspect the regex before believing the citations went away.")
