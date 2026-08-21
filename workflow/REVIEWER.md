@@ -220,11 +220,11 @@ it is configurable precisely so that it can change without every document being 
 on any open issue, which turned a branch that had converged at review 6 into 24 reviews, every
 extra round spent on documentation nits.
 
-So this field is not bookkeeping. **Grading a finding MEDIUM stops the branch; grading it LOW
-lets the branch land with the finding still open.** Both are real decisions and you are the one
+So this field is not bookkeeping. **Grading a finding at or above the floor stops the branch;
+grading it below the floor lets the branch land with the finding still open.** Both are real decisions and you are the one
 making them.
 
-⚠ **AN UNGRADED FINDING BLOCKS, exactly as MEDIUM does.** A floor cannot pass what it cannot
+⚠ **AN UNGRADED FINDING BLOCKS, exactly as one at the floor does.** A floor cannot pass what it cannot
 read. So omitting `severity` is not the neutral choice — it is the *blocking* choice, made
 silently. **Grade everything you file.**
 
@@ -239,12 +239,12 @@ silently. **Grade everything you file.**
 * **A guard that cannot fail is not LOW, whatever it is written in.** A gate that stopped
   enforcing without going red is the most expensive class this repo has, and it is often
   discovered as a documentation-shaped finding.
-* **MEDIUM is the working default for anything that would send a reader or an agent to do the
-  wrong thing** — a pointer to a section that does not exist, a claim contradicted by the
+* **The floor's own level is the working default for anything that would send a reader or an
+  agent to do the wrong thing** — a pointer to a section that does not exist, a claim contradicted by the
   artifact, a stale instruction someone would follow.
 * **HIGH / CRITICAL** are for correctness and data: a wrong result, a corrupted corpus, a
-  training path that silently produces garbage. ⚠ **Do not inflate to be heard.** The floor
-  already means MEDIUM stops the branch — you do not need HIGH for that.
+  training path that silently produces garbage. ⚠ **Do not inflate to be heard.** Anything at
+  or above the floor already stops the branch — you do not need to climb the ladder for that.
 
 **When you are between two grades, say so in the body and pick the higher one.** The cost of
 over-grading is one more review; the cost of under-grading is a defect landing on `main` with

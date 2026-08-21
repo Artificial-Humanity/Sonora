@@ -99,11 +99,21 @@ def test_no_tracked_file_describes_the_pre_floor_merge_gate():
 
 # The owner's second requirement (2026-08-20): "make this simple to reconfigure in a single
 # place, should we ever pivot again." A document that names the threshold is a second place.
+# ⚠ THESE ENUMERATE PHRASINGS; THE DEFECT IS SEMANTIC. A regex cannot tell "grade this LOW"
+# (legitimate — a grading instruction) from "LOW rides" (a threshold claim). So the list is
+# built from claim SHAPES that actually occurred, and the docstring refuses to call it
+# coverage. The first four caught nothing that was not already exempt — the check had never
+# been red — while seven live copies used spellings none of them matched (#219).
 HARDCODED = [
-    re.compile(r"MEDIUM (?:and|or) above"),
+    re.compile(r"(?:MEDIUM|LOW|HIGH|CRITICAL) (?:and|or) above"),
     re.compile(r"MEDIUM\+"),
-    re.compile(r"\bLOW rides\b"),
-    re.compile(r"medium (?:and|or) above", re.I),
+    re.compile(r"\b(?:LOW|MEDIUM|HIGH|CRITICAL) (?:rides|issues RIDE|left open)\b"),
+    re.compile(r"(?:medium|low|high|critical) (?:and|or) above", re.I),
+    # "grading it LOW lets the branch land", "MEDIUM stops the branch"
+    re.compile(r"\b(?:LOW|MEDIUM|HIGH|CRITICAL)\b[^.\n]{0,40}\b(?:stops|lets|blocks) the branch"),
+    # "exactly as MEDIUM does", "a LOW may still be open", "a LOW that rides"
+    re.compile(r"exactly as (?:LOW|MEDIUM|HIGH|CRITICAL) does"),
+    re.compile(r"\bA (?:LOW|MEDIUM|HIGH|CRITICAL) (?:may|that|left)\b"),
 ]
 
 # Where naming the value is the point rather than a copy: config.env DEFINES it, merge_floor
@@ -149,3 +159,29 @@ def test_the_guard_can_actually_fail():
                for p in STALE)
     assert not any(p.search("it refuses anything at or above the severity floor")
                    for p in STALE)
+
+
+def test_the_HARDCODED_guard_can_actually_fail():
+    """⚠ #219: `STALE` had this sibling and `HARDCODED` did not, so the second check had never
+    been shown to fire. It matched zero non-exempt lines — which reads identically to "the
+    repo is clean" and is why seven live copies sat under a green run.
+
+    Every string below is a real spelling that was in the tree at 2b160c9.
+    """
+    real_sites = [
+        "these LOW issues RIDE past the floor and stay open after the merge:",
+        "Grading a finding MEDIUM stops the branch; grading it LOW lets the branch land",
+        "AN UNGRADED FINDING BLOCKS, exactly as MEDIUM does.",
+        "⚠ **A LOW may still be open**: it rides to a follow-up",
+        "A LOW that rides is still open",
+        "a LOW left open does not stop a merge",
+        "MEDIUM and above blocks",
+    ]
+    for text in real_sites:
+        assert any(p.search(text) for p in HARDCODED), f"not caught: {text!r}"
+
+    # …and it must not fire on the pointer form, or the fix would be unwritable.
+    for ok in ["a finding at or above the floor set in workflow/config.env blocks",
+               "grade this finding LOW unless it misdirects work",
+               "anything below the floor rides to a follow-up branch"]:
+        assert not any(p.search(ok) for p in HARDCODED), f"false positive: {ok!r}"

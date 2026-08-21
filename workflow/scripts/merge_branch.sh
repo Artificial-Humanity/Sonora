@@ -185,11 +185,15 @@ fi
 RIDING="$(printf '%s\n' "$UNSETTLED" | grep '^RIDE ' || true)"
 BLOCKING="$(printf '%s\n' "$UNSETTLED" | grep -v '^RIDE ' | grep -v '^[[:space:]]*$' || true)"
 
-# ⚠ NAME WHAT RIDES. "below-floor findings ride to a follow-up" is only true if someone can
+# ⚠ NAME WHAT RIDES, AND DO NOT NAME THEIR SEVERITY. The header said "these LOW issues
+# RIDE" over a list the gate had just computed. Raise the floor and a mid-ladder finding
+# rides too, so the header contradicted the severity column one line beneath it — and the
+# header is the part that says what to do about them (#219). "below-floor findings ride" is only true if someone can
 # see what rode;
 # a gate that drops findings without printing them is how the follow-up never happens.
 if [[ -n "${RIDING//[[:space:]]/}" ]]; then
-  echo "merge_branch.sh: these LOW issues RIDE past the floor and stay open after the merge:"
+  echo "merge_branch.sh: these findings are BELOW the floor and RIDE — they stay open after"
+  echo "  the merge:"
   echo "$RIDING"
   echo "  ⚠ they do NOT disappear — move them to a follow-up branch, or they sit on a"
   echo "    branch_name that no longer has a branch."
@@ -218,7 +222,8 @@ if [[ -n "${BLOCKING//[[:space:]]/}" ]]; then
       # while real findings sit in the same block will believe the wrong half.
       echo "  AND, separately, these ARE findings below the floor:" >&2
       echo "$FINDINGS" >&2
-      echo "    grade or close them too:  workflow/scripts/issue.py grade <N> --severity …" >&2
+      echo "    close them, or grade them if they are UNGRADED:" >&2
+      echo "      workflow/scripts/issue.py grade <N> --severity <s>" >&2
     fi
     die "refusing is the designed behaviour here, not a failure."
   fi
@@ -227,7 +232,11 @@ if [[ -n "${BLOCKING//[[:space:]]/}" ]]; then
   die "resolve them first. Anything at or above the configured floor must be closed.
      UNGRADED must be graded (or closed) because a floor cannot pass what it cannot read;
      escalated means the owner owes a decision at any severity (workflow/WORKFLOW.md §4).
-       Grade one:  workflow/scripts/issue.py grade <N> --severity low|medium|high|critical"
+       An UNGRADED one:  workflow/scripts/issue.py grade <N> --severity <s>
+     ⚠ That is for grading what has NO grade. It is not a way past a finding that HAS one:
+       lowering an existing grade is refused for anyone but the reviewer, because it would
+       make a blocking finding ride without closing it (#218). Disagree with a grade? Argue
+       it in the comments — a review is a report, not an order."
 fi
 
 echo "merge_branch.sh: '$BRANCH' clears the merge floor (MERGE_SEVERITY_FLOOR=$_FLOOR) —

@@ -25,11 +25,19 @@ the `python3` heredoc, and `merge_floor.rides()` is called **inside** that hered
 tests never execute the floor rule. They exercise the SHELL half: how already-classified lines
 are routed, which of the two refusals is printed, and the exit status.
 
-Measured, not assumed: setting `RIDES = frozenset()` — which makes every LOW block and turns
-the floor back into the zero-open-issues gate — leaves **all seven of these passing**. The rule
-is covered by `tests/test_merge_floor.py`, which imports and calls it directly.
+Measured, not assumed, and re-measured 2026-08-21 against the configured floor. Setting
+`MERGE_SEVERITY_FLOOR=low` in `workflow/config.env` makes **nothing** rideable — there is no
+severity below the bottom of the ladder — and turns the floor back into the zero-open-issues
+gate it replaced. Under that mutation:
 
-Naming that split matters more than it looks. `test_a_low_finding_rides_and_the_merge_proceeds`
+  * **every test in THIS file still passes** — it cannot see the change;
+  * **`tests/test_merge_floor.py` goes red**, because it imports and calls the rule.
+
+⚠ **No count is given here on purpose.** An earlier revision said "all seven of these passing"
+and the file has grown twice since (#212, #214): a number in prose beside a list goes stale the
+next time the list changes, which it has, twice.
+
+Naming that split matters more than it looks. `test_a_line_marked_ride_does_not_block_the_merge`
 reads like end-to-end proof that a below-floor finding rides. It is not. It proves the shell
 does the right thing **when handed a line the rule already marked RIDE**. Believing otherwise would leave the
 most important behaviour in the lane covered by a test that cannot see it — which is the

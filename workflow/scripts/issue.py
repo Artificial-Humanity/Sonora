@@ -35,6 +35,7 @@ Reads PocketBase credentials from ~/.claude.json (mcpServers.pocketbase.env). St
 
 import argparse
 import datetime
+import importlib.util
 import json
 import os
 import re
@@ -85,6 +86,20 @@ def _config():
 CFG = _config()
 REPO_SLUG = CFG.get("REPO_SLUG") or ""
 MAX_PASSES = int(CFG.get("MAX_PASSES") or 3)
+# ⚠ READ, NOT DECORATIVE. Until 2026-08-20 this setting existed and nothing consumed it
+# (#216). `cmd_grade` now uses it to decide who may LOWER a severity, which is the one
+# tracker write that can clear the merge gate without closing anything (#218).
+REVIEWER_NAME = (CFG.get("REVIEWER_NAME") or "").strip()
+# ⚠ IMPORTED, NOT REDECLARED. The first draft of this defined its own ("low", "medium",
+# "high", "critical") tuple "shared with merge_floor.LADDER" — a comment asserting a
+# relationship that nothing enforced. Two copies of a severity ORDER disagree silently: the
+# gate would rank one way and this refusal another, and the symptom would be a grade that is
+# accepted here and re-classified there. One copy, in the module that owns the comparison.
+_MF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "merge_floor.py")
+_SPEC = importlib.util.spec_from_file_location("merge_floor", _MF)
+_MERGE_FLOOR = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_MERGE_FLOOR)
+SEVERITY_LADDER = _MERGE_FLOOR.LADDER
 COMMENT_MAX = int(CFG.get("COMMENT_MAX") or 1500)
 OPEN_STATES = ("open", "review", "escalated")
 
@@ -460,16 +475,47 @@ def cmd_grade(pb, args):
     ⚠ IT DOES NOT TOUCH `state`. Grading is a judgement about how bad a finding is; it is not
     a way to move an issue through the loop, and conflating the two would let a grade close
     something.
+
+    ⚠⚠ AND LOWERING A SEVERITY IS THE WORKER MARKING ITS OWN HOMEWORK (#218). It does not
+    close the finding, but it does the merge-relevant half: the issue stays open, the gate
+    reclassifies it as RIDE, and the branch lands. DEVELOPER.md forbids the equivalent through
+    the other door — "CLOSE NOTHING … a worker closing its own findings … defeats the one
+    thing the split buys" — and there was no such sentence for `grade` in any file, while the
+    gate's own refusal text told the blocked party to run it with `low` listed first.
+
+    So: raising is open to anyone, grading an UNGRADED issue is open to anyone (that is the
+    remedy the gate must keep reachable), and LOWERING an existing grade is the reviewer's
+    alone. The asymmetry is the point — no direction that can clear a gate is self-served.
     """
     rec = pb.find(args, args.number)
-    was = (rec.get("severity") or "").strip() or "UNGRADED"
+    was = (rec.get("severity") or "").strip()
+    new_sev = args.severity.strip().lower()
+
+    if was:
+        try:
+            lowering = SEVERITY_LADDER.index(new_sev) < SEVERITY_LADDER.index(was.lower())
+        except ValueError:
+            # An unknown value on either side. Refuse rather than guess a direction — the
+            # gate blocks on unrecognised severities anyway, so guessing helps nobody.
+            die("cannot compare severity %r with the stored %r; both must be one of %s"
+                % (new_sev, was, ", ".join(SEVERITY_LADDER)))
+        if lowering and args.author != REVIEWER_NAME:
+            die("refusing: lowering %s -> %s makes a blocking finding RIDE past the merge\n"
+                "     gate, which is the worker marking its own homework. Only %s may lower a\n"
+                "     grade (workflow/config.env: REVIEWER_NAME).\n"
+                "       Disagree with the grade? Argue it in the issue's comments and let the\n"
+                "       reviewer regrade or refuse — a review is a report, not an order."
+                % (was, new_sev, REVIEWER_NAME or "the reviewer"))
+
     st, r = pb.call("/api/collections/issues/records/" + rec["id"], "PATCH",
-                    {"severity": args.severity})
+                    {"severity": new_sev})
     if st >= 300:
         die("grade refused by the tracker: %s" % json.dumps(r)[:400])
+    # ⚠ COMMENT FIRST WOULD BE BETTER but the comment needs the record; if this write fails
+    # the grade stands with no record of who or why (#222, LOW — filed, riding to a follow-up).
     if args.comment:
         pb.add_comment(args, rec, args.comment, args.author)
-    print("#%d graded: %s -> %s" % (args.number, was, args.severity))
+    print("#%d graded: %s -> %s" % (args.number, was or "UNGRADED", new_sev))
 
 
 def cmd_comment(pb, args):
@@ -541,12 +587,13 @@ def main():
     # Not `required=True`: a refusal here would push a reviewer mid-review into filing
     # nothing rather than filing ungraded, and an ungraded finding on the tracker beats a
     # finding that only ever existed in a summary. The MERGE GATE is where it bites.
-    s.add_argument("--severity", choices=["low", "medium", "high", "critical"])
+    # ⚠ DERIVED. These were a third copy of the ladder; a value added to merge_floor.LADDER
+    # and not here would be rankable by the gate and rejected at the command line.
+    s.add_argument("--severity", choices=list(SEVERITY_LADDER))
     s.set_defaults(fn=cmd_file)
 
     s = add("grade"); s.add_argument("number", type=int)
-    s.add_argument("--severity", required=True,
-                   choices=["low", "medium", "high", "critical"])
+    s.add_argument("--severity", required=True, choices=list(SEVERITY_LADDER))
     s.add_argument("--comment")
     s.set_defaults(fn=cmd_grade)
 

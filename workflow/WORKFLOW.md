@@ -112,8 +112,8 @@ Ozzy fixed some, and this is the next review.
    **A finding at or above the severity floor set in `workflow/config.env` blocks; anything below it
    rides to a follow-up branch**; ungraded and escalated block at any severity.
    ⚠ **The threshold is deliberately NOT repeated here** — that file is the only place it is
-   set, and a second copy is one that goes stale the moment someone reconfigures it. A LOW that rides is still open — move it to a follow-up
-   branch, or it sits on a `branch_name` that no longer has a branch. ⚠ **The gate is on the MERGE, not the push** (owner, 2026-08-17): a branch that
+   set, and a second copy is one that goes stale the moment someone reconfigures it. A finding that rides is still open — move it to a
+   follow-up branch, or it sits on a `branch_name` that no longer has a branch. ⚠ **The gate is on the MERGE, not the push** (owner, 2026-08-17): a branch that
    merged legitimately is one whose push is unremarkable.
 3. For each issue, in order:
    * **Needs an owner decision, OR `agent_passes` is already 3 → `escalated`.** ⚠ **A comment

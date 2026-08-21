@@ -142,3 +142,42 @@ def test_the_ladder_is_ordered_and_the_order_is_the_comparison():
     """Position in LADDER *is* the severity comparison, so a reorder silently changes every
     verdict. Pinned so that reordering fails here rather than at a merge."""
     assert merge_floor.LADDER == ("low", "medium", "high", "critical")
+
+
+# --------------------------------------------------------------------------- #
+# #218 — the one tracker write that can clear the gate without closing anything
+# --------------------------------------------------------------------------- #
+def _issue_module():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "issue_mod", os.path.join(REPO, "workflow", "scripts", "issue.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_issue_py_does_not_keep_its_own_copy_of_the_severity_order():
+    """⚠ Two copies of a severity ORDER disagree silently: the gate ranks one way and the
+    grade refusal another, and the symptom is a grade accepted in one place and reclassified
+    in the other. The first draft of #218's fix declared its own tuple with a comment claiming
+    it was "shared with merge_floor.LADDER" — a relationship asserted and unenforced.
+    """
+    mod = _issue_module()
+    # Equal in value — it must actually rank the same way…
+    assert mod.SEVERITY_LADDER == merge_floor.LADDER
+    # …and DERIVED, not re-typed. `is` cannot express this: issue.py loads its own instance of
+    # merge_floor, so the tuples are equal without being identical. The property worth pinning
+    # is that no second literal exists to drift, so the check is on the source.
+    src = open(os.path.join(REPO, "workflow", "scripts", "issue.py"), encoding="utf-8").read()
+    body = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("#"))
+    assert '"low", "medium", "high", "critical"' not in body, \
+        "issue.py re-declares the severity ladder instead of importing merge_floor.LADDER"
+
+
+def test_the_reviewer_name_is_read_from_config_not_hardcoded():
+    """#216: the setting existed and nothing consumed it. It decides who may lower a grade."""
+    mod = _issue_module()
+    assert mod.REVIEWER_NAME, "REVIEWER_NAME is empty — the #218 guard would name nobody"
+    cfg = open(os.path.join(REPO, "workflow", "config.env"), encoding="utf-8").read()
+    assert f"REVIEWER_NAME={mod.REVIEWER_NAME}" in cfg, \
+        "issue.py's REVIEWER_NAME does not match config.env — it is hardcoded somewhere"
