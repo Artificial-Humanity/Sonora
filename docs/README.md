@@ -45,9 +45,11 @@ Inherited from `notes/README.md`, and they apply to both:
 | [tts-engine-onboarding.md](tts-engine-onboarding.md) | the engine onboarding pattern, revisit list, and the gotcha compendium (ratified 2026-07-25) |
 | [audiobook-corpus-policy.md](audiobook-corpus-policy.md) | the owner's-audiobooks boundary and the private-lineage firewall |
 
-_These are **design and policy records, not build status.** The delivery channel that
-`vat-channels.md` and `direction-interface-brief.md` describe is not implemented in the model
-core — [notes/todo.md §1](../notes/todo.md)._
+_These are **design and policy records, not build status.** ⚠ The delivery channel that
+`vat-channels.md` and `direction-interface-brief.md` describe **SHIPPED in the model core on
+2026-08-07** — a five-wide one-hot block, `vat_dim` 8, `matcha/delivery.py`
+([STATE.md](../notes/STATE.md)). **The EXPORT half is what is still open.** This paragraph said
+"not implemented" until 2026-08-22 (#283), in a file created after the channel shipped._
 
 ## Where the rest is
 

@@ -283,7 +283,7 @@ class TextMelDataset(torch.utils.data.Dataset):
                     f"{self.filelist_path}: VAT field has {vat.numel()} value(s) "
                     f"({filepath_and_text[-1]!r}) but the model expects "
                     f"vat_dim={self.vat_dim}. Filelist and model config disagree — see "
-                    "notes/todo.md §1 (delivery-channel seams)."
+                    "scripts/gates/test_vat_dim_seams.py, the gate for exactly these seams."
                 )
             # ...and the WIDTH is only half of what "a valid conditioning vector" means
             # (TR-L3). The count was checked and the delivery block's shape was not, on

@@ -13,7 +13,7 @@ _Established by the Phase 0 (baseline-ljspeech-22k) and §7 de-risk (derisk-ener
 8-wide to `ep019` (2026-08-08/09).
 ⚠ **The EXPORT lane is deliberately still 3-wide**: `convert_vat.py` refuses a wider
 checkpoint on purpose, because a mobile host told nothing about the last five channels being
-categorical will interpolate them ([todo.md §1](../notes/todo.md)). Shipped on the training side is
+categorical will interpolate them ([vat-channels.md](vat-channels.md)). Shipped on the training side is
 not shipped on the device.
 The seam assertions that make the width safe are proven to fire (`scripts/gates/test_vat_dim_seams.py`).
 Last updated: 2026-08-09._
@@ -73,7 +73,7 @@ test. But that failure is currently diagnosed as a **corpus-label limit rather t
 architectural one**, so the question is gated on Phase 1: if volume moves valence, it is
 answered; if not, the representation becomes the suspect. Shape if it is ever taken:
 append as channels 8+ on the same zero-init FiLM path, never reorder. Reasoning and the
-gate: [todo.md § 4](../notes/todo.md).
+gate: [todo.md § 3](../notes/todo.md).
 
 Contract changes bump the version and require an owner call.
 

@@ -244,7 +244,7 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
   zero); register compiles away Director-side; tempo/loudness stay host-side. Pinned in
   [ARCHITECTURE.md](../docs/ARCHITECTURE.md) §1. **Implemented in the model core 2026-08-07** as a
   five-wide one-hot block (`vat_dim` 8, `matcha/delivery.py`); the EXPORT half is still
-  open ([todo.md §1](todo.md)).
+  open ([ARCHITECTURE.md § 8](../docs/ARCHITECTURE.md)).
 - **RapFlow-TTS (consistency-FM, ~2 NFE)** logged as its own later spike — throughput
   lever, separate de-risk cycle.
 

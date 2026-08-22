@@ -77,8 +77,9 @@ _When these two disagree: `training-sources.md` wins on a source's **state**,
 | [markup-schema-brief.md](../docs/markup-schema-brief.md) | SCM v0.1 — the ratified conveyance markup (sidecar-canonical, six tags) |
 | [casting-attribute-norms-brief.md](casting-attribute-norms-brief.md) | measured casting norms, cast sheet, identity-vs-portrayal |
 
-_All four are **design records**, not build status. The delivery channel they describe is
-not implemented in the model core — [todo.md §1](todo.md)._
+_All four are **design records**, not build status. ⚠ The delivery channel they describe
+**SHIPPED in the model core on 2026-08-07** (`vat_dim` 8, `matcha/delivery.py`); the **EXPORT**
+half is what remains — [STATE.md](STATE.md). Said "not implemented" until 2026-08-22 (#283)._
 
 _⚠ The first three are **canon** and live in [`docs/`](../docs/README.md); they are listed here
 because this is where you look for them by topic.

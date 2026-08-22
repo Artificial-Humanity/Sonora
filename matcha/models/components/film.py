@@ -55,7 +55,7 @@ class VATTrunk(nn.Module):
                 f"VAT width mismatch: this trunk was built for vat_dim={self.vat_dim} "
                 f"but received {vat.shape[1]} channels (shape {tuple(vat.shape)}). "
                 "The checkpoint, the model config and the filelist must agree — see "
-                "notes/todo.md §1 (delivery-channel seams)."
+                "scripts/gates/test_vat_dim_seams.py, the gate for exactly these seams."
             )
         return self.net(vat)
 

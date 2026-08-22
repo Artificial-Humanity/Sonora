@@ -94,7 +94,7 @@ def test_the_declaration_covers_every_conditioning_channel():
     not have: it asserted a dropdown existed, which stays true no matter how many
     undeclared channels appear beside it.
 
-    The gated emotion block (todo.md §4) would append as channels 8+; span-scoped delivery
+    The gated emotion block (todo.md §3) would append as channels 8+; span-scoped delivery
     appends its own. Either one lands here as a declaration or it does not land.
     """
     assert direction.CHANNELS == tuple(range(delivery.VAT_DIM)), (

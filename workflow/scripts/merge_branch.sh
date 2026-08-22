@@ -129,10 +129,21 @@ if [[ "$_REVIEWED_TIP" != "$_TIP" && "$NO_REVIEW" -ne 1 ]]; then
     # argument" and the `|| true` would have swallowed it, leaving the merge to proceed as
     # if a review had run. Caught by running the dry run, not by reading. It derives the
     # branch itself; `--repo` is passed so both agree on the tracker slug.
-    "$_SCRIPT_DIR/request_review.sh" --range "$BASE..HEAD" --repo "$REPO_SLUG" || true
-    # ⚠ NOT `|| die`. A review that fails to COMPLETE may still have filed real findings, and
-    # the tracker read below is what decides. Dying here would discard them.
-    echo "merge_branch.sh: review finished — re-reading the tracker."
+    if "$_SCRIPT_DIR/request_review.sh" --range "$BASE..HEAD" --repo "$REPO_SLUG"; then
+      echo "merge_branch.sh: review completed — re-reading the tracker."
+    else
+      # ⚠ NOT `die`. A review that fails to COMPLETE may still have filed real findings, and
+      # the tracker read below is what decides. Dying here would discard them.
+      #
+      # ⚠⚠ BUT IT MUST NOT SAY "review finished" (#285). The first version printed that
+      # unconditionally, so a review that died on its first call announced success and left
+      # the reader to infer a clean range from a tracker that is clean because nothing ran.
+      # "Check the instrument RAN before believing a negative" is this lane's own rule.
+      echo "merge_branch.sh: ⚠ THE REVIEW DID NOT COMPLETE (non-zero exit)." >&2
+      echo "  It may still have filed findings — Janis writes them one at a time — so the" >&2
+      echo "  tracker read below is what decides, and a clean result here does NOT mean the" >&2
+      echo "  range was reviewed. No marker was recorded, so this will ask again." >&2
+    fi
   fi
 fi
 # The configured floor, for the messages only — merge_floor.py is what ENFORCES it, and

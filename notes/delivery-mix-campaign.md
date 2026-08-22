@@ -18,8 +18,10 @@ Documentary 8% / Newscaster 6% / Speech 6%. This note is the SSOT for the push._
 is at or above target except Documentary, closed deliberately at 95% — there is no
 documentary real audio segmented anywhere, and −5 does not pay for a fresh ingest.
 
-**The corpus is no longer the constraint. The 4th FiLM channel it was built for still
-does not exist in the model core** — [todo.md §1](todo.md).
+**The corpus is no longer the constraint.** ⚠ The 4th FiLM channel it was built for
+**SHIPPED in the model core on 2026-08-07** and trained 8-wide to `ep019`; the **EXPORT** half
+is what does not exist yet — [STATE.md](STATE.md). This line said the channel itself did not
+exist until 2026-08-22 (#283).
 
 **Fold-eligible = every keep except the three instrument campaigns**
 (`audit-tension-v2`, `audit-valence-v1`, `audit-emilia-keeps-v1` — the set

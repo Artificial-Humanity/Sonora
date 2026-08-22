@@ -817,7 +817,17 @@ if [[ "$STATUS" -eq 0 && -n "$TIP" ]]; then
     grep -v "[[:space:]]${BRANCH}\$" "$_MARK" > "${_MARK}.tmp" 2>/dev/null || true
     mv "${_MARK}.tmp" "$_MARK"
   fi
-  printf '%s %s\n' "$(git rev-parse HEAD)" "$BRANCH" >> "$_MARK"
+  # ⚠⚠ `$TIP`, NOT `HEAD` — THE FIRST VERSION GUARDED ON ONE AND WROTE THE OTHER (#284).
+  # `$TIP` is the newest commit of the reviewed RANGE. They are equal only when the range
+  # happens to end at HEAD. Review `origin/main..HEAD~1` and the old line recorded HEAD — a
+  # commit the reviewer was never briefed on — after which `merge_branch.sh` compared it to
+  # HEAD, matched, and skipped the review entirely.
+  #
+  # ⚠ IT FAILED OPEN, AND IT WAS WORSE THAN WHAT IT REPLACED: before this marker existed the
+  # gate printed a warning and left the judgement with the reader; the bug made it print
+  # nothing and silently proceed. A partial-range review is not hypothetical — DEVELOPER.md
+  # §3 records two commits reaching `main` that way.
+  printf '%s %s\n' "$TIP" "$BRANCH" >> "$_MARK"
 fi
 
 exit "$STATUS"

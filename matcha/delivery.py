@@ -59,7 +59,7 @@ Vocabulary changes are contract changes and require an owner call.
 # reinterprets every checkpoint and every filelist ever written, so it is worse than
 # appending and there is no situation in which it is the right edit.
 #
-# THIS IS NOT AN EMOTION TAXONOMY, and if you came here to add one, read todo.md § 4
+# THIS IS NOT AN EMOTION TAXONOMY, and if you came here to add one, read todo.md § 3
 # first. A categorical emotion block (the standard 3-continuous + 8-Plutchik hybrid) is an
 # OPEN question, gated on whether Phase 1's corpus growth fixes the valence channel — the
 # current diagnosis is a data limit, not a representation limit, and adding channels
@@ -213,7 +213,7 @@ def lane_of_vector(vec):
     if len(block) != DELIVERY_DIM:
         raise ValueError(
             f"expected {VAT_DIM} channels, got {len(vec)} — the filelist and the model "
-            "config disagree on vat_dim (see notes/todo.md §1)")
+            "config disagree on vat_dim (see scripts/gates/test_vat_dim_seams.py)")
     hot = [i for i, v in enumerate(block) if v]
     if not hot:
         return DELIVERY_UNKNOWN
