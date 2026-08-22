@@ -508,10 +508,18 @@ def main():
     # 7.25% of train V sits at |V| ≥ 0.99 overall.
     #
     # Reported rather than silently repaired: dropping or neutralising those clips changes
-    # labels, and changing labels is a corpus version bump and an owner call (see
-    # notes/training-sources.md, the D-M3 rows). Printing it is what makes the choice
-    # available at all — the
-    # numbers above were not visible anywhere before.
+    # labels, and changing labels is a corpus version bump and an owner call. Printing it is
+    # what makes the choice available at all — the numbers above were not visible anywhere
+    # before.
+    #
+    # ⚠ NO DOCUMENT OWNS THAT RULE, so this line deliberately cites none. It said
+    # `notes/todo.md § 8` until 2026-08-22 — a REAL pointer that rotted: `## 8 · Label
+    # derivation` existed until `fdcbf77` renumbered it to `## 4`, and a later sweep deleted
+    # the section. ⚠⚠ It was then briefly repointed at `training-sources.md`'s D-M3 rows,
+    # which is a DIFFERENT defect (digit-carrying captions) and says nothing about version
+    # bumps — a dangling pointer replaced by a confidently wrong one, which is worse, because
+    # the link checker goes green on it (#275). If the label-change policy ever gets an owner,
+    # cite it here; until then the sentence stands on its own.
     MIN_SPK_CLIPS = 10
 
     def per_spk_z(values_by_path, label=""):
