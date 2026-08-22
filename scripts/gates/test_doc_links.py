@@ -96,6 +96,10 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 # and this gate steps over it deliberately.
 _SCAN_EXCLUDE = ("workflow/",)
 
+# This checker and the file that tests it — see `citation_sources`. Both quote `§N` citations
+# as examples; scanning them reports the explanation as the defect.
+_CITATION_EXEMPT = ("scripts/gates/test_doc_links.py", "tests/test_doc_links_gate.py")
+
 
 def _tracked_top_dirs(root=REPO):
     """Top-level directory names git actually carries. -> sorted list."""
@@ -103,6 +107,37 @@ def _tracked_top_dirs(root=REPO):
                          capture_output=True, text=True, check=True)
     return sorted({rel.split("/", 1)[0] for rel in out.stdout.split("\0")
                    if rel and "/" in rel})
+
+
+def citation_sources(root=REPO):
+    """Files a `<file>.md §N` citation can appear in: tracked `.md` AND `.py`. -> abs paths.
+
+    ⚠ DELIBERATELY A DIFFERENT SET FROM `repo_markdown()`, AND THE REASON MATTERS — this gate
+    has been burned by a second scan set before (#266), so the split is stated rather than
+    left to be discovered. The LINK half must stay `.md`-only: `](...)` in Python is not a
+    markdown link. A `§N` CITATION is just prose, and prose lives in comments and docstrings
+    as readily as in documents.
+
+    Measured (#275): two live `notes/todo.md § 8` citations survived #181's sweep in
+    `matcha/cli.py` and `scripts/lib/derive_vat_corpus.py` — #181's exact defect, structurally
+    invisible to a `.md`-only scan. Fixing the two instances without widening the scan leaves
+    the class alive, which is this branch's standing lesson: a guard beats a sweep.
+
+    ⚠ **THE CHECKER AND ITS OWN TESTS ARE EXEMPT, and the cost is real.** Both quote
+    citations as EXAMPLES — `[todo.md §6](todo.md)` appears in this file's comments and in
+    `tests/test_doc_links_gate.py`'s fixtures precisely to describe the defect being caught.
+    Measured: without the exemption they contribute 6 of 8 "dangling" hits, all false. A gate
+    that fires on the prose explaining it is one somebody switches off. The cost, stated
+    rather than discovered: a GENUINE dangling citation in either file goes unseen. That is
+    the same trade the doc-claims gate's `exempt` list makes for deliberate historical
+    mentions, and it is narrow — two files, both of which exist to describe this check.
+    """
+    out = subprocess.run(["git", "ls-files", "-z", "*.md", "*.py"], cwd=root,
+                         capture_output=True, text=True, check=True)
+    return sorted(
+        os.path.join(root, rel) for rel in out.stdout.split("\0")
+        if rel and not rel.startswith(_SCAN_EXCLUDE) and rel not in _CITATION_EXEMPT
+    )
 
 
 def repo_markdown(root=REPO):
@@ -192,9 +227,11 @@ def section_citations(root=REPO):
     `notes/` and `docs/`). Deliberately permissive: this should fail on a section that exists
     NOWHERE under that name, never on the ambiguity of which copy was meant.
     """
-    files = repo_markdown(root)
+    files = citation_sources(root)
+    # ⚠ TARGETS ARE MARKDOWN; SOURCES ARE WIDER. A `.py` file can CONTAIN a citation but can
+    # never BE one's target, so the heading map is built from `repo_markdown()` alone.
     by_name = {}
-    for path in files:
+    for path in repo_markdown(root):
         by_name.setdefault(os.path.basename(path), []).append(path)
 
     headings = {}
@@ -360,9 +397,9 @@ def main():
         failures.append(("link", f"{rel}:{lineno} — link target does not exist: {raw}"))
 
     stale, examined, skipped = section_citations()
-    cited_files = repo_markdown(REPO)
+    cited_files = citation_sources(REPO)
     print(f"checked {examined} `<file>.md §N` citation(s) in {len(cited_files)} markdown "
-          f"files (the same set as the link half above)")
+          f"files (.md + .py; the link half above is .md only)")
 
     # ⚠ PRINTED, NEVER SILENT — the same treatment an absent sibling gets above. Grouped by
     # target so five lines do not read as five unrelated problems.
@@ -390,9 +427,18 @@ def main():
     # tree has 37) lives in the suite: `test_the_live_citation_count_holds`. Printed, never
     # silent, exactly as an absent sibling is treated.
     if cited_files and not examined:
-        print(f"  ~ 0 citations read across {len(cited_files)} file(s). Either this tree has "
-              f"none, or SECTION_CITE\n    is broken — THIS GATE CANNOT TELL. The ratchet "
-              f"that can is tests/test_doc_links_gate.py.")
+        # ⚠ TWO DIFFERENT ZEROS. "Found none" and "found some and skipped every one" have
+        # different causes and different remedies, and the first version of this notice gave
+        # the regex diagnosis to both — printing "Either this tree has none, or SECTION_CITE
+        # is broken" three lines below the list of citations it had just found (#273).
+        if skipped:
+            print(f"  ~ 0 of {len(skipped)} citation(s) could be checked: every target is "
+                  f"outside the scanned\n    set (listed above). SECTION_CITE is working — "
+                  f"the targets are the problem.")
+        else:
+            print(f"  ~ 0 citations FOUND across {len(cited_files)} file(s). Either this tree "
+                  f"has none, or\n    SECTION_CITE is broken — THIS GATE CANNOT TELL. The "
+                  f"ratchet that can is tests/test_doc_links_gate.py.")
     for rel, lineno, target, n, available in stale:
         have = ", ".join(f"§{x}" for x in available) if available else "NO numbered headings"
         failures.append(("section",

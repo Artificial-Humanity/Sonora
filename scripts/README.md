@@ -11,9 +11,9 @@ The layout is the answer to *"what is this file?"*. The enforcement is
 | directory | what belongs there | how many |
 |---|---|---|
 | **`stages/`** | Pipeline stages, and the four orchestrator shells that drive them. Every file here is declared in `pipeline_manifest.py`, and the ratchet fails if a declared stage is not invoked *or* an invoked script is not declared. | 17 py + 4 sh |
-| **`lib/`** | Imported by other non-test Python. `synth_common` (27 importers), `ref_select` (11), `book_ingest` (7)… | 10 |
+| **`lib/`** | Imported by other non-test Python. `synth_common` (27 importers), `ref_select` (11), `book_ingest` (7)… | 11 |
 | **`tools/`** | Run by hand, deliberately and repeatedly. Legitimate, and *named* so it is not mistaken for a stage. | 46 |
-| **`gates/`** | Standalone gate scripts, executed as subprocesses by `tests/test_gate_scripts.py`. Named `test_*.py` and **not** collected by pytest. | 6 |
+| **`gates/`** | Standalone gate scripts, executed as subprocesses by `tests/test_gate_scripts.py`. Named `test_*.py` and **not** collected by pytest. | 7 |
 | **`assets/`** | Checked-in data the scripts read: the per-engine director skill files and the register lexicon. One home, so a reader does not resolve it relative to wherever *it* happens to live. | 4 + 9 |
 | **`teacher_audition/`** | **Provenance, not a lane.** Clips these rendered are still rated in `ratings.csv`, and its README is the per-engine interface record. See the standing note at the top of that README before proposing a deletion. | 14 py + 2 sh |
 | **`litert_export/`** | The on-device export lane. Self-contained, with its own `run.sh` dispatcher that takes the script name as `$1` — so static reachability cannot see it, which `pipeline_manifest.DYNAMIC_DISPATCH` declares rather than leaves as a mystery. | 12 py |

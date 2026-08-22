@@ -381,3 +381,28 @@ def test_in_repo_asset_paths_resolve(rel):
             )
     assert not broken, f"{rel} builds path(s) that do not resolve:\n" + "\n".join(broken)
 
+
+
+def test_the_scripts_readme_counts_match_the_tree():
+    """⚠ A COUNT IN PROSE HAS NOTHING THAT GOES RED — so this is the red.
+
+    `scripts/README.md`'s table said 6 gate scripts and 10 `lib/` files while the tree held 7
+    and 11 (#274). Both went stale on this branch, which ADDED the seventh gate script — the
+    author of the drift and the reader of the table were the same session.
+
+    The repo's rule is "derive, never duplicate", and a README table cannot derive. So the
+    number stays where a human wants to read it and the derivation lives here, which is the
+    only arrangement in which prose and tree can disagree loudly.
+    """
+    table = (REPO / "scripts" / "README.md").read_text(encoding="utf-8")
+    for directory, pattern in (("gates", "scripts/gates/*.py"), ("lib", "scripts/lib/*.py")):
+        actual = len(subprocess.run(
+            ["git", "ls-files", pattern], cwd=REPO,
+            capture_output=True, text=True, check=True).stdout.split())
+        row = next((ln for ln in table.split("\n") if f"**`{directory}/`**" in ln), None)
+        assert row, f"no `{directory}/` row in scripts/README.md — the table moved"
+        stated = row.rsplit("|", 2)[1].strip()
+        assert stated == str(actual), (
+            f"scripts/README.md says {directory}/ holds {stated}; git ls-files says {actual}. "
+            f"Update the table — or if the count is no longer worth stating, delete it and "
+            f"this assertion together.")

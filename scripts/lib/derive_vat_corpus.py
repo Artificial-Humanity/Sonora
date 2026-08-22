@@ -509,7 +509,8 @@ def main():
     #
     # Reported rather than silently repaired: dropping or neutralising those clips changes
     # labels, and changing labels is a corpus version bump and an owner call (see
-    # notes/todo.md § 8). Printing it is what makes the choice available at all — the
+    # notes/training-sources.md, the D-M3 rows). Printing it is what makes the choice
+    # available at all — the
     # numbers above were not visible anywhere before.
     MIN_SPK_CLIPS = 10
 

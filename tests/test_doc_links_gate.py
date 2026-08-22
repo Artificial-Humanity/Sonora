@@ -610,3 +610,50 @@ def test_main_routes_an_unknown_kind_and_keeps_its_message(tmp_path):
     assert "gone.md" in r.stdout, (
         "the FAILURE lost its message — the run is red but the reader is not told what "
         "broke, which is the defect the catch was written to close:\n" + r.stdout)
+
+
+# --- the two behavioural fixes in 66e7310 that shipped without tests (#276) ---------------
+
+def test_a_numbered_heading_may_carry_a_section_sign(tmp_path):
+    """#272: `docs/vat-channels.md` writes `## §1 Mechanism`. Requiring the digit to follow
+    the hashes directly made that file read as having NO numbered sections, so a CORRECT
+    citation to its §1 would have been FAILED with the remedy "cite by name".
+
+    ⚠ Reverting the regex to `^#+\\s+(\\d+)[.)]?\\s` leaves the whole suite AND the live gate
+    green (measured by Janis, #276) — which is why this exists.
+    """
+    root = tree(tmp_path, {
+        "notes/a.md": "see [t.md §1](t.md) and [t.md §9](t.md)\n",
+        "notes/t.md": "# T\n\n## §1 Mechanism\n\n## §2 Labels\n",
+    })
+    dangling, examined, _skipped = gate.section_citations(root)
+    assert examined == 2, "both citations must be read"
+    assert [(d[2], d[3]) for d in dangling] == [("t.md", "9")], (
+        "§1 must resolve against `## §1 Mechanism`, and only §9 should dangle — got "
+        f"{dangling}")
+
+
+def test_the_depth_tell_ignores_an_untracked_directory(tmp_path):
+    """#271: the tell read the WORKING TREE via `os.listdir`, so an untracked directory
+    sharing a sibling's name flipped a printed skip into a hard FAIL.
+
+    Here `Prosodia/` exists on disk but is NOT tracked, so a link naming it is a genuine
+    cross-repo link to an absent sibling — a printed skip, never a failure.
+    """
+    root, run = _gate_repo(tmp_path, {
+        "notes/a.md": "[x](../../Prosodia/notes/x.md)\n", "notes/t.md": "# T\n"})
+    os.makedirs(os.path.join(root, "Prosodia", "notes"), exist_ok=True)
+    open(os.path.join(root, "Prosodia", "notes", "x.md"), "w").close()
+    r = run()
+    assert r.returncode == 0, (
+        "an UNTRACKED directory sharing a sibling's name must not make this a depth "
+        f"error:\n{r.stdout}")
+    assert "WRONG DEPTH" not in r.stdout
+
+
+def test_a_tracked_top_level_file_is_not_called_a_directory(tmp_path):
+    """#271's second half: with no `isdir` check, a tracked top-level FILE named like a
+    sibling was reported as "IS a directory in this repo"."""
+    root = tree(tmp_path, {"notes/a.md": "x\n", "Prosodia": "not a directory\n"})
+    assert "Prosodia" not in gate._tracked_top_dirs(root), (
+        "a tracked top-level FILE is being listed as a directory")
