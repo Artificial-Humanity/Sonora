@@ -3,7 +3,7 @@
 # merge_branch.sh — merge the current branch to main, but only once it clears the SEVERITY FLOOR.
 #
 #     workflow/scripts/merge_branch.sh [--branch B] [--base main] [--no-push] [--dry-run]
-#                              [--allow-unreviewed]
+#                              [--allow-unreviewed] [--no-review]
 #
 # ⚠ THE GATE IS ON THE MERGE, NOT THE PUSH (owner, 2026-08-17). A branch that merged
 # legitimately is one whose push is unremarkable, so this pushes by default. What it will not
@@ -43,6 +43,7 @@ BRANCH=""
 PUSH=1
 DRY_RUN=0
 ALLOW_UNREVIEWED=0
+NO_REVIEW=0
 
 usage() { sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'; }
 
@@ -53,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --repo)    REPO_SLUG="${2:?--repo needs a value}"; shift 2 ;;
     --no-push) PUSH=0; shift ;;
     --allow-unreviewed) ALLOW_UNREVIEWED=1; shift ;;
+    --no-review) NO_REVIEW=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "merge_branch.sh: unknown argument: $1" >&2; exit 2 ;;
@@ -92,6 +94,47 @@ cd "$REPO_ROOT"
 # ⚠ ESCALATED BLOCKS AT ANY SEVERITY. It means the owner owes a decision; severity says how
 # bad the finding is, not whether someone is waiting on a human.
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ⚠⚠ CALL FOR A REVIEW IF THE TIP IS NOT COVERED (owner, 2026-08-22).
+#
+# This gate used to print "⚠ this proves nothing AT OR ABOVE THE FLOOR is outstanding — NOT
+# that no finding is, and NOT that a review covered <sha>" and then merge anyway. It named
+# its own hole and left it open: a clean tracker plus five new commits reads exactly like a
+# reviewed branch, and the worker is the only thing standing between the two. DEVELOPER.md
+# records that two commits reached `main` unreviewed that way.
+#
+# `request_review.sh` now records the tip it completed on. If that does not match HEAD, this
+# RUNS the review rather than telling someone to — the instruction was already printed at the
+# NEVER_REVIEWED branch below and printing it is what did not work.
+#
+# ⚠ `--dry-run` NEVER LAUNCHES ONE. A dry run that costs a full review is not a dry run, and
+# nobody would use it twice. It reports what would happen.
+# ⚠ `--no-review` opts out for the case the marker cannot cover: a review that genuinely ran
+# on another machine or before this mechanism existed. It is the honest escape hatch, and it
+# is separate from `--allow-unreviewed`, which answers a different question (no issues at all).
+_REVIEW_MARK="$(git rev-parse --git-dir)/sonora-reviewed-tips"
+_TIP="$(git rev-parse HEAD)"
+_REVIEWED_TIP="$(grep "[[:space:]]${BRANCH}\$" "$_REVIEW_MARK" 2>/dev/null | tail -1 | cut -d' ' -f1 || true)"
+
+if [[ "$_REVIEWED_TIP" != "$_TIP" && "$NO_REVIEW" -ne 1 ]]; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "merge_branch.sh: HEAD ($(git rev-parse --short HEAD)) is NOT recorded as reviewed"
+    echo "  last reviewed tip for '$BRANCH': ${_REVIEWED_TIP:-<none recorded>}"
+    echo "  would: workflow/scripts/request_review.sh --range $BASE..HEAD  (then re-check)"
+  else
+    echo "merge_branch.sh: HEAD is not recorded as reviewed — calling for a review first."
+    echo "  last reviewed tip for '$BRANCH': ${_REVIEWED_TIP:-<none recorded>}"
+    # ⚠ ONLY FLAGS request_review.sh ACTUALLY TAKES. The first version passed
+    # `--branch-name`, which it does not accept — the call would have died "unknown
+    # argument" and the `|| true` would have swallowed it, leaving the merge to proceed as
+    # if a review had run. Caught by running the dry run, not by reading. It derives the
+    # branch itself; `--repo` is passed so both agree on the tracker slug.
+    "$_SCRIPT_DIR/request_review.sh" --range "$BASE..HEAD" --repo "$REPO_SLUG" || true
+    # ⚠ NOT `|| die`. A review that fails to COMPLETE may still have filed real findings, and
+    # the tracker read below is what decides. Dying here would discard them.
+    echo "merge_branch.sh: review finished — re-reading the tracker."
+  fi
+fi
 # The configured floor, for the messages only — merge_floor.py is what ENFORCES it, and
 # reads config itself. This is display, never a second source of truth.
 _FLOOR="${MERGE_SEVERITY_FLOOR:-<unset — everything blocks>}"
