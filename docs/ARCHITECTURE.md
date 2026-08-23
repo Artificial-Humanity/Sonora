@@ -13,7 +13,8 @@ _Established by the Phase 0 (baseline-ljspeech-22k) and §7 de-risk (derisk-ener
 8-wide to `ep019` (2026-08-08/09).
 ⚠ **The EXPORT lane is deliberately still 3-wide**: `convert_vat.py` refuses a wider
 checkpoint on purpose, because a mobile host told nothing about the last five channels being
-categorical will interpolate them ([vat-channels.md](vat-channels.md)). Shipped on the training side is
+categorical will interpolate them ([STATE.md](../notes/STATE.md), the v6 delivery block).
+Shipped on the training side is
 not shipped on the device.
 The seam assertions that make the width safe are proven to fire (`scripts/gates/test_vat_dim_seams.py`).
 Last updated: 2026-08-09._
