@@ -384,15 +384,19 @@ def test_in_repo_asset_paths_resolve(rel):
 
 
 def test_the_scripts_readme_counts_match_the_tree():
-    """⚠ A COUNT IN PROSE HAS NOTHING THAT GOES RED — so this is the red.
+    """⚠ THE RED FOR TWO CELLS OF THE TABLE — `gates/` and `lib/` — NOT FOR ALL SEVEN.
 
     `scripts/README.md`'s table said 6 gate scripts and 10 `lib/` files while the tree held 7
     and 11 (#274). Both went stale on this branch, which ADDED the seventh gate script — the
-    author of the drift and the reader of the table were the same session.
+    author of the drift and the reader of the table were the same session. This derives those
+    two cells and no others (#280): the other five are compound (`17 py + 4 sh`, `4 + 9`) and
+    `stated == str(actual)` cannot parse them. So a stale count in those five rows will NOT
+    go red here — deriving the whole table needs a parseable cell format, a redesign to be
+    decided rather than done as a drive-by.
 
     The repo's rule is "derive, never duplicate", and a README table cannot derive. So the
-    number stays where a human wants to read it and the derivation lives here, which is the
-    only arrangement in which prose and tree can disagree loudly.
+    number stays where a human wants to read it and the derivation lives here — for the two
+    cells above, the only arrangement in which prose and tree can disagree loudly.
     """
     table = (REPO / "scripts" / "README.md").read_text(encoding="utf-8")
     for directory, pattern in (("gates", "scripts/gates/*.py"), ("lib", "scripts/lib/*.py")):
