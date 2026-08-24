@@ -384,22 +384,23 @@ def test_in_repo_asset_paths_resolve(rel):
 
 
 def test_the_scripts_readme_counts_match_the_tree():
-    """⚠ THE RED FOR TWO CELLS OF THE TABLE — `gates/` and `lib/` — NOT FOR ALL SEVEN.
+    """⚠ THE RED FOR THE THREE BARE-INTEGER CELLS — `gates/`, `lib/`, `tools/` — NOT ALL SEVEN.
 
     `scripts/README.md`'s table said 6 gate scripts and 10 `lib/` files while the tree held 7
     and 11 (#274). Both went stale on this branch, which ADDED the seventh gate script — the
-    author of the drift and the reader of the table were the same session. This derives those
-    two cells and no others (#280): the other five are compound (`17 py + 4 sh`, `4 + 9`) and
-    `stated == str(actual)` cannot parse them. So a stale count in those five rows will NOT
-    go red here — deriving the whole table needs a parseable cell format, a redesign to be
-    decided rather than done as a drive-by.
+    author of the drift and the reader of the table were the same session. This derives every
+    cell whose count is a bare integer (#280). The other four carry units or compounds
+    (`17 py + 4 sh`, `12 py`, `4 + 9`) that `stated == str(actual)` cannot match, so a stale
+    count in those rows will NOT go red here — deriving them means parsing per-suffix or
+    reshaping the cells, and that is a decision, not a drive-by.
 
     The repo's rule is "derive, never duplicate", and a README table cannot derive. So the
-    number stays where a human wants to read it and the derivation lives here — for the two
-    cells above, the only arrangement in which prose and tree can disagree loudly.
+    number stays where a human wants to read it and the derivation lives here — for the cells
+    above, the only arrangement in which prose and tree can disagree loudly.
     """
     table = (REPO / "scripts" / "README.md").read_text(encoding="utf-8")
-    for directory, pattern in (("gates", "scripts/gates/*.py"), ("lib", "scripts/lib/*.py")):
+    for directory, pattern in (("gates", "scripts/gates/*.py"), ("lib", "scripts/lib/*.py"),
+                               ("tools", "scripts/tools/*.py")):
         actual = len(subprocess.run(
             ["git", "ls-files", pattern], cwd=REPO,
             capture_output=True, text=True, check=True).stdout.split())
