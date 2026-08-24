@@ -62,7 +62,54 @@ def _tracked_basenames():
     return names
 
 
+def _tracked_paths():
+    """Every repo-relative path `git ls-files` knows, plus each of their parent directories.
+
+    Parents are included because an asset target is often a DIRECTORY —
+    `scripts/assets/director_skills` — which `ls-files` never lists on its own.
+    """
+    out = subprocess.run(["git", "ls-files", "-z"], cwd=REPO, capture_output=True, text=True, check=True)
+    paths = set()
+    for rel in out.stdout.split("\0"):
+        if not rel:
+            continue
+        p = pathlib.PurePosixPath(rel)
+        paths.add(rel)
+        for parent in p.parents:
+            if parent.name:
+                paths.add(str(parent))
+    return paths
+
+
+def _forgotten_paths(tracked_paths):
+    """Paths that exist, are NOT tracked, and are NOT ignored — i.e. someone forgot `git add`.
+
+    ⚠ THE DISCRIMINATOR IS `--exclude-standard`, AND IT IS THE WHOLE DESIGN. A runtime output
+    is untracked *because it is gitignored*; a forgotten file is untracked because nobody
+    added it. Only the second is a defect, and conflating them would make this guard red on
+    every generated bank — a guard that goes red on correct code gets switched off, which is
+    the outcome this file's docstring exists to avoid.
+    """
+    out = subprocess.run(
+        ["git", "ls-files", "-z", "--others", "--exclude-standard"],
+        cwd=REPO, capture_output=True, text=True, check=True,
+    )
+    paths = set()
+    for rel in out.stdout.split("\0"):
+        if not rel:
+            continue
+        paths.add(rel)
+        # A directory counts as forgotten only if git carries NOTHING in it — otherwise it is
+        # a tracked directory that merely happens to contain an untracked file.
+        for parent in pathlib.PurePosixPath(rel).parents:
+            if parent.name and str(parent) not in tracked_paths:
+                paths.add(str(parent))
+    return paths
+
+
 TRACKED = _tracked_basenames()
+TRACKED_PATHS = _tracked_paths()
+FORGOTTEN = _forgotten_paths(TRACKED_PATHS)
 
 
 def _eval(node, here, env):
@@ -266,15 +313,66 @@ def test_the_guard_actually_asserts_something():
 
 @pytest.mark.parametrize("rel", SCRIPTS, ids=SCRIPTS)
 def test_in_repo_asset_paths_resolve(rel):
-    """If the tail names something in this repo, the built path must point at it."""
+    """If the tail names something in this repo, the built path must point at it — IN THE INDEX.
+
+    ⚠ `Path.exists()` IS A QUESTION ABOUT THE WORKING TREE, AND TRACKED-NESS IS A QUESTION
+    ABOUT THE INDEX. They disagree in exactly the case that matters: an untracked file sitting
+    on disk answers `True`, so the guard confirmed "this path resolves for me, right now" when
+    the property worth guarding is "this path resolves for anyone who clones this."
+
+    Reproduce, against an asset THIS guard covers (measured 2026-08-21):
+
+        git rm --cached -q scripts/assets/register_lexicon.json   # untracked, still on disk
+        .venv/bin/python -m pytest tests/test_asset_paths.py -q
+        -> EXISTS BUT IS NOT TRACKED (scripts/assets/register_lexicon.json)
+
+    ⚠ AND THE FIRST VERSION OF THIS FIX WAS VACUOUS UNDER THAT EXACT COMMAND. Making the
+    check below index-aware left it GREEN, because it is gated on `tail not in TRACKED` and
+    TRACKED is built from `git ls-files` — untracking a file removes its basename, so the
+    guard skipped it as "a runtime output". A selector that goes blind to precisely the file
+    that went missing is the disarm mode this file's docstring is about, which is why the
+    tracked-ness question is asked FIRST, ungated by the tail heuristic.
+
+    The resolution is `git ls-files`, and "exists but untracked" gets its OWN message: a
+    different mistake from "does not exist", sending the reader to `git add` rather than to
+    "fix the path".
+
+    ⚠ SCOPE: `scripts/**/*.py` only (see SCRIPTS). #207 also asked for shell scripts, whose
+    live population was entirely under `workflow/` — retired by owner ruling 2026-08-21, so
+    that half is deliberately NOT here and #207 stays open for it.
+    """
     broken = []
     for name, lineno, value in _path_constants(rel):
         tail = pathlib.PurePosixPath(value).name
-        if tail not in TRACKED:
-            continue  # names nothing in the tree — a runtime output, not an asset
         target = pathlib.Path(value)
         if not target.is_absolute():
             target = REPO / target
+        try:
+            rel_target = pathlib.PurePosixPath(target.resolve().relative_to(REPO)).as_posix()
+        except ValueError:
+            rel_target = None   # outside this checkout; `ls-files` cannot speak for it
+
+        # (A) FORGOTTEN — runs FIRST and is deliberately NOT gated on the tail heuristic.
+        # ⚠ The tail heuristic reads `git ls-files`, so untracking a file removes its basename
+        # from TRACKED and the check below skips it as "a runtime output". Measured while
+        # fixing this: `git rm --cached scripts/assets/register_lexicon.json` left the suite
+        # GREEN through an index-aware version of (B), because (B) never got to run. A guard
+        # whose selector goes blind to precisely the file that went missing is the disarm
+        # shape in AGENTS.md §5b, so the question is asked here on its own terms.
+        if rel_target is not None and rel_target in FORGOTTEN:
+            broken.append(
+                f"  {rel}:{lineno}  {name} = {value}\n"
+                f"      EXISTS BUT IS NOT TRACKED ({rel_target}), and is not gitignored.\n"
+                f"      It resolves for you and for nobody who clones this repo — on a fresh\n"
+                f"      checkout this path is absent. `Path.exists()` cannot see this: it asks\n"
+                f"      about the WORKING TREE, and this is a question about the INDEX.\n"
+                f"      Fix with `git add {rel_target}`, NOT by changing the path."
+            )
+            continue
+
+        # (B) WRONG DEPTH — the original check, unchanged in meaning.
+        if tail not in TRACKED:
+            continue  # names nothing in the tree — a runtime output, not an asset
         if not target.exists():
             broken.append(
                 f"  {rel}:{lineno}  {name} = {value}\n"
@@ -282,3 +380,34 @@ def test_in_repo_asset_paths_resolve(rel):
                 f"      so this path is built at the wrong depth for where {rel} now lives."
             )
     assert not broken, f"{rel} builds path(s) that do not resolve:\n" + "\n".join(broken)
+
+
+
+def test_the_scripts_readme_counts_match_the_tree():
+    """⚠ THE RED FOR THE THREE BARE-INTEGER CELLS — `gates/`, `lib/`, `tools/` — NOT ALL SEVEN.
+
+    `scripts/README.md`'s table said 6 gate scripts and 10 `lib/` files while the tree held 7
+    and 11 (#274). Both went stale on this branch, which ADDED the seventh gate script — the
+    author of the drift and the reader of the table were the same session. This derives every
+    cell whose count is a bare integer (#280). The other four carry units or compounds
+    (`17 py + 4 sh`, `12 py`, `4 + 9`) that `stated == str(actual)` cannot match, so a stale
+    count in those rows will NOT go red here — deriving them means parsing per-suffix or
+    reshaping the cells, and that is a decision, not a drive-by.
+
+    The repo's rule is "derive, never duplicate", and a README table cannot derive. So the
+    number stays where a human wants to read it and the derivation lives here — for the cells
+    above, the only arrangement in which prose and tree can disagree loudly.
+    """
+    table = (REPO / "scripts" / "README.md").read_text(encoding="utf-8")
+    for directory, pattern in (("gates", "scripts/gates/*.py"), ("lib", "scripts/lib/*.py"),
+                               ("tools", "scripts/tools/*.py")):
+        actual = len(subprocess.run(
+            ["git", "ls-files", pattern], cwd=REPO,
+            capture_output=True, text=True, check=True).stdout.split())
+        row = next((ln for ln in table.split("\n") if f"**`{directory}/`**" in ln), None)
+        assert row, f"no `{directory}/` row in scripts/README.md — the table moved"
+        stated = row.rsplit("|", 2)[1].strip()
+        assert stated == str(actual), (
+            f"scripts/README.md says {directory}/ holds {stated}; git ls-files says {actual}. "
+            f"Update the table — or if the count is no longer worth stating, delete it and "
+            f"this assertion together.")

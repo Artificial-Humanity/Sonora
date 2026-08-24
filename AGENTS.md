@@ -24,9 +24,18 @@ in [notes/README.md](notes/README.md). Before starting work, read
   truth for what each engine actually receives — never bypass it; unknown engines are fatal.**
   The 2026-07-25 relay audit found rich direction had been silently dropped by every engine.
   **Standing rule:** no TTS model enters the portfolio without a studied interface and a
-  Gemma skill-file adapter — see [notes/tts-engine-onboarding.md](notes/tts-engine-onboarding.md),
-  which also carries the known-gotchas reference. Minimum clip length is **4 s of estimated
-  speech**, gating input text (not render duration).
+  Gemma skill-file adapter — see [docs/tts-engine-onboarding.md](docs/tts-engine-onboarding.md),
+  which also carries the known-gotchas reference.
+  Minimum clip length is 4 s of estimated speech (`MIN_CLIP_SECONDS`), gating input text and
+  not render duration.
+  ⚠ **That line is NOT gate-enforced**: `docs()` in `scripts/gates/test_doc_claims.py` scans
+  `notes/`, `docs/`, `README.md` and `configs/data/` — not this file, and widening it is a
+  scope decision nobody has taken. ⚠⚠ **A WRAPPED SENTENCE IS NOT ENROLLED EITHER**, whatever
+  else is true: `scope` and `patterns` are matched **per line**, so the number and the phrase
+  that selects the fact must share one. Until 2026-08-21 they did not — the number sat on one
+  line and `MIN_CLIP_SECONDS` on the next, so each half matched and the pair never did, and
+  the paragraph then claimed widening `docs()` would enrol it. It would not have. Keeping them
+  on one line above is what makes that claim true.
 * **Core Framework:** PyTorch & Matcha-TTS (conditional flow-matching).
 * **Environment:** AMD ROCm PyTorch Docker container (optimized for Ryzen AI Max+).
 
@@ -476,14 +485,19 @@ always check the overall docs to ensure that the code's state is not recorded in
 contradicting document somewhere. We've run into cases of that before."*).
 
 When a comment, docstring or commit message turns out to disagree with the code, **the fix is
-not finished when that sentence is corrected.** Search the whole `.md` surface for the same
-claim before closing it — the number, the behaviour, the function's contract. This repo has
+not finished when that sentence is corrected.** Search the whole tracked tree — an
+unrestricted `git grep`, never one scoped to `-- '*.md'` — for the same claim before closing
+it: the number, the behaviour, the function's contract. The trigger sentence names comments
+and docstrings, which no `.md` sweep can reach, and the mis-scoping was measured costing a
+round: #279's sweep, correct against the rule as then written, missed the identical triple
+in two source files (#288). (#274's earlier miss of the same claim was a sweep not run at
+all, not one mis-scoped — #290.) This repo has
 paid for the other half repeatedly: a deleted `CLAUDE.md` went on being obeyed from memory for
 eight commits, and three doc-vs-artifact drifts turned up in a single day.
 
 **Measured the day the rule was written.** Fixing `scm.validate` to agree with
 `schemas.coerce_axis` looked complete and consistent at the call site. It was wrong:
-`notes/markup-schema-brief.md` — the RATIFIED SCM v0.1 contract, three directories away —
+`docs/markup-schema-brief.md` — the RATIFIED SCM v0.1 contract, three directories away —
 says the sidecar stores VAT **continuous**, so the "fix" made the validator certify a sidecar
 the contract forbids. Nothing failed; the comment beside the code was accurate. **The same
 sweep found the brief contradicting ITSELF**: its field-semantics table gave the verifier
@@ -504,7 +518,8 @@ to `±0.35`, which is what `scm.VAT_TOL` implements. That stood for a month.
 
 ### 5c. A pipeline stage is WIRED, or it is merely WRITTEN ABOUT
 
-`scripts/` holds **100 non-test `.py` files** (106 tracked, less the 6 gate scripts) and
+`scripts/` holds **on the order of a hundred non-test `.py` files** (per-directory counts:
+[scripts/README.md](scripts/README.md)'s table) and
 most of them are *correctly* uninvoked — operator tools, finished campaign tooling. So "nothing calls this" carries no signal there, and a
 **stage** that stopped being called is indistinguishable from a tool that never was. That is
 how `qc_verdict.py` was named in a `synth_bank.sh` comment for a month and never ran, while
@@ -610,6 +625,27 @@ because it is box tooling, but it deploys from whichever repo owns the code:
 | `training-code` → `/data/repos/Sonora` | **this repo** (ff-pull; a real checkout) | `deploy.sh training-code` |
 | `dashboard` → `/data/services/dashboard` | `AI-Lab-AMD/dashboard` | `deploy.sh dashboard` |
 | `stack` → the compose services | `AI-Lab-AMD` | `deploy.sh stack` |
+
+⚠⚠ **AN AGENT WORKED IN THE DEPLOY CLONE FOR A WHOLE SESSION (2026-08-18), AND EVERY FACT
+IT NEEDED WAS IN THIS SECTION.** It made thirteen commits in `/data/repos/Sonora`, including
+two feature branches and a push to `origin/main`. Nothing stopped it: the clone has a `.git`,
+the right remote, a clean tree, and passing tests. It *looks* exactly like a checkout.
+
+How it got there is the part worth keeping. It reasoned from `git remote -v` (same URL), the
+first reflog entry (`clone: from github.com/...`, not from a local path) and
+`objects/info/alternates` (absent), and concluded the two trees were peer clones. Every one
+of those observations was true. **None of them is a statement about what the system DOES** —
+that lives in `AI-Lab-AMD/scripts/deploy.sh`, which names this path in a one-line comment at
+the top and took ten seconds to read once anyone looked. The owner asked *"is that not a
+downstream deployment?"* and was told no, twice, with evidence.
+
+Nothing was lost, by luck rather than design: the work had been pushed to `origin` and copied
+into the source repo for unrelated reasons. Had `deploy.sh training-code` run first, the
+ff-pull would have taken the tree with it.
+
+**The check that costs nothing: before editing any tree, confirm no `deploy.sh` target names
+it.** The table above is the list. §6 states the principle; this is what ignoring it looks
+like from the inside, which is: entirely normal.
 
 ⚠ **`deploy.sh` reads `SONORA_REPO` for the source checkout and defaults it to
 `Sonora/github` — the caretaker's tree, which is usually on a feature branch.** Scoped to

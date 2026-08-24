@@ -134,7 +134,7 @@ def process_text_for_lane(i: int, text: str, device: torch.device, lane: str):
     # logs. `g2p.validate()` does not catch it — the result contains no illegal symbols,
     # it is simply missing a word. Refusing here costs nothing and removes the silent
     # case. NOTE: this does NOT fix D-M3, which is live in the corpus derivation lane
-    # (Emilia YODAS captions carry digits); see notes/todo.md § 8.
+    # (Emilia YODAS captions carry digits); see notes/training-sources.md, the D-M3 rows.
     digits = sorted({c for c in text if c.isdigit()})
     if digits:
         raise ValueError(

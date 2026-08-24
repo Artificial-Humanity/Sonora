@@ -3,7 +3,7 @@
 **Scope: what we do next to close the synthetic-vs-real gap, and in what order.**
 Measurement repair → data sequencing → decoder spike. This file owns the *sequencing
 and the gates between phases*; it does not restate the plans it sequences. The DiT
-design itself is [model-decisions.md § Decoder v2](model-decisions.md); source state is
+design itself is [model-decisions.md § Decoder v2](../docs/model-decisions.md); source state is
 [training-sources.md](training-sources.md) (SSOT); run mechanics are
 [training-operations.md](training-operations.md).
 
@@ -46,7 +46,7 @@ See [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-cor
 | | freeze a same-corpus U-Net baseline | ⏸ | **the last act of P1** | [§ Phase 2](#phase-2--the-dit-decoder-spike) |
 | | vocoder transparency re-check | ⏸ | after P1 | [§ gates](#gates-between-phases) |
 | **P1S** | mass synthetic production, Qwen-primary | ⏸ **plan written, 3 prerequisites open** | **rungs 1–5** (owner: exhaust public sources first) | [§ Phase 1S](#phase-1s--mass-synthetic-production-qwen-primary) |
-| **P2** | DiT decoder spike | ⏸ design written, not started | P1 landing + the frozen baseline | [model-decisions.md § Decoder v2](model-decisions.md) |
+| **P2** | DiT decoder spike | ⏸ design written, not started | P1 landing + the frozen baseline | [model-decisions.md § Decoder v2](../docs/model-decisions.md) |
 
 ### Parked — the casting/blend layer
 
@@ -72,11 +72,11 @@ unscheduled ambition with no end-condition drifts into a forgotten one.
   norms, never inherit another model's gender conflation" is the standing ruling that the
   brief's vocabulary is the live one.
 - **Checked:** 2026-08-09.
-| **P3+** | conditioning: embodiment bank → span-FiLM | ⏸ deferred chain | evidence, not plumbing | [todo.md §4](todo.md) |
-| | categorical emotion block (3+8) | ⏸ **open decision** | P1's valence read | [todo.md §4](todo.md) |
+| **P3+** | conditioning: embodiment bank → span-FiLM | ⏸ deferred chain | evidence, not plumbing | [todo.md §3](todo.md) |
+| | categorical emotion block (3+8) | ⏸ **open decision** | P1's valence read | [todo.md §3](todo.md) |
 | | multilingual | ⏸ **plan only** | after rung 3 | [teacher-training-data.md § multilingual](teacher-training-data.md) |
 
-**Running alongside, needing no GPU:** the audit-quality pair in [todo.md §6](todo.md) — a
+**Running alongside, needing no GPU:** the audit-quality pair in [todo.md §4](todo.md) — a
 forced-ranking pass over the 46 ceiling-tied groups, and anchor exemplars in the audition
 app. Both came out of the 2026-08-08 finding that the 1–5 scale is saturated (`librivox`
 real audio means 5.00, and mean score ranks chatterbox above Qwen). They gate nothing, but
@@ -969,7 +969,7 @@ whole build.
 
 ## Phase 2 — the DiT decoder spike
 
-Design, gates and known risks are already written: **[model-decisions.md § Decoder v2](model-decisions.md)**
+Design, gates and known risks are already written: **[model-decisions.md § Decoder v2](../docs/model-decisions.md)**
 (the content of the former `decoder-v2-dit-spike.md`, folded in during the 2026-08-02
 consolidation — the standalone file no longer exists). Start from StableTTS's 31M
 `DiTConVBlock` shape, which retires the spike's named tiny-scale risk in public MIT code
@@ -994,7 +994,7 @@ This remains a spike, not a pivot: the decoder is ~7.6% of the codebase.
 | gate | question | consequence of the answer |
 |---|---|---|
 | ~~after **0a**~~ **PASSED 2026-08-06** | do retained checkpoints separate at all on never-trained audio? | **yes** — `vat3_ep099` − `vat3_init` = −0.0111, CI excludes zero. Instrument is sound; 0b closed, Phase 1 proceeds from `vat3_ep099` |
-| ~~after **1.1**~~ **PASSED 2026-08-09** | does **+36%** move the clean holdout? | **yes** — `ep019` − `vat5_init` = **−0.0606**, improved on 82.1% of 5,463 clips, an order of magnitude past the −0.0111 that cleared gate 0a. Data-limited, not capacity-limited: **the 10× proceeds.** (**+36% is what shipped**; +43% was the planned merge, before 1,676 digit rows and 468 WER rows dropped out. Quote the shipped figure — a gate naming a number the corpus never had cannot be checked against it) |
+| ~~after **1.1**~~ **PASSED 2026-08-09** | does **+36%** move the clean holdout? | **yes** — `ep019` − `vat5_init` = **−0.0606**, improved on 82.1% of 5,463 clips, roughly 5× the −0.0111 that cleared gate 0a. Data-limited, not capacity-limited: **the 10× proceeds.** (**+36% is what shipped**; +43% was the planned merge, before 1,676 digit rows and 468 WER rows dropped out. Quote the shipped figure — a gate naming a number the corpus never had cannot be checked against it) |
 | after **rung 2 (v6)** | does the **delivery channel** show signal? | see the pre-registered criterion below — the holdout **cannot** answer this one |
 | after **Phase 1** | is the vocoder still transparent? | re-run `copy_synth.py`; a better acoustic model can walk into the vocoder's ceiling unnoticed |
 | before **Phase 2** | is there a same-corpus U-Net baseline? | if not, the parity gate is unreadable — do not start |

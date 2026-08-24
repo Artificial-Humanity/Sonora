@@ -46,7 +46,7 @@ ADDING A DIMENSION
 Append a `Dimension` here in the same commit that teaches the model to consume it, and add
 the matching control to vocalizer.py. `CHANNELS` must stay in step with `delivery.VAT_DIM`
 — the coverage test fails if a channel exists that no dimension claims, which is what
-makes a future channel block (the gated emotion group, ARCHITECTURE §1 / todo.md §4)
+makes a future channel block (the gated emotion group, ARCHITECTURE §1 / todo.md §3)
 impossible to ship silently. Span-scoped delivery, when it unparks, is a NEW dimension
 here rather than an edit to the delivery entry: it conditions a span, not a clip.
 """
@@ -101,7 +101,7 @@ _VAT = tuple(
 #: `VAT_BASE_DIM .. VAT_DIM`. The two are the same numbers today and they are not the same
 #: claim: "to the end of the vector" would make delivery the owner of every channel anyone
 #: ever appends, and the coverage test below a tautology that cannot fail. Written as its
-#: own block, an appended group (the gated emotion channels, todo.md §4) lands unclaimed
+#: own block, an appended group (the gated emotion channels, todo.md §3) lands unclaimed
 #: and coverage fails — which is the entire point of declaring any of this. Caught by a
 #: negative test, not by review: the tautological version passed everything.
 _DELIVERY = Dimension(

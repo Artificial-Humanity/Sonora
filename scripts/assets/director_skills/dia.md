@@ -4,7 +4,10 @@
 > portfolio: no instruct slot, and the weakest measured quality of the audition set (12/20 QC
 > pass, median DNSMOS 2.53). This file is kept because what it documents — the interface —
 > stays true whether or not the engine is in use. Before any revival also clear the
-> `synth_dia.py` / `make_bulk_bank.py` traps in [todo.md §6](../../../notes/todo.md) (B-M6/M7).
+> `synth_dia.py` / `make_bulk_bank.py` traps (B-M6/M7). ⚠ **Those are no longer in
+> [todo.md](../../../notes/todo.md)**, and this line cited a §6 that file has never had:
+> `B-M6` landed in the 2026-08-07 sweep (`fdcbf77`), and `B-M7` was never listed there at
+> all. Read them out of git history, which is where todo.md says landed items go.
 
 ## What this engine actually accepts
 Text only. `generate()` takes the transcript, an optional audio prompt, and

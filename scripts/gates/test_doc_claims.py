@@ -67,6 +67,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # one level deeper since #26 step 3 moved the gates into scripts/gates/
 REPO = os.path.dirname(os.path.dirname(HERE))
 NOTES = os.path.join(REPO, "notes")
+# ⚠ THE M0 SPLIT MOVED SEVEN CANON DOCUMENTS OUT OF THIS GATE'S REACH. `docs()`
+# enumerated `notes/` alone, so relocating ARCHITECTURE, model-decisions,
+# audiobook-corpus-policy, markup-schema-brief, vat-channels,
+# direction-interface-brief and tts-engine-onboarding silently un-enforced every
+# claim in them — caught only because `scm.VAT_TOL` then matched nothing and the
+# liveness test went red. A move is a scope change even when no line is edited.
+DOCS = os.path.join(REPO, "docs")
 V5 = os.path.join(REPO, "data", "libritts_r_emilia_vat_v5")
 V6 = os.path.join(REPO, "data", "libritts_r_emilia_expressive_vat_v6")
 V4 = os.path.join(REPO, "data", "libritts_r_vat_v4")
@@ -146,7 +153,7 @@ def const(module_rel, name):
 
     ⚠ THE REGISTRY WAS CORPUS-ONLY AND THAT WAS THE GAP (2026-08-19). Every fact here read a
     number off `/data`, so a number that lives in CODE and is restated in prose had no
-    mechanism at all — and one had drifted: `notes/markup-schema-brief.md` gave the SCM
+    mechanism at all — and one had drifted: `docs/markup-schema-brief.md` gave the SCM
     verifier tolerance as `±0.25` in its field-semantics table while §5 item 6 of the SAME
     FILE recorded the owner's same-day amendment to `±0.35`, which is what `scm.VAT_TOL`
     implements. The document contradicted itself for a month and nothing could see it,
@@ -155,10 +162,26 @@ def const(module_rel, name):
     AST rather than import: importing `scm` pulls in `schemas` and the sibling-path setup,
     and a gate that needs the package layout to be correct in order to check a docstring is
     a gate with a second failure mode.
+
+    ⚠ `module_rel` IS REPO-RELATIVE, AND WAS `scripts/lib`-RELATIVE UNTIL 2026-08-21 (#189).
+    The hardcoded directory meant this could only ever reach one bucket, so the constants
+    worth registering most — `SPEECH_MIN_SECONDS` in `scripts/stages/`, the direction dial in
+    `matcha/` — were unreachable, and the feature was wired for the single fact that motivated
+    it. Widening a path parameter is exactly the edit that can make a gate pass VACUOUSLY, so
+    two behaviours are asserted rather than assumed: a missing FILE and a missing NAME both
+    raise, and `main()` turns either into a failure ("a fact whose source is missing is not a
+    passing fact"). A registry entry that silently read the wrong file would be worse than no
+    entry, because it would report green.
     """
     import ast
 
-    path = os.path.join(REPO, "scripts", "lib", module_rel)
+    path = os.path.join(REPO, module_rel)
+    if not os.path.isfile(path):
+        # KeyError, not FileNotFoundError: `main()` catches (OSError, KeyError) and both are
+        # already handled — but naming the repo-relative path is what tells the reader the
+        # argument changed meaning, rather than that the file was deleted.
+        raise KeyError(f"{module_rel} is not a file in this repo (const() takes a "
+                       f"REPO-relative path since 2026-08-21, not a scripts/lib one)")
     tree = ast.parse(open(path, encoding="utf-8").read())
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
@@ -188,7 +211,7 @@ FACTS = [
         # and until 2026-08-19 nothing checked that class. See `const` above for the drift
         # that prompted it.
         "name": "SCM verifier tolerance (scm.VAT_TOL)",
-        "truth": lambda: const("scm.py", "VAT_TOL"),
+        "truth": lambda: const("scripts/lib/scm.py", "VAT_TOL"),
         "artifacts": [os.path.join(REPO, "scripts", "lib", "scm.py")],
         "scope": r"VAT_TOL|verifier tolerance|within tolerance|vat\.[VAT] claimed",
         "patterns": [r"±\s*([\d.]+)", r"tolerance = ±?([\d.]+)"],
@@ -196,6 +219,45 @@ FACTS = [
         # not a claim about today. Narrow on purpose — a bare "0.25" exemption would blind
         # the fact to the very table cell that was wrong.
         "exempt": ["table above said `±0.25`", "(originally ±0.25)"],
+    },
+    {
+        # ⚠ TWO DIFFERENT GATES SIT AT THE SAME VALUE, AND THEY ARE REGISTERED SEPARATELY.
+        # `qc_gate.SPEECH_MIN_SECONDS` is the QC hard gate on MEASURED VAD speech;
+        # `book_ingest.MIN_CLIP_SECONDS` (below) gates ESTIMATED speech in the INPUT TEXT
+        # before anything is rendered. Both read 4.0 today, which is exactly why one fact
+        # scoped to catch every "4 s" sentence would look right: it would compare each
+        # document to whichever constant it happened to be built from, and go green by
+        # coincidence. The day one moves, the coincidence becomes a false failure against the
+        # other. So each fact is scoped by ITS OWN constant name.
+        "name": "QC speech floor (qc_gate.SPEECH_MIN_SECONDS)",
+        "truth": lambda: const("scripts/stages/qc_gate.py", "SPEECH_MIN_SECONDS"),
+        "artifacts": [os.path.join(REPO, "scripts", "stages", "qc_gate.py")],
+        # ⚠⚠ BOTH ALTERNATIVES ARE LOAD-BEARING — `floor via Silero` IS NOT REDUNDANT.
+        # `delivery-mix-campaign.md:304` names NO constant and is pinned only through it.
+        # Measured (#258): deleting it drops this fact from 4 enrolled sites to 3, silently.
+        # A comment here previously said "every line is already scope-gated on the constant's
+        # name", which invited exactly that deletion as dead code. `test_the_silero_scope_
+        # alternative_is_load_bearing` in tests/test_doc_claims_registry.py now fails if it
+        # goes — a claim about what is load-bearing needs a guard, not a sentence.
+        "scope": r"SPEECH_MIN_SECONDS|floor via Silero",
+        # ⚠ THE FLOOR PATTERN ALLOWS UP TO TWO WORDS BEFORE "floor", AND THAT IS NOT COSMETIC.
+        # `([\d.]+)\s*s floor` required the words to be adjacent, so "4 s **speech** floor" and
+        # "4 s **owner** floor" matched NOTHING — the two sites #256 identified. Adding the
+        # constant name to those lines put them in SCOPE and left them unenforced, because
+        # scope selects the line and a pattern is still what reads the number. Caught by
+        # mutating the constant and seeing only 2 of 4 sites go red; a scope-only fix would
+        # have shipped looking done. Bounded at two words, and every line is already gated by
+        # this fact's `scope` above, so the widening cannot reach unrelated prose.
+        "patterns": [r"Minimum\s+([\d.]+)\s*s\b", r"([\d.]+)\s*s(?:\s+[a-z]+){0,2}\s+floor"],
+        "exempt": [],
+    },
+    {
+        "name": "Teacher-bank text floor (book_ingest.MIN_CLIP_SECONDS)",
+        "truth": lambda: const("scripts/lib/book_ingest.py", "MIN_CLIP_SECONDS"),
+        "artifacts": [os.path.join(REPO, "scripts", "lib", "book_ingest.py")],
+        "scope": r"MIN_CLIP_SECONDS",
+        "patterns": [r"Minimum clip length is ([\d.]+)\s*s\b"],
+        "exempt": [],
     },
     {
         "name": "v5 TRAIN rows",
@@ -474,9 +536,12 @@ def docs():
     enforced without anyone remembering to come back here.
     """
     out = []
-    for name in sorted(os.listdir(NOTES)):
-        if name.endswith(".md"):
-            out.append(os.path.join(NOTES, name))
+    for base in (NOTES, DOCS):
+        if not os.path.isdir(base):
+            continue
+        for name in sorted(os.listdir(base)):
+            if name.endswith(".md"):
+                out.append(os.path.join(base, name))
     out.append(os.path.join(REPO, "README.md"))
     cfg = os.path.join(REPO, "configs", "data")
     if os.path.isdir(cfg):
@@ -507,6 +572,12 @@ def main():
                             "A fact whose source is missing is not a passing fact.")
             continue
         want = {comma(truth), str(truth)}
+        # ⚠ A FLOAT CONSTANT AND ITS PROSE SPELLING DIFFER, and the mismatch is silent until
+        # a fact is registered for one. `SPEECH_MIN_SECONDS = 4.0` is written "4 s" in every
+        # note, while `str(4.0)` is "4.0" — so the fact would have called every CORRECT
+        # sentence a drift. An integral float admits both spellings; 0.35 is untouched.
+        if isinstance(truth, float) and truth.is_integer():
+            want |= {comma(int(truth)), str(int(truth))}
         checked += 1
         for path in files:
             rel = os.path.relpath(path, REPO)

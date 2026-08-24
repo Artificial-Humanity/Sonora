@@ -459,3 +459,68 @@ def test_every_exemption_is_still_earning_its_place():
                         for line in open(path, encoding="utf-8"))
             assert found, (
                 f"{fact['name']} exempts {needle!r}, which no document contains any more")
+
+
+# --- the QC-floor fact's scope alternatives (#258) ---------------------------------------
+
+def test_the_silero_scope_alternative_is_load_bearing():
+    """⚠ `floor via Silero` IS NOT REDUNDANT WITH THE CONSTANT NAME, and a comment saying it
+    was invited its deletion as dead code (#258).
+
+    `notes/delivery-mix-campaign.md:304` names NEITHER constant and is enrolled ONLY through
+    this alternative. Measured: removing it drops the fact from 4 live sites to 3, and nothing
+    goes red — the gate simply stops looking at one document.
+
+    ⚠ **THIS TEST IS THE REGEX SIDE ONLY, AND ITS `line` IS A SYNTHETIC COPY.** It proves the
+    alternative cannot be DELETED. It cannot notice the live document being REWORDED out of
+    scope, which reaches the identical silent 4 -> 3 from the other direction (#262). The
+    document side is `test_the_live_delivery_mix_floor_statement_is_still_read` below, which
+    opens the file. Both are needed; either alone is a guard with a blind side.
+    """
+    name = "QC speech floor (qc_gate.SPEECH_MIN_SECONDS)"
+    line = ("- QC before audition: loudnorm + objective gate (4 s floor via Silero, "
+            "WER deletions,")
+    assert "SPEECH_MIN_SECONDS" not in line and "MIN_CLIP_SECONDS" not in line
+    assert in_scope(name, line), (
+        "this wording left the fact's scope — if the `floor via Silero` alternative was "
+        "removed as redundant, it was not")
+    assert captures(name, line) == ["4"]
+
+    # And the constant-name alternative independently, so a future edit cannot drop EITHER
+    # half and still pass on the strength of the other.
+    named = "| **Minimum 4 s of speech per clip** | owner floor; `SPEECH_MIN_SECONDS`"
+    assert in_scope(name, named) and captures(name, named) == ["4"]
+
+
+def test_the_live_delivery_mix_floor_statement_is_still_read():
+    """The DOCUMENT side of #258's guard — the half #262 showed was missing.
+
+    ⚠ A SYNTHETIC COPY OF A LINE CANNOT NOTICE THE LINE CHANGING. Measured (#262): reword
+    `notes/delivery-mix-campaign.md:304` from "4 s floor via Silero" to "4 s speech floor" —
+    which still reads correctly and still says 4 s — and the fact drops from 4 enrolled sites
+    to 3 while the doc-claims gate, the regex-side guard above, and
+    `test_every_fact_recognises_at_least_one_live_statement` all stay green. The gate reports
+    DISAGREEMENTS, not ABSENCES, so a document leaving scope is silent by construction.
+
+    So this opens the file, exactly as
+    `test_the_live_state_md_still_names_the_corpus_on_its_digit_line` does for #48. I cited
+    that test as precedent for omitting the liveness check; it is the template for including
+    one.
+
+    ⚠ The idiom deliberately matches ANY number, not `4`. Tying it to today's value would turn
+    a legitimate change of the constant into a false failure here — which is how a guard gets
+    switched off.
+    """
+    name = "QC speech floor (qc_gate.SPEECH_MIN_SECONDS)"
+    path = os.path.join(REPO, "notes", "delivery-mix-campaign.md")
+    idiom = re.compile(r"\b[\d.]+\s*s\b[^.]{0,40}?\bfloor\b", re.I)
+    with open(path, encoding="utf-8") as fh:
+        stated = [(n, ln) for n, ln in enumerate(fh, 1) if idiom.search(ln)]
+    assert stated, (
+        "notes/delivery-mix-campaign.md no longer states the QC floor in a recognisable "
+        "idiom — either it moved, or the sentence was rewritten past this check")
+    for lineno, line in stated:
+        assert captures(name, line), (
+            f"notes/delivery-mix-campaign.md:{lineno} states the QC floor and NO fact reads "
+            f"it. The line left the fact's scope, so the gate now passes by not looking:\n"
+            f"  {line.strip()}")

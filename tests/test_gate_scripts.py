@@ -26,7 +26,13 @@ GATES = os.path.join(REPO, "scripts", "gates")
 PY = os.path.join(REPO, ".venv", "bin", "python")
 
 # Scripts that need nothing but the repo venv.
-FAST = ["test_skill_files.py", "test_text_selection.py"]
+#
+# ⚠ `test_doc_links.py` belongs here and NOT in DATA_GATED, even though half its job is
+# cross-repo. Its in-repo half needs only this checkout, and its sibling half skips-and-prints
+# when a sibling is absent — the state on every CI runner — so a bare clone is green by design
+# rather than by luck. It also never FAILS on an inbound link: those live in the sibling's
+# files, and a check no commit here can turn green is one everybody learns to ignore.
+FAST = ["test_skill_files.py", "test_text_selection.py", "test_doc_links.py"]
 
 # Needs a DATA artifact but not torch — a third category, added 2026-08-09.
 #
@@ -97,6 +103,26 @@ SLOW = [
     ("test_film_export_gate.py", "SONORA_LITERT_HARNESS",
      "/data/toolchain/litert-conversion"),
 ]
+
+# Needs torch and NOTHING ELSE — a fourth category, added 2026-08-21 (#197).
+#
+# ⚠ `test_vat_dim_seams.py` WAS IN NO LIST AT ALL, so it got neither a run nor a skip: the
+# suite was green, the gate did not run, and nothing said so. That is AGENTS.md §5b's exact
+# subject, with the twist that this one never entered the enumeration to begin with — and it
+# is described as MANDATORY in two places (`tests/test_edge_truncation.py:504` calls it
+# "mandatory pre-flight", and `scripts/tools/merge_expressive_registers.py:487` prints it as
+# step 2 of the post-merge checklist). ⚠ The suite's only other references to it `read_text()`
+# its source and assert things about its CONTENTS. A text-scan over a gate is not the gate.
+#
+# ⚠ IT CANNOT GO IN FAST: it imports torch, which the host venv deliberately does not carry
+#     .venv/bin/python scripts/gates/test_vat_dim_seams.py
+#     ModuleNotFoundError: No module named 'torch'
+# It is a container-side gate. Nor does it fit SLOW, whose tuple names an external checkpoint
+# or harness path to probe — this script builds its own fixtures in a tempdir and needs no
+# artifact at all. Its only prerequisite is an interpreter that has torch, so forcing it into
+# SLOW would mean inventing an env var and a path that do not exist, and a probe that passes
+# for a reason unrelated to the prerequisite is the defect this file keeps meeting.
+TORCH_ONLY = ["test_vat_dim_seams.py"]
 
 
 def _run(script):
@@ -199,6 +225,93 @@ def test_slow_gate(script, env_var, default):
         pytest.skip(f"{script}: {env_var} target not present ({target})")
     r = _run(script)
     assert r.returncode == 0, f"{script} failed:\n{r.stdout[-4000:]}\n{r.stderr[-2000:]}"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("script", TORCH_ONLY)
+def test_torch_only_gate(script):
+    """Runs where torch is; SKIPS WITH NOTICE where it is not. Never silently absent.
+
+    The skip is the whole point of adding it here: "this interpreter has no torch" is the
+    same class of fact as "the corpus is not on this machine", which FAST/DATA_GATED already
+    treat as a printed skip rather than a finding. Before this entry existed the script
+    produced neither — it was simply not run, and the suite reported green.
+    """
+    torch = _has_torch()
+    if torch is None:
+        # `is None`, not falsy — see `_has_torch`. Naming torch for an absent interpreter
+        # sends someone to install a 2 GB wheel into a python that is not there.
+        pytest.skip(f"{script}: {PY} is absent — this checkout has no repo venv, so there "
+                    f"is no interpreter to ask about torch (run-mode rule, AGENTS.md).")
+    if torch is False:
+        pytest.skip(f"{script}: no torch in {PY} — this is a CONTAINER-SIDE gate; run it "
+                    f"inside the training container. It needs no data artifact, only torch.")
+    r = _run(script)
+    assert r.returncode == 0, f"{script} failed:\n{r.stdout[-4000:]}\n{r.stderr[-2000:]}"
+
+
+def test_every_gate_script_is_enumerated_exactly_once():
+    """⚠ THE GUARD THAT MAKES #197 UNREPEATABLE, rather than fixed once.
+
+    `scripts/gates/` held SEVEN scripts and this file named SIX. The missing one was in
+    neither the run lists nor the skip lists, so it contributed no test id, no skip line and
+    no failure — it was invisible in exactly the way a deleted test is invisible.
+
+    ⚠ `tests/test_gate_scripts.py`'s own docstring records that this repo has ALREADY been
+    bitten by an uncollected `scripts/test_*.py`; this file exists because of that incident,
+    and a seventh script still slipped past it. A list maintained by hand beside a directory
+    that grows is the same bug with a new filename, so the directory is now the authority and
+    the lists are checked against it.
+
+    Adding a gate script therefore forces a decision about how it runs. That is the intent:
+    the failure mode is not "someone chose the wrong list", it is "nobody chose at all".
+    """
+    on_disk = {f for f in os.listdir(GATES)
+               if f.startswith("test_") and f.endswith(".py")}
+    # ⚠ WHAT THIS FLOOR ACTUALLY BUYS — measured, after the first version of this comment
+    # claimed something false (#257). With `on_disk` empty and the floor bypassed:
+    #
+    #     assert not missing -> PASSES        (nothing on disk to be unnamed)
+    #     assert not phantom -> FAILS, len=7  (every LIST entry now names a missing script)
+    #     assert not twice   -> PASSES
+    #
+    # So an emptying directory ALREADY went red, via `phantom`, and this floor was not what
+    # caught it. Two of the three assertions are vacuous; the third is not. The commit that
+    # added the floor listed "empty dir fails" as its proof — a true observation of the test
+    # as a whole, misattributed to the new line, in a commit whose whole subject was guards
+    # that pass for reasons unrelated to their subject.
+    #
+    # The case NOTHING else sees is BOTH SIDES THINNING TOGETHER: scripts deleted from disk
+    # and dropped from the lists in one edit. Then `missing` and `phantom` are both empty and
+    # only this fires. ⚠ Set at >= 6 against 7 on disk, so it tolerates losing exactly one
+    # that way — deliberate, so adding or retiring a single gate is not a merge blocker.
+    assert len(on_disk) >= 6, (
+        f"only {len(on_disk)} gate script(s) found in {GATES}, from the 7 measured on "
+        f"2026-08-21. `phantom` catches a directory that empties while the lists stand; this "
+        f"floor is what catches both thinning together. Suspect the directory or the listing "
+        f"before lowering it.")
+    enumerated = {}
+    for name, bucket in (("FAST", FAST), ("TORCH_ONLY", TORCH_ONLY)):
+        for s in bucket:
+            enumerated.setdefault(s, []).append(name)
+    for s, _prereqs in DATA_GATED:
+        enumerated.setdefault(s, []).append("DATA_GATED")
+    for s, _env, _default in SLOW:
+        enumerated.setdefault(s, []).append("SLOW")
+
+    missing = sorted(on_disk - set(enumerated))
+    assert not missing, (
+        "gate script(s) in scripts/gates/ that NO list names, so they are neither run nor "
+        "skipped — a green suite says nothing about them:\n  " + "\n  ".join(missing) +
+        "\nPut each in FAST, DATA_GATED, SLOW or TORCH_ONLY."
+    )
+    phantom = sorted(set(enumerated) - on_disk)
+    assert not phantom, (
+        "list(s) name a gate script that is not in scripts/gates/ — the entry runs nothing:\n"
+        "  " + "\n  ".join(phantom))
+    twice = sorted(f"{s} in {'+'.join(b)}" for s, b in enumerated.items() if len(b) > 1)
+    assert not twice, ("gate script(s) named by more than one list, so one run is "
+                       "unaccounted for:\n  " + "\n  ".join(twice))
 
 
 def test_python_is_the_repo_venv():

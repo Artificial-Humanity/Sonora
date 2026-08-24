@@ -19,7 +19,7 @@ PRODUCT — what the app does with a model it already has — live in `Prosodia/
 | 2 | [Dramatic Reader & full-cast audiobooks](high-ambition-2-dramatic-reader.md) | Sonora | live — needs 1 first |
 | 3 | [Child voices](../../../Prosodia/notes/high-ambition-3-child-voices.md) | Prosodia | live — casting/voicing range |
 | 4 | [Multilingual G2P](../../../Prosodia/notes/high-ambition-4-multilingual-g2p.md) | Prosodia | live — after English production quality |
-| 5 | StyleTTS2-Lite custom model | git history (deleted 2026-08-02) | **RETIRED 2026-07-29** — the quality-ceiling escape hatch is now a scaled flow-matching backbone; decision record in [model-decisions.md §5](model-decisions.md) |
+| 5 | StyleTTS2-Lite custom model | git history (deleted 2026-08-02) | **RETIRED 2026-07-29** — the quality-ceiling escape hatch is now a scaled flow-matching backbone; decision record in [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](../docs/model-decisions.md) |
 | 6 | [Audience: conveyance-aware STT](high-ambition-6-audience-conveyance-stt.md) | Sonora | live — the reverse lane; perceive prosody rather than dictate it |
 | 7 | [Singing](high-ambition-7-singing.md) | Sonora | **added 2026-08-09** — down the road, behind the quality ladder. ⚠ *Unrequested* singing is a DEFECT and stays one |
 
@@ -37,7 +37,7 @@ stronger version of what the owner said. Recorded because a reader scanning seve
 cloning cannot otherwise tell "ruled out" from "nobody has raised it".
 
 ⚠ **Neither of the above is a policy.** The likeness *policy* that exists is
-[audiobook-corpus-policy.md](audiobook-corpus-policy.md), scoped to the personally-acquired
+[audiobook-corpus-policy.md](../docs/audiobook-corpus-policy.md), scoped to the personally-acquired
 audiobook corpus. It is a **separate instrument with a narrower subject** — a corpus boundary,
 not a statement about this series — though it does record a compatible intent of the owner's
 (*"I want dynamic voicing from the model"*). **Do not read it as creating or removing a goal**,
@@ -46,7 +46,7 @@ in either direction.
 Three things a reader should know before following the numbers:
 
 - **5 is retired, not pending** — its design note was deleted with the notes `archive/`
-  on 2026-08-02 (git history keeps it; the decision survives in model-decisions.md §5).
+  on 2026-08-02 (git history keeps it; the decision survives in model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack).
   Any "5 of 5" phrasing in older notes predates that and predates 6 existing at all.
 - **7 carries a defect on the other side of the same behaviour.** Unrequested singing is
   what benched VibeVoice and Dia; requested singing is goal 7. Progress on the goal is not

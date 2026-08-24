@@ -10,7 +10,7 @@ through `schemas.coerce_axis`, so `validate` began reporting "no schema violatio
 numeric string that `verify_vat` and `render_inline` still crashed on. The fix routed all
 three through `coerce_axis`. That removed the inconsistency and introduced a worse one:
 
-    notes/markup-schema-brief.md, RATIFIED v0.1 — "Field semantics":
+    docs/markup-schema-brief.md, RATIFIED v0.1 — "Field semantics":
         `utterance.vat` | continuous [−1,1] each
     and, under "Numbers vs symbols":
         the sidecar keeps VAT **continuous** (it IS the contract); binning to symbols

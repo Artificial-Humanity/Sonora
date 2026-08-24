@@ -29,14 +29,14 @@ teacher-synthesis portfolio (2026-07-17) and the later quote-pilot benchmark pas
 > `../synth_<engine>.py` + `synth_bank.sh`, which is where loudness normalisation, the QC gate
 > and manifest registration live. The "verdict" column below is a **pointer**, not the record:
 > the live portfolio and its tiers are
-> [notes/teacher-tts-audition-shortlist.md](../../../notes/teacher-tts-audition-shortlist.md),
+> [notes/teacher-tts-audition-shortlist.md](../../notes/teacher-tts-audition-shortlist.md),
 > and allocation is code (`ref_select.ENGINE_MIX_BY_LANE`). Refreshed 2026-08-06 — the previous
 > version still called VibeVoice "premier" and Chatterbox/Zonos/Orpheus "not adopted," both of
 > which reversed in late July.
 
 **Live portfolio: chatterbox · qwen · zonos · orpheus · moss_vg.** Everything else is
 **benched**, and the bench is recorded in exactly one place —
-[teacher-tts-audition-shortlist.md § Benched engines](../../../notes/teacher-tts-audition-shortlist.md#benched-engines),
+[teacher-tts-audition-shortlist.md § Benched engines](../../notes/teacher-tts-audition-shortlist.md#benched-engines),
 which carries each engine's end-condition and last-checked date. The rows below name
 INTERFACE facts only and must not restate a status: `23c6af3` moved LongCat to that rule
 and left VibeVoice and Dia restating theirs, VibeVoice still carrying the stale
@@ -49,18 +49,18 @@ one-blocker wording the commit's own message names as the trap (CL-L2).
 | `render_chatterbox.py` | Chatterbox (classic, NOT Turbo) | **LIVE — trusted-provisional.** Its 2026-07-17 rejection was **void**: all 12 clips used the built-in `conds.pt` fallback, so casting was never exercised. Re-auditioned through `revisit-v1` 2026-07-28. |
 | `render_zonos.py` | Zonos-v0.1-transformer | **LIVE — normal tier since 2026-08-04.** Its rejection was also void (rendered at the default `pitch_std` 20.0, i.e. flat, with no speaker). The instability was the neutral-dominant emotion vector, not the engine: 93.5% keep with `emotion: null`. |
 | `render_orpheus.py` | Orpheus-3B `-ft` | **LIVE — normal tier.** The 2026-07-23 `-pretrained` verdict was void — wrong checkpoint, and the prompt omitted `128261` + `128257`. `tara` is banned in code (room reverb). |
-| `render_dia.py` | Dia-1.6B | **BENCHED** — status, evidence and the condition that would un-bench it: [teacher-tts-audition-shortlist.md § Benched engines](../../../notes/teacher-tts-audition-shortlist.md#benched-engines). Do not restate it here. *Interface facts, which the bench does not change:* `render_text` is the only surface (punctuation/capitalisation plus a closed 21-tag non-verbal set); temperature **1.8 — never lower** (1.5 collapses 7/20 clips to white noise). |
-| `synth_vibevoice.py` | VibeVoice-Large (aoi-ot mirror, MIT) | **BENCHED** — status, evidence and the condition that would un-bench it: [teacher-tts-audition-shortlist.md § Benched engines](../../../notes/teacher-tts-audition-shortlist.md#benched-engines). Do not restate it here. *Interface facts, which the bench does not change:* no natural-language instruction slot at all — `design` feeds `ref_select.py` to pick a reference clip and `instruct` never reaches the model; it stages scenes on dialogue. |
+| `render_dia.py` | Dia-1.6B | **BENCHED** — status, evidence and the condition that would un-bench it: [teacher-tts-audition-shortlist.md § Benched engines](../../notes/teacher-tts-audition-shortlist.md#benched-engines). Do not restate it here. *Interface facts, which the bench does not change:* `render_text` is the only surface (punctuation/capitalisation plus a closed 21-tag non-verbal set); temperature **1.8 — never lower** (1.5 collapses 7/20 clips to white noise). |
+| `synth_vibevoice.py` | VibeVoice-Large (aoi-ot mirror, MIT) | **BENCHED** — status, evidence and the condition that would un-bench it: [teacher-tts-audition-shortlist.md § Benched engines](../../notes/teacher-tts-audition-shortlist.md#benched-engines). Do not restate it here. *Interface facts, which the bench does not change:* no natural-language instruction slot at all — `design` feeds `ref_select.py` to pick a reference clip and `instruct` never reaches the model; it stages scenes on dialogue. |
 | `render_moss_tts.py` / `render_moss_anchors.py` | MOSS-TTS 8.5B flagship (`moss85`) | **NOT a directed teacher** — un-SFT'd base model; its card lists no `instruction` input and it reads prompts aloud on short lines. Retained only as a possible CLONING engine via its unused `reference` slot. |
 | `render_higgs.py` | Higgs TTS 3 | **NC-walled** — benchmark shelf only, never trains, never calibrates a detector. |
-| `render_longcat.sh` | LongCat | **BENCHED 2026-08-09** — no instruction slot, so no skill file is possible and it stays at onboarding step 3. Status, evidence and the condition that would un-bench it: [teacher-tts-audition-shortlist.md § Benched engines](../../../notes/teacher-tts-audition-shortlist.md#benched-engines). Do not restate it here. |
+| `render_longcat.sh` | LongCat | **BENCHED 2026-08-09** — no instruction slot, so no skill file is possible and it stays at onboarding step 3. Status, evidence and the condition that would un-bench it: [teacher-tts-audition-shortlist.md § Benched engines](../../notes/teacher-tts-audition-shortlist.md#benched-engines). Do not restate it here. |
 | `coach_dia_threat.py` | — | Dia direction-sensitivity probe (collapse-class investigation) |
 
 **teacher-ab-v1 (2026-07-26) — pass rates:** qwen 19/20 · vibevoice 19/20 · moss_vg 18/20 · dia 12/20.
 **Median DNSMOS:** qwen 3.46 · vibevoice 3.40 · moss_vg 3.27 · dia 2.53.
 ⚠ These were rendered **before loudness normalisation**, across a 5.99 dB engine spread — the
 qwen-vs-VibeVoice ranking in particular is confounded and the re-test is still open
-([notes/todo.md §4](../../../notes/todo.md)).
+([notes/todo.md §4](../../notes/todo.md)).
 
 **Loudness IS normalised in production, and is NOT here.** `normalize_loudness.py` (−23 LUFS) has
 been wired into `synth_bank.sh` ahead of QC since 2026-07-28 and its failure is fatal. These
@@ -70,7 +70,7 @@ expected — normalise before any A/B listening test, or the louder engine wins 
 **Standing rule:** no TTS model enters the portfolio without a studied interface (verified at the
 renderer call site, not from the README) and a Gemma skill-file adapter in
 `../director_skills/`. Pattern and known gotchas:
-[notes/tts-engine-onboarding.md](../../../notes/tts-engine-onboarding.md). The watch-list triggers
+[docs/tts-engine-onboarding.md](../../docs/tts-engine-onboarding.md). The watch-list triggers
 below are subject to it.
 
 ## Provenance

@@ -798,4 +798,36 @@ if [[ "$STATUS" -ne 0 ]]; then
     echo "  unreviewed — the unread part of the range is still unreviewed — review again." >&2
   fi
 fi
+# ⚠ RECORD THE REVIEWED TIP, so `merge_branch.sh` can tell a covered branch from an
+# uncovered one. Nothing recorded this before: the tip went into the reviewer's brief "for
+# the record, not as a boundary" and nowhere else, which is why the merge gate had to print
+# "this proves ... NOT that a review covered <sha>" and then let it through anyway.
+#
+# ⚠ ONLY ON A COMPLETED REVIEW. A run that died half way has read part of the range; marking
+# its tip reviewed would be the flattering guess this lane refuses everywhere else.
+#
+# ⚠ `.git/` IS DELIBERATE AND ITS LIMIT IS STATED: this is a LOCAL marker. It does not travel
+# to a fresh clone and it is not shared between checkouts — the same property every other
+# git-config fix in this lane has. It is a guard against the worker forgetting, not against a
+# different machine. A tracker field would travel, and is the right answer if this lane were
+# staying; it is being replaced, so this does not earn a schema change.
+if [[ "$STATUS" -eq 0 && -n "$TIP" ]]; then
+  _MARK="$(git rev-parse --git-dir)/sonora-reviewed-tips"
+  if [[ -f "$_MARK" ]]; then
+    grep -v "[[:space:]]${BRANCH}\$" "$_MARK" > "${_MARK}.tmp" 2>/dev/null || true
+    mv "${_MARK}.tmp" "$_MARK"
+  fi
+  # ⚠⚠ `$TIP`, NOT `HEAD` — THE FIRST VERSION GUARDED ON ONE AND WROTE THE OTHER (#284).
+  # `$TIP` is the newest commit of the reviewed RANGE. They are equal only when the range
+  # happens to end at HEAD. Review `origin/main..HEAD~1` and the old line recorded HEAD — a
+  # commit the reviewer was never briefed on — after which `merge_branch.sh` compared it to
+  # HEAD, matched, and skipped the review entirely.
+  #
+  # ⚠ IT FAILED OPEN, AND IT WAS WORSE THAN WHAT IT REPLACED: before this marker existed the
+  # gate printed a warning and left the judgement with the reader; the bug made it print
+  # nothing and silently proceed. A partial-range review is not hypothetical — DEVELOPER.md
+  # §3 records two commits reaching `main` that way.
+  printf '%s %s\n' "$TIP" "$BRANCH" >> "$_MARK"
+fi
+
 exit "$STATUS"

@@ -89,10 +89,10 @@ record is only worth what its provenance is worth.
 > through `revisit-v1` and all three are now in the live portfolio — chatterbox
 > trusted-provisional, zonos and orpheus normal tier. The void verdicts were void.
 > **The list below is kept as the method and the evidence**, not as open work; live
-> standing is [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md)
-> and the remaining tier questions are [todo.md §4](todo.md).
+> standing is [teacher-tts-audition-shortlist.md](../notes/teacher-tts-audition-shortlist.md)
+> and the remaining tier questions are [todo.md §4](../notes/todo.md).
 
-Source of record: [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md)
+Source of record: [teacher-tts-audition-shortlist.md](../notes/teacher-tts-audition-shortlist.md)
 (owner ears, 2026-07-17—) plus the `engine` column of ratings.csv. Every verdict
 below was formed while direction was not reaching the engines as intended, so none
 of them was safe as-is.
@@ -138,11 +138,14 @@ teachers, and explicitly out of scope here:
   architecture** (High-Ambition 1). The student, not a teacher.
 - `semidark/StyleTTS2`, `IIEleven11/StyleTTS2FineTune` — the former **student
   re-platform** candidate. **RETIRED 2026-07-29**; the quality-ceiling escape hatch is
-  a scaled flow-matching backbone ([model-decisions.md §5](model-decisions.md)). On
+  a scaled flow-matching backbone ([model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](model-decisions.md)). On
   disk as reference only.
 - `semidark/kikiri-tts` — StyleTTS2/Kokoro side reference, same bucket.
-- `SWivid/F5-TTS` — appears only in the **architecture licence survey** in
-  model-decisions.md §5 (MIT ✅), alongside VITS/HiFi-GAN/PL-BERT. Student-side.
+- `SWivid/F5-TTS` — appeared only in the **architecture licence survey** (MIT ✅),
+  alongside VITS/HiFi-GAN/PL-BERT. Student-side. ⚠ **That survey is no longer in
+  `model-decisions.md`** — it went in `b99dce5`, the consolidation that cut the file 408 -> 186
+  lines, and this pointer named a §5 that file has never had. Nothing else in the repo carries
+  it; the record is git history.
 - `laion/Empathic-Insight-Voice-Large`, `laion/BUD-E-Whisper`,
   `mkrausio/EmoWhisper-AnS-Small-v0.1` — **instruments**, not TTS. EIV is the
   independent verifier the whole label pipeline leans on.
@@ -234,7 +237,8 @@ of 0.000 is exactly as true of a flat, lifeless read as of a good one.
 > 37 keeps from 38 heard). Step 7 is done for these three.
 
 **Open defect found by the render: cap Zonos's `speaking_rate`.** Two clips landed
-below the 4 s owner floor (`rev_00_victory_ZON` 3.5 s, `rev_09_goodnews_ZON` 3.4 s)
+below the 4 s owner floor (`SPEECH_MIN_SECONDS`; `rev_00_victory_ZON` 3.5 s,
+`rev_09_goodnews_ZON` 3.4 s)
 and they are precisely the only two the director wrote at `speaking_rate` 24.0. The
 schema permits 5–30 and the skill file quotes the docs' "~15 normal, 30 very fast",
 but on ~95-character lines anything above ~20 undershoots the floor. Cap the band

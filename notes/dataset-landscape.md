@@ -195,7 +195,7 @@ worth entering._
 ## 0 · Corrections to the record (2026-07-19)
 
 * **JL-Corpus is CC0, not NC** (a session summary misreported it). It has been used as the
-  tension-calibration anchor all along ([vat-channels.md](vat-channels.md),
+  tension-calibration anchor all along ([vat-channels.md](../docs/vat-channels.md),
   ARCHITECTURE §labels). On disk: `/data/model-training/datasets/JL-Corpus` (459 MB, 2,400 acted
   utterances, 4 NZ-English speakers, 5 primary + 5 secondary emotions, perception-verified by a
   120-participant study). Gap: it is **not declared in `Sonora/configs/data_licenses.yaml`** — the
@@ -212,7 +212,7 @@ worth entering._
 |---|---|---|---|
 | `datasets/expresso` | **CC-BY-NC-4.0** | 1.8 GB — 11,615 read-speech clips (the read portion of the 40 h set) | Reference-only today; the subject of §2 |
 | `datasets/JL-Corpus` | **CC0** | 459 MB, 2,400 utts | Calibration anchor (in use, clean) |
-| Owner's DRM-free audiobooks | Copyrighted performances | — | Hard line + three sanctioned private uses, already settled — see **§ The owner's DRM-free audiobooks** above and [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (the policy SSOT) |
+| Owner's DRM-free audiobooks | Copyrighted performances | — | Hard line + three sanctioned private uses, already settled — see **§ The owner's DRM-free audiobooks** above and [audiobook-corpus-policy.md](../docs/audiobook-corpus-policy.md) (the policy SSOT) |
 | Emilia original 101k-h subset | CC-BY-NC-4.0 | not on disk (only the CC-BY YODAS keeps were mined: 13,141 clips in `emilia_kept`) | Nothing to ponder — we never pulled the NC portion |
 
 So the on-disk NC question is **really only about Expresso**.
@@ -321,7 +321,7 @@ Cross-refs: **§ Cleared for training** above (the verdict table) ·
 conflict) ·
 [open-decision-licensing tightening #3](../../../Prosodia/notes/open-decision-licensing.md) ·
 `Sonora/configs/data_licenses.yaml` (the wall) ·
-[vat-channels.md](vat-channels.md) (JL-Corpus calibration) ·
+[vat-channels.md](../docs/vat-channels.md) (JL-Corpus calibration) ·
 [synthesis-pipeline.md](synthesis-pipeline.md) + [book-prose-lane.md § Part 1 — Operations](book-prose-lane.md)
 (the permissive expressive lanes).
 
@@ -344,7 +344,7 @@ The multilanguage phase does **not** relax either wall:
 
 1. **License wall — CC-BY-4.0 or freer, no NC/ND anywhere in the lineage**
    ([open-decision-licensing.md](../../../Prosodia/notes/open-decision-licensing.md) tightening #3;
-   [ARCHITECTURE.md](ARCHITECTURE.md) §2). Note the sharp edge: **CC-BY-SA is arguably *not*
+   [ARCHITECTURE.md](../docs/ARCHITECTURE.md) §2). Note the sharp edge: **CC-BY-SA is arguably *not*
    "freer" than CC-BY** — share-alike adds a copyleft obligation. Any SA-licensed subset must be
    split out and treated as excluded until we decide share-alike is acceptable in the public
    lineage (it currently is not established that it is). CC0 is freer; that's clean.
@@ -414,6 +414,6 @@ Two distinct things wear the MLCommons name; keep them separate.
 
 Cross-refs: **§ Cleared for training** at the top of this file (the English licence SSOT) ·
 [open-decision-licensing.md tightening #3](../../../Prosodia/notes/open-decision-licensing.md) ·
-[audiobook-corpus-policy.md](audiobook-corpus-policy.md) (the private-lineage boundary, unchanged
+[audiobook-corpus-policy.md](../docs/audiobook-corpus-policy.md) (the private-lineage boundary, unchanged
 cross-lingually) · [STATE.md](STATE.md).
 

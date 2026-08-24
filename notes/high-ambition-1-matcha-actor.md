@@ -6,8 +6,8 @@
 > [4 — Multilingual G2P](../../../Prosodia/notes/high-ambition-4-multilingual-g2p.md) ·
 > 5 — StyleTTS2-Lite (**RETIRED 2026-07-29**; note deleted 2026-08-02, git history — the
 > quality-ceiling contingency is now a scaled flow-matching backbone, see
-> [model-decisions.md § The size ladder](model-decisions.md)). Model decision record:
-> [model-decisions.md §5](model-decisions.md).
+> [model-decisions.md § The size ladder](../docs/model-decisions.md)). Model decision record:
+> [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](../docs/model-decisions.md).
 
 This note is the production design for a **Matcha-TTS-based** Prosodia actor: a small, fast,
 **directable** and **castable** on-device TTS model. Matcha is the chosen *first* base because it
@@ -186,7 +186,7 @@ this is just the cheapest forcing function to settle the decisions below.
 
 ## 🔄 Phased training plan
 
-Mirror the de-risking order in [model-decisions.md §5](model-decisions.md) — make
+Mirror the de-risking order in [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](../docs/model-decisions.md) — make
 the *first* success boring, then add novelty. (Phase 0 above runs first.)
 
 1. **Plain fine-tune** a pretrained Matcha checkpoint on a small clean single-speaker set (LibriTTS
@@ -217,10 +217,10 @@ the *first* success boring, then add novelty. (Phase 0 above runs first.)
 * **5 — StyleTTS2-Lite** (git history) — **RETIRED as the contingency
   (owner decision, 2026-07-29).** If Matcha's naturalness/expressiveness falls short, the escape
   hatch is now **scaling the flow-matching backbone** (the DiT-style mid/heavy tier in
-  [model-decisions.md § The size ladder](model-decisions.md)) — same OT-CFM family, same contract, so
+  [model-decisions.md § The size ladder](../docs/model-decisions.md)) — same OT-CFM family, same contract, so
   the transfer story below is *stronger* than it was to StyleTTS2. Rationale (teacher-corpus
   learnings: interface ownership, reference-style failure modes, adversarial-training misfit)
-  is recorded in [model-decisions.md §5](model-decisions.md) — the high-ambition-5 note that
+  is recorded in [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](../docs/model-decisions.md) — the high-ambition-5 note that
   carried it was deleted 2026-08-02 and is in git history.
 
 **What transfers vs what's Matcha-specific** *(table kept for the historical StyleTTS2 comparison;

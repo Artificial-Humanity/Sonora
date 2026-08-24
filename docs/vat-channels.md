@@ -73,7 +73,7 @@ The VAT fine-tune trains on LibriTTS-R (multi-speaker), so `n_spks > 1` speaker-
 configuration comes along in the same run — a deliberate slice of milestone 4 pulled forward.
 
 Linked from: [next-steps §B](../../../Prosodia/notes/next-steps.md) (VAT-conditioning item),
-[STATE roadmap §3](STATE.md), [high-ambition-1](high-ambition-1-matcha-actor.md).
+[STATE roadmap §3](../notes/STATE.md), [high-ambition-1](../notes/high-ambition-1-matcha-actor.md).
 
 
 ---
@@ -169,8 +169,8 @@ come from the combo, not the Valence head.** Corpus relabeled as `data/libritts_
 Caveat recorded: d'≈0.9 = noisy-but-directionally-right labels, the regime the energy channel
 already proved workable; Emilia tails remain the depth fix.
 
-Linked from: [dataset-landscape.md](dataset-landscape.md) (the thesis this executes) ·
-[STATE.md](STATE.md).
+Linked from: [dataset-landscape.md](../notes/dataset-landscape.md) (the thesis this executes) ·
+[STATE.md](../notes/STATE.md).
 
 
 ---
@@ -287,8 +287,8 @@ shared `ASR_MAX_WER` — and `vat5_finetune` trained on it to `ep019`.
 tail-selected on T, so the Emilia half arrives **53.6% saturated on T** against LibriTTS's
 4.7%. The pre-registered worry was that this hands the model a shortcut; **read 2026-08-09,
 it did not** — no T-specific regression on the never-trained holdout, CI straddling zero
-([quality-gap-plan.md](quality-gap-plan.md) § READ-OUT). So T is not poisoned, but neither
+([quality-gap-plan.md](../notes/quality-gap-plan.md) § READ-OUT). So T is not poisoned, but neither
 has this section's valence FAIL been retested: v5's new material is delivery-blank and
-nobody has heard a clip of it. State in [training-sources.md](training-sources.md).
+nobody has heard a clip of it. State in [training-sources.md](../notes/training-sources.md).
 
-Linked from: **§2 above** · [STATE.md](STATE.md).
+Linked from: **§2 above** · [STATE.md](../notes/STATE.md).

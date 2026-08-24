@@ -2,12 +2,12 @@
 
 The current-state snapshot: what is true now, what is running, and what comes next.
 Behavioral rules and the stack/layout manifest live in [AGENTS.md](../AGENTS.md); the
-architecture canon is [ARCHITECTURE.md](ARCHITECTURE.md); open work is
+architecture canon is [ARCHITECTURE.md](../docs/ARCHITECTURE.md); open work is
 [todo.md](todo.md). One entry per front, newest facts first — superseded narrative is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
-_Last updated: 2026-08-10._
+_Last updated: 2026-08-21._
 
 ---
 
@@ -24,7 +24,7 @@ _Last updated: 2026-08-10._
 > ear; converged by epoch 9, so epochs 10–39 were net worse and the run is closed —
 > `logs/train/vat5_finetune/SELECTED.md` refuses a relaunch). Rung 1's gate **PASSED**:
 > `ep019 − vat5_init` = **−0.0606** on the clean holdout, improved on 82.1% of 5,463 clips,
-> an order of magnitude past the −0.0111 that cleared gate 0a. **Data-limited, not
+> roughly 5× the −0.0111 that cleared gate 0a. **Data-limited, not
 > capacity-limited — the 10× proceeds.** ep019 is the warm-start donor for v6.
 >
 > **It is a merge, not a derivation** (`scripts/tools/merge_emilia_corpus.py`), and the two halves
@@ -111,7 +111,7 @@ Independence gate (v3): corr(T,A) = −0.059 · corr(T,V) = −0.066 · corr(V,A
 all PASS. Channel standing (vat3-24k, 2026-07-22): energy **PASS**, tension
 **near-pass**, valence **FAIL** — a corpus-label limit, not architectural; that failure
 is what opened the directed teacher-synthesis lane
-([vat-channels.md](vat-channels.md)).
+([vat-channels.md](../docs/vat-channels.md)).
 
 ## Checkpoint lineage
 
@@ -137,7 +137,7 @@ are validated components, not the shippable directable actor.
 are **set aside** (2026-07-29, reversible, `ref_select.SET_ASIDE`) — VV stages scenes
 on dialogue, and the survivors already narrate at 94%. Engine standing, license
 verdicts, and the shortlist record: [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md);
-onboarding pattern + gotchas: [tts-engine-onboarding.md](tts-engine-onboarding.md).
+onboarding pattern + gotchas: [tts-engine-onboarding.md](../docs/tts-engine-onboarding.md).
 
 **Delivery campaign — COMPLETE 2026-08-04 (SSOT:
 [delivery-mix-campaign.md](delivery-mix-campaign.md)).** **1,189 fold-eligible keeps**
@@ -226,13 +226,13 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
 - **Atomic writes** across all 8 renderers (`synth_common.py`); orpheus voice ban and
   zonos `emotion: null` are code, not markdown; loudnorm failure is fatal.
 - teacher-ab-v1 keeps normalized to −23 LUFS (the 5.99 dB engine spread confounded the
-  Qwen-vs-VV ranking; re-test is now possible — [todo.md §6](todo.md)).
+  Qwen-vs-VV ranking; re-test is now possible — [todo.md §4](todo.md)).
 
 ## Model architecture fronts
 
 - **Base reaffirmed:** Matcha stays; StyleTTS2-Lite retired as contingency (2026-07-29);
   the escape hatch is a scaled flow-matching backbone. Kokoro stays out. Records:
-  [model-decisions.md](model-decisions.md).
+  [model-decisions.md](../docs/model-decisions.md).
 - **Decoder v2 (DiT) is a staged spike NOW** — adopt iff it passes the parity gate vs
   the U-Net baseline. The spike's one named risk (tiny-DiT spectral texture) is already
   retired in public MIT code: StableTTS's 31M `DiTConVBlock` (conv FFN in-block + long
@@ -242,9 +242,9 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
   bench — check it before designing any component blind.
 - **Contract v2** (2026-07-30): delivery is the 4th FiLM channel (5 lanes + unknown ≡
   zero); register compiles away Director-side; tempo/loudness stay host-side. Pinned in
-  [ARCHITECTURE.md](ARCHITECTURE.md) §1. **Implemented in the model core 2026-08-07** as a
+  [ARCHITECTURE.md](../docs/ARCHITECTURE.md) §1. **Implemented in the model core 2026-08-07** as a
   five-wide one-hot block (`vat_dim` 8, `matcha/delivery.py`); the EXPORT half is still
-  open ([todo.md §1](todo.md)).
+  open ([ARCHITECTURE.md § 6](../docs/ARCHITECTURE.md), the Export lane).
 - **RapFlow-TTS (consistency-FM, ~2 NFE)** logged as its own later spike — throughput
   lever, separate de-risk cycle.
 
@@ -293,8 +293,13 @@ The ordered plan and the gate between each phase is
 **[quality-gap-plan.md](quality-gap-plan.md)** — the SSOT for sequencing. This is only its
 headline; open items are in [todo.md](todo.md).
 
-1. **Phase 1 rung 2 — build v6** (+expressive-registers): decided, NOT built, warm start
-   from **`ep019`**. The append set is settled at **832 rows** (822 delivery-labelled + 10
+1. ~~**Phase 1 rung 2 — build v6**~~ ✅ **DONE 2026-08-10/11** — built, trained 10 epochs,
+   holdout-scored, **`ep008` selected**, run closed (`logs/train/vat6_finetune/SELECTED.md`).
+   ⚠ **The next action is item 2.** This entry said *"decided, NOT built"* until 2026-08-21,
+   twenty-five lines above its own `✅ BUILT` line (#200); it is kept, past tense, for the
+   derivation below, which nothing else carries in this detail. Warm-started from **`ep019`**.
+
+   The append set is settled at **832 rows** (822 delivery-labelled + 10
    blank) = 1,004 eligible − 158 whose audio is already in v5 — **three disjoint duplicate
    classes needing opposite treatment** (91 dropped, 45 excluded because v5 holds their
    labels, 22 `mk_` twins resolved to one row), not the 91 originally recorded. Those 846
@@ -335,10 +340,15 @@ headline; open items are in [todo.md](todo.md).
    ⚠ **The licence wall REFUSED the first build** — the staged 24 kHz tree was undeclared.
    `sonora_expressive_registers` is now in `configs/data_licenses.yaml`, verified by path:
    **0 of the 832 clips resolve into `LibriTTS_R` or any `emilia*` tree.**
-   ⚠ **TWO IN-CONTAINER STEPS REMAIN, neither optional**: `data_statistics` must be
-   **re-measured** (they cannot be inherited from v5 — this changes the audio set *and*
-   the split), and `scripts/gates/test_vat_dim_seams.py` must pass. `vat_dim` is unchanged at 8,
-   so **`ep019` warm-starts with no widening.**
+   ⚠ **TWO IN-CONTAINER STEPS, AND NEITHER HAS A RECORDED RESULT** — status genuinely
+   unverified, not "outstanding": `data_statistics` had to be **re-measured** (they cannot be
+   inherited from v5 — this changes the audio set *and* the split), and
+   `scripts/gates/test_vat_dim_seams.py` had to pass. The run has since trained 10 epochs and
+   holdout-scored, which it could not have done without usable statistics; **the seam gate is
+   the one with no evidence either way, and #197 has since measured that nothing in the suite
+   runs it** — so its "outstanding" was never a status anything could have cleared. Whoever
+   next touches rung 2's corpus should run it and record the count, as v5's `30/30` is.
+   `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
 2. **Rung 3 — the 10×** (LibriTTS-R full, ~615 h). Ungated: rung 1 passed. ~2.25 h/epoch,

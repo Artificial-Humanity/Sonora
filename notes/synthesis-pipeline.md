@@ -62,8 +62,30 @@ truncation and over-run send the auditor to opposite ends of the clip:
 - A manifest APPENDS a record per render, so a rerolled clip has several — **last
   record wins**; it is the take that exists on disk.
 
-Not yet built: a `head_ok` gate (nothing sees head truncation), and the 4 s speech
-floor has no hard gate on the Silero measure — see [todo.md §7](todo.md).
+Not yet built: a `head_ok` gate — nothing sees head truncation (`HEAD_LOST_MAX = None`
+in `scripts/stages/qc_gate.py`, left unset on evidence rather than by omission).
+⚠ **The 4 s speech floor IS hard-gated on the Silero measure** (`SPEECH_MIN_SECONDS`), and
+this sentence said it was not until 2026-08-21:
+`speech_dur_vad = silero_vad.speech_duration(wav16)` feeds
+`gates["speech_ok"] = speech_dur_vad >= SPEECH_MIN_SECONDS`.
+
+⚠⚠ **THAT CONSTANT IS REGISTERED WITH THE DOC-CLAIMS GATE (#189), BUT REGISTRATION PINS
+*LINES*, NOT THE VALUE.** A `4 s` is pinned only when **one line** carries both halves: a
+phrase the fact's `scope` recognises, and a number one of its `patterns` can read. Scope and
+pattern are matched per line, so a sentence that WRAPS between them is not pinned either.
+
+⚠ **"Pinned" is NOT the same as "names the constant", and this paragraph said it was
+until 2026-08-21 (#258).** A fact's `scope` is a set of alternatives and the constant's name
+is only one of them — `delivery-mix-campaign.md:304` is pinned through `floor via Silero`
+while naming no constant at all. **Read the fact in `scripts/gates/test_doc_claims.py`; do not
+trust a summary of it here.** This paragraph has now been wrong in both directions: first
+claiming the value "can no longer drift from these notes" (#256), then claiming less coverage
+than the gate has (#258).
+⚠ No count is given here on purpose — a number in prose is the very drift this gate exists to
+catch, and this branch has already shipped three that went stale. Run the gate to enumerate.
+
+Two things the gate still cannot see: a sentence **denying the gate exists** (this one, until
+2026-08-21), and any `4 s` in a file `docs()` does not scan — `AGENTS.md` is the live case.
 
 ## Control interface — how text becomes *directed* audio (per engine)
 
@@ -88,7 +110,7 @@ truth for each engine's payload** — bank builders must not invent keys. Unknow
 are fatal (the silent rewrite-to-vibevoice fallback is gone). Each renderer writes
 `<engine>_manifest.jsonl` echoing the full direction, seed, and license per clip.
 
-Interface traps and per-engine gotchas: [tts-engine-onboarding.md](tts-engine-onboarding.md).
+Interface traps and per-engine gotchas: [tts-engine-onboarding.md](../docs/tts-engine-onboarding.md).
 
 ## Director architecture (two passes)
 

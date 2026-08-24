@@ -1,10 +1,20 @@
 # Notes — map
 
+**In flight and transient.** Plans, proposals, campaign records, current state, research —
+what is *being worked out*. Ratified policy and canon live in [`docs/`](../docs/README.md),
+split out on 2026-08-17 to match Prosodia; **when a file here disagrees with one there,
+`docs/` wins.**
+
+The test: does the file state a rule other work must conform to (`docs/`), or does it record
+state, progress, research or a plan (here)? Being load-bearing is not the test — `STATE.md`
+and `training-sources.md` are both, and both are records.
+
 One line per file, grouped by what question it answers. Rules for this directory:
 each file owns its subject (when two disagree, the SSOT named here wins); superseded
 narrative is **deleted, not archived** — git history is the archive (the `archive/`
 directory and several closed records were removed 2026-08-02). Filenames are
-`lowercase-kebab-case.md` except the two uppercase anchors.
+`lowercase-kebab-case.md` except `STATE.md`, the uppercase anchor here — the other,
+`ARCHITECTURE.md`, went to `docs/` with the split.
 
 Two conventions that surprise readers:
 
@@ -23,28 +33,27 @@ Two conventions that surprise readers:
 | 2 | [STATE.md](STATE.md) | **what is true now**, per front |
 | 3 | [quality-gap-plan.md](quality-gap-plan.md) | **what happens next**, and in what order — the SSOT for sequencing. **Its § the pathway is the whole route in one table**, Phase 0 → the five corpus rungs → decoder spike → the deferred conditioning chain and multilingual |
 | 4 | [todo.md](todo.md) | open *residue* — code-review findings and the ears queue. Not the plan |
-| 5 | [ARCHITECTURE.md](ARCHITECTURE.md) | **canon** — the Director↔Actor contract (v2), corpus rules, gates, promotion |
+| 5 | [ARCHITECTURE.md](../docs/ARCHITECTURE.md) | **canon** — the Director↔Actor contract (v2), corpus rules, gates, promotion |
 
-_**Where the front is today** (2026-08-10): Phase 1 **rung 2** — `libritts_r_emilia_vat_v5`
-trained to `ep019` and rung 1's holdout gate **PASSED** (−0.0606, data-limited not
-capacity-limited), so the 10× proceeds. v6 (+expressive-registers) is **BUILT** as
-`libritts_r_emilia_expressive_vat_v6` (41,937 train / 1,331 val, n_spks 3,326): the append
-set is **832 rows staged, 826 appended rows** — 1,004 eligible, less 158 duplicate-audio,
-less 14 over `MAX_SECONDS`, less the six rows D-M3 dropped for carrying digits at merge
-time. ⚠ **Staged and kept are two numbers.** Until 2026-08-11 this cell gave the staged one
-under the kept one's name, beside the totals that refute it (41,937 + 1,331 − 42,442 = 826)
-— and the gate could not see it, because it checked the number the two READMEs agreed on
-and not the one they forked on (#50). Both are checked now. All three prerequisites closed,
-two in-container steps outstanding (`data_statistics`, `test_vat_dim_seams.py`)._
+_**Where the front is today**: deliberately not stated here._ This paragraph used to carry a
+third copy of a status owned by [quality-gap-plan.md](quality-gap-plan.md) **§ the pathway** and
+summarised by [STATE.md](STATE.md) — rows 2 and 3 above — and it is the copy that drifted: it
+reported rung 2 as built-but-unverified for ten days after `ep008` was selected, under the
+repo's first *"Start here"* heading, where it changed what a reader thought the next action was
+(#200). ⚠ **Do not restore it.** A status needs one owner, and the two rows already point at
+both of this one's.
 
 _Answering a specific question? **"What are we training on"** → `training-sources.md`.
 **"May we use this dataset"** → `dataset-landscape.md`. **"How do I launch a run"** →
 `training-operations.md`. **"Why is the model shaped like this"** → `model-decisions.md`._
 
-_Bookkeeping: none to maintain here. The changelog and the `code-review-*.md` cycle were
-both retired 2026-08-11 (AGENTS.md §4) — a change is recorded by its commit message, and a
-review finding that its cycle could not settle becomes a GitHub issue (AGENTS.md §1).
-`reviews/` holds a transient handoff file per cycle and is emptied by the end of it._
+_Bookkeeping: none to maintain here. The changelog and the `code-review-*.md` cycle were both
+retired 2026-08-11 — a change is recorded by its commit message, and a review finding that its
+cycle could not settle becomes a **PocketBase issue**, filed by the reviewer under
+[`workflow/WORKFLOW.md`](../workflow/WORKFLOW.md). ⚠ This paragraph was stale in two ways until
+2026-08-17: it said "GitHub issue (AGENTS.md §1)" — GitHub issues were retired and AGENTS.md no
+longer mentions them — and it described a `notes/reviews/` directory that has not existed since
+the review lane was rebuilt. Both are the drift the `docs/` split exists to make visible._
 
 ## Data — what trains, and under what license
 
@@ -52,7 +61,7 @@ review finding that its cycle could not settle becomes a GitHub issue (AGENTS.md
 |---|---|
 | [training-sources.md](training-sources.md) | a source's **state** (on disk? trained on? blocked?) + the VAT corpus lineage. **This is the one that answers "what is actually feeding a run today"** |
 | [dataset-landscape.md](dataset-landscape.md) | a source's **license** and role — the English survey, the NC two-fence ruling, and the multilingual survey, all folded in |
-| [audiobook-corpus-policy.md](audiobook-corpus-policy.md) | the owner's-audiobooks boundary + private-lineage firewall |
+| [audiobook-corpus-policy.md](../docs/audiobook-corpus-policy.md) | the owner's-audiobooks boundary + private-lineage firewall |
 | [book-prose-lane.md](book-prose-lane.md) | the book text→synthesis lane + the LibriVox real-audio/quote lane (operations first, rationale second) |
 | [delivery-mix-campaign.md](delivery-mix-campaign.md) | the 50/30/8/6/6 delivery rebalance — **complete 2026-08-04**; kept for the findings and the traps it exposed |
 
@@ -63,13 +72,19 @@ _When these two disagree: `training-sources.md` wins on a source's **state**,
 
 | file | SSOT for |
 |---|---|
-| [vat-channels.md](vat-channels.md) | the three conditioning channels — §1 FiLM mechanism, §2 label recipes, §3 tension semantics |
-| [direction-interface-brief.md](direction-interface-brief.md) | how Sonora receives direction (contract-v2 decision record; the reverse-conveyance design) |
-| [markup-schema-brief.md](markup-schema-brief.md) | SCM v0.1 — the ratified conveyance markup (sidecar-canonical, six tags) |
+| [vat-channels.md](../docs/vat-channels.md) | the three conditioning channels — §1 FiLM mechanism, §2 label recipes, §3 tension semantics |
+| [direction-interface-brief.md](../docs/direction-interface-brief.md) | how Sonora receives direction (contract-v2 decision record; the reverse-conveyance design) |
+| [markup-schema-brief.md](../docs/markup-schema-brief.md) | SCM v0.1 — the ratified conveyance markup (sidecar-canonical, six tags) |
 | [casting-attribute-norms-brief.md](casting-attribute-norms-brief.md) | measured casting norms, cast sheet, identity-vs-portrayal |
 
-_All four are **design records**, not build status. The delivery channel they describe is
-not implemented in the model core — [todo.md §1](todo.md)._
+_All four are **design records**, not build status. ⚠ The delivery channel they describe
+**SHIPPED in the model core on 2026-08-07** (`vat_dim` 8, `matcha/delivery.py`); the **EXPORT**
+half is what remains — [STATE.md](STATE.md). Said "not implemented" until 2026-08-22 (#283)._
+
+_⚠ The first three are **canon** and live in [`docs/`](../docs/README.md); they are listed here
+because this is where you look for them by topic.
+`casting-attribute-norms-brief.md` stays in `notes/` — it is explicitly "design capture, **not
+yet scheduled**", so it fails the ratified test its three siblings pass._
 
 ## Teacher synthesis
 
@@ -77,7 +92,7 @@ not implemented in the model core — [todo.md §1](todo.md)._
 |---|---|
 | [synthesis-pipeline.md](synthesis-pipeline.md) | the render→QC→audition pipeline mechanics + rating vocabulary v4 |
 | [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md) | engine license verdicts + measured standing |
-| [tts-engine-onboarding.md](tts-engine-onboarding.md) | the onboarding pattern, revisit list, and the gotcha compendium |
+| [tts-engine-onboarding.md](../docs/tts-engine-onboarding.md) | the onboarding pattern, revisit list, and the gotcha compendium |
 | [teacher-training-data.md](teacher-training-data.md) | **what the teachers trained on** — and the multilingual plan. Reference, not a licence ruling: neither Qwen nor Chatterbox discloses a corpus, so what is copyable is method (staged quality curriculum, mixture balance by mode of address), not sources. Holds the scale gap that scopes every data decision |
 
 ## Model & training
@@ -85,7 +100,7 @@ not implemented in the model core — [todo.md §1](todo.md)._
 | file | SSOT for |
 |---|---|
 | [quality-gap-plan.md](quality-gap-plan.md) | **sequencing** — the ordered plan to close the synthetic-vs-real gap (measurement repair → data → DiT spike), the gates between phases, and the 2026-08-06 diagnostics that scoped it |
-| [model-decisions.md](model-decisions.md) | model **shape**: size ladder, 150M ceiling, 24 kHz, the DiT decoder-v2 design, base-model choice |
+| [model-decisions.md](../docs/model-decisions.md) | model **shape**: size ladder, 150M ceiling, 24 kHz, the DiT decoder-v2 design, base-model choice |
 | [matcha-siblings-study.md](matcha-siblings-study.md) | the standing comparison bench (StableTTS, RapFlow, CosyVoice, Baichuan…) — check it before designing any component blind |
 | [training-operations.md](training-operations.md) | the **runbook** — runs to date, launch/stop/resume, checkpoint settings, watchers, gates, footguns, registry conventions |
 | [local-vs-runpod-decision.md](local-vs-runpod-decision.md) | the measure-before-renting instrumentation |
@@ -110,4 +125,4 @@ so do not renumber or rename them.
 | [high-ambition-7-singing.md](high-ambition-7-singing.md) | goal 7 — singing (**down the road**, gated behind the quality ladder). ⚠ *unrequested* singing is a defect and stays one |
 
 _(Goal 5, the StyleTTS2-Lite re-platform, was **retired 2026-07-29** and its note deleted
-2026-08-02. The decision record is [model-decisions.md §5](model-decisions.md).)_
+2026-08-02. The decision record is [model-decisions.md § Why not Kokoro, StyleTTS2 or a GAN stack](../docs/model-decisions.md).)_

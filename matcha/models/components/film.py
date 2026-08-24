@@ -1,4 +1,4 @@
-"""VAT FiLM conditioning (design: notes/vat-channels.md).
+"""VAT FiLM conditioning (design: docs/vat-channels.md).
 
 A per-token/per-frame [B, vat_dim, T] conditioning sequence is projected by a
 shared trunk, then per-block zero-initialized heads emit channel-wise scale
@@ -55,7 +55,7 @@ class VATTrunk(nn.Module):
                 f"VAT width mismatch: this trunk was built for vat_dim={self.vat_dim} "
                 f"but received {vat.shape[1]} channels (shape {tuple(vat.shape)}). "
                 "The checkpoint, the model config and the filelist must agree — see "
-                "notes/todo.md §1 (delivery-channel seams)."
+                "scripts/gates/test_vat_dim_seams.py, the gate for exactly these seams."
             )
         return self.net(vat)
 

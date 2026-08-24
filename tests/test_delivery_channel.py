@@ -666,7 +666,7 @@ def test_the_open_emotion_block_decision_is_recorded_where_it_would_be_made():
     deliberately do not have one; the reasoning and its gate belong in the three places
     someone would actually look — the contract canon, the open-work list, and the module
     they would edit to add channels."""
-    arch = (REPO / "notes" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    arch = (REPO / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
     assert "categorical EMOTION block is an open question" in arch
     assert "gated on Phase 1" in arch
 
