@@ -410,9 +410,9 @@ def main():
             f"      ⚠ The LINK still resolves — the target is the file and the section is only "
             f"the label,\n      so nothing goes red and the reader lands on the right document "
             f"to hunt for a\n      section that is not there. Retarget it by NAME "
-            f"(`§ Some Heading`) if the file is unnumbered — ⚠ a NAME label is in the "
-            f"class this\n      gate NEVER checks (its footer says so), so copy the real "
-            f"heading exactly: nothing\n      goes red if it drifts."))
+            f"(`§ Some Heading`) if the file is\n      unnumbered — ⚠ a NAME label is in "
+            f"the class this gate NEVER checks, so copy the\n      real heading exactly: "
+            f"nothing goes red if it drifts."))
 
     # ⚠ PRINTED, NEVER SILENT, exactly as the doc-claims gate treats an absent corpus. A
     # sibling that is not checked out reduces coverage, and a coverage reduction nobody can
