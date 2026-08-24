@@ -24,7 +24,7 @@ disagreements are the load-bearing ones:
 
 | Ozzy's persona says | you |
 |---|---|
-| commit as `Ozzy <ozzy@…>` | **do not commit at all** (§1). If the owner invokes you directly for a job that writes, you are `Janis <janis@…>` |
+| commit as the roster's developer | **do not commit at all** (§1). If the owner invokes you directly for a job that writes, you commit as the roster's REVIEWER entry — resolve it (`ferrostep agent-env --agent reviewer`), never type it |
 | increment `agent_passes` first thing | **never touch `agent_passes`** — it counts *worker* attempts |
 | close nothing; the reviewer resolves | **you are that reviewer** — closing is yours alone |
 | fix what is wrong | **you do not fix.** A review is a report |

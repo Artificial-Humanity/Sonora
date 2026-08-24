@@ -90,9 +90,38 @@ CFG = _config()
 REPO_SLUG = CFG.get("REPO_SLUG") or ""
 MAX_PASSES = int(CFG.get("MAX_PASSES") or 3)
 # ⚠ READ, NOT DECORATIVE. Until 2026-08-20 this setting existed and nothing consumed it
-# (#216). `cmd_grade` now uses it to decide who may LOWER a severity, which is the one
+# (#216). `cmd_grade` uses it to decide who may LOWER a severity, which is the one
 # tracker write that can clear the merge gate without closing anything (#218).
-REVIEWER_NAME = (CFG.get("REVIEWER_NAME") or "").strip()
+# ⚠ RESOLVED FROM THE ROSTER (config.yaml at the repo root) SINCE 2026-08-24, LAZILY:
+# config.env dropped its identity keys when the FerroStep roster became the one place
+# identities live, and only the grade guards need the name — the suite must import this
+# module on machines where the `ferrostep` binary is not installed.
+_REVIEWER_CACHE = None
+
+
+def reviewer_name():
+    global _REVIEWER_CACHE
+    if _REVIEWER_CACHE is None:
+        import subprocess
+        roster = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))), "config.yaml")
+        try:
+            out = subprocess.run(
+                ["ferrostep", "agent-env", "--agent", "reviewer",
+                 "--roster", roster, "--format", "json"],
+                capture_output=True, text=True, check=True).stdout
+            name = (json.loads(out).get("name") or "").strip()
+        except Exception as e:
+            die("cannot resolve the reviewer from the roster %s:\n       %s\n"
+                "     `ferrostep agent-env` installs with FerroStep (~/.cargo/bin); the\n"
+                "     roster is config.yaml at the repo root." % (roster, e))
+        if not name:
+            # The reader refuses an empty entry, so this is belt-and-braces — but an
+            # empty reviewer would FAIL OPEN in ungraded_guard_blocks, which is the one
+            # direction that guard must never fail.
+            die("the roster %s resolved an empty reviewer name" % roster)
+        _REVIEWER_CACHE = name
+    return _REVIEWER_CACHE
 # ⚠ IMPORTED, NOT REDECLARED. The first draft of this defined its own ("low", "medium",
 # "high", "critical") tuple "shared with merge_floor.LADDER" — a comment asserting a
 # relationship that nothing enforced. Two copies of a severity ORDER disagree silently: the
@@ -493,7 +522,7 @@ def ungraded_guard_blocks(caller, rec_author, rec_branch, here, new_sev, floor,
                                            whole legacy set it claimed to protect);
       * the grade is BELOW the floor     — grading up cannot clear a gate.
     """
-    reviewer = REVIEWER_NAME if reviewer is None else reviewer
+    reviewer = reviewer_name() if reviewer is None else reviewer
     if not reviewer:
         return False                       # nobody is the reviewer; nothing to protect
     if caller == reviewer:
@@ -582,7 +611,8 @@ def cmd_grade(pb, args):
                 "       advice looped (#228).\n"
                 "       Findings on OTHER branches, including every legacy record, are\n"
                 "       unaffected: this is scoped to the branch being merged."
-                % (args.number, REVIEWER_NAME, _here, floor, REVIEWER_NAME, REVIEWER_NAME))
+                % (args.number, reviewer_name(), _here, floor, reviewer_name(),
+                   reviewer_name()))
 
     if was:
         try:
@@ -592,13 +622,13 @@ def cmd_grade(pb, args):
             # gate blocks on unrecognised severities anyway, so guessing helps nobody.
             die("cannot compare severity %r with the stored %r; both must be one of %s"
                 % (new_sev, was, ", ".join(SEVERITY_LADDER)))
-        if lowering and args.author != REVIEWER_NAME:
+        if lowering and args.author != reviewer_name():
             die("refusing: lowering %s -> %s makes a blocking finding RIDE past the merge\n"
                 "     gate, which is the worker marking its own homework. Only %s may lower a\n"
-                "     grade (workflow/config.env: REVIEWER_NAME).\n"
+                "     grade (config.yaml: the roster's reviewer entry).\n"
                 "       Disagree with the grade? Argue it in the issue's comments and let the\n"
                 "       reviewer regrade or refuse — a review is a report, not an order."
-                % (was, new_sev, REVIEWER_NAME or "the reviewer"))
+                % (was, new_sev, reviewer_name()))
 
     st, r = pb.call("/api/collections/issues/records/" + rec["id"], "PATCH",
                     {"severity": new_sev})

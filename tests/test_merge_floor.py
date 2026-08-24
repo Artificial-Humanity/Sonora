@@ -174,13 +174,24 @@ def test_issue_py_does_not_keep_its_own_copy_of_the_severity_order():
         "issue.py re-declares the severity ladder instead of importing merge_floor.LADDER"
 
 
-def test_the_reviewer_name_is_read_from_config_not_hardcoded():
-    """#216: the setting existed and nothing consumed it. It decides who may lower a grade."""
-    mod = _issue_module()
-    assert mod.REVIEWER_NAME, "REVIEWER_NAME is empty — the #218 guard would name nobody"
+def test_the_reviewer_name_resolves_from_the_roster_not_config_env():
+    """#216 made the setting consumed; 2026-08-24 moved it. Identities live in config.yaml
+    (the FerroStep roster), config.env dropped its identity keys in the same commit, and
+    issue.py resolves the reviewer through `ferrostep agent-env`. This RUNS the resolution
+    and checks both ends: the name is non-empty, and it is the roster's — not a literal
+    surviving in issue.py. The config.env half needs no binary and always runs."""
     cfg = open(os.path.join(REPO, "workflow", "config.env"), encoding="utf-8").read()
-    assert f"REVIEWER_NAME={mod.REVIEWER_NAME}" in cfg, \
-        "issue.py's REVIEWER_NAME does not match config.env — it is hardcoded somewhere"
+    assert "REVIEWER_NAME=" not in cfg, \
+        "config.env still carries REVIEWER_NAME — two copies of the identity drift"
+    import shutil
+    if shutil.which("ferrostep") is None:
+        pytest.skip("ferrostep not on PATH — the roster resolution itself was NOT exercised")
+    mod = _issue_module()
+    name = mod.reviewer_name()
+    assert name, "the roster resolved an empty reviewer — the #218 guard would name nobody"
+    roster = open(os.path.join(REPO, "config.yaml"), encoding="utf-8").read()
+    assert f"name: {name}" in roster, \
+        "issue.py's reviewer does not match config.yaml — it is hardcoded somewhere"
 
 
 def test_the_grade_guard_is_documented_as_a_convention_not_a_mechanism():
@@ -289,7 +300,10 @@ def test_cmd_grade_actually_CALLS_the_guard_not_merely_defines_it():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    reviewer = mod.REVIEWER_NAME
+    # Inject the cache rather than resolving: this test pins the guard's WIRING, not the
+    # roster resolution (covered above), and must run where `ferrostep` is not on PATH.
+    mod._REVIEWER_CACHE = "Janis-under-test"
+    reviewer = mod.reviewer_name()
     here = mod.current_branch()
     patched = {}
     # UNGRADED, filed by the reviewer, stamped with the branch we are on — the exact case.
