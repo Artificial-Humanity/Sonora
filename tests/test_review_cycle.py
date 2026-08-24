@@ -110,9 +110,14 @@ def test_every_claude_call_carries_a_spend_ceiling():
         assert "--max-budget-usd" in m.group(0), "an unattended claude call with no ceiling"
 
 
-def test_the_review_ceiling_is_bounded_to_four():
-    """Three fix passes need four reviews; five would mean the cap is not working."""
-    assert '=~ ^[1-4]$' in SOURCE
+def test_the_review_ceiling_derives_from_the_definition():
+    """⚠ This asserted `^[1-4]$` was IN the script — the cap's arithmetic shadow (max+1)
+    wearing a refusal, which would silently disagree with any owner change to
+    agent_passes.max. The ceiling now derives from the lane definition, and the literal
+    range must not come back."""
+    assert '=~ ^[1-4]$' not in SOURCE, "the hardcoded review-ceiling range returned"
+    assert "sonora-lane.json" in SOURCE, "the ceiling no longer derives from the definition"
+    assert "DEF_REVIEWS" in SOURCE
 
 
 def test_it_refuses_a_dirty_tree():
@@ -262,6 +267,11 @@ def _ported_lane(tmp_path):
     dst.write_text(SOURCE, encoding="utf-8")
     dst.chmod(0o755)
     (tmp_path / "workflow" / "DEVELOPER.md").write_text("persona\n", encoding="utf-8")
+    # The driver derives its review ceiling from the lane definition at startup (phase 2)
+    # and refuses without one — correct for a real repo, so the fixture provides the file,
+    # exactly as WORKFLOW.md's porting instructions say it must travel with the lane.
+    (tmp_path / "workflow" / "sonora-lane.json").write_text(
+        '{"counters": [{"name": "agent_passes", "max": 3}]}\n', encoding="utf-8")
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
     subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)

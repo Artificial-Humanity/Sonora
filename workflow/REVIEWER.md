@@ -104,11 +104,13 @@ summary — there is no third place, and no later opportunity.
     deliberate: an entry for the whole script would let you start a real nested review, filing
     issues under an id nobody is watching, with the nested reviewer holding the same entry.
   * **You can READ the sibling `AI-Lab-AMD` repo** when your brief names it. Sonora
-    *describes* mechanisms that are *implemented* there — the PocketBase hook behind
-    `user_decision` most of all. **Look before you record something as unverifiable**: a
-    previous review had to file a contradiction with its direction undetermined because it
-    could not see that repo. It is read-only and outside your range; do not file findings
-    about its contents unless they contradict the range you were given.
+    *describes* some mechanisms that are *implemented* there. ⚠ The `user_decision` release
+    hook is NO LONGER one of them (2026-08-24): it is a block inside the generated FerroStep
+    hooks installed on the tracker, readable from no checkout — the personas' description is
+    the only in-repo evidence, by design. **Look in the sibling before you record anything
+    ELSE as unverifiable**: a previous review had to file a contradiction with its direction
+    undetermined because it could not see that repo. It is read-only and outside your range;
+    do not file findings about its contents unless they contradict the range you were given.
   * ⚠ **IF SOMETHING YOU LEGITIMATELY NEED IS REFUSED, SAY SO IN YOUR SUMMARY.** With no
     classifier, an unlisted command simply fails — and a review that quietly does less
     verification looks exactly like a review that found less. Name the command. The allowlist
@@ -659,14 +661,16 @@ be forging the answer to a question it raised.
     There are at least two, they are not distinguishable from inside this repo, and they need
     opposite responses:
     * the counter was edited back up after the decision — a data anomaly; or
-    * **the hook is not deployed**, in which case *every* decision since is unreleased and the
-      repair is a deploy, not an edit. The hook lives in a **sibling repo** you cannot read
-      (see §4), so report what you observed and let the owner say which.
+    * **the hook is not deployed**, in which case *every* decision since is unreleased and
+      the repair is a reinstall, not an edit. The hook is a block inside the generated
+      FerroStep hooks installed on the tracker — readable from **no checkout** — so report
+      what you observed and let the owner say which.
 
 ⚠ **DO NOT ESCALATE A FINDING JUST BECAUSE THE CYCLE FEELS LONG.** What is capped is
-**developer fix passes on an issue**, not reviews — three per issue, so up to four reviews
-(the one that finds it, then one after each fix pass). A finding you file at review 3 starts
-at `agent_passes = 0` and is entitled to its own three fix passes; escalating it for being new
+**developer fix passes on an issue**, not reviews — the ceiling is `agent_passes.max` in
+[sonora-lane.json](sonora-lane.json), so up to ceiling-plus-one reviews (the one that finds
+it, then one after each fix pass). A finding you file at a late review starts at
+`agent_passes = 0` and is entitled to its own full allotment; escalating it for being new
 would hand the owner untried work to decide about.
 
 ⚠ **The query above is the whole rule. Run it and escalate exactly what it returns.** An

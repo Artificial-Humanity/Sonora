@@ -125,7 +125,9 @@ def test_a_two_dot_range_is_accepted(run):
 
 
 def test_four_reviews_are_allowed_and_five_are_not(run):
-    """The cap is THREE FIX PASSES, which need FOUR reviews (owner, 2026-08-15).
+    """The cap counts FIX PASSES, which need ceiling-plus-one reviews (owner, 2026-08-15).
+    Asserted at the SHIPPED ceiling (the definition's agent_passes.max = 3, so reviews cap
+    at 4); the script derives that sum, and this test runs against the live definition.
 
     An earlier version refused `--pass 4` — it had miscounted reviews for fix passes, and
     would have blocked the review that verifies the final fix, which is the one that decides
