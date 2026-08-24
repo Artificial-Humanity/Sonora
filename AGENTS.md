@@ -485,8 +485,12 @@ always check the overall docs to ensure that the code's state is not recorded in
 contradicting document somewhere. We've run into cases of that before."*).
 
 When a comment, docstring or commit message turns out to disagree with the code, **the fix is
-not finished when that sentence is corrected.** Search the whole `.md` surface for the same
-claim before closing it — the number, the behaviour, the function's contract. This repo has
+not finished when that sentence is corrected.** Search the whole tracked tree — an
+unrestricted `git grep`, never one scoped to `-- '*.md'` — for the same claim before closing
+it: the number, the behaviour, the function's contract. The trigger sentence names comments
+and docstrings, which no `.md` sweep can reach, and the mis-scoped rule was measured costing
+a round twice on one claim (#274's sweep missed `AGENTS.md`; #279's, correct against the rule
+as then written, missed the identical triple in two source files — #288). This repo has
 paid for the other half repeatedly: a deleted `CLAUDE.md` went on being obeyed from memory for
 eight commits, and three doc-vs-artifact drifts turned up in a single day.
 
