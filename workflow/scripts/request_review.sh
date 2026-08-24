@@ -56,9 +56,10 @@ request_review.sh — one-shot code review by Janis. Blocks; prints the review o
                         (default: the roster's developer — config.yaml)
   --repo <SLUG>         Tracker `repo` field.  (default: workflow/config.env, or derived
                         from `git remote get-url origin` when that leaves it empty)
-  --pass <N>            Which REVIEW this is, 1-4.                   (default: 1)
-                        ⚠ Reviews, not fix passes. Three fix passes per issue means up to
-                        four reviews: the one that finds it, then one after each fix pass.
+  --pass <N>            Which REVIEW this is.                        (default: 1)
+                        ⚠ Reviews, not fix passes. The ceiling derives from the lane
+                        definition: N fix passes per issue mean up to N+1 reviews — the
+                        one that finds it, then one after each fix pass.
                         The per-ISSUE count lives on the issue as agent_passes.
   --notes <TEXT>        What you fixed and how, what you rebutted and why.
   --notes-file <PATH>   Same, read from a file. Mutually exclusive with --notes.
@@ -412,7 +413,8 @@ ${SCOPE_LINES}
 - **branch_name for THIS pass:** \`$BRANCH\` — set it on every issue you file.
 - **Developer to address:** $DEVELOPER. Name them in issue comments. They are blocked on this
   process and will read your stdout when it exits; there is no other channel back.
-- **Review $PASS of at most 4** (three fix passes, each followed by a review).
+- **Review $PASS of at most $MAX_REVIEWS** (the definition's fix-pass ceiling, each pass
+  followed by a review).
 
 ${SCOPE_BODY}
 "
@@ -528,8 +530,8 @@ if [[ "$PASS" -eq 4 ]]; then
 
 **Do not escalate anything merely because this is the last scheduled review.** What is capped
 is fix passes per issue, not reviews. Run the escalation query and flag exactly what it
-returns — issues that have had three fix passes and are still open. A finding you file *now*
-starts at \`agent_passes = 0\` and is entitled to its own three fix passes; it is not
+returns — issues out of attempts and still open. A finding you file *now*
+starts at \`agent_passes = 0\` and is entitled to its own full allotment; it is not
 out of attempts and must not be escalated for being late.
 "
 fi

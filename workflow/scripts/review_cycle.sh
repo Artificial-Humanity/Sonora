@@ -30,7 +30,7 @@ set -euo pipefail
 
 RANGE="origin/main..HEAD"
 DEVELOPER="Ozzy"
-MAX_REVIEWS=4
+MAX_REVIEWS=""   # default derives from the lane definition once the repo root is known
 MAX_USD=5
 MODEL="opus"
 EFFORT="xhigh"
@@ -43,8 +43,9 @@ review_cycle.sh — run the review loop to convergence. NEVER PUSHES.
 
   --range <RANGE>     Two-dot range under review.       (default: origin/main..HEAD)
   --developer <ID>    Worker identity.                  (default: Ozzy)
-  --max-reviews <N>   Hard ceiling on reviews, 1-4.     (default: 4)
-                      Four reviews is what three fix passes require: the review that finds
+  --max-reviews <N>   Hard ceiling on reviews.   (default: the definition's fix-pass
+                      ceiling + 1 — agent_passes.max in workflow/sonora-lane.json)
+                      That sum is what the fix-pass cap requires: the review that finds
                       an issue, then one after each fix pass.
   --max-usd <N>       Spend ceiling PER claude call.    (default: 5)
   --model / --effort  Passed to both roles.             (default: opus / xhigh)
@@ -105,7 +106,19 @@ cd "$REPO_ROOT"
 [[ "$STOPFILE" != /* ]] && STOPFILE="$REPO_ROOT/$STOPFILE"
 [[ -x workflow/scripts/request_review.sh ]] || die "workflow/scripts/request_review.sh not found or not executable"
 [[ -r workflow/DEVELOPER.md ]] || die "workflow/DEVELOPER.md not readable"
-[[ "$MAX_REVIEWS" =~ ^[1-4]$ ]] || die "--max-reviews must be 1-4 (three fix passes need four reviews)"
+# ⚠ DERIVED from the lane definition — this was a hardcoded `^[1-4]$`, the cap's arithmetic
+# shadow (max+1) wearing a refusal, which would have silently disagreed with any owner
+# change to agent_passes.max (found 2026-08-24, the same day the cap moved).
+DEF_REVIEWS="$(python3 - "$REPO_ROOT/workflow/sonora-lane.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+(c,) = [c for c in d.get("counters", []) if c.get("name") == "agent_passes"]
+print(int(c["max"]) + 1)
+PY
+)" || die "cannot derive the review ceiling from workflow/sonora-lane.json"
+[[ -n "$MAX_REVIEWS" ]] || MAX_REVIEWS="$DEF_REVIEWS"
+[[ "$MAX_REVIEWS" =~ ^[0-9]+$ && "$MAX_REVIEWS" -ge 1 && "$MAX_REVIEWS" -le "$DEF_REVIEWS" ]] \
+  || die "--max-reviews must be 1..$DEF_REVIEWS (the definition's fix-pass ceiling + 1)"
 
 NOTES_FILE="$REPO_ROOT/.review_cycle.notes"
 
@@ -288,7 +301,7 @@ check_stop() {
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "range        : $RANGE"
   echo "developer    : $DEVELOPER"
-  echo "max reviews  : $MAX_REVIEWS   (three fix passes need four reviews)"
+  echo "max reviews  : $MAX_REVIEWS   (the definition's fix-pass ceiling + 1)"
   echo "spend ceiling: \$$MAX_USD per claude call"
   echo "model/effort : $MODEL / $EFFORT"
   echo "stop file    : $STOPFILE"
@@ -368,8 +381,8 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
     break
   fi
   if (( review == MAX_REVIEWS )); then
-    say "review ceiling reached with $OPEN still open. Not a failure: issues below three fix
-        passes keep their remaining attempts, and a later cycle may take them."
+    say "review ceiling reached with $OPEN still open. Not a failure: issues below the
+        fix-pass ceiling keep their remaining attempts, and a later cycle may take them."
     break
   fi
 
