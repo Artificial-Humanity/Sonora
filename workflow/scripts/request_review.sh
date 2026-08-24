@@ -203,15 +203,25 @@ else
 fi
 
 [[ "$PASS" =~ ^[0-9]+$ ]] || die "--pass must be a number, got '$PASS'"
-# ⚠ FOUR, not three. What is capped is DEVELOPER FIX PASSES PER ISSUE (three of them, counted
-# on the issue as `agent_passes`), and three fix passes need four reviews: the one that finds
-# the issue, then one after each fix pass. An earlier version refused --pass 4, having
-# miscounted reviews for fix passes — it would have blocked the review that verifies the last
-# fix, which is the one that decides whether anything gets escalated at all.
-if [[ "$PASS" -gt 4 ]]; then
-  die "--pass $PASS exceeds four reviews, which is what three fix passes require.
-     If issues are still open after that, the cap is not doing its job —
-     check agent_passes on them rather than adding another review."
+# ⚠ CEILING + 1, DERIVED — never a literal. What is capped is DEVELOPER FIX PASSES PER
+# ISSUE (`agent_passes.max` in the lane definition since phase 2), and N fix passes need
+# N+1 reviews: the one that finds the issue, then one after each fix pass. An earlier
+# version hardcoded the sum and, before that, miscounted it — refusing the review that
+# verifies the LAST fix, the one that decides whether anything gets escalated at all. A
+# hardcoded sum here would be the cap's second copy, wearing a refusal.
+MAX_REVIEWS="$(python3 - "$REPO_ROOT/workflow/sonora-lane.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+(c,) = [c for c in d.get("counters", []) if c.get("name") == "agent_passes"]
+print(int(c["max"]) + 1)
+PY
+)" || die "cannot derive the review ceiling: workflow/sonora-lane.json is missing the
+     agent_passes counter, or is unreadable. Refusing rather than guessing a number."
+if [[ "$PASS" -gt "$MAX_REVIEWS" ]]; then
+  die "--pass $PASS exceeds $MAX_REVIEWS reviews, which is what the definition's fix-pass
+     ceiling allows (agent_passes.max + the review that files). If issues are still open
+     after that, the cap is not doing its job — check agent_passes on them rather than
+     adding another review."
 fi
 
 if [[ -n "$NOTES" && -n "$NOTES_FILE" ]]; then

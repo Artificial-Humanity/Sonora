@@ -92,7 +92,7 @@ behind — still authoritative-looking, and now wrong.** The procedure is
 
 | role | roster title | system prompt |
 |---|---|---|
-| **Worker** | `developer` — the roster's `default_agent` | [workflow/DEVELOPER.md](workflow/DEVELOPER.md) |
+| **Developer** | `developer` — the roster's `default_agent` | [workflow/DEVELOPER.md](workflow/DEVELOPER.md) |
 | **Reviewer** | `reviewer` | [workflow/REVIEWER.md](workflow/REVIEWER.md) |
 
 ⚠ **Names and emails are deliberately NOT restated here.** They live in
@@ -151,14 +151,15 @@ following. **So a rule added here and nowhere else reaches the reviewer at best 
 optional hop.** Anything Janis must not miss belongs in the persona or in the brief that
 `request_review.sh` builds.
 
-1. **Worker commits**, then runs
+1. **The developer commits**, then runs
    `workflow/scripts/request_review.sh --range origin/main..HEAD --developer Ozzy`, naming **the whole
    range it is about to push**.
 2. **The script blocks.** `Reviewer` reads the range and files issues straight into
    PocketBase, each carrying the `branch_name` of the review that produced it.
 3. **The script returns**, printing the review and the `branch_name` it filed under. **There is
    no tap-back** — the review has arrived when the script exits.
-4. **Worker increments `agent_passes` on each issue it takes on — first, before any work —**
+4. **The developer takes each issue — the engine spends `agent_passes`, first, before any
+   work —**
    then addresses them: fixing what is wrong, rebutting what is not, **in the issue's
    comments**. Then runs the script again with `--pass N`.
 5. **`Reviewer` re-reviews and RESOLVES**: closes what is genuinely cleared, leaves open what
@@ -240,15 +241,17 @@ the simple version that holds until then. Do not build tooling on its shape.
   [workflow/WORKFLOW.md](workflow/WORKFLOW.md).** It is the map; this section is the contract
   between the roles plus the repo facts both depend on.
   * ⚠ **The rules are also MECHANISMS now, which is why restating them here is worse than
-    useless.** `workflow/scripts/issue.py` refuses an escalation or a reopen with no comment,
-    refuses to take an issue at the cap, and refuses an illegal state transition;
+    useless.** The FerroStep engine refuses an undeclared state move, a mandatory note that
+    is missing, and a take at the spent ceiling — all against `workflow/sonora-lane.json`,
+    the one copy of the state machine (phase 2 of the cutover, 2026-08-24; `issue.py` only
+    requests the moves);
     `workflow/scripts/merge_branch.sh` refuses to merge a branch that carries a finding at or
     above the **severity floor** — the threshold is `MERGE_SEVERITY_FLOOR` in
     `workflow/config.env` and is deliberately not repeated here; anything below it rides to a
-    follow-up; ungraded and escalated block at any severity (owner, ratified 2026-08-19, built
-    2026-08-20).
+    follow-up; ungraded findings and halted states block at any severity (owner, ratified
+    2026-08-19, built 2026-08-20 — WHICH states are halted is the definition's fact too).
     A paraphrase in this file cannot refuse anything, and a reader who believes it over the
-    script is being misled by the more authoritative-looking document.
+    mechanism is being misled by the more authoritative-looking document.
 
 ### 2. Training & Troubleshooting Mandates
 

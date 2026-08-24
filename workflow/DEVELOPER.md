@@ -254,9 +254,11 @@ diff ran 7→5→9→7 findings, later rounds mostly defects in the earlier roun
 **A pass is not over when you stop typing — it is over when a reviewer has read the result.**
 There is no final fix pass that nobody reads.
 
-⚠ **THE CAP IS THREE FIX PASSES PER ISSUE — IT IS NOT A CAP ON REVIEWS** (owner, 2026-08-15:
-*"counting reviews was never the goal. We count fix passes."*). Three fix passes means **up to
-four reviews**: the one that finds the issue, then one after each of your passes.
+⚠ **THE CAP COUNTS FIX PASSES PER ISSUE — IT IS NOT A CAP ON REVIEWS** (owner, 2026-08-15:
+*"counting reviews was never the goal. We count fix passes."*). The ceiling itself is
+`agent_passes.max` in [sonora-lane.json](sonora-lane.json); N fix passes means **up to N+1
+reviews** — the one that finds the issue, then one after each of your passes. Illustrated
+at the shipped ceiling:
 
 ```
 review 1  ──▶ your pass 1 ──▶ review 2 ──▶ your pass 2 ──▶ review 3 ──▶ your pass 3 ──▶ review 4
