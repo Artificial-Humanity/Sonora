@@ -122,12 +122,15 @@ workflow/scripts/issue.py review 114 --comment "…"    # addressed, awaiting Ja
 workflow/scripts/issue.py escalate 114 --comment "…"  # the owner must decide (comment REQUIRED)
 ```
 
-Not a convenience. The rules that used to be prose in three files are **refusals** in that
-script: it will not let you escalate without saying what decision is needed, will not take an
-issue that is already at the cap, will not move a state through an illegal transition, and
-allocates the issue number so two writers cannot collide. **A rule in a file is not an
-enforcement mechanism** — this repo has paid for that lesson repeatedly, so the mechanism is
-the script. Set `ISSUE_AUTHOR=Ozzy` once and it stops asking who you are.
+Not a convenience — and since phase 2 (owner directive, 2026-08-24) not the enforcer
+either. The subcommands REQUEST moves, and **the FerroStep engine refuses illegal ones**
+against [sonora-lane.json](sonora-lane.json): an escalation without its question, a take at
+the spent ceiling (give it `--note` with the decision being asked, and the take itself
+routes the issue to `escalated`), a move the definition does not declare. **A rule in a
+file is not an enforcement mechanism** — this repo has paid for that lesson repeatedly, and
+the mechanism is now the referee, with the rules as data. issue.py keeps what the referee
+deliberately does not do: numbering (so two writers cannot collide), comments, severity and
+the queries. Set `ISSUE_AUTHOR=Ozzy` once and it stops asking who you are.
 
 ⚠ **You never write `user_decision`,** and there is deliberately no subcommand for it.
 
@@ -195,8 +198,11 @@ often saves a round.
   exists to prevent. **A crashed pass costs a pass.**
 * **Increment only what you are actually taking on** — the `state="open"` issues under the
   `branch_name` you were handed. Not the whole tracker, not what you are deferring.
-* **Anything already at `3` is out of attempts.** Escalate it; do not pick it up a fourth
-  time. A worker that increments a `3` to `4` has broken the cap.
+* **Anything out of attempts cannot be picked up again — the engine refuses the take.**
+  Give the refused take `--note` with the decision being asked, and it routes the issue to
+  `escalated` itself: one door for "out of attempts" and "escalate it", with the question
+  attached because the engine will not route without it. (The ceiling is `agent_passes.max`
+  in [sonora-lane.json](sonora-lane.json); nothing in prose states the number any more.)
 * ⚠ **Move it in one direction, by one.** Resetting a counter is the owner's alone — it is
   their dial for re-arming an issue, and a worker that lowers one, or sets it to a value it
   thinks fair, is the cap deleting itself. **If a stored value looks wrong, it is right:**
@@ -296,8 +302,9 @@ that no amount of reviewing will settle a question.
 
 1. **You cannot address it without a decision from the owner.** Escalate when you know, not on
    pass 3 — an issue needing a decision does not become decidable by being reviewed again.
-2. **`agent_passes` is already 3.** It is out of attempts. `workflow/scripts/issue.py take` refuses it
-   and tells you so; escalating is the only move left.
+2. **The counter is out of attempts.** The engine refuses the take and tells you so;
+   re-run it with `--note` carrying the decision request, and the take routes the issue to
+   `escalated` itself.
 
 ⚠ **A comment is MANDATORY** — say what decision is being asked for. `issue.py escalate`
 refuses without one, because the owner cannot answer a question that was not asked.
@@ -363,10 +370,10 @@ raised, which is the whole thing escalation exists to prevent.
   * **This was three manual edits until the owner pointed out that forgetting the counter
     reset silently strands the issue**: escalated at `agent_passes = 3`, it has no attempts
     left, so releasing it alone gets it re-read, found out of attempts, and re-escalated.
-  * ⚠ **THE MECHANISM LIVES IN ANOTHER REPO, WHICH IS WHY A REVIEWER CANNOT CONFIRM IT.** The
-    hook is `pocketbase/pb_hooks/issues_user_decision.pb.js` in the **AI-Lab-AMD** repo, deployed
-    from there with its `scripts/deploy.sh pb-hooks` — ⚠ **that is a sibling repo's script, not
-    this one's**; Sonora has no `deploy.sh` at all. A review of *this* repo cannot see it — the
+  * ⚠ **THE MECHANISM LIVES OUTSIDE THIS REPO, WHICH IS WHY A REVIEWER CANNOT CONFIRM IT.**
+    Since the 2026-08-24 cutover it is the release-hook block inside the generated FerroStep
+    hooks installed on the tracker (`ferrostep.issues.pb.js`, which replaced the old
+    `issues_user_decision.pb.js`). A review of *this* repo cannot see it — the
     install is outside the working directory — so this paragraph is the only evidence a reviewer
     has, which is exactly why it must not drift again.
 * ⚠ **`user_decision` set on an issue still in `state: escalated` should now be impossible**,

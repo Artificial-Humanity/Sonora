@@ -29,8 +29,11 @@ Everything below fails CLOSED, deliberately:
   * an UNKNOWN STATE blocks. Both inputs are whitelists — an earlier version blacklisted only
     `escalated`, so `rides("frobnicated", "low")` was True (#204). A guard with one blacklist
     in it has a hole shaped like the future;
-  * ESCALATED blocks at ANY severity. Severity says how bad a finding is; `escalated` says a
+  * a HALTED state blocks at ANY severity. Severity says how bad a finding is; halted says a
     human is waiting, and the floor does not get to overrule the second with the first.
+    ⚠ WHICH states are halted or terminal is the LANE DEFINITION's fact, not this module's
+    (phase 2): `rideable_states()` derives the whitelist from workflow/sonora-lane.json, and
+    an unreadable definition blocks everything.
 """
 import os
 
@@ -38,12 +41,34 @@ import os
 # at the correct rank and they become comparable everywhere at once.
 LADDER = ("low", "medium", "high", "critical")
 
-# `closed` never reaches the floor (the tracker query excludes it) and `escalated` must block,
-# so these two are the whole rideable set.
-RIDEABLE_STATES = frozenset({"open", "review"})
-
 _CONFIG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                        "config.env")
+_DEFINITION = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "sonora-lane.json")
+
+
+def rideable_states(path=None):
+    """States an unclosed issue may RIDE in: declared in the lane definition, and neither
+    `halted` nor `terminal` there.
+
+    ⚠ DERIVED, NOT DECLARED (phase 2, 2026-08-24). This was `frozenset({"open", "review"})`
+    beside a comment explaining why `escalated` and `closed` are excluded — a second copy of
+    state semantics the definition already carries, which would disagree with it the day a
+    state is added. workflow/sonora-lane.json is the one copy; this module reads it.
+
+    ⚠ FAILS CLOSED like everything else here: a missing, unreadable or malformed definition
+    returns the EMPTY set, so every state blocks — a gate that cannot read its own rules
+    must not guess them.
+    """
+    import json
+    try:
+        with open(path or _DEFINITION, encoding="utf-8") as fh:
+            d = json.load(fh)
+        states = set(d.get("states") or [])
+        blocked = set(d.get("halted") or []) | set(d.get("terminal") or [])
+        return frozenset((s or "").strip().lower() for s in states - blocked)
+    except (OSError, ValueError, TypeError, AttributeError):
+        return frozenset()
 
 
 def floor_setting(path=None):
@@ -72,7 +97,7 @@ def floor_setting(path=None):
 _READ_CONFIG = object()
 
 
-def rides(state, severity, floor=_READ_CONFIG):
+def rides(state, severity, floor=_READ_CONFIG, states=_READ_CONFIG):
     """True if this unclosed issue may ride past the floor and let the branch land."""
     raw = floor_setting() if floor is _READ_CONFIG else floor
     setting = (raw or "").strip().lower()
@@ -80,7 +105,8 @@ def rides(state, severity, floor=_READ_CONFIG):
         # ⚠ Unset, misspelled, or a value this ladder has never heard of. Block everything —
         # the alternative is a config typo quietly turning the gate off.
         return False
-    if (state or "").strip().lower() not in RIDEABLE_STATES:
+    allowed = rideable_states() if states is _READ_CONFIG else states
+    if (state or "").strip().lower() not in allowed:
         return False
     sev = (severity or "").strip().lower()
     if sev not in LADDER:

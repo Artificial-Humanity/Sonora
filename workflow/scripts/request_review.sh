@@ -463,10 +463,12 @@ if [[ -n "$SIBLING" ]]; then
 ### A sibling repo you can read
 
 \`$SIBLING\` (the **AI-Lab-AMD** infrastructure repo) is readable. Some mechanisms this repo
-*describes* are *implemented* there — notably the PocketBase hook behind \`user_decision\`,
-at \`pocketbase/pb_hooks/issues_user_decision.pb.js\`, and the deploy target that installs it.
-**Check there before filing a claim as unverifiable**; a previous review had to record a
-contradiction with its direction undetermined because it could not see this.
+*describes* are *implemented* there. ⚠ The \`user_decision\` release is NO LONGER among
+them (2026-08-24): it is a block inside the generated FerroStep hooks installed on the
+tracker, readable from no repo checkout — the personas' description is the only in-repo
+evidence, by design. **Check the sibling before filing anything ELSE as unverifiable**; a
+previous review had to record a contradiction with its direction undetermined because it
+could not see this.
 
 It is READ-ONLY and it is NOT part of your review range. Do not file findings about its
 contents unless they contradict something in the range you were given.

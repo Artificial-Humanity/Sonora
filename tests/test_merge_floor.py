@@ -138,6 +138,26 @@ def test_a_missing_config_file_blocks_rather_than_defaults(tmp_path):
     assert not merge_floor.rides("open", "low", floor="")
 
 
+def test_rideable_states_derive_from_the_lane_definition(tmp_path):
+    """⚠ Phase 2: WHICH states ride is the lane definition's fact, not this module's.
+
+    A definition marking `review` halted must flip the verdict with no edit here — and no
+    readable definition must block EVERYTHING, because a gate that cannot read its own rules
+    may not guess them. The last assertion pins that the live definition yields exactly the
+    two states every other test in this file assumes, so a definition edit that changes the
+    rideable set goes red here rather than silently rewriting the floor's meaning."""
+    d = tmp_path / "lane.json"
+    d.write_text('{"states": ["open", "review"], "halted": ["review"], "terminal": []}',
+                 encoding="utf-8")
+    assert merge_floor.rideable_states(str(d)) == frozenset({"open"})
+    assert not merge_floor.rides("review", "low", states=merge_floor.rideable_states(str(d)))
+    assert merge_floor.rideable_states(str(tmp_path / "absent.json")) == frozenset()
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json", encoding="utf-8")
+    assert merge_floor.rideable_states(str(bad)) == frozenset()
+    assert merge_floor.rideable_states() == frozenset({"open", "review"})
+
+
 def test_the_ladder_is_ordered_and_the_order_is_the_comparison():
     """Position in LADDER *is* the severity comparison, so a reorder silently changes every
     verdict. Pinned so that reordering fails here rather than at a merge."""

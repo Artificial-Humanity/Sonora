@@ -227,10 +227,15 @@ I expected to be false: `REVIEWER.md`'s "hard maximum 1500 characters, **enforce
 schema**" is accurate — `issue_comments.body.max` really is 1500, so the cap survives a writer
 that bypasses `issue.py`. Checking settled it; reading did not.
 
-⚠ **`agent_passes` has no schema maximum, and that is correct.** The cap lives only in
-`issue.py`. The field is the owner's dial — `0` means deliberately re-armed — so a schema
-ceiling would fight the owner. The fact to encode is the *documented* cap against
-`MAX_PASSES`, never a claim that the tracker enforces it.
+⚠ **`agent_passes` has no schema maximum, and that is correct.** The field is the owner's
+dial — `0` means deliberately re-armed — so a schema ceiling would fight the owner.
+
+⚠⚠ **SUPERSEDED IN PART (phase 2 of the FerroStep cutover, 2026-08-24).** The pass cap no
+longer lives in `issue.py` or `config.env`: it is `agent_passes.max` in
+`workflow/sonora-lane.json`, ENFORCED by the engine, and the state vocabulary's transition
+table left `issue.py` for the same file. Two of the table's four forks are therefore
+closed by consolidation rather than by the gate this plan proposed; the table stands as
+the 2026-08-17 measurement that motivated exactly that move.
 
 ### Design constraints inherited from the existing gate
 

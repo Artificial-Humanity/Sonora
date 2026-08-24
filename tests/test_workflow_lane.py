@@ -118,54 +118,75 @@ def test_it_parses():
 
 # --- the tracker script -----------------------------------------------------------------
 
-def _transitions():
-    """`TRANSITIONS` as the script actually defines it, read from the AST rather than imported
-    — importing would authenticate to PocketBase at module scope."""
-    tree = ast.parse(ISSUE_SRC)
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", "") == "TRANSITIONS":
-            return ast.literal_eval(node.value)
-    raise AssertionError("TRANSITIONS not found in issue.py")
+def _definition():
+    """workflow/sonora-lane.json — the lane definition the engine referees. Since phase 2 it
+    is the ONE copy of the state machine (the TRANSITIONS dict these tests used to read from
+    issue.py's AST is gone), so the definition is what gets pinned."""
+    import json
+    return json.loads((REPO / "workflow" / "sonora-lane.json").read_text(encoding="utf-8"))
 
 
-def test_escalated_has_no_route_back_to_open():
-    """⚠ Only the owner releases an escalation, and a server-side hook performs it.
+def _human_roles(d):
+    return {r["name"] for r in d["roles"] if isinstance(r, dict) and r.get("human")}
 
-    A subcommand that moved `escalated -> open` would let an agent quietly un-ask a question it
-    raised, which is the one thing escalation exists to prevent.
+
+def test_escalated_has_no_agent_route_back_to_open():
+    """⚠ Only the owner releases an escalation, and a server-side hook performs the write.
+
+    A transition letting a non-human role move `escalated -> open` would let an agent quietly
+    un-ask a question it raised, which is the one thing escalation exists to prevent.
     """
-    for action, rule in _transitions().items():
-        assert "escalated" not in rule["from"], \
-            f"{action} claims to move an issue out of 'escalated'"
+    d = _definition()
+    humans = _human_roles(d)
+    assert humans, "no human role in the definition — nobody could release an escalation"
+    for t in d["transitions"]:
+        if t["from"] == "escalated":
+            assert t["role"] in humans, \
+                f"non-human role {t['role']!r} may move an issue out of 'escalated'"
 
 
-def test_reopen_and_escalate_require_a_comment():
-    """The two mandatory-comment rules, as refusals rather than sentences.
+def test_reopen_and_escalate_require_a_note():
+    """The mandatory-comment rules, as ENGINE refusals (`requires_note`) rather than
+    sentences — issue.py's `require_comment` middle step is deleted, deliberately, so the
+    definition is the only place this can be true or false.
 
-    `reopen` spends one of Ozzy's three attempts; without a reason it is spent on a guess.
-    `escalate` asks the owner a question; one with no question attached cannot be answered.
+    `reopen` spends one of the developer's three attempts; without a reason it is spent on a
+    guess. `escalate` asks the owner a question; one with no question attached cannot be
+    answered — and the exhaustion route must carry the question for the same reason.
     """
-    src = ISSUE_SRC
-    assert 'require_comment(args, "reopen")' in src
-    assert 'require_comment(args, "escalate")' in src
-    fn = src[src.index("def require_comment"):src.index("def show_row")]
-    assert "die(" in fn, "require_comment must refuse, not warn"
+    d = _definition()
+
+    def rule(frm, to, role):
+        for t in d["transitions"]:
+            if (t["from"], t["to"], t["role"]) == (frm, to, role):
+                return t
+        raise AssertionError(f"no {frm}->{to} ({role}) transition in the definition")
+
+    assert rule("open", "escalated", "developer").get("requires_note") is True
+    assert rule("review", "open", "reviewer").get("requires_note") is True
+    (counter,) = [c for c in d["counters"] if c["name"] == "agent_passes"]
+    assert counter.get("on_exhausted") == "escalated"
+    assert counter.get("exhausted_requires_note") is True
 
 
-def test_the_counter_only_moves_up_by_one_and_stops_at_the_cap():
-    """`take` is the only writer of `agent_passes`, and the cap is what bounds the loop."""
-    fn = ISSUE_SRC[ISSUE_SRC.index("def cmd_take"):ISSUE_SRC.index("def transition")]
-    assert "cur + 1" in fn, "the counter must advance by exactly one"
-    assert ">= MAX_PASSES" in fn, "the cap must be enforced where the counter moves"
-    # ⚠ The WRITE form, `"agent_passes":`. Counting the bare name also counts the READ
-    # (`rec.get("agent_passes")`) and fails against correct code — which it did.
-    assert fn.count('"agent_passes":') == 1, "take must write the counter exactly once"
-    # ⚠ `file` legitimately writes `"agent_passes": 0` — a new issue starts at zero, and the
-    # workflow names that as one of the three fields filing must set. Excluding it by hand
-    # rather than loosening the assertion: everything OTHER than these two must not touch it.
-    filing = ISSUE_SRC[ISSUE_SRC.index("def cmd_file"):ISSUE_SRC.index("def cmd_take")]
-    others = ISSUE_SRC.replace(fn, "").replace(filing, "")
-    assert '"agent_passes":' not in others, "a third place writes agent_passes"
+def test_the_counter_spend_and_cap_are_the_definitions():
+    """`take` was the only code writer of `agent_passes` and enforced the cap itself. Since
+    phase 2 the spend is the definition's open -> open developer transition, the cap is the
+    counter's `max`, and the engine enforces both — so issue.py must no longer write the
+    counter anywhere except filing's initial zero."""
+    d = _definition()
+    (counter,) = [c for c in d["counters"] if c["name"] == "agent_passes"]
+    assert counter["max"] == 3, "the cap is three unless the owner says otherwise"
+    spends = [t for t in d["transitions"]
+              if t["from"] == "open" and t["to"] == "open"
+              and "agent_passes" in (t.get("spends") or [])]
+    assert [t["role"] for t in spends] == ["developer"], \
+        "exactly one spend transition — the developer's take"
+    # ⚠ The WRITE form, `"agent_passes":`, exactly as before: `file` legitimately writes the
+    # initial zero, and everything else in issue.py must not touch the counter at all.
+    filing = ISSUE_SRC[ISSUE_SRC.index("def cmd_file"):ISSUE_SRC.index("FERROSTEP_TIMEOUT")]
+    others = ISSUE_SRC.replace(filing, "")
+    assert '"agent_passes":' not in others, "issue.py writes the counter outside filing"
 
 
 def test_nothing_writes_user_decision():
@@ -247,7 +268,9 @@ def test_config_leaves_the_slug_empty_so_it_derives():
 def test_every_setting_has_a_fallback_in_the_scripts():
     """An unedited copy must run. Each setting is read with a default beside it."""
     issue = ISSUE_SRC
-    for key, src in (("MAX_PASSES", issue), ("COMMENT_MAX", issue)):
+    # ⚠ MAX_PASSES left this tuple with config.env (phase 2): the cap is the definition's
+    # `agent_passes.max`, validated at engine load rather than defaulted at read.
+    for key, src in (("COMMENT_MAX", issue),):
         assert re.search(r'CFG\.get\("%s"\)\s*or\s*\d+' % key, src), key
     assert 'BASE_BRANCH="${BASE_BRANCH:-main}"' in MERGE_CODE
 
@@ -569,12 +592,15 @@ def test_moving_to_review_warns_at_zero_and_is_silent_above_it():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
+    # ⚠ The move itself is the ENGINE's since phase 2; this test pins the WARNING, which
+    # stayed issue.py's. Faking ferrostep_move keeps it runnable without the binary.
+    mod.ferrostep_move = lambda pb, rec, role, to, note, actor: None
+
     def run(passes):
         """-> what cmd_review wrote to stderr for an issue at this counter."""
         rec = {"id": "x", "number": 1, "state": "open", "agent_passes": passes}
         fake = types.SimpleNamespace(
             find=lambda args, number: rec,
-            patch=lambda rec_id, body: None,
             add_comment=lambda args, r, text, author: None,
         )
         args = types.SimpleNamespace(number=1, repo="r", comment="", author="Ozzy")
@@ -605,18 +631,21 @@ def test_the_zero_warning_does_not_refuse():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    patched = {}
+    # ⚠ Since phase 2 the state write is the engine's; "did not refuse" now means "the move
+    # was REQUESTED". A fake referee records the request and keeps this binary-independent.
+    moved = {}
+    mod.ferrostep_move = (lambda pb, rec, role, to, note, actor:
+                          moved.update(role=role, to=to))
     rec = {"id": "x", "number": 1, "state": "open", "agent_passes": 0}
     fake = types.SimpleNamespace(
         find=lambda args, number: rec,
-        patch=lambda rec_id, body: patched.update(body),
         add_comment=lambda args, r, text, author: None,
     )
     args = types.SimpleNamespace(number=1, repo="r", comment="", author="Ozzy")
     with contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
         mod.cmd_review(fake, args)
-    assert patched.get("state") == "review", (
-        "cmd_review refused the transition at agent_passes = 0. It must only warn — 0 is "
+    assert moved == {"role": "developer", "to": "review"}, (
+        "cmd_review refused the move at agent_passes = 0. It must only warn — 0 is "
         "also the owner's deliberate re-arm value")
 
 
@@ -626,7 +655,8 @@ REVIEWER_MD = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
 
 
 def test_the_reviewer_is_not_told_to_reopen_from_a_state_the_code_refuses():
-    """§5b tells Janis a closed issue cannot be reopened. That is a claim about `TRANSITIONS`.
+    """§5b tells Janis a closed issue cannot be reopened. That is a claim about the LANE
+    DEFINITION now — the reviewer's routes to `open` are transitions in sonora-lane.json.
 
     ⚠ DERIVED, NOT RESTATED. The owner is deciding whether `reopen` should accept `closed`
     (2026-08-21). If it does and this paragraph is left behind, the persona instructs the
@@ -639,7 +669,8 @@ def test_the_reviewer_is_not_told_to_reopen_from_a_state_the_code_refuses():
     mechanism would have caught this drift; assuming the gate covers a persona is itself the
     error this pins.
     """
-    froms = _transitions()["reopen"]["from"]
+    froms = tuple(sorted(t["from"] for t in _definition()["transitions"]
+                         if t["role"] == "reviewer" and t["to"] == "open"))
     claim = "`issue.py reopen` moves an issue from `review` only"
     if tuple(froms) == ("review",):
         assert claim in REVIEWER_MD, (

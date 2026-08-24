@@ -10,33 +10,27 @@ thing tying findings to work — there is no pull request, no review document, a
 
 ---
 
-## The state machine
+## The state machine — the definition IS the map now
 
-`issues.state` has four values. They are exclusive, and every query in the lane reads them
-rather than any flag beside them.
+⚠⚠ **[sonora-lane.json](sonora-lane.json) is the one copy of the state machine, and the
+FerroStep engine ENFORCES it** (owner directive, 2026-08-24 — phase 2 of the cutover).
+States, roles, who may move what, which moves need a note, the `agent_passes` ceiling and
+where exhaustion routes are all DATA there. `issue.py`'s subcommands only REQUEST moves
+(through `ferrostep move`, against [issues.map.json](issues.map.json)); the engine's
+refusals replaced both this section's prose rules and issue.py's coded ones. A restated
+table here would be the second copy that drifts — this file carried exactly that table
+until phase 2, and `issues.state` still has the same four exclusive values it declares.
 
-| state | meaning | who moves it there |
-|---|---|---|
-| `open` | needs Ozzy's attention | Janis, on filing or on a failed verification |
-| `review` | Ozzy says it is addressed; awaiting verification | **Ozzy**, after committing the fix |
-| `escalated` | needs a decision from the owner | **Ozzy**, and only Ozzy |
-| `closed` | Janis has verified it is resolved | **Janis**, and only Janis |
+Two facts stay in words, because they are WHY the data says what it says:
 
-```
-                 ┌──────────────────── Janis: not resolved (comment REQUIRED) ──┐
-                 ▼                                                              │
-   [Janis files]──▶ open ──Ozzy fixes, counter+1──▶ review ──Janis verifies──▶ closed
-                     ▲                                 │
-                     │                                 └── (verification only; Janis
-      owner writes a decision                              also reads the new commits)
-      (hook: → open, counter → 0)
-                     │
-                     └────── escalated ◀── Ozzy: needs a decision, OR counter is 3
-                                             (comment REQUIRED)
-```
-
-⚠ **`closed` is the only terminal state**, and only Janis writes it. ⚠ **`escalated` is the
-only state Ozzy cannot resolve alone** — it waits for the owner.
+* ⚠ **`closed` is `terminal`, and only Janis writes it. `escalated` is `halted`** — a human
+  owes a decision, `ferrostep awaiting` lists it, and no non-human role has a route out.
+  The release is the owner's `user_decision`, performed server-side.
+* ⚠ **The take is the `open → open` developer move, spending `agent_passes`** — "increment
+  FIRST, before any work" as a mechanism. The attempt that finds the ceiling already spent
+  is refused without a note saying what decision the owner is being asked for; WITH the
+  note it ROUTES to `escalated`, so "out of attempts" and "escalate it" are one fact
+  instead of two that can disagree.
 
 ---
 
@@ -113,13 +107,23 @@ Ozzy fixed some, and this is the next review.
    rides to a follow-up branch**; ungraded and escalated block at any severity.
    ⚠ **The threshold is deliberately NOT repeated here** — that file is the only place it is
    set, and a second copy is one that goes stale the moment someone reconfigures it. A finding that rides is still open — move it to a
-   follow-up branch, or it sits on a `branch_name` that no longer has a branch. ⚠ **The gate is on the MERGE, not the push** (owner, 2026-08-17): a branch that
+   follow-up branch, or it sits on a `branch_name` that no longer has a branch. The move is
+   `ferrostep rescope --set branch_name=…` with a note: a refereed, evented operation that
+   replaced the raw tracker writes this lane used to perform (owner reversal, 2026-08-24).
+   ⚠⚠ **UNREACHABLE TODAY (written 2026-08-24): `rescope` REFUSES against the live board**
+   until the owner lands the regenerated hooks — the installed ones predate the operation,
+   and the adapter refuses by name rather than silently no-oping. Do NOT work around the
+   refusal with a raw write; that is the exact hole rescope exists to close. Delete this
+   warning when the refusal stops reproducing.
+   ⚠ **The gate is on the MERGE, not the push** (owner, 2026-08-17): a branch that
    merged legitimately is one whose push is unremarkable.
 3. For each issue, in order:
-   * **Needs an owner decision, OR `agent_passes` is already 3 → `escalated`.** ⚠ **A comment
-     is MANDATORY**, saying what decision is being asked for.
-   * **Otherwise: increment `agent_passes` FIRST, then fix, commit, and set `review`.**
-     A comment is optional.
+   * **Needs an owner decision → `escalated`.** ⚠ **The note is MANDATORY** — it says what
+     decision is being asked for, and the engine refuses without it. An issue OUT OF
+     ATTEMPTS escalates through the same door: the `take` that finds the ceiling spent
+     refuses until given that note, then routes the issue itself.
+   * **Otherwise: `take` FIRST — the engine spends the counter — then fix, commit, and set
+     `review`.** A comment is optional.
      * ⚠ **The counter moves BEFORE the work, not after** (owner's ruling, 2026-08-17,
        amending their own step order). A pass that dies halfway — the session dies, the
        context runs out, Ozzy gives up — has still spent its attempt. Counting afterwards
@@ -133,9 +137,10 @@ Ozzy fixed some, and this is the next review.
    guidance into `user_decision`.
 2. **A decision returns the issue to `open` and resets `agent_passes` to `0`** — one save, done
    by a server-side hook, not by anyone remembering three edits.
-   * The hook lives in the **AI-Lab-AMD** repo (`pocketbase/pb_hooks/issues_user_decision.pb.js`)
-     and is deployed with that repo's `scripts/deploy.sh pb-hooks`. A review of *this* repo
-     cannot see it.
+   * The mechanism lives OUTSIDE this repo. Since the 2026-08-24 cutover it is the
+     release-hook block inside the generated FerroStep hooks installed on the tracker
+     (`ferrostep.issues.pb.js`, which replaced the old `issues_user_decision.pb.js`). A
+     review of *this* repo cannot see it — this paragraph is a reviewer's only evidence.
    * ⚠ It releases **only** `escalated` → `open`. A decision written on a `closed` issue is a
      note, and must not reopen resolved work.
    * ⚠ **Both the return to `open` and the counter reset are needed.** Escalation happens at
@@ -156,9 +161,12 @@ scripts and settings.
    **not**, so this line is what makes any of the rest reachable at all:
 
    ```markdown
-   ## By default you are Ozzy, the developer
+   ## By default you are the developer
    @workflow/DEVELOPER.md
    ```
+
+   (Identities come from the FerroStep roster — copy `config.yaml` to the new repo root
+   and edit its names, emails and persona paths there; nothing else restates them.)
 
 3. **Check `workflow/config.env`** — the only file with per-repo settings, and every value has
    a working default. ⚠ **Leave `REPO_SLUG` empty** so it derives from
@@ -170,10 +178,16 @@ scripts and settings.
 ⚠ **WHAT DOES NOT TRAVEL, AND MUST BE CHECKED:**
 
 * **The tracker's schema.** `issues` and `issue_comments` must exist, with `state` carrying all
-  four values. The scripts assume it; they do not create it.
-* **The `user_decision` hook**, which lives in the **AI-Lab-AMD** repo. It is what returns a
-  decided issue to `open` with a fresh counter. Without it deployed, escalation is a one-way
-  door and every decision strands at `agent_passes = 3`.
+  four values — plus, since the referee cutover, `ferrostep_version` on `issues` and the
+  `ferrostep_events` collection, created by FerroStep's provisioning, not by these scripts.
+* **The referee itself.** The `ferrostep` binary (installed via cargo), and this lane's two
+  data files — `workflow/sonora-lane.json` (rename its `name` for the new lane) and
+  `workflow/issues.map.json`. Without the binary NO state moves at all; `issue.py` refuses
+  by name rather than falling back to writing state itself.
+* **The `user_decision` release hook** — since 2026-08-24 a block inside the generated
+  FerroStep hooks installed on the tracker. It is what returns a decided issue to `open`
+  with a fresh counter. Without it deployed, escalation is a one-way door and every
+  decision strands out of attempts.
 * **The personas' expertise.** `REVIEWER.md` §2 knows PyTorch, Matcha-TTS and this pipeline's
   failure modes; `DEVELOPER.md` names this repo's git traps. Both still *run* elsewhere, but a
   review is only as good as what the reviewer knows to look for. **Edit §2 for the new repo
@@ -196,3 +210,11 @@ deliberate owner ruling rather than a drift. They are listed so no one "restores
   carry its state; the record was a second place for the same truth.
 * **`state: review` exists at all.** Ozzy previously had no way to say "addressed" except in a
   comment, so every re-review re-read everything to find out.
+
+And one later than the four, same rule — listed so no one "restores" it either:
+
+* **The state machine left prose and code for data** (owner directive, 2026-08-24, phase 2):
+  `workflow/sonora-lane.json`, enforced by the FerroStep engine. issue.py's `TRANSITIONS`
+  dict, its cap check and its mandatory-comment refusals are DELETED, not disabled — the
+  engine's refusals are the one copy, and re-adding a coded guard beside them would be two
+  refusals for one rule, disagreeing the day one is edited.
