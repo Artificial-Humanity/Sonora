@@ -90,10 +90,14 @@ behind — still authoritative-looking, and now wrong.** The procedure is
 ⚠ **YOUR ROLE HAS A SYSTEM PROMPT, AND IT IS WHERE THE PROCEDURE NOW LIVES** (owner,
 2026-08-14):
 
-| role | identity | system prompt |
+| role | roster title | system prompt |
 |---|---|---|
-| **Worker** | **Ozzy** &lt;ozzy@artificialhumanity.io&gt; | [workflow/DEVELOPER.md](workflow/DEVELOPER.md) |
-| **Reviewer** | **Janis** &lt;janis@artificialhumanity.io&gt; | [workflow/REVIEWER.md](workflow/REVIEWER.md) |
+| **Worker** | `developer` — the roster's `default_agent` | [workflow/DEVELOPER.md](workflow/DEVELOPER.md) |
+| **Reviewer** | `reviewer` | [workflow/REVIEWER.md](workflow/REVIEWER.md) |
+
+⚠ **Names and emails are deliberately NOT restated here.** They live in
+[config.yaml](config.yaml) — the FerroStep roster, the ONE place identities are set
+(owner, 2026-08-24) — and resolve with `ferrostep agent-env [--agent <title>]`.
 
 **If you are the developer session for this repo, read
 [workflow/DEVELOPER.md](workflow/DEVELOPER.md) now and work as Ozzy.** It is your standing
@@ -367,6 +371,11 @@ the simple version that holds until then. Do not build tooling on its shape.
   review**.
   * ⚠ **THIS IS A JUDGEMENT THE WORKER MAKES ABOUT ITS OWN CHANGE**, before it asks for
     anything — nothing checks it. When in doubt on a mixed diff, request the review.
+* ⚠ **THE `workflow/` LANE ITSELF IS OUTSIDE REVIEW SPEND** (owner, 2026-08-24; recorded
+  here at the reviewer's request, after two passes in which the instruction reached it only
+  as a relayed claim). Review findings are not spent on `workflow/` or its machinery — the
+  lane is being replaced by FerroStep. A reviewer with a workflow concern puts it in the
+  summary for the owner, never the tracker.
 * ⚠ **Periodic wholesale review is a different altitude, and the one-shot move SETTLED HALF OF
   THIS** (raised 2026-08-13, half-resolved 2026-08-14). The owner keeps a floating reviewer
   session for reading the codebase and the product direction as a whole, on its own cadence:

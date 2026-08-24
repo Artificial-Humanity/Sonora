@@ -22,7 +22,7 @@ set -euo pipefail
 # Defaults
 # ---------------------------------------------------------------------------
 RANGE="origin/main..HEAD"
-DEVELOPER="Ozzy"
+DEVELOPER=""   # resolved from the roster once the repo root is known; --developer overrides
 # --- Per-repo settings -----------------------------------------------------
 # ⚠ ONE FILE TO EDIT WHEN PORTING THIS LANE. Sourced rather than hardcoded so that copying
 # `workflow/` into another repo does not carry this repo's identity with it. REPO_SLUG is
@@ -52,7 +52,8 @@ request_review.sh — one-shot code review by Janis. Blocks; prints the review o
                         MUST be a two-dot range. REVIEW THE WHOLE RANGE YOU WILL PUSH, not
                         the last commit — a push carries every unpushed commit, and this loop
                         has measured the range growing after the request on every cycle.
-  --developer <ID>      Agent id the reviewer addresses in issues.   (default: Ozzy)
+  --developer <ID>      Agent id the reviewer addresses in issues.
+                        (default: the roster's developer — config.yaml)
   --repo <SLUG>         Tracker `repo` field.  (default: workflow/config.env, or derived
                         from `git remote get-url origin` when that leaves it empty)
   --pass <N>            Which REVIEW this is, 1-4.                   (default: 1)
@@ -120,8 +121,25 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
   || die "cannot determine the branch (detached HEAD?). All work happens on a branch —
      the branch IS the reviewable unit, and issues are stamped with its name."
 
-PERSONA="$REPO_ROOT/workflow/REVIEWER.md"
+# ⚠ IDENTITIES AND PERSONAS RESOLVE FROM THE ROSTER — config.yaml at the repo root
+# (FerroStep, 2026-08-24) — never from a hardcoded name or path. The assignment-then-eval
+# split is load-bearing: `eval "$(…)"` in ONE step discards the reader's refusal, because
+# eval's status is the emitted text's status and a refusal emits nothing (measured
+# 2026-08-24, both lanes). AGENT_PERSONA arrives ABSOLUTE, resolved against the roster's
+# own directory — do not join it to $REPO_ROOT.
+AGENT_ENV="$(ferrostep agent-env --agent reviewer --roster "$REPO_ROOT/config.yaml")" \
+  || die "cannot resolve the reviewer from the roster: ferrostep agent-env refused (its
+     stderr, above, names the roster it read)."
+eval "$AGENT_ENV"
+PERSONA="${AGENT_PERSONA:-}"
+[[ -n "$PERSONA" ]] || die "agent-env emitted no AGENT_PERSONA for the reviewer"
 [[ -r "$PERSONA" ]] || die "reviewer persona not readable at $PERSONA"
+if [[ -z "$DEVELOPER" ]]; then
+  AGENT_ENV="$(ferrostep agent-env --roster "$REPO_ROOT/config.yaml")" \
+    || die "cannot resolve the default (developer) agent from the roster."
+  eval "$AGENT_ENV"
+  DEVELOPER="$AGENT_NAME"
+fi
 
 # --- Resolve the range -----------------------------------------------------
 # ⚠ A BARE REF IS REFUSED, and the reason is that git would accept it while meaning two

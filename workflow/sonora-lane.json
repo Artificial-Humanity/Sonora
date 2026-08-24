@@ -1,0 +1,30 @@
+{
+  "name": "sonora-review",
+  "purpose": "notes/north-star.md@main",
+  "roles": ["developer", "reviewer", { "name": "owner", "human": true }],
+  "states": ["open", "review", "escalated", "closed"],
+  "initial": "open",
+  "terminal": ["closed"],
+  "halted": ["escalated"],
+  "counters": [
+    {
+      "name": "agent_passes",
+      "max": 3,
+      "on_exhausted": "escalated",
+      "exhausted_requires_note": true
+    }
+  ],
+  "rescopes": [
+    { "label": "branch_name", "role": "developer", "requires_note": true }
+  ],
+  "transitions": [
+    { "from": "open", "to": "open", "role": "developer", "spends": ["agent_passes"] },
+    { "from": "open", "to": "review", "role": "developer" },
+    { "from": "open", "to": "escalated", "role": "developer", "requires_note": true },
+    { "from": "review", "to": "closed", "role": "reviewer" },
+    { "from": "open", "to": "closed", "role": "reviewer", "requires_note": true },
+    { "from": "review", "to": "open", "role": "reviewer", "requires_note": true },
+    { "from": "escalated", "to": "open", "role": "owner", "resets": ["agent_passes"], "requires_note": true },
+    { "from": "open", "to": "open", "role": "owner", "resets": ["agent_passes"], "requires_note": true }
+  ]
+}

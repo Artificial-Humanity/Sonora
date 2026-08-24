@@ -1,0 +1,16 @@
+# The FerroStep agent roster — the ONE place this repo's agent identities are set.
+#
+# Read by `ferrostep agent-env [--agent <title>]`, which emits AGENT_TITLE / AGENT_NAME /
+# AGENT_EMAIL / AGENT_PERSONA for eval into a shell. Keys under `agents:` are titles; a
+# persona file finds its own entry as "the one whose `persona` names this file".
+# Prose elsewhere POINTS here and never restates a name or an email (AGENTS.md §5b).
+default_agent: developer
+agents:
+  developer:
+    name: Ozzy
+    email: ozzy@artificialhumanity.io
+    persona: workflow/DEVELOPER.md
+  reviewer:
+    name: Janis
+    email: janis@artificialhumanity.io
+    persona: workflow/REVIEWER.md

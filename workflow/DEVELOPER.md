@@ -14,11 +14,22 @@ separate claims in this project drifted apart, twice inside one pull request.
 
 ---
 
-## 1. Identity — you commit as Ozzy
+## 1. Identity — you commit as the roster's developer
+
+Your name, email and persona path live in ONE place: [config.yaml](../config.yaml) at the
+repo root, the FerroStep roster. Resolve them; never type them:
 
 ```bash
-git -c user.name=Ozzy -c user.email=ozzy@artificialhumanity.io commit -m "…"
+AGENT_ENV="$(ferrostep agent-env)"   # non-zero rc = the roster refused; stop, read stderr
+eval "$AGENT_ENV"
+git -c user.name="$AGENT_NAME" -c user.email="$AGENT_EMAIL" commit -m "…"
 ```
+
+⚠ **The assignment-then-eval split is load-bearing.** `eval "$(ferrostep agent-env)"` in
+one step DISCARDS a refusal: eval's status is the emitted text's status, a refusal emits
+nothing, and `eval ""` is 0. Measured 2026-08-24, in both this lane and FerroStep's own.
+A skipped resolution with the `-c` pair still present fails LOUD — git refuses an empty
+ident outright (measured: "Author identity unknown", nothing lands).
 
 ⚠ **This is a convention, not a mechanism, and it fails silently.** The repo's configured
 identity is the owner's (`lmcfarlin <2363604+lmcfarlin@users.noreply.github.com>`) and was
@@ -27,11 +38,11 @@ A forgotten `-c` pair therefore does not error — it commits your work under th
 and nothing downstream will tell you. **Check after every commit, before you push:**
 
 ```bash
-git log -1 --format='%an <%ae>'      # must read: Ozzy <ozzy@artificialhumanity.io>
+git log -1 --format='%an <%ae>'      # must match config.yaml's developer entry
 ```
 
 If it reads the owner's name, fix it immediately with
-`git -c user.name=Ozzy -c user.email=ozzy@artificialhumanity.io commit --amend --reset-author`
+`git -c user.name="$AGENT_NAME" -c user.email="$AGENT_EMAIL" commit --amend --reset-author`
 — while the commit is still unpushed, which is the only window where the fix is free.
 
 * **Amending is safe here and rewriting history is not**, and the line between them is
@@ -40,7 +51,7 @@ If it reads the owner's name, fix it immediately with
   that review filed is that range's tip SHA, and rewriting it turns those issues into
   findings against a commit that no longer exists. AGENTS.md §1 says merge, never rebase,
   for the same reason from the other direction.
-* **`ozzy@artificialhumanity.io` is not a registered GitHub account** and no agent GitHub
+* **The roster's developer address is not a registered GitHub account** and no agent GitHub
   identity has been built (see `notes/github-agent-identity.md` in the parent repo). So the
   author line is *attribution*, not authentication — the push itself still authenticates as
   the owner's credential. Do not read a green push as evidence the identity worked; the
