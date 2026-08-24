@@ -4,8 +4,8 @@ Three times now, a written instrument in this repo turned out never to run — m
 `qc_verdict.py`, named in a `synth_bank.sh` comment for a month while 695 directed clips
 went to the ear with no direction check (issue #24). Each time it was found by hand, and
 each time the reason it survived was the same: in `scripts/`, being uninvoked is the normal
-state for most of the 100 non-test `.py` files there (106 tracked, less the 6 gate
-scripts), so an unwired *stage* is indistinguishable
+state for most of the roughly one hundred non-test `.py` files there, so an unwired
+*stage* is indistinguishable
 from an operator tool that was never meant to be called.
 
 `tests/test_audit_sampling.py` already guards individual stages, and guards them more

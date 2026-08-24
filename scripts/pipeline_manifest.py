@@ -1,10 +1,10 @@
 """Which pipeline stages a dataset-generation pass must run, and which shell wires each.
 
 This file exists because **"nothing invokes this script" is the normal, healthy state in
-`scripts/`** — 100 non-test `.py` files after #26 step 2 (106 tracked, less the 6 gate
-scripts), most of them operator tools — so being
+`scripts/`** — on the order of a hundred non-test `.py` files, most of them operator
+tools — so being
 uninvoked carried no signal, and a *stage* that stopped being invoked looked exactly like
-the ~70 files that never were. The buckets (`scripts/README.md`) now say what a file IS;
+the majority that never were. The buckets (`scripts/README.md`) now say what a file IS;
 this file is what makes a stage's WIRING checkable.
 `qc_verdict.py` sat in that fog for a month: named in `synth_bank.sh` inside a comment, and
 never run (issue #24). 695 directed clips reached the ear with no intended-vs-measured check.

@@ -3,7 +3,7 @@
 Until 2026-08-12 this directory was 114 files in two folders, and **"nothing invokes this"
 was the normal, healthy state** for most of them. That is why `qc_verdict.py` could be named
 in a `synth_bank.sh` comment for a month without running: an unwired *stage* looked exactly
-like the ~80 files that were never meant to be called (issues #24, #26).
+like the majority of files that were never meant to be called (issues #24, #26).
 
 The layout is the answer to *"what is this file?"*. The enforcement is
 [`pipeline_manifest.py`](pipeline_manifest.py) plus `tests/test_stage_coverage.py`.
