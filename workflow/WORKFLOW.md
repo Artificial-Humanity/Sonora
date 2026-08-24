@@ -109,12 +109,10 @@ Ozzy fixed some, and this is the next review.
    set, and a second copy is one that goes stale the moment someone reconfigures it. A finding that rides is still open — move it to a
    follow-up branch, or it sits on a `branch_name` that no longer has a branch. The move is
    `ferrostep rescope --set branch_name=…` with a note: a refereed, evented operation that
-   replaced the raw tracker writes this lane used to perform (owner reversal, 2026-08-24).
-   ⚠⚠ **UNREACHABLE TODAY (written 2026-08-24): `rescope` REFUSES against the live board**
-   until the owner lands the regenerated hooks — the installed ones predate the operation,
-   and the adapter refuses by name rather than silently no-oping. Do NOT work around the
-   refusal with a raw write; that is the exact hole rescope exists to close. Delete this
-   warning when the refusal stops reproducing.
+   replaced the raw tracker writes this lane used to perform (owner reversal, 2026-08-24;
+   first proven live on record #292 the same day). ⚠ It refuses a TERMINAL record by
+   design — a closed finding's scope is provenance — so move a riding finding while it is
+   still open, never after it closes.
    ⚠ **The gate is on the MERGE, not the push** (owner, 2026-08-17): a branch that
    merged legitimately is one whose push is unremarkable.
 3. For each issue, in order:
