@@ -513,7 +513,8 @@ to `±0.35`, which is what `scm.VAT_TOL` implements. That stood for a month.
 
 ### 5c. A pipeline stage is WIRED, or it is merely WRITTEN ABOUT
 
-`scripts/` holds **100 non-test `.py` files** (106 tracked, less the 6 gate scripts) and
+`scripts/` holds **on the order of a hundred non-test `.py` files** (per-directory counts:
+[scripts/README.md](scripts/README.md)'s table) and
 most of them are *correctly* uninvoked — operator tools, finished campaign tooling. So "nothing calls this" carries no signal there, and a
 **stage** that stopped being called is indistinguishable from a tool that never was. That is
 how `qc_verdict.py` was named in a `synth_bank.sh` comment for a month and never ran, while
