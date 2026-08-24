@@ -7,7 +7,8 @@
     workflow/scripts/issue.py grade     N --severity low|medium|high|critical
                                         writes the field the MERGE GATE reads. Raising is
                                         open; lowering an existing grade is the reviewer's
-    workflow/scripts/issue.py take      N [N ...]          Ozzy: agent_passes += 1, BEFORE any work
+    workflow/scripts/issue.py take      N [N ...] [--note D]  Ozzy: agent_passes += 1, BEFORE any
+                                        work; at the ceiling, --note routes it to escalated
     workflow/scripts/issue.py review    N --comment C      Ozzy: addressed, awaiting Janis
     workflow/scripts/issue.py escalate  N --comment C      Ozzy: the owner must decide
     workflow/scripts/issue.py close     N [--comment C]    Janis: verified resolved
@@ -19,13 +20,15 @@ WHY THIS EXISTS. The workflow's rules were prose in three files, and this repo's
 expensive recurring lesson is that **a rule in a file is not an enforcement mechanism**. Every
 rule below is one an agent could previously break by forgetting:
 
-  * a comment is MANDATORY on `reopen` and `escalate`, optional elsewhere -- refused here,
-    not merely requested;
   * `number` does not auto-assign and must be unique per repo -- allocated here, with a
     retry when two writers race for the same one;
   * a new issue must carry `branch_name`, `state=open`, `agent_passes=0` -- set here;
-  * `agent_passes` moves UP, by ONE, and never past 3 -- enforced here;
-  * only legal state transitions are accepted (see TRANSITIONS).
+  * ⚠ STATE MOVES AND THE PASS CAP ARE THE REFEREE'S SINCE PHASE 2 (owner directive,
+    2026-08-24): take/review/escalate/close/reopen shell out to `ferrostep move`, and the
+    rules they obey -- who may move what, the counter ceiling, where exhaustion routes,
+    which moves need a note -- are DATA in workflow/sonora-lane.json, enforced by the
+    engine, not code here. This module keeps the jobs the referee deliberately does not
+    do: numbering, filing, comments, severity, and the queries.
 
 ⚠ IT DOES NOT DELETE. There is no delete subcommand and there must never be one: the tracker
 is the sole record that a finding ever existed.
@@ -88,7 +91,9 @@ def _config():
 
 CFG = _config()
 REPO_SLUG = CFG.get("REPO_SLUG") or ""
-MAX_PASSES = int(CFG.get("MAX_PASSES") or 3)
+# ⚠ MAX_PASSES IS GONE FROM config.env (phase 2): the ceiling is `agent_passes.max` in
+# workflow/sonora-lane.json, and the engine enforces it — "out of attempts" and "escalate
+# it" are one fact there (`on_exhausted`), not two that can disagree.
 # ⚠ READ, NOT DECORATIVE. Until 2026-08-20 this setting existed and nothing consumed it
 # (#216). `cmd_grade` uses it to decide who may LOWER a severity, which is the one
 # tracker write that can clear the merge gate without closing anything (#218).
@@ -135,13 +140,16 @@ SEVERITY_LADDER = _MERGE_FLOOR.LADDER
 COMMENT_MAX = int(CFG.get("COMMENT_MAX") or 1500)
 OPEN_STATES = ("open", "review", "escalated")
 
-# The state machine from workflow/WORKFLOW.md. `escalated -> open` is absent on purpose: only
-# the owner's decision releases an escalation, and a server-side hook performs it.
-TRANSITIONS = {
-    "review": {"from": ("open",), "who": "Ozzy"},
-    "escalate": {"from": ("open",), "who": "Ozzy"},
-    "close": {"from": ("review", "open"), "who": "Janis"},
-    "reopen": {"from": ("review",), "who": "Janis"},
+# ⚠ THE STATE MACHINE LIVES IN workflow/sonora-lane.json AND THE REFEREE ENFORCES IT
+# (phase 2). This table only maps a subcommand to the (role, target state) it REQUESTS —
+# routing, not rules: legality, notes and the counter are the engine's refusals now.
+# `escalated -> open` has no subcommand on purpose: only the owner's decision releases an
+# escalation, and a server-side hook performs it.
+ROLE_FOR = {
+    "review": ("developer", "review"),
+    "escalate": ("developer", "escalated"),
+    "close": ("reviewer", "closed"),
+    "reopen": ("reviewer", "open"),
 }
 
 
@@ -235,19 +243,10 @@ class PB:
             die("comment refused: %s" % json.dumps(r)[:400])
 
 
-def require_comment(args, action):
-    """⚠ THE MANDATORY-COMMENT RULE, AS A MECHANISM RATHER THAN A SENTENCE.
-
-    `reopen` spends one of Ozzy's three attempts, and doing that without saying what is still
-    wrong spends it on a guess. `escalate` asks the owner for a decision, and one arriving with
-    no question attached cannot be answered. Both were prose rules before this script existed.
-    """
-    if not (args.comment or "").strip():
-        die("%s requires --comment. %s" % (action, {
-            "reopen": "Sending an issue back consumes one of Ozzy's three attempts; without a "
-                      "reason it is spent on a guess.",
-            "escalate": "The owner cannot answer a question that was not asked.",
-        }[action]))
+# ⚠ The mandatory-comment rule moved twice: prose -> a refusal here (`require_comment`,
+# 2026-08-13..24) -> the ENGINE (`requires_note` on the definition's transitions, phase 2).
+# The middle step is deleted, not kept as a second gate: two refusals for one rule disagree
+# the day one of them is edited.
 
 
 def show_row(i):
@@ -387,46 +386,74 @@ def cmd_file(pb, args):
     die("could not allocate a free issue number after 6 attempts")
 
 
+FERROSTEP_TIMEOUT = 60
+
+
+def ferrostep_move(pb, rec, role, to_state, note, actor):
+    """One state move, refereed by the engine against workflow/sonora-lane.json.
+
+    The token is the session this module already authenticated -- no second auth. A refusal
+    is the PRODUCT here, not an error to soften: the engine says which rule refused and what
+    would satisfy it, so its stderr is printed verbatim.
+    """
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    cmd = ["ferrostep", "move",
+           "--workflow", os.path.join(root, "workflow", "sonora-lane.json"),
+           "--store", "pocketbase:" + pb.base,
+           "--map", os.path.join(root, "workflow", "issues.map.json"),
+           "--record", rec["id"], "--role", role, "--to", to_state,
+           "--actor", actor or role]
+    if (note or "").strip():
+        cmd += ["--note", note.strip()]
+    env = dict(os.environ, FERROSTEP_POCKETBASE_TOKEN=pb.tok)
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, env=env,
+                           timeout=FERROSTEP_TIMEOUT)
+    except FileNotFoundError:
+        die("the `ferrostep` binary is not on PATH. Since phase 2 the state machine is the\n"
+            "     referee's, and issue.py no longer moves state itself. Install it:\n"
+            "       cargo install --path <FerroStep checkout>/ferrostep-cli --locked")
+    except subprocess.TimeoutExpired:
+        die("ferrostep move timed out after %ds. ⚠ UNREACHABLE IS NOT REFUSED: the record\n"
+            "     may or may not have moved -- read it before retrying." % FERROSTEP_TIMEOUT)
+    if p.returncode != 0:
+        die("the referee refused #%s (%s -> %s):\n%s"
+            % (rec.get("number"), rec.get("state"), to_state,
+               (p.stderr or p.stdout or "(no output)").strip()))
+    out = (p.stdout or "").strip()
+    if out:
+        print(out)
+
+
 def cmd_take(pb, args):
     """⚠ INCREMENT FIRST, BEFORE ANY WORK (owner, 2026-08-17).
 
     A pass that dies halfway has still spent its attempt. Counting afterwards makes a failed
     pass free, and "retry until it works" is the unbounded loop the cap exists to prevent.
+
+    Since phase 2 the spend is the engine's open -> open developer move, and the ceiling is
+    `agent_passes.max` in workflow/sonora-lane.json. ⚠ The attempt that finds the ceiling
+    already spent is REFUSED unless --note says what decision the owner is being asked for;
+    WITH the note it ROUTES the issue to `escalated`, the note riding the event.
     """
     for number in args.numbers:
         rec = pb.find(args, number)
-        cur = int(rec.get("agent_passes") or 0)
-        if rec["state"] != "open":
-            die("#%d is '%s', not 'open' -- only open issues are taken. %s"
-                % (number, rec["state"], {
-                    "review": "It is already awaiting Janis.",
-                    "escalated": "It is waiting on the owner's decision.",
-                    "closed": "It is resolved.",
-                }.get(rec["state"], "")))
-        if cur >= MAX_PASSES:
-            die("#%d is at agent_passes=%d, which is the cap. It cannot be attempted again -- "
-                "escalate it instead:\n    workflow/scripts/issue.py escalate %d --comment '...'"
-                % (number, cur, number))
-        pb.patch(rec["id"], {"agent_passes": cur + 1})
-        print("#%d taken: agent_passes %d -> %d" % (number, cur, cur + 1))
+        ferrostep_move(pb, rec, "developer", "open", getattr(args, "note", None),
+                       args.author)
 
 
-def transition(pb, args, action, new_state, author):
+def transition(pb, args, action, author):
+    role, to_state = ROLE_FOR[action]
     rec = pb.find(args, args.number)
-    rule = TRANSITIONS[action]
-    if rec["state"] not in rule["from"]:
-        die("#%d is '%s'; %s moves an issue from %s. See workflow/WORKFLOW.md."
-            % (args.number, rec["state"], action, " or ".join(rule["from"])))
-    # ⚠ Closing straight from `open` is legal but abnormal -- a duplicate, or a finding
-    # withdrawn -- so it must be explained. The normal path, review -> closed, need not be.
-    if action == "close" and rec["state"] == "open" and not (args.comment or "").strip():
-        die("closing #%d directly from 'open' skips verification, so it needs --comment saying "
-            "why (a duplicate, or a finding withdrawn). The normal path is Ozzy setting "
-            "'review' first." % args.number)
+    # ⚠ MOVE FIRST, COMMENT SECOND. The engine's refusal must not leave a comment describing
+    # a move that never happened. The comment is the human-readable trail (issue_comments);
+    # the same text rides the move as its --note, which is the event's copy -- one utterance
+    # recorded at two surfaces with two readers, not a maintained copy that can drift.
+    ferrostep_move(pb, rec, role, to_state, args.comment, author)
     if (args.comment or "").strip():
         pb.add_comment(args, rec, args.comment, author)
-    pb.patch(rec["id"], {"state": new_state})
-    print("#%d: %s -> %s" % (args.number, rec["state"], new_state))
+    print("#%d: %s -> %s" % (args.number, rec["state"], to_state))
 
 
 def cmd_review(pb, args):
@@ -449,7 +476,7 @@ def cmd_review(pb, args):
               "  a pass that spent no attempt is not recorded — or the owner re-armed it\n"
               "  deliberately, in which case ignore this. Do NOT backfill it to look right;\n"
               "  say which it was in the pass notes." % args.number, file=sys.stderr)
-    transition(pb, args, "review", "review", args.author)
+    transition(pb, args, "review", args.author)
 
 
 STE_SENTENCE_WORDS = 25
@@ -475,25 +502,27 @@ def ste_warnings(text):
 
 
 def cmd_escalate(pb, args):
-    require_comment(args, "escalate")
+    # ⚠ The note requirement is the ENGINE's now (open -> escalated carries
+    # `requires_note` in the definition), so a bare escalate is refused there, not here.
     warn = ste_warnings(args.comment)
     for w in warn:
         print("⚠ STE — %s" % w)
     if warn:
         print("  (escalation comments are written in ASD-STE100; use the `ste` skill. This "
               "check sees sentence length ONLY — passing it is not an STE pass.)")
-    transition(pb, args, "escalate", "escalated", args.author)
+    transition(pb, args, "escalate", args.author)
     print("⚠ the owner owes a decision here. Tell them; they write `user_decision`, and a hook "
           "returns it to 'open' with a fresh counter.")
 
 
 def cmd_close(pb, args):
-    transition(pb, args, "close", "closed", args.author)
+    # ⚠ review -> closed needs no note; open -> closed (withdraw/dedupe) REQUIRES one.
+    # Both rules are the definition's, and the engine refuses -- not this module.
+    transition(pb, args, "close", args.author)
 
 
 def cmd_reopen(pb, args):
-    require_comment(args, "reopen")
-    transition(pb, args, "reopen", "open", args.author)
+    transition(pb, args, "reopen", args.author)
 
 
 
@@ -721,6 +750,8 @@ def main():
     s.set_defaults(fn=cmd_grade)
 
     s = add("take"); s.add_argument("numbers", type=int, nargs="+")
+    s.add_argument("--note", help="required only when the take finds the ceiling spent: "
+                   "the decision being asked for; the engine then routes to escalated")
     s.set_defaults(fn=cmd_take)
 
     for name, fn in (("review", cmd_review), ("escalate", cmd_escalate),

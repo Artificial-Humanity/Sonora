@@ -391,7 +391,8 @@ headline; open items are in [todo.md](todo.md).
   stale and missing a seam guard the repo recorded as landed. `tests/test_data_mirrors.py`
   fails on any divergence. **The repo is authoritative; `/data` is a working copy.**
 - Review findings are resolved before the push, and whatever a cycle cannot settle becomes a
-  GitHub issue (AGENTS.md §1). ⚠ The pattern the final sweep
+  tracker issue (AGENTS.md §1; the tracker left GitHub for the lab board 2026-08-13, and its
+  state machine is FerroStep-refereed since 2026-08-24). ⚠ The pattern the final sweep
   found is worth carrying regardless of where findings get recorded: **both High findings
   were enforcement code that existed and was never wired in** — written, reviewed,
   committed, never called. Check that a guard is INVOKED, not merely present.
