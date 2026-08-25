@@ -603,10 +603,24 @@ what makes that a no-op for existing rows, and **that is a claim to re-verify ag
 shipped v6 files, not to trust from this note**) → `derive_vat_corpus.py` over the two new
 roots on per-speaker z (viable here, unlike Emilia: ~2,064 new speakers with a median in
 the hundreds of clips) → merge with v6's rows byte-identical and ids appended → hash split
-→ `data_statistics` re-measured **in-container** → `configs/data_licenses.yaml` already
-classifies both subsets under `libritts_r` (verified by calling `classify_path`, so no
-manifest edit is needed) → warm start from `vat6_finetune` **`ep008`**. Follow
+→ `data_statistics` re-measured **in-container** → `configs/data_licenses.yaml` **needed a
+new entry and now has one** (`libritts_r_full_vat_v7` plus the two `_derived_*` inputs,
+under `merged_vat_corpora`) → warm start from `vat6_finetune` **`ep008`**. Follow
 `merge_emilia_corpus.py` verbatim, as rung 2 did.
+
+⚠ **THIS PARAGRAPH SAID "no manifest edit is needed" AND THAT WAS WRONG (#294, caught in
+review 1 rather than by the build).** `classify_path` *was* called, on the **audio roots**,
+and they do classify as `libritts_r` — then the answer was generalised to the whole wall.
+`license_wall.enforce()` iterates `[filelist, *seen_dirs]`, so it also classifies **the
+corpus directory that holds the filelists**, and `data/libritts_r_full_vat_v7` returned
+`None`. The build would have been refused at load, after the labelling and the merge were
+already paid for. v5 and v6 each carry their own entry for exactly this reason, and the
+per-corpus checklist's FIRST item was recorded as satisfied on the strength of a check that
+looked at one of the two things the wall reads. **A verification that covers part of a gate
+is not a verification of the gate** — and it fails in the most expensive direction, because
+partial evidence reads exactly like complete evidence once it is written down as a
+conclusion. The merge script now runs the same pre-flight `merge_emilia_corpus` does (#293),
+so this cannot be re-established by prose alone.
 
 ### The low-hanging fruit, itemised — ~870 h before anything is rendered
 

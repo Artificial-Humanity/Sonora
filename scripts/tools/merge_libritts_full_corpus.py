@@ -48,6 +48,7 @@ out of this script is an ABORT that writes nothing.
 
 import argparse
 import collections
+import hashlib
 import json
 import os
 import sys
@@ -109,10 +110,42 @@ def main():
     ap.add_argument("--add", action="append", default=[], metavar="DIR",
                     help="a derive_vat_corpus output directory to append (repeatable)")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--force", action="store_true",
+                    help="overwrite an --out that already holds a corpus")
     ap.add_argument("--dry-run", action="store_true", help="report, write nothing")
     args = ap.parse_args()
     if not args.add:
         die("nothing to add — pass at least one --add DIR")
+
+    # ⚠ #295. `--out` == `--base` would rewrite the base corpus in place, and the base is the
+    # byte-identity REFERENCE — destroying it destroys the only thing that can prove the
+    # append was legal, and the warm start's prefix proof with it. Compared by realpath so a
+    # symlink or a trailing slash cannot slip past. An --out that already holds a corpus is
+    # refused for the weaker version of the same reason: a merge is not an in-place edit.
+    if os.path.realpath(args.out) == os.path.realpath(args.base):
+        die("--out is the same directory as --base. This would overwrite the base corpus, "
+            "which is the reference the byte-identity check is made against. Nothing written.")
+    existing = [n for n in ("train_op.txt", "val_op.txt", "speakers.json")
+                if os.path.exists(os.path.join(args.out, n))]
+    if existing and not args.force:
+        die("--out %s already holds %s. Refusing to overwrite a corpus; pass --force if "
+            "that is genuinely what you want." % (args.out, ", ".join(existing)))
+
+    # ⚠ #293. The same pre-flight `merge_emilia_corpus` runs, and for the reason its own
+    # comment gives: the wall classifies the FILELIST'S OWN DIRECTORY, so a new corpus dir
+    # needs a manifest entry even though it holds no audio. Asked early because the answer
+    # does not change and finding out at load time costs the whole build. The authoritative
+    # check is `license_check` on the written filelists at the end.
+    from matcha.data.license_wall import classify_path
+    from matcha.data.license_wall import enforce as license_check
+    for p in (args.out, args.base, *args.add):
+        hit = classify_path(p)
+        if hit is None:
+            die("%s matches no declared dataset. The licence wall would refuse this corpus "
+                "at load; declare it in configs/data_licenses.yaml first." % p)
+        if hit[1] == "nc":
+            die("%s -> %s (%s) is NON-COMMERCIAL. NC data is de-risk-only and must not "
+                "enter a corpus." % (p, hit[0], hit[2]))
 
     base = read_corpus(args.base)
     base_ns = namespaces(base["speakers"])
@@ -222,6 +255,47 @@ def main():
         with open(os.path.join(args.out, name), "w", encoding="utf-8") as f:
             f.write("\n".join(part) + "\n")
         print("wrote %d rows -> %s" % (len(part), os.path.join(args.out, name)))
+
+    # ⚠ #296. This USED to be written as `"base_rows_byte_identical": True` — a Python
+    # literal in the one artifact whose job is saying what was checked. It happened to be
+    # true, which is worse than being false: a later change that broke the property would
+    # have kept emitting the claim, and the note pointing readers here would have kept
+    # pointing at it. So the property is MEASURED, from the files on disk rather than from
+    # the in-memory lists that produced them, and the digests are recorded so the claim can
+    # be re-checked without re-running the merge.
+    identity = {}
+    for name in ("train_op.txt", "val_op.txt"):
+        base_lines = base[name]
+        with open(os.path.join(args.out, name), encoding="utf-8") as f:
+            out_lines = [ln for ln in f.read().split("\n") if ln]
+        prefix = out_lines[:len(base_lines)]
+        b = hashlib.sha256("\n".join(base_lines).encode("utf-8")).hexdigest()
+        o = hashlib.sha256("\n".join(prefix).encode("utf-8")).hexdigest()
+        identity[name] = {"base_rows": len(base_lines), "sha256_base": b,
+                          "sha256_out_prefix": o, "identical": b == o}
+        if b != o:
+            die("BYTE-IDENTITY FAILED on %s: the output's first %d rows do not reproduce "
+                "the base. The corpus at %s is NOT a legal warm-start donor and must not "
+                "be trained on." % (name, len(base_lines), args.out))
+    print("byte-identity: verified on disk (%s)"
+          % ", ".join("%s %d rows" % (n, v["base_rows"]) for n, v in identity.items()))
+    # ⚠ The authoritative licence check needs the files on disk, so it runs AFTER the write —
+    # which means a refusal here leaves filelists in `--out` and no `speakers.json`. That
+    # half-corpus would then trip the "--out already holds a corpus" guard above and demand
+    # `--force` on the retry, turning one honest refusal into two. So the partial write is
+    # removed: the invariant this script promises is that a failure writes nothing.
+    try:
+        license_check([os.path.join(args.out, n) for n in ("train_op.txt", "val_op.txt")])
+    except Exception:
+        for n in ("train_op.txt", "val_op.txt"):
+            try:
+                os.remove(os.path.join(args.out, n))
+            except OSError:
+                pass
+        print("licence wall REFUSED — partial write removed, %s left with no corpus"
+              % args.out, file=sys.stderr)
+        raise
+    print("licence wall: accepted")
     merged_ns["n_spks"] = next_index
     with open(os.path.join(args.out, "speakers.json"), "w", encoding="utf-8") as f:
         json.dump({"n_spks": next_index, **{k: v for k, v in merged_ns.items() if k != "n_spks"}},
@@ -233,8 +307,9 @@ def main():
             "n_spks": next_index,
             "train_rows": len(train),
             "val_rows": len(val),
-            "base_rows_byte_identical": True,
-            "note": ("Rows are appended, never relabelled. The per-directory independence "
+            "base_rows_byte_identical": identity,
+            "note": ("Rows are appended, never relabelled. `base_rows_byte_identical` is "
+                     "MEASURED from the written files, not asserted. The per-directory independence "
                      "gate readings live in each --add dir's own derivation_report.json and "
                      "are NOT pooled here."),
         }, f, indent=2)

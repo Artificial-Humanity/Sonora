@@ -103,6 +103,24 @@ def main() -> None:
                          "a lane's manner appears once the energy channel is allowed to move.")
     args = ap.parse_args()
 
+    # ⚠ #297. The README this writes states the speaker, the checkpoint and V/T=0 as FACT.
+    # Those live in design.json, so it is read rather than assumed — and a probe without one
+    # is REFUSED. That is not defensive padding: `probes/delivery_ep010/` has a
+    # schema-compatible measures.csv and no design.json, and it is the exact probe
+    # probe_delivery_intercept.py was written about ("the renders survived; the design did
+    # not"). Consuming it would produce an ear test asserting four things nobody can check.
+    design_path = args.probe / "design.json"
+    if not design_path.exists():
+        raise SystemExit(
+            f"{design_path} is missing. This tool states the speaker, checkpoint and "
+            f"V/T settings as fact in the README it writes, so it will not run against a "
+            f"probe whose design was not recorded. Re-render with "
+            f"probe_delivery_intercept.py, which writes one.")
+    design = json.loads(design_path.read_text(encoding="utf-8"))
+    for field in ("checkpoint", "spk", "valence", "tension"):
+        if field not in design:
+            raise SystemExit(f"{design_path} has no {field!r} — cannot state it in the README.")
+
     rows = [r for r in read_measures(args.probe) if float(r["energy"]) == args.energy]
     if not rows:
         have = sorted({r["energy"] for r in read_measures(args.probe)})
@@ -160,7 +178,12 @@ def main() -> None:
     # else is a key that is lost by the time the answers come back.
     (args.out / "KEY.json").write_text(
         json.dumps({"probe": str(args.probe), "seed": args.seed, "energy": args.energy,
-                    "target_lufs": args.target_lufs, "clips": key}, indent=2),
+                    "target_lufs": args.target_lufs,
+                    # The artifact must carry WHAT IT TESTED. A key naming only the probe
+                    # directory is unresolvable once that directory moves or is re-rendered.
+                    "checkpoint": design["checkpoint"], "spk": design["spk"],
+                    "valence": design["valence"], "tension": design["tension"],
+                    "clips": key}, indent=2),
         encoding="utf-8")
 
     groups = {t: sorted(k["letter"] for k in key if k["text"] == t) for t in texts}
@@ -171,10 +194,11 @@ def main() -> None:
 
 Blind. Do not open `KEY.json` until the answers are written down.
 
-Every clip is the SAME synthetic speaker saying the SAME sentence, from one checkpoint,
-with valence and tension held at zero and **energy (A) held at {args.energy:+g}**. **The only thing that differs between
-clips in a group is the delivery lane** — except that one lane appears TWICE in each group,
-which is the control.
+Every clip is speaker id `{design["spk"]}` saying the SAME sentence, from
+`{pathlib.Path(design["checkpoint"]).name}`, with valence {design["valence"]:+g}, tension
+{design["tension"]:+g} and **energy (A) {args.energy:+g}** — all read from the probe's own
+`design.json`, not assumed here. **The only thing that differs between clips in a group is
+the delivery lane** — except that one lane appears TWICE in each group, which is the control.
 
 Loudness has been equalised to {args.target_lufs:.1f} LUFS by a single gain per file, so
 "louder" is not available as a cue. No compression or limiting was applied.
@@ -187,8 +211,14 @@ Loudness has been equalised to {args.target_lufs:.1f} LUFS by a single gain per 
 
 1. Listen to all of them once before writing anything.
 2. **Group them.** Which clips share a delivery? Say which letters go together.
-3. **Voice check.** Is it the same person throughout, or does the voice itself change?
-4. **Then** say whether any grouping was a guess.
+3. **Manner.** Do these differ in *how* the line is delivered at all — obvious, subtle, or
+   none? If audible, what moves: pace, weight, warmth, push, distance?
+   ⚠ **This question is the one the result rests on and it was missing until #298.** The
+   recorded v6 verdict is a null — "all sound neutral to me" — which is an answer to THIS,
+   not to the grouping. A protocol that only asks for groups collects a ranking and leaves
+   the reader to infer the null from it.
+4. **Voice check.** Is it the same person throughout, or does the voice itself change?
+5. **Then** say whether any grouping was a guess. "I was guessing" is a real result here.
 
 ## What the answers mean
 
@@ -200,6 +230,63 @@ result here is worth something.
 
 If manner changes while the voice stays put, the delivery channel is doing its job. If the
 voice moves with it, delivery is entangled with timbre and that is a finding.
+""", encoding="utf-8")
+
+    # ⚠ #298. The answer sheet SHIPS. The v6 verdicts were collected against a template
+    # hand-written on /data that the repo never had, so the committed tool could not
+    # reproduce the artifact its own recorded result rests on. A blank per group, in the
+    # protocol's order, so the questions cannot drift from the README beside it.
+    blank = chr(10).join(
+        f"""## Group {t} — clips {', '.join(groups[t])}
+
+**1. Grouping.** Sets of letters, one set per delivery you hear. Exactly one set should
+hold two letters.
+
+```
+your answer:
+```
+
+**2. Which pair shares a delivery, and how sure?**
+
+```
+pair:
+confidence:      certain / fairly sure / guessing
+```
+
+**3. Manner.** Do they differ in HOW the line is delivered?
+
+```
+audible difference?   obvious / subtle / none
+what moves (pace, weight, warmth, push, distance):
+```
+
+**4. Voice.** Same person in all of them?
+
+```
+same voice?      yes / no
+if no, which clips and how:
+```
+""" for t in texts)
+    (args.out / "ANSWERS.md").write_text(
+        f"""# Answers — delivery ear test
+
+Fill this in BEFORE opening `KEY.json`.
+
+Each group is {len(groups[texts[0]])} clips containing {len(lanes)} different deliveries — so exactly one pair
+shares one. Same speaker, same sentence, loudness equalised.
+
+---
+
+{blank}
+---
+
+## Overall
+
+```
+Did this feel like a real distinction or like listening for noise?
+
+Anything you noticed that these questions did not ask about:
+```
 """, encoding="utf-8")
 
     print(f"wrote {len(key)} clips to {args.out}")
