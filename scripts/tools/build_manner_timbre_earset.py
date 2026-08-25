@@ -63,7 +63,17 @@ import pyloudnorm as pyln
 import soundfile as sf
 
 # The probe holds three A levels; the ear test wants delivery to be the ONLY thing moving,
-# so it reads the A = 0 plane and nothing else.
+# so it reads ONE plane and nothing else. A = 0 is the default because it is the cleanest
+# statement of "delivery alone".
+#
+# ⚠ BUT A = 0 CANNOT ANSWER EVERY QUESTION, AND THE FIRST RUN FOUND THE LIMIT. The owner
+# heard no manner difference at A = 0 and named what was missing: "there's an energy level to
+# Speech that is not present". `Speech` is defined as public address — PROJECTED rather than
+# conversational — so projection is its defining quality. If projection is carried by the A
+# channel rather than by the delivery one-hot, then at A = 0 the lane has no way to express
+# it, and this test returns a null whether or not the lane works. That is a confound in the
+# test, not a finding about the model. Hence the flag: render the same comparison at A = +1
+# and the two readings separate the explanations.
 ENERGY_PLANE = 0.0
 # Mid-range of what the probe actually produced. A target near the quietest clip would ask
 # for large positive gain on the rest and risk clipping; near the loudest it would attenuate
@@ -88,11 +98,15 @@ def main() -> None:
     ap.add_argument("--out", required=True, type=pathlib.Path)
     ap.add_argument("--target-lufs", type=float, default=DEFAULT_TARGET_LUFS)
     ap.add_argument("--seed", type=int, default=20260825)
+    ap.add_argument("--energy", type=float, default=ENERGY_PLANE,
+                    help="which A plane to read (default %(default)s). Use +1 to ask whether "
+                         "a lane's manner appears once the energy channel is allowed to move.")
     args = ap.parse_args()
 
-    rows = [r for r in read_measures(args.probe) if float(r["energy"]) == ENERGY_PLANE]
+    rows = [r for r in read_measures(args.probe) if float(r["energy"]) == args.energy]
     if not rows:
-        raise SystemExit(f"no A={ENERGY_PLANE} rows in {args.probe}/measures.csv")
+        have = sorted({r["energy"] for r in read_measures(args.probe)})
+        raise SystemExit(f"no A={args.energy} rows in {args.probe}/measures.csv (have {have})")
 
     texts = sorted({r["text"] for r in rows})
     lanes = sorted({r["lane"] for r in rows})
@@ -145,7 +159,7 @@ def main() -> None:
     # not read first. It is written beside the clips on purpose — a key kept somewhere
     # else is a key that is lost by the time the answers come back.
     (args.out / "KEY.json").write_text(
-        json.dumps({"probe": str(args.probe), "seed": args.seed,
+        json.dumps({"probe": str(args.probe), "seed": args.seed, "energy": args.energy,
                     "target_lufs": args.target_lufs, "clips": key}, indent=2),
         encoding="utf-8")
 
@@ -158,7 +172,7 @@ def main() -> None:
 Blind. Do not open `KEY.json` until the answers are written down.
 
 Every clip is the SAME synthetic speaker saying the SAME sentence, from one checkpoint,
-with valence, tension and energy all held at zero. **The only thing that differs between
+with valence and tension held at zero and **energy (A) held at {args.energy:+g}**. **The only thing that differs between
 clips in a group is the delivery lane** — except that one lane appears TWICE in each group,
 which is the control.
 
