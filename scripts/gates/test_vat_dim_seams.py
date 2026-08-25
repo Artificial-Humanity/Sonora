@@ -55,7 +55,7 @@ def _load_from_convert_vat(name):
     """
     import ast
 
-    src = (pathlib.Path(__file__).resolve().parents[1]
+    src = (pathlib.Path(_SONORA_REPO)
            / "scripts/litert_export/convert_vat.py").read_text(encoding="utf-8")
     for node in ast.parse(src).body:
         if isinstance(node, ast.FunctionDef) and node.name == name:
@@ -78,7 +78,7 @@ def _config_vat_dim():
     """
     import re
 
-    text = (pathlib.Path(__file__).resolve().parents[1]
+    text = (pathlib.Path(_SONORA_REPO)
             / "configs/model/matcha.yaml").read_text(encoding="utf-8")
     m = re.search(r"^vat_dim:\s*(\d+)", text, re.M)
     return int(m.group(1)) if m else None

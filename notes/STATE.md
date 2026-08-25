@@ -7,7 +7,7 @@ architecture canon is [ARCHITECTURE.md](../docs/ARCHITECTURE.md); open work is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
-_Last updated: 2026-08-21._
+_Last updated: 2026-08-25._
 
 ---
 
@@ -340,14 +340,17 @@ headline; open items are in [todo.md](todo.md).
    ⚠ **The licence wall REFUSED the first build** — the staged 24 kHz tree was undeclared.
    `sonora_expressive_registers` is now in `configs/data_licenses.yaml`, verified by path:
    **0 of the 832 clips resolve into `LibriTTS_R` or any `emilia*` tree.**
-   ⚠ **TWO IN-CONTAINER STEPS, AND NEITHER HAS A RECORDED RESULT** — status genuinely
-   unverified, not "outstanding": `data_statistics` had to be **re-measured** (they cannot be
-   inherited from v5 — this changes the audio set *and* the split), and
-   `scripts/gates/test_vat_dim_seams.py` had to pass. The run has since trained 10 epochs and
-   holdout-scored, which it could not have done without usable statistics; **the seam gate is
-   the one with no evidence either way, and #197 has since measured that nothing in the suite
-   runs it** — so its "outstanding" was never a status anything could have cleared. Whoever
-   next touches rung 2's corpus should run it and record the count, as v5's `30/30` is.
+   ⚠ **TWO IN-CONTAINER STEPS RAN WITHOUT A RECORDED RESULT** — `data_statistics` had to be
+   **re-measured** (they cannot be inherited from v5 — this changes the audio set *and* the
+   split), and `scripts/gates/test_vat_dim_seams.py` had to pass. The run trained 10 epochs
+   and holdout-scored, which it could not have done without usable statistics. The seam
+   gate's evidence is now direct: **run 2026-08-25 as rung 3's first act — 35/35, exit 0**
+   (throwaway ROCm container, `score_holdout.sh`'s pattern). Why no evidence could exist:
+   **the gate had been unrunnable since the #26 restructure (2026-08-12)** — two repo-root
+   anchors inside it still read `parents[1]` from its pre-move depth, so every invocation
+   died at import with `FileNotFoundError` before a single check ran. Fixed on the rung 3
+   branch. That is a second, independent fact from #197's "nothing in the suite runs it"
+   (a wiring gap, still true): even a hand run would have died.
    `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
