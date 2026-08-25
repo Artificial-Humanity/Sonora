@@ -133,6 +133,52 @@ entry (`tab_14_resentment_QWN`) and the other four **unset rather than guessed**
 lives in `anchors.json`, never in a clip column: the Qwen/VibeVoice A/B parked prior scores
 in `note`, the app overwrote them, and 17 of 33 were lost.
 
+## 4b · Dataset Listening app — PARKED 2026-08-25, findings recorded so the work starts informed
+
+Renamed from "Auditions" that day (owner): an audition is a casting decision, and most of
+what this surface does is vet output. Live at `listen.ai-lab-0.mcfarlin.family`; the old
+host 301s. The **service, container, deploy target and `/data/services/audition` path are
+still `audition`** — renaming those moves the deployed copy and its MIRRORS entry, so it is
+one coordinated change, not a find-and-replace.
+
+⚠ **THE GAP THAT BIT THREE TIMES IN ONE SESSION: there is no COMPARATIVE mode.** Every
+input is absolute and per-clip, and the app only serves clips registered in `ratings.csv`.
+So the delivery ear test, the forced-ranking pass (§4) and blind A/B are each *N clips
+judged against each other*, each unreachable through the app, and each falls out to a
+directory on the box — which the owner does not work from. The stopgap is a plain file
+route at `listen.../probes/*` (marked in the Caddyfile to be **deleted rather than grown**).
+⚠ **Do NOT close the gap by registering probe clips in `ratings.csv`** — it is the dataset
+ledger and a live writer; a comparative probe is not a dataset row.
+
+**Two more gaps, from reading the 466 human-written notes:**
+
+* **Direction adherence has nowhere to go, and it is the most common thing the notes say** —
+  "Younger than requested", "Everything is accurate except gender", "not British at all",
+  "Poor instruction following". The app records what was HEARD (gender/age/accent) and never
+  whether it MATCHED what was asked. That comparison happens in the owner's head and lands
+  as prose. It is also a first-class variable: some engines have no text-instruction slot at
+  all, so adherence is what separates them.
+* **Audio quality is fused into a prosody score.** `score` is vocals/prosody only by rule, so
+  "slight scratchiness but not enough to detract" has no home and the owner computes an
+  override in prose. A good read in a bad recording and a flat read in a clean one collapse
+  to one number.
+
+**Under all three: `note` does at least four jobs** — machine markers, the script text, the
+direction text, and the ear's observation. ⚠ **That is why term-frequency analysis of it is
+not currently possible, and two attempts to do it were WRONG before this was noticed** (the
+regexes matched `"verb"` inside `"Whatever"` and the `[was: breathy]` register-rename tag).
+Do not re-apply the "17 notes / 4 campaigns" precedent that justified `delivery` until the
+column is split; the denominator is not what it looks like.
+
+**Fill rates, 1,802 rows:** status 100% · register 94% · delivery 91% · gender 87% ·
+score 87% · **age 49%** · **accent 49%** · note 39%. Accent is 76% `US - General` where
+filled and age is 87% adult+middle-aged — near-constant as always-on dials, decisive only in
+probes. They read like campaign-level properties wanting an occasional per-clip override.
+
+**Smaller, unrelated:** the default view is `todo` (unrated) and every clip is rated, so the
+app opens on an empty list with no hint that 1,802 clips sit behind the "Rated" chip. It
+reads as broken. A fallback or an empty-state message is cheap.
+
 ## 5 · Parked dataset decisions
 
 SSOT is [training-sources.md](training-sources.md) — not duplicated here. Headlines: the
