@@ -354,8 +354,21 @@ headline; open items are in [todo.md](todo.md).
    `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
-2. **Rung 3 — the 10×** (LibriTTS-R full, ~615 h). Ungated: rung 1 passed. ~2.25 h/epoch,
-   about a day to convergence — it does not need the local-vs-cloud decision first.
+2. 🔄 **Rung 3 — the 10×** (LibriTTS-R full). **IN PROGRESS, started 2026-08-25.** Ungated:
+   rung 1 passed. The other 90% of LibriTTS-R was never on this box — both tarballs
+   (75.8 GB) are now fetched, extracted and permission-fixed, and the **EIV scoring pass is
+   running** over 303,638 duration-filtered clips at batch 32 (~22.5 h;
+   `eiv_scores/libritts_r_full_v7.jsonl`, resumable — it appends and skips what it holds).
+   **The corpus is NOT built and no run is queued.**
+   Measured, replacing the estimates: **321,497 new clips · 2,064 new speakers · ~564 h ·
+   ~345,600 train rows expected**. The strictly-growing rule survives because the new
+   speakers are **disjoint from both v6 and the holdout** (tested under `LC_ALL=C` with a
+   positive control — the first run gave a false 0), and because Emilia's global anchor
+   reads the *frozen* `libritts_r_vat_v4`. Both facts are what keep the warm start from
+   `vat6_finetune` `ep008` legal; **re-verify the byte-identity claim against the shipped v6
+   files at merge time rather than trusting the note.** Decisions, corrections and the
+   12-head requirement:
+   [quality-gap-plan.md § Rung 3 build decisions](quality-gap-plan.md#rung-3-build-decisions--recorded-2026-08-25-audio-on-disk-eiv-pass-running-corpus-not-built).
 3. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
    baseline frozen as the last act of Phase 1.
 4. **A forced-ranking pass over the 46 ceiling-tied groups** — the scale cannot separate

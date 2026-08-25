@@ -40,7 +40,7 @@ See [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-cor
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
 | | **rung 2 — v6, +expressive-registers (826 rows appended, 832 staged)** | ✅ **DONE 2026-08-10/11** — built, trained 10 epochs, holdout-scored, **`ep008` selected** (`logs/train/vat6_finetune/SELECTED.md`); flat as pre-registered, and **the delivery block is live** | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) · ⚠ **do not select this run on `total`** and the A-frame question is **open**, not closed — [direction-contract-v3-proposal.md § 3b](direction-contract-v3-proposal.md) |
-| | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ **UNGATED — rung 1 passed.** ~**2.25 h/epoch, ~1 day** to convergence (measured 2026-08-09) | rung 1's holdout ✅ | ditto |
+| | rung 3 — v7, +LibriTTS-R full (~564 h measured) | 🔄 **UNGATED — rung 1 passed. AUDIO ON DISK, EIV PASS RUNNING 2026-08-25.** ~**2.25 h/epoch, ~1 day** to convergence (est. 2026-08-09 against ~330,000 rows — **not re-measured against the 345,600 now expected**) | rung 1's holdout ✅ | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
 | | freeze a same-corpus U-Net baseline | ⏸ | **the last act of P1** | [§ Phase 2](#phase-2--the-dit-decoder-spike) |
@@ -202,7 +202,7 @@ cheaper than every hour of synthetic**, and roughly 870 of them are cleared and 
 | — | `libritts_r_vat_v4` | 30,485 | 51.3 | 247 | width only (8-wide) | smoked, superseded |
 | **1** | **`libritts_r_emilia_vat_v5`** | **41,138** | **78.5** | **2,500** | **volume, +36%** | holdout vs `vat3_ep099` |
 | 2 | v6 = +expressive-registers | ~41,980 | ~81 | ~3,350 | **the delivery channel's only training signal** — see below | delivery channel finally has signal |
-| 3 | v7 = +LibriTTS-R full | ~330,000 | ~615 | ~4,900 | **10× volume, same domain** | the real lever |
+| 3 | v7 = +LibriTTS-R full | **~345,600** | **~564** | **~5,414** | **10× volume, same domain** | the real lever |
 | 4 | v8 = +Hi-Fi TTS v1 + VCTK | +? | +336 | +120 | **depth per voice** + studio timbre breadth | independent; slot in when converted |
 | 5 | v9 = +more Emilia-YODAS shards | +? | unbounded | +thousands | **in-the-wild expressivity at scale** | the mining pipeline already exists |
 | 6+ | the synthetic lane | — | — | — | see **§ Phase 1S** below | gated on 1–5 |
@@ -511,6 +511,102 @@ appended per (2)+decision → hash split → measure `data_statistics` → licen
 → warm start from `vat5_finetune` **`ep019`** — the pick, reaffirmed by the owner
 2026-08-09. Follow `merge_emilia_corpus.py` verbatim; its contiguity, collision and
 val-nonempty guards are the ones that matter.
+
+#### Rung 3 build decisions — recorded 2026-08-25, AUDIO ON DISK, EIV PASS RUNNING, CORPUS NOT BUILT
+
+The other 90% of LibriTTS-R was never on the box. Both tarballs were fetched on 2026-08-25
+(`train_clean_360` 28.95 GB + `train_other_500` 46.84 GB, from `www.openslr.org` — the
+default `us.` mirror is down, http=000) and extracted to exact advertised byte counts. What
+follows is measured on the extracted tree, not estimated from the corpus papers.
+
+| subset | speakers | clips | in v6? |
+|---|---|---|---|
+| `train-clean-100` | 257 | 33,232 | yes |
+| `train-clean-360` | **904** | **116,462** | new |
+| `train-other-500` | **1,160** | **205,035** | new |
+| `dev-clean` (holdout source) | 40 | — | never |
+
+**THE STRICTLY-GROWING RULE SURVIVES RUNG 3 ONLY BECAUSE THE NEW SPEAKERS ARE DISJOINT, AND
+THAT WAS TESTED RATHER THAN ASSUMED.** `eiv_merge_corpus.py` recomputes *every* clip's combo
+on purpose — the value is `dot(weights, per-speaker z(head))`, so adding clips to a speaker
+moves that speaker's mean and sd and silently rewrites labels already shipped. Its own
+header states the consequence: *"v2 labels are not comparable to v3 labels and the vat3
+checkpoint cannot be fine-tuned onto them."* That is the warm start and the holdout
+comparability in one sentence. Measured under `LC_ALL=C` with a positive control (the
+first run gave a **false 0** — `comm` bailed with "not in sorted order" on locale-collated
+input and still exited clean):
+
+```
+train-other-500 ∩ train-clean-100 : 0      train-clean-360 ∩ train-clean-100 : 0
+train-other-500 ∩ train-clean-360 : 0      train-clean-360 ∩ dev-clean       : 0
+train-other-500 ∩ dev-clean       : 0      control (dev ∩ dev)               : 40 ✅
+```
+
+So no existing speaker's population changes, v6's rows reproduce byte-identically, and the
+`--donor-speakers` prefix proof still holds. **The Emilia half is safe for a second,
+independent reason:** `anchor_emilia_labels.py` reads `CORPUS = "data/libritts_r_vat_v4"` —
+a *named, frozen* corpus, not "whatever LibriTTS rows exist now" — so a 10× LibriTTS
+population cannot move the global anchor those rows were labelled against.
+
+**THE NEW EIV PASS MUST SCORE EXACTLY THE 12 HEADS THE OLD RAW FILES CARRY.** `combo()`
+keeps only heads present in *every* row (`all(h in v for v in raw.values())`), so a pass
+that scores a different set would silently drop a weighted head **for the whole corpus,
+including clips already labelled**. The set is `corpus_v1.jsonl`'s 4 (Valence, Arousal,
+Distress, Soft_vs._Harsh) + `corpus_families.jsonl`'s 8 (Bitterness, Amusement, Sadness,
+Elation, Hope_Enthusiasm_Optimism, Shame, Fear, Contentment) — covering all 9 nonzero combo
+weights plus the T channel's `Soft_vs._Harsh`.
+
+**Scope: 303,638 clips, not 321,497 — score the keeps, which is what the corpus already
+did.** `corpus_v1.jsonl` holds 30,351 rows against train-clean-100's 33,232 clips, so the
+convention is a duration-filtered list. Applying `derive_vat_corpus`'s own gate
+(`MIN_SECONDS=1.0`, `MAX_SECONDS=22.0`, 24 kHz) over all 321,497 new clips: **kept 303,638
+(94.45%)**, dropped 15,618 under 1 s and 2,241 over 22 s, **0 wrong sample rate and 0
+unreadable** — which is also the extraction's integrity check. List at
+`eiv_scores/libritts_r_full_v7_wavs.txt`. ⚠ The 4 s floor is the *audition-bank* rule and
+does not apply here; this lane's floor is 1 s.
+
+**Throughput is measured, and batch size is a real lever.** Isolation verified (exactly one
+probe container during each window — an earlier batch-64 reading of 1.07 and a second of
+2.13 were both contaminated by an overlapping batch-32 probe, and a naive
+"two-equal-samples" settle check is what let the second one through):
+
+| `--batch-size` | clips/sec | 303,638-clip pass |
+|---|---|---|
+| 8 (the default) | 2.00 | 42.2 h |
+| **32 — chosen** | **3.20** | **26.4 h** |
+| 64 | 2.84 | 29.7 h |
+
+Running since 2026-08-25T02:44:58Z at a steady **3.73 clips/sec** (ETA ~22.5 h) to
+`eiv_scores/libritts_r_full_v7.jsonl`. It appends and skips wavs it already holds, so it is
+safe to interrupt and resume — **it is not a job that has to be protected**.
+
+⚠ **`tar` extracted the audio owner-only (`0600` files, `0700` dirs) and the EIV pass died
+at `PermissionError` on its first clip.** The containers run as `ai-mgr` (105:109) through
+the `datashare` group, and the tarball's own mode bits carry none. Fixed to `2775`/`0664`
+across 973,994 files and 6,823 dirs, scoped to the two new subsets. **Any future corpus
+unpacked from an upstream tarball has this defect** — the existing subsets do not, because
+they were unpacked before the container ran as a service account.
+
+**The ladder table above now carries these measured figures**, replacing the estimates it
+shipped with: train rows **~330,000 → ~345,600** (v6's ~41,980 + 303,638 before the
+text-side drops); hours **~615 → ~564** (new kept audio measures ~483 h against v6's ~81 h;
+the 4,000-clip sample gives median 4.28 s / mean 5.58 s, all 24 kHz); speakers
+**~4,900 → ~5,414** (v6's ~3,350 + 2,064 new). ⚠ The **~2.25 h/epoch** in the pathway table
+is untouched and is now the *stale* half of this pair — it was derived against ~330,000
+rows and nothing has re-measured it. The row count went **up** and the hours **down** — LibriTTS-R
+utterances are shorter than the estimate assumed, so this rung buys more rows per hour than
+planned and the epoch cost should be read off rows, not hours.
+
+**Then the build:** finish the EIV pass → `eiv_merge_corpus.py --add` to rebuild the combo
+and soft maps corpus-wide (it recomputes every clip by design; the disjointness above is
+what makes that a no-op for existing rows, and **that is a claim to re-verify against the
+shipped v6 files, not to trust from this note**) → `derive_vat_corpus.py` over the two new
+roots on per-speaker z (viable here, unlike Emilia: ~2,064 new speakers with a median in
+the hundreds of clips) → merge with v6's rows byte-identical and ids appended → hash split
+→ `data_statistics` re-measured **in-container** → `configs/data_licenses.yaml` already
+classifies both subsets under `libritts_r` (verified by calling `classify_path`, so no
+manifest edit is needed) → warm start from `vat6_finetune` **`ep008`**. Follow
+`merge_emilia_corpus.py` verbatim, as rung 2 did.
 
 ### The low-hanging fruit, itemised — ~870 h before anything is rendered
 
