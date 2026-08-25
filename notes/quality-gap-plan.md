@@ -1144,7 +1144,28 @@ is that a number exists in advance, not that it is this number.
     of the run was never the problem, the *reference* to it was.
     ⚠ **Re-render v7 with the same script or the comparison is void** — that file states its
     own limit (a run is comparable to another run of itself, not to `delivery_ep010/`).
-  - ⏸ **The ear half is still open, and it is the half that gates.** The manner-vs-timbre
+  - ✅ **THE EAR HALF RAN 2026-08-25, AND THE ANSWER IS A NULL: the delivery channel is not
+    audible at v6 `ep008`.** Owner's verdicts, full record in
+    `probes/ear_delivery_v6_ep008/RESULT-2026-08-25.md`. Every lane read as Neutral —
+    *"I realized I skipped delivery. All sound neutral to me"* — and `unknown`, no lane at
+    all, placed in the top two of **both** groups. ⚠ **The control is what licenses reading
+    this as a null**: each group hid one lane twice, and in both groups that pair landed at
+    OPPOSITE ends of the ranking, so the differences the ear did report are sampler noise.
+    Without it, "A best, D worst" would have read as the channel working.
+    **So PR-M2's worry is answered by there being nothing to lose: do NOT read a v7 delivery
+    null as dilution damage.** The channel was already inaudible before the dilution.
+    ⚠ **ONE CAVEAT, NAMED BY THE OWNER AND NOT YET CLOSED.** *"There's an energy level to
+    Speech that is not present"* — and that set pins **A = 0**. If projection rides on the
+    energy channel rather than the delivery one-hot, the lane cannot express it there and
+    the test returns a null either way. `probes/ear_delivery_v6_ep008_A+1/` is built from
+    the same probe's A = +1 plane and is **unheard**. Still indistinguishable at +1 ⇒ the
+    null stands and is stronger; `Speech` separating only at +1 ⇒ the finding is about
+    *where the signal lives*, not whether it exists.
+    ⚠ It also means the manner-vs-timbre question is unanswered as posed: *"none of them
+    shift voicing"* is real, but timbre cannot entangle with a channel that is not firing.
+    The owner's structural diagnosis of why — two axes fused in one one-hot — is
+    [direction-contract-v3-proposal.md § 2b](direction-contract-v3-proposal.md).
+  - ⏸ **The ear half as a rung-2 GATE is still open.** The manner-vs-timbre
     test — one real speaker through each lane, does the manner change while the voice does
     not — needs the owner's ears, and the loudness probe cannot stand in for it: that probe
     is deliberately **not** loudness-normalised (the loudness *is* its measurement), while
