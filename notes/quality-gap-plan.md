@@ -584,6 +584,11 @@ looks: it is the instrument that tells us whether the skew hurt.
 - **Widen the mining to ~p75** and re-mine the 53k already-measured clips — 3–4× the Emilia
   half, de-saturates T. Costs EIV + ASR on 53k clips, days of CPU, plus a re-derivation.
 - **Pull more shards.** 160 h probed out of ~114,000 h licensed. Effectively unbounded.
+  ⚠ **The FULL pool is storage-barred** (owner ruling 2026-08-25: viable, not committed):
+  extrapolating the probe (160 h = 8.4 GB raw) puts all ~114,000 h at **~6 TB**, which the
+  3.7 TB `/data` drive cannot hold — an external drive is the unlock, recorded in
+  [training-sources.md](training-sources.md) beside HiFiTTS-2's identical bar. Incremental
+  shard pulls are NOT barred: 10× the current holding is ~85 GB and fits trivially.
 
 **Neither runs before rung 1's holdout.** Widening now would spend days removing a confound
 we have not shown exists *and* change two things at once, which costs us the test. The
