@@ -104,6 +104,28 @@ engine mix.
       owner already used informally, needs no scale change, invalidates no existing verdict,
       and yields the comparative signal the absolute scale structurally cannot. Bounded: 46
       sittings of 3–5 clips.
+  - ⚠⚠ **BLOCKED 2026-08-25: THE GROUPING RULE THAT PRODUCED "46" IS NOT RECORDED, AND THE
+    COUNTS DO NOT REPRODUCE.** `ratings.csv` has no text column, so "same text" has to be
+    derived from the `id`, and nothing in the repo does it — the analysis was ad hoc and only
+    its outputs survived. Four readings tried against today's file, none matching 62 texts /
+    478 clips / 46 tied / 229 clips:
+
+    | grouping | texts ≥3 engines | clips | tied groups | ceiling clips |
+    |---|---|---|---|---|
+    | `id` minus last token | 66 | 308 | 19 strict · 30 loose | 67 · 136 |
+    | campaign + `id` minus last | 58 | 276 | 14 strict | 50 |
+    | text token, cross-campaign | 72 | 695 | 15 strict · 63 loose | 75 · 484 |
+
+    *strict* = every clip in the group scored 5; *loose* = ≥3 distinct engines each scored 5.
+    **The likely cause is drift, not error: `ratings.csv` is a LIVE WRITER** and those counts
+    are a snapshot of it — 57 clips have been relabeled and 253 dropped since. So "46" was
+    probably true when written and is not true now.
+    ⚠ **Do not prepare a set by picking the closest number.** The cost of being wrong is 46
+    sittings of owner time spent measuring something other than what this line claims. The
+    unblock is one owner sentence naming the grouping rule, after which the rule goes in a
+    script — not in prose — so the count is derived and cannot drift again. Same failure
+    class as the ep010 probe: the outputs survived, the design did not
+    (`probe_delivery_intercept.py` was written for exactly that reason).
 
 ⚠ **Anchor exemplars are the EAR's, never a measure's.** Nothing computes one — a computed
 anchor re-anchors the scale to whatever the measure already believes. The bar ships with one
