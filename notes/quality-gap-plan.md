@@ -1132,6 +1132,23 @@ is that a number exists in advance, not that it is this number.
   after the fact. Record v6's per-lane delivery result before v7 trains, and read any v7
   regression against it — the same inoculation this plan already wrote for the *untrained*
   channel.
+  - ✅ **THE NUMERIC HALF ALREADY EXISTS AND THIS IS THE POINTER IT WAS MISSING** (checked
+    2026-08-25). `probes/intercept_ep008/` was rendered 2026-08-12 by
+    `probe_delivery_intercept.py` against **exactly the selected vat6 `ep008`** — the csv
+    header and `design.json` both name
+    `vat6_finetune/runs/2026-08-10_23-48-23/checkpoints/checkpoint_epoch=008.ckpt` — and it
+    is complete: 90 wavs, 90 rows, `unknown` + the 4 ACTIVE lanes. **Mean LUFS at A = 0:
+    unknown −29.26 · Speech −31.37 · Neutral −32.42 · Dialogue −33.31 · Newscaster −33.56**,
+    so every named lane renders QUIETER than no lane at all. Nothing in this plan pointed at
+    it, which is how a baseline that exists gets re-derived or quietly forgotten; the record
+    of the run was never the problem, the *reference* to it was.
+    ⚠ **Re-render v7 with the same script or the comparison is void** — that file states its
+    own limit (a run is comparable to another run of itself, not to `delivery_ep010/`).
+  - ⏸ **The ear half is still open, and it is the half that gates.** The manner-vs-timbre
+    test — one real speaker through each lane, does the manner change while the voice does
+    not — needs the owner's ears, and the loudness probe cannot stand in for it: that probe
+    is deliberately **not** loudness-normalised (the loudness *is* its measurement), while
+    the ear protocol requires normalisation, so the same renders cannot serve both.
 
 ## Why data before decoder
 
