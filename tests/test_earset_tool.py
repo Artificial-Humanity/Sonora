@@ -86,6 +86,12 @@ def probe(tmp_path):
 
 
 def run(*args):
+    # ⚠ #322 — see the identical guard in tests/test_corpus_merge_tool.py. A checkout with no
+    # repo venv (every CI runner, and the review lane's own worktree) got a bare
+    # FileNotFoundError and 14 ERRORs instead of skips.
+    if not PY.exists():
+        pytest.skip(f"{PY} is absent — this checkout has no repo venv, so the tool cannot be "
+                    f"run as specified (run-mode rule, AGENTS.md).")
     return subprocess.run([str(PY), str(TOOL), *map(str, args)],
                           capture_output=True, text=True, cwd=REPO)
 

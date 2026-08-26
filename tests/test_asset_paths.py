@@ -315,10 +315,19 @@ def test_the_guard_actually_asserts_something():
     from one run of this test's own body:
 
         scripts enumerated                 110
-        constants resolving to a repo path  40
-        of which SELF-ANCESTOR              10   <- cannot fail, by construction
+        constants resolving to a repo path  39
+        of which SELF-ANCESTOR               9   <- cannot fail, by construction
         of which the PARSED FILE ITSELF      2   <- ditto; see below
         FALSIFIABLE                         28   <- what the floor below counts
+
+    ⚠⚠ TWO OF THESE READ 40 AND 10 FOR ONE COMMIT, AND THE CAUSE IS WORTH MORE THAN THE FIX:
+    they were measured **partway through `a7ff62d`**, before that same commit corrected
+    `probe_delivery_intercept.py`'s `--repo` depth. Pre-fix it resolved to `<root>/scripts` —
+    a tracked basename AND a self-ancestor, so it counted in both totals; post-fix it resolves
+    to the repo root, whose basename is not tracked, so it drops out of both. FALSIFIABLE was
+    unaffected, which is exactly why it looked fine. **Re-measure AFTER the last edit in the
+    commit, not after the edit you were thinking about** — a mid-commit measurement is a
+    measurement of a tree that will never exist again.
 
     Most scripts build no in-repo path at all, so a floor on the file count says nothing.
     And a self-ancestor (`HERE = dirname(abspath(__file__))`) resolves to a directory that
@@ -380,7 +389,9 @@ def test_the_guard_actually_asserts_something():
     #      +  2 `/`-composed sites the Call-only walk could not see (test_vat_dim_seams:58,:81)
     #      +  3 reached once `str()` and `X or Y` stopped being refused — convert_vat.py:138
     #         (the site #315's OWN BODY named as unguarded, and which the first fix did not
-    #         reach), probe_delivery_intercept.py:111, schemas.py:161
+    #         reach), probe_delivery_intercept.py:118, schemas.py:161
+    #         ⚠ that site read :111 for one commit — the fix for it, in the same commit, added
+    #         the comment lines that moved it. A line number cited from before your own edit.
     #
     # Of the 4 pre-fix self-file entries, 2 vanish because the new scan scores their real
     # OUTER expression instead (`register_audition.py:70`, `sweep_dropped.py:50` — both were

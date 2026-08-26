@@ -298,6 +298,13 @@ def main() -> None:
     # exists to remove. Measured never to fire on any probe on disk; stated conditionally
     # anyway, because the day it fires is the day nobody is watching for it.
     capped = [k for k in key if k["peak_ceiling_capped"]]
+    # ⚠ #324. The #302 fix made README.md conditional and left ANSWERS.md asserting "loudness
+    # equalised" flatly — so the two documents the blind listener holds SIDE BY SIDE said
+    # opposite things in the capped case, and the answer sheet is the one they read while
+    # deciding. Same defect as #308 one layer out: two artifacts, one fact, fixed in one place.
+    answers_loudness = ("loudness equalised" if not capped else
+                        f"⚠ loudness NOT fully equalised — {len(capped)} of {len(key)} clips "
+                        f"are below target (see README.md), so some of these differ in level")
     if capped:
         loudness_note = (
             f"Loudness was targeted at {args.target_lufs:.1f} LUFS by a single gain per file "
@@ -307,7 +314,7 @@ def main() -> None:
             f"{', '.join(sorted(k['file'] for k in capped))}. Treat any grouping that follows "
             f"loudness with suspicion, and say so in your answers.")
         print(f"  ⚠ {len(capped)} of {len(key)} clips hit the peak ceiling and are BELOW "
-              f"target — loudness is not fully equalised; the README says so",
+              f"target — loudness is not fully equalised; README.md and ANSWERS.md say so",
               file=sys.stderr)
     else:
         loudness_note = (
@@ -377,7 +384,7 @@ voice moves with it, delivery is entangled with timbre and that is a finding.
 Fill this in BEFORE opening `KEY.json`.
 
 Each group is {len(groups[texts[0]])} clips containing {len(lanes)} different deliveries — so exactly one pair
-shares one. Same speaker, same sentence, loudness equalised.
+shares one. Same speaker, same sentence, {answers_loudness}.
 
 ---
 

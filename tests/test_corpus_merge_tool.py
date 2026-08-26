@@ -94,6 +94,17 @@ def world(tmp_path):
 
 
 def run(*args):
+    # ⚠ #322. SKIP, NOT ERROR, WHEN THE REPO VENV IS ABSENT. This shells out to
+    # `.venv/bin/python` per the run-mode rule, and a checkout that has never had `uv venv`
+    # run in it — every CI runner, **including the review lane's own worktree** — got a bare
+    # `FileNotFoundError` and 12 of 13 ERRORs here rather than a skip. `test_gate_scripts.py`
+    # already carried exactly this guard, with a comment naming that same population; I wrote
+    # a second subprocess harness beside it and did not carry the lesson across. "The
+    # interpreter these tools are specified to run under is not on this machine" is the same
+    # class of fact as "the corpus is not on this machine", which this suite treats as a skip.
+    if not PY.exists():
+        pytest.skip(f"{PY} is absent — this checkout has no repo venv, so the tool cannot be "
+                    f"run as specified (run-mode rule, AGENTS.md).")
     return subprocess.run([str(PY), str(TOOL), *map(str, args)],
                           capture_output=True, text=True, cwd=REPO)
 
@@ -300,6 +311,39 @@ def test_a_late_refusal_under_force_leaves_no_stale_report(world, tmp_path):
                              "derivation_report.json")
                  if (world["out"] / n).exists()]
     assert not leftovers, f"stale corpus artifacts survived a refusal: {leftovers}"
+
+
+def test_an_early_abort_under_force_leaves_the_previous_corpus_INTACT(world):
+    """⚠ #325. THE THIRD ABORT CASE, and the one two successive docstrings denied.
+
+    Every pre-flight refusal — the licence classify, the base/`--add` structure checks, the
+    split agreement — fires before a single byte is written. So over a populated `--out` under
+    `--force`, an early abort leaves the previous corpus exactly where it was: intact and
+    byte-identical. That is the BEST of the three outcomes, which is precisely why an absolute
+    ("writes nothing", then "leaves no corpus behind") kept being written over it — both were
+    generalised from the one path the author happened to be looking at.
+
+    Asserted here so the invariant in the module docstring is checked rather than described.
+    """
+    assert merge(world).returncode == 0
+    before = {n: (world["out"] / n).read_bytes()
+              for n in ("train_op.txt", "val_op.txt", "speakers.json",
+                        "derivation_report.json")}
+
+    # An EARLY refusal: move a base row across the split, which the pre-flight catches before
+    # any write. (The late-refusal counterpart is the licence test above.)
+    tp = world["base"] / "train_op.txt"
+    vp = world["base"] / "val_op.txt"
+    rows = tp.read_text().splitlines()
+    tp.write_text("\n".join(rows[1:]) + "\n", encoding="utf-8")
+    vp.write_text(vp.read_text() + rows[0] + "\n", encoding="utf-8")
+
+    r = merge(world, "--force")
+    assert r.returncode != 0
+    assert "land on the other side under the shared hash split" in r.stdout + r.stderr
+    for n, blob in before.items():
+        assert (world["out"] / n).exists(), f"{n} was destroyed by an abort that never wrote"
+        assert (world["out"] / n).read_bytes() == blob, f"{n} changed despite an early abort"
 
 
 def test_populated_out_without_force_is_refused(world):

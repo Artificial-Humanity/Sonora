@@ -54,26 +54,34 @@ WHAT THIS DOES NOT DO
 ---------------------
 No dropping. `derive_vat_corpus` already applied the duration, sample-rate, digit,
 vocabulary and G2P filters, and a second filter here would be a second definition of a
-rule that already has one. If a row reached the input, it is in the output. The only way
-out of this script is an ABORT that leaves NO CORPUS BEHIND.
+rule that already has one. If a row reached the input, it is in the output. The only way out
+of this script is an ABORT, and **an abort never leaves a corpus that disagrees with itself.**
 
-⚠ #307: that last sentence said "an ABORT that writes nothing", and under `--force` it is
-not true — an abort DELETES. The invariant is about the END STATE of `--out`, never about
-the number of writes:
+⚠ #307 / #325. That sentence has now been wrong twice, in opposite directions, and the two
+mistakes are worth keeping because they bracket the real invariant.
 
-* Fresh `--out` — an abort leaves it empty. "Writes nothing" happens to describe this.
-* Populated `--out` under `--force` — the filelists are written, then a late check refuses,
-  and the cleanup REMOVES ALL FOUR corpus files, including the `speakers.json` and
-  `derivation_report.json` that belonged to the corpus that was already there. Nothing is
-  written, but something IS destroyed, and by then the previous corpus is already
-  unrecoverable — `--force` said so.
+It first said "an ABORT that writes nothing". Under `--force` that is false — an abort
+DELETES. It was then corrected to "an ABORT that leaves NO CORPUS BEHIND", which is *also*
+false: an early abort leaves the previous corpus exactly where it was. Both absolutes were
+reached by reasoning from one code path. **The invariant is about CONSISTENCY of the end
+state, not about writes and not about emptiness.** Three cases, all reproduced:
 
-The earlier wording was not merely imprecise: it promised a reader that a refusal is safe to
-retry over an existing corpus, which is the one case where it is not. **The alternative —
-leaving the old corpus intact on refusal — was considered and rejected:** the filelists are
-overwritten before the licence wall can see them, so "intact" is not reachable without
-staging the whole merge elsewhere first, and a half-old/half-new directory is worse than an
-empty one. `remove_partial()` carries this reasoning at its definition.
+* **Fresh `--out`, any abort** — left empty. "Writes nothing" happens to describe this one,
+  which is how it got generalised.
+* **Populated `--out` under `--force`, abort BEFORE the write** — pre-flight refusals (the
+  licence classify, the base/`--add` checks, the split agreement) all fire before anything is
+  written, so **the previous corpus survives intact and byte-identical.** This is the best of
+  the three outcomes and it is the one both earlier wordings denied.
+* **Populated `--out` under `--force`, abort AFTER the write** — the filelists are already
+  overwritten, so `remove_partial()` takes all four `CORPUS_FILES` down, including the
+  `speakers.json` and `derivation_report.json` belonging to the corpus that was there. By
+  that point the previous corpus is unrecoverable; `--force` said so.
+
+**The alternative — always leaving the old corpus intact — was considered and rejected:** in
+the third case the filelists are overwritten before the licence wall can see them, so "intact"
+is not reachable without staging the whole merge elsewhere first, and a half-old/half-new
+directory is worse than an empty one. `remove_partial()` carries that reasoning at its
+definition.
 """
 
 import argparse

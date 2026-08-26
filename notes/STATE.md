@@ -399,7 +399,13 @@ headline; open items are in [todo.md](todo.md).
    post-fix guard fails naming the file, the line and the correct location. The same finding
    had a second half — those self-referential entries were being counted toward the
    `>= 24` falsifiable ratchet, so genuine coverage was 23 against a floor of 24 and the
-   guard was padding its own number. Both halves are closed; the floor is re-derived to 25.
+   guard was padding its own number. Both halves are closed; the floor was re-derived to 25.
+   ⚠ **SUPERSEDED 2026-08-26 (#323): the floor is now 28.** `_eval` stopped refusing `str()`
+   and `X or Y` (#315's named site, which the first fix did not reach), which added three
+   genuinely falsifiable sites — `convert_vat.py:138`, `probe_delivery_intercept.py:118` and
+   `schemas.py:161`. The artifact asserts `>= 28`; **read the floor there, not here.** This
+   paragraph is the record of what was found, not a live number — the same distinction the
+   `#317` note three lines above already makes for its own superseded table.
    The direct evidence above stands precisely because it came from a container run,
    not from a green suite.
    `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
