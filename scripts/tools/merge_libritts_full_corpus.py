@@ -111,8 +111,10 @@ def die(msg):
 
 
 def remove_partial(out):
-    """Leave `out` with no corpus. The invariant this script promises is that a failure
-    writes nothing, and under `--force` that has to mean nothing OLD survives either."""
+    """Leave `out` with NO CORPUS. ⚠ #307: the invariant is the END STATE of `--out`, never
+    "a failure writes nothing" — under `--force` a failure DELETES, including the four files
+    that belonged to the corpus already there. The module docstring carries the full
+    reasoning, including why leaving the old corpus intact is not reachable."""
     for n in CORPUS_FILES:
         try:
             os.remove(os.path.join(out, n))
@@ -417,7 +419,8 @@ def main():
     # which means a refusal here leaves filelists in `--out` and no `speakers.json`. That
     # half-corpus would then trip the "--out already holds a corpus" guard above and demand
     # `--force` on the retry, turning one honest refusal into two. So the partial write is
-    # removed: the invariant this script promises is that a failure writes nothing.
+    # removed: the invariant this script promises is that a failure leaves NO CORPUS BEHIND
+    # (⚠ #307 — not "writes nothing"; under `--force` this path deletes, see `remove_partial`).
     try:
         license_check([os.path.join(args.out, n) for n in ("train_op.txt", "val_op.txt")])
     except Exception:

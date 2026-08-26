@@ -235,11 +235,20 @@ query on this page is one of those, and none of them is restricted.
 
 ⚠⚠ **WRITE IT WITH `workflow/scripts/issue.py`, NOT `pb_record_mutate`** (phase 2, owner
 directive 2026-08-24). `state`, `agent_passes`, `ferrostep_version`, `repo` and `branch_name`
-are **refereed fields**: FerroStep's guard refuses a direct write to any of them with a `400` —
-superuser or not — because a move has to record which role made it and why. ⚠ That list is the
-hook's, not this file's; read `const REFEREED` in
+are **refereed fields**: FerroStep's guard refuses a direct **UPDATE** of any of them with a
+`400` — superuser or not — because a move has to record which role made it and why. ⚠ That
+list is the hook's, not this file's; read `const REFEREED` in
 `/data/services/pocketbase/pb_hooks/ferrostep.issues.pb.js` if you need to be sure it still
-says what this sentence says. `issue.py` requests the move
+says what this sentence says.
+
+⚠⚠ **THE GUARD COVERS UPDATES ONLY. CREATION IS NOT GUARDED**, and an earlier version of this
+page implied otherwise. Verified 2026-08-26 in the installed hook: the two
+`onRecordUpdateRequest` handlers carry the refereed-field refusal, while the single
+`onRecordCreateRequest` handler guards **only `user_decision`**. So a direct
+`pb_record_mutate` *create* setting `state`, `repo` and `branch_name` **would succeed** — it
+would simply be an issue the referee never saw, in no changeset check, with no event behind
+it. **Nothing will stop you filing wrongly; only this page will.** That is the one place in
+your write path where the rule really is a rule and not a mechanism — so use `issue.py file`. `issue.py` requests the move
 through the referee, which checks it against [sonora-lane.json](sonora-lane.json) and then
 performs it. Your whole surface is four commands:
 
@@ -262,9 +271,16 @@ records who moved the record and why. A direct write here would leave the ledger
 history disagreeing with the row.
 ```
 
-**Match on the substring `refereed_field`** — the leading letter has been observed arriving
-capitalised, and the field list is whichever of them your write touched, so neither the case
-nor the exact wording after it is a safe thing to key on.
+⚠ **Match CASE-INSENSITIVELY, on `refereed_field`.** MEASURED against the live store
+2026-08-26 by sending a refused `PATCH`: the hook throws `refereed_field: …` in lower case and
+**the server returns `Refereed_field: …` with a capital R** — PocketBase upper-cases the first
+character of the message. A literal lower-case substring test therefore returns *false* on the
+real response. An earlier version of this page told you to match the lower-case form, which
+was read out of the hook's source rather than off the wire.
+
+The field list after it is whichever of them your write touched, so the wording past the colon
+is not a safe thing to key on either. If you want a second, case-stable anchor, use the route:
+`/api/ferrostep/issues/apply`.
 
 **Re-issue that write through `issue.py` and carry on.** Do not fall through to the paragraph
 below, and do not report the tracker as down. This is spelled out because the two failures

@@ -85,8 +85,36 @@ def test_both_sides_actually_parsed_something():
 
 # --------------------------------------------------------------- the actual invariant
 
+def test_reviewer_md_does_not_document_a_forbidden_verb():
+    """⚠ THE HOLE THE SUBTRACTION BELOW OPENED, AND IT SWALLOWED THE CASE THIS FILE EXISTS FOR.
+
+    `test_every_documented_command_is_granted` subtracts FORBIDDEN_TO_REVIEWER from the
+    documented set, so that documenting a verb the allowlist deliberately withholds is not
+    reported as a missing grant. Correct as far as it goes — but with nothing else asserting
+    it, REVIEWER.md could drift back to documenting `issue.py escalate` and the whole suite
+    stayed green. MEASURED 2026-08-26 by adding that exact line to §4: **9 passed.**
+
+    A verb that is both documented and deliberately ungranted is the WORST of the two states
+    this file guards, not an exempt one: the reviewer is told to run a command, the harness
+    refuses it, and §4 tells it that a tracker it cannot write to means the review is lost.
+    So it gets its own assertion, ahead of the subtraction.
+    """
+    documented = set(_documented_subcommands())
+    bad = sorted(documented & set(FORBIDDEN_TO_REVIEWER))
+    assert not bad, (
+        f"REVIEWER.md documents {bad}, which the reviewer is forbidden to run and which "
+        f"REVIEWER_ALLOW deliberately withholds. `escalate` is the owner's (2026-08-17); "
+        f"take/grade/review are the worker's. Either the page is wrong, or the ruling "
+        f"changed and the allowlist and §1 have to change with it.")
+
+
 def test_every_documented_command_is_granted():
-    """#321 itself. Documented-but-refused is the state that costs a review."""
+    """#321 itself. Documented-but-refused is the state that costs a review.
+
+    ⚠ The FORBIDDEN subtraction here is not an exemption — see the test above, which fails on
+    that case directly. Without it this assertion would report a forbidden verb as "missing a
+    grant", pointing the fixer at the allowlist when the defect is in the page.
+    """
     documented = set(_documented_subcommands())
     granted = set(_granted_issue_subcommands())
     missing = sorted(documented - granted - set(FORBIDDEN_TO_REVIEWER))

@@ -107,7 +107,14 @@ def do_render(args):
     # so `dirname(dirname(__file__))` resolved to `/` and the import failed with a
     # `ModuleNotFoundError` naming `vocalizer`, which reads like a broken environment rather
     # than a wrong path. `--repo` defaults to the checkout when the script IS in one.
-    repo = args.repo or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # ⚠ THREE dirnames, not two. This file is at `scripts/tools/`, so two levels up is
+    # `scripts/` — which has no `vocalizer.py`, and the default therefore always failed into
+    # the error below telling the caller to pass `--repo`. MEASURED 2026-08-26: two dirnames
+    # -> `<root>/scripts` (no vocalizer.py), three -> `<root>` (has it). Found by
+    # `tests/test_asset_paths.py` the moment its evaluator stopped refusing `X or Y`, which
+    # is the first time this expression was ever enumerated at all.
+    repo = args.repo or os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     if not os.path.isfile(os.path.join(repo, "vocalizer.py")):
         print(f"no vocalizer.py under --repo {repo}. Pass --repo pointing at the Sonora "
               f"checkout this render should use (inside the container that is /workspace).",

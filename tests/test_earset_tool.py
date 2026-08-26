@@ -19,6 +19,7 @@ precisely the state #308 found them in. Checking each against the derivation is 
 import csv
 import json
 import pathlib
+import re
 import subprocess
 
 import numpy as np
@@ -114,13 +115,52 @@ def test_builds_a_complete_earset(probe, tmp_path):
         assert (out / c["file"]).exists()
 
 
+def test_the_protocol_is_not_empty():
+    """⚠⚠ THE FLOOR, AND IT WAS MISSING. Measured 2026-08-26: with `PROTOCOL = ()` the whole
+    of this file reported **13 passed**. Every assertion below iterates PROTOCOL, so an empty
+    one makes them all vacuously true — the exact empty-enumeration trap this repo has now
+    paid for at least six times, reproduced here in a file written to prevent a different
+    instance of it. Floor first, contents afterwards."""
+    protocol = _protocol()
+    assert len(protocol) >= 4, (
+        f"PROTOCOL has {len(protocol)} steps — 4 measured 2026-08-26. Below that, every "
+        f"assertion in this file passes over an empty loop and checks nothing.")
+    questions = [s for s in protocol if s["fields"]]
+    assert len(questions) >= 3, (
+        f"only {len(questions)} PROTOCOL steps carry fields — 3 measured 2026-08-26. The "
+        f"ANSWERS.md assertions iterate THIS list, not the outer one, so a floor on PROTOCOL "
+        f"alone would not fire. (A floor on the wrong population cannot fire.)")
+    for s in protocol:
+        assert s["readme"].strip(), "a PROTOCOL step with empty readme text renders nothing"
+        if s["fields"]:
+            assert s["heading"], "a question step needs a heading to render in ANSWERS.md"
+
+
 def test_both_artifacts_are_rendered_from_PROTOCOL(probe, tmp_path):
-    """⚠ #308. Each artifact against the DERIVATION, never against the other one."""
+    """⚠ #308. Each artifact against the DERIVATION, never against the other one.
+
+    ⚠ WHAT THIS CAN AND CANNOT CATCH, stated because the distinction is easy to overclaim.
+    It catches a PROTOCOL entry that is added, removed, reworded or reordered without the
+    artifacts following — which is how drift actually happens. It does **not** catch someone
+    re-inlining a byte-identical literal today, because identical text is indistinguishable
+    from derived text at the artifact. The counts below are what makes that state survive
+    only until the next edit.
+    """
     out = tmp_path / "set"
     assert build(probe, out).returncode == 0
     readme = (out / "README.md").read_text()
     answers = (out / "ANSWERS.md").read_text()
     protocol = _protocol()
+
+    # Counts first: exactly as many numbered README steps as PROTOCOL entries, and exactly
+    # as many ANSWERS questions as field-carrying entries. An extra or missing one is drift.
+    n_readme = len(re.findall(r"(?m)^\d+\. ", readme))
+    assert n_readme == len(protocol), (
+        f"README lists {n_readme} numbered steps but PROTOCOL has {len(protocol)}")
+    n_answers = len(re.findall(r"(?m)^\*\*\d+\. ", answers))
+    expected = len([s for s in protocol if s["fields"]]) * len(TEXTS)
+    assert n_answers == expected, (
+        f"ANSWERS has {n_answers} numbered questions; PROTOCOL x groups implies {expected}")
 
     # README: every step, numbered, in order, instructions included.
     for i, step in enumerate(protocol, 1):

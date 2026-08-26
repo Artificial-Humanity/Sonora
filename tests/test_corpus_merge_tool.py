@@ -229,13 +229,47 @@ def test_a_row_on_the_wrong_side_of_the_split_is_refused(world):
     assert "land on the other side under the shared hash split" in r.stdout + r.stderr
 
 
+def test_a_base_row_on_the_wrong_side_of_the_split_is_refused(world):
+    """⚠ THE BASE SIDE, WHICH HAD NO COVERAGE AT ALL.
+
+    `check_split_agrees` is called four times — twice on the base, twice per `--add` — and
+    the test above only ever mutated an `--add`. So deleting both base-side calls left the
+    suite green, and the base is the half that carries 41,937 already-shipped rows: a base
+    whose split rule had moved would pool two rules into v7 and put val rows in train, which
+    is the whole defect #300 exists to prevent. Found by an adversarial pass on my own fix,
+    2026-08-26 — the mutation battery for #300 had one arm and looked like two.
+    """
+    tp = world["base"] / "train_op.txt"
+    vp = world["base"] / "val_op.txt"
+    rows = tp.read_text().splitlines()
+    moved, rest = rows[0], rows[1:]
+    tp.write_text("\n".join(rest) + "\n", encoding="utf-8")
+    vp.write_text(vp.read_text() + moved + "\n", encoding="utf-8")
+    r = merge(world)
+    assert r.returncode != 0
+    out = r.stdout + r.stderr
+    assert "land on the other side under the shared hash split" in out
+    assert str(world["base"]) in out, "the refusal does not say WHICH input was wrong"
+    assert not (world["out"] / "train_op.txt").exists(), "wrote output despite refusing"
+
+
 def test_the_split_preflight_passes_on_an_untouched_fixture(world):
-    """POSITIVE CONTROL for the check above — otherwise a pre-flight that refused everything
-    would satisfy the test beside it. The happy-path test already proves rc 0; this asserts
-    the pre-flight specifically announced itself."""
+    """POSITIVE CONTROL — otherwise a pre-flight that refused everything would satisfy both
+    tests above.
+
+    ⚠ This asserts rc 0 AND that the base's row counts survived the merge intact. It used to
+    assert only that the "safe to grow" line was printed, which is NOT a control for the
+    check: that print sits after `check_split_agrees` returns, so gutting the check to
+    `wrong = []` left the line — and this test — green. An assertion about a print is an
+    assertion about a print.
+    """
     r = merge(world)
     assert r.returncode == 0
     assert "hash split reproduces the base's own train/val exactly" in r.stdout
+    # The real control: the base's own rows are still classified correctly on the way out.
+    for name, side in (("train_op.txt", False), ("val_op.txt", True)):
+        for row in (world["out"] / name).read_text().splitlines():
+            assert _in_val(row) == side, f"{name}: merged output disagrees with the hash rule"
 
 
 # --------------------------------------------------------------------------- #307

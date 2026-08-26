@@ -39,7 +39,13 @@ import pytest
 REPO = pathlib.Path(__file__).resolve().parent.parent
 
 # `os.path.join(os.path.dirname(os.path.abspath(__file__)), "x")` and the pathlib spellings.
-_PATH_CALLS = {"join", "dirname", "abspath", "realpath", "expanduser", "normpath", "Path"}
+# ⚠ `str` is here for one reason and it is measured, not speculative: the repo's standard
+# "env var wins, else repo-relative" idiom writes the fallback as
+# `str(pathlib.Path(__file__).resolve().parents[N])`, and refusing `str()` was what actually
+# kept `SONORA` out of `env` in `convert_vat.py` — not the `or`, which is handled below.
+# Identity is correct here: `str()` of a path IS that path, and the surrounding `rooted` test
+# means we only ever reach it on a `__file__`-derived expression.
+_PATH_CALLS = {"join", "dirname", "abspath", "realpath", "expanduser", "normpath", "Path", "str"}
 
 
 class Unresolvable(Exception):
@@ -137,6 +143,20 @@ def _eval(node, here, env):
         raise Unresolvable("subscript")
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
         return os.path.join(_eval(node.left, here, env), _eval(node.right, here, env))
+    if isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+        # ⚠ #315, SECOND HALF. `SONORA = os.environ.get("SONORA_REPO") or str(Path(__file__)
+        # .resolve().parents[2])` is the repo's standard "env var wins, else repo-relative"
+        # idiom (2 instances, measured). Refusing the whole expression left `SONORA` out of
+        # `env`, so the assertion one line below it — `Path(SONORA)/"matcha"/"models"/
+        # "matcha_tts.py"` — was enumerated by NEITHER half of the walk. That is the site
+        # #315's own body named as unguarded, and the first fix did not reach it.
+        #
+        # The LAST operand is the right one to take, and not merely the convenient one: the
+        # env override is runtime configuration and makes no claim about depth, while the
+        # fallback is precisely the "where does this file sit relative to the repo" assertion
+        # this guard exists to check. If the fallback does not resolve, refuse — do not fall
+        # back to an earlier operand, which would resolve a path this code never builds.
+        return _eval(node.values[-1], here, env)
     if isinstance(node, ast.Call):
         name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
         if name in ("resolve", "absolute"):
@@ -295,10 +315,10 @@ def test_the_guard_actually_asserts_something():
     from one run of this test's own body:
 
         scripts enumerated                 110
-        constants resolving to a repo path  36
-        of which SELF-ANCESTOR               9   <- cannot fail, by construction
+        constants resolving to a repo path  40
+        of which SELF-ANCESTOR              10   <- cannot fail, by construction
         of which the PARSED FILE ITSELF      2   <- ditto; see below
-        FALSIFIABLE                         25   <- what the floor below counts
+        FALSIFIABLE                         28   <- what the floor below counts
 
     Most scripts build no in-repo path at all, so a floor on the file count says nothing.
     And a self-ancestor (`HERE = dirname(abspath(__file__))`) resolves to a directory that
@@ -350,13 +370,17 @@ def test_the_guard_actually_asserts_something():
     # the subject — 23+4=27 — is today's PRE-FIX measurement, never the old floor. Reasoned,
     # not measured, in the one file whose docstring warns against that.)
     #
-    # THE ACTUAL DERIVATION, both enumerations run over the SAME tree on 2026-08-26:
+    # THE ACTUAL DERIVATION, every enumeration run over the SAME tree on 2026-08-26:
     #
-    #   pre-fix  : 23 genuine + 4 self-file  -> 27 counted as falsifiable (floor was 24)
-    #   post-fix : 25 genuine + 2 self-file  -> 25 counted (self-file now excluded)
+    #   pre-fix   : 23 genuine + 4 self-file -> 27 counted as falsifiable (floor was 24)
+    #   after #315: 25 genuine + 2 self-file -> 25 counted (self-file now excluded)
+    #   after #320: 28 genuine + 2 self-file -> 28 counted   <- this floor
     #
-    #   25 = 23 genuine, NONE LOST
-    #      +  2 newly enumerated: test_vat_dim_seams.py:58 and :81, the `/`-composed sites
+    #   28 = 23 genuine, NONE LOST
+    #      +  2 `/`-composed sites the Call-only walk could not see (test_vat_dim_seams:58,:81)
+    #      +  3 reached once `str()` and `X or Y` stopped being refused — convert_vat.py:138
+    #         (the site #315's OWN BODY named as unguarded, and which the first fix did not
+    #         reach), probe_delivery_intercept.py:111, schemas.py:161
     #
     # Of the 4 pre-fix self-file entries, 2 vanish because the new scan scores their real
     # OUTER expression instead (`register_audition.py:70`, `sweep_dropped.py:50` — both were
@@ -366,8 +390,8 @@ def test_the_guard_actually_asserts_something():
     # Re-run the body rather than trusting the block above; that instruction outranks it.
     # The floor is the measurement: this is a ratchet, so any drop in falsifiable coverage
     # is meant to be noticed, including a legitimate one.
-    assert len(falsifiable) >= 25, (
-        f"falsifiable asset paths dropped to {len(falsifiable)} from the 25 measured on\n"
+    assert len(falsifiable) >= 28, (
+        f"falsifiable asset paths dropped to {len(falsifiable)} from the 28 measured on\n"
         f"2026-08-26. Either the evaluator stopped resolving a spelling, or coverage really\n"
         f"shrank — if the latter, re-derive and lower this number deliberately:\n"
         + "\n".join(falsifiable)

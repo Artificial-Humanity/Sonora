@@ -325,11 +325,19 @@ fi
 # is invisible to a search for things that break**. Same family as the silent-`|| echo CLEAN`
 # and empty-enumeration traps this repo keeps paying for.
 #
-# ⚠ AND REMOVING THE BLOCK OUTRIGHT WOULD HAVE LOST SOMETHING LIVE: the `branch_name` stamping
-# instruction lived in the OTHER branch of that conditional — the one that could never run —
-# so no reviewer has been handed it since the retirement either. It is now unconditional
-# below, which is what it always should have been: it is a property of the branch, and the
-# branch always exists.
+# ⚠ AND REMOVING THE BLOCK OUTRIGHT WOULD HAVE LOST SOMETHING: the `branch_name` STAMPING
+# paragraph, and the "query branch_name=… to find what earlier passes filed" recipe, lived in
+# the OTHER arm of that conditional — the arm that could never run. Both are now unconditional
+# below, which is what they always should have been: they are properties of the branch, and
+# the branch always exists.
+#
+# ⚠ An earlier version of this said "no reviewer has been handed it since the retirement".
+# That is FALSE and was not checked before being written: the brief's own header block, ~60
+# lines above, already carries "**branch_name for THIS pass:** `<branch>` — set it on every
+# issue you file." So reviewers were told to stamp; what they were NOT given is the recipe for
+# querying prior passes, and what they WERE given is a spurious instruction to report a
+# retired mechanism as missing. Overstating the loss to make the fix look bigger is the same
+# defect as the vestige itself — a sentence nobody checked.
 
 # --- Sibling repos the reviewer may READ -----------------------------------
 # ⚠ WITHOUT THIS THE REVIEWER IS BLIND TO MECHANISMS THIS REPO ONLY DESCRIBES. Measured:
@@ -637,10 +645,20 @@ REVIEWER_ALLOW=(
   #
   # ⚠ SCOPED PER SUBCOMMAND, AND `escalate` IS DELIBERATELY ABSENT. REVIEWER.md §1 carries an
   # owner ruling (2026-08-17): "YOU DO NOT ESCALATE. ESCALATION IS OZZY'S, AND ONLY OZZY'S."
-  # That was prose only. Granting `Bash(workflow/scripts/issue.py:*)` would have pre-approved
-  # the one move the role is forbidden to make; enumerating instead turns the rule into a
-  # mechanism, which AGENTS.md §1 is explicit is the stronger thing. `take`, `grade` and
-  # `review` are the WORKER's verbs and are absent for the same reason.
+  # Granting `Bash(workflow/scripts/issue.py:*)` would pre-approve the one move the role is
+  # forbidden to make, so the entries are enumerated instead. `take`, `grade` and `review` are
+  # the WORKER's verbs and are absent for the same reason.
+  #
+  # ⚠⚠ BUT THIS DOES NOT MAKE THE RULE A MECHANISM, AND AN EARLIER VERSION OF THIS COMMENT
+  # CLAIMED IT DID. Measured 2026-08-26: `Bash(python:*)`, `Bash(python3:*)` and
+  # `Bash(.venv/bin/python:*)` are granted twelve lines above, and every one of them matches
+  # `python workflow/scripts/issue.py escalate N`. The arbitrary-python grant is deliberate
+  # (owner, 2026-08-18) and its own comment already says the plain part: "what stops a
+  # reviewer writing is now the PERSONA, not the allowlist — a rule rather than a mechanism".
+  # So this enumeration RAISES THE BAR — the forbidden move is no longer the path of least
+  # resistance, and a reviewer reaching it has to choose an interpreter prefix — but it does
+  # not close the door, and saying otherwise would be a false sense of a guarantee in the
+  # place people look for guarantees. What actually holds the line is REVIEWER.md §1.
   #
   # ⚠ PREFIX MATCHES, so the subcommand must come FIRST — `issue.py close 114 …`, not
   # `issue.py --author Janis close 114`. REVIEWER.md documents the subcommand-first spelling
