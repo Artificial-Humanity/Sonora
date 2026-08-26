@@ -246,19 +246,42 @@ def test_reviewer_md_documents_the_write_path_at_all():
     assert "refereed" in text.lower(), "§4 no longer explains WHY the MCP write is refused"
     assert "pb_record_mutate" in text, "§4 no longer warns against the tool that is refused"
 
-    # ⚠ #332. MENTIONING THE TOOL WAS THE GREEN CONDITION, AND THAT WAS THE HOLE. When
-    # `pb_record_mutate` was revoked, §1 was updated and §4 — two sections down, same file,
-    # SAME COMMIT — kept saying a direct create "would succeed" and that "nothing will stop
-    # you filing wrongly; only this page will". Both false for a reader who cannot call the
-    # tool. The assertion above was satisfied by the stale sentence, because it only asked
-    # whether the string appeared.
+    # ⚠ #332 then #333, and the second one is a lesson about guards, not about this page.
     #
-    # So the page is now tied to the ALLOWLIST STATE rather than to a keyword: if the tool is
-    # not granted, §4 has to say so. This relaxes automatically if it is ever re-granted,
-    # which is the property that keeps it from becoming the next stale rule.
+    # #332: when `pb_record_mutate` was revoked, §1 was updated and §4 — two sections down,
+    # same file, SAME COMMIT — kept saying a direct create "would succeed". The assertion
+    # above did not notice, because it only asked whether the string APPEARED.
+    #
+    # ⚠⚠ #333: the guard added for that was WORSE THAN NOTHING, and measured to fail in BOTH
+    # directions at once. It matched `revoked` across the WHOLE page, and §1 — the half that
+    # was never wrong — satisfied it. So it PASSED on the exact #332 defect state, and FAILED
+    # on correct prose that said "withdrawn". I also described it in the commit as "tied to
+    # the ALLOWLIST STATE rather than to a keyword": it is a keyword; the allowlist state only
+    # decides whether the keyword is REQUIRED. ⚠ And this file argues against exactly this
+    # shape ~60 lines above, where the general `pb_*` version was measured and declined. **The
+    # argument was already here and I built the thing anyway, below it.**
+    #
+    # Below is the remedy the reviewer MEASURED rather than suggested: scope the match to §4,
+    # and widen the vocabulary. That inverts both bad rows.
+    #
+    # ⚠ IT IS STILL A KEYWORD CHECK AND ITS LIMITS ARE STATED, not glossed. What makes it
+    # acceptable here and not for `pb_*` generally is the population: ONE tool, with an exact
+    # condition (ungranted -> §4 must say so). It can still go red on a rewording outside the
+    # vocabulary — so the message says to widen the list or delete the assertion, and NOT to
+    # contort the prose to satisfy it. A guard that makes a page worse to read has lost.
     granted = {e.split("__")[-1] for e in _allowlist() if e.startswith("mcp__pocketbase__")}
     if "pb_record_mutate" not in granted:
-        assert "revoked" in text.lower(), (
-            "REVIEWER_ALLOW does not grant pb_record_mutate, but REVIEWER.md never says it is "
-            "revoked. The page therefore still describes a tool the reader cannot call — the "
-            "#332 shape. Say plainly in §4 that it is revoked, or re-grant it deliberately.")
+        s4 = text.split("\n## 4.", 1)
+        assert len(s4) == 2, "could not find §4 — has REVIEWER.md been renumbered?"
+        section4 = s4[1].split("\n## 5.", 1)[0].lower()
+        assert "pb_record_mutate" in section4, (
+            "§4 no longer mentions pb_record_mutate at all, so the check below is vacuous.")
+        vocab = ("revoked", "withdrawn", "not granted", "no longer granted", "is refused",
+                 "cannot call", "removed from the allowlist")
+        assert any(v in section4 for v in vocab), (
+            "REVIEWER_ALLOW does not grant pb_record_mutate, but §4 never says so — it still "
+            "describes a tool the reader cannot call (the #332 shape, which #333 proved this "
+            "assertion could not see when it searched the whole page).\n"
+            f"Looked in §4 for any of: {vocab}\n"
+            "⚠ If §4 is CORRECT and simply words it differently, widen that list or delete "
+            "this assertion. Do NOT reword the page to satisfy a keyword match.")
