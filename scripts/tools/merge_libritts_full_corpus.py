@@ -256,29 +256,43 @@ def main():
             f.write("\n".join(part) + "\n")
         print("wrote %d rows -> %s" % (len(part), os.path.join(args.out, name)))
 
-    # ⚠ #296. This USED to be written as `"base_rows_byte_identical": True` — a Python
-    # literal in the one artifact whose job is saying what was checked. It happened to be
-    # true, which is worse than being false: a later change that broke the property would
-    # have kept emitting the claim, and the note pointing readers here would have kept
-    # pointing at it. So the property is MEASURED, from the files on disk rather than from
-    # the in-memory lists that produced them, and the digests are recorded so the claim can
-    # be re-checked without re-running the merge.
+    # ⚠ #296, SECOND ATTEMPT. The first fix was a measurement in FORM ONLY and Janis
+    # reopened it: both sides went through the same normalisation, so `identical` was True
+    # by construction and the die() was unreachable. `read_corpus` drops every empty line,
+    # `train` is literally `base[name] + new_train`, and re-reading the output then
+    # re-applying the identical strip cannot disagree with it. A base carrying an interior
+    # blank line, or no trailing newline, came out different on disk while the report said
+    # true — measured, not argued.
+    #
+    # So the comparison is now against BYTES OF FILES, which is the only thing that can
+    # actually differ: the base file as it sits on disk, and the leading bytes of what was
+    # written. The digests are of those same bytes, so `sha256sum` on either file
+    # reproduces them — the previous ones hashed joined lines and matched nothing.
     identity = {}
     for name in ("train_op.txt", "val_op.txt"):
-        base_lines = base[name]
-        with open(os.path.join(args.out, name), encoding="utf-8") as f:
-            out_lines = [ln for ln in f.read().split("\n") if ln]
-        prefix = out_lines[:len(base_lines)]
-        b = hashlib.sha256("\n".join(base_lines).encode("utf-8")).hexdigest()
-        o = hashlib.sha256("\n".join(prefix).encode("utf-8")).hexdigest()
-        identity[name] = {"base_rows": len(base_lines), "sha256_base": b,
-                          "sha256_out_prefix": o, "identical": b == o}
-        if b != o:
-            die("BYTE-IDENTITY FAILED on %s: the output's first %d rows do not reproduce "
-                "the base. The corpus at %s is NOT a legal warm-start donor and must not "
-                "be trained on." % (name, len(base_lines), args.out))
-    print("byte-identity: verified on disk (%s)"
-          % ", ".join("%s %d rows" % (n, v["base_rows"]) for n, v in identity.items()))
+        with open(os.path.join(args.base, name), "rb") as f:
+            base_bytes = f.read()
+        with open(os.path.join(args.out, name), "rb") as f:
+            out_bytes = f.read()
+        head = out_bytes[:len(base_bytes)]
+        b = hashlib.sha256(base_bytes).hexdigest()
+        o = hashlib.sha256(head).hexdigest()
+        identity[name] = {"base_bytes": len(base_bytes), "sha256_base_file": b,
+                          "sha256_out_leading_bytes": o, "identical": head == base_bytes}
+        if head != base_bytes:
+            # Unlike the first attempt, this die() is reachable — so it cleans up after
+            # itself, the same invariant the licence refusal below keeps.
+            for n2 in ("train_op.txt", "val_op.txt"):
+                try:
+                    os.remove(os.path.join(args.out, n2))
+                except OSError:
+                    pass
+            die("BYTE-IDENTITY FAILED on %s: the output's leading %d bytes do not reproduce "
+                "the base file. The corpus at %s would NOT be a legal warm-start donor. "
+                "Partial write removed." % (name, len(base_bytes), args.out))
+    print("byte-identity: verified against file bytes (%s)"
+          % ", ".join("%s %d bytes" % (n, v["base_bytes"]) for n, v in identity.items()))
+
     # ⚠ The authoritative licence check needs the files on disk, so it runs AFTER the write —
     # which means a refusal here leaves filelists in `--out` and no `speakers.json`. That
     # half-corpus would then trip the "--out already holds a corpus" guard above and demand

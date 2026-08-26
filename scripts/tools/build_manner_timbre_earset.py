@@ -38,6 +38,14 @@ THE DESIGN, and why each part is there
 * **Forced grouping, not scoring** — the 5-point scale is saturated on this project and
   cannot separate what it is asked to separate.
 
+⚠ NOTHING IN THE GENERATED README MAY NAME A PREVIOUS ROUND'S ANSWER (#305). A commit
+adding the manner question also pasted the recorded v6 verdict — "all sound neutral to me" —
+into the listener's own instruction sheet, in bold, directly above the question they were
+about to answer, and shipped it live on the still-unheard A=+1 set. The README is read by
+someone who has been asked not to open `KEY.json`; telling them the expected answer defeats
+the same blinding the key protects. **Rationale for the protocol goes here, in the source,
+where the maintainer reads it. The README carries the questions and nothing else.**
+
 Usage:
     .venv/bin/python scripts/tools/build_manner_timbre_earset.py \
         --probe /data/model-training/sonora/probes/intercept_ep008 \
@@ -213,10 +221,6 @@ Loudness has been equalised to {args.target_lufs:.1f} LUFS by a single gain per 
 2. **Group them.** Which clips share a delivery? Say which letters go together.
 3. **Manner.** Do these differ in *how* the line is delivered at all — obvious, subtle, or
    none? If audible, what moves: pace, weight, warmth, push, distance?
-   ⚠ **This question is the one the result rests on and it was missing until #298.** The
-   recorded v6 verdict is a null — "all sound neutral to me" — which is an answer to THIS,
-   not to the grouping. A protocol that only asks for groups collects a ranking and leaves
-   the reader to infer the null from it.
 4. **Voice check.** Is it the same person throughout, or does the voice itself change?
 5. **Then** say whether any grouping was a guess. "I was guessing" is a real result here.
 
