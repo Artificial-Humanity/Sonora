@@ -405,7 +405,13 @@ headline; open items are in [todo.md](todo.md).
    genuinely falsifiable sites — `convert_vat.py:138`, `probe_delivery_intercept.py:118` and
    `schemas.py:161`. The artifact asserts `>= 28`; **read the floor there, not here.** This
    paragraph is the record of what was found, not a live number — the same distinction the
-   `#317` note three lines above already makes for its own superseded table.
+   `#317` note **earlier in this same numbered item** already makes for its own superseded
+   table (search `FIXED 2026-08-26 (#317)`). ⚠ #326: that read "three lines above" and it was
+   **35**. The number was transcribed from the reviewer's own remedy text without measuring —
+   a remedy gets less scrutiny than a finding, and it turns out that holds in the
+   reviewer→artifact direction too, not just developer→fix. **A line distance in prose rots
+   the moment anything is inserted between the two, so it is not cited here at all**; the
+   anchor is a searchable string, which does not.
    The direct evidence above stands precisely because it came from a container run,
    not from a green suite.
    `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**

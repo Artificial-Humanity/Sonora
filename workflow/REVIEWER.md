@@ -260,7 +260,18 @@ workflow/scripts/issue.py reopen 114 --comment "…"   # review -> open, comment
 workflow/scripts/issue.py comment 114 --text "…"     # never moves `state`
 ```
 
-Set `ISSUE_AUTHOR=Janis` once and it stops asking who you are.
+⚠ **Pass `--author Janis` on each command. Do NOT use `ISSUE_AUTHOR=Janis <cmd>`** — measured
+by a reviewer 2026-08-26: the env-var prefix makes the command string start with
+`ISSUE_AUTHOR=`, and every grant above is a **prefix match on that string**, so the whole
+invocation is refused. The developer's copy of these instructions uses the env var because the
+developer runs without an allowlist; **yours is the same script under a narrower grant, and
+that difference is invisible from the page.**
+
+This is the third time in one week that this section documented something the harness refuses
+(#318, #321, this). ⚠ **`tests/test_reviewer_write_path.py` would not have caught it** — it
+checks that every `issue.py` *subcommand* named here is granted, and this defect is in the
+part of the invocation BEFORE the subcommand. **The guard's population was the subcommands;
+the defect was in the prefix.** A floor on the wrong population cannot fire, one layer out.
 
 ⚠⚠ **A `400` NAMING A REFEREED FIELD IS NOT AN UNREACHABLE TRACKER — IT IS THIS RULE,
 ARRIVING AS AN ERROR.** It names the offending field(s) and the route it wants:
@@ -310,11 +321,12 @@ workflow/scripts/issue.py show 114                             # record AND its 
 ```
 
 ⚠ For a query those cannot express, use `python3` — it is granted, and **`curl` is not**.
-(The lab's `pocketbase` skill documents this same reroute with `curl`; that spelling is
-refused for you. Credentials are at `~/.claude.json` → `mcpServers.pocketbase.env`, which is
-the well-known location whether or not you are speaking MCP.) ⚠ **Never call
-`pb_auth_superuser` to fix this** — it takes the password as a tool argument and writes a live
-credential into your transcript in plain text.
+Credentials are at `~/.claude.json` → `mcpServers.pocketbase.env`, which is the well-known
+location whether or not you are speaking MCP; the lab's `pocketbase` skill carries a
+stdlib-only block you can adapt. ⚠ **Never call `pb_auth_superuser` to fix this** — it takes
+the password as a tool argument and writes a live credential into your transcript in plain
+text, and for the same reason do not pass it to a subprocess as an argument either: `argv` is
+readable by `ps` while the call is in flight.
 
 **Only when BOTH paths fail is the tracker genuinely unreachable — connection refused, the
 host down, `issue.py` failing on every issue alike. Then you cannot file: say so loudly in

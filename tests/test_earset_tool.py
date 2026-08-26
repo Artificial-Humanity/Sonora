@@ -247,12 +247,23 @@ def test_sample_rate_disagreement_is_refused(probe, tmp_path):
 # ------------------------------------------------------------------ #302
 
 def test_readme_claims_equalisation_only_when_it_achieved_it(probe, tmp_path):
-    """⚠ #302. Both directions, because the honest branch is the one nobody exercises."""
+    """⚠ #302 and #324. Both directions, because the honest branch is the one nobody exercises.
+
+    ⚠ #327: this asserted on README.md, KEY.json and stderr and **not on ANSWERS.md**, so the
+    #324 fix shipped unguarded — re-flattening `answers_loudness` back to a bare "loudness
+    equalised" left the whole suite green. An asymmetry inside one commit: #325's fix got a
+    test the same day and #324's did not, and nothing made that visible. ANSWERS.md is the
+    document the blind listener actually holds while deciding, so if either artifact deserved
+    the assertion first it was this one.
+    """
     ok = tmp_path / "ok"
     assert build(probe, ok).returncode == 0
     text = (ok / "README.md").read_text()
+    answers = (ok / "ANSWERS.md").read_text()
     assert "every clip reached the target" in text
     assert "did NOT reach that target" not in text
+    assert "loudness equalised" in answers
+    assert "NOT fully equalised" not in answers
     assert all(not c["peak_ceiling_capped"] for c in json.loads((ok / "KEY.json").read_text())["clips"])
 
     # Force the ceiling with an impossible target.
@@ -260,6 +271,7 @@ def test_readme_claims_equalisation_only_when_it_achieved_it(probe, tmp_path):
     r = build(probe, capped, "--target-lufs", "-3.0")
     assert r.returncode == 0
     text = (capped / "README.md").read_text()
+    answers = (capped / "ANSWERS.md").read_text()
     assert "did NOT reach that target" in text
     assert "IS partly available as a cue" in text
     assert "every clip reached the target" not in text
@@ -269,6 +281,11 @@ def test_readme_claims_equalisation_only_when_it_achieved_it(probe, tmp_path):
     # The README must NAME the affected files, not just count them.
     for c in clips:
         assert c["file"] in text
+    # ⚠ #324/#327. The answer sheet must not contradict the README while the listener holds
+    # both. It carries the count, not the file list — it is a summary, not the record.
+    assert "NOT fully equalised" in answers, "ANSWERS.md still claims equalisation"
+    assert f"{len(clips)} of {len(clips)} clips" in answers
+    assert "loudness equalised" not in answers.replace("NOT fully equalised", "")
 
 
 def test_key_records_what_it_tested(probe, tmp_path):
