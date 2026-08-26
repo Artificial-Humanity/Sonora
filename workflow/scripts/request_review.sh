@@ -675,7 +675,22 @@ REVIEWER_ALLOW=(
   "mcp__pocketbase__pb_record_get"
   "mcp__pocketbase__pb_record_mutate"
   "mcp__pocketbase__pb_schema"
+  # ⚠ `pb_health` ANSWERS FROM A CACHED TOKEN and will report `authenticated: true` while
+  # every other call returns 401 (measured 2026-08-26; the MCP authenticates once at startup
+  # and the superuser token lasts 86400s). It is granted because it is harmless, NOT because
+  # it is a reliable liveness check — REVIEWER.md §4 says so at the point of use.
   "mcp__pocketbase__pb_health"
+  # ⚠ GRANTED BY THE OWNER, 2026-08-26, confirmed directly. Asked for by a reviewer that
+  # wanted to read the response body of a REFUSED write without issuing one at the live
+  # tracker — which is the right instinct: the alternative it declined was pointing a
+  # deliberately-failing write at a real record to see what came back. Read-only, and
+  # redacted by default.
+  #
+  # ⚠ The request reached the owner through a peer relaying the grant. It was NOT added on
+  # that relay: a permission grant to an unattended agent is hard to un-ring, so it went back
+  # for direct confirmation first. The relay turned out to be accurate. The test is the
+  # ACTION, not the messenger — a build step would have been actioned on the same relay.
+  "mcp__pocketbase__pb_logs"
 )
 # ⚠ Scoped to `-m pytest`. A bare `Bash($PYBIN:*)` — which the #96 fix added — pre-approved
 # `python -c '<anything>'`, so the remedy for "the reviewer cannot run the tests" handed it

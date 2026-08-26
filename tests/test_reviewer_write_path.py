@@ -148,6 +148,38 @@ def test_the_reviewer_is_not_granted_the_developers_verbs():
         f"take/grade/review are the developer's too.")
 
 
+def test_pb_auth_superuser_is_never_granted():
+    """⚠ The one `pb_*` tool that must stay out, and the reason is not access — it is disclosure.
+
+    `pb_auth_superuser` takes the password as a TOOL ARGUMENT, so calling it writes a live
+    superuser credential into the session transcript in plain text. REVIEWER.md §4 tells the
+    reviewer never to reach for it when the MCP goes stale; that was prose only, and prose is
+    what this file exists to convert into a mechanism. The reviewer needs no auth tool at all:
+    the MCP is pre-authenticated, and `issue.py` mints its own token in-process.
+
+    ⚠ THE GENERAL VERSION OF THIS CHECK WAS CONSIDERED AND DELIBERATELY NOT BUILT. "Every
+    `pb_*` tool REVIEWER.md names must be granted" sounds like the #321 guard one layer out,
+    and it is a trap: measured 2026-08-26, a naive scan returns `pb_auth_superuser` (named in
+    a PROHIBITION — the desired state) and `pb_hooks` (a DIRECTORY in a file path, not a tool
+    at all). Both would go red on correct prose, and a guard that goes red on correct code
+    gets switched off. Distinguishing "named as an instruction" from "named as a warning"
+    needs a judgement this file cannot make reliably, so it asserts the invariant it CAN state
+    exactly and leaves the fuzzy one alone.
+    """
+    granted = {e.split("__")[-1] for e in _allowlist() if e.startswith("mcp__pocketbase__")}
+    assert granted, "no mcp__pocketbase__ grants parsed — the array parse is broken"
+    assert "pb_auth_superuser" not in granted, (
+        "REVIEWER_ALLOW grants pb_auth_superuser. It takes the password as a tool argument, "
+        "so any call writes a live superuser credential into the transcript in plain text. "
+        "The reviewer never needs it: the MCP is pre-authenticated and issue.py mints its "
+        "own token in-process.")
+    for writer in ("pb_collection_create", "pb_collection_delete", "pb_collection_patch",
+                   "pb_settings", "pb_backup"):
+        assert writer not in granted, (
+            f"REVIEWER_ALLOW grants {writer}, which mutates the store's SHAPE rather than a "
+            f"record. The reviewer reads and files; it does not administer the tracker.")
+
+
 def test_no_unscoped_grant_of_the_whole_script():
     """The wildcard that would silently re-open everything the test above closes."""
     bad = [e for e in _allowlist()
