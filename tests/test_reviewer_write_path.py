@@ -29,10 +29,14 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 REVIEWER_MD = REPO / "workflow" / "REVIEWER.md"
 LAUNCHER = REPO / "workflow" / "scripts" / "request_review.sh"
 
-# Verbs `issue.py` exposes that belong to the WORKER or to the owner, never to the reviewer.
-# `escalate` is the owner ruling of 2026-08-17 (REVIEWER.md §1: "YOU DO NOT ESCALATE.
-# ESCALATION IS OZZY'S, AND ONLY OZZY'S"); `take`/`grade`/`review` are the worker's half of
-# the loop and the reviewer incrementing `agent_passes` would corrupt the spend ceiling.
+# Verbs `issue.py` exposes that belong to the DEVELOPER, never to the reviewer. ⚠ All four
+# are the developer's — none of them is the OWNER's, and an earlier version of this file said
+# `escalate` was. The owner's part is DECIDING on an escalated issue (`user_decision`, which
+# no agent writes); putting it there is the developer's move. Ruled 2026-08-17, and stated
+# from both sides: REVIEWER.md §1 "YOU DO NOT ESCALATE. ESCALATION IS OZZY'S, AND ONLY
+# OZZY'S", DEVELOPER.md § "ESCALATION IS YOURS. JANIS DOES NOT ESCALATE". `take`/`grade`/
+# `review` are the developer's half of the loop, and the reviewer incrementing `agent_passes`
+# would corrupt the spend ceiling.
 FORBIDDEN_TO_REVIEWER = ("escalate", "take", "grade", "review")
 
 
@@ -103,7 +107,8 @@ def test_reviewer_md_does_not_document_a_forbidden_verb():
     bad = sorted(documented & set(FORBIDDEN_TO_REVIEWER))
     assert not bad, (
         f"REVIEWER.md documents {bad}, which the reviewer is forbidden to run and which "
-        f"REVIEWER_ALLOW deliberately withholds. `escalate` is the owner's (2026-08-17); "
+        f"REVIEWER_ALLOW deliberately withholds. `escalate` is the DEVELOPER's (owner ruling, "
+        f"2026-08-17: DEVELOPER.md \u00a7 'ESCALATION IS YOURS. JANIS DOES NOT ESCALATE'); "
         f"take/grade/review are the worker's. Either the page is wrong, or the ruling "
         f"changed and the allowlist and §1 have to change with it.")
 
@@ -126,8 +131,8 @@ def test_every_documented_command_is_granted():
           '"Bash(workflow/scripts/issue.py <sub>:*)" AND the "./" spelling to REVIEWER_ALLOW.')
 
 
-def test_the_reviewer_is_not_granted_the_owner_or_worker_verbs():
-    """⚠ The owner's escalation ruling as a MECHANISM, not as prose.
+def test_the_reviewer_is_not_granted_the_developers_verbs():
+    """⚠ The 2026-08-17 escalation ruling as a MECHANISM, not as prose.
 
     REVIEWER.md §1 has said "YOU DO NOT ESCALATE" since 2026-08-17 and nothing enforced it.
     Granting `Bash(workflow/scripts/issue.py:*)` — the obvious one-line fix for #321 — would
@@ -138,7 +143,9 @@ def test_the_reviewer_is_not_granted_the_owner_or_worker_verbs():
     leaked = sorted(granted & set(FORBIDDEN_TO_REVIEWER))
     assert not leaked, (
         f"REVIEWER_ALLOW grants the reviewer {leaked}, which REVIEWER.md forbids it. "
-        f"`escalate` is the owner's (2026-08-17); take/grade/review are the worker's.")
+        f"`escalate` is the DEVELOPER's, not yours and not the owner's — the owner DECIDES on "
+        f"an escalated issue, the developer is what puts it there (2026-08-17). "
+        f"take/grade/review are the developer's too.")
 
 
 def test_no_unscoped_grant_of_the_whole_script():
