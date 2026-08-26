@@ -75,9 +75,24 @@ def test_both_sides_actually_parsed_something():
     documented = _documented_subcommands()
     granted = _granted_issue_subcommands()
     entries = _allowlist()
+    # ⚠⚠ #330, FOURTH TIME. THIS MESSAGE NO LONGER CARRIES A REMEMBERED ENTRY COUNT, AND THAT
+    # IS THE FIX — the previous three were all "N measured on DATE" literals that rotted.
+    #
+    # The sequence, because it is funnier and more useful than the rule: 47 at `56e70e5`; 48
+    # at `50d55b6` when `pb_logs` was granted; back to **47** at `1dd8080` — the commit that
+    # removed `pb_record_mutate`, WHICH IS THE SAME COMMIT THAT RAISED THE LITERAL 47 -> 48.
+    # I measured, then edited, then shipped the measurement. Three of the four instances of
+    # that error in this repo have been exactly this: a snapshot written down as if it were a
+    # baseline.
+    #
+    # A THRESHOLD is a deliberate ratchet and belongs here. A COUNT is a fact about right now
+    # and belongs in the failure output, where it is computed at the moment it is read and
+    # cannot be stale. So the floor stays and the number goes — nothing left to re-derive,
+    # which is the only version of this fix that has not needed fixing.
     assert len(entries) >= 30, (
-        f"only {len(entries)} REVIEWER_ALLOW entries parsed — **48** measured 2026-08-26. "
-        f"The array parse is probably broken, not the array.")
+        f"only {len(entries)} REVIEWER_ALLOW entries parsed. The floor is 30 — well under any "
+        f"real array — so this is almost certainly the PARSE breaking, not entries being "
+        f"removed. Check the `REVIEWER_ALLOW=(` regex against the launcher's current shape.")
     # ⚠ #330. THE FLOOR WAS 4 AND THE POPULATION IS 6, AND THE SLACK WAS EXACTLY THE THING
     # THIS PAGE MOST NEEDS. `list` and `show` are the MCP-401 reroute — the commands a
     # reviewer falls back to when the tools start returning 401 — so at a floor of 4 they
@@ -85,13 +100,18 @@ def test_both_sides_actually_parsed_something():
     # hatch from the one section that turns an unreachable tracker into a lost review. A
     # floor has to sit under the population that matters, not under the one that was there
     # when it was written.
+    # ⚠ These two floors ARE deliberate ratchets, not snapshots: 6 is the write path
+    # (close, comment, file, reopen) plus the 401 reroute (list, show). Losing `list`/`show`
+    # costs §4's fallback, not just a line — which is why the floor is on the population that
+    # matters rather than on whatever was there when it was written. The live sets go in the
+    # message, for the same reason as above.
     assert len(documented) >= 6, (
-        f"only {len(documented)} issue.py subcommands documented in REVIEWER.md §4 — **6** "
-        f"measured 2026-08-26: close, comment, file, reopen (the write path) plus list and "
-        f"show (the 401 reroute). Losing `list`/`show` costs the fallback, not just a line.")
+        f"REVIEWER.md §4 documents only {len(documented)} issue.py subcommands: "
+        f"{sorted(documented)}. Floor is 6 — the four write verbs plus `list`/`show`, which "
+        f"are the MCP-401 reroute. Losing those costs the fallback, not just a line.")
     assert len(granted) >= 6, (
-        f"only {len(granted)} issue.py grants parsed from REVIEWER_ALLOW — **6** measured "
-        f"2026-08-26, matching the documented set exactly.")
+        f"REVIEWER_ALLOW grants only {len(granted)} issue.py subcommands: {sorted(granted)}. "
+        f"Floor is 6, matching the documented set.")
 
 
 # --------------------------------------------------------------- the actual invariant
@@ -225,3 +245,20 @@ def test_reviewer_md_documents_the_write_path_at_all():
     assert "workflow/scripts/issue.py" in text
     assert "refereed" in text.lower(), "§4 no longer explains WHY the MCP write is refused"
     assert "pb_record_mutate" in text, "§4 no longer warns against the tool that is refused"
+
+    # ⚠ #332. MENTIONING THE TOOL WAS THE GREEN CONDITION, AND THAT WAS THE HOLE. When
+    # `pb_record_mutate` was revoked, §1 was updated and §4 — two sections down, same file,
+    # SAME COMMIT — kept saying a direct create "would succeed" and that "nothing will stop
+    # you filing wrongly; only this page will". Both false for a reader who cannot call the
+    # tool. The assertion above was satisfied by the stale sentence, because it only asked
+    # whether the string appeared.
+    #
+    # So the page is now tied to the ALLOWLIST STATE rather than to a keyword: if the tool is
+    # not granted, §4 has to say so. This relaxes automatically if it is ever re-granted,
+    # which is the property that keeps it from becoming the next stale rule.
+    granted = {e.split("__")[-1] for e in _allowlist() if e.startswith("mcp__pocketbase__")}
+    if "pb_record_mutate" not in granted:
+        assert "revoked" in text.lower(), (
+            "REVIEWER_ALLOW does not grant pb_record_mutate, but REVIEWER.md never says it is "
+            "revoked. The page therefore still describes a tool the reader cannot call — the "
+            "#332 shape. Say plainly in §4 that it is revoked, or re-grant it deliberately.")

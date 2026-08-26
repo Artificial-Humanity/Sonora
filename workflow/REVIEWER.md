@@ -246,14 +246,24 @@ list is the hook's, not this file's; read `const REFEREED` in
 `/data/services/pocketbase/pb_hooks/ferrostep.issues.pb.js` if you need to be sure it still
 says what this sentence says.
 
-⚠⚠ **THE GUARD COVERS UPDATES ONLY. CREATION IS NOT GUARDED**, and an earlier version of this
-page implied otherwise. Verified 2026-08-26 in the installed hook: the two
-`onRecordUpdateRequest` handlers carry the refereed-field refusal, while the single
-`onRecordCreateRequest` handler guards **only `user_decision`**. So a direct
-`pb_record_mutate` *create* setting `state`, `repo` and `branch_name` **would succeed** — it
-would simply be an issue the referee never saw, in no changeset check, with no event behind
-it. **Nothing will stop you filing wrongly; only this page will.** That is the one place in
-your write path where the rule really is a rule and not a mechanism — so use `issue.py file`. `issue.py` requests the move
+⚠⚠ **THE STORE-SIDE GUARD COVERS UPDATES ONLY. CREATION IS NOT GUARDED THERE.** Verified
+2026-08-26 in the installed hook: the two `onRecordUpdateRequest` handlers carry the
+refereed-field refusal, while the single `onRecordCreateRequest` handler guards **only
+`user_decision`**. So *at the store*, a direct create setting `state`, `repo` and
+`branch_name` is not refused — it would simply be an issue the referee never saw, with no
+event behind it.
+
+⚠ **But you cannot reach that door: `pb_record_mutate` is REVOKED (#331, 2026-08-26)** and is
+in no grant you hold, so the create path is closed to you by the harness. **An earlier version
+of this paragraph — written in the same commit that revoked the tool — still said the create
+"would succeed" and that "nothing will stop you filing wrongly; only this page will."** That
+was true of the store and false of you, and it survived because §1 was updated and §4, two
+sections down in the same file, was not. Corrected 2026-08-26 (#332).
+
+**The gap is real and worth knowing anyway**, because it is the store's shape and not the
+harness's: anything holding that tool — a future role, another lane, a human with the console
+— can create an unrefereed issue. That is why the create path stays documented instead of
+deleted. For you it is closed twice over. Use `issue.py file`, which requests the move
 through the referee, which checks it against [sonora-lane.json](sonora-lane.json) and then
 performs it. Your whole surface is four commands:
 
