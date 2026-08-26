@@ -130,11 +130,16 @@ summary — there is no third place, and no later opportunity.
   memory saying otherwise is **stale**, not a rule you are being asked to break. Ozzy holds the
   change and is first to know that no amount of reviewing will settle a question. **If you
   believe an issue needs the owner's decision, say so in a comment and leave `state` alone.**
-* ⚠ **NEVER DELETE A RECORD.** `pb_record_mutate` will happily take `operation: "delete"` or
-  `"bulkDelete"` and the harness cannot stop you at that granularity — this rule is the only
-  thing standing there. Closing an issue is a `state` change, never a deletion. The tracker
-  is now the sole record that a finding ever existed; a deleted issue is unrecoverable
+* ⚠ **NEVER DELETE A RECORD.** Closing an issue is a `state` change, never a deletion. The
+  tracker is now the sole record that a finding ever existed; a deleted issue is unrecoverable
   history, not a tidy-up.
+  ⚠ **This used to say `pb_record_mutate` would take `operation: "delete"` and that "the
+  harness cannot stop you at that granularity — this rule is the only thing standing there."
+  As of 2026-08-26 (#331) that is no longer true and the tool is REVOKED**: an allowlist
+  cannot forbid one *operation* of a tool, but it can forbid the tool, and leaving the sole
+  record of every finding behind a rule rather than a mechanism was the wrong trade. You
+  should never have needed it — `issue.py` covers every write you are permitted to make.
+  **If you find you do need it, that is a finding: file it and say what for.**
 * ⚠ **NEVER TOUCH `agent_passes`.** It counts *worker* attempts and the worker increments it.
   Reading it is your job; writing it is not.
 
@@ -260,18 +265,42 @@ workflow/scripts/issue.py reopen 114 --comment "…"   # review -> open, comment
 workflow/scripts/issue.py comment 114 --text "…"     # never moves `state`
 ```
 
-⚠ **Pass `--author Janis` on each command. Do NOT use `ISSUE_AUTHOR=Janis <cmd>`** — measured
-by a reviewer 2026-08-26: the env-var prefix makes the command string start with
-`ISSUE_AUTHOR=`, and every grant above is a **prefix match on that string**, so the whole
-invocation is refused. The developer's copy of these instructions uses the env var because the
+⚠⚠ **`--author Janis` GOES AFTER THE SUBCOMMAND, AND THE POSITION IS LOAD-BEARING.**
+
+```bash
+workflow/scripts/issue.py close 114 --author Janis --comment "…"   # ✅ runs
+workflow/scripts/issue.py --author Janis close 114 --comment "…"   # ❌ REFUSED by the harness
+```
+
+`issue.py` itself accepts both — `--author` is on the top-level parser *and* on every
+subparser — so this is **not** a parse error you would see locally. It is the allowlist:
+every grant is a **prefix match** on the command string, and the patterns are
+`Bash(workflow/scripts/issue.py <subcommand>:*)`. Anything between the script and the
+subcommand breaks the match. Measured both ways 2026-08-26, same pipe shape, only the
+position differing.
+
+⚠ **Same reason, same fix: do NOT use `ISSUE_AUTHOR=Janis <cmd>`** — an env-var prefix makes
+the string start with `ISSUE_AUTHOR=`, so nothing matches. The developer's copy of these instructions uses the env var because the
 developer runs without an allowlist; **yours is the same script under a narrower grant, and
 that difference is invisible from the page.**
 
-This is the third time in one week that this section documented something the harness refuses
-(#318, #321, this). ⚠ **`tests/test_reviewer_write_path.py` would not have caught it** — it
-checks that every `issue.py` *subcommand* named here is granted, and this defect is in the
-part of the invocation BEFORE the subcommand. **The guard's population was the subcommands;
-the defect was in the prefix.** A floor on the wrong population cannot fire, one layer out.
+⚠⚠ **THIS SECTION HAS NOW DOCUMENTED SOMETHING THE HARNESS REFUSES FOUR TIMES IN ONE WEEK** —
+#318 (`pb_record_mutate` for `state`), #321 (`issue.py` in no grant at all), the
+`ISSUE_AUTHOR=` prefix, and #328 (`--author` before the subcommand). ⚠ **The last two were
+introduced by the FIX for the one before them**, each time by writing an instruction that was
+correct about `issue.py` and silent about the allowlist.
+
+⚠ **`tests/test_reviewer_write_path.py` caught none of them**, and the reason is one reason:
+it checks that every `issue.py` **subcommand** named here is granted, so it can only see
+defects *at* the subcommand. #318 was a different tool, and the `ISSUE_AUTHOR=`/#328 pair are
+both in the part of the invocation **before** the subcommand. **The guard's population was
+the subcommands; three of the four defects were not in it.** A floor on the wrong population
+cannot fire — the same lesson as the empty-enumeration file, three layers out now.
+
+⚠ **The knowledge existed the whole time, in a file you never see.** `request_review.sh` has
+carried "the subcommand must come FIRST" in a comment beside the grants since they were added.
+One pass owned the launcher's comment, another owned this page, and **neither owned the join**.
+That is why the spelling now lives *here*, where the reader who has to type it will find it.
 
 ⚠⚠ **A `400` NAMING A REFEREED FIELD IS NOT AN UNREACHABLE TRACKER — IT IS THIS RULE,
 ARRIVING AS AN ERROR.** It names the offending field(s) and the route it wants:

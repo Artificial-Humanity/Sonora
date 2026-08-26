@@ -76,15 +76,22 @@ def test_both_sides_actually_parsed_something():
     granted = _granted_issue_subcommands()
     entries = _allowlist()
     assert len(entries) >= 30, (
-        f"only {len(entries)} REVIEWER_ALLOW entries parsed — **47** measured 2026-08-26. "
+        f"only {len(entries)} REVIEWER_ALLOW entries parsed — **48** measured 2026-08-26. "
         f"The array parse is probably broken, not the array.")
-    assert len(documented) >= 4, (
-        f"only {len(documented)} issue.py subcommands found in REVIEWER.md — **4** measured "
-        f"2026-08-26 (close, comment, file, reopen). Did §4's command block move or change "
-        f"spelling?")
-    assert len(granted) >= 4, (
+    # ⚠ #330. THE FLOOR WAS 4 AND THE POPULATION IS 6, AND THE SLACK WAS EXACTLY THE THING
+    # THIS PAGE MOST NEEDS. `list` and `show` are the MCP-401 reroute — the commands a
+    # reviewer falls back to when the tools start returning 401 — so at a floor of 4 they
+    # could BOTH vanish from §4 and the suite would stay green, silently removing the escape
+    # hatch from the one section that turns an unreachable tracker into a lost review. A
+    # floor has to sit under the population that matters, not under the one that was there
+    # when it was written.
+    assert len(documented) >= 6, (
+        f"only {len(documented)} issue.py subcommands documented in REVIEWER.md §4 — **6** "
+        f"measured 2026-08-26: close, comment, file, reopen (the write path) plus list and "
+        f"show (the 401 reroute). Losing `list`/`show` costs the fallback, not just a line.")
+    assert len(granted) >= 6, (
         f"only {len(granted)} issue.py grants parsed from REVIEWER_ALLOW — **6** measured "
-        f"2026-08-26 (the 4 documented, plus list and show).")
+        f"2026-08-26, matching the documented set exactly.")
 
 
 # --------------------------------------------------------------- the actual invariant
@@ -178,6 +185,15 @@ def test_pb_auth_superuser_is_never_granted():
         assert writer not in granted, (
             f"REVIEWER_ALLOW grants {writer}, which mutates the store's SHAPE rather than a "
             f"record. The reviewer reads and files; it does not administer the tracker.")
+    # ⚠ #331. Revoked 2026-08-26. An allowlist cannot forbid ONE OPERATION of a tool, so while
+    # this was granted, `operation: "delete"` on the sole record of a finding was held back by
+    # REVIEWER.md §1 and nothing else. It can forbid the tool, so it does. Every mention of it
+    # on that page is a prohibition; `issue.py` covers every write the role may make.
+    assert "pb_record_mutate" not in granted, (
+        "REVIEWER_ALLOW grants pb_record_mutate. It accepts operation=delete/bulkDelete, and "
+        "the tracker is the sole record that a finding ever existed — so deletion must be "
+        "held by the harness, not by a sentence in REVIEWER.md §1. If a reviewer genuinely "
+        "needs it, restore it deliberately and say what for; do not re-add it in passing.")
 
 
 def test_no_unscoped_grant_of_the_whole_script():

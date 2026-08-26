@@ -660,11 +660,22 @@ REVIEWER_ALLOW=(
   # not close the door, and saying otherwise would be a false sense of a guarantee in the
   # place people look for guarantees. What actually holds the line is REVIEWER.md §1.
   #
-  # ⚠ PREFIX MATCHES, so the subcommand must come FIRST — `issue.py close 114 …`, not
-  # `issue.py --author Janis close 114`. REVIEWER.md documents the subcommand-first spelling
-  # and sets identity through `ISSUE_AUTHOR`. `tests/test_reviewer_write_path.py` asserts
-  # every command REVIEWER.md documents is covered by an entry below, so the two cannot
-  # drift apart again the way they just did.
+  # ⚠ PREFIX MATCHES, so the subcommand must come FIRST — `issue.py close 114 --author Janis`,
+  # NOT `issue.py --author Janis close 114`. `issue.py` accepts both (argparse puts `--author`
+  # on the top-level parser and on every subparser), so the refusal is the allowlist's, not a
+  # parse error, and it does not reproduce when a developer runs the same line by hand.
+  #
+  # ⚠ #329: this comment used to add "and sets identity through `ISSUE_AUTHOR`" — a clause
+  # `df3c439` had already RETRACTED in the file it names, because an env-var prefix breaks the
+  # same prefix match. Stale within one commit of the fix, in the comment sitting next to the
+  # patterns that make it wrong.
+  #
+  # ⚠⚠ AND KEEPING THE SPELLING ONLY HERE WAS THE DEFECT (#328). This comment is in the
+  # LAUNCHER; the agent that has to type the command is handed REVIEWER.md and never reads
+  # this file. The fact was written down, correctly, somewhere its reader could not reach it —
+  # so the rule now lives in REVIEWER.md §4 and this is the copy that points there, not the
+  # other way round. `tests/test_reviewer_write_path.py` asserts every subcommand REVIEWER.md
+  # documents is granted below, which covers the subcommand and NOT this prefix problem.
   "Bash(workflow/scripts/issue.py file:*)"    "Bash(./workflow/scripts/issue.py file:*)"
   "Bash(workflow/scripts/issue.py close:*)"   "Bash(./workflow/scripts/issue.py close:*)"
   "Bash(workflow/scripts/issue.py reopen:*)"  "Bash(./workflow/scripts/issue.py reopen:*)"
@@ -673,7 +684,23 @@ REVIEWER_ALLOW=(
   "Bash(workflow/scripts/issue.py show:*)"    "Bash(./workflow/scripts/issue.py show:*)"
   "mcp__pocketbase__pb_record_list"
   "mcp__pocketbase__pb_record_get"
-  "mcp__pocketbase__pb_record_mutate"
+  # ⚠ #331. `pb_record_mutate` WAS HERE AND IS NOW REVOKED. REVIEWER.md mentions it five
+  # times and every one is a PROHIBITION — §4 forbids it for writes (the referee refuses the
+  # refereed fields anyway) and §1 forbids deletion. Nothing on that page ever tells the
+  # reviewer to use it, and `issue.py` covers every write it is allowed to make.
+  #
+  # ⚠⚠ THE REASON IS DELETION, NOT WRITES. §1 said the tool "will happily take
+  # operation: delete or bulkDelete and the harness cannot stop you at that granularity —
+  # this rule is the only thing standing there." True: the allowlist cannot forbid one
+  # OPERATION of a tool. It can forbid the TOOL. The tracker is now the sole record that a
+  # finding ever existed, so "a rule is the only thing standing there" was the wrong place to
+  # leave it — the same rule-versus-mechanism call as `escalate` above, with a worse blast
+  # radius. §1 has been updated; leaving that sentence saying the harness cannot stop it
+  # would have been the fifth stale-instruction defect in this lane in a week.
+  #
+  # ⚠ IF A REVIEW REPORTS NEEDING IT, PUT IT BACK — one line, and the finding is worth more
+  # than the grant. The evidence it is unused is five prohibitions and no instruction, which
+  # is strong but is not a measurement of what a reviewer actually calls.
   "mcp__pocketbase__pb_schema"
   # ⚠ `pb_health` ANSWERS FROM A CACHED TOKEN and will report `authenticated: true` while
   # every other call returns 401 (measured 2026-08-26; the MCP authenticates once at startup
