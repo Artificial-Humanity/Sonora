@@ -358,12 +358,26 @@ headline; open items are in [todo.md](todo.md).
    `test_torch_only_gate`. The gate **is** enumerated. Writing otherwise sent the next
    reader to redo finished work.
    ⚠⚠ **AND IT POINTED AWAY FROM THE REAL MECHANISM, which is the more expensive half.**
-   `test_torch_only_gate` **SKIPS** on this host — the repo `.venv` deliberately has no
-   torch, because the gate is container-side. So the gate is enumerated, skipped with
-   notice, and never executed: **`make test` is green whether those anchors are right or
-   wrong.** Enumerated-and-skipped is not the same as run, and the suite cannot tell you
-   which of the two you have. The direct evidence above stands precisely because it came
-   from a container run, not from a green suite.
+   The repo `.venv` deliberately has no torch, because the gate is container-side — so
+   **`make test` is green whether those anchors are right or wrong.**
+   ⚠ **THERE ARE THREE STATES, NOT TWO (#314), and the quiet one belongs to the command
+   this paragraph names.** An earlier version said the gate is "skipped with notice" under
+   `make test`. It is not; that is what happens under a *different* command. Measured:
+
+   | command | what `test_torch_only_gate` does |
+   |---|---|
+   | `pytest tests/` | **SKIPPED** — id and reason both printed (`11 skipped`) |
+   | **`make test`** = `pytest -k "not slow"` | **DESELECTED** — `@pytest.mark.slow` is matched by `-k` as a keyword, so it is never collected. **0 collected, no id, no skip line, not even under `-rs`** (`1507 passed, 8 skipped, 3 deselected`) |
+   | throwaway ROCm container | actually **runs** — 35/35 |
+
+   So the warning was **understated**: under the command in the Makefile the gate does not
+   report itself at all. Enumerated-and-skipped already reads like run; enumerated-and-**deselected**
+   does not even leave a line to notice. ⚠ And a green suite is no guard here for a second,
+   independent reason — `test_asset_paths.py`'s walk enumerates only `join`/`Path` call
+   nodes, so the broken `Path(__file__).resolve().parents[1] / "…"` expression evaluated
+   `Path(__file__)` alone, found it resolvable, and scored **2 falsifiable assertions, both
+   green**. The direct evidence above stands precisely because it came from a container run,
+   not from a green suite.
    `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
