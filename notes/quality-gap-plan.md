@@ -521,10 +521,21 @@ follows is measured on the extracted tree, not estimated from the corpus papers.
 
 | subset | speakers | clips | in v6? |
 |---|---|---|---|
-| `train-clean-100` | 257 | 33,232 | yes |
+| `train-clean-100` | **247** | 33,232 | yes |
 | `train-clean-360` | **904** | **116,462** | new |
 | `train-other-500` | **1,160** | **205,035** | new |
 | `dev-clean` (holdout source) | 40 | — | never |
+
+⚠ **`train-clean-100` read 257 here until 2026-08-26 (#319), under this table's own
+"measured, not estimated" caption.** The tree has **247** — re-counted three ways: speaker
+directories, speaker ids parsed from wav basenames, and the numeric LibriTTS ids in v6's
+`speakers.json`. Only the *speakers* column was wrong; 33,232 clips is right. The figure had
+propagated to `notes/training-sources.md`, now also corrected. **This document already used
+247 where the arithmetic depended on it** — §"The model's speaker table is 247 rows and
+Emilia brings 2,408 new speakers … `n_spks: 2655`" reconciles only with 247 — so one file
+disagreed with itself, and the wrong copy was the one carrying the evidential caption. Sizing
+the v7 table from the old row gives 2,321 LibriTTS speakers instead of **2,311**. No code
+reads this: `n_spks` comes from `speakers.json`, so nothing was ever mis-trained.
 
 **THE STRICTLY-GROWING RULE SURVIVES RUNG 3 ONLY BECAUSE THE NEW SPEAKERS ARE DISJOINT, AND
 THAT WAS TESTED RATHER THAN ASSUMED.** `eiv_merge_corpus.py` recomputes *every* clip's combo
@@ -537,10 +548,20 @@ first run gave a **false 0** — `comm` bailed with "not in sorted order" on loc
 input and still exited clean):
 
 ```
-train-other-500 ∩ train-clean-100 : 0      train-clean-360 ∩ train-clean-100 : 0
-train-other-500 ∩ train-clean-360 : 0      train-clean-360 ∩ dev-clean       : 0
-train-other-500 ∩ dev-clean       : 0      control (dev ∩ dev)               : 40 ✅
+train-clean-100 ∩ train-clean-360 : 0      train-clean-360 ∩ train-other-500 : 0
+train-clean-100 ∩ train-other-500 : 0      train-clean-360 ∩ dev-clean       : 0
+train-clean-100 ∩ dev-clean       : 0      train-other-500 ∩ dev-clean       : 0
+control (dev ∩ dev)               : 40 ✅
 ```
+
+⚠ **ALL SIX PAIRS, and this table held only five until 2026-08-26 (#301).** Four sets have
+six pairs, not four or five — and the missing one was **`train-clean-100 ∩ dev-clean`**, the
+pair that asks whether the HOLDOUT SOURCE overlaps the subset v5/v6 already trained on. That
+is the single pair a later auditor most needs shown, and it was the one absent. The script's
+docstring said "all four intersections empty", this table showed five, and "pairwise" requires
+six: three artifacts, three counts, for the evidence that carries both the strictly-growing
+rule and the `--donor-speakers` prefix proof. Re-measured 2026-08-26 with the control above;
+speaker counts 247 / 904 / 1,160 / 40.
 
 So no existing speaker's population changes, v6's rows reproduce byte-identically, and the
 `--donor-speakers` prefix proof still holds. **The Emilia half is safe for a second,

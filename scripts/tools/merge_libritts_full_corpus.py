@@ -55,7 +55,25 @@ WHAT THIS DOES NOT DO
 No dropping. `derive_vat_corpus` already applied the duration, sample-rate, digit,
 vocabulary and G2P filters, and a second filter here would be a second definition of a
 rule that already has one. If a row reached the input, it is in the output. The only way
-out of this script is an ABORT that writes nothing.
+out of this script is an ABORT that leaves NO CORPUS BEHIND.
+
+⚠ #307: that last sentence said "an ABORT that writes nothing", and under `--force` it is
+not true — an abort DELETES. The invariant is about the END STATE of `--out`, never about
+the number of writes:
+
+* Fresh `--out` — an abort leaves it empty. "Writes nothing" happens to describe this.
+* Populated `--out` under `--force` — the filelists are written, then a late check refuses,
+  and the cleanup REMOVES ALL FOUR corpus files, including the `speakers.json` and
+  `derivation_report.json` that belonged to the corpus that was already there. Nothing is
+  written, but something IS destroyed, and by then the previous corpus is already
+  unrecoverable — `--force` said so.
+
+The earlier wording was not merely imprecise: it promised a reader that a refusal is safe to
+retry over an existing corpus, which is the one case where it is not. **The alternative —
+leaving the old corpus intact on refusal — was considered and rejected:** the filelists are
+overwritten before the licence wall can see them, so "intact" is not reachable without
+staging the whole merge elsewhere first, and a half-old/half-new directory is worse than an
+empty one. `remove_partial()` carries this reasoning at its definition.
 """
 
 import argparse

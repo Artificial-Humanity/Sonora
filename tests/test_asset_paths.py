@@ -342,14 +342,28 @@ def test_the_guard_actually_asserts_something():
             if resolved == here:
                 continue
             falsifiable.append(f"{rel}:{lineno} {name}")
-    # ⚠ 25, RE-DERIVED 2026-08-26 (#315), and it is NOT "24 + 1". Two changes landed
-    # together and they move the count in opposite directions: whole `/`-composed
-    # expressions are now enumerated (coverage UP, including both sites in
-    # `test_vat_dim_seams.py` that this file previously could not see), and entries
-    # resolving to the parsed file itself are now excluded (padding DOWN). The old 24 was
-    # 23 genuine + 4 self-referential minus 3 that the new enumeration folds into their real
-    # outer expression. Do not reconcile this number against the old one by arithmetic —
-    # re-run the body, as the docstring above says.
+    # ⚠ 25, RE-DERIVED 2026-08-26 (#315). ⚠⚠ AND IT CANNOT BE RECONCILED AGAINST THE OLD 24
+    # BY ARITHMETIC AT ALL — the old floor was measured on 2026-08-12 against a DIFFERENT
+    # TREE, so no sum of today's terms produces it. (#320: an earlier version of this comment
+    # offered exactly such a sum, "23 genuine + 4 self-referential minus 3", in the same
+    # breath as telling the reader not to reconcile by arithmetic. The subtrahend was 2, and
+    # the subject — 23+4=27 — is today's PRE-FIX measurement, never the old floor. Reasoned,
+    # not measured, in the one file whose docstring warns against that.)
+    #
+    # THE ACTUAL DERIVATION, both enumerations run over the SAME tree on 2026-08-26:
+    #
+    #   pre-fix  : 23 genuine + 4 self-file  -> 27 counted as falsifiable (floor was 24)
+    #   post-fix : 25 genuine + 2 self-file  -> 25 counted (self-file now excluded)
+    #
+    #   25 = 23 genuine, NONE LOST
+    #      +  2 newly enumerated: test_vat_dim_seams.py:58 and :81, the `/`-composed sites
+    #
+    # Of the 4 pre-fix self-file entries, 2 vanish because the new scan scores their real
+    # OUTER expression instead (`register_audition.py:70`, `sweep_dropped.py:50` — both were
+    # already counted as named constants, so the self-file entry was a duplicate), and 2 are
+    # removed by the `resolved == here` filter (`convert_vat.py:137`, `publish_tier.py:117`).
+    #
+    # Re-run the body rather than trusting the block above; that instruction outranks it.
     # The floor is the measurement: this is a ratchet, so any drop in falsifiable coverage
     # is meant to be noticed, including a legitimate one.
     assert len(falsifiable) >= 25, (

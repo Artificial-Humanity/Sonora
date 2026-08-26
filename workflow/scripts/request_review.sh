@@ -296,14 +296,40 @@ else
   fi
 fi
 
-# --- The changeset: a branch's local-only pull request ---------------------
+# --- The branch IS the reviewable unit -------------------------------------
 # ⚠ ALL WORK HAPPENS ON A BRANCH, AND THE BRANCH IS THE REVIEWABLE UNIT (owner, 2026-08-17).
 # A commit is too granular to review — a fix commit is not a change, it is part of one — and a
-# GitHub PR is the friction this lane exists to avoid. The middle is a branch with a record:
-# `scripts/changeset.sh` gives it an identity, a state and a merge event, and every issue a
-# review files is stamped with it. That is what makes "is this piece of work done?" a query
-# instead of something a session has to remember.
-CS_JSON="$(BRANCH="$BRANCH" REPO_SLUG="$REPO_SLUG" python3 "$REPO_ROOT/scripts/lib/find_changeset.py" 2>/dev/null || true)"
+# GitHub PR is the friction this lane exists to avoid.
+#
+# ⚠⚠ THE CHANGESET RECORD WAS RETIRED THE SAME DAY (owner, 2026-08-17; WORKFLOW.md lists it
+# among the rulings so that nobody restores it). A branch already has an identity and its
+# issues already carry its state, so the record was a second place for the same truth.
+#
+# ⚠ A FIFTH VESTIGE, AND IT SURVIVED THE SWEEP THAT WAS LOOKING FOR IT. Until 2026-08-26 this
+# spot called `scripts/lib/find_changeset.py` under `2>/dev/null || true`. That file is in NO
+# COMMIT — and not because the retirement deleted it. It is the original casualty of the
+# unanchored `lib/` rule in the root `.gitignore` (measured 2026-08-17, issue #98, the reason
+# `tests/test_gitignore_anchoring.py` exists): `git add` skipped it silently, so it worked
+# perfectly for whoever wrote it and **no clone has ever had it.** The call has therefore been
+# dead since the day it was written.
+#
+# Every failure was swallowed, `CS_JSON` was therefore always empty, and the brief's `else`
+# branch fired on EVERY review since the retirement, telling the reviewer:
+#
+#     "Branch X has no open changeset record ... say so in your summary — unstamped issues
+#      appear in no convergence check, so the work cannot be shown to be finished."
+#
+# So the launcher instructed every reviewer to report the absence of a retired mechanism as a
+# problem, and one duly did (2026-08-26). `2f3e7ab` was an owner-asked battery for exactly
+# these vestiges and found four; it missed this one **because a call engineered never to fail
+# is invisible to a search for things that break**. Same family as the silent-`|| echo CLEAN`
+# and empty-enumeration traps this repo keeps paying for.
+#
+# ⚠ AND REMOVING THE BLOCK OUTRIGHT WOULD HAVE LOST SOMETHING LIVE: the `branch_name` stamping
+# instruction lived in the OTHER branch of that conditional — the one that could never run —
+# so no reviewer has been handed it since the retirement either. It is now unconditional
+# below, which is what it always should have been: it is a property of the branch, and the
+# branch always exists.
 
 # --- Sibling repos the reviewer may READ -----------------------------------
 # ⚠ WITHOUT THIS THE REVIEWER IS BLIND TO MECHANISMS THIS REPO ONLY DESCRIBES. Measured:
@@ -443,14 +469,12 @@ You will not be able to run the suite. Mark every finding that needed execution 
 "
 fi
 
-if [[ -n "$CS_JSON" ]]; then
-  CS_ID="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["id"])' "$CS_JSON")"
-  CS_NUM="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["number"])' "$CS_JSON")"
-  CS_TITLE="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["title"])' "$CS_JSON")"
-  BRIEF+="
-### The changeset this belongs to
+BRIEF+="
+### The unit of work this belongs to
 
-Branch \`$BRANCH\` is **changeset #$CS_NUM — $CS_TITLE**.
+Branch \`$BRANCH\`. **That is the whole identity** — there is no pull request, no review
+document and, since 2026-08-17, no changeset record. If you were expecting one, it was
+retired; its absence is correct and is **not** something to report.
 
 ⚠ **Stamp \`branch_name\` = \`$BRANCH\` on every issue you file.** That is what ties a finding
 to this piece of work, and it is what decides whether the work is finished: an unstamped issue
@@ -458,17 +482,8 @@ belongs to no unit and appears in no convergence check.
 
 **To find what earlier passes on this branch already filed** — you have no memory of them —
 query \`branch_name=\"$BRANCH\" && state=\"open\"\`. That is every open finding on this
-changeset, whichever pass raised it. There is no list of prior ids to be handed any more.
+branch, whichever pass raised it. There is no list of prior ids to be handed any more.
 "
-else
-  BRIEF+="
-### No changeset
-
-Branch \`$BRANCH\` has no open changeset record. File issues as normal, but **say so in your
-summary** — unstamped issues appear in no convergence check, so the work cannot be shown to be
-finished.
-"
-fi
 
 if [[ -n "$SIBLING" ]]; then
   BRIEF+="
@@ -612,6 +627,32 @@ REVIEWER_ALLOW=(
   #                  reviewer had no legitimate use for it at all.
   #   Bash(find:*) — `find -delete` and `find -exec rm` are deletion, pre-approved.
   #                  `Glob` and `rg --files` cover every reviewing use.
+  # ⚠ #321. THE REVIEWER'S WRITE PATH. `issue.py` is what REVIEWER.md §4 documents, and it
+  # was in no entry here — so the #318 fix MOVED the blocker instead of removing it: the
+  # referee started accepting the write and the harness started refusing the command. Janis
+  # hit it on every tracker write of that pass and recovered only because
+  # `Bash(.venv/bin/python:*)` happens to cover an interpreter-prefixed invocation. The
+  # documented spelling matched nothing, and §4 tells a reviewer that a tracker it cannot
+  # write to means the whole review is lost — so a refusal here costs a complete review.
+  #
+  # ⚠ SCOPED PER SUBCOMMAND, AND `escalate` IS DELIBERATELY ABSENT. REVIEWER.md §1 carries an
+  # owner ruling (2026-08-17): "YOU DO NOT ESCALATE. ESCALATION IS OZZY'S, AND ONLY OZZY'S."
+  # That was prose only. Granting `Bash(workflow/scripts/issue.py:*)` would have pre-approved
+  # the one move the role is forbidden to make; enumerating instead turns the rule into a
+  # mechanism, which AGENTS.md §1 is explicit is the stronger thing. `take`, `grade` and
+  # `review` are the WORKER's verbs and are absent for the same reason.
+  #
+  # ⚠ PREFIX MATCHES, so the subcommand must come FIRST — `issue.py close 114 …`, not
+  # `issue.py --author Janis close 114`. REVIEWER.md documents the subcommand-first spelling
+  # and sets identity through `ISSUE_AUTHOR`. `tests/test_reviewer_write_path.py` asserts
+  # every command REVIEWER.md documents is covered by an entry below, so the two cannot
+  # drift apart again the way they just did.
+  "Bash(workflow/scripts/issue.py file:*)"    "Bash(./workflow/scripts/issue.py file:*)"
+  "Bash(workflow/scripts/issue.py close:*)"   "Bash(./workflow/scripts/issue.py close:*)"
+  "Bash(workflow/scripts/issue.py reopen:*)"  "Bash(./workflow/scripts/issue.py reopen:*)"
+  "Bash(workflow/scripts/issue.py comment:*)" "Bash(./workflow/scripts/issue.py comment:*)"
+  "Bash(workflow/scripts/issue.py list:*)"    "Bash(./workflow/scripts/issue.py list:*)"
+  "Bash(workflow/scripts/issue.py show:*)"    "Bash(./workflow/scripts/issue.py show:*)"
   "mcp__pocketbase__pb_record_list"
   "mcp__pocketbase__pb_record_get"
   "mcp__pocketbase__pb_record_mutate"
