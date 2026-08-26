@@ -106,6 +106,8 @@ def main() -> None:
     ap.add_argument("--out", required=True, type=pathlib.Path)
     ap.add_argument("--target-lufs", type=float, default=DEFAULT_TARGET_LUFS)
     ap.add_argument("--seed", type=int, default=20260825)
+    ap.add_argument("--force", action="store_true",
+                    help="regenerate over an --out that already holds a KEY/ANSWERS pair")
     ap.add_argument("--energy", type=float, default=ENERGY_PLANE,
                     help="which A plane to read (default %(default)s). Use +1 to ask whether "
                          "a lane's manner appears once the energy channel is allowed to move.")
@@ -138,6 +140,20 @@ def main() -> None:
     lanes = sorted({r["lane"] for r in rows})
     rng = random.Random(args.seed)
 
+    # ⚠ #310. The merge script got this guard as #295 and this one did not, which is the
+    # whole defect: a populated --out here holds a FILLED-IN `ANSWERS.md` and the `KEY.json`
+    # that decodes it, and overwriting them destroys a listening session that cannot be
+    # repeated — the ear time is spent. Janis proved it by destroying a filled-in sheet with
+    # the committed tool, rc=0 and no warning. `RESULT-*.md` is not written by this tool, so
+    # it survives; the answers and the key do not.
+    collide = [f.name for f in (args.out / "ANSWERS.md", args.out / "KEY.json")
+               if f.exists()]
+    if collide and not args.force:
+        raise SystemExit(
+            f"{args.out} already holds {', '.join(collide)}. Refusing to overwrite: if the "
+            f"answers are filled in, this destroys a listening session that cannot be "
+            f"re-run. Move them aside, or pass --force if regenerating is genuinely what "
+            f"you want.")
     args.out.mkdir(parents=True, exist_ok=True)
     meter = pyln.Meter(int(float(rows[0].get("sr", 24000)) or 24000))
 

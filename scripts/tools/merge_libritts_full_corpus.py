@@ -266,8 +266,16 @@ def main():
     #
     # So the comparison is now against BYTES OF FILES, which is the only thing that can
     # actually differ: the base file as it sits on disk, and the leading bytes of what was
-    # written. The digests are of those same bytes, so `sha256sum` on either file
-    # reproduces them — the previous ones hashed joined lines and matched nothing.
+    # written.
+    #
+    # ⚠ #309. THE TWO DIGESTS ARE NOT RE-CHECKED THE SAME WAY, and an earlier version of
+    # this comment said `sha256sum` on either file reproduces them. Only one does:
+    #   sha256_base_file        = sha256 of the WHOLE base file -> `sha256sum <base>/<name>`
+    #   sha256_out_leading_bytes = sha256 of the FIRST base_bytes bytes of the output, which
+    #                              is a PREFIX, so `sha256sum <out>/<name>` does NOT match it
+    #                              -> `head -c <base_bytes> <out>/<name> | sha256sum`
+    # Naming a re-check that half works is the same over-claim the field itself carried, one
+    # layer out — which is why the recipe is spelled out rather than described.
     identity = {}
     for name in ("train_op.txt", "val_op.txt"):
         with open(os.path.join(args.base, name), "rb") as f:
