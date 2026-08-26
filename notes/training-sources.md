@@ -110,7 +110,7 @@ important fact in this file.
   -1.5b 7 + dia 34 = **133**, moss85 **83**, longcat **51**, higgs3-NC **8** = 275, and
   1,279 − 275 = **1,004** exactly, agreeing with the independent 902 labelled + 102 blank
   decomposition. **No registry FACT guards this line and none should**: its source is
-  `ratings.csv`, a file the Auditions app writes live, so 1,279 legitimately moves as the
+  `ratings.csv`, a file the Dataset Listening app writes live, so 1,279 legitimately moves as the
   audit continues and a gate on it would go red on correct work.
 
 So the order is deliberate — v5 asks "does volume move quality at all?" with material that

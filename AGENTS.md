@@ -406,7 +406,7 @@ anywhere until now — which is the same reason the workflow-validation trap in 
 same hour twice.
 
 * ⚠ **A registry fact may only guard a STATIC artifact.** `audit-*/ratings.csv` is written
-  **live** by the Auditions app, so a count taken from it (the 1,279 keeps, say) moves as the
+  **live** by the Dataset Listening app, so a count taken from it (the 1,279 keeps, say) moves as the
   audit continues, and a fact guarding it would go **red on correct work**. A gate that fails
   when nothing is wrong gets switched off, which costs every other fact in the registry.
 * ⚠ **A fact enforced only in a file some convention DELETES is one deletion from being

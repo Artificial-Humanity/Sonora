@@ -229,27 +229,54 @@ def _path_constants(rel):
     # wrong depth left the suite green. So every join/Path expression is evaluated wherever
     # it appears, not only where it is bound to a name.
     seen = {(lineno, value) for _, lineno, value in out}
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        fname = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
-        if fname not in ("join", "Path"):
-            continue
+
+    # ⚠ #315. A `/`-composed path is an `ast.BinOp`, NOT a `Call`, so an enumeration that
+    # collected only `join`/`Path` calls never saw the whole expression. `ast.walk` then
+    # descended past it and scored the innermost `Path(__file__)` on its own. Two costs, and
+    # the second is the worse one:
+    #   1. the real asset went unchecked — measured on `scripts/gates/test_vat_dim_seams.py`,
+    #      where a `parents[1]` at the WRONG DEPTH was the whole defect and was never
+    #      evaluated;
+    #   2. the innermost `Path(__file__)` resolves to the PARSED FILE ITSELF, which is
+    #      tracked by definition and so cannot fail — and it was counted toward the
+    #      falsifiable floor below. A guard padding its own ratchet with assertions that
+    #      cannot go red is silent-disarm mode 1 again, wearing a bigger number.
+    # `_eval` was never the limitation: it has handled `BinOp`/`Div` since line 138. The
+    # enumeration simply never handed it the node.
+    def _cand_name(node):
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            return "/"
+        if isinstance(node, ast.Call):
+            fname = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", None)
+            if fname in ("join", "Path"):
+                return fname
+        return None
+
+    def scan(node):
+        fname = _cand_name(node)
         # Rooted directly OR through a name already resolved from `__file__` — the whole
         # point is `os.path.join(_SONORA_REPO, "scripts", "assets", "x.json")`, whose own
         # node never mentions `__file__`. Requiring it here is what left this site
         # unguarded on the first attempt at this fix.
-        if not ("__file__" in ast.dump(node) or any(
+        if fname is not None and ("__file__" in ast.dump(node) or any(
             isinstance(n, ast.Name) and n.id in env for n in ast.walk(node)
         )):
-            continue
-        try:
-            value = _eval(node, here, env)
-        except (Unresolvable, IndexError, TypeError, AttributeError, KeyError):
-            continue
-        if (node.lineno, value) not in seen:
-            seen.add((node.lineno, value))
-            out.append((f"<{fname}() at line {node.lineno}>", node.lineno, value))
+            try:
+                value = _eval(node, here, env)
+            except (Unresolvable, IndexError, TypeError, AttributeError, KeyError):
+                pass          # fall through and try the parts: an outer expression this
+                              # evaluator refuses must not hide a resolvable inner one
+            else:
+                if (node.lineno, value) not in seen:
+                    seen.add((node.lineno, value))
+                    out.append((f"<{fname} at line {node.lineno}>", node.lineno, value))
+                # ⚠ STOP. The enclosing expression IS the path; descending would re-score
+                # its own `Path(__file__)` as a second, self-referential "asset".
+                return
+        for child in ast.iter_child_nodes(node):
+            scan(child)
+
+    scan(tree)
     return out
 
 
@@ -264,18 +291,27 @@ SCRIPTS = sorted(
 def test_the_guard_actually_asserts_something():
     """The floor has to count FALSIFIABLE assertions, not files enumerated.
 
-    `len(SCRIPTS)` was the wrong population. Measured on 2026-08-12, all four numbers from
-    one run of this test's own body:
+    `len(SCRIPTS)` was the wrong population. RE-DERIVED 2026-08-26 (#315), all five numbers
+    from one run of this test's own body:
 
-        scripts enumerated                 106
-        constants resolving to a repo path  32
-        of which SELF-ANCESTOR              8   <- cannot fail, by construction
-        FALSIFIABLE                        24   <- what the floor below counts
+        scripts enumerated                 110
+        constants resolving to a repo path  36
+        of which SELF-ANCESTOR               9   <- cannot fail, by construction
+        of which the PARSED FILE ITSELF      2   <- ditto; see below
+        FALSIFIABLE                         25   <- what the floor below counts
 
     Most scripts build no in-repo path at all, so a floor on the file count says nothing.
     And a self-ancestor (`HERE = dirname(abspath(__file__))`) resolves to a directory that
     contains the file being parsed — counting those as coverage is silent-disarm mode 1
     wearing a number.
+
+    ⚠ The **parsed file itself** is the same class and evaded the self-ancestor test for a
+    year, because a file is not in its own `.parents`. Those entries were manufactured by
+    the enumeration bug in `_path_constants` (#315): it scored the inner `Path(__file__)` of
+    an expression it could not see whole, and that inner call resolves to the file being
+    parsed, which is tracked by definition. **The guard was padding its own ratchet.**
+    Genuine coverage at the time of that finding was 23 against a floor of 24 — the floor was
+    only satisfied by assertions that could not go red.
 
     ⚠ These four were stale within a round: an earlier version said "107 green cases of
     which 93 assert nothing" and "six … self-ancestors", written before the walk was
@@ -295,17 +331,30 @@ def test_the_guard_actually_asserts_something():
             target = pathlib.Path(value)
             if not target.is_absolute():
                 target = REPO / target
-            if target.resolve() in here.parents:
+            resolved = target.resolve()
+            if resolved in here.parents:
                 continue                      # self-ancestor: true by construction
+            # ⚠ #315. And the file ITSELF, which the `.parents` test above cannot catch —
+            # a file is not in its own `.parents`. `pathlib.Path(__file__).name` inside an
+            # f-string is not an asset path in any sense, yet it resolved to a tracked
+            # name and was counted. Same class as the self-ancestor: tracked by
+            # construction, so it can never go red.
+            if resolved == here:
+                continue
             falsifiable.append(f"{rel}:{lineno} {name}")
-    # ⚠ 24, RE-DERIVED. An earlier version of this said "the 13 measured on 2026-08-12"
-    # with a floor of 12 — a number carried over from a review comment written before the
-    # walk was extended to unnamed path expressions, and a floor that permitted losing HALF
-    # the coverage silently. The floor is the measurement: this is a ratchet, so any drop in
-    # falsifiable coverage is meant to be noticed, including a legitimate one.
-    assert len(falsifiable) >= 24, (
-        f"falsifiable asset paths dropped to {len(falsifiable)} from the 24 measured on\n"
-        f"2026-08-12. Either the evaluator stopped resolving a spelling, or coverage really\n"
+    # ⚠ 25, RE-DERIVED 2026-08-26 (#315), and it is NOT "24 + 1". Two changes landed
+    # together and they move the count in opposite directions: whole `/`-composed
+    # expressions are now enumerated (coverage UP, including both sites in
+    # `test_vat_dim_seams.py` that this file previously could not see), and entries
+    # resolving to the parsed file itself are now excluded (padding DOWN). The old 24 was
+    # 23 genuine + 4 self-referential minus 3 that the new enumeration folds into their real
+    # outer expression. Do not reconcile this number against the old one by arithmetic —
+    # re-run the body, as the docstring above says.
+    # The floor is the measurement: this is a ratchet, so any drop in falsifiable coverage
+    # is meant to be noticed, including a legitimate one.
+    assert len(falsifiable) >= 25, (
+        f"falsifiable asset paths dropped to {len(falsifiable)} from the 25 measured on\n"
+        f"2026-08-26. Either the evaluator stopped resolving a spelling, or coverage really\n"
         f"shrank — if the latter, re-derive and lower this number deliberately:\n"
         + "\n".join(falsifiable)
     )

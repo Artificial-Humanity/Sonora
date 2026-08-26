@@ -53,7 +53,7 @@ are priors, not norms):
    Audited tag stays the SSOT ([[rename-on-tag-mismatch]]).
 2. **Corpus casting tags:** run the instruments over LibriTTS-R speakers + synth voices +
    future LibriVox narrators → per-speaker gender/age (accent later) tags under OUR norms,
-   owner-audited where the instruments are uncertain (the Auditions app already has the
+   owner-audited where the instruments are uncertain (the Dataset Listening app already has the
    gender-correction affordance).
 3. **Sonora conditioning (the actual goal):** casting attributes as explicit conditioning
    channels — the same FiLM pattern as VAT — so the shipped actor takes `gender/age/accent`

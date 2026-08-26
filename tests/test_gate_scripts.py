@@ -227,7 +227,25 @@ def test_slow_gate(script, env_var, default):
     assert r.returncode == 0, f"{script} failed:\n{r.stdout[-4000:]}\n{r.stderr[-2000:]}"
 
 
-@pytest.mark.slow
+# ⚠ #317. NO `@pytest.mark.slow` HERE, and its absence is the point.
+#
+# This test carried one, and three statements in this file could not all be true at once:
+#   1. the module docstring: "anything needing hardware or an external checkpoint is marked
+#      `slow`" — this needs neither;
+#   2. the TORCH_ONLY comment above, explaining why a FOURTH category was invented rather
+#      than reusing SLOW: "this script builds its own fixtures in a tempdir and needs no
+#      artifact at all";
+#   3. the marker itself, which by (1) and (2) did not apply.
+#
+# And the marker was not cosmetic. `make test` is `pytest -k "not slow"` (Makefile:34-35),
+# and `-k` matches MARKER NAMES as keywords — so the marker was the single thing removing
+# this test from the default command, while the docstring below promised "never silently
+# absent". ⚠ Deselection is worse than a skip precisely here: a skip prints an id and a
+# reason, a deselected test leaves NO line at all, not even under `-rs`. The promise and the
+# marker were exact opposites, and the marker won.
+#
+# Unmarked, the host behaviour is what the docstring always claimed: torch is absent from the
+# host venv by design, so this SKIPS WITH NOTICE there and RUNS in the container.
 @pytest.mark.parametrize("script", TORCH_ONLY)
 def test_torch_only_gate(script):
     """Runs where torch is; SKIPS WITH NOTICE where it is not. Never silently absent.

@@ -30,7 +30,19 @@ all — it takes already-derived corpus directories and does one job: renumber a
 ⚠ WHY DERIVING THE NEW SUBSETS SEPARATELY IS SAFE, since it looks like it should not be.
 A per-speaker z is computed within one speaker's own clips. Measured 2026-08-25 under
 `LC_ALL=C` with a positive control: `train-clean-360`, `train-other-500`, `train-clean-100`
-and `dev-clean` are pairwise speaker-DISJOINT (all four intersections empty). No speaker
+and `dev-clean` are pairwise speaker-DISJOINT. ⚠ #301: four sets have **six** pairs, not
+four, and an earlier version of this line said "all four intersections empty" while the plan
+recorded a table of five — three artifacts, three different counts, for a claim that is the
+load-bearing evidence behind both the strictly-growing rule and the `--donor-speakers` prefix
+proof. All six, re-measured 2026-08-26, speaker counts 247 / 904 / 1,160 / 40:
+
+    clean-100 n clean-360 : 0      clean-360 n other-500 : 0
+    clean-100 n other-500 : 0      clean-360 n dev-clean : 0
+    clean-100 n dev-clean : 0      other-500 n dev-clean : 0
+
+The pair that had been in neither artifact is `clean-100 n dev-clean` — the one asking
+whether the HOLDOUT source overlaps the subset already trained in v5/v6, which is the pair a
+later auditor would most want shown. No speaker
 spans two subsets, so deriving a subset alone produces exactly the values deriving it
 alongside the others would. That disjointness is also what lets v6's rows stay untouched;
 if it ever stops holding, this script's collision check below fails rather than quietly
@@ -66,8 +78,55 @@ BASE = "data/libritts_r_emilia_expressive_vat_v6"
 LIBRITTS_NS = "libritts_id_to_index"
 
 
+# Everything a finished corpus directory holds. ⚠ #307: the cleanup paths below must remove
+# ALL of it, not just the filelists. `speakers.json` and `derivation_report.json` are written
+# LAST, so on a fresh `--out` a late refusal never created them and removing two files was
+# enough. Under `--force` over a POPULATED `--out` those two belong to the PREVIOUS corpus and
+# survived — leaving a directory whose report claimed `train_rows: N` and whose `n_spks`
+# described rows that were no longer on disk, under a message reading "left with no corpus".
+# A stale report next to no filelists is worse than either a clean corpus or a clean failure.
+CORPUS_FILES = ("train_op.txt", "val_op.txt", "speakers.json", "derivation_report.json")
+
+
 def die(msg):
     sys.exit("merge_libritts_full_corpus: %s" % msg)
+
+
+def remove_partial(out):
+    """Leave `out` with no corpus. The invariant this script promises is that a failure
+    writes nothing, and under `--force` that has to mean nothing OLD survives either."""
+    for n in CORPUS_FILES:
+        try:
+            os.remove(os.path.join(out, n))
+        except OSError:
+            pass
+
+
+def check_split_agrees(label, rows, in_val, side):
+    """⚠ #300. Every input's train/val must reproduce under the shared hash rule.
+
+    This script takes each directory's existing split as-is and concatenates them, which is
+    SOUND — `_in_val` is a pure function of the wav basename, so per-directory splits pool to
+    exactly the same result as splitting the pooled corpus. It is sound *because of* that
+    property, and the property is checkable rather than assumed. `merge_emilia_corpus` runs
+    this same pre-flight for the same reason; not carrying it over left the weaker half of
+    the pair unguarded.
+
+    What it catches: `_in_val` is a function of the basename AND of two module constants. An
+    input derived under a different `SPLIT_SALT` or `VAL_FRACTION` — or hand-assembled, or
+    carried over from an older corpus version — merges into a v7 whose two halves obey
+    different split rules, with val rows sitting in train. Neither this script nor training
+    would notice. This repo already treats its val split as untrustworthy for cross-run
+    comparison — see `notes/quality-gap-plan.md` on why the holdout exists — and a second,
+    undetected way for it to leak is not worth saving four lines over.
+    """
+    wrong = [r for r in rows if in_val(r) != side]
+    if wrong:
+        die("%s: %d of %d %s rows land on the other side under the shared hash split. "
+            "SPLIT_SALT, VAL_FRACTION or the wav paths have moved, and merging would pool "
+            "two different split rules into one corpus. Nothing written.\n  first: %s"
+            % (label, len(wrong), len(rows), "val" if side else "train",
+               wrong[0].split("|", 1)[0]))
 
 
 def read_corpus(d):
@@ -122,10 +181,20 @@ def main():
     # append was legal, and the warm start's prefix proof with it. Compared by realpath so a
     # symlink or a trailing slash cannot slip past. An --out that already holds a corpus is
     # refused for the weaker version of the same reason: a merge is not an in-place edit.
-    if os.path.realpath(args.out) == os.path.realpath(args.base):
+    # ⚠ #306. The first version of this guard covered `--base` only, which is half of what
+    # #295 asked for. An `--add` directory always holds a `train_op.txt`, so the `existing`
+    # check below masked the gap at default settings — and `--force` is exactly the flag that
+    # removes the mask. `--out` == an `--add` under `--force` destroyed a derived input and
+    # printed a successful-looking summary over the wreckage. Every input is a reference.
+    out_real = os.path.realpath(args.out)
+    if out_real == os.path.realpath(args.base):
         die("--out is the same directory as --base. This would overwrite the base corpus, "
             "which is the reference the byte-identity check is made against. Nothing written.")
-    existing = [n for n in ("train_op.txt", "val_op.txt", "speakers.json")
+    for d in args.add:
+        if out_real == os.path.realpath(d):
+            die("--out is the same directory as --add %s. This would overwrite a derived "
+                "input with the merged result. Nothing written." % d)
+    existing = [n for n in CORPUS_FILES
                 if os.path.exists(os.path.join(args.out, n))]
     if existing and not args.force:
         die("--out %s already holds %s. Refusing to overwrite a corpus; pass --force if "
@@ -158,9 +227,23 @@ def main():
     missing = sorted(set(range(base_n)) - set(base_idx))
     if missing:
         die("base index space is not contiguous — missing %s" % missing[:8])
+    # ⚠ #299. Every `--add` is checked for this namespace and the base was not, so a base
+    # without it died with a raw `KeyError` deep in the merge — AFTER printing a per-directory
+    # summary that reads like the append succeeded. Nothing was written either way, so the
+    # no-partial-output contract held; what was wrong is that the tool stopped speaking in its
+    # own refusals at the one moment a reader needs to trust them. v6 carries the namespace,
+    # so this is unreachable with the declared base and becomes reachable at rung 4/5 — or
+    # from any `--base` typo, and `--base` has a default that makes the flag easy to get wrong.
+    if LIBRITTS_NS not in base_ns:
+        die("base %s has no %s map — this script appends into that namespace, and the base "
+            "carries %s" % (args.base, LIBRITTS_NS, ", ".join(sorted(base_ns)) or "no maps"))
+    from derive_vat_corpus import _in_val
+    check_split_agrees(args.base, base["train_op.txt"], _in_val, False)
+    check_split_agrees(args.base, base["val_op.txt"], _in_val, True)
     print("base %s: %d rows train / %d val, %d speakers across %s"
           % (args.base, len(base["train_op.txt"]), len(base["val_op.txt"]),
              base_n, ", ".join(sorted(base_ns))))
+    print("  hash split reproduces the base's own train/val exactly — safe to grow")
 
     known = {sid for m in base_ns.values() for sid in m}
     next_index = base_n
@@ -178,6 +261,8 @@ def main():
                 "decision about which ids join which map, and that is not this script's to "
                 "make" % (d, ", ".join(sorted(add_ns))))
         local = add_ns[LIBRITTS_NS]
+        check_split_agrees(d, add["train_op.txt"], _in_val, False)
+        check_split_agrees(d, add["val_op.txt"], _in_val, True)
 
         # ⚠ THE CHECK THAT MAKES THE APPEND LEGAL. A speaker already in the base must never
         # be re-added: it would get a SECOND index, so the same person occupies two rows of
@@ -260,9 +345,22 @@ def main():
     # reopened it: both sides went through the same normalisation, so `identical` was True
     # by construction and the die() was unreachable. `read_corpus` drops every empty line,
     # `train` is literally `base[name] + new_train`, and re-reading the output then
-    # re-applying the identical strip cannot disagree with it. A base carrying an interior
-    # blank line, or no trailing newline, came out different on disk while the report said
-    # true — measured, not argued.
+    # re-applying the identical strip cannot disagree with it.
+    #
+    # ⚠ #311. An earlier version of this comment said "a base carrying an interior blank
+    # line, OR NO TRAILING NEWLINE, came out different on disk — measured, not argued." Only
+    # the first half is true, and the second was carried under this repo's strongest
+    # evidential label. A missing trailing newline is restored by the `"\n".join(part) + "\n"`
+    # write below, so the leading bytes still reproduce; only a DROPPED INTERIOR LINE shortens
+    # the prefix. The justification needs one case, not two, and naming a second that does not
+    # fire invites a later reader to "fix" a guard that is behaving correctly.
+    #
+    # ⚠ Both cases are now TESTS rather than a frozen measurement in a comment — this file was
+    # the twice-wrong guard whose only verifier was the review loop (#312):
+    #   tests/test_corpus_merge_tool.py::test_dropped_interior_row_is_caught_by_byte_identity
+    #   tests/test_corpus_merge_tool.py::test_base_without_trailing_newline_is_ACCEPTED
+    # Verified 2026-08-26 that disabling the comparison below turns the first one red and
+    # nothing else — so it is this guard the test is watching, not a neighbour.
     #
     # So the comparison is now against BYTES OF FILES, which is the only thing that can
     # actually differ: the base file as it sits on disk, and the leading bytes of what was
@@ -290,11 +388,7 @@ def main():
         if head != base_bytes:
             # Unlike the first attempt, this die() is reachable — so it cleans up after
             # itself, the same invariant the licence refusal below keeps.
-            for n2 in ("train_op.txt", "val_op.txt"):
-                try:
-                    os.remove(os.path.join(args.out, n2))
-                except OSError:
-                    pass
+            remove_partial(args.out)
             die("BYTE-IDENTITY FAILED on %s: the output's leading %d bytes do not reproduce "
                 "the base file. The corpus at %s would NOT be a legal warm-start donor. "
                 "Partial write removed." % (name, len(base_bytes), args.out))
@@ -309,11 +403,7 @@ def main():
     try:
         license_check([os.path.join(args.out, n) for n in ("train_op.txt", "val_op.txt")])
     except Exception:
-        for n in ("train_op.txt", "val_op.txt"):
-            try:
-                os.remove(os.path.join(args.out, n))
-            except OSError:
-                pass
+        remove_partial(args.out)
         print("licence wall REFUSED — partial write removed, %s left with no corpus"
               % args.out, file=sys.stderr)
         raise

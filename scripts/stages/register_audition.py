@@ -1,6 +1,6 @@
 """register_audition — bridge book-prose synthesis output into the audition queue.
 
-The Dataset Auditions app (audition.ai-lab-0:8095) is ratings.csv-driven: a clip
+The Dataset Listening app (listen.ai-lab-0:8095) is ratings.csv-driven: a clip
 only appears in the review `todo` queue if a row exists in ratings.csv. The
 book-prose lane (book_ingest.py -> synth_{dia,qwen,moss85}.py) stops at producing
 wavs + per-engine manifests and never touches ratings.csv, so rendered books never

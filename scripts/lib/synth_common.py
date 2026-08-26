@@ -743,7 +743,7 @@ class DryRun(Exception):
 def ratings_transaction(path, *, tag="edit", backup=True, dry_run=False):
     """Read ratings.csv, yield (fieldnames, rows), write it back — no window (C-M6/D-M5).
 
-    `ratings.csv` is the ear-verdict SSOT and the Dataset Auditions app is a LIVE WRITER,
+    `ratings.csv` is the ear-verdict SSOT and the Dataset Listening app is a LIVE WRITER,
     so a script that reads it, thinks, and writes back can erase an edit committed in
     between. That happened on 2026-07-26 (an owner-set accent value), which is why six
     scripts each grew an mtime stamp — in four different flavours, the widest of which

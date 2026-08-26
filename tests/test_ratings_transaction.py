@@ -1,6 +1,6 @@
 """One implementation of "safely rewrite ratings.csv" (C-M6).
 
-`ratings.csv` is the ear-verdict SSOT and the Dataset Auditions app is a LIVE WRITER, so
+`ratings.csv` is the ear-verdict SSOT and the Dataset Listening app is a LIVE WRITER, so
 a script that reads it, thinks and writes back can erase an edit committed in between.
 That happened on 2026-07-26 to an owner-set accent value, and the response was six scripts
 each growing their own mtime stamp — in four flavours, the widest of which stamps before

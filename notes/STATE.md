@@ -364,19 +364,43 @@ headline; open items are in [todo.md](todo.md).
    this paragraph names.** An earlier version said the gate is "skipped with notice" under
    `make test`. It is not; that is what happens under a *different* command. Measured:
 
-   | command | what `test_torch_only_gate` does |
+   | command | what `test_torch_only_gate` did (as measured 2026-08-25) |
    |---|---|
    | `pytest tests/` | **SKIPPED** — id and reason both printed (`11 skipped`) |
    | **`make test`** = `pytest -k "not slow"` | **DESELECTED** — `@pytest.mark.slow` is matched by `-k` as a keyword, so it is never collected. **0 collected, no id, no skip line, not even under `-rs`** (`1507 passed, 8 skipped, 3 deselected`) |
    | throwaway ROCm container | actually **runs** — 35/35 |
 
+   ✅ **FIXED 2026-08-26 (#317): the `@pytest.mark.slow` is gone**, and the middle row is now
+   history rather than current state. The marker contradicted two statements in its own file
+   — the module docstring's definition of `slow` ("needs hardware or an external checkpoint")
+   and the `TORCH_ONLY` comment explaining why a fourth category existed *because* this gate
+   needs no artifact at all. Re-measured under the Makefile's own command: **SKIPPED, with
+   the id and the reason printed** (`10 passed, 1 skipped, 2 deselected`), so the docstring's
+   "never silently absent" is now true where it matters. ⚠ Keep the row above: the reason
+   this was worth finding is that **deselection leaves no line to notice**, and that remains
+   the trap for the next marker somebody adds.
+
    So the warning was **understated**: under the command in the Makefile the gate does not
    report itself at all. Enumerated-and-skipped already reads like run; enumerated-and-**deselected**
-   does not even leave a line to notice. ⚠ And a green suite is no guard here for a second,
-   independent reason — `test_asset_paths.py`'s walk enumerates only `join`/`Path` call
-   nodes, so the broken `Path(__file__).resolve().parents[1] / "…"` expression evaluated
-   `Path(__file__)` alone, found it resolvable, and scored **2 falsifiable assertions, both
-   green**. The direct evidence above stands precisely because it came from a container run,
+   does not even leave a line to notice. ⚠ And a green suite was no guard here for a second,
+   independent reason — **now fixed, see below.** `test_asset_paths.py` runs *two*
+   enumerations, and only the second one was restricted: the half that scores path
+   expressions which are USED rather than NAMED collected `join`/`Path` **call** nodes only.
+   A `/`-composed path is an `ast.BinOp`, so the broken
+   `Path(__file__).resolve().parents[1] / "…"` was never enumerated as a whole — the walk
+   descended past it and scored `Path(__file__)` alone, found it resolvable, and reported
+   **2 falsifiable assertions, both green**. ⚠ #316: an earlier version of this sentence
+   said "the walk enumerates only `join`/`Path` call nodes", which reads as the guard being
+   blind to `parents[N]` anchors generally. It is not, and `_eval` was never the limitation —
+   it has handled `BinOp`/`Div` and `.parents[n]` throughout. The enumeration simply never
+   handed it the node.
+   ✅ **FIXED 2026-08-26 (#315), and the fix is mutation-verified in both directions:** with
+   the same wrong-depth mutation in place, the pre-fix guard reports 112 passed and the
+   post-fix guard fails naming the file, the line and the correct location. The same finding
+   had a second half — those self-referential entries were being counted toward the
+   `>= 24` falsifiable ratchet, so genuine coverage was 23 against a floor of 24 and the
+   guard was padding its own number. Both halves are closed; the floor is re-derived to 25.
+   The direct evidence above stands precisely because it came from a container run,
    not from a green suite.
    `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
    Full derivation, tables and the rejected alternatives:

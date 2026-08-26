@@ -50,7 +50,7 @@ TWO THINGS THIS BANK DOES THAT THE OTHER TWO SOURCES DO NOT:
      whether to drop or to raise the filter is a corpus decision, not a measurement
      one, and a silent drop here would change the append count without a record.
 
-Read-only on `ratings.csv` (the Auditions app is a live writer): its mtime_ns is
+Read-only on `ratings.csv` (the Dataset Listening app is a live writer): its mtime_ns is
 recorded in the manifest so a concurrent edit is visible after the fact.
 
 Run:  .venv/bin/python scripts/tools/measure_expressive_registers.py \

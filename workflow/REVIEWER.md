@@ -121,9 +121,10 @@ summary — there is no third place, and no later opportunity.
   `git -c user.name=Janis -c user.email=janis@artificialhumanity.io`. That case is not this
   one: **inside the review loop, never.** The worker/reviewer split is the entire mechanism
   and it is the reviewer's restraint that holds up one half of it.
-* **You write to exactly one place: the `issues` collection in PocketBase.** Create issues,
-  comment on them, and move `state` through **exactly two transitions**: `open` on filing, and
-  then `review` → `closed` (verified) or `review` → `open` (not resolved).
+* **You write to exactly one place: the `issues` collection in PocketBase**, and through
+  exactly one tool — `workflow/scripts/issue.py`, never `pb_record_mutate` (**§4**). Create
+  issues, comment on them, and move `state` through **exactly two transitions**: `open` on
+  filing, and then `review` → `closed` (verified) or `review` → `open` (not resolved).
 * ⚠⚠ **YOU DO NOT ESCALATE. ESCALATION IS OZZY'S, AND ONLY OZZY'S** (owner, 2026-08-17).
   This reversed on that date — it used to be *your* normal path — so a document, a habit, or a
   memory saying otherwise is **stale**, not a rule you are being asked to break. Ozzy holds the
@@ -226,28 +227,71 @@ reason, including when the change is to this file.
 
 **There is no report file.** No `notes/reviews/`, no markdown handoff. You file directly.
 
-The tracker is the `issues` collection in PocketBase on this host, reached through the
-`pocketbase` MCP tools. Use `pb_record_list`, `pb_record_get` and `pb_record_mutate`.
-It is loopback-only and superuser-only; the MCP already holds the credential. **If you cannot
-reach it, you cannot file — say so loudly in your summary and put the full findings in that
-summary instead.** With the report file gone, an unreachable tracker loses the entire review
-rather than delaying it.
+The tracker is the `issues` collection in PocketBase on this host. It is loopback-only and
+superuser-only; the MCP already holds the credential.
+
+**READ it with the `pocketbase` MCP tools** — `pb_record_list` and `pb_record_get`. Every
+query on this page is one of those, and none of them is restricted.
+
+⚠⚠ **WRITE IT WITH `workflow/scripts/issue.py`, NOT `pb_record_mutate`** (phase 2, owner
+directive 2026-08-24). `state`, `agent_passes`, `ferrostep_version`, `repo` and `branch_name`
+are **refereed fields**: FerroStep's guard refuses a direct write to any of them with a `400` —
+superuser or not — because a move has to record which role made it and why. ⚠ That list is the
+hook's, not this file's; read `const REFEREED` in
+`/data/services/pocketbase/pb_hooks/ferrostep.issues.pb.js` if you need to be sure it still
+says what this sentence says. `issue.py` requests the move
+through the referee, which checks it against [sonora-lane.json](sonora-lane.json) and then
+performs it. Your whole surface is four commands:
+
+```bash
+workflow/scripts/issue.py file --title "…" --body-file f.md --branch "<branch>" \
+                               --severity medium --label bug   # allocates `number`, files `open`
+workflow/scripts/issue.py close  114 --comment "…"   # review -> closed, once YOU verified it
+workflow/scripts/issue.py reopen 114 --comment "…"   # review -> open, comment MANDATORY
+workflow/scripts/issue.py comment 114 --text "…"     # never moves `state`
+```
+
+Set `ISSUE_AUTHOR=Janis` once and it stops asking who you are.
+
+⚠⚠ **A `400` NAMING A REFEREED FIELD IS NOT AN UNREACHABLE TRACKER — IT IS THIS RULE,
+ARRIVING AS AN ERROR.** It names the offending field(s) and the route it wants:
+
+```
+refereed_field: state may only change through /api/ferrostep/issues/apply, which
+records who moved the record and why. A direct write here would leave the ledger's
+history disagreeing with the row.
+```
+
+**Match on the substring `refereed_field`** — the leading letter has been observed arriving
+capitalised, and the field list is whichever of them your write touched, so neither the case
+nor the exact wording after it is a safe thing to key on.
+
+**Re-issue that write through `issue.py` and carry on.** Do not fall through to the paragraph
+below, and do not report the tracker as down. This is spelled out because the two failures
+look alike for one keystroke and cost differently by an entire review — see the next
+paragraph, which is the one you would otherwise land in.
+
+**If the tracker is genuinely unreachable — connection refused, the host down, `issue.py`
+failing on every issue alike — you cannot file. Say so loudly in your summary and put the
+full findings in that summary instead.** With the report file gone, an unreachable tracker
+loses the entire review rather than delaying it. That cost is exactly why a refused *field*
+must never be read as a refused *tracker*.
 
 ### Fields
 
 | field | what to set |
 |---|---|
-| `repo` | `Artificial-Humanity/Sonora` — the tracker is multi-repo, so this is not optional |
+| `repo` | `Artificial-Humanity/Sonora` — the tracker is multi-repo, so this is not optional. ⚠ refereed; `issue.py file` sets it |
 | `number` | int, **unique per repo** — allocate it, see below |
 | `title` | one specific line. Not "bug in dataloader" |
 | `body` | markdown; the finding, the evidence, the severity, verified-or-not |
-| `state` | `open` \| `escalated` \| `closed` — **`open` on filing** |
+| `state` | `open` \| `escalated` \| `closed` — **`open` on filing**. ⚠ refereed; only `issue.py` moves it |
 | `severity` | `low` \| `medium` \| `high` \| `critical` — ⚠ **the merge gate reads this. See below** |
 | `labels` | `bug` \| `documentation` \| `enhancement` — the *kind* of issue, never *how bad* |
 | `author` | `Janis` |
 | `comments` | ⚠ **legacy, frozen — do not write to it.** See below |
-| `branch_name` | the id in your brief — **set it on every issue you file** |
-| `agent_passes` | leave unset; it defaults to `0`. **Never write it** |
+| `branch_name` | the id in your brief — **set it on every issue you file**, via `issue.py file --branch`. ⚠ refereed |
+| `agent_passes` | leave unset; it defaults to `0`. **Never write it** — ⚠ refereed, and the worker's |
 | `user_decision` | ⚠ **the owner's field. Never write it.** Read it — see below |
 
 ### ⚠ `severity` — this is the one field that decides whether a branch can land
@@ -456,6 +500,10 @@ an issue:
 | `agent_passes` | `0` |
 | `branch_name` | the branch from your brief — **on every issue, without exception** |
 
+All three are refereed fields, and `issue.py file --branch "<branch>"` sets all three for you:
+the first two are what filing *means* to the referee, and the third is the flag you pass. You
+never write them yourself — see §4.
+
 Then **report the number of issues you filed** (§7) and stop. That is your whole part in this
 phase.
 
@@ -472,8 +520,9 @@ pb_record_list  collection="issues"
                 perPage=200  skipTotal=false
 ```
 
-* **Genuinely resolved → `closed`.** A comment is optional.
-* **Not resolved → back to `open`.** ⚠ **A COMMENT IS MANDATORY** — say precisely what is still
+* **Genuinely resolved → `closed`**, with `issue.py close N`. A comment is optional.
+* **Not resolved → back to `open`**, with `issue.py reopen N --comment "…"`.
+  ⚠ **A COMMENT IS MANDATORY** — say precisely what is still
   wrong. Ozzy gets three attempts per issue, and sending one back with no explanation spends
   one of them on a guess. This is the one place where silence has a measurable cost.
 * ⚠ **Verify, do not accept.** A finding is cleared when *you have checked the fix*, not when

@@ -65,6 +65,7 @@ import pathlib
 import random
 import shutil
 import string
+import sys
 
 import numpy as np
 import pyloudnorm as pyln
@@ -83,11 +84,60 @@ import soundfile as sf
 # test, not a finding about the model. Hence the flag: render the same comparison at A = +1
 # and the two readings separate the explanations.
 ENERGY_PLANE = 0.0
-# Mid-range of what the probe actually produced. A target near the quietest clip would ask
-# for large positive gain on the rest and risk clipping; near the loudest it would attenuate
-# everything and lose headroom for no benefit.
+# ⚠ #302. This said "mid-range of what the probe actually produced", and warned against a
+# target "near the quietest clip" because that "would ask for large positive gain on the rest
+# and risk clipping". Both halves were wrong, and the second was wrong about what this very
+# constant does. MEASURED 2026-08-26 over probes/intercept_ep008/measures.csv:
+#
+#            n    min      max      mean     median
+#   A=0     30  -35.79   -28.66   -31.98   -31.97
+#   all     90  -38.52   -26.93   -32.21   -31.91
+#   clips louder than -26.0 LUFS: 0 of 30 in-plane, 0 of 90 overall
+#
+# So -26.0 is 2.66 dB ABOVE the loudest clip in the plane, not mid-range (which is ~-32), and
+# it asks +2.66 to +9.79 dB of every file — the exact thing the old comment warned against.
+#
+# It is kept anyway, deliberately: all-positive gain is fine as long as nothing clips, the
+# peak ceiling below is measured never to fire on any probe on disk, and the A=+1 set already
+# built for the owner was rendered at this target. Moving it now would make the two ear sets
+# non-comparable to settle a wording defect. The number is sound; only its stated reason was
+# not, and a wrong reason is what gets a correct constant "fixed" later.
 DEFAULT_TARGET_LUFS = -26.0
 PEAK_CEILING = 0.97  # leave a little room; we move the target rather than limit
+
+# ⚠ #308. THE PROTOCOL, ONCE. The `ANSWERS.md` writer used to carry a comment claiming its
+# blanks were "in the protocol's order, so the questions cannot drift from the README beside
+# it" — while README.md and ANSWERS.md were two independent f-string literals sharing nothing
+# but `groups` and `texts`. Nothing derived one from the other and no test compared them, so
+# editing the README's wording did not touch the answer sheet. They had ALREADY drifted: the
+# README asked group / manner / voice and ANSWERS asked grouping / pair+confidence / manner /
+# voice, and the README's separate step 5 ("was any grouping a guess?") duplicated the
+# ANSWERS confidence line.
+#
+# Both artifacts are now rendered from this list, so the claim is true by construction rather
+# than by assertion. A step with no `fields` is an instruction, not a question, and appears
+# only in the README.
+PROTOCOL = (
+    {"readme": "Listen to all of them once before writing anything.",
+     "heading": None, "fields": ()},
+    {"readme": "**Group them.** Which clips share a delivery? Say which letters go together, "
+               "then name the pair that shares one and how sure you are. "
+               "\"I was guessing\" is a real result here.",
+     "heading": "Grouping",
+     "fields": ("sets of letters, one set per delivery (exactly one set should hold two):",
+                "the pair that shares a delivery:",
+                "confidence:      certain / fairly sure / guessing")},
+    {"readme": "**Manner.** Do these differ in *how* the line is delivered at all — obvious, "
+               "subtle, or none? If audible, what moves: pace, weight, warmth, push, distance?",
+     "heading": "Manner",
+     "fields": ("audible difference?   obvious / subtle / none",
+                "what moves (pace, weight, warmth, push, distance):")},
+    {"readme": "**Voice check.** Is it the same person throughout, or does the voice itself "
+               "change?",
+     "heading": "Voice",
+     "fields": ("same voice?      yes / no",
+                "if no, which clips and how:")},
+)
 
 
 def read_measures(probe: pathlib.Path) -> list[dict]:
@@ -127,9 +177,11 @@ def main() -> None:
             f"probe whose design was not recorded. Re-render with "
             f"probe_delivery_intercept.py, which writes one.")
     design = json.loads(design_path.read_text(encoding="utf-8"))
-    for field in ("checkpoint", "spk", "valence", "tension"):
+    for field in ("checkpoint", "spk", "valence", "tension", "sample_rate"):
         if field not in design:
-            raise SystemExit(f"{design_path} has no {field!r} — cannot state it in the README.")
+            raise SystemExit(
+                f"{design_path} has no {field!r} — this tool either states it as fact in the "
+                f"README it writes or measures with it, and will not guess either one.")
 
     rows = [r for r in read_measures(args.probe) if float(r["energy"]) == args.energy]
     if not rows:
@@ -155,7 +207,17 @@ def main() -> None:
             f"re-run. Move them aside, or pass --force if regenerating is genuinely what "
             f"you want.")
     args.out.mkdir(parents=True, exist_ok=True)
-    meter = pyln.Meter(int(float(rows[0].get("sr", 24000)) or 24000))
+    # ⚠ #303. This used to read `rows[0].get("sr", 24000)` from measures.csv — a column
+    # `probe_delivery_intercept.py` has never written. Its columns are exactly
+    # text, lane, energy, rep, lufs, rms_db, dur_s, file, and no probe on disk carries `sr`.
+    # So the expression read as a per-probe adaptation and was dead code that always returned
+    # its own default. Harmless so far only because every probe happens to be 24 kHz.
+    # The rate is recorded authoritatively in design.json, which is already open here.
+    # An ITU-R BS.1770 meter at the wrong rate returns a wrong integrated loudness SILENTLY,
+    # which would put every per-file gain wrong — defeating the one confound this tool exists
+    # to remove, with nothing raised. So it is read, and then checked against each file.
+    meter_sr = int(design["sample_rate"])
+    meter = pyln.Meter(meter_sr)
 
     key: list[dict] = []
     gains: list[float] = []
@@ -183,10 +245,28 @@ def main() -> None:
         for letter, (lane, cell) in zip(letters, picked):
             src = args.probe / cell["file"]
             y, sr = sf.read(str(src))
+            # ⚠ #303. The true per-file rate was read here and used to WRITE the output, and
+            # never compared against the rate the meter was built at. Silent disagreement is
+            # the whole hazard, so it is now loud.
+            if sr != meter_sr:
+                raise SystemExit(
+                    f"{src} is {sr} Hz but design.json says the probe is {meter_sr} Hz. The "
+                    f"loudness meter is built at the design rate, and measuring at the wrong "
+                    f"rate returns a wrong integrated loudness with no error — which would "
+                    f"put every gain in this ear set wrong. Refusing rather than guessing.")
             measured = meter.integrated_loudness(y)
             gain = 10.0 ** ((args.target_lufs - measured) / 20.0)
             peak = float(np.max(np.abs(y))) * gain
-            if peak > PEAK_CEILING:  # move the target, never limit the peaks
+            # ⚠ #302. When this fires the clip DOES NOT REACH the target, so loudness is no
+            # longer equalised — and it used to say nothing at all, while the README below
+            # asserted unconditionally that "louder" is not available as a cue. That would be
+            # a false statement to the blind listener about the one confound this tool exists
+            # to remove. Recorded per clip and reported, so the README can tell the truth.
+            # `bool(...)` is load-bearing: `peak` is a numpy float, so the comparison yields
+            # `np.bool_`, which `json.dump` refuses — and KEY.json is written 60 lines later,
+            # long after the loop that would have to be re-run.
+            capped = bool(peak > PEAK_CEILING)
+            if capped:  # move the target, never limit the peaks
                 gain *= PEAK_CEILING / peak
             out_name = f"{text}_{letter}.wav"
             sf.write(str(args.out / out_name), y * gain, sr)
@@ -195,6 +275,8 @@ def main() -> None:
                         "lane": lane, "source": cell["file"],
                         "measured_lufs": round(measured, 3),
                         "applied_gain_db": round(20.0 * float(np.log10(gain)), 3),
+                        "peak_ceiling_capped": capped,
+                        "reached_target_lufs": not capped,
                         "is_control_pair_member": lane == control_lane})
 
     # The key is what makes the test scoreable, and it is the one file the listener must
@@ -210,6 +292,34 @@ def main() -> None:
                     "clips": key}, indent=2),
         encoding="utf-8")
 
+    # ⚠ #302. The README must not claim equalisation it did not achieve. Every clip that hit
+    # the peak ceiling is BELOW target, so "louder is not available as a cue" would be false
+    # for it — in the one document the blind listener reads, about the one confound this tool
+    # exists to remove. Measured never to fire on any probe on disk; stated conditionally
+    # anyway, because the day it fires is the day nobody is watching for it.
+    capped = [k for k in key if k["peak_ceiling_capped"]]
+    if capped:
+        loudness_note = (
+            f"Loudness was targeted at {args.target_lufs:.1f} LUFS by a single gain per file "
+            f"(no compression, no limiting). ⚠ **{len(capped)} of {len(key)} clips did NOT "
+            f"reach that target** — they hit the peak ceiling first, so they are quieter than "
+            f"the rest and **\"louder\" IS partly available as a cue between them**: "
+            f"{', '.join(sorted(k['file'] for k in capped))}. Treat any grouping that follows "
+            f"loudness with suspicion, and say so in your answers.")
+        print(f"  ⚠ {len(capped)} of {len(key)} clips hit the peak ceiling and are BELOW "
+              f"target — loudness is not fully equalised; the README says so",
+              file=sys.stderr)
+    else:
+        loudness_note = (
+            f"Loudness has been equalised to {args.target_lufs:.1f} LUFS by a single gain per "
+            f"file, so \"louder\" is not available as a cue. No compression or limiting was "
+            f"applied, and every clip reached the target.")
+
+    # Both renderings of PROTOCOL. Same list, same order, one source — see #308.
+    protocol_readme = chr(10).join(
+        f"{i}. {step['readme']}" for i, step in enumerate(PROTOCOL, 1))
+    questions = [s for s in PROTOCOL if s["fields"]]
+
     groups = {t: sorted(k["letter"] for k in key if k["text"] == t) for t in texts}
     controls = {t: sorted({k["lane"] for k in key
                            if k["text"] == t and k["is_control_pair_member"]})
@@ -224,8 +334,7 @@ Every clip is speaker id `{design["spk"]}` saying the SAME sentence, from
 `design.json`, not assumed here. **The only thing that differs between clips in a group is
 the delivery lane** — except that one lane appears TWICE in each group, which is the control.
 
-Loudness has been equalised to {args.target_lufs:.1f} LUFS by a single gain per file, so
-"louder" is not available as a cue. No compression or limiting was applied.
+{loudness_note}
 
 ## Groups
 
@@ -233,12 +342,7 @@ Loudness has been equalised to {args.target_lufs:.1f} LUFS by a single gain per 
 
 ## For each group, in this order
 
-1. Listen to all of them once before writing anything.
-2. **Group them.** Which clips share a delivery? Say which letters go together.
-3. **Manner.** Do these differ in *how* the line is delivered at all — obvious, subtle, or
-   none? If audible, what moves: pace, weight, warmth, push, distance?
-4. **Voice check.** Is it the same person throughout, or does the voice itself change?
-5. **Then** say whether any grouping was a guess. "I was guessing" is a real result here.
+{protocol_readme}
 
 ## What the answers mean
 
@@ -254,39 +358,19 @@ voice moves with it, delivery is entangled with timbre and that is a finding.
 
     # ⚠ #298. The answer sheet SHIPS. The v6 verdicts were collected against a template
     # hand-written on /data that the repo never had, so the committed tool could not
-    # reproduce the artifact its own recorded result rests on. A blank per group, in the
-    # protocol's order, so the questions cannot drift from the README beside it.
-    blank = chr(10).join(
-        f"""## Group {t} — clips {', '.join(groups[t])}
+    # reproduce the artifact its own recorded result rests on.
+    # ⚠ #308. Its questions are RENDERED FROM `PROTOCOL`, the same list the README's numbered
+    # steps come from, so "the questions cannot drift from the README" is now a property of
+    # the code rather than a claim in a comment beside two independent literals.
+    def _blank_for(t):
+        parts = [f"## Group {t} — clips {', '.join(groups[t])}", ""]
+        for i, step in enumerate(questions, 1):
+            parts += [f"**{i}. {step['heading']}.**", "", "```"]
+            parts += list(step["fields"])
+            parts += ["```", ""]
+        return chr(10).join(parts)
 
-**1. Grouping.** Sets of letters, one set per delivery you hear. Exactly one set should
-hold two letters.
-
-```
-your answer:
-```
-
-**2. Which pair shares a delivery, and how sure?**
-
-```
-pair:
-confidence:      certain / fairly sure / guessing
-```
-
-**3. Manner.** Do they differ in HOW the line is delivered?
-
-```
-audible difference?   obvious / subtle / none
-what moves (pace, weight, warmth, push, distance):
-```
-
-**4. Voice.** Same person in all of them?
-
-```
-same voice?      yes / no
-if no, which clips and how:
-```
-""" for t in texts)
+    blank = chr(10).join(_blank_for(t) for t in texts)
     (args.out / "ANSWERS.md").write_text(
         f"""# Answers — delivery ear test
 

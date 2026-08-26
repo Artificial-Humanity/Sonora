@@ -141,6 +141,23 @@ host 301s. The **service, container, deploy target and `/data/services/audition`
 still `audition`** — renaming those moves the deployed copy and its MIRRORS entry, so it is
 one coordinated change, not a find-and-replace.
 
+⚠ **The first pass renamed the RUNNING SURFACE and stopped there** (`app/main.py`,
+`app/static/index.html`, the Caddy route), which left `audition/README.md` making a false
+claim about a file it names — line 106 told a reader to look in `index.html` for a
+`Dataset Auditions` tile that had just been renamed out of it. **#304**, and the enumeration
+above is what made it look deliberate: a README is not a service, a container, a deploy
+target or a `/data` path, so it fell in the gap between "renamed" and "deliberately kept".
+Swept 2026-08-26 across **14 files** — `audition/README.md`, `AGENTS.md`,
+`notes/{training-sources,book-prose-lane,casting-attribute-norms-brief}.md`,
+`docs/{markup-schema-brief,direction-interface-brief}.md`,
+`scripts/teacher_audition/README.md`, `scripts/lib/synth_common.py`,
+`scripts/tools/{tag_spike,label_expressive_registers,measure_expressive_registers}.py`,
+`scripts/stages/register_audition.py`, `tests/test_ratings_transaction.py` — plus the
+`audition.ai-lab-0` URLs inside them. **Filenames and directory names were NOT touched**
+(`register_audition.py`, `scripts/teacher_audition/`): those are plumbing, and this list is
+the surface. `audition/app/main.py`'s docstring keeps the old name on purpose — it is the
+record of the rename, not an instance of it.
+
 ⚠ **THE GAP THAT BIT THREE TIMES IN ONE SESSION: there is no COMPARATIVE mode.** Every
 input is absolute and per-clip, and the app only serves clips registered in `ratings.csv`.
 So the delivery ear test, the forced-ranking pass (§4) and blind A/B are each *N clips
