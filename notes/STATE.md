@@ -349,8 +349,21 @@ headline; open items are in [todo.md](todo.md).
    **the gate had been unrunnable since the #26 restructure (2026-08-12)** — two repo-root
    anchors inside it still read `parents[1]` from its pre-move depth, so every invocation
    died at import with `FileNotFoundError` before a single check ran. Fixed on the rung 3
-   branch. That is a second, independent fact from #197's "nothing in the suite runs it"
-   (a wiring gap, still true): even a hand run would have died.
+   branch. That is a second, independent fact from #197's "nothing in the suite runs it":
+   even a hand run would have died.
+   ⚠ **THIS SAID #197's WIRING GAP WAS "still true" AND IT WAS NOT (#313).** #197 was closed
+   by `706f39f` on **2026-08-21**, four days before that sentence was written — verified:
+   `git merge-base --is-ancestor 706f39f origin/main` exits 0, and
+   `tests/test_gate_scripts.py` carries `TORCH_ONLY = ["test_vat_dim_seams.py"]` with
+   `test_torch_only_gate`. The gate **is** enumerated. Writing otherwise sent the next
+   reader to redo finished work.
+   ⚠⚠ **AND IT POINTED AWAY FROM THE REAL MECHANISM, which is the more expensive half.**
+   `test_torch_only_gate` **SKIPS** on this host — the repo `.venv` deliberately has no
+   torch, because the gate is container-side. So the gate is enumerated, skipped with
+   notice, and never executed: **`make test` is green whether those anchors are right or
+   wrong.** Enumerated-and-skipped is not the same as run, and the suite cannot tell you
+   which of the two you have. The direct evidence above stands precisely because it came
+   from a container run, not from a green suite.
    `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
