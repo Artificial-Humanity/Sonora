@@ -1,8 +1,12 @@
 # Clips excluded from the v7 donors by EAR, after the corpus was built.
 #
 # Consumed by `scripts/lib/derive_vat_corpus.py --exclude`. One wav path per line; `#`
-# comments and blank lines ignored. The tool REFUSES if a path here is not in the kept set,
-# so this file cannot rot into a no-op that still reports a drop.
+# comments and blank lines ignored. The tool REFUSES a path that does not EXIST ON DISK —
+# a typo, or a corpus that moved — because then the clip it names is still in the output.
+# A path that exists but is already gone from this input is a NO-OP, not a fault: the drop
+# has happened, which is what was asked for, and refusing it made the exclusion
+# unrepeatable (#369). ⚠ This paragraph said the tool refuses ANY path not in the kept set
+# until #376 — the contract changed and four statements of the old one were left standing.
 #
 # ⚠ THE AUDIO IS NOT MOVED. LibriTTS-R is a licensed corpus and the drop-quarantine
 # convention (sweep to `_dropped/`, rewrite links) explicitly does not apply to licensed or

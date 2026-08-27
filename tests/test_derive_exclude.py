@@ -264,3 +264,29 @@ def test_a_declared_clip_already_absent_does_not_deadlock(donor, tmp_path):
                             pass_flag=False)
     assert p.returncode == 0, p.stdout + p.stderr
     assert dest.exists()
+
+
+def test_the_guard_holds_when_root_is_omitted_entirely(donor, tmp_path):
+    """#375 — the omit-the-flag guard must not depend on `--root`.
+
+    `--root` is INERT under `--reuse-from` (its only other reader is `find_clips`, in the
+    other branch) and it carries a DEFAULT, so a guard anchored on it silently found nothing
+    declared and wrote the ear-dropped clip back at exit 0. The population that matters is
+    what is about to be WRITTEN, which is `kept` on both code paths.
+
+    This test omits `--root` altogether — the shape the original guard could not see.
+    """
+    d, vj, sj, _ = donor
+    victim = _wav("100", 7)
+    cfg = tmp_path / "cfgdata"
+    cfg.mkdir(exist_ok=True)
+    (cfg / "some_corpus.exclude.txt").write_text(victim + "\n", encoding="utf-8")
+    dest = tmp_path / "out"
+    p = subprocess.run(
+        [str(PY), str(TOOL), "--reuse-from", str(d), "--out", str(dest),
+         "--valence-json", str(vj), "--soft-json", str(sj)],   # <- no --root at all
+        capture_output=True, text=True, cwd=str(REPO),
+        env=dict(os.environ, SONORA_EXCLUDE_DIR=str(cfg)))
+    assert p.returncode != 0, p.stdout + p.stderr
+    assert "declared excluded by ear" in (p.stdout + p.stderr)
+    assert not dest.exists(), "a refused run must write nothing"

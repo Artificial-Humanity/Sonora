@@ -651,24 +651,33 @@ declared there and present in the kept set stops the run unless the flag is pass
 
 ```
 scripts/lib/derive_vat_corpus.py --root <root> --out <donor> \
-  --valence-json .../corpus_valence_combo_v7.json \
-  --soft-json    .../corpus_soft_v7.json \
+  --valence-json /data/model-training/sonora/eiv_scores/corpus_valence_combo_v7.json \
+  --soft-json    /data/model-training/sonora/eiv_scores/corpus_soft_v7.json \
   --exclude configs/data/libritts_r_full_vat_v7.exclude.txt
 ```
 
-⚠ **The v7 donor was re-derived with `--reuse-from`, and that command was in no file until
-now** — the build was not reproducible from the record with the exclusion applied:
+⚠⚠ **HOW TO REPRODUCE THE SHIPPED DONOR — a FULL derivation, and this is the only command
+that reproduces it.** Paths are complete on purpose: an earlier version of this block elided
+them as `.../corpus_valence_combo_v7.json`, which is unresolvable, and claimed the command
+"runs verbatim" when it did not (#369).
 
 ```
-scripts/lib/derive_vat_corpus.py --reuse-from data/_derived_train_other_500 \
+.venv/bin/python scripts/lib/derive_vat_corpus.py \
   --root /data/model-training/datasets/LibriTTS_R/train-other-500 \
-  --out data/_derived_train_other_500_excl \
+  --out data/_derived_train_other_500 \
   --exclude configs/data/libritts_r_full_vat_v7.exclude.txt \
-  --valence-json .../corpus_valence_combo_v7.json --soft-json .../corpus_soft_v7.json
+  --valence-json /data/model-training/sonora/eiv_scores/corpus_valence_combo_v7.json \
+  --soft-json    /data/model-training/sonora/eiv_scores/corpus_soft_v7.json
 ```
 
-`--reuse-from` relabels without re-measuring audio or re-running G2P, which is what makes an
-ear-driven drop cost minutes instead of hours. →
+⚠ **The clip was ACTUALLY removed with `--reuse-from`, and that command can no longer be
+run** — its input was the pre-exclusion donor, which no longer exists on disk because the
+corrected one replaced it. Re-running the reuse form today reads an already-clean input,
+removes nothing, and reproduces the donor trivially: **that demonstrates idempotence, not the
+build**, and offering it as evidence was a vacuous comparison (#369, reopened twice). The
+full derivation above is the reproduction; `--reuse-from` remains the cheap path for making a
+NEW drop, costing minutes instead of hours because it relabels without re-measuring audio or
+re-running G2P. →
 **`scripts/tools/merge_libritts_full_corpus.py --base <v6> --add <clean_360> --add <other_500>
 --out <v7>`**, which appends with v6's rows byte-identical and ids renumbered onto the end →
 `data_statistics` re-measured **in-container** → warm start from `vat6_finetune` **`ep008`**.
@@ -718,9 +727,17 @@ shipped.
 that matters.** The median is 141 clips/speaker and holds. But **21 new speakers have exactly
 one kept clip**, and per-speaker z gives those a combo of **exactly 0.0** — the degenerate
 label that forced Emilia onto the global anchor, indistinguishable from a genuine
-at-speaker-mean one. Bounded by control: **exactly 21 clips in the whole 303,638 are 0.0**,
+at-speaker-mean one. Bounded by control: **exactly 21 clips of the 303,638 SCORED are 0.0**,
 i.e. the degenerate population is precisely the one-clip speakers and nothing else, 0.007% of
-the add. 26 speakers have ≤2 clips (z fixed at ±1 by arithmetic), 71 have <10.
+the add.
+
+⚠ **THE v7 CONFIG SAYS 22 OF 303,627 AND BOTH ARE RIGHT — THE POPULATIONS DIFFER** (#378).
+This paragraph measures the corpus **as scored**, before the ear exclusion; the config
+measures it **as built**, after. Removing one clip of a two-clip speaker left its survivor a
+one-clip speaker, so the null-vector population went 21 → 22 while the row count went
+303,628 → 303,627. Neither number was labelled, which is how two correct measurements read as
+a contradiction — the same defect as #372 and #377, ten lines apart, and the reason every
+count in this section now names its population. 26 speakers have ≤2 clips (z fixed at ±1 by arithmetic), and **66 have <10** — which is what `derive_vat_corpus` reports, because its own comparison is `< MIN_SPK_CLIPS`. ⚠ **71 is the ≤10 count** and this line gave it under a `<10` label (#377).
 `derive_vat_corpus`'s `MIN_SPK_CLIPS` report prints this per run and **deliberately does not
 repair it** — changing labels is a corpus version bump and an owner call.
 
@@ -835,10 +852,18 @@ performs for another lane. Filed, not scheduled.
 **How the drop was made**, since two conventions constrain it: filelists are generated and
 must not be hand-edited, and the drop-quarantine convention does **not** apply to licensed
 trees, so the LibriTTS-R audio was not moved. `derive_vat_corpus.py` gained `--exclude`, a
-path list that **refuses when any entry is not in the kept set** — an exclusion list is an
+path list that **refuses an entry which does not EXIST ON DISK** — an exclusion list is an
 enumeration, and one that matches nothing would report a drop while writing a corpus that
-still contains the clip. Verified by negative control: a bogus path refuses and writes
-nothing. `--reuse-from` then relabelled without re-measuring audio or re-running G2P.
+still contains the clip. ⚠ An entry that exists but is already gone from the input is a
+**no-op, not a fault**: refusing that too made the exclusion unrepeatable, because the
+recipe's own re-derivation runs against a donor the clip has already been removed from
+(#369). Verified in both directions. `--reuse-from` then relabelled without re-measuring
+audio or re-running G2P.
+
+⚠ **The omit-the-flag guard is anchored on the KEPT SET, not on `--root`** (#375). `--root`
+is inert under `--reuse-from` and carries a default, so a guard keyed on it silently passed
+on the reuse path — writing the ear-dropped clip back at exit 0. The population that matters
+is what is about to be written.
 
 ⚠ **The drop re-labelled a clip that was KEPT, and that is arithmetic rather than a second
 decision.** Speaker 6003 has exactly two recordings in the whole tree, so removing one leaves

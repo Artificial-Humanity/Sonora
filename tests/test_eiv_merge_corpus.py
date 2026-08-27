@@ -139,49 +139,93 @@ def keys_written_to_row(source):
     """
     tree = ast.parse(source)
     keys, saw_row, unknown = set(), False, []
-    for node in ast.walk(tree):
-        # row |= {...}
-        if (isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name)
-                and node.target.id == "row"):
-            saw_row = True
-            if isinstance(node.op, ast.BitOr) and isinstance(node.value, ast.Dict):
-                keys |= {k.value for k in node.value.keys
-                         if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+
+    # ⚠ SCOPED TO THE INNERMOST BLOCK THAT SERIALISES THE ROW, not to every local called
+    # `row` in the file — and not to the enclosing FUNCTION either, which was the first
+    # attempt and was not enough. `eiv_score.py` binds `row` twice inside one `main()`: once
+    # in the resume reader (`row = json.loads(line)`, a read from an existing file that adds
+    # no bookkeeping key) and once in the write loop. An unscoped walk reported the reader as
+    # an unmodelled write and failed on correct code.
+    #
+    # The anchor is therefore STRUCTURAL: the smallest block containing `json.dumps(row)`.
+    # That is a definition of "the row the writer emits" that does not depend on names, on
+    # which function things live in, or on an enumeration of read-only idioms.
+    def _dumps_row(n):
+        return any(isinstance(c, ast.Call) and isinstance(c.func, ast.Attribute)
+                   and c.func.attr == "dumps"
+                   and any(isinstance(a, ast.Name) and a.id == "row" for a in c.args)
+                   for c in ast.walk(n))
+
+    blocks = [n for n in ast.walk(tree)
+              if hasattr(n, "body") and hasattr(n, "lineno") and hasattr(n, "end_lineno")
+              and _dumps_row(n)]
+    scope = [min(blocks, key=lambda n: n.end_lineno - n.lineno)] if blocks else [tree]
+
+    def note(lineno, what):
+        unknown.append(f"line {lineno}: {what}")
+
+    def read_mapping(lineno, value, what):
+        """Add constant string keys; REPORT anything not statically readable.
+
+        ⚠ A `DictComp` is readable and contributes NOTHING, deliberately: that is the idiom
+        the real writer uses for the head scores, whose keys are head names rather than
+        bookkeeping. Reporting it would make the guard demand that every HEAD be declared a
+        non-head. Everything else — kwargs, a variable, a `**spread`, a non-constant key —
+        is a write this walk cannot see, and is reported rather than skipped. Whitelisting
+        by METHOD NAME was the first fix and was itself an enumeration (#374, reopened).
+        """
+        if isinstance(value, ast.DictComp):
+            return
+        if not isinstance(value, ast.Dict):
+            note(lineno, what)
+            return
+        for k in value.keys:
+            if isinstance(k, ast.Constant) and isinstance(k.value, str):
+                keys.add(k.value)
             else:
-                unknown.append(f"line {node.lineno}: augmented assignment to `row`")
-        # row.<method>(...) — setdefault understood, anything else REFUSED rather than skipped
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and isinstance(node.func.value, ast.Name) and node.func.value.id == "row"):
-            saw_row = True
-            if node.func.attr == "setdefault":
-                if node.args and isinstance(node.args[0], ast.Constant) \
-                        and isinstance(node.args[0].value, str):
-                    keys.add(node.args[0].value)
-            elif node.func.attr not in ("update", "get", "keys", "items", "values"):
-                unknown.append(f"line {node.lineno}: row.{node.func.attr}(...)")
-        # row = {...}
-        if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)
-                and any(isinstance(t, ast.Name) and t.id == "row" for t in node.targets)):
-            saw_row = True
-            keys |= {k.value for k in node.value.keys
-                     if isinstance(k, ast.Constant) and isinstance(k.value, str)}
-        # row["k"] = ...
+                note(lineno, f"{what} with a key this walk cannot read")
+
+    for node in (n for fn in scope for n in ast.walk(fn)):
         if isinstance(node, ast.Assign):
             for t in node.targets:
-                if (isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
-                        and t.value.id == "row" and isinstance(t.slice, ast.Constant)
-                        and isinstance(t.slice.value, str)):
+                if isinstance(t, ast.Name) and t.id == "row":
                     saw_row = True
-                    keys.add(t.slice.value)
-        # row.update({...})
-        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                and node.func.attr == "update" and isinstance(node.func.value, ast.Name)
-                and node.func.value.id == "row"):
+                    read_mapping(node.lineno, node.value, "row = <not a dict literal>")
+                elif (isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
+                      and t.value.id == "row"):
+                    saw_row = True
+                    if isinstance(t.slice, ast.Constant) and isinstance(t.slice.value, str):
+                        keys.add(t.slice.value)
+                    else:
+                        note(node.lineno, "row[<non-constant>] = ...")
+        elif (isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name)
+              and node.target.id == "row"):
             saw_row = True
-            for arg in node.args:
-                if isinstance(arg, ast.Dict):
-                    keys |= {k.value for k in arg.keys
-                             if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+            if isinstance(node.op, ast.BitOr):
+                read_mapping(node.lineno, node.value, "row |= <not a dict literal>")
+            else:
+                note(node.lineno, "augmented assignment to `row`")
+        elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+              and isinstance(node.func.value, ast.Name) and node.func.value.id == "row"):
+            saw_row = True
+            attr = node.func.attr
+            if attr in ("get", "keys", "items", "values", "copy"):
+                continue                      # reads, not writes
+            if attr == "update":
+                if node.keywords:
+                    note(node.lineno, "row.update(**kwargs)")
+                for a in node.args:
+                    read_mapping(node.lineno, a, "row.update(<non-literal>)")
+                if not node.args and not node.keywords:
+                    note(node.lineno, "row.update() with no readable argument")
+            elif attr == "setdefault":
+                if (node.args and isinstance(node.args[0], ast.Constant)
+                        and isinstance(node.args[0].value, str)):
+                    keys.add(node.args[0].value)
+                else:
+                    note(node.lineno, "row.setdefault(<non-constant>)")
+            else:
+                note(node.lineno, f"row.{attr}(...)")
     return keys, saw_row, unknown
 
 
@@ -193,6 +237,9 @@ def keys_written_to_row(source):
     ('other = {"wav": w}', set()),
     ('row = {"wav": w}\nrow |= {"wav_dur": d}', {"wav", "wav_dur"}),
     ('row = {"wav": w}\nrow.setdefault("wav_dur", d)', {"wav", "wav_dur"}),
+    # the head comprehension the REAL writer uses: readable, contributes nothing, and must
+    # NOT be reported — reporting it would demand every HEAD be declared a non-head.
+    ('row = {"wav": w}\nrow.update({n: v for n in heads})', {"wav"}),
 ])
 def test_the_walk_sees_every_idiom_that_writes_a_row_key(src, expected):
     """Known-answer fixtures through the same code path the real guard uses.
@@ -241,6 +288,16 @@ def test_non_head_keys_is_not_a_wildcard():
 @pytest.mark.parametrize("src", [
     'row = {"wav": w}\nrow.merge_from(other)',
     'row = {"wav": w}\nrow += other',
+    # ⚠ #374 REOPENED ON THESE. The first fix whitelisted `update` and `setdefault` BY NAME,
+    # so when their argument was not a readable literal the key was neither read NOR
+    # reported — and `update()` is the idiom the real writer uses. Whitelisting by name is
+    # itself an enumeration; the test is READABILITY.
+    'row = {"wav": w}\nrow.update(wav_dur=d)',
+    'row = {"wav": w}\nrow[k] = d',
+    'row = {"wav": w}\nrow.setdefault(k, d)',
+    'row = {"wav": w}\nrow = dict(wav_dur=d)',
+    'row = {"wav": w}\nrow.update(other)',
+    'row = {"wav": w}\nrow |= other',
 ])
 def test_an_unmodelled_mutation_of_row_is_REFUSED_not_skipped(src):
     """The residual #368 left, and the reason it recurred (#374).

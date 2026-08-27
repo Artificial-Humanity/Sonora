@@ -401,9 +401,10 @@ def main():
                     help="file of wav paths to leave out, one per line (# comments and "
                          "blank lines ignored). For clips the EAR rejects after a corpus "
                          "is built — truncation, a text/audio gap — which no gate here "
-                         "measures. ⚠ REFUSES if any listed path is not in the kept set: "
-                         "a typo that silently excludes nothing would leave the defect in "
-                         "the corpus while every log line says it was dropped.")
+                         "measures. ⚠ REFUSES a path that does not EXIST ON DISK — a typo "
+                         "silently excludes nothing and leaves the defect in the corpus "
+                         "while every log line says it was dropped. A path that exists but "
+                         "is already gone from this input is a NO-OP, not a fault.")
     ap.add_argument("--reuse-from", default=None,
                     help="existing derivation dir: reuse its kept clips, "
                          "phonemes (filelists) and measures.jsonl — relabel "
@@ -493,11 +494,12 @@ def main():
     # path an ear-driven drop actually uses: re-measuring 200k clips to remove one is not
     # a thing anyone will do, so the cheap path is the one that must honour it.
     #
-    # ⚠⚠ AND IT REFUSES ON A PATH IT DID NOT FIND. An exclusion list is an enumeration, and
-    # an enumeration that matches nothing is indistinguishable from one that worked — the
-    # run would report a drop, write a corpus that still contains the clip, and every log
-    # line would agree with the intent rather than the result. A stale path here means the
-    # corpus moved under the list, which is exactly when you want to be stopped.
+    # ⚠⚠ AND IT REFUSES A PATH THAT DOES NOT EXIST ON DISK. An exclusion list is an
+    # enumeration, and one that matches nothing is indistinguishable from one that worked —
+    # the run would report a drop, write a corpus that still contains the clip, and every log
+    # line would agree with the intent rather than the result. ⚠ Absent-from-`kept` is a
+    # DIFFERENT case and used to be refused too, which made the exclusion unrepeatable
+    # (#369); the split is below.
     wanted = set()
     if args.exclude:
         with open(args.exclude, encoding="utf-8") as fh:
@@ -564,46 +566,38 @@ def main():
 
     # ⚠⚠ REFUSE A DERIVATION THAT WOULD SILENTLY REINSTATE AN EAR-DROPPED CLIP (#369).
     #
-    # Every refusal above fires only when --exclude is PASSED. Omitting the flag is a silent
-    # no-op by construction, so the whole exclusion mechanism was reachable only by remembering
-    # it — and the build recipe in notes/quality-gap-plan.md, which that document calls the
-    # template rungs 4 and 5 get written from, did not carry the flag. Re-derive a donor from
-    # the recipe and the truncated clip comes back, with the corpus config still saying it was
-    # excluded and nothing anywhere disagreeing.
+    # Every refusal below fires only when --exclude is PASSED, so omitting the flag was a
+    # silent no-op by construction and the build recipe did not carry it. The exclusion FILES
+    # are therefore the source of truth: a clip declared there and about to be WRITTEN stops
+    # the run unless the flag names it.
     #
-    # So the exclusion FILES are the source of truth, not the command line: any
-    # `configs/data/*.exclude.txt` naming a clip under the root being derived must be honoured
-    # or the run stops. That makes forgetting the flag loud, which is the property the flag's
-    # own refusals have and the flag's ABSENCE did not.
-    # Overridable so this guard is TESTABLE. It reads a real directory, and a guard whose
-    # only input is the repo it ships in can be exercised in exactly one state.
+    # ⚠ ANCHORED ON `kept`, NOT ON `--root` (#375). The first version matched declared clips
+    # against `args.root` — which is INERT under `--reuse-from` (its only other reader is
+    # `find_clips`, in the other branch) and carries a DEFAULT, so on the reuse path a run
+    # that omitted `--root` found nothing declared and wrote the ear-dropped clip back at
+    # exit 0. Reproduced by the reviewer with a control. `kept` is the population that
+    # actually reaches the corpus on both paths, so matching against it cannot be bypassed
+    # by an argument that does not govern the input.
     _cfg_dir = os.environ.get("SONORA_EXCLUDE_DIR",
                               os.path.join(_SONORA_REPO, "configs", "data"))
+    _present = {p_ for p_, _, _ in kept}
     _declared = {}
-    _root_abs = os.path.abspath(args.root).rstrip(os.sep) + os.sep
-    for _name in sorted(os.listdir(_cfg_dir)) if os.path.isdir(_cfg_dir) else []:
+    for _name in (sorted(os.listdir(_cfg_dir)) if os.path.isdir(_cfg_dir) else []):
         if not _name.endswith(".exclude.txt"):
             continue
         with open(os.path.join(_cfg_dir, _name), encoding="utf-8") as fh:
             for _ln in fh:
                 _ln = _ln.split("#", 1)[0].strip()
-                if _ln and os.path.abspath(_ln).startswith(_root_abs):
+                if _ln and _ln in _present:
                     _declared[_ln] = _name
-    # ⚠ ONLY clips actually PRESENT in `kept`. A declared clip that is already absent needs
-    # no exclusion — and demanding the flag for it would DEADLOCK the re-derivation path:
-    # `--reuse-from` an already-excluded donor has no such clip, so passing --exclude would
-    # then hit the "not in the kept set" refusal above while omitting it hit this one. Caught
-    # by running both, not by reading.
-    _present = {p_ for p_, _, _ in kept}
-    _missed = sorted((set(_declared) & _present) - wanted)
+    _missed = sorted(set(_declared) - wanted)
     if _missed:
         raise SystemExit(
-            "REFUSING: %d clip(s) under %s are declared excluded by ear but were not passed "
-            "to --exclude, so this derivation would put them back:\n  %s\n"
+            "REFUSING: %d clip(s) about to be written are declared excluded by ear but were "
+            "not passed to --exclude, so this derivation would put them back:\n  %s\n"
             "  Re-run with --exclude configs/data/%s (or the file naming each one). The "
             "exclusion files are the record; the flag is only how they reach this run."
-            % (len(_missed), args.root, "\n  ".join("%s  <- %s" % (m, _declared[m])
-                                                    for m in _missed[:5]),
+            % (len(_missed), "\n  ".join("%s  <- %s" % (m, _declared[m]) for m in _missed[:5]),
                _declared[_missed[0]]))
 
     # Per-speaker z-scores (v1): A from LUFS; T from the phonation composite
