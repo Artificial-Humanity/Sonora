@@ -967,6 +967,25 @@ routed it to the owner. One occurrence, in a sentence meaning the opposite.
 for**: you were told what not to write and given no way to write what you meant. The phrase
 above is the way. It is checked by a test, so it will not quietly disappear.
 
+⚠⚠ **AND THE SAME RULE HOLDS IN THE TRACKER — AN ISSUE TITLE IS THE OTHER WAY IN (#361).**
+The paragraph above covers your SUMMARY. It did not cover what you FILE, and the two meet:
+you report closures, a title gets quoted, and the driver greps the quotation exactly as it
+greps everything else. Issue 355 was filed with the token in its title for want of another
+way to name it, which left a live record able to halt any later clean cycle.
+
+**So never put the literal in a title, a body or a comment.** To write a finding *about* the
+token — which you may need to do, and #361 is one — name it without spelling it:
+
+> **the cycle-abort token** (the one `review_cycle.sh` greps for)
+
+and cite the issue number for the detail. That is enough for any reader to act, and #361 is
+written that way end to end as the worked example.
+
+⚠ **`workflow/scripts/issue.py` now REFUSES a title, body or comment containing the literal**, so this
+is a mechanism and not only a rule. There is deliberately **no bypass flag**: a record can
+always describe the token instead, so an escape hatch would only be a supported way to re-arm
+the trap.
+
 This is deliberately a judgement call and not a severity threshold. The test: an issue means
 *"this can live on `main` and be fixed later"*; this means *"this must not land."*
 

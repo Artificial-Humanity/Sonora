@@ -177,11 +177,35 @@ TABLE_MD = [
 
 
 def _table_runs(rel):
-    """Every maximal run of consecutive `|`-prefixed lines, with its start line."""
+    """Every maximal run of consecutive `|`-prefixed lines, with its start line.
+
+    ⚠ FENCED BLOCKS ARE SKIPPED, and #360 is why. This did not skip them, on a stated
+    premise that the resulting false positive "fails loudly, which is the cheap direction".
+    That holds for ONE of the two sub-cases and not the other, measured: a lone pipe-prefixed
+    line inside a fence goes RED (loud, as claimed), but a WELL-FORMED table inside a fence
+    goes GREEN *and* increments `total_runs` — so a fenced EXAMPLE table could satisfy the
+    anti-vacuity floor by itself, and the floor would report a pass over a population whose
+    real tables had all gone. That is the precise failure the floor was added to end, so the
+    premise for leaving it was wrong and it is fixed rather than named.
+
+    Pages that DOCUMENT table structure are exactly the ones that grow fenced example
+    tables, and two files in `TABLE_MD` are such pages.
+    """
     lines = (REPO / rel).read_text(encoding="utf-8").splitlines()
-    runs, cur, start = [], [], 0
+    runs, cur, start, fence = [], [], 0, ""
     for n, l in enumerate(lines, 1):
-        if l.lstrip().startswith("|"):
+        stripped = l.lstrip()
+        if fence:                                  # inside a fence: nothing is a table
+            if stripped.startswith(fence):
+                fence = ""
+            continue
+        opener = re.match(r"(`{3,}|~{3,})", stripped)
+        if opener:
+            fence = opener.group(1)
+            if cur:
+                runs.append((start, cur)); cur = []
+            continue
+        if stripped.startswith("|"):
             if not cur:
                 start = n
             cur.append(l)
@@ -208,10 +232,10 @@ def test_every_markdown_table_run_carries_its_own_header_and_delimiter():
     installed in this venv to check the rendering itself.
 
     ⚠ THE OTHER LIMITS, NAMED SO THE LIST ABOVE DOES NOT READ AS COMPLETE (#356):
-      * `_table_runs` DOES NOT SKIP FENCED CODE BLOCKS, so a ```-fenced block containing a
-        pipe-prefixed line would be scored as a table. No such block exists in this
-        population today. It is a latent false POSITIVE — it fails loudly, which is the
-        cheap direction, so it is named rather than fixed.
+      * Fenced blocks ARE skipped, as of #360 — see `_table_runs`. The claim that used to
+        stand here, that not skipping them "fails loudly, which is the cheap direction", was
+        true of a lone pipe line in a fence and FALSE of a well-formed table in one, which
+        passed silently and could satisfy the floor below on its own.
       * #353 named two structural faults; this covers fault 1 (no header/delimiter) and NOT
         fault 2 (no blank line between the table and the paragraph above it). Whether fault
         2 alone breaks rendering is UNSETTLED — no markdown library is installed to decide it.

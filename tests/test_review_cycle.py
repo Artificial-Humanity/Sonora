@@ -591,12 +591,46 @@ def test_zero_issues_in_ANY_state_is_refused_not_reported_as_convergence():
     code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
     assert "EVER=" in code, "the driver does not ask whether this branch has any issues at all"
     ever = code.index("EVER=")
-    converged = code.index("CONVERGED=1")
-    assert ever < converged, (
+    # ⚠ EVERY arm, not the first one found. This read `code.index("CONVERGED=1")`, and #357
+    # inserted a SECOND one inside the --allow-empty-tracker bypass, ~16 lines above the
+    # convergence this test was written for. `.index` silently moved to the bypass, the
+    # refusal below fell outside the span, and `exit 5` became deletable green (#359).
+    # Same first-occurrence shape as #355, in this file, one test along.
+    flags = [m.start() for m in re.finditer(r"CONVERGED=1", code)]
+    assert flags, "the driver never reports convergence at all"
+    assert ever < min(flags), (
         "the zero-issues check runs after CONVERGED is set, so it cannot prevent the claim")
     # ⚠ And unreachable must not read as zero — the same trap one layer down.
-    assert "unreachable" in code[ever:converged], (
+    assert "unreachable" in code[ever:min(flags)], (
         "an unreachable tracker is not a count of zero; it must refuse separately")
+    # ⚠ ORDER IS NOT ENOUGH: the arm must still REFUSE. Every assertion above stayed green
+    # with the refusal deleted outright — measured both before and after #357 introduced the
+    # bypass, so this half was pre-existing rather than new (#359).
+    assert "exit 5" in code[ever:max(flags)], (
+        "the zero-issues arm no longer refuses; ordering alone does not stop the claim")
+
+
+def test_the_empty_tracker_bypass_stays_opt_in():
+    """⚠⚠ #344's REFUSAL IS NOW KEPT BY A DEFAULT, AND NOTHING WAS WATCHING IT.
+
+    `--allow-empty-tracker` (#357) turns the refusal above into a pass — correctly, for the
+    one case that reaches the same zero legitimately: a correct slug on a repo that has
+    simply never had an issue filed. But the whole safety content of that change is which way
+    it defaults, and a one-character edit restores #344 exactly: the driver announces
+    CONVERGED over a tracker holding no records, having read nothing.
+
+    Measured (#359): with the default flipped to 1, every zero-argument test in this module
+    stayed green. An escape hatch is only an escape hatch while somebody has to ask for it.
+    """
+    # ⚠ PRESENCE FIRST, so the assertion below cannot be satisfied by the arm's absence —
+    # deleting the flag would otherwise leave "the default is 0" trivially true.
+    assert "--allow-empty-tracker) ALLOW_EMPTY_TRACKER=1;" in SOURCE, \
+        "the opt-in bypass arm is gone"
+    d = re.search(r"^ALLOW_EMPTY_TRACKER=(\S+)", SOURCE, re.M)
+    # ⚠ `set -u` is on, so an undeclared default aborts the driver rather than defaulting off.
+    assert d, "the bypass default is not declared at all"
+    assert d.group(1) == "0", \
+        f"the empty-tracker bypass is no longer opt-in (default {d.group(1)!r}): #344 is bypassed"
 
 
 def test_the_reviewer_has_a_sanctioned_way_to_say_there_is_no_blocker():

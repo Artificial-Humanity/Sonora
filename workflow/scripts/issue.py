@@ -168,6 +168,40 @@ def die(msg):
     sys.exit("issue.py: %s" % msg)
 
 
+# ⚠⚠ ASSEMBLED FROM TWO FRAGMENTS, AND NEVER PRINTED (#361). `review_cycle.sh` greps the
+# REVIEW OUTPUT for this token and halts the cycle on any occurrence, anywhere, deliberately:
+# a false halt costs one cycle, a false pass can land work a reviewer refused. Nothing
+# guarded the other end. Issue 355 was filed with the token in its TITLE, so a later summary
+# reporting closures by title -- a natural shape, and §7 asks only for numbers rather than
+# forbidding titles -- halts a clean cycle and routes it to the owner.
+#
+# Spelling it here would put a live copy in a file the reviewer runs and whose output can
+# reach that summary, which is the same trap one layer along. So it is built at runtime and
+# the refusal below describes it instead of quoting it.
+ABORT_TOKEN = "MUST-NOT" + "-LAND"
+
+
+def refuse_abort_token(text, where):
+    """The cycle-abort token must not enter the tracker.
+
+    ⚠ MATCHED EXACTLY AS THE DRIVER MATCHES IT -- literal and case-sensitive, because
+    `grep -q` is. A looser test here would refuse prose the driver would never halt on,
+    which is a false refusal bought for nothing.
+
+    ⚠ AND THERE IS DELIBERATELY NO BYPASS FLAG. Unlike `--allow-empty-tracker`, no legitimate
+    case needs the literal in a record: a finding ABOUT the token can always describe it and
+    cite the issue number, which is how #361 itself was written. A flag here would be a
+    supported way to re-arm the trap -- and an escape hatch is only ever as safe as a default
+    nobody is watching (#359).
+    """
+    if ABORT_TOKEN in (text or ""):
+        die("this %s carries the cycle-abort token that review_cycle.sh greps for.\n"
+            "  A tracker record holding it is a trap: any later review summary quoting this\n"
+            "  text halts a CLEAN cycle and routes it to the owner (#361, #355).\n"
+            "  Write it without the literal -- say \"the cycle-abort token\" and cite the\n"
+            "  issue number. REVIEWER.md §6 carries the sanctioned phrasings." % where)
+
+
 class PB:
     def __init__(self):
         try:
@@ -226,6 +260,7 @@ class PB:
         # not be written. Kept short by policy -- the owner capped comment length because a
         # reviewer averaged 1839 characters and detail belongs in the issue body.
         text = text.strip()
+        refuse_abort_token(text, "comment")
         if len(text) > COMMENT_MAX:
             die("comment is %d characters; the cap is %d. Put detail in the issue body, which "
                 "allows 200,000." % (len(text), COMMENT_MAX))
@@ -350,6 +385,9 @@ def cmd_file(pb, args):
         body = open(args.body_file, encoding="utf-8").read()
     if not (body or "").strip():
         die("an issue with no body is a title someone has to guess at. Use --body or --body-file.")
+    # ⚠ TITLE FIRST: it is the surface a summary quotes when reporting closures (#361).
+    refuse_abort_token(args.title, "title")
+    refuse_abort_token(body, "body")
     branch = args.branch or current_branch()
     # ⚠ `number` DOES NOT AUTO-ASSIGN and is unique per repo, so two reviewers filing at once
     # collide. Retried rather than pre-reserved: the unique index is the real arbiter, and a

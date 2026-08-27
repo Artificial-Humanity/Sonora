@@ -283,6 +283,72 @@ def test_the_issue_number_collision_is_retried():
 
 # --- the map ----------------------------------------------------------------------------
 
+def _issue_module():
+    """`issue.py` loaded as a module, so the guard below is EXERCISED and not grepped.
+
+    A substring test over the source would pass on a call that was there and unreachable —
+    the shape this branch filed three times (#333, #344, #351)."""
+    spec = importlib.util.spec_from_file_location("issue_py_under_test", ISSUE)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def test_the_tracker_write_path_refuses_the_cycle_abort_token():
+    """⚠⚠ #361 — A TRACKER RECORD CAN HALT A CLEAN CYCLE, AND NOTHING GUARDED THAT END.
+
+    `review_cycle.sh` greps the review output for the cycle-abort token and stops the loop on
+    any occurrence — by design. Issue 355 was filed with that token in its TITLE, so a later
+    summary reporting closures by title halts a cycle that found nothing wrong. The write path
+    inspected neither titles nor bodies nor comments.
+
+    ⚠ This test never spells the token either; it builds it from the module under test.
+    """
+    import pytest
+
+    m = _issue_module()
+    token = m.ABORT_TOKEN
+
+    # The refusal fires on every surface a summary can quote, and `die` exits non-zero.
+    for where in ("title", "body", "comment"):
+        with pytest.raises(SystemExit) as e:
+            m.refuse_abort_token("closing %s: see the note" % token, where)
+        assert token not in str(e.value), \
+            "the refusal QUOTES the token, so its own output would halt the cycle it protects"
+
+    # ⚠ POSITIVE CONTROL, the other direction: ordinary prose must still get through, or the
+    # guard is a refusal of everything and nobody could file at all.
+    for benign in ("the cycle-abort token (the one review_cycle.sh greps for)",
+                   "must not land: this is prose, not the literal",
+                   ""):
+        m.refuse_abort_token(benign, "title")
+
+
+def test_every_tracker_write_surface_is_actually_guarded():
+    """The call sites, because a guard nothing calls is decoration.
+
+    Exercising `refuse_abort_token` proves the function refuses; it does not prove `cmd_file`
+    or `add_comment` ever reach it. Deleting either call leaves the test above green."""
+    assert ISSUE_SRC.count("refuse_abort_token(") >= 4, (
+        "a write surface stopped calling the abort-token guard: expected its definition plus "
+        "the title, body and comment call sites")
+    for site in ('refuse_abort_token(args.title, "title")',
+                 'refuse_abort_token(body, "body")',
+                 'refuse_abort_token(text, "comment")'):
+        assert site in ISSUE_SRC, "the abort-token guard is no longer called: %s" % site
+
+
+def test_the_tracker_script_does_not_spell_the_abort_token():
+    """⚠ The reviewer RUNS this script and its output can reach the summary the driver greps.
+
+    A literal in the source is one paste away from a printed message, which would halt the
+    cycle from inside the guard against halting the cycle. It is assembled at runtime instead.
+    """
+    m = _issue_module()
+    assert m.ABORT_TOKEN not in ISSUE_SRC, (
+        "issue.py now spells the cycle-abort token literally — assemble it instead (#361)")
+
+
 def test_the_workflow_map_matches_the_states_the_code_enforces():
     """WORKFLOW.md is the map; drift between it and the scripts is the failure this catches."""
     for state in ("open", "review", "escalated", "closed"):
