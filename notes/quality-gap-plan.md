@@ -710,6 +710,71 @@ which fires *after* the expensive audio-measuring stage — will not be reached.
 nothing crashes. This makes derive's kept set a strict subset of the EIV list, which is why
 the coverage check above is safe.
 
+#### ✅ BUILT — v7 exists, 2026-08-27
+
+| | rows | speakers | hours |
+|---|---|---|---|
+| v6 (base, unchanged) | 41,937 tr / 1,331 val | 3,326 | 80.6 |
+| `_derived_train_clean_360` | 110,013 | 899 | 182.9 |
+| `_derived_train_other_500` | 193,615 | 1,160 | 297.6 |
+| **`libritts_r_full_vat_v7`** | **336,547 tr / 10,349 val = 346,896** | **5,385** | **561.1** |
+
+**Against this document's own predictions:** rows ~345,600 → **346,896**; hours ~564 →
+**561.1**; speakers ~5,414 → **5,385**. The first two are close enough to call the estimates
+good. The third is the 2,064-vs-2,059 correction above, and the derivations confirmed it
+without being told: clean_360 produced **899 = 904 − 5** and other_500 produced its full
+**1,160**, so all five zero-clip speakers were in one root, exactly as measured beforehand.
+
+**Byte-identity was verified twice, by different means.** The tool records the SHA-256 of
+v6's file and of v7's leading bytes in `derivation_report.json` — *measured from the written
+files, not asserted*. Then re-checked independently by hashing `head -n <v6 lines>` of each
+output: identical on both `train_op.txt` and `val_op.txt`. ⚠ **With a negative control**: the
+n−1 prefix DIFFERS, which is what makes the match evidence rather than a comparison that
+cannot fail. That control matters here specifically — `test_corpus_merge_tool.py` records
+that this tool's byte-identity guard was **wrong twice in three commits** (a hardcoded
+`True`, then a comparison true by construction), so its own report is not sufficient.
+
+**Verified on the output, not inherited from the inputs:** 346,896 rows, **0 malformed**;
+vat width uniformly 8; `n_spks` 5,385 agreeing three ways (report, speaker maps, indices
+actually used in rows); indices contiguous 0..5384 with **0 map collisions**; **0 clips in
+both splits**; and **0 rows on the wrong side** of the hash rule in either file, re-run
+against `derive_vat_corpus._in_val` itself so the check cannot drift from the rule. Speaker
+collisions between all three sources: **0**, with a positive control (`a ∩ a` = 899).
+
+✅ **`data_statistics` MEASURED IN-CONTAINER 2026-08-27** — 1,315 batches @ 256 over the
+336,547-clip train split, 4 min 49 s. **`mel_mean -5.543696`, `mel_std 2.430295`.**
+
+⚠⚠ **AND THE MOVE IS LARGE, WHICH SETTLES THE "NEVER INHERIT" RULE FOR THIS RUNG RATHER
+THAN ASSUMING IT.** v6 → v7 moves the mean **+0.155422** and the std **−0.278949** — the same
+order as v4 → v5 (+0.1587 / +0.3208), *the move that earned the rule*, and ten times the
+v5 → v6 move. Inheriting v6's pair would have normalised every batch against a mean wrong by
+0.155, and the run would still have trained and converged; the only symptom would have been a
+checkpoint that was worse than it should be, with nothing pointing at why. The config carried
+`data_statistics: null` until the measurement landed precisely so a run started early would
+die at load instead of inheriting.
+
+⚠ **The std moves DOWN while the mean moves UP — the opposite sign pattern to v4 → v5.** v7
+is ~96% LibriTTS-R read speech against v6's mix of that plus Emilia and the
+loudness-normalised expressive bank, so the corpus got bigger and *more homogeneous* at once,
+and a narrower mel distribution is the expected consequence. **That is a prediction, and the
+holdout is what checks it** — read it before the holdout number, not after.
+
+⚠ **Two wrong turns on the way to that number, both worth the space.** The first run reported
+**exit code 0 and measured nothing**: `docker` refused the flags because this host's shell is
+`zsh`, which does not word-split an unquoted `$GPU` the way `bash` does, and a trailing `|
+tail` swallowed the non-zero status. That is the `eval`/`nohup` shape again — *a status line
+about the WRAPPER read as a fact about the WORK* — and the fix is to confirm with
+`docker ps`, never the exit code. The second failed honestly on `/dev/shm`: Docker's 64 MB
+default against 8 dataloader workers. `sonora_training` runs **16 GiB with `ipc=host`**, read
+off the live container with `docker inspect` rather than guessed, and the throwaway now
+matches it. **Any future throwaway-container lane that builds a dataloader needs both flags.**
+
+**Remaining for rung 3:** warm start from `vat6_finetune`
+**`ep008`**, widening the speaker embedding from 3,326 to 5,385 rather than copying it
+(`make_warmstart._WIDENABLE`; this corpus has already been bitten by that path DISCARDING
+the widened tensor and training the new rows on a randomly-initialised embedding) → score on
+rung 1's holdout.
+
 ⚠⚠ **THIS RECIPE NAMED THE WRONG SCRIPT AND AN EXTRA STEP UNTIL 2026-08-27 (#338), AND BOTH
 WOULD HAVE COST THE RUNG.** It said *"Follow `merge_emilia_corpus.py` verbatim, as rung 2
 did"* and put a **hash split after the merge**. Corrected here because the next reader of

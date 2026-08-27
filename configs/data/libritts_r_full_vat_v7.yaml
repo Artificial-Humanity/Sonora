@@ -1,0 +1,125 @@
+# v6 + the rest of LibriTTS-R (train-clean-360 + train-other-500) @ 24 kHz, 8-channel
+# conditioning (v2).
+#
+# Phase 1 rung 3, and the VOLUME rung — the lever rung 2 deliberately did not pull. v6's
+# 43,268 rows pass through BYTE-IDENTICAL on BOTH train and val, verified from the written
+# files rather than asserted: `derivation_report.json` carries the SHA-256 of v6's file and
+# of v7's leading bytes, and they match. Independently re-checked after the write by hashing
+# `head -n <v6 lines>` of each output, with a negative control (the n-1 prefix DIFFERS, so
+# the comparison is not vacuous).
+#
+#   336,547 train / 10,349 val · 561.1 h · 5,385 speakers
+#   v6 was 41,937 / 1,331 · 80.6 h · 3,326 speakers — so +702% clips, +596% hours.
+#
+# ⚠ 5,385 SPEAKERS = 3,326 + 2,059, AND 2,059 IS NOT 2,064. The tree holds 904 + 1,160 =
+# 2,064 speaker directories, and the plan's ladder sized this rung from that number. Five of
+# them — 157, 583, 1001, 2085, 4071, all in train-clean-360 — hold 1-4 clips each and every
+# clip falls outside the 1 s / 22 s gate, so they contribute nothing and never reach a
+# speaker table. Measured before the derivations ran and confirmed by them independently:
+# clean_360 produced 899 (= 904 - 5) and other_500 produced its full 1,160. This is the
+# same shape as the 247-vs-257 defect the plan already records — a count taken from the
+# FILESYSTEM where the arithmetic needed the count taken from the KEPT SET.
+#
+# WHAT WAS DROPPED, and by which filter:
+#   321,497 clips on disk in the two new roots
+#   -> 303,638 scored by the EIV pass (the 1 s / 22 s duration gate)
+#   -> 303,628 reachable (10 clips carry no `.normalized.txt`; `find_clips` skips them)
+#   -> 303,628 kept by derivation, less 17,858 dropped on duration/rate/LOUDNESS
+#      (6,438 from clean_360 + 11,420 from other_500)
+#   =  303,628 new rows, which is what this corpus adds on top of v6.
+# The loudness filter is why derivation's keeps are a strict SUBSET of what was scored,
+# which is what makes `0 kept clips uncovered` the expected reading rather than a lucky one.
+#
+# ✅ Zero rows dropped for vocab violations, zero unresolved words, and **0 digit-carrying
+# transcripts measured over all 303,638** — D-M3 called that hazard latent for LibriTTS on a
+# 5,000-row sample of train-clean-100; it is now latent for all of LibriTTS-R.
+#
+# ⚠ THE DEGENERATE-SPEAKER RESIDUE IS REAL, BOUNDED, AND NOT REPAIRED. Per-speaker z needs a
+# population and 26 of the new speakers do not have one: 21 have exactly ONE kept clip, whose
+# combo is exactly 0.0 by arithmetic, and 5 more have two, whose z is exactly ±1 whatever the
+# underlying scores are. Neither is a label; both are indistinguishable from one. Bounded by
+# control — exactly 21 clips in 303,638 carry a combo of 0.0, so the degenerate population is
+# precisely the one-clip speakers and nothing else (0.007%). `derive_vat_corpus` REPORTS this
+# per run and deliberately does not repair it, because dropping or neutralising those clips
+# changes labels and changing labels is a corpus version bump and an owner call. Left in,
+# knowingly. This is the same failure that forced the Emilia half onto a global anchor, where
+# it was 756 one-clip speakers rather than 21.
+#
+# ⚠ THE STRICTLY-GROWING RULE HOLDS BECAUSE THE SPEAKERS ARE DISJOINT, AND THAT WAS TESTED.
+# `eiv_merge_corpus` recomputes EVERY clip's combo by design, so adding clips to an existing
+# speaker would silently rewrite labels already shipped. Measured: recomputing with and
+# without the 303,638 additions gives **max|delta| = 0.000e+00** across all 30,351
+# pre-existing clips — an exact identity, not a correlation. ⚠ Do NOT read the tool's
+# `corr=1.000000, mean shift +0.0000` line as that evidence: new clips join NEW speaker
+# groups, so they cannot move an existing clip's mean or sd, and the tool prints that line
+# whether or not the new scores are sane. Speaker-id collisions between all three sources
+# measured at 0, with a working positive control.
+#
+# ⚠ THE SPEAKER TABLE GROWS BY 2,059 AND THE EMBEDDING MUST BE **WIDENED**, not copied —
+# same warning v6 carries, and it matters far more here. `make_warmstart._WIDENABLE` is the
+# path that does it, and it proves the donor's index map is a PREFIX rather than assuming
+# it. The prefix property is guaranteed by the merge (`prefix proof: 3326 base speakers hold
+# their original indices in the written map`) and must still be checked at warm-start, not
+# inherited from this comment. Warm start from `vat6_finetune` **`ep008`**.
+#
+# **vat_dim is UNCHANGED at 8** — LibriTTS predates the delivery axis, so all 303,628 new
+# rows enter with `unknown` delivery, i.e. all-zero channels, which is byte-identical
+# conditioning to v1 and is CORRECT for this corpus rather than a gap. 0 of 303,628 carry a
+# lane, deliberately.
+#
+# Independence gate passed on BOTH donors, and the readings are NOT pooled here — each
+# `--add` dir's own `derivation_report.json` holds its own:
+#   clean_360   corr(T,A) -0.076  corr(T,V) -0.070  corr(V,A) +0.030
+#   other_500   corr(T,A) -0.054  corr(T,V) -0.065  corr(V,A) +0.037
+#
+# Built by `scripts/tools/merge_libritts_full_corpus.py`. Lineage and every source:
+# notes/training-sources.md (SSOT).
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_full_vat_v7
+train_filelist_path: data/libritts_r_full_vat_v7/train_op.txt
+valid_filelist_path: data/libritts_r_full_vat_v7/val_op.txt
+batch_size: 32
+# 8, not 20: workers are spawned (own torch import + RSS each, no COW sharing
+# with the trainer) — 8 saturates wav+mel loading on 16 cores.
+num_workers: 8
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 5385
+n_fft: 1024
+n_feats: 80
+sample_rate: 24000
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 12000
+# MEASURED, NOT INHERITED — and this rung is the strongest evidence yet for that rule.
+#
+#   v6 -> v7   mel_mean +0.155422   mel_std -0.278949     <- measured 2026-08-27
+#   v4 -> v5   mel_mean +0.158700   mel_std +0.320800     <- the move that earned this rule
+#   v2 -> v3c  mel_mean +0.020300   mel_std +0.002400     <- the move that first raised it
+#   v5 -> v6   mel_mean -0.015356   mel_std -0.000079     <- small, and CHECKED, not assumed
+#
+# The v6 -> v7 move is the same ORDER as v4 -> v5 and ten times the v5 -> v6 move, which is
+# what a 7x change in the audio set should look like. Inheriting v6's numbers would have
+# normalised every batch against a mean wrong by 0.155 and a std wrong by 0.279 — and the
+# run would have trained, converged to something, and produced a checkpoint whose only
+# symptom was being worse than it should be. This entry carried `null` until the
+# measurement landed, so that a run started early would die at load instead.
+#
+# ⚠ The std moves DOWN while the mean moves UP, which is the opposite sign pattern to
+# v4 -> v5. Read it before the holdout number, not after: v7 is 96% LibriTTS-R read speech
+# against v6's mix of that plus Emilia and the loudness-normalised expressive bank, so the
+# corpus got larger and more homogeneous at the same time. A narrower mel distribution is
+# the expected consequence of that, not an anomaly — but it IS a prediction, and the
+# holdout is what checks it.
+data_statistics:  # matcha/utils/generate_data_statistics.py, in-container, 2026-08-27, 336,547-clip train split (1,315 batches @ 256)
+  mel_mean: -5.543696
+  mel_std: 2.430295
+seed: ${seed}
+load_durations: false
+load_vat: true
+# Single source of truth is the model config: a filelist whose VAT width disagrees
+# with the model now fails at load with both numbers named, instead of deep in the
+# FiLM trunk. Interpolated, never duplicated, so the two cannot drift.
+vat_dim: ${model.vat_dim}
