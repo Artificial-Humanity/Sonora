@@ -225,6 +225,85 @@ if [[ "$PASS" -gt "$MAX_REVIEWS" ]]; then
      adding another review."
 fi
 
+# --- the self-check, before a review pass is spent -------------------------
+# ⚠ NOISE REMOVAL, NOT PRE-CLEARING, and the difference has to be stated wherever this
+# appears. Every finding the reviewer files costs a fix pass, and mechanical findings consume
+# budget that judgement findings need. An outside review's value is unique only where it sees
+# what the author cannot. Nothing downstream may treat a self-checked branch as better
+# covered, and the review is unchanged.
+#
+# ⚠⚠ TWO SETTINGS, BECAUSE THEY ARE ENFORCED DIFFERENTLY AND SAYING SO IS THE HONEST PART.
+# `SELF_REVIEW_CMD` is VERIFIED — it runs, and its exit status decides. The checklist is
+# PROMPTED — nothing can confirm an agent read it. A gate that cannot verify must not pretend
+# to; this lane already says exactly that about the commit-identity convention.
+self_review_scheduled() {  # $1 = review index -> 0 if a self-check is due
+  local want="${SELF_REVIEW_AT:-none}" idx="$1" tok
+  want="${want//[[:space:]]/}"
+  case "$want" in
+    ""|none) return 1 ;;
+    first)   [[ "$idx" -eq 1 ]] && return 0 || return 1 ;;
+    all)     # ⚠ EXPANDS AGAINST THE DERIVED CEILING. A second copy of `max + 1` here is the
+             # exact shadow removed on 2026-08-24; using $MAX_REVIEWS also means an owner
+             # moving the cap moves `all` with it, free.
+             [[ "$idx" -ge 1 && "$idx" -le "$MAX_REVIEWS" ]] && return 0 || return 1 ;;
+  esac
+  # An explicit index list. ⚠ EVERY TOKEN IS VALIDATED EVEN THOUGH ONLY ONE CAN MATCH: a
+  # setting is checked when it is READ, not when it happens to fire, or `1,99` reads as valid
+  # for the whole of review 1 and dies at review 2.
+  [[ "$want" =~ ^[0-9]+(,[0-9]+)*$ ]] || die "SELF_REVIEW_AT: unrecognised value '${SELF_REVIEW_AT}'.
+     Valid: none | first | all | a comma-separated list of review indices (e.g. 1,4).
+     ⚠ There is no fallback to 'none'. A typo resolving silently to never would give this lane
+     a self-check that is configured, documented and never runs — and a check that never fires
+     is indistinguishable from one that ran clean."
+  local hit=1
+  IFS=',' read -r -a _idx <<< "$want"
+  for tok in "${_idx[@]}"; do
+    # ⚠ AN INDEX ABOVE THE CEILING DIES, AND IT IS THE ONE MOST LIKELY TO BE TYPED.
+    # `SELF_REVIEW_AT=5` under a 3-pass definition reads as ON in the config file and is OFF
+    # in every run. The refusal names both numbers so it teaches the arithmetic.
+    [[ "$tok" -ge 1 ]] || die "SELF_REVIEW_AT: review indices are 1-based; got '$tok' in '${SELF_REVIEW_AT}'."
+    [[ "$tok" -le "$MAX_REVIEWS" ]] && continue
+    die "SELF_REVIEW_AT names review $tok, but this lane has at most $MAX_REVIEWS reviews
+     (agent_passes.max in workflow/sonora-lane.json, plus the review that files). That index
+     can never fire: it reads as ON in config and is OFF in every run."
+  done
+  for tok in "${_idx[@]}"; do [[ "$tok" -eq "$idx" ]] && hit=0; done
+  # ⚠ OUT-OF-RANGE IS NOT NEVER-REACHED. `1,4` stays legal when a cycle converges at review 2;
+  # index 4 simply does not come up. That is a lane finishing early and must stay silent.
+  return "$hit"
+}
+
+if self_review_scheduled "$PASS"; then
+  # ⚠⚠ A DRY RUN REPORTS THE SELF-CHECK; IT DOES NOT RUN IT. `--dry-run` is documented as
+  # "prints the plan and exits — spends nothing, files nothing", and it is the ONE form of this
+  # launcher the REVIEWER may invoke: its allowlist entry is scoped to the flag precisely
+  # because the flag "files nothing, launches nothing, and writes no credential file".
+  # Executing an operator-supplied command there would make that sentence false and hand the
+  # reviewer a way to run it. Reported instead, so the plan still SHOWS the gate.
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "request_review.sh: self-check WOULD run at review $PASS (SELF_REVIEW_AT=${SELF_REVIEW_AT:-none})" >&2
+    if [[ -n "${SELF_REVIEW_CMD:-}" ]]; then
+      echo "  command: $SELF_REVIEW_CMD   (not executed under --dry-run)" >&2
+    fi
+  elif [[ -n "${SELF_REVIEW_CMD:-}" ]]; then
+    echo "request_review.sh: self-check — running: $SELF_REVIEW_CMD" >&2
+    # ⚠ SUBSHELL, AND IT IS NOT DECORATION. The value is operator-supplied and `exit 1` is a
+    # plausible thing to type into a "make this fail" setting; a bare eval would then exit
+    # THIS SCRIPT rather than fail the check.
+    #
+    # ⚠ `eval "$VAR"` is safe here and that was MEASURED, not agreed. The trap this lane
+    # already met needs COMMAND SUBSTITUTION: `eval "$(cmd)"` evaluates cmd's OUTPUT, which is
+    # empty when it refuses, and `eval ""` is 0. `eval "$VAR"` evaluates the string as a
+    # command, so the status is that command's.
+    if ! ( eval "$SELF_REVIEW_CMD" ); then
+      die "self-check command failed. Fix that before spending a review pass on it.
+     (SELF_REVIEW_CMD in workflow/config.env)"
+    fi
+  fi
+  echo "request_review.sh: self-check list is DEVELOPER.md § self-check." >&2
+  echo "  It is noise removal, not pre-clearing — the review is unchanged." >&2
+fi
+
 if [[ -n "$NOTES" && -n "$NOTES_FILE" ]]; then
   die "--notes and --notes-file are mutually exclusive."
 fi

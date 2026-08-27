@@ -473,3 +473,85 @@ def test_the_gate_entries_reach_the_rendered_allowlist():
     assert gates, f"no gate entry in the rendered allowlist at all: {entries}"
     for e in gates:
         assert e.endswith(".py:*)"), f"a gate entry does not name a file: {e}"
+
+
+# --- the self-check gate (owner, 2026-08-27) ----------------------------------------------
+
+def _self_review(at, pass_idx, max_reviews=4):
+    """Drive the shipped evaluator itself — extracted from the launcher, not reimplemented.
+
+    ⚠ A second copy of the resolution rules in this file would be the thing they exist to
+    prevent: a test that agrees with a rule it restated, while the script does something else.
+    """
+    fn = SOURCE[SOURCE.index("self_review_scheduled() {"):SOURCE.index("\nif self_review_scheduled")]
+    script = (f'die() {{ echo "$*" >&2; exit 9; }}\nMAX_REVIEWS={max_reviews}\n'
+              f'SELF_REVIEW_AT={at!r}\n{fn}\n'
+              f'if self_review_scheduled {pass_idx}; then echo DUE; else echo SKIP; fi\n')
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("at,idx,want", [
+    ("none", 1, "SKIP"), ("", 1, "SKIP"),
+    ("first", 1, "DUE"), ("first", 2, "SKIP"),
+    ("all", 1, "DUE"), ("all", 4, "DUE"),
+    ("1,4", 1, "DUE"), ("1,4", 4, "DUE"), ("1,4", 2, "SKIP"),
+])
+def test_the_self_check_schedule_resolves_to_a_set_of_review_indices(at, idx, want):
+    """`first` and `all` are spellings of sets, not separate code paths."""
+    r = _self_review(at, idx)
+    assert r.returncode == 0, r.stderr
+    assert want in r.stdout, f"SELF_REVIEW_AT={at!r} at review {idx}: {r.stdout} {r.stderr}"
+
+
+@pytest.mark.parametrize("bad", ["frist", "First ", "1;4", "yes", "true", "0", "1,0"])
+def test_an_unrecognised_schedule_DIES_and_never_falls_back_to_none(bad):
+    """⚠⚠ A TYPO RESOLVING SILENTLY TO "NEVER" gives this lane a self-check that is
+    configured, documented and never runs — and **a check that never fires is
+    indistinguishable from one that ran clean.** There is no conservative default worth having,
+    so the value is quoted back and the run stops."""
+    r = _self_review(bad, 1)
+    assert r.returncode != 0, (
+        f"SELF_REVIEW_AT={bad!r} was accepted; a bad value must refuse, not resolve to off: "
+        f"{r.stdout}")
+
+
+def test_an_index_above_the_derived_ceiling_DIES_naming_both_numbers():
+    """⚠ THE ONE MOST LIKELY TO BE TYPED. `SELF_REVIEW_AT=5` under a 3-fix-pass definition
+    reads as ON in the config file and is OFF in every run. The refusal names the index AND the
+    ceiling so it teaches the arithmetic rather than just rejecting."""
+    r = _self_review("1,5", 1, max_reviews=4)
+    assert r.returncode != 0, "an unreachable index was accepted: " + r.stdout
+    assert "5" in r.stderr and "4" in r.stderr, (
+        "the refusal must name both the offending index and the derived ceiling: " + r.stderr)
+
+
+def test_a_validation_error_fires_even_when_that_index_is_not_the_current_one():
+    """⚠ A SETTING IS CHECKED WHEN IT IS READ, NOT WHEN IT HAPPENS TO FIRE. Validating only the
+    matching token would let `1,99` read as valid for the whole of review 1 and die at review 2
+    — a configuration error surfacing as a mid-cycle failure."""
+    r = _self_review("1,99", 1, max_reviews=4)
+    assert r.returncode != 0, "99 was not validated because review 1 matched first: " + r.stdout
+
+
+def test_out_of_range_is_not_the_same_as_never_reached():
+    """⚠ `1,4` stays LEGAL when a cycle converges at review 2 — index 4 simply does not come
+    up. That is a lane finishing early, not a misconfiguration, and it must stay silent."""
+    r = _self_review("1,4", 2, max_reviews=4)
+    assert r.returncode == 0, "a legal schedule was refused at a review it does not name: " + r.stderr
+    assert "SKIP" in r.stdout
+
+
+def test_a_dry_run_reports_the_self_check_and_does_not_run_it():
+    """⚠⚠ `--dry-run` is documented as spending nothing, and it is the ONE launcher form the
+    REVIEWER may invoke — its allowlist entry is scoped to the flag precisely because the flag
+    "files nothing, launches nothing, and writes no credential file". Executing an
+    operator-supplied `SELF_REVIEW_CMD` there would make that false and hand the reviewer a way
+    to run it."""
+    code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
+    gate = code[code.index("if self_review_scheduled"):]
+    gate = gate[:gate.index("\nfi\n")]
+    assert 'DRY_RUN" -eq 1' in gate, (
+        "the self-check gate does not special-case --dry-run, so a dry run executes "
+        "SELF_REVIEW_CMD:\n" + gate)
+    assert gate.index('DRY_RUN" -eq 1') < gate.index("eval"), (
+        "the dry-run branch must come before the eval, or it cannot prevent it")

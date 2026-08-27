@@ -242,6 +242,25 @@ often saves a round.
   thinks fair, is the cap deleting itself. **If a stored value looks wrong, it is right:**
   an issue you expected at `3` reading `0` was re-armed on purpose. Do not correct it.
 
+#### Receiving feedback from the reviewer (owner, 2026-08-27)
+
+1. **DO NOT assume the reviewer is correct. Findings are claims, not instructions.**
+2. **Verify every claim yourself, and state in your comment WHAT you verified and HOW.** An
+   unverified *"fixed in `<sha>`"* is the failure this section exists to end.
+3. **A finding must name a concrete failure** — inputs or state → wrong behaviour, or a
+   specific rule it breaks. If it names none, **dispute it as speculative**.
+4. **A reproducible failure settles it at once.** ⚠ That is SUFFICIENT to accept, not
+   NECESSARY: the reviewer cannot write files and **can never hand you a test**, so requiring
+   one would reject every finding it is able to make.
+5. **Defects your own fix passes introduced are ALWAYS in scope** (owner, 2026-08-17).
+   Genuinely unrelated refactoring is not — dispute it as out-of-scope. You may also **accept a
+   finding and contest only its GRADE** (`--kind severity`): the grade decides whether the
+   branch lands, so that is a real disagreement, not a quibble.
+6. ⚠⚠ **YOU GET ONE DISPUTE PER FINDING; THE SECOND ESCALATES TO THE OWNER.** So spending it on
+   the cheapest finding rather than the one you would defend in front of them is a real
+   failure. **Do not silently comply and do not unilaterally reject** — both are invisible, and
+   a dispute obliges an answer.
+
 Then, on each issue:
 
 * **Fix what is genuinely wrong**, and say so in the issue's comments, naming the commit.
@@ -279,6 +298,43 @@ Then, on each issue:
   * **Name a command and its result rather than pasting the transcript.**
   * ⚠ **Never drop an "unverified", a measurement or a qualifier to fit.** Accuracy outranks
     brevity exactly as it does in §5; cut the recap instead, or use two comments.
+
+### § self-check — before the review, when the lane asks for it
+
+`request_review.sh` runs this at the reviews named by `SELF_REVIEW_AT` in
+[config.env](config.env) (this lane: **every** review). It also runs `SELF_REVIEW_CMD` — here,
+the test suite — and **refuses to request the review if that fails.**
+
+⚠⚠ **THIS IS NOISE REMOVAL, NOT PRE-CLEARING.** Every finding Janis files costs a fix pass, and
+mechanical findings eat budget that judgement findings need. An outside review is uniquely
+valuable where it sees what you cannot; spending its passes on what you could have caught is
+the waste. **It does not reduce the need for a review and nothing downstream may treat a
+self-checked branch as better covered.**
+
+⚠ **AND A SELF-REVIEW DOES NOT WORK, WHICH IS WHY THIS IS A LIST AND NOT "RE-READ IT
+CAREFULLY".** A second pass by the same scope-holder inherits the same blind spot, and *recall
+and verification feel identical from the inside* — it will feel like checking while being
+remembering. Measured across one day of this workspace: what the author caught was **all
+mechanical**; what only another agent caught was **all framing**. So every item below catches a
+defect *without* requiring you to see your own framing. That is the entry requirement.
+
+1. **Prove the check can FAIL — on the case the finding named.** Not "neuter the fix and watch
+   the test fail": **a control that shares the fix's assumptions inherits them.** Construct the
+   input the original finding called out and demand a failure from it.
+   ⚠ Told *"this asserts instead of checking"*, an earlier pass fixed it — and the fix asserted
+   instead of checking, because both sides ran through the same normalisation, so **passing was
+   the only outcome available**. A generic control would have passed. What caught it was
+   building the finding's own named case, written by somebody who did not have the fix in mind.
+2. **Positive-control any "nothing found".** An empty result and a broken instrument are
+   indistinguishable. If a check reports clean, prove it can report dirty.
+3. **Assert the instrument RAN** before believing a negative. `cmd … || echo CLEAN` prints
+   CLEAN when the file is absent.
+4. **Derive counts; never state them in prose.** A number in a sentence goes stale silently.
+5. **Fix every runnable form, not the prose beside it.** A correction in a comment four lines
+   above a still-wrong command leaves the defect where people paste from.
+6. **Say what you did NOT check.** A scope stated is a scope the reviewer can extend; a scope
+   assumed is one it has to rediscover. This is the item that pays back *into* the review
+   rather than replacing it.
 
 ### Then request the next review — every pass ends on one
 
