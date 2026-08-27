@@ -169,6 +169,21 @@ def test_convergence_is_scoped_to_the_branch_under_review():
     flt = _open_filter()
     assert 'branch_name=\\"$BRANCH\\"' in flt, flt
     assert 'branch_name!=""' not in flt, flt
+    # ⚠⚠ AND BY REPO (2026-08-27), which branch alone does NOT give you. `rescopes` gained a
+    # `repo` label on 2026-08-26; four findings moved to Artificial-Humanity/FerroStep the
+    # next day and KEPT this branch's `branch_name`, because a rescope moves the label it is
+    # given and nothing else. The driver then reported `currently: 4` on a branch whose own
+    # queue was empty — and no fix pass could ever clear them, since they belong to another
+    # repo and another agent. It would have burned every review to the ceiling at the
+    # per-call spend and reported NOT CONVERGED.
+    #
+    # ⚠ `merge_branch.sh` and `issue.py` were ALREADY scoped this way. This was the one of the
+    # three that was not, which is why the GATE correctly said `BLOCKED by [335]` while the
+    # DRIVER saw four extra — a gate and a driver disagreeing about which issues belong to a
+    # branch, the same class as two copies of the severity ladder.
+    assert 'repo=' in flt, (
+        "the convergence filter is not scoped by repo; it counts issues rescoped away from "
+        "this repo and the loop can never converge: " + flt)
     # ...and $BRANCH is the checked-out branch, resolved exactly once.
     assigns = [ln for ln in SOURCE.splitlines() if ln.startswith("BRANCH=")]
     assert len(assigns) == 1, assigns
@@ -272,8 +287,20 @@ def _ported_lane(tmp_path):
     # exactly as WORKFLOW.md's porting instructions say it must travel with the lane.
     (tmp_path / "workflow" / "sonora-lane.json").write_text(
         '{"counters": [{"name": "agent_passes", "max": 3}]}\n', encoding="utf-8")
+    # ⚠ THE DRIVER NOW NEEDS A TRACKER SLUG, for the same reason it needs the lane definition
+    # above: its convergence filter is scoped by `repo` as well as `branch_name` (2026-08-27),
+    # because a branch-only filter counts issues RESCOPED to another repo and the loop can
+    # then never converge. An underivable slug is a refusal, deliberately — a filter that
+    # silently widens to other repos is how that was missed in the first place.
+    #
+    # An `origin` remote rather than a REPO_SLUG line, because that is the path Sonora itself
+    # takes: `config.env` ships with REPO_SLUG EMPTY and the slug is derived, so hardcoding
+    # one here would leave the derivation — the half that actually runs — unexercised.
+    (tmp_path / "workflow" / "config.env").write_text("REPO_SLUG=\n", encoding="utf-8")
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
     subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "remote", "add", "origin",
+                    "git@github.com:Example-Org/ported-lane.git"], cwd=tmp_path, check=True)
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
     subprocess.run(git + ["commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
     return tmp_path
@@ -476,3 +503,21 @@ def test_the_notes_path_has_one_definition():
     code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
     assert code.count(".review_cycle.notes") == 1, (
         "the literal path belongs in NOTES_FILE alone; every other use reads the variable")
+
+
+def test_an_underivable_slug_is_a_REFUSAL_not_a_branch_only_filter(tmp_path):
+    """⚠ THE OTHER DIRECTION, and the one that matters. Falling back to a branch-only filter
+    when the slug cannot be derived would restore the defect above silently, in exactly the
+    repos least placed to notice — a freshly ported lane with no `origin` yet. So it stops.
+
+    The positive half is `_ported_lane` itself: every other test in this file now runs against
+    a repo whose slug is DERIVED from `origin`, so the derivation is exercised continuously
+    rather than by one assertion.
+    """
+    repo = _ported_lane(tmp_path)
+    subprocess.run(["git", "remote", "remove", "origin"], cwd=repo, check=True)
+    out = _real_startup(repo, "--dry-run")
+    assert out.returncode != 0, (
+        "a repo with no origin and no REPO_SLUG ran anyway — the filter has silently widened "
+        "to every repo's issues:\n" + out.stdout + out.stderr)
+    assert "slug" in (out.stdout + out.stderr).lower(), out.stdout + out.stderr

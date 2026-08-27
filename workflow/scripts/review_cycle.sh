@@ -239,7 +239,7 @@ except Exception:
 PY
 }
 
-pb_passes() {  # $1 = branch -> prints SUM of agent_passes over its issues, or "unreachable"
+pb_passes() {  # $1 = branch, $2 = repo slug -> SUM of agent_passes, or "unreachable"
   # ⚠ A SUM, NOT A COUNT, AND OVER EVERY STATE. This is the instrument for "did the worker
   # spend an attempt?", and both properties are load-bearing:
   #
@@ -266,7 +266,12 @@ try:
         with urllib.request.urlopen(r, d) as x: return json.loads(x.read() or b"{}")
     tok = call("/api/collections/_superusers/auth-with-password", "POST",
                {"identity": env.get("PB_EMAIL"), "password": env.get("PB_PASSWORD")})["token"]
-    q = urllib.parse.quote('branch_name="%s"' % sys.argv[1].replace('"', ""))
+    # ⚠ SCOPED BY REPO TOO — see OPEN_FILTER. A branch-only sum here includes issues
+    # rescoped to another repo, whose counters this worker cannot move; the guard would then
+    # read a genuine stall as progress, or progress as a stall, depending on which way the
+    # other repo's agent happened to be working.
+    q = urllib.parse.quote('repo="%s" && branch_name="%s"'
+                           % (sys.argv[2].replace('"', ""), sys.argv[1].replace('"', "")))
     # ⚠ perPage is 500, not the API default of 10 — a truncated page silently under-sums and
     # the guard then sees a stall that never happened.
     r = call("/api/collections/issues/records?perPage=500&skipTotal=false&fields=agent_passes"
@@ -289,7 +294,32 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 # ⚠ No `escalated=false` clause: escalation is a value of `state` (owner, 2026-08-17), so an
 # escalated issue is already not `open`. The clause is not merely redundant — it would be a
 # FILTER ERROR now, since the field it named no longer exists.
-OPEN_FILTER="branch_name=\"$BRANCH\" && state=\"open\""
+# ⚠⚠ `repo` IS PART OF THIS FILTER AND WAS MISSING (2026-08-27). A branch-only filter counts
+# issues that have been RESCOPED TO ANOTHER REPO but still carry this branch's name — and
+# `rescopes` gained a `repo` label the day before, so that population exists. Measured here:
+# four findings moved to Artificial-Humanity/FerroStep left this driver reporting 4 open on a
+# branch whose own queue was empty. It would have run every review to the ceiling, at the
+# per-call spend, and then reported NOT CONVERGED — a loop that cannot finish, caused by
+# records it is not allowed to act on.
+#
+# ⚠ `merge_branch.sh` and `issue.py` both already filter on `repo && branch_name`; this was
+# the one of the three that did not. The gate and the driver disagreeing about which issues
+# belong to a branch is the same class as two copies of the severity ladder.
+# ⚠ SOURCED, NOT JUST READ FROM THE ENVIRONMENT. `merge_branch.sh` and `issue.py` both take
+# REPO_SLUG from workflow/config.env and fall back to `origin`; reading only the environment
+# here would ignore a slug a ported lane has deliberately SET, and derive a different one from
+# origin — reintroducing the gate/driver disagreement this block exists to end, in the one
+# case where the two are not the same string.
+_WF_CFG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config.env"
+# shellcheck disable=SC1090
+[[ -r "$_WF_CFG" ]] && source "$_WF_CFG"
+REPO_SLUG_FILTER="${REPO_SLUG:-}"
+if [[ -z "$REPO_SLUG_FILTER" ]]; then
+  _url="$(git remote get-url origin 2>/dev/null || echo '')"
+  REPO_SLUG_FILTER="$(printf '%s' "$_url" | sed -E 's#(\.git)?$##; s#^.*[:/]([^/:]+/[^/]+)$#\1#')"
+fi
+[[ -n "$REPO_SLUG_FILTER" ]] || die "cannot determine the tracker repo slug: config.env leaves REPO_SLUG empty and origin did not resolve. Refusing to run with a branch-only filter, which counts other repos' issues."
+OPEN_FILTER="repo=\"$REPO_SLUG_FILTER\" && branch_name=\"$BRANCH\" && state=\"open\""
 
 check_stop() {
   if [[ -e "$STOPFILE" ]]; then
@@ -389,7 +419,7 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   # --- fix pass ------------------------------------------------------------
   check_stop "fix pass $review"
   say "fix pass $review — spawning worker (git push denied)"
-  BEFORE_SUM="$(pb_passes "$BRANCH")"
+  BEFORE_SUM="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
 
   WORKER_BRIEF="## This fix pass
 
@@ -440,7 +470,7 @@ you do not filter them out, and you do not work them.
   #
   # Both readings now come from the SAME call on the SAME branch, so the comparison is between
   # like and like — and a stall is `unchanged`, not `equal to some unrelated number`.
-  AFTER_SUM="$(pb_passes "$BRANCH")"
+  AFTER_SUM="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
   if [[ "$AFTER_SUM" != "unreachable" && "$BEFORE_SUM" != "unreachable" ]]; then
     if (( AFTER_SUM == BEFORE_SUM )); then
       say "worker did not advance agent_passes on any issue (sum stayed at $BEFORE_SUM) —
