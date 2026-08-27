@@ -265,6 +265,17 @@ def main():
     if LIBRITTS_NS not in base_ns:
         die("base %s has no %s map — this script appends into that namespace, and the base "
             "carries %s" % (args.base, LIBRITTS_NS, ", ".join(sorted(base_ns)) or "no maps"))
+    # ⚠ #337. THE BASE'S OWN ROWS WERE NEVER SHAPE-CHECKED. Every `--add` row goes through a
+    # 4-field check in the merge loop; the base's rows were only ever indexed — and
+    # `ln.split("|")[3]` in the VAT-width count raised a bare `IndexError`, again AFTER the
+    # per-directory summaries had printed. The base is not exempt from being malformed: it is
+    # the output of a previous merge, and rung 4 will hand this tool a v7 it built itself.
+    for _name in ("train_op.txt", "val_op.txt"):
+        for _ln in base[_name]:
+            _n = len(_ln.split("|"))
+            if _n != 4:
+                die("%s/%s: base row has %d fields, expected 4 (path|spk|phonemes|vat):\n  %s"
+                    % (args.base, _name, _n, _ln[:120]))
     from derive_vat_corpus import _in_val
     check_split_agrees(args.base, base["train_op.txt"], _in_val, False)
     check_split_agrees(args.base, base["val_op.txt"], _in_val, True)
@@ -289,6 +300,16 @@ def main():
                 "decision about which ids join which map, and that is not this script's to "
                 "make" % (d, ", ".join(sorted(add_ns))))
         local = add_ns[LIBRITTS_NS]
+        # ⚠ #337. AN EMPTY MAP PASSES BOTH NAMESPACE CHECKS ABOVE — the key is present, and
+        # there is exactly one of it — and then `remap` comes out empty and `remap[min(remap)]`
+        # in the progress print below raises `ValueError: min() arg is an empty sequence`,
+        # AFTER the base summary has been printed. Same class as #299 at a different site:
+        # the tool stops speaking in its own refusals at the moment a reader needs to trust
+        # them. Refused here, before any per-directory line is printed.
+        if not local:
+            die("%s has an EMPTY %s map — it declares the namespace and lists no speakers, "
+                "so there is nothing to append. A donor directory whose derivation produced "
+                "no speakers is a failed derivation, not an empty contribution." % (d, LIBRITTS_NS))
         check_split_agrees(d, add["train_op.txt"], _in_val, False)
         check_split_agrees(d, add["val_op.txt"], _in_val, True)
 
@@ -330,8 +351,25 @@ def main():
               % (d, len(local), remap[min(remap)], next_index - 1,
                  len(new_train) + len(new_val) - n_before))
 
-    # The prefix proof, asserted here rather than left for make_warmstart to discover: every
-    # base speaker must still hold its exact original index in the merged map.
+    # ⚠ #336. THIS IS THE CEREMONIAL GUARD, NOT THE LOAD-BEARING ONE, AND THE COMMENT HERE
+    # USED TO SAY OTHERWISE. `added_map`'s keys are disjoint from every base map BY
+    # CONSTRUCTION — the clash check 35 lines above refuses any id already in `known`, and
+    # `known` is seeded from every base namespace — so `update()` cannot overwrite a base
+    # entry and the comparison below is x != x. Measured: mutate `clash` to `[]` and this
+    # fires; leave the clash check alone and no input reaches it.
+    #
+    # ⚠⚠ **THE CLASH CHECK IS WHAT ENFORCES THE WARM-START PRECONDITION.** The module
+    # docstring grounds this tool in the prefix proof and this block claimed to assert it,
+    # which pointed every reader at the guard that cannot fail and away from the one that
+    # can — a plausible account of how the load-bearing check ended up the only untested one
+    # in a file written to test the guards.
+    #
+    # KEPT, NOT DELETED: if the clash check is ever narrowed this becomes reachable, and
+    # deleting a correct backstop because it is currently shadowed is how the narrowing
+    # arrives unescorted. The real proof now runs against the WRITTEN speakers.json — see
+    # `verify_prefix_on_disk` at the end of main(), which is the same move #296 forced on the
+    # byte-identity check, and the only version of this assertion that is not a restatement
+    # of its own construction.
     merged_ns = {ns: dict(m) for ns, m in base_ns.items()}
     merged_ns[LIBRITTS_NS].update(added_map)
     for ns, m in base_ns.items():
@@ -455,6 +493,32 @@ def main():
                      "are NOT pooled here."),
         }, f, indent=2)
     print("wrote %s" % os.path.join(args.out, "speakers.json"))
+
+    # ⚠ #336. THE PREFIX PROOF, AGAINST THE FILE THAT WAS WRITTEN — the only version of it
+    # that can fail. The in-merge check above compares a dict against the dict it was just
+    # built from; this re-reads `speakers.json` off disk and asks the question `make_warmstart`
+    # will actually ask: does every base speaker still hold its exact original index?
+    #
+    # ⚠ It runs LAST because it needs the file, and it therefore has to honour the same
+    # no-corpus-behind invariant the licence wall does (#307) — a refusal here removes the
+    # partial write rather than leaving a corpus whose speakers.json is wrong.
+    with open(os.path.join(args.out, "speakers.json"), encoding="utf-8") as f:
+        written = json.load(f)
+    for ns, m in base_ns.items():
+        on_disk = written.get(ns) or {}
+        for sid, idx in m.items():
+            if on_disk.get(sid) != idx:
+                remove_partial(args.out)
+                die("PREFIX PROOF FAILED on the WRITTEN corpus: %s/%s was index %d in the "
+                    "base and is %r in %s/speakers.json. The warm start would load row %d of "
+                    "spk_emb.weight for the wrong speaker. Partial write removed."
+                    % (ns, sid, idx, on_disk.get(sid), args.out, idx))
+    if written.get("n_spks") != next_index:
+        remove_partial(args.out)
+        die("written speakers.json says n_spks=%r but the merge counted %d. Partial write "
+            "removed." % (written.get("n_spks"), next_index))
+    print("prefix proof: %d base speakers hold their original indices in the written map"
+          % len(base_idx))
 
 
 if __name__ == "__main__":

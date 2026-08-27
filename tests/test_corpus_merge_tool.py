@@ -496,6 +496,8 @@ COVERED_REFUSALS = {
     "are ALREADY in the base":
         "test_a_speaker_already_in_the_base_is_refused, test_a_speaker_shared_between_two_ADDS_is_refused",
     "BYTE-IDENTITY FAILED": "test_dropped_interior_row_is_caught_by_byte_identity",
+    "has an EMPTY %s map": "test_an_add_with_an_empty_speaker_map_is_named_not_a_traceback",
+    ": base row has %d fields": "test_a_malformed_BASE_row_is_named_not_a_traceback",
 }
 
 # Refusals with NO test, written down so the gap is a fact on the record rather than an
@@ -511,16 +513,18 @@ UNCOVERED_REFUSALS = {
     "%s has no %s map — this script appends LibriTTS-lane": "the --add namespace check; #335 "
         "notes the base assertion would match this string too, but only the base path runs",
     "carries more than one namespace": "multi-namespace donor",
-    "row has %d fields": "row parse — field count",
+    ": row has %d fields": "add-side row parse — field count",
     "speaker field %r is not an index": "row parse — non-integer speaker",
     "which its own speakers.json does not define": "row parse — undefined index",
-    "PREFIX PROOF FAILED": "#336 — filed as unreachable, so a test needs the reachability "
-        "question answered first",
+    "PREFIX PROOF FAILED: %s/%s moved": "#336 — the in-merge copy, strictly shadowed by "
+        "the clash check and KEPT as a backstop; unreachable while that check stands",
+    "PREFIX PROOF FAILED on the WRITTEN": "#336 — the real proof, against speakers.json as "
+        "written; reachable only if a post-write invariant breaks, so no fixture triggers it",
+    "written speakers.json says n_spks=%r": "#336 — written counter vs the merge's count",
     "merged map holds %d indices but the counter says": "post-merge counter disagreement",
     "merged index space is not contiguous": "post-merge hole",
     "merged corpus has an EMPTY val split": "post-merge empty side",
     "rows disagree about the VAT vector width": "post-merge VAT width",
-    "would NOT be a legal warm-start donor": "the byte-identity refusal's second message",
 }
 
 
@@ -555,6 +559,23 @@ def test_every_refusal_in_the_tool_is_classified():
         f"not the tool")
 
     known = {**COVERED_REFUSALS, **UNCOVERED_REFUSALS}
+
+    # ⚠⚠ EXACTLY ONE KEY PER REFUSAL, AND THIS CLAUSE WAS ADDED BECAUSE THE LEDGER LET A NEW
+    # SITE HIDE. Within an hour of being written it was handed three new refusals; it caught
+    # one and let two ride, because `"row has %d fields"` is a substring of the new
+    # `"base row has %d fields"` and `"PREFIX PROOF FAILED"` is a prefix of the new
+    # `"PREFIX PROOF FAILED on the WRITTEN corpus"`. A subsuming key silently adopts the next
+    # refusal that resembles it — which is #335's own overlap note (the base namespace
+    # assertion would match the `--add` site too) arriving as a defect in its fix.
+    ambiguous = [(ln, m, [k for k in known if k in m])
+                 for ln, m in messages if len([k for k in known if k in m]) > 1]
+    assert not ambiguous, (
+        "refusal(s) matching more than one ledger key — one key SUBSUMES another, so a new "
+        "refusal can hide behind an old entry:\n"
+        + "\n".join(f"  L{ln}: {m[:60]}\n      matched: {ks}" for ln, m, ks in ambiguous)
+        + "\n\nMake the keys disjoint; a ledger whose entries overlap cannot say which "
+          "refusal is covered.")
+
     unclassified = [(ln, m) for ln, m in messages
                     if not any(k in m for k in known)]
     assert not unclassified, (
@@ -575,3 +596,60 @@ def test_every_refusal_in_the_tool_is_classified():
         "ledger key(s) matching no refusal in the tool any more:\n"
         + "\n".join(f"  {k!r}  ({known[k]})" for k in stale)
         + "\n\nThe refusal was reworded or removed. Update the key, or drop the entry.")
+
+
+# ------------------------------------------------- #337 — named refusals, not raw tracebacks
+#
+# ⚠ #299 established the contract: an unusable input produces a NAMED refusal, and never
+# after a summary that reads like the append succeeded. That fix covered one site. These are
+# two more the fix did not generalise to — same class, different lines.
+
+def test_an_add_with_an_empty_speaker_map_is_named_not_a_traceback(world):
+    """⚠ AN EMPTY MAP PASSES BOTH NAMESPACE CHECKS — the key is present, and there is exactly
+    one of it — then `remap[min(remap)]` in the progress print raised `ValueError: min() arg
+    is an empty sequence`."""
+    d = world["tmp"] / "_derived_train_other_500"
+    d.mkdir(parents=True, exist_ok=True)
+    for n in ("train_op.txt", "val_op.txt"):
+        (d / n).write_text("", encoding="utf-8")
+    (d / "speakers.json").write_text(
+        json.dumps({"n_spks": 0, "libritts_id_to_index": {}}), encoding="utf-8")
+
+    r = run("--base", world["base"], "--add", d, "--out", world["out"])
+    out = r.stdout + r.stderr
+    assert r.returncode != 0
+    assert "Traceback" not in out and "min() arg" not in out, out
+    assert "EMPTY libritts_id_to_index map" in out, out
+    # ⚠ #299's second half: it must not have claimed progress first.
+    assert "speakers ->" not in out, "printed a successful-looking append line before dying"
+
+
+def test_a_malformed_BASE_row_is_named_not_a_traceback(world):
+    """⚠ THE BASE WAS NEVER SHAPE-CHECKED. Every `--add` row goes through a 4-field check;
+    base rows were only indexed, so `ln.split("|")[3]` in the VAT-width count raised a bare
+    `IndexError` — after the per-directory summaries had printed. The base is not exempt from
+    being malformed: it is the output of a previous merge, and rung 4 hands this tool a v7 it
+    built itself."""
+    tp = world["base"] / "train_op.txt"
+    rows = tp.read_text().splitlines()
+    rows[0] = "|".join(rows[0].split("|")[:3])          # strip the VAT field
+    tp.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+    r = merge(world)
+    out = r.stdout + r.stderr
+    assert r.returncode != 0
+    assert "Traceback" not in out and "IndexError" not in out, out
+    assert "base row has 3 fields" in out, out
+    assert "speakers ->" not in out, "printed a successful-looking append line before dying"
+
+
+def test_the_written_speakers_json_carries_the_prefix_proof(world):
+    """The positive half of #336's real proof: on a good merge the on-disk map holds every
+    base speaker at its original index, and the tool says so."""
+    r = merge(world)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "prefix proof:" in r.stdout, r.stdout
+    base_map = json.loads((world["base"] / "speakers.json").read_text())["libritts_id_to_index"]
+    out_map = json.loads((world["out"] / "speakers.json").read_text())["libritts_id_to_index"]
+    for sid, idx in base_map.items():
+        assert out_map[sid] == idx, f"{sid} moved {idx} -> {out_map[sid]} across the merge"

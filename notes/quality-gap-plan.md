@@ -623,12 +623,25 @@ and soft maps corpus-wide (it recomputes every clip by design; the disjointness 
 what makes that a no-op for existing rows, and **that is a claim to re-verify against the
 shipped v6 files, not to trust from this note**) → `derive_vat_corpus.py` over the two new
 roots on per-speaker z (viable here, unlike Emilia: ~2,064 new speakers with a median in
-the hundreds of clips) → **`scripts/tools/merge_libritts_full_corpus.py --base <v6> --add
-<clean_360> --add <other_500> --out <v7>`**, which appends with v6's rows byte-identical and
-ids renumbered onto the end → `data_statistics` re-measured **in-container** →
-`configs/data_licenses.yaml` **needed a new entry and now has one**
-(`libritts_r_full_vat_v7` plus the two `_derived_*` inputs, under `merged_vat_corpora`) →
-warm start from `vat6_finetune` **`ep008`**.
+the hundreds of clips) → **`configs/data_licenses.yaml` must already declare `--out` and every
+`--add`** (`libritts_r_full_vat_v7` plus the two `_derived_*` inputs, under
+`merged_vat_corpora`; **needed a new entry and now has one**) →
+**`scripts/tools/merge_libritts_full_corpus.py --base <v6> --add <clean_360> --add <other_500>
+--out <v7>`**, which appends with v6's rows byte-identical and ids renumbered onto the end →
+`data_statistics` re-measured **in-container** → warm start from `vat6_finetune` **`ep008`**.
+
+⚠ **THE MANIFEST ENTRY IS A PRECONDITION OF THE MERGE, AND THIS CHAIN PUT IT TWO ARROWS AFTER
+IT UNTIL 2026-08-27 (#339)** — a third ordering defect of the same class as the two #338
+fixed, in the arrow chain #338 rewrote. `merge_libritts_full_corpus.py` runs the licence
+pre-flight over `--out`, `--base` and every `--add` **before it reads a single corpus row**,
+and refuses anything `classify_path` cannot place. Its own comment says why: *the answer does
+not change and finding out at load time costs the whole build.*
+
+⚠⚠ **NOBODY IS HURT AT RUNG 3 AND THAT IS EXACTLY THE RISK.** The entry already exists — it
+was added on this branch — so following the old order costs nothing *here*, which is what let
+it survive a rewrite aimed at this paragraph. **This is the template rungs 4 and 5 get written
+from**, and there the entry will not exist: a reader following the chain adds the manifest
+entry after the merge, and the merge refuses before it starts.
 
 ⚠⚠ **THIS RECIPE NAMED THE WRONG SCRIPT AND AN EXTRA STEP UNTIL 2026-08-27 (#338), AND BOTH
 WOULD HAVE COST THE RUNG.** It said *"Follow `merge_emilia_corpus.py` verbatim, as rung 2
