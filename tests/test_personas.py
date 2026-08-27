@@ -100,3 +100,60 @@ def test_no_document_treats_print_mode_as_the_role_test():
         if "CLAUDE_CODE_ENTRYPOINT" in text:
             window = text[max(0, text.index("CLAUDE_CODE_ENTRYPOINT") - 700):]
             assert "falsifier" in window[:1400].lower(), name
+
+
+# --- #347: the reviewer must be able to read what the routing rule tells it to verify -----
+
+def test_every_existing_sibling_is_granted_not_just_the_first():
+    """⚠⚠ `SIBLING_REPO_CANDIDATES` WAS A FALLBACK CHAIN WEARING THE SPELLING OF A LIST.
+
+    The resolver `break`s on the first directory that exists, so only ever one repo was
+    granted — and that looked correct for as long as the two configured entries were the same
+    repo by two paths (a relative and an absolute AI-Lab-AMD).
+
+    It became wrong when REVIEWER.md started routing findings to FerroStep and telling the
+    reviewer to **verify** the boundary rather than remember it. The reviewer reported the
+    consequence itself: it declined to file a FerroStep engine finding because it could not
+    check a claim about FerroStep's source, and filed that gap instead. An instruction to
+    consult a repo the launcher cannot grant is the documented-but-unreachable defect, and
+    this lane has now paid for it five times.
+    """
+    code = "\n".join(l.split("#", 1)[0] for l in LAUNCHER.splitlines())
+    assert "SIBLINGS=(" in code, "the launcher still resolves a single sibling"
+
+    # ⚠ THE CANDIDATE LOOP SPECIFICALLY, NOT "any break in the resolver" — which is what the
+    # first version of this assertion said, and it went red on correct code within a minute of
+    # being written. The de-duplication uses an inner `for … break` legitimately, and a scan
+    # over the whole block cannot tell the two loops apart. Wrong scope, right idea: the same
+    # substring-over-too-much defect this file exists to catch elsewhere.
+    body = code[code.index("for _cand in"):]
+    body = body[:body.index("\ndone")]
+    assert "break" not in body, (
+        "the CANDIDATE loop still breaks — it grants the FIRST existing candidate and "
+        "silently drops the rest:\n" + body)
+
+
+def test_the_sibling_paragraph_is_generated_from_what_was_actually_granted():
+    """⚠ THE OTHER HALF, AND IT POINTS THE OPPOSITE WAY. The brief named "the **AI-Lab-AMD**
+    infrastructure repo" in hardcoded prose while the grant came from config — so a second
+    sibling would have been readable and undescribed. A reader is told what they may read;
+    an affordance nobody mentions is as good as absent (`review_cycle.sh` was named in three
+    files and run by nobody for exactly that reason).
+    """
+    assert "AI-Lab-AMD** infrastructure repo" not in LAUNCHER, (
+        "the sibling paragraph hardcodes a repo name again; it must be built from SIBLINGS")
+    assert "_SIB_LIST" in LAUNCHER, "the paragraph is not generated from the granted list"
+
+
+def test_the_reviewer_can_reach_the_repo_the_routing_rule_names():
+    """The end-to-end property, config included — the two halves above are satisfiable and
+    still leave the rule unfollowable if nothing lists FerroStep."""
+    cfg = (REPO / "workflow" / "config.env").read_text(encoding="utf-8")
+    line = next((l for l in cfg.splitlines() if l.startswith("SIBLING_REPO_CANDIDATES=")), "")
+    assert line, "SIBLING_REPO_CANDIDATES is absent from config.env"
+    reviewer = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
+    if "FerroStep" in reviewer:
+        assert "FerroStep" in line, (
+            "REVIEWER.md routes findings to FerroStep and tells the reviewer to VERIFY the "
+            "boundary, but no candidate path names FerroStep — so the rule cannot be "
+            "followed:\n  " + line)

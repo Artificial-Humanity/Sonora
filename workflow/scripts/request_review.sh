@@ -356,15 +356,39 @@ fi
 # sibling checkouts exist is a fact about a machine and a lab, not about this lane. Hardcoding
 # them here was one of two things that would not survive `workflow/` being copied elsewhere.
 # Absent or unset is fine — the reviewer simply gets no --add-dir.
-SIBLING=""
+# ⚠⚠ EVERY EXISTING CANDIDATE, NOT THE FIRST (#347). This loop used to `break` on the first
+# directory that existed, so `SIBLING_REPO_CANDIDATES` was a FALLBACK CHAIN wearing the
+# spelling of a list — two entries for the same repo, one relative and one absolute, which is
+# what made the single-value shape look correct for as long as there was one sibling.
+#
+# It became wrong the moment REVIEWER.md started routing findings to FerroStep and telling the
+# reviewer to VERIFY the boundary rather than remember it: the instruction requires reading a
+# repo the launcher could not grant. The reviewer said so itself — it declined to file a
+# FerroStep engine finding because it could not check a claim about FerroStep's source, and
+# filed that gap instead.
+#
+# ⚠ DE-DUPLICATED BY RESOLVED PATH, because the fallback-chain spelling is still in use: two
+# candidates naming the same directory must grant it once, not twice.
+SIBLINGS=()
+_SEEN_SIBS=""
 IFS=':' read -r -a _cands <<< "${SIBLING_REPO_CANDIDATES:-}"
 for _cand in "${_cands[@]}"; do
+  [[ -n "$_cand" ]] || continue
   _cand="${_cand/#\~/$HOME}"
   [[ "$_cand" == /* ]] || _cand="$REPO_ROOT/$_cand"
-  if [[ -d "$_cand" ]]; then SIBLING="$(cd "$_cand" && pwd)"; break; fi
+  [[ -d "$_cand" ]] || continue
+  _abs="$(cd "$_cand" && pwd)"
+  # ⚠ A STRING MEMBERSHIP TEST, NOT AN INNER LOOP. The de-dup was a `for … break` nested
+  # inside this one, and a guard asserting "the candidate loop does not break" then could not
+  # tell the two loops apart — it went red on correct code. Two loops in one block is a
+  # structure no cheap check can read; this removes the ambiguity rather than teaching every
+  # future reader's scanner about it.
+  case ":${_SEEN_SIBS}:" in *":$_abs:"*) continue ;; esac
+  _SEEN_SIBS="${_SEEN_SIBS}:$_abs"
+  SIBLINGS+=("$_abs")
 done
 ADD_DIR_ARGS=()
-[[ -n "$SIBLING" ]] && ADD_DIR_ARGS=(--add-dir "$SIBLING")
+for _s in ${SIBLINGS+"${SIBLINGS[@]}"}; do ADD_DIR_ARGS+=(--add-dir "$_s"); done
 
 # --- The brief: everything that changes per run ----------------------------
 # ⚠ AN INVENTORY, NOT A DIFFSTAT. A full review has nothing to diff, and handing it an
@@ -493,19 +517,32 @@ query \`branch_name=\"$BRANCH\" && state=\"open\"\`. That is every open finding 
 branch, whichever pass raised it. There is no list of prior ids to be handed any more.
 "
 
-if [[ -n "$SIBLING" ]]; then
+if (( ${#SIBLINGS[@]} )); then
+  # ⚠ GENERATED FROM WHAT WAS GRANTED (#347). This paragraph named "the AI-Lab-AMD
+  # infrastructure repo" in prose while the grant came from config — so a second sibling would
+  # have been readable and undescribed, which is the same unreachable-affordance defect as a
+  # described path that is not readable, pointing the other way.
+  _SIB_LIST=""
+  for _s in "${SIBLINGS[@]}"; do _SIB_LIST+="
+* \`$_s\` — the **$(basename "$_s")** repo"; done
   BRIEF+="
-### A sibling repo you can read
+### Sibling repos you can read
+$_SIB_LIST
 
-\`$SIBLING\` (the **AI-Lab-AMD** infrastructure repo) is readable. Some mechanisms this repo
-*describes* are *implemented* there. ⚠ The \`user_decision\` release is NO LONGER among
-them (2026-08-24): it is a block inside the generated FerroStep hooks installed on the
-tracker, readable from no repo checkout — the personas' description is the only in-repo
-evidence, by design. **Check the sibling before filing anything ELSE as unverifiable**; a
-previous review had to record a contradiction with its direction undetermined because it
-could not see this.
+Some mechanisms this repo *describes* are *implemented* in one of those. ⚠ The
+\`user_decision\` release is NO LONGER among them (2026-08-24): it is a block inside the
+generated FerroStep hooks installed on the tracker, readable from no repo checkout — the
+personas' description is the only in-repo evidence, by design. **Check them before filing
+anything ELSE as unverifiable**; a previous review had to record a contradiction with its
+direction undetermined because it could not see this.
 
-It is READ-ONLY and it is NOT part of your review range. Do not file findings about its
+⚠ **If FerroStep is listed above, the routing rule in REVIEWER.md § *Workflow findings go to
+FerroStep* is now CHECKABLE.** That rule tells you to verify the boundary rather than apply a
+remembered answer — for example whether FerroStep models tool grants — and until 2026-08-27
+the launcher could not grant you the repo the rule told you to consult. If a claim about
+FerroStep's engine is what decides where a finding goes, read it rather than declining.
+
+They are READ-ONLY and are NOT part of your review range. Do not file findings about their
 contents unless they contradict something in the range you were given.
 "
 fi
@@ -862,7 +899,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   printf '  --allowedTools'; printf ' %q' "${REVIEWER_ALLOW[@]}"; printf ' \\\n'
   printf '  --disallowedTools'; printf ' %q' "${REVIEWER_DENY[@]}"; printf ' \\\n'
   printf '  --strict-mcp-config --mcp-config <0600 temp file, written at run time from ~/.claude.json>'
-  [[ -n "$SIBLING" ]] && printf ' \\\n  --add-dir %q' "$SIBLING"
+  for _s in ${SIBLINGS+"${SIBLINGS[@]}"}; do printf ' \\\n  --add-dir %q' "$_s"; done
   printf '\n'
   echo "───── (dry run: nothing called, nothing filed, no credential file written) ─────"
   exit 0

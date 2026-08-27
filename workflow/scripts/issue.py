@@ -355,8 +355,29 @@ def cmd_file(pb, args):
     # collide. Retried rather than pre-reserved: the unique index is the real arbiter, and a
     # reserved-then-abandoned number leaves a permanent hole in the sequence.
     for attempt in range(6):
-        st, r = pb.call("/api/collections/issues/records?perPage=1&sort=-number&fields=number"
-                        "&filter=" + urllib.parse.quote('repo="%s"' % args.repo))
+        # ⚠⚠ GLOBAL MAXIMUM, NOT THIS REPO'S (#341, high). The filter here used to be
+        # `repo="<this repo>"`, and a RESCOPE OUT OF THE REPO LOWERS THAT MAXIMUM — so the
+        # next filing reissues a number that is already in use, for a different finding, under
+        # a different repo. The unique index is `(repo, number)`, so nothing refuses it and
+        # nothing warns.
+        #
+        # REPRODUCED LIVE 2026-08-27, by the reviewer's own first filing of the pass: four
+        # findings had been rescoped Sonora -> FerroStep as 340-343, dropping Sonora's maximum
+        # to 339, and the next four issues filed took 340, 341, 342, 343. **All four now have
+        # a twin with the same number on the same branch.** It had already happened once
+        # unnoticed: two records are numbered #255 and two commits on `main` disagree about
+        # which one they mean.
+        #
+        # ⚠ THE SEAM WAS ALREADY VISIBLE IN THIS FUNCTION AND NOBODY READ IT. `NUMBER_FLOOR`
+        # is documented three lines below as "the highest number ANY record has ever used,
+        # live or exported" — a GLOBAL floor, applied to a PER-REPO maximum. Two scopes in one
+        # expression, and the one that was wrong is the one that moves.
+        #
+        # A number in this tracker is cited bare — "#255" in a commit message, with no repo —
+        # so it has to mean one thing across the whole collection. Per-repo numbering would be
+        # fine in a tracker whose issues never move between repos; `rescopes` gained a `repo`
+        # label on 2026-08-26 and this one's do.
+        st, r = pb.call("/api/collections/issues/records?perPage=1&sort=-number&fields=number")
         # ⚠ Checked, because the consequence of not checking is not an error message. A
         # refused query leaves `rows` empty, `n` becomes 1, and the POST below collides with
         # issue #1 six times before dying with "could not allocate a free issue number" --

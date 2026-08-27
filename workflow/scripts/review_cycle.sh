@@ -316,7 +316,11 @@ _WF_CFG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config.env"
 REPO_SLUG_FILTER="${REPO_SLUG:-}"
 if [[ -z "$REPO_SLUG_FILTER" ]]; then
   _url="$(git remote get-url origin 2>/dev/null || echo '')"
-  REPO_SLUG_FILTER="$(printf '%s' "$_url" | sed -E 's#(\.git)?$##; s#^.*[:/]([^/:]+/[^/]+)$#\1#')"
+  # ⚠ `-n … p` PRINTS ONLY ON A MATCH (#344). Plain `s###` leaves a non-matching string
+  # UNCHANGED, so the emptiness test below accepted anything — a bare `Sonora`, an unparsed
+  # URL, whatever `git remote get-url` happened to say. `issue.py` derives the same slug with
+  # an anchored `re.search` and an explicit "" fallback; this now matches that behaviour.
+  REPO_SLUG_FILTER="$(printf '%s' "${_url%.git}" | sed -nE 's#^.*[:/]([^/:]+/[^/:]+)$#\1#p')"
 fi
 [[ -n "$REPO_SLUG_FILTER" ]] || die "cannot determine the tracker repo slug: config.env leaves REPO_SLUG empty and origin did not resolve. Refusing to run with a branch-only filter, which counts other repos' issues."
 OPEN_FILTER="repo=\"$REPO_SLUG_FILTER\" && branch_name=\"$BRANCH\" && state=\"open\""
@@ -406,6 +410,29 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
     exit 4
   fi
   if [[ "$OPEN" == "0" ]]; then
+    # ⚠⚠ "NO OPEN ISSUES" AND "THE FILTER MATCHED NOTHING" ARE THE SAME READING (#344), and
+    # tightening the slug regex does NOT settle it — a local checkout path yields a
+    # plausible-looking `repos/Sonora`, which is well-formed and wrong. So the question is
+    # asked of the DATA instead: a repo+branch with zero issues in ANY state has not
+    # converged, it has never been reviewed or is being counted under the wrong name.
+    #
+    # ⚠ `merge_branch.sh` already learned exactly this and calls it NEVER_REVIEWED — measured
+    # there when a branch's findings moved away and the gate offered to push 21 unreviewed
+    # commits to main. The driver had no equivalent, so a bad slug made it announce CONVERGED
+    # having read nothing at all: the empty-enumeration vacuous pass, in the one line that
+    # decides the loop is finished.
+    EVER="$(pb "repo=\"$REPO_SLUG_FILTER\" && branch_name=\"$BRANCH\"")"
+    if [[ "$EVER" == "unreachable" ]]; then
+      say "tracker unreachable while confirming convergence — refusing to call this converged."
+      exit 4
+    fi
+    if [[ "$EVER" == "0" ]]; then
+      say "REFUSING to report convergence: this branch has ZERO issues under
+          repo=\"$REPO_SLUG_FILTER\" in ANY state. That is not a clean review — it is a
+          branch nobody has reviewed, or a slug that names no repo in the tracker.
+          Check the slug against \`git remote get-url origin\` and config.env."
+      exit 5
+    fi
     CONVERGED=1
     say "CONVERGED after review $review — everything closed, escalated, or out of attempts."
     break
@@ -442,10 +469,30 @@ you do not filter them out, and you do not work them.
    that file and cannot otherwise tell a fix from an omission.
 "
 
+  # ⚠⚠ ONE `--append-system-prompt`, NOT TWO FLAGS. The CLI refuses
+  # `--append-system-prompt` together with `--append-system-prompt-file`:
+  #     Error: Cannot use both --append-system-prompt and --append-system-prompt-file.
+  # MEASURED 2026-08-27, on the first fix pass this driver was ever asked to run
+  # unattended — the review completed, filed five findings, and the worker died instantly
+  # on argument parsing. So the loop has never completed a fix pass, while three files
+  # described it as the way to run the lane and the owner authorised it as automation.
+  #
+  # ⚠ The failure was LOUD and still nearly invisible: the driver's own stop message says
+  # "the tree may hold partial work; inspect", which reads as a worker that ran and broke
+  # rather than one that never started. Nothing distinguished them.
+  #
+  # ⚠ The persona goes FIRST and the brief SECOND, preserving the original order — the brief
+  # is the run-specific override and must be able to contradict the persona. (DEVELOPER.md
+  # also arrives via CLAUDE.md's `@import`, so this is belt-and-braces rather than the only
+  # copy; it is kept because dropping it would be a behaviour change smuggled into a
+  # syntax fix.)
+  WORKER_PROMPT="$(cat "$REPO_ROOT/workflow/DEVELOPER.md")
+
+$WORKER_BRIEF"
+
   set +e
   claude -p "Address the open issues from this review, then commit." \
-    --append-system-prompt-file "$REPO_ROOT/workflow/DEVELOPER.md" \
-    --append-system-prompt "$WORKER_BRIEF" \
+    --append-system-prompt "$WORKER_PROMPT" \
     --model "$MODEL" --effort "$EFFORT" \
     --permission-mode auto \
     --max-budget-usd "$MAX_USD" \

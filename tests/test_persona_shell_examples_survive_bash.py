@@ -19,10 +19,17 @@ the other. So the property tested is the **template**: a prose-valued option in 
 agent is shown is SINGLE-quoted, and is therefore safe for any value the reader brings to it.
 
 ⚠ WHAT THIS DOES NOT DO, stated so it is not mistaken for a shell linter. It checks the
-quoting of five named options inside fenced blocks in the persona set. It cannot see `$(…)`,
-an unquoted `$VAR`, a heredoc, or a value carrying a literal single quote — which it skips
-rather than mangles, and which would need escaping a reader is unlikely to get right. It is
-the narrow guard for the measured defect, not a general claim of shell safety.
+quoting of five named options in fenced blocks AND inline code spans across the persona set.
+It cannot see `$(…)`, an unquoted `$VAR`, a heredoc, or a value carrying a literal single
+quote — which it skips rather than mangles, and which would need escaping a reader is unlikely
+to get right. It is the narrow guard for the measured defect, not a general claim of shell
+safety.
+
+⚠⚠ THE POPULATION WAS FENCED BLOCKS ONLY UNTIL #334 WAS REOPENED, AND THAT LIMIT WAS ABSENT
+FROM THIS VERY LIST — so a reader of the enumeration above would have concluded inline spans
+were considered and cleared. An exclusion you do not name reads as one you ruled out. That is
+why inline spans are now in, and why this paragraph says what is still out rather than
+implying the list is complete.
 """
 
 import pathlib
@@ -40,7 +47,20 @@ PERSONA_DOCS = ["workflow/REVIEWER.md", "workflow/DEVELOPER.md", "workflow/WORKF
 PROSE_OPTS = ("--comment", "--text", "--note", "--body", "--title")
 
 _FENCE = re.compile(r"```[a-z]*\n(.*?)```", re.S)
+# ⚠ INLINE CODE SPANS ARE PART OF THE POPULATION (#334, reopened). The first version of this
+# guard iterated fenced blocks ONLY, so `issue.py reopen N --comment "…"` written as an inline
+# span in REVIEWER.md §5b was invisible to it — and the commit that added the guard claimed
+# "10 sites converted, 0 remaining", which was measured over fences and stated as absolute.
+# ⚠ It is the template for the one comment §5b calls MANDATORY, so it is the site where a
+# deleted SHA costs most. The same wrong-population shape as the join, one layer out.
+_INLINE = re.compile(r"(?<!`)`([^`\n]+)`(?!`)")
 _DOUBLE_QUOTED = re.compile(r"(%s)\s+\"([^\"]*)\"" % "|".join(map(re.escape, PROSE_OPTS)))
+
+
+def _snippets(rel):
+    """Every place a reader is shown a command: fenced blocks AND inline code spans."""
+    text = (REPO / rel).read_text(encoding="utf-8")
+    return _FENCE.findall(text) + _INLINE.findall(text)
 
 
 def _fenced(rel):
@@ -91,7 +111,7 @@ def test_no_persona_hands_an_agent_a_template_bash_would_rewrite():
     """The invariant. See the module docstring for why it is the quote and not the content."""
     bad = []
     for rel in PERSONA_DOCS:
-        for block in _fenced(rel):
+        for block in _snippets(rel):
             for opt, value in _DOUBLE_QUOTED.findall(block):
                 if "'" in value:
                     continue          # needs escaping; out of scope, see the docstring

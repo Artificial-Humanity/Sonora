@@ -652,7 +652,7 @@ pb_record_list  collection="issues"
 ```
 
 * **Genuinely resolved → `closed`**, with `issue.py close N`. A comment is optional.
-* **Not resolved → back to `open`**, with `issue.py reopen N --comment "…"`.
+* **Not resolved → back to `open`**, with `issue.py reopen N --comment '…'`.
   ⚠ **A COMMENT IS MANDATORY** — say precisely what is still
   wrong. Ozzy gets three attempts per issue, and sending one back with no explanation spends
   one of them on a guess. This is the one place where silence has a measurable cost.

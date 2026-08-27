@@ -521,3 +521,70 @@ def test_an_underivable_slug_is_a_REFUSAL_not_a_branch_only_filter(tmp_path):
         "a repo with no origin and no REPO_SLUG ran anyway — the filter has silently widened "
         "to every repo's issues:\n" + out.stdout + out.stderr)
     assert "slug" in (out.stdout + out.stderr).lower(), out.stdout + out.stderr
+
+
+def test_no_claude_call_passes_both_append_system_prompt_forms():
+    """⚠⚠ THE CLI REFUSES THE PAIR, AND THE LOOP HAD NEVER COMPLETED A FIX PASS.
+
+        Error: Cannot use both --append-system-prompt and --append-system-prompt-file.
+
+    MEASURED 2026-08-27 on the first unattended run: the review completed and filed five
+    findings, then the worker died instantly on argument parsing. Three files described this
+    driver as the way to run the lane, and the owner had authorised it as automation.
+
+    ⚠ THE FAILURE WAS LOUD AND STILL NEARLY INVISIBLE. The driver's stop message says "the
+    tree may hold partial work; inspect before re-running" — which reads as a worker that ran
+    and broke, not one that never started. Nothing in the output told the two apart, and the
+    tree being clean afterwards is equally consistent with both.
+
+    Pinned on the SHAPE rather than on today's error text, because the CLI's message is not
+    this repo's to keep stable.
+    """
+    calls = re.findall(r"^\s*claude -p .*?(?=\n\s*\w+=\$\?|\n\s*set -e)", SOURCE, re.S | re.M)
+    assert calls, "no claude invocation found — this guard is scanning nothing"
+    for c in calls:
+        both = "--append-system-prompt-file" in c and re.search(
+            r"--append-system-prompt(?!-file)", c)
+        assert not both, (
+            "a claude call passes BOTH --append-system-prompt and its -file form; the CLI "
+            "refuses that combination and the call dies before it starts:\n" + c[:400])
+
+
+def test_the_slug_derivation_does_not_pass_an_unmatched_string_through(tmp_path):
+    """⚠ #344 — THE REFUSAL COULD NOT FIRE. `sed -E 's#…#…#'` leaves a NON-MATCHING string
+    unchanged, so `[[ -n "$slug" ]]` accepted whatever `git remote get-url` said — a bare
+    `Sonora`, an unparsed URL, anything at all. The refusal was written specifically to avoid
+    failing open and failed open. `-n … p` prints only on a match.
+
+    ⚠ It is asserted on the SHAPE, because the regex alone cannot settle this: a local
+    checkout path still yields a well-formed, wrong `repos/Sonora`. That case is caught by the
+    data-level guard in the test below, which is the actual fix.
+    """
+    line = next(ln for ln in SOURCE.splitlines() if "REPO_SLUG_FILTER=\"$(printf" in ln)
+    assert "sed -nE" in line and line.rstrip().endswith("p')\""), (
+        "the slug sed must print only on a match, or a non-matching origin passes through "
+        "unchanged and the emptiness refusal below it can never fire:\n  " + line)
+
+
+def test_zero_issues_in_ANY_state_is_refused_not_reported_as_convergence():
+    """⚠⚠ #344 — "NO OPEN ISSUES" AND "THE FILTER MATCHED NOTHING" ARE THE SAME READING.
+
+    With a slug that names no repo in the tracker, `OPEN` is 0 and the driver announced
+    CONVERGED having read nothing — the empty-enumeration vacuous pass, in the one line that
+    decides the loop is finished.
+
+    ⚠ `merge_branch.sh` already learned this and calls it NEVER_REVIEWED; it was measured
+    there when a branch's findings moved away and the gate offered to push 21 unreviewed
+    commits to main. The driver had no equivalent. Pinned as ORDER — the total must be
+    consulted BEFORE `CONVERGED=1` — because a check that runs after the flag is set is
+    decoration.
+    """
+    code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
+    assert "EVER=" in code, "the driver does not ask whether this branch has any issues at all"
+    ever = code.index("EVER=")
+    converged = code.index("CONVERGED=1")
+    assert ever < converged, (
+        "the zero-issues check runs after CONVERGED is set, so it cannot prevent the claim")
+    # ⚠ And unreachable must not read as zero — the same trap one layer down.
+    assert "unreachable" in code[ever:converged], (
+        "an unreachable tracker is not a count of zero; it must refuse separately")

@@ -17,8 +17,13 @@ configurable, and a copy of it in a docstring is a copy that goes stale on the n
 """
 
 import ast
+import contextlib
+import importlib.util
+import io
 import re
 import subprocess
+import types
+import urllib.parse
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -145,8 +150,18 @@ def test_every_counter_the_lane_declares_is_a_column_the_adapter_map_carries():
     here and absent there, nor a `states` entry missing from the tracker's `state` select —
     which is a real 400 waiting to happen and is why the state had to be added to PocketBase
     before this definition changed. That check needs the definition compared against a LIVE
-    schema, it belongs in the engine rather than in one adopter's test suite, and it is filed
-    against FerroStep rather than faked here with a snapshot that would drift.
+    schema and belongs in the engine, not in one adopter's test suite; it is **FerroStep #348**
+    (`ferrostep doctor`). Faking it here with a committed schema snapshot would be a second
+    copy that drifts, and doing it live would make this test skip without a tracker — and a
+    skipped guard is indistinguishable from a passing one.
+
+    ⚠⚠ THIS PARAGRAPH SAID "IT IS FILED AGAINST FERROSTEP" BEFORE ANYTHING WAS FILED (#346).
+    Measured against the tracker: no such record existed among FerroStep's 24. The gap had
+    been described to FerroStep's resident and recorded in their register, and I wrote that up
+    as *filed* — a follow-up stated as an accomplished fact, which is the same defect as #343
+    one row over. It is worse here than a wrong number would be: this docstring is written for
+    the maintainer asking *what happens when the lane and the store disagree*, and "handled,
+    tracked elsewhere" is exactly the answer that stops them recording it. #348 now exists.
     """
     import json
     lane = _definition()
@@ -733,3 +748,70 @@ def test_the_routing_rule_says_to_file_when_in_doubt():
     assert "WHEN YOU CANNOT DECIDE WHETHER A FINDING FITS AN EXISTING ISSUE, FILE IT" \
         in REVIEWER_MD
     assert "IT IS NOT A QUOTA" in REVIEWER_MD
+
+
+def _issue_module():
+    """issue.py loaded as a module, so `cmd_file` can be driven against a fake tracker.
+
+    ⚠ Loaded by path rather than imported: `workflow/scripts/` is not a package and the file
+    is executable-first. The same loader appears in test_merge_floor.py for the same reason.
+    """
+    spec = importlib.util.spec_from_file_location("issue_mod", ISSUE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_issue_numbers_are_allocated_from_the_GLOBAL_maximum_not_this_repos():
+    """⚠⚠ #341 (high) — A RESCOPE OUT OF A REPO FREED A NUMBER FOR REUSE.
+
+    `cmd_file` allocated `number` as this repo's maximum plus one. `rescopes` gained a `repo`
+    label on 2026-08-26; moving four findings Sonora -> FerroStep dropped Sonora's maximum by
+    four, and the next four filings REISSUED 340-343 for entirely different findings. The
+    unique index is `(repo, number)`, so nothing refused it and nothing warned. Reproduced
+    live by the reviewer's own first filing of the pass. It had already happened once
+    unnoticed: two records are numbered #255, and two commits on `main` disagree about which.
+
+    ⚠ THE SEAM WAS VISIBLE IN THE FUNCTION THE WHOLE TIME. `NUMBER_FLOOR` is documented as
+    "the highest number ANY record has ever used" — a GLOBAL floor — and it was applied to a
+    PER-REPO maximum. Two scopes in one expression.
+
+    This test drives the real `cmd_file` against a fake tracker holding the exact shape that
+    caused it: a high number under ANOTHER repo, a lower one under this one.
+    """
+    mod = _issue_module()
+    captured = {"queries": [], "posted": None}
+
+    class FakePB:
+        def call(self, path, method="GET", body=None):
+            if method == "GET":
+                captured["queries"].append(path)
+                # The store holds #343 under FerroStep and #339 under Sonora. A per-repo
+                # query would answer 339 here; a global one answers 343.
+                if 'repo%3D' in path or 'repo="' in path:
+                    return 200, {"items": [{"number": 339}]}
+                return 200, {"items": [{"number": 343}]}
+            captured["posted"] = body
+            return 200, {"id": "x", **body}
+
+        def add_comment(self, *a, **k):
+            pass
+
+    args = types.SimpleNamespace(
+        body="b", body_file=None, branch="sonora/rung3-v7-corpus",
+        repo="Artificial-Humanity/Sonora", title="t", author="Janis",
+        label=None, severity="low")
+    with contextlib.redirect_stdout(io.StringIO()):
+        mod.cmd_file(FakePB(), args)
+
+    assert captured["posted"] is not None, "cmd_file never POSTed an issue"
+    got = captured["posted"]["number"]
+    assert got == 344, (
+        f"allocated #{got}; expected 344 (the GLOBAL maximum 343, plus one).\n"
+        f"⚠ #340 would mean the per-repo query is back: a number freed by a rescope has been "
+        f"reissued to a different finding. queries: {captured['queries']}")
+
+    # ⚠ And the mechanism, not just the number — a future refactor could reach 344 by
+    # accident. No filing query may be scoped to one repo.
+    assert not any('repo="' in urllib.parse.unquote(q) for q in captured["queries"]), (
+        "the allocation query is scoped by repo again: " + str(captured["queries"]))

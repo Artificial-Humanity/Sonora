@@ -336,8 +336,9 @@ def test_the_launcher_grant_is_scoped_to_dry_run():
         )
 
 
-def test_the_sibling_repo_is_offered_read_only_and_never_writable():
-    """The reviewer can READ AI-Lab-AMD, because Sonora describes mechanisms implemented there.
+def test_the_sibling_repos_are_offered_read_only_and_never_writable():
+    """The reviewer can READ its sibling checkouts, because Sonora describes mechanisms
+    implemented there — and since 2026-08-27 routes findings to a repo it must be able to check.
 
     A review had to file #114 as "verified, direction undetermined" — it could not tell whether
     the PocketBase hook behind `user_decision` exists, because it lives in the sibling repo and
@@ -348,8 +349,22 @@ def test_the_sibling_repo_is_offered_read_only_and_never_writable():
     Edit/Write ever returned to `--tools`, this would become write access to a second repo.
     The two properties are asserted together deliberately.
     """
-    assert "--add-dir" in SOURCE, "the reviewer should be able to read the sibling repo"
-    assert 'ADD_DIR_ARGS=(--add-dir "$SIBLING")' in SOURCE
+    assert "--add-dir" in SOURCE, "the reviewer should be able to read the sibling repos"
+    # ⚠ PLURAL SINCE #347. This pinned the single-value `ADD_DIR_ARGS=(--add-dir "$SIBLING")`,
+    # which was correct while the resolver granted exactly one — it `break`s on the first
+    # candidate that exists, and the two configured entries were the same repo by two paths, so
+    # nothing looked wrong. It became wrong when REVIEWER.md started routing findings to
+    # FerroStep and telling the reviewer to VERIFY the boundary: the instruction named a repo
+    # the launcher could not grant.
+    #
+    # ⚠ The security property this test exists for is UNCHANGED and is the reason it is
+    # asserted per-argument rather than loosened to "--add-dir appears somewhere": every
+    # granted path must arrive through `--add-dir`, which widens READS only. `--add-dir` on N
+    # repos is still read-only on N repos; it is the Edit/Write pairing that would make it
+    # write access, and that is asserted below.
+    assert "ADD_DIR_ARGS+=(--add-dir " in SOURCE, (
+        "the launcher no longer accumulates --add-dir per sibling; a single-value form grants "
+        "only the first candidate and silently drops the rest (#347)")
     # ⚠ THE CANDIDATE PATHS MOVED TO config.env ON 2026-08-17, and this assertion moved with
     # them. It pinned the literal `$REPO_ROOT/../../AI-Lab-AMD` — a fact about this lab's disk
     # layout rather than about the launcher, and exactly the sort of thing that must not
