@@ -291,6 +291,40 @@ sudo systemctl daemon-reload && sudo systemctl enable --now derisk-gate-watch.ti
 Disable with `sudo systemctl disable --now <name>-gate-watch.timer` when the run ends (the
 vocoder one was disabled 2026-07-15 when its run stopped).
 
+**Implementation (vat7 / rung 3 acoustic run — built 2026-08-26, IN PLACE AND ENABLED):**
+
+| Piece | What |
+|---|---|
+| `AI-Lab-AMD/scripts/vat7_gate_watch.sh` | Timer-driven: newest `checkpoint_epoch=*.ckpt` under `logs/train/vat7_finetune` newer than `vat7_gate_watch/last_ckpt` → scores it against the FROZEN dev-clean holdout with `scripts/stages/score_holdout.py` in a **throwaway CPU-only container** → postprocess. ⚠ Carries its own `docker run` rather than reusing `score_holdout.sh`, which passes `/dev/kfd`: that wrapper is for interactive scoring **between** runs and its own header warns against a busy card. Repo mounted rw for the Cython + `-e .` dance. |
+| `AI-Lab-AMD/scripts/vat7_gate_postprocess.py` | **CONVERGED = holdout `total` fails to beat the running best by >`VAT7_PLATEAU_PCT` for `VAT7_PATIENCE` consecutive checkpoints** (defaults **0.25%** and **3**); appends `history.jsonl`; logs to MLflow **`vat7_gate`**; writes `vat7_gate_watch/CONVERGED` + one-shot ntfy on the first flip. |
+| `AI-Lab-AMD/scripts/vat7-gate-watch.{service,timer}` | oneshot + half-hourly at `*:18/30`, offset from the vocoder (`:04/30`) and derisk (`:11/30`) watchers. `User=lmcfarlin`, `TimeoutStartSec=180min`. |
+
+⚠ **Both thresholds are DERIVED FROM MEASUREMENTS, not chosen.** `0.25%`: vat6's holdout
+`total` spanned **1.7823–1.7921 across its entire run** — a 0.5% band — so a looser threshold
+fires on the first checkpoint of any run. `patience 3`: v5 gave **100% of its gain in epochs
+0–9 and epochs 10–39 were net worse**, so when the tail actively hurts, three flat checkpoints
+is enough to act on.
+
+⚠⚠ **IT IS A STOP SIGNAL AND NOT A SELECTION, and the code and the push both say so.** On vat6
+four instruments gave four answers and diff/mel loss may be *anti-correlated* with naturalness
+— so a plateau in this number is a statement about the **loss**. Choosing a checkpoint stays an
+ear job. ⚠ It uses the holdout rather than `loss/val_epoch` because val is contaminated and is
+not a generalization measure; the holdout is the SSOT and is valid **relatively**, which is all
+a plateau detector asks. The objection *"never diagnose weaknesses on the holdout"* is answered
+in the module docstring rather than ignored: nothing here feeds back into training, so there is
+no gradient to overfit with — **and that answer stops holding the day this number steers what
+data gets collected.**
+
+**Verified before enabling** (2026-08-26): the real vat6 holdout report replayed through the
+verdict converges at the third flat checkpoint, matching that run's recorded flat basin; a run
+improving 1%/checkpoint never converges; improving-then-flat converges after exactly three flat
+checkpoints; a history shorter than `patience` cannot read as a plateau; the service runs and
+exits 0 with *"watcher is in place and idle"* before the run exists; and the ntfy push was sent
+live **through the unit's own `EnvironmentFile` injection**. ⚠ `/etc/ai-lab/ntfy.env` is mode
+`0640 root:lmcfarlin`, which **reads as group-readable and is not** — `/etc/ai-lab` is
+`drwx------ root root`, so traversal is refused and a plain `open()` as `lmcfarlin` fails. The
+unit's `EnvironmentFile=` is the only reason the push works.
+
 **Adapting to a future run:** pre-register the criterion first (as the copy-synthesis gate and
 the §7 eval-harness verdicts were), point the watch script at the run's checkpoint dir + gate
 script (env overrides or a sibling script), pick thresholds, seed the watch dir with any

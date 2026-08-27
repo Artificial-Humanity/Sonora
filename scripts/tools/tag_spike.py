@@ -5,7 +5,7 @@ expressive-registers + 50 LibriTTS-R spread across the V/A/T range), quantizes t
 instrument decode into symbols, has Gemma (ollama, AR 26B-A4B by default) fill the
 interpretive SCM fields blind (register is NOT given — recovery is scored), then
 validates + verifies each object and registers the results as the `audit-markup-v0`
-campaign in the Auditions app (clip + inline projection in the note).
+campaign in the Dataset Listening app (clip + inline projection in the note).
 
 Outputs under /data/model-training/sonora/markup_prep/spike_v0/:
   scm_rows.jsonl   one SCM sidecar per clip + verifier verdicts
@@ -234,7 +234,7 @@ def main():
         return
     # ---- register audit-markup-v0 campaign (clip + inline projection in note) ----
     # D-M5: this appended to the LIVE ratings.csv with a copy-backup and no guard at all —
-    # no mtime stamp, no lock — while the Dataset Auditions app writes the same file. An
+    # no mtime stamp, no lock — while the Dataset Listening app writes the same file. An
     # append is not safe merely because it is an append: the app rewrites the whole file to
     # commit an edit, so an interleaved write loses either these rows or that edit. Every
     # other writer grew an mtime stamp after an owner-set accent value was lost on
@@ -257,7 +257,7 @@ def main():
                 "register": (o.get("utterance") or {}).get("register") or "",
                 "status": "unaudited", "note": note, "link": link})
             added += 1
-    print(f"registered {added} audit-markup-v0 rows in the Auditions app")
+    print(f"registered {added} audit-markup-v0 rows in the Dataset Listening app")
 
 
 if __name__ == "__main__":

@@ -127,8 +127,17 @@ def test_it_refuses_a_dirty_tree():
 
 def test_the_abort_marker_is_checked_before_the_exit_code():
     """A review can exit 0 and still say the change must not land — a content signal, not a
-    failure signal. Order matters: checking rc first would `exit` before reading the text."""
-    marker = SOURCE.index("MUST-NOT-LAND")
+    failure signal. Order matters: checking rc first would `exit` before reading the text.
+
+    ⚠ Pin the CHECK, not the first mention of the token. This asserted
+    `SOURCE.index("MUST-NOT-LAND")`, which finds the `usage()` heredoc ~340 lines above the
+    check it means — so it stayed green with the abort block moved after the rc check AND
+    with the abort block deleted outright (both mutation-measured, #355). Same lesson as
+    `_open_filter()` below: a substring search over a whole script does not pin the line
+    you mean.
+    """
+    assert 'if grep -q "MUST-NOT-LAND"' in SOURCE, "the abort check is gone"
+    marker = SOURCE.index('if grep -q "MUST-NOT-LAND"')
     rc_check = SOURCE.index('if [[ "$RC" -ne 0 ]]')
     assert marker < rc_check
 
@@ -169,6 +178,21 @@ def test_convergence_is_scoped_to_the_branch_under_review():
     flt = _open_filter()
     assert 'branch_name=\\"$BRANCH\\"' in flt, flt
     assert 'branch_name!=""' not in flt, flt
+    # ⚠⚠ AND BY REPO (2026-08-27), which branch alone does NOT give you. `rescopes` gained a
+    # `repo` label on 2026-08-26; four findings moved to Artificial-Humanity/FerroStep the
+    # next day and KEPT this branch's `branch_name`, because a rescope moves the label it is
+    # given and nothing else. The driver then reported `currently: 4` on a branch whose own
+    # queue was empty — and no fix pass could ever clear them, since they belong to another
+    # repo and another agent. It would have burned every review to the ceiling at the
+    # per-call spend and reported NOT CONVERGED.
+    #
+    # ⚠ `merge_branch.sh` and `issue.py` were ALREADY scoped this way. This was the one of the
+    # three that was not, which is why the GATE correctly said `BLOCKED by [335]` while the
+    # DRIVER saw four extra — a gate and a driver disagreeing about which issues belong to a
+    # branch, the same class as two copies of the severity ladder.
+    assert 'repo=' in flt, (
+        "the convergence filter is not scoped by repo; it counts issues rescoped away from "
+        "this repo and the loop can never converge: " + flt)
     # ...and $BRANCH is the checked-out branch, resolved exactly once.
     assigns = [ln for ln in SOURCE.splitlines() if ln.startswith("BRANCH=")]
     assert len(assigns) == 1, assigns
@@ -272,8 +296,20 @@ def _ported_lane(tmp_path):
     # exactly as WORKFLOW.md's porting instructions say it must travel with the lane.
     (tmp_path / "workflow" / "sonora-lane.json").write_text(
         '{"counters": [{"name": "agent_passes", "max": 3}]}\n', encoding="utf-8")
+    # ⚠ THE DRIVER NOW NEEDS A TRACKER SLUG, for the same reason it needs the lane definition
+    # above: its convergence filter is scoped by `repo` as well as `branch_name` (2026-08-27),
+    # because a branch-only filter counts issues RESCOPED to another repo and the loop can
+    # then never converge. An underivable slug is a refusal, deliberately — a filter that
+    # silently widens to other repos is how that was missed in the first place.
+    #
+    # An `origin` remote rather than a REPO_SLUG line, because that is the path Sonora itself
+    # takes: `config.env` ships with REPO_SLUG EMPTY and the slug is derived, so hardcoding
+    # one here would leave the derivation — the half that actually runs — unexercised.
+    (tmp_path / "workflow" / "config.env").write_text("REPO_SLUG=\n", encoding="utf-8")
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
     subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "remote", "add", "origin",
+                    "git@github.com:Example-Org/ported-lane.git"], cwd=tmp_path, check=True)
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
     subprocess.run(git + ["commit", "-q", "-m", "init"], cwd=tmp_path, check=True)
     return tmp_path
@@ -476,3 +512,145 @@ def test_the_notes_path_has_one_definition():
     code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
     assert code.count(".review_cycle.notes") == 1, (
         "the literal path belongs in NOTES_FILE alone; every other use reads the variable")
+
+
+def test_an_underivable_slug_is_a_REFUSAL_not_a_branch_only_filter(tmp_path):
+    """⚠ THE OTHER DIRECTION, and the one that matters. Falling back to a branch-only filter
+    when the slug cannot be derived would restore the defect above silently, in exactly the
+    repos least placed to notice — a freshly ported lane with no `origin` yet. So it stops.
+
+    The positive half is `_ported_lane` itself: every other test in this file now runs against
+    a repo whose slug is DERIVED from `origin`, so the derivation is exercised continuously
+    rather than by one assertion.
+    """
+    repo = _ported_lane(tmp_path)
+    subprocess.run(["git", "remote", "remove", "origin"], cwd=repo, check=True)
+    out = _real_startup(repo, "--dry-run")
+    assert out.returncode != 0, (
+        "a repo with no origin and no REPO_SLUG ran anyway — the filter has silently widened "
+        "to every repo's issues:\n" + out.stdout + out.stderr)
+    assert "slug" in (out.stdout + out.stderr).lower(), out.stdout + out.stderr
+
+
+def test_no_claude_call_passes_both_append_system_prompt_forms():
+    """⚠⚠ THE CLI REFUSES THE PAIR, AND THE LOOP HAD NEVER COMPLETED A FIX PASS.
+
+        Error: Cannot use both --append-system-prompt and --append-system-prompt-file.
+
+    MEASURED 2026-08-27 on the first unattended run: the review completed and filed five
+    findings, then the worker died instantly on argument parsing. Three files described this
+    driver as the way to run the lane, and the owner had authorised it as automation.
+
+    ⚠ THE FAILURE WAS LOUD AND STILL NEARLY INVISIBLE. The driver's stop message says "the
+    tree may hold partial work; inspect before re-running" — which reads as a worker that ran
+    and broke, not one that never started. Nothing in the output told the two apart, and the
+    tree being clean afterwards is equally consistent with both.
+
+    Pinned on the SHAPE rather than on today's error text, because the CLI's message is not
+    this repo's to keep stable.
+    """
+    calls = re.findall(r"^\s*claude -p .*?(?=\n\s*\w+=\$\?|\n\s*set -e)", SOURCE, re.S | re.M)
+    assert calls, "no claude invocation found — this guard is scanning nothing"
+    for c in calls:
+        both = "--append-system-prompt-file" in c and re.search(
+            r"--append-system-prompt(?!-file)", c)
+        assert not both, (
+            "a claude call passes BOTH --append-system-prompt and its -file form; the CLI "
+            "refuses that combination and the call dies before it starts:\n" + c[:400])
+
+
+def test_the_slug_derivation_does_not_pass_an_unmatched_string_through(tmp_path):
+    """⚠ #344 — THE REFUSAL COULD NOT FIRE. `sed -E 's#…#…#'` leaves a NON-MATCHING string
+    unchanged, so `[[ -n "$slug" ]]` accepted whatever `git remote get-url` said — a bare
+    `Sonora`, an unparsed URL, anything at all. The refusal was written specifically to avoid
+    failing open and failed open. `-n … p` prints only on a match.
+
+    ⚠ It is asserted on the SHAPE, because the regex alone cannot settle this: a local
+    checkout path still yields a well-formed, wrong `repos/Sonora`. That case is caught by the
+    data-level guard in the test below, which is the actual fix.
+    """
+    line = next(ln for ln in SOURCE.splitlines() if "REPO_SLUG_FILTER=\"$(printf" in ln)
+    assert "sed -nE" in line and line.rstrip().endswith("p')\""), (
+        "the slug sed must print only on a match, or a non-matching origin passes through "
+        "unchanged and the emptiness refusal below it can never fire:\n  " + line)
+
+
+def test_zero_issues_in_ANY_state_is_refused_not_reported_as_convergence():
+    """⚠⚠ #344 — "NO OPEN ISSUES" AND "THE FILTER MATCHED NOTHING" ARE THE SAME READING.
+
+    With a slug that names no repo in the tracker, `OPEN` is 0 and the driver announced
+    CONVERGED having read nothing — the empty-enumeration vacuous pass, in the one line that
+    decides the loop is finished.
+
+    ⚠ `merge_branch.sh` already learned this and calls it NEVER_REVIEWED; it was measured
+    there when a branch's findings moved away and the gate offered to push 21 unreviewed
+    commits to main. The driver had no equivalent. Pinned as ORDER — the total must be
+    consulted BEFORE `CONVERGED=1` — because a check that runs after the flag is set is
+    decoration.
+    """
+    code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
+    assert "EVER=" in code, "the driver does not ask whether this branch has any issues at all"
+    ever = code.index("EVER=")
+    # ⚠ EVERY arm, not the first one found. This read `code.index("CONVERGED=1")`, and #357
+    # inserted a SECOND one inside the --allow-empty-tracker bypass, ~16 lines above the
+    # convergence this test was written for. `.index` silently moved to the bypass, the
+    # refusal below fell outside the span, and `exit 5` became deletable green (#359).
+    # Same first-occurrence shape as #355, in this file, one test along.
+    flags = [m.start() for m in re.finditer(r"CONVERGED=1", code)]
+    assert flags, "the driver never reports convergence at all"
+    assert ever < min(flags), (
+        "the zero-issues check runs after CONVERGED is set, so it cannot prevent the claim")
+    # ⚠ And unreachable must not read as zero — the same trap one layer down.
+    assert "unreachable" in code[ever:min(flags)], (
+        "an unreachable tracker is not a count of zero; it must refuse separately")
+    # ⚠ ORDER IS NOT ENOUGH: the arm must still REFUSE. Every assertion above stayed green
+    # with the refusal deleted outright — measured both before and after #357 introduced the
+    # bypass, so this half was pre-existing rather than new (#359).
+    assert "exit 5" in code[ever:max(flags)], (
+        "the zero-issues arm no longer refuses; ordering alone does not stop the claim")
+
+
+def test_the_empty_tracker_bypass_stays_opt_in():
+    """⚠⚠ #344's REFUSAL IS NOW KEPT BY A DEFAULT, AND NOTHING WAS WATCHING IT.
+
+    `--allow-empty-tracker` (#357) turns the refusal above into a pass — correctly, for the
+    one case that reaches the same zero legitimately: a correct slug on a repo that has
+    simply never had an issue filed. But the whole safety content of that change is which way
+    it defaults, and a one-character edit restores #344 exactly: the driver announces
+    CONVERGED over a tracker holding no records, having read nothing.
+
+    Measured (#359): with the default flipped to 1, every zero-argument test in this module
+    stayed green. An escape hatch is only an escape hatch while somebody has to ask for it.
+    """
+    # ⚠ PRESENCE FIRST, so the assertion below cannot be satisfied by the arm's absence —
+    # deleting the flag would otherwise leave "the default is 0" trivially true.
+    assert "--allow-empty-tracker) ALLOW_EMPTY_TRACKER=1;" in SOURCE, \
+        "the opt-in bypass arm is gone"
+    d = re.search(r"^ALLOW_EMPTY_TRACKER=(\S+)", SOURCE, re.M)
+    # ⚠ `set -u` is on, so an undeclared default aborts the driver rather than defaulting off.
+    assert d, "the bypass default is not declared at all"
+    assert d.group(1) == "0", \
+        f"the empty-tracker bypass is no longer opt-in (default {d.group(1)!r}): #344 is bypassed"
+
+
+def test_the_reviewer_has_a_sanctioned_way_to_say_there_is_no_blocker():
+    """⚠⚠ A PROHIBITION WITHOUT AN AFFORDANCE HALTED A CLEAN CYCLE.
+
+    §6 forbids the token "in any other context" because the driver greps for it anywhere — and
+    gave no approved way to report the negative. On 2026-08-27 a review that found nothing
+    blocking wrote *"there is no MUST-NOT-LAND finding"* and stopped the loop it was reporting
+    as clean. One occurrence, in a sentence meaning the opposite.
+
+    ⚠ The grep is NOT loosened, and that is the point: a false halt costs one cycle, a false
+    pass can land work a reviewer said must not land, on a branch with no protection and a
+    worker instructed to push. The fix is the missing phrase, plus a message that shows what
+    matched so a §6 violation is diagnosable without opening the log.
+    """
+    persona = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
+    assert "Nothing here blocks this range." in persona, (
+        "REVIEWER.md gives no sanctioned wording for 'no blocker', so the only vocabulary for "
+        "it is the token that halts the cycle")
+    code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
+    assert 'grep -n "MUST-NOT-LAND"' in code, (
+        "the halt does not show which line matched, so a §6 violation cannot be told from a "
+        "real refusal without reading the log")

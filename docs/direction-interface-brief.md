@@ -117,7 +117,7 @@ spin-down rule. Spike first: ~100 clips (50 certified + 50 LibriTTS-R), owner-au
 - **Dogfoods the production Director schema** end-to-end before Prosodia ships it.
 - **Dual-use** (high-ambition-6): the same pairs read backwards train the Audience listener.
 - **Human-auditable**: markup is readable — the owner can audit direction quality by eye in the
-  Auditions app long before a model consumes it.
+  Dataset Listening app long before a model consumes it.
 
 ## 6 · What this brief does NOT solve (needs its own design)
 

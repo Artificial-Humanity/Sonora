@@ -104,12 +104,97 @@ engine mix.
       owner already used informally, needs no scale change, invalidates no existing verdict,
       and yields the comparative signal the absolute scale structurally cannot. Bounded: 46
       sittings of 3–5 clips.
+  - ⚠⚠ **BLOCKED 2026-08-25: THE GROUPING RULE THAT PRODUCED "46" IS NOT RECORDED, AND THE
+    COUNTS DO NOT REPRODUCE.** `ratings.csv` has no text column, so "same text" has to be
+    derived from the `id`, and nothing in the repo does it — the analysis was ad hoc and only
+    its outputs survived. Four readings tried against today's file, none matching 62 texts /
+    478 clips / 46 tied / 229 clips:
+
+    | grouping | texts ≥3 engines | clips | tied groups | ceiling clips |
+    |---|---|---|---|---|
+    | `id` minus last token | 66 | 308 | 19 strict · 30 loose | 67 · 136 |
+    | campaign + `id` minus last | 58 | 276 | 14 strict | 50 |
+    | text token, cross-campaign | 72 | 695 | 15 strict · 63 loose | 75 · 484 |
+
+    *strict* = every clip in the group scored 5; *loose* = ≥3 distinct engines each scored 5.
+    **The likely cause is drift, not error: `ratings.csv` is a LIVE WRITER** and those counts
+    are a snapshot of it — 57 clips have been relabeled and 253 dropped since. So "46" was
+    probably true when written and is not true now.
+    ⚠ **Do not prepare a set by picking the closest number.** The cost of being wrong is 46
+    sittings of owner time spent measuring something other than what this line claims. The
+    unblock is one owner sentence naming the grouping rule, after which the rule goes in a
+    script — not in prose — so the count is derived and cannot drift again. Same failure
+    class as the ep010 probe: the outputs survived, the design did not
+    (`probe_delivery_intercept.py` was written for exactly that reason).
 
 ⚠ **Anchor exemplars are the EAR's, never a measure's.** Nothing computes one — a computed
 anchor re-anchors the scale to whatever the measure already believes. The bar ships with one
 entry (`tab_14_resentment_QWN`) and the other four **unset rather than guessed**. State
 lives in `anchors.json`, never in a clip column: the Qwen/VibeVoice A/B parked prior scores
 in `note`, the app overwrote them, and 17 of 33 were lost.
+
+## 4b · Dataset Listening app — PARKED 2026-08-25, findings recorded so the work starts informed
+
+Renamed from "Auditions" that day (owner): an audition is a casting decision, and most of
+what this surface does is vet output. Live at `listen.ai-lab-0.mcfarlin.family`; the old
+host 301s. The **service, container, deploy target and `/data/services/audition` path are
+still `audition`** — renaming those moves the deployed copy and its MIRRORS entry, so it is
+one coordinated change, not a find-and-replace.
+
+⚠ **The first pass renamed the RUNNING SURFACE and stopped there** (`app/main.py`,
+`app/static/index.html`, the Caddy route), which left `audition/README.md` making a false
+claim about a file it names — line 106 told a reader to look in `index.html` for a
+`Dataset Auditions` tile that had just been renamed out of it. **#304**, and the enumeration
+above is what made it look deliberate: a README is not a service, a container, a deploy
+target or a `/data` path, so it fell in the gap between "renamed" and "deliberately kept".
+Swept 2026-08-26 across **14 files** — `audition/README.md`, `AGENTS.md`,
+`notes/{training-sources,book-prose-lane,casting-attribute-norms-brief}.md`,
+`docs/{markup-schema-brief,direction-interface-brief}.md`,
+`scripts/teacher_audition/README.md`, `scripts/lib/synth_common.py`,
+`scripts/tools/{tag_spike,label_expressive_registers,measure_expressive_registers}.py`,
+`scripts/stages/register_audition.py`, `tests/test_ratings_transaction.py` — plus the
+`audition.ai-lab-0` URLs inside them. **Filenames and directory names were NOT touched**
+(`register_audition.py`, `scripts/teacher_audition/`): those are plumbing, and this list is
+the surface. `audition/app/main.py`'s docstring keeps the old name on purpose — it is the
+record of the rename, not an instance of it.
+
+⚠ **THE GAP THAT BIT THREE TIMES IN ONE SESSION: there is no COMPARATIVE mode.** Every
+input is absolute and per-clip, and the app only serves clips registered in `ratings.csv`.
+So the delivery ear test, the forced-ranking pass (§4) and blind A/B are each *N clips
+judged against each other*, each unreachable through the app, and each falls out to a
+directory on the box — which the owner does not work from. The stopgap is a plain file
+route at `listen.../probes/*` (marked in the Caddyfile to be **deleted rather than grown**).
+⚠ **Do NOT close the gap by registering probe clips in `ratings.csv`** — it is the dataset
+ledger and a live writer; a comparative probe is not a dataset row.
+
+**Two more gaps, from reading the 466 human-written notes:**
+
+* **Direction adherence has nowhere to go, and it is the most common thing the notes say** —
+  "Younger than requested", "Everything is accurate except gender", "not British at all",
+  "Poor instruction following". The app records what was HEARD (gender/age/accent) and never
+  whether it MATCHED what was asked. That comparison happens in the owner's head and lands
+  as prose. It is also a first-class variable: some engines have no text-instruction slot at
+  all, so adherence is what separates them.
+* **Audio quality is fused into a prosody score.** `score` is vocals/prosody only by rule, so
+  "slight scratchiness but not enough to detract" has no home and the owner computes an
+  override in prose. A good read in a bad recording and a flat read in a clean one collapse
+  to one number.
+
+**Under all three: `note` does at least four jobs** — machine markers, the script text, the
+direction text, and the ear's observation. ⚠ **That is why term-frequency analysis of it is
+not currently possible, and two attempts to do it were WRONG before this was noticed** (the
+regexes matched `"verb"` inside `"Whatever"` and the `[was: breathy]` register-rename tag).
+Do not re-apply the "17 notes / 4 campaigns" precedent that justified `delivery` until the
+column is split; the denominator is not what it looks like.
+
+**Fill rates, 1,802 rows:** status 100% · register 94% · delivery 91% · gender 87% ·
+score 87% · **age 49%** · **accent 49%** · note 39%. Accent is 76% `US - General` where
+filled and age is 87% adult+middle-aged — near-constant as always-on dials, decisive only in
+probes. They read like campaign-level properties wanting an occasional per-clip override.
+
+**Smaller, unrelated:** the default view is `todo` (unrated) and every clip is rated, so the
+app opens on an empty list with no hint that 1,802 clips sit behind the "Rated" chip. It
+reads as broken. A fallback or an empty-state message is cheap.
 
 ## 5 · Parked dataset decisions
 

@@ -212,7 +212,7 @@ needed.
 `book_ingest` bank → the live `synth_*` renderers (five-engine portfolio, VV/Dia set aside —
 [synthesis-pipeline.md](synthesis-pipeline.md)) → `qc_gate.py` (ASR-fidelity + dead-air + tail +
 DNSMOS-tier — ASR-fidelity weighs more here since chunks are longer) → `eiv_score.py` /
-phonation instrument label check → `qc_verdict.py` → **Dataset Auditions app** (`audition.ai-lab-0
+phonation instrument label check → `qc_verdict.py` → **Dataset Listening app** (`listen.ai-lab-0
 :8095`) + `ratings.csv` (SSOT), owner blind-audit at the standing bar ("affect obvious without the
 keyword"). LongCat transfer multiplies certified keeps. Book-prose stays a **bounded minority** of
 the corpus.

@@ -121,6 +121,116 @@ instrument is coverage.
 
 ---
 
+## 2b. The owner's diagnosis, 2026-08-25 — delivery is TWO AXES FUSED, and §2 would scale the fusion
+
+⚠ **THIS SECTION IS IN TENSION WITH §2 AND THE TENSION IS THE POINT.** §2 proposes an
+instrument so the five lanes reach every clip instead of 2% of them. That assumes the five
+lanes are the right cut. If they are not, an instrument scales the wrong decomposition to
+100% coverage and makes it much harder to see. **Decide the decomposition first.**
+
+The owner, in their own words:
+
+> *"I feel that our delivery is, in ways, too specific and too broad at the same time. Too
+> specific in that we are detailing a mannerism of speech that really could be described by
+> other factors (energy level, pronunciation style, inflections)."*
+
+> *"Newscaster … is a relatively high-energy projection but much less than Speech with
+> certain inflections used to emphasize key words … meant to give severity, urgency or
+> weight. Speech is very similar. Higher energy, with similar inflection and elongation of
+> certain words that are core to the speech's persuasive points."*
+
+> *"Dialogue is really too broad. A violent, angry, and shouting man could be dialogue. A
+> mother's soft words of comfort could also be dialogue."*
+
+> *"Neutral is the broadest of all but possibly unavoidable … A narrator describing a killer
+> sneaking in the dark up to the protagonist would be under-served by a neutral narration at
+> that climactic point."*
+
+### The structural reading: it is one defect, not four complaints
+
+**Two of the five lanes describe SOURCE; three describe MANNER; all five share one one-hot
+where exactly one may fire.**
+
+* **Newscaster and Speech differ in DEGREE, not in kind.** Both are elevated projection plus
+  emphasis, Speech more so and with elongation. That is one axis sampled at two points and
+  then frozen into two mutually exclusive categories. The "too specific" half.
+* **Dialogue names WHO is speaking, not HOW.** A shouting man and a comforting mother are
+  both Dialogue, which is why the label predicts almost nothing acoustically. The "too
+  broad" half.
+* **The thriller case is therefore INEXPRESSIBLE, and that is the cleanest proof.** Tense
+  narration is narration *by role* and not-neutral *by manner*. The vector must say both and
+  structurally cannot. **It is not a missing sixth lane** — adding one would repeat the
+  error, which is exactly how Documentary got in (§0).
+
+### Every part already exists in the contract, at better granularity
+
+| the owner's factor | where it already lives | status today |
+|---|---|---|
+| energy level | `utterance.vat` → the **A** channel | built, trained |
+| inflection emphasising chosen words | `spans[].emphasis`, level 1–3 → per-token channel delta | in the ratified schema, *(future)* |
+| elongation of key words | `spans[].pace` slow/fast → per-span duration scale | in the ratified schema, *(future)* |
+| inflection shape | `spans[].pitch_move` rise/fall | in the ratified schema, *(future)* |
+| character vs narration | `spans[].type=quote` + the `cast` map | ratified in **v0.1** |
+
+⚠ **The emphasis and elongation the owner describes are PER-WORD.** The delivery block is
+per-utterance `(B, vat_dim)`. So the one-hot cannot express the thing that actually
+distinguishes Newscaster from Speech even in principle — it is the wrong shape, not merely
+the wrong vocabulary. `markup-schema-brief.md` already places both at span level.
+
+### The evidence this rests on, all measured
+
+* **The delivery channel is audibly inert at v6 `ep008`** (owner's ears, 2026-08-25,
+  `probes/ear_delivery_v6_ep008/RESULT-2026-08-25.md`). Every lane read as Neutral, and
+  `unknown` — no lane at all — placed in the top two of **both** groups. ⚠ The control pair
+  split to opposite ends in both groups, which is what licenses reading this as a null
+  rather than as a ranking. ⚠ **One caveat carried forward: that set pins A = 0**, so it
+  cannot yet separate "the channel is dead" from "projection rides on A". The A = +1 set
+  exists and is unheard.
+* **864 of 43,268 v6 rows carry any delivery label — 2.00%.** Dialogue 383 · Neutral 337 ·
+  Newscaster 76 · **Speech 68**. At v7's ~345,600 rows this becomes **0.25%**.
+* **`register` reaches the model nowhere.** The only `register` in model code is PyTorch's
+  `register_buffer`. `markup-schema-brief.md` says the same from its side: *"nothing yet
+  (metadata; later a register embedding if ever wanted)"*. So the register vocabulary is
+  unconstrained by any checkpoint and can be redesigned freely. Enforced lexicon is **47**
+  labels; `ratings.csv` holds **458** distinct values, the excess being pre-enforcement
+  drift (138 seen across 554 certified keeps).
+
+### What follows, and what does NOT
+
+**Follows:** let the delivery block shrink toward whatever only it can say once role moves to
+`quote`/`cast` and manner moves to A plus span emphasis/pace/pitch_move. The likely residue
+is *addressee geometry* — is this said to one person, to a room, or to a microphone — which
+is genuinely per-utterance and is what §2's projection/pace/final-lengthening features
+actually measure.
+
+**Does NOT follow — three things this must not become:**
+
+1. ⚠ **Do not narrow `vat_dim`.** A shrink is refused by design (`make_warmstart`, and the
+   seam gate's *"a shrink is never a widen"*). Zeroing the block is equivalent to `unknown`
+   everywhere and costs nothing; widening later is supported with new channels at zero.
+   **Retiring in place has precedent** — Documentary keeps its slot because order is the
+   wire format.
+2. ⚠ **Do not re-label anything yet.** 864 rows of ear time are already spent on this
+   taxonomy; spending more before the decomposition is settled is the cost §0 was written
+   about.
+3. ⚠ **Do not read this as "the delivery experiment failed".** It has not been tried at a
+   share where it could succeed — 2%, falling to 0.25%.
+
+### The actual blocker, stated plainly
+
+Not sunk cost. **The span decode layer was never built** — every span row in
+`markup-schema-brief.md` is marked *(future) — needs the span decode layer*, and
+`north-star.md` §4 parks *"Embodiment → span-FiLM"* for delivery that changes partway
+through an utterance. That is the same layer. This diagnosis does not add work so much as
+raise the priority of work already parked, and it explains why the parked item is load-bearing
+rather than exotic.
+
+**Sequencing:** nothing here blocks rung 3. v7 carries the block forward untouched, which
+keeps every option open. The decision wanted before Phase 1S mass-produces against this
+contract is the decomposition, not the instrument.
+
+---
+
 ## 3. Dynamic direction — the conditioning path is ALREADY time-varying
 
 **Span-FiLM is not the architecture project this plan files it as.** Checked

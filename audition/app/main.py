@@ -1,4 +1,11 @@
-"""Dataset Auditions — rating surface for the Sonora expressive-registers dataset.
+"""Dataset Listening — rating surface for the Sonora expressive-registers dataset.
+
+RENAMED 2026-08-25 (owner). It was "Dataset Auditions", and the word had stretched:
+an audition is a casting decision, while most of what this surface actually does is
+VET OUTPUT. The host is now listen.ai-lab-0.mcfarlin.family; the old one 301s.
+⚠ The service, container, deploy target and /data path are still `audition` — renaming
+those moves the deployed copy and the MIRRORS entry that guards it, so it is a separate
+coordinated change, not a find-and-replace.
 
 Serves clip audio inline (audio/wav, no browser download dialog, plays on the
 iPad too) and makes ratings.csv the single editable source of truth. Replaces the
@@ -274,7 +281,7 @@ class _RatingsLock:
 
 _lock = _RatingsLock(RATINGS_CSV)  # serialize CSV read-modify-write
 
-app = FastAPI(title="Dataset Auditions")
+app = FastAPI(title="Dataset Listening")
 
 
 # --- CSV helpers --------------------------------------------------------------

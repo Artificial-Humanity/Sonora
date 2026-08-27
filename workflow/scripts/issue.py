@@ -10,6 +10,10 @@
     workflow/scripts/issue.py take      N [N ...] [--note D]  Ozzy: agent_passes += 1, BEFORE any
                                         work; at the ceiling, --note routes it to escalated
     workflow/scripts/issue.py review    N --comment C      Ozzy: addressed, awaiting Janis
+    workflow/scripts/issue.py dispute   N --kind finding|severity|scope --comment C
+                                        Ozzy: I disagree and have NOT fixed it. Spends
+                                        `disputes`, never `agent_passes` — a rebuttal must
+                                        not cost a fix pass or nobody rebuts
     workflow/scripts/issue.py escalate  N --comment C      Ozzy: the owner must decide
     workflow/scripts/issue.py close     N [--comment C]    Janis: verified resolved
     workflow/scripts/issue.py reopen    N --comment C      Janis: not resolved
@@ -147,14 +151,98 @@ OPEN_STATES = ("open", "review", "escalated")
 # escalation, and a server-side hook performs it.
 ROLE_FOR = {
     "review": ("developer", "review"),
+    "dispute": ("developer", "disputed"),
     "escalate": ("developer", "escalated"),
     "close": ("reviewer", "closed"),
     "reopen": ("reviewer", "open"),
 }
 
+# ⚠ THE KINDS A DISPUTE CAN BE, AS A FIELD ON THE NOTE RATHER THAN A STATE PER KIND. One
+# lifecycle, so one state: three states would triple the transition table to record something
+# a word already carries. Required at the command line because "what are you disputing" is
+# exactly the ambiguity this state exists to remove -- a bare rebuttal reads as all three.
+DISPUTE_KINDS = ("finding", "severity", "scope")
+
 
 def die(msg):
     sys.exit("issue.py: %s" % msg)
+
+
+# ⚠⚠ ASSEMBLED FROM TWO FRAGMENTS, AND NEVER PRINTED (#361). `review_cycle.sh` greps the
+# REVIEW OUTPUT for this token and halts the cycle on any occurrence, anywhere, deliberately:
+# a false halt costs one cycle, a false pass can land work a reviewer refused. Nothing
+# guarded the other end. Issue 355 was filed with the token in its TITLE, so a later summary
+# reporting closures by title -- a natural shape, and §7 asks only for numbers rather than
+# forbidding titles -- halts a clean cycle and routes it to the owner.
+#
+# Spelling it here would put a live copy in a file the reviewer runs and whose output can
+# reach that summary, which is the same trap one layer along. So it is built at runtime and
+# the refusal below describes it instead of quoting it.
+ABORT_TOKEN = "MUST-NOT" + "-LAND"
+
+
+def refuse_abort_token(text, where):
+    """The cycle-abort token must not enter the tracker.
+
+    ⚠ MATCHED EXACTLY AS THE DRIVER MATCHES IT -- literal and case-sensitive, because
+    `grep -q` is. A looser test here would refuse prose the driver would never halt on,
+    which is a false refusal bought for nothing.
+
+    ⚠ AND THERE IS DELIBERATELY NO BYPASS FLAG. Unlike `--allow-empty-tracker`, no legitimate
+    case needs the literal in a record: a finding ABOUT the token can always describe it and
+    cite the issue number, which is how #361 itself was written. A flag here would be a
+    supported way to re-arm the trap -- and an escape hatch is only ever as safe as a default
+    nobody is watching (#359).
+    """
+    if ABORT_TOKEN in (text or ""):
+        die("this %s carries the cycle-abort token that review_cycle.sh greps for.\n"
+            "  A tracker record holding it is a trap: any later review summary quoting this\n"
+            "  text halts a CLEAN cycle and routes it to the owner (#361, #355).\n"
+            "  Write it without the literal -- say \"the cycle-abort token\" and cite the\n"
+            "  issue number. REVIEWER.md §6 carries the sanctioned phrasings." % where)
+
+
+def redact(text):
+    """Blunt the cycle-abort token on the way OUT of the tracker, wherever it is printed.
+
+    ⚠⚠ THE WRITE GUARD CANNOT REACH WHAT IS ALREADY STORED. `refuse_abort_token` stops the
+    NEXT record carrying the literal; it does nothing about the ones filed before it existed,
+    and those are live: issue 355 carries it in its TITLE, 201/246/355 in their bodies (#361).
+    Rewriting closed records would settle it too, and is deliberately NOT what this does --
+    see #361 for that argument. This side needs no ruling: printing a record is not the same
+    act as storing one, and the trap only springs when the text is PRINTED into a summary.
+
+    ⚠ THE MEASURED ROUTE IS THE DOCUMENTED ONE. `issue.py list --branch <b> --all` -- the
+    reroute REVIEWER.md §4 tells a reviewer to run when the MCP transport is stale -- prints
+    titles, so following the instructions as written put the literal into the reviewer's
+    context. That is not an unusual keystroke; it is the sanctioned read command.
+
+    ⚠ REPLACED, NOT DROPPED. The reader still needs to see that something was there, or a
+    title reads as though it were written that way. The marker names the issue that explains
+    it, and cannot itself match what the driver greps for.
+    """
+    return (text or "").replace(ABORT_TOKEN, "[cycle-abort token, redacted — #361]")
+
+
+def refuse_unpostable_comment(text, where="comment"):
+    """Everything that makes a comment unpostable, in ONE place that can be called EARLY.
+
+    ⚠ THIS EXISTS TO BE CALLED BEFORE THE STATE MOVE, NOT WHERE THE COMMENT IS WRITTEN.
+    Both checks used to live inside `add_comment`, which `transition` reaches only AFTER
+    `ferrostep_move` has already persisted the same text as the event note. So a refusal
+    arrived with the record already moved, the note already stored, and the comment
+    dropped -- and for `reopen`, whose comment the definition makes mandatory, that left
+    the developer an unexplained reopen and one of three fix passes spent guessing (#362).
+
+    ⚠ THE LENGTH CAP IS HOISTED WITH THE TOKEN, NOT JUST THE TOKEN. It is the same
+    act-then-die shape and it drops the same mandatory comment; splitting them would fix
+    one instance of the defect and leave its twin two lines away.
+    """
+    text = (text or "").strip()
+    refuse_abort_token(text, where)
+    if len(text) > COMMENT_MAX:
+        die("%s is %d characters; the cap is %d. Put detail in the issue body, which "
+            "allows 200,000." % (where, len(text), COMMENT_MAX))
 
 
 class PB:
@@ -215,9 +303,10 @@ class PB:
         # not be written. Kept short by policy -- the owner capped comment length because a
         # reviewer averaged 1839 characters and detail belongs in the issue body.
         text = text.strip()
-        if len(text) > COMMENT_MAX:
-            die("comment is %d characters; the cap is %d. Put detail in the issue body, which "
-                "allows 200,000." % (len(text), COMMENT_MAX))
+        # ⚠ RE-CHECKED HERE ON PURPOSE, THOUGH `transition` ALREADY CHECKED. `cmd_comment`
+        # reaches this method WITHOUT a state move, so this is the only gate on that path.
+        # Two calls, one function -- not two copies of the rule that can disagree (#362).
+        refuse_unpostable_comment(text)
         # ⚠ `posted_at` IS STAMPED HERE BECAUSE NOTHING ELSE STAMPS IT. This collection has
         # no `created` system field -- it was built to mirror the imported GitHub comments,
         # which carried their own timestamps. A comment written through this script had
@@ -254,7 +343,7 @@ def show_row(i):
     # and this column is the one the merge gate blocks on.
     return "  #%-5s %-10s %-8s passes=%-2s %s" % (
         i.get("number"), i.get("state"), i.get("severity") or "--",
-        i.get("agent_passes") or 0, (i.get("title") or "")[:52])
+        i.get("agent_passes") or 0, redact(i.get("title"))[:52])
 
 
 def cmd_list(pb, args):
@@ -286,10 +375,11 @@ def cmd_show(pb, args):
     rec = pb.find(args, args.number)
     for k in ("number", "state", "severity", "agent_passes", "branch_name", "author",
               "labels", "title"):
-        print("%-13s %s" % (k, rec.get(k)))
+        print("%-13s %s" % (k, redact(str(rec.get(k)))))
     if (rec.get("user_decision") or "").strip():
-        print("\nUSER DECISION (the owner's; outranks any finding)\n%s" % rec["user_decision"])
-    print("\n%s" % (rec.get("body") or "")[:4000])
+        print("\nUSER DECISION (the owner's; outranks any finding)\n%s"
+              % redact(rec["user_decision"]))
+    print("\n%s" % redact(rec.get("body"))[:4000])
     # ⚠⚠ THIS QUERY RETURNED HTTP 400 FOR EVERY ISSUE, AND THE STATUS WAS DISCARDED, SO
     # `show` PRINTED ZERO COMMENTS FROM THE DAY IT WAS WRITTEN. `issue_comments` has no
     # `created` system field, and PocketBase refuses a sort on a field that does not exist.
@@ -330,7 +420,7 @@ def cmd_show(pb, args):
         print("\n(no comments)")
     for c in items:
         print("\n--- %s (%s)\n%s"
-              % (c.get("author"), (c.get("posted_at") or "")[:19], c.get("body")))
+              % (c.get("author"), (c.get("posted_at") or "")[:19], redact(c.get("body"))))
 
 
 def cmd_file(pb, args):
@@ -339,13 +429,37 @@ def cmd_file(pb, args):
         body = open(args.body_file, encoding="utf-8").read()
     if not (body or "").strip():
         die("an issue with no body is a title someone has to guess at. Use --body or --body-file.")
+    # ⚠ TITLE FIRST: it is the surface a summary quotes when reporting closures (#361).
+    refuse_abort_token(args.title, "title")
+    refuse_abort_token(body, "body")
     branch = args.branch or current_branch()
     # ⚠ `number` DOES NOT AUTO-ASSIGN and is unique per repo, so two reviewers filing at once
     # collide. Retried rather than pre-reserved: the unique index is the real arbiter, and a
     # reserved-then-abandoned number leaves a permanent hole in the sequence.
     for attempt in range(6):
-        st, r = pb.call("/api/collections/issues/records?perPage=1&sort=-number&fields=number"
-                        "&filter=" + urllib.parse.quote('repo="%s"' % args.repo))
+        # ⚠⚠ GLOBAL MAXIMUM, NOT THIS REPO'S (Sonora #345, high). The filter here used to be
+        # `repo="<this repo>"`, and a RESCOPE OUT OF THE REPO LOWERS THAT MAXIMUM — so the
+        # next filing reissues a number that is already in use, for a different finding, under
+        # a different repo. The unique index is `(repo, number)`, so nothing refuses it and
+        # nothing warns.
+        #
+        # REPRODUCED LIVE 2026-08-27, by the reviewer's own first filing of the pass: four
+        # findings had been rescoped Sonora -> FerroStep as 340-343, dropping Sonora's maximum
+        # to 339, and the next four issues filed took 340, 341, 342, 343. **All four now have
+        # a twin with the same number on the same branch.** It had already happened once
+        # unnoticed: two records are numbered #255 and two commits on `main` disagree about
+        # which one they mean.
+        #
+        # ⚠ THE SEAM WAS ALREADY VISIBLE IN THIS FUNCTION AND NOBODY READ IT. `NUMBER_FLOOR`
+        # is documented three lines below as "the highest number ANY record has ever used,
+        # live or exported" — a GLOBAL floor, applied to a PER-REPO maximum. Two scopes in one
+        # expression, and the one that was wrong is the one that moves.
+        #
+        # A number in this tracker is cited bare — "#255" in a commit message, with no repo —
+        # so it has to mean one thing across the whole collection. Per-repo numbering would be
+        # fine in a tracker whose issues never move between repos; `rescopes` gained a `repo`
+        # label on 2026-08-26 and this one's do.
+        st, r = pb.call("/api/collections/issues/records?perPage=1&sort=-number&fields=number")
         # ⚠ Checked, because the consequence of not checking is not an error message. A
         # refused query leaves `rows` empty, `n` becomes 1, and the POST below collides with
         # issue #1 six times before dying with "could not allocate a free issue number" --
@@ -437,14 +551,33 @@ def cmd_take(pb, args):
     already spent is REFUSED unless --note says what decision the owner is being asked for;
     WITH the note it ROUTES the issue to `escalated`, the note riding the event.
     """
+    note = getattr(args, "note", None)
+    # ⚠ CHECKED ONCE, ABOVE THE LOOP, AND BEFORE ANY MOVE. This note rides the event as a
+    # tracker write exactly as a `--comment` does, and it was the ONE write surface with no
+    # guard at all -- the escalation route's note, which is the note the owner is meant to
+    # read (#362). Hoisting it out of the loop matters for the same reason it is hoisted
+    # above `ferrostep_move`: one note serves every number, so a per-iteration check would
+    # move the first issue before refusing the second.
+    refuse_abort_token(note, "note")
     for number in args.numbers:
         rec = pb.find(args, number)
-        ferrostep_move(pb, rec, "developer", "open", getattr(args, "note", None),
-                       args.author)
+        ferrostep_move(pb, rec, "developer", "open", note, args.author)
 
 
 def transition(pb, args, action, author):
     role, to_state = ROLE_FOR[action]
+    # ⚠ VALIDATE, THEN MOVE, THEN COMMENT -- and the validation is hoisted while the WRITE
+    # is not. Move-before-write still holds for the reason below. What did not hold was
+    # checking the text where it is written: `add_comment` is reached only after
+    # `ferrostep_move` has persisted the identical text as the event note, so every refusal
+    # fired too late to prevent the write it existed to prevent (#362).
+    #
+    # ⚠ ABOVE `pb.find` TOO, NOT MERELY ABOVE THE MOVE. The comment is a pure-text argument
+    # and needs no record to judge, so refusing it before ANY tracker contact makes the
+    # invariant one a test can state without qualification: a refusable comment touches the
+    # tracker zero times. Ordered after the lookup it is still correct and no longer simple
+    # -- "no writes, but one read" is the kind of caveat that later grows an exception.
+    refuse_unpostable_comment(args.comment)
     rec = pb.find(args, args.number)
     # ⚠ MOVE FIRST, COMMENT SECOND. The engine's refusal must not leave a comment describing
     # a move that never happened. The comment is the human-readable trail (issue_comments);
@@ -513,6 +646,39 @@ def cmd_escalate(pb, args):
     transition(pb, args, "escalate", args.author)
     print("⚠ the owner owes a decision here. Tell them; they write `user_decision`, and a hook "
           "returns it to 'open' with a fresh counter.")
+
+
+def cmd_dispute(pb, args):
+    """Disagree with a finding on the record, at a price the loop can afford.
+
+    ⚠⚠ THIS EXISTS BECAUSE `review` MEANT TWO THINGS. The developer's only exits from `open`
+    were take-it, move-to-`review`, or escalate -- and `review` is the SAME STATE whether the
+    finding was fixed or rebutted. So a disagreement, once made, was indistinguishable from a
+    capitulation the moment it landed, and the lane's dispute rate read as zero across 256
+    records. It was never zero; it was UNRECORDED (owner, 2026-08-27).
+
+    ⚠ IT SPENDS `disputes`, NOT `agent_passes`, AND THAT IS THE POINT. Pricing disagreement at
+    parity with compliance is the defect: if arguing costs a fix pass, arguing is what you stop
+    doing. A dispute the reviewer rejects lands back at `open`, where proceeding costs one pass
+    as it always did -- so being WRONG is priced, and disagreeing is not.
+
+    ⚠ ONE RE-DISPUTE, THEN THE OWNER (`disputes.max` in workflow/sonora-lane.json -- their
+    dial, like `agent_passes.max`, and not this module's to correct). A state nothing spends
+    would let open -> disputed -> open cycle free, and `agent_passes` is otherwise the only
+    thing guaranteeing this lane terminates at all.
+
+    ⚠ AN OWNER RULING DOES NOT REFUND IT. `release.reset_counters` clears `agent_passes` and
+    deliberately leaves `disputes` spent: after the owner settles an argument the developer
+    gets a fresh budget to do the WORK and no further budget to RE-ARGUE. Widening that later
+    is cheap; discovering a worker re-litigated a ruling is not.
+
+    The note requirement is the ENGINE's (`requires_note` on the transition), not restated here.
+    """
+    args.comment = "[dispute:%s] %s" % (args.kind, (args.comment or "").strip())
+    transition(pb, args, "dispute", args.author)
+    print("⚠ #%d is now DISPUTED and is %s's to answer. You have not fixed it and must not: "
+          "the branch still carries it, and the merge gate still weighs it at its severity."
+          % (args.number, reviewer_name()))
 
 
 def cmd_close(pb, args):
@@ -761,18 +927,32 @@ def main():
         s.add_argument("--comment", default="")
         s.set_defaults(fn=fn)
 
+    s = add("dispute"); s.add_argument("number", type=int)
+    s.add_argument("--kind", required=True, choices=list(DISPUTE_KINDS),
+                   help="what you are disputing: the finding itself, its severity, or "
+                        "whether it is in scope for this branch")
+    s.add_argument("--comment", default="", help="why. The engine refuses a dispute without "
+                   "one -- `requires_note` on the transition, not a check in this module")
+    s.set_defaults(fn=cmd_dispute)
+
     s = add("comment"); s.add_argument("number", type=int)
     s.add_argument("--text", required=True); s.set_defaults(fn=cmd_comment)
 
     add("escalated").set_defaults(fn=cmd_escalated)
 
     args = p.parse_args()
-    # ⚠ EVERY WRITING SUBCOMMAND BELONGS IN THIS TUPLE. `grade` was added 2026-08-20 and the
+    # ⚠ EVERY WRITING SUBCOMMAND BELONGS IN THIS SET. `grade` was added 2026-08-20 and the
     # tuple was not extended (#211), so a grade could land unattributed — and severity is the
     # field the merge gate reads, which makes "who decided this blocks?" a question someone
     # will ask. A new write subcommand must be added here in the same commit that adds it.
-    if not args.author and args.cmd in ("file", "review", "escalate", "close", "reopen",
-                                        "comment", "grade"):
+    #
+    # ⚠⚠ HALF OF IT IS NOW DERIVED, because the warning above did not work. `dispute` was
+    # added 2026-08-27 and this tuple was the SECOND copy of "which subcommands move an
+    # issue" — the first being `ROLE_FOR`, six lines of which had to agree with seven lines
+    # here by hand. Every transition subcommand is a write by construction, so it is read out
+    # of `ROLE_FOR` and a new state can no longer arrive unattributed. The three that remain
+    # written out are the ones that write something OTHER than a state.
+    if not args.author and args.cmd in (set(ROLE_FOR) | {"file", "comment", "grade"}):
         die("--author is required for writes (Janis or Ozzy), or set $ISSUE_AUTHOR. "
             "An unattributed comment cannot be answered.")
     args.fn(PB(), args)

@@ -17,8 +17,13 @@ configurable, and a copy of it in a docstring is a copy that goes stale on the n
 """
 
 import ast
+import contextlib
+import importlib.util
+import io
 import re
 import subprocess
+import types
+import urllib.parse
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -126,6 +131,55 @@ def _definition():
     return json.loads((REPO / "workflow" / "sonora-lane.json").read_text(encoding="utf-8"))
 
 
+def test_every_counter_the_lane_declares_is_a_column_the_adapter_map_carries():
+    """⚠⚠ THE LANE AND THE ADAPTER ARE TWO FILES AND NOTHING CHECKED THAT THEY AGREE.
+
+    `sonora-lane.json` says what counters EXIST; `issues.map.json` says which columns the
+    referee OWNS. A counter in the first and not the second is the worst available outcome and
+    it is silent in both directions: the CLI never applies the increment, so the ceiling never
+    fires — and the guard never closes the column, so any writer holding credentials can set
+    it by hand. Nothing goes red. The move returns 200.
+
+    ⚠ MEASURED 2026-08-27, adding the `disputes` counter. The generated hooks copied ONLY
+    `counters["agent_passes"]` at the apply route and listed only it in `REFEREED`, because
+    both are emitted from the map. Regenerating fixed it — but the only thing that caught it
+    was diffing the generated file by hand before installing, which is not a mechanism.
+
+    ⚠ THIS IS THE CHEAP HALF, STATED SO NOBODY MISTAKES IT FOR THE WHOLE. It compares two
+    files in this repo. It does NOT reach the store, so it cannot see a column that is mapped
+    here and absent there, nor a `states` entry missing from the tracker's `state` select —
+    which is a real 400 waiting to happen and is why the state had to be added to PocketBase
+    before this definition changed. That check needs the definition compared against a LIVE
+    schema and belongs in the engine, not in one adopter's test suite; it is **FerroStep #348**
+    (`ferrostep doctor`). Faking it here with a committed schema snapshot would be a second
+    copy that drifts, and doing it live would make this test skip without a tracker — and a
+    skipped guard is indistinguishable from a passing one.
+
+    ⚠⚠ THIS PARAGRAPH SAID "IT IS FILED AGAINST FERROSTEP" BEFORE ANYTHING WAS FILED (#346).
+    Measured against the tracker: no such record existed among FerroStep's 24. The gap had
+    been described to FerroStep's resident and recorded in their register, and I wrote that up
+    as *filed* — a follow-up stated as an accomplished fact, the same defect as FerroStep #343
+    one row over. It is worse here than a wrong number would be: this docstring is written for
+    the maintainer asking *what happens when the lane and the store disagree*, and "handled,
+    tracked elsewhere" is exactly the answer that stops them recording it. #348 now exists.
+    """
+    import json
+    lane = _definition()
+    declared = sorted(c["name"] for c in lane.get("counters") or [])
+    mapped = sorted(json.loads(
+        (REPO / "workflow" / "issues.map.json").read_text(encoding="utf-8"))["counter_fields"])
+
+    # ⚠ A floor first: two empty lists are equal and would prove nothing.
+    assert declared, "the lane declares no counters — the pass ceiling is the lane's mechanism"
+    assert declared == mapped, (
+        "the lane definition and the adapter map disagree about counters:\n"
+        "  sonora-lane.json declares %s\n  issues.map.json  maps     %s\n"
+        "⚠ A counter missing from the map is applied by NOTHING and guarded by NOTHING — the "
+        "ceiling never fires and the column stays writable. Add it to the map AND regenerate "
+        "the hooks from notes/ferrostep-cutover/issues.emit.json; the installed file hardcodes "
+        "both lists." % (declared, mapped))
+
+
 def _human_roles(d):
     return {r["name"] for r in d["roles"] if isinstance(r, dict) and r.get("human")}
 
@@ -228,6 +282,165 @@ def test_the_issue_number_collision_is_retried():
 
 
 # --- the map ----------------------------------------------------------------------------
+
+def _issue_module():
+    """`issue.py` loaded as a module, so the guard below is EXERCISED and not grepped.
+
+    A substring test over the source would pass on a call that was there and unreachable —
+    the shape this branch filed three times (#333, #344, #351)."""
+    spec = importlib.util.spec_from_file_location("issue_py_under_test", ISSUE)
+    m = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(m)
+    return m
+
+
+def test_the_tracker_write_path_refuses_the_cycle_abort_token():
+    """⚠⚠ #361 — A TRACKER RECORD CAN HALT A CLEAN CYCLE, AND NOTHING GUARDED THAT END.
+
+    `review_cycle.sh` greps the review output for the cycle-abort token and stops the loop on
+    any occurrence — by design. Issue 355 was filed with that token in its TITLE, so a later
+    summary reporting closures by title halts a cycle that found nothing wrong. The write path
+    inspected neither titles nor bodies nor comments.
+
+    ⚠ This test never spells the token either; it builds it from the module under test.
+    """
+    import pytest
+
+    m = _issue_module()
+    token = m.ABORT_TOKEN
+
+    # The refusal fires on every surface a summary can quote, and `die` exits non-zero.
+    for where in ("title", "body", "comment"):
+        with pytest.raises(SystemExit) as e:
+            m.refuse_abort_token("closing %s: see the note" % token, where)
+        assert token not in str(e.value), \
+            "the refusal QUOTES the token, so its own output would halt the cycle it protects"
+
+    # ⚠ POSITIVE CONTROL, the other direction: ordinary prose must still get through, or the
+    # guard is a refusal of everything and nobody could file at all.
+    for benign in ("the cycle-abort token (the one review_cycle.sh greps for)",
+                   "must not land: this is prose, not the literal",
+                   ""):
+        m.refuse_abort_token(benign, "title")
+
+
+def test_every_tracker_write_surface_is_actually_guarded():
+    """The call sites, because a guard nothing calls is decoration.
+
+    Exercising `refuse_abort_token` proves the function refuses; it does not prove `cmd_file`
+    or `add_comment` ever reach it. Deleting either call leaves the test above green.
+
+    ⚠ AND THIS TEST CANNOT SEE ORDER, which is how #362 shipped green underneath it: every
+    site below was present and the comment site was reached only AFTER the move that had
+    already persisted the same text. `test_no_tracker_write_survives_a_refused_comment`
+    is the one that watches the ordering; this one only watches that the calls exist."""
+    for site in ('refuse_abort_token(args.title, "title")',
+                 'refuse_abort_token(body, "body")',
+                 'refuse_abort_token(note, "note")',
+                 'refuse_unpostable_comment(text)',
+                 'refuse_unpostable_comment(args.comment)'):
+        assert site in ISSUE_SRC, "a tracker write surface is no longer guarded: %s" % site
+
+
+def test_no_tracker_write_survives_a_refused_comment():
+    """⚠⚠ #362 — THE GUARD FIRED AFTER THE WRITE IT EXISTS TO PREVENT.
+
+    `transition` moves first and comments second, and the refusal lived in `add_comment`. So
+    the identical text had ALREADY ridden the move as the event `--note` — a tracker write,
+    verbatim — before anything inspected it. Three consequences, all measured on the shipped
+    code: the token reached the tracker anyway, the state had already moved (so the retry is
+    refused by the referee as a no-op move), and the mandatory comment was silently dropped.
+    `cmd_take --note` reached no guard at all, on the escalation route the owner reads.
+
+    ⚠ THE HARNESS RECORDS EVERY TRACKER CONTACT, rather than asserting a refusal. A test that
+    only caught SystemExit passes on the broken code — it DID refuse, just too late. What
+    distinguishes the two versions is whether anything reached the tracker first, so that is
+    what is asserted.
+
+    ⚠ READS ARE RECORDED ALONGSIDE WRITES, and that is deliberate. Asserting "no writes"
+    alone cannot tell a guard hoisted above the whole command from one sitting inside the
+    per-number loop, because the loop checks before its own move either way — measured, by
+    mutation, while writing this test. The text these commands refuse is a pure argument and
+    needs no record to judge it, so the property worth pinning is the unqualified one: a
+    refusable comment touches the tracker ZERO times."""
+    import pytest
+
+    m = _issue_module()
+    token = m.ABORT_TOKEN
+    contact = []
+    m.ferrostep_move = lambda pb, rec, role, to, note, actor: contact.append(("event", note))
+
+    class StubPB:
+        base, tok = "x", "y"
+
+        def find(self, args, n):
+            contact.append(("read", n))
+            return {"id": "r1", "number": n, "state": "review"}
+
+        def add_comment(self, args, rec, text, author):
+            contact.append(("comment", text))
+
+    def ns(**kw):
+        return types.SimpleNamespace(author="Janis", repo=None, **kw)
+
+    # Every surface that carries free text into a state move, with the literal in it.
+    cases = [
+        ("close", lambda: m.transition(StubPB(), ns(number=1, comment="a %s finding" % token),
+                                       "close", "Janis")),
+        # ⚠ `reopen` specifically: its comment is MANDATORY, so dropping it is the silent
+        # consequence that costs the developer a fix pass guessing why.
+        ("reopen", lambda: m.transition(StubPB(), ns(number=1, comment="%s here" % token),
+                                        "reopen", "Janis")),
+        ("take --note", lambda: m.cmd_take(StubPB(), ns(numbers=[1], note="%s" % token))),
+        # ⚠ One note serves EVERY number, so the check belongs above the loop, not in it.
+        # A per-iteration guard writes nothing either — it is the READ recorded above that
+        # tells the two apart, which is why this case is here.
+        ("take multi", lambda: m.cmd_take(StubPB(), ns(numbers=[1, 2, 3], note="%s" % token))),
+        # The length cap is the same act-then-die shape and drops the same comment.
+        ("over the cap", lambda: m.transition(StubPB(),
+                                              ns(number=1, comment="x" * (m.COMMENT_MAX + 1)),
+                                              "close", "Janis")),
+    ]
+    for label, call in cases:
+        contact.clear()
+        with pytest.raises(SystemExit):
+            call()
+        assert contact == [], (
+            "%s: the refusal came too late — the tracker was already touched %d time(s): %r"
+            % (label, len(contact), contact))
+
+    # ⚠ POSITIVE CONTROL. A guard that refused everything would also pass the assert above,
+    # so prove the legitimate paths still reach the tracker — and in the documented order,
+    # since move-before-comment is the half of `transition` deliberately NOT changed.
+    for label, call, want in [
+        ("benign comment", lambda: m.transition(
+            StubPB(), ns(number=1, comment="fixed in abc1234"), "close", "Janis"),
+         ["read", "event", "comment"]),
+        ("no comment", lambda: m.transition(
+            StubPB(), ns(number=1, comment=None), "close", "Janis"), ["read", "event"]),
+        ("benign note", lambda: m.cmd_take(
+            StubPB(), ns(numbers=[1], note="the owner must choose X")), ["read", "event"]),
+        # The boundary itself: exactly at the cap is legal, one over is not (above).
+        ("exactly at the cap", lambda: m.transition(
+            StubPB(), ns(number=1, comment="x" * m.COMMENT_MAX), "close", "Janis"),
+         ["read", "event", "comment"]),
+    ]:
+        contact.clear()
+        call()
+        assert [kind for kind, _ in contact] == want, (
+            "%s was refused, or reached the tracker out of order: %r" % (label, contact))
+
+
+def test_the_tracker_script_does_not_spell_the_abort_token():
+    """⚠ The reviewer RUNS this script and its output can reach the summary the driver greps.
+
+    A literal in the source is one paste away from a printed message, which would halt the
+    cycle from inside the guard against halting the cycle. It is assembled at runtime instead.
+    """
+    m = _issue_module()
+    assert m.ABORT_TOKEN not in ISSUE_SRC, (
+        "issue.py now spells the cycle-abort token literally — assemble it instead (#361)")
+
 
 def test_the_workflow_map_matches_the_states_the_code_enforces():
     """WORKFLOW.md is the map; drift between it and the scripts is the failure this catches."""
@@ -694,3 +907,70 @@ def test_the_routing_rule_says_to_file_when_in_doubt():
     assert "WHEN YOU CANNOT DECIDE WHETHER A FINDING FITS AN EXISTING ISSUE, FILE IT" \
         in REVIEWER_MD
     assert "IT IS NOT A QUOTA" in REVIEWER_MD
+
+
+def _issue_module():
+    """issue.py loaded as a module, so `cmd_file` can be driven against a fake tracker.
+
+    ⚠ Loaded by path rather than imported: `workflow/scripts/` is not a package and the file
+    is executable-first. The same loader appears in test_merge_floor.py for the same reason.
+    """
+    spec = importlib.util.spec_from_file_location("issue_mod", ISSUE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_issue_numbers_are_allocated_from_the_GLOBAL_maximum_not_this_repos():
+    """⚠⚠ Sonora #345 (high) — A RESCOPE OUT OF A REPO FREED A NUMBER FOR REUSE.
+
+    `cmd_file` allocated `number` as this repo's maximum plus one. `rescopes` gained a `repo`
+    label on 2026-08-26; moving four findings Sonora -> FerroStep dropped Sonora's maximum by
+    four, and the next four filings REISSUED 340-343 for entirely different findings. The
+    unique index is `(repo, number)`, so nothing refused it and nothing warned. Reproduced
+    live by the reviewer's own first filing of the pass. It had already happened once
+    unnoticed: two records are numbered #255, and two commits on `main` disagree about which.
+
+    ⚠ THE SEAM WAS VISIBLE IN THE FUNCTION THE WHOLE TIME. `NUMBER_FLOOR` is documented as
+    "the highest number ANY record has ever used" — a GLOBAL floor — and it was applied to a
+    PER-REPO maximum. Two scopes in one expression.
+
+    This test drives the real `cmd_file` against a fake tracker holding the exact shape that
+    caused it: a high number under ANOTHER repo, a lower one under this one.
+    """
+    mod = _issue_module()
+    captured = {"queries": [], "posted": None}
+
+    class FakePB:
+        def call(self, path, method="GET", body=None):
+            if method == "GET":
+                captured["queries"].append(path)
+                # The store holds #343 under FerroStep and #339 under Sonora. A per-repo
+                # query would answer 339 here; a global one answers 343.
+                if 'repo%3D' in path or 'repo="' in path:
+                    return 200, {"items": [{"number": 339}]}
+                return 200, {"items": [{"number": 343}]}
+            captured["posted"] = body
+            return 200, {"id": "x", **body}
+
+        def add_comment(self, *a, **k):
+            pass
+
+    args = types.SimpleNamespace(
+        body="b", body_file=None, branch="sonora/rung3-v7-corpus",
+        repo="Artificial-Humanity/Sonora", title="t", author="Janis",
+        label=None, severity="low")
+    with contextlib.redirect_stdout(io.StringIO()):
+        mod.cmd_file(FakePB(), args)
+
+    assert captured["posted"] is not None, "cmd_file never POSTed an issue"
+    got = captured["posted"]["number"]
+    assert got == 344, (
+        f"allocated #{got}; expected 344 (the GLOBAL maximum 343, plus one).\n"
+        f"⚠ #340 would mean the per-repo query is back: a number freed by a rescope has been "
+        f"reissued to a different finding. queries: {captured['queries']}")
+
+    # ⚠ And the mechanism, not just the number — a future refactor could reach 344 by
+    # accident. No filing query may be scoped to one repo.
+    assert not any('repo="' in urllib.parse.unquote(q) for q in captured["queries"]), (
+        "the allocation query is scoped by repo again: " + str(captured["queries"]))

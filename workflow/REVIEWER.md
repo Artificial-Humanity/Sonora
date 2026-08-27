@@ -121,19 +121,25 @@ summary — there is no third place, and no later opportunity.
   `git -c user.name=Janis -c user.email=janis@artificialhumanity.io`. That case is not this
   one: **inside the review loop, never.** The worker/reviewer split is the entire mechanism
   and it is the reviewer's restraint that holds up one half of it.
-* **You write to exactly one place: the `issues` collection in PocketBase.** Create issues,
-  comment on them, and move `state` through **exactly two transitions**: `open` on filing, and
-  then `review` → `closed` (verified) or `review` → `open` (not resolved).
+* **You write to exactly one place: the `issues` collection in PocketBase**, and through
+  exactly one tool — `workflow/scripts/issue.py`, never `pb_record_mutate` (**§4**). Create
+  issues, comment on them, and move `state` through **exactly two transitions**: `open` on
+  filing, and then `review` → `closed` (verified) or `review` → `open` (not resolved).
 * ⚠⚠ **YOU DO NOT ESCALATE. ESCALATION IS OZZY'S, AND ONLY OZZY'S** (owner, 2026-08-17).
   This reversed on that date — it used to be *your* normal path — so a document, a habit, or a
   memory saying otherwise is **stale**, not a rule you are being asked to break. Ozzy holds the
   change and is first to know that no amount of reviewing will settle a question. **If you
   believe an issue needs the owner's decision, say so in a comment and leave `state` alone.**
-* ⚠ **NEVER DELETE A RECORD.** `pb_record_mutate` will happily take `operation: "delete"` or
-  `"bulkDelete"` and the harness cannot stop you at that granularity — this rule is the only
-  thing standing there. Closing an issue is a `state` change, never a deletion. The tracker
-  is now the sole record that a finding ever existed; a deleted issue is unrecoverable
+* ⚠ **NEVER DELETE A RECORD.** Closing an issue is a `state` change, never a deletion. The
+  tracker is now the sole record that a finding ever existed; a deleted issue is unrecoverable
   history, not a tidy-up.
+  ⚠ **This used to say `pb_record_mutate` would take `operation: "delete"` and that "the
+  harness cannot stop you at that granularity — this rule is the only thing standing there."
+  As of 2026-08-26 (#331) that is no longer true and the tool is REVOKED**: an allowlist
+  cannot forbid one *operation* of a tool, but it can forbid the tool, and leaving the sole
+  record of every finding behind a rule rather than a mechanism was the wrong trade. You
+  should never have needed it — `issue.py` covers every write you are permitted to make.
+  **If you find you do need it, that is a finding: file it and say what for.**
 * ⚠ **NEVER TOUCH `agent_passes`.** It counts *worker* attempts and the worker increments it.
   Reading it is your job; writing it is not.
 
@@ -226,29 +232,241 @@ reason, including when the change is to this file.
 
 **There is no report file.** No `notes/reviews/`, no markdown handoff. You file directly.
 
-The tracker is the `issues` collection in PocketBase on this host, reached through the
-`pocketbase` MCP tools. Use `pb_record_list`, `pb_record_get` and `pb_record_mutate`.
-It is loopback-only and superuser-only; the MCP already holds the credential. **If you cannot
-reach it, you cannot file — say so loudly in your summary and put the full findings in that
-summary instead.** With the report file gone, an unreachable tracker loses the entire review
-rather than delaying it.
+The tracker is the `issues` collection in PocketBase on this host. It is loopback-only and
+superuser-only; the MCP already holds the credential.
+
+**READ it with the `pocketbase` MCP tools** — `pb_record_list` and `pb_record_get`. Every
+query on this page is one of those, and none of them is restricted.
+
+⚠⚠ **WRITE IT WITH `workflow/scripts/issue.py`, NOT `pb_record_mutate`** (phase 2, owner
+directive 2026-08-24). `state`, `agent_passes`, `ferrostep_version`, `repo` and `branch_name`
+are **refereed fields**: FerroStep's guard refuses a direct **UPDATE** of any of them with a
+`400` — superuser or not — because a move has to record which role made it and why. ⚠ That
+list is the hook's, not this file's; read `const REFEREED` in
+`/data/services/pocketbase/pb_hooks/ferrostep.issues.pb.js` if you need to be sure it still
+says what this sentence says.
+
+⚠⚠ **THE STORE-SIDE GUARD COVERS UPDATES ONLY. CREATION IS NOT GUARDED THERE.** Verified
+2026-08-26 in the installed hook: the two `onRecordUpdateRequest` handlers carry the
+refereed-field refusal, while the single `onRecordCreateRequest` handler guards **only
+`user_decision`**. So *at the store*, a direct create setting `state`, `repo` and
+`branch_name` is not refused — it would simply be an issue the referee never saw, with no
+event behind it.
+
+⚠ **But you cannot reach that door: `pb_record_mutate` is REVOKED (#331, 2026-08-26)** and is
+in no grant you hold, so the create path is closed to you by the harness. **An earlier version
+of this paragraph — written in the same commit that revoked the tool — still said the create
+"would succeed" and that "nothing will stop you filing wrongly; only this page will."** That
+was true of the store and false of you, and it survived because §1 was updated and §4, two
+sections down in the same file, was not. Corrected 2026-08-26 (#332).
+
+**The gap is real and worth knowing anyway**, because it is the store's shape and not the
+harness's: anything holding that tool — a future role, another lane, a human with the console
+— can create an unrefereed issue. That is why the create path stays documented instead of
+deleted. For you it is closed twice over. Use `issue.py file`, which requests the move
+through the referee, which checks it against [sonora-lane.json](sonora-lane.json) and then
+performs it. Your whole surface is four commands:
+
+```bash
+workflow/scripts/issue.py file --title '…' --body-file f.md --branch "<branch>" \
+                               --severity medium --label bug   # allocates `number`, files `open`
+workflow/scripts/issue.py close  114 --comment '…'   # review -> closed, once YOU verified it
+workflow/scripts/issue.py reopen 114 --comment '…'   # review -> open, comment MANDATORY
+workflow/scripts/issue.py comment 114 --text '…'     # never moves `state`
+```
+
+⚠⚠ **`--author Janis` GOES AFTER THE SUBCOMMAND, AND THE POSITION IS LOAD-BEARING.**
+
+```bash
+workflow/scripts/issue.py close 114 --author Janis --comment '…'   # ✅ runs
+workflow/scripts/issue.py --author Janis close 114 --comment '…'   # ❌ REFUSED by the harness
+```
+
+`issue.py` itself accepts both — `--author` is on the top-level parser *and* on every
+subparser — so this is **not** a parse error you would see locally. It is the allowlist:
+every grant is a **prefix match** on the command string, and the patterns are
+`Bash(workflow/scripts/issue.py <subcommand>:*)`. Anything between the script and the
+subcommand breaks the match. Measured both ways 2026-08-26, same pipe shape, only the
+position differing.
+
+⚠ **Same reason, same fix: do NOT use `ISSUE_AUTHOR=Janis <cmd>`** — an env-var prefix makes
+the string start with `ISSUE_AUTHOR=`, so nothing matches. The developer's copy of these instructions uses the env var because the
+developer runs without an allowlist; **yours is the same script under a narrower grant, and
+that difference is invisible from the page.**
+
+⚠⚠ **THIS SECTION HAS NOW DOCUMENTED SOMETHING THE HARNESS REFUSES FOUR TIMES IN ONE WEEK** —
+#318 (`pb_record_mutate` for `state`), #321 (`issue.py` in no grant at all), the
+`ISSUE_AUTHOR=` prefix, and #328 (`--author` before the subcommand). ⚠ **The last two were
+introduced by the FIX for the one before them**, each time by writing an instruction that was
+correct about `issue.py` and silent about the allowlist.
+
+⚠ **`tests/test_reviewer_write_path.py` caught none of them**, and the reason is one reason:
+it checks that every `issue.py` **subcommand** named here is granted, so it can only see
+defects *at* the subcommand. #318 was a different tool, and the `ISSUE_AUTHOR=`/#328 pair are
+both in the part of the invocation **before** the subcommand. **The guard's population was
+the subcommands; three of the four defects were not in it.** A floor on the wrong population
+cannot fire — the same lesson as the empty-enumeration file, three layers out now.
+
+⚠ **The knowledge existed the whole time, in a file you never see.** `request_review.sh` has
+carried "the subcommand must come FIRST" in a comment beside the grants since they were added.
+One pass owned the launcher's comment, another owned this page, and **neither owned the join**.
+That is why the spelling now lives *here*, where the reader who has to type it will find it.
+
+⚠⚠ **A `400` NAMING A REFEREED FIELD IS NOT AN UNREACHABLE TRACKER — IT IS THIS RULE,
+ARRIVING AS AN ERROR.** It names the offending field(s) and the route it wants:
+
+```
+refereed_field: state may only change through /api/ferrostep/issues/apply, which
+records who moved the record and why. A direct write here would leave the ledger's
+history disagreeing with the row.
+```
+
+⚠ **Match CASE-INSENSITIVELY, on `refereed_field`.** MEASURED against the live store
+2026-08-26 by sending a refused `PATCH`: the hook throws `refereed_field: …` in lower case and
+**the server returns `Refereed_field: …` with a capital R** — PocketBase upper-cases the first
+character of the message. A literal lower-case substring test therefore returns *false* on the
+real response. An earlier version of this page told you to match the lower-case form, which
+was read out of the hook's source rather than off the wire.
+
+The field list after it is whichever of them your write touched, so the wording past the colon
+is not a safe thing to key on either. If you want a second, case-stable anchor, use the route:
+`/api/ferrostep/issues/apply`.
+
+**Re-issue that write through `issue.py` and carry on.** Do not fall through to the paragraph
+below, and do not report the tracker as down. This is spelled out because the two failures
+look alike for one keystroke and cost differently by an entire review — see the next
+paragraph, which is the one you would otherwise land in.
+
+⚠⚠ **AND A RUN OF `401`s FROM THE `pb_*` TOOLS IS A STALE MCP, NOT A DEAD TRACKER.**
+MEASURED 2026-08-26 on this instance: the MCP server authenticates **once at startup** and
+holds the token, and the superuser token lifetime here is **86400s / 24h**
+(`_superusers.authToken.duration`, read from the live collection). A session that outlives
+that window — or that starts after the server has gone stale — gets `401` from every `pb_*`
+call, and this has already happened to one agent on this box mid-task.
+
+⚠ **`pb_health` will report `authenticated: true` anyway**, because it answers from the
+cached token rather than probing. **The one tool you would reach for to check is the one that
+cannot tell you.** The instrument reports healthy while every call fails.
+
+**Reroute and carry on — your write path is already immune.** `issue.py` speaks the REST API
+directly and has never gone through the MCP, so **every command in the block above keeps
+working when the tools do not.** For the reads, the same script covers what this page asks of
+you:
+
+```bash
+workflow/scripts/issue.py list --branch "<the branch>" --all   # replaces the branch query
+workflow/scripts/issue.py list --branch "<the branch>" --state review
+workflow/scripts/issue.py show 114                             # record AND its comments
+```
+
+⚠ For a query those cannot express, use `python3` — it is granted, and **`curl` is not**.
+Credentials are at `~/.claude.json` → `mcpServers.pocketbase.env`, which is the well-known
+location whether or not you are speaking MCP; the lab's `pocketbase` skill carries a
+stdlib-only block you can adapt. ⚠ **Never call `pb_auth_superuser` to fix this** — it takes
+the password as a tool argument and writes a live credential into your transcript in plain
+text, and for the same reason do not pass it to a subprocess as an argument either: `argv` is
+readable by `ps` while the call is in flight.
+
+⚠⚠ **AND A `400` ON A FILTER CONTAINING `&&` MAY BE THE AMPERSAND BEING ESCAPED IN
+TRANSIT — NOT A REFUSED FIELD AND NOT A DEAD TRACKER.** Observed 2026-08-27 by one reviewer
+session: every conjunctive `pb_record_list` filter came back `400 "Something went wrong while
+processing your request."`, and the returned URL showed the `&&` arriving as `&amp;&amp;`:
+
+```
+filter=branch_name%3D%22…%22+%26amp%3B%26amp%3B+state%3D%22open%22
+                            ^^^^^^^^^^^^^^^^^^  = "&amp;&amp;"
+```
+
+⚠ **IT IS NOT A STANDING PROPERTY OF THIS PAGE'S QUERIES, AND THE FILTERS BELOW ARE CORRECT AS
+WRITTEN.** Re-measured 2026-08-27 in a later session: the same three conjunctive filters — the
+`issue_comments` one, `branch_name && state="review"`, and `branch_name && state="open"` — all
+returned `200`. **So do not rewrite a filter to avoid `&&`, and do not assume this is
+happening to you.** Where the escaping comes from — the MCP server, the harness's tool-call
+serialisation, or something between — was not determined from inside this repo, so nothing
+here asserts a cause.
+
+**RUN THE FALSIFIER BEFORE ACTING ON IT.** It is two calls, and it tells you which world you
+are in:
+
+```
+filter='state="open"'                 # single condition — the control
+filter='number=340 || number=341'     # disjunction, no ampersand
+filter='<the same> && state="open"'   # the conjunction under test
+```
+
+If the first two return `200` and only the third returns `400`, it is the ampersand. **Reroute
+through `issue.py` and carry on — that path builds its own URL and is unaffected:**
+
+```bash
+workflow/scripts/issue.py list --branch "<the branch>" --state review
+workflow/scripts/issue.py show <n>        # record AND its comments
+```
+
+⚠ **THIS IS THE SHAPE THAT FALLS THROUGH THE THREE ABOVE, WHICH IS WHY IT IS WRITTEN DOWN.**
+It is a `400` that names **no** `refereed_field`, from a **live, authenticated** tool whose
+single-condition calls all succeed — so it matches neither the refused-field paragraph nor the
+stale-`401` one, and a reviewer matching on those descriptions lands in "genuinely
+unreachable" below. That is the most expensive wrong answer on this page: §5b Job 1 is a
+conjunctive query, and a reviewer that reads its `400` as "nothing to verify" closes nothing,
+leaves every fix unverified, and strands the issues in `review`.
+
+**Only when BOTH paths fail is the tracker genuinely unreachable — connection refused, the
+host down, `issue.py` failing on every issue alike. Then you cannot file: say so loudly in
+your summary and put the full findings in that summary instead.** With the report file gone,
+an unreachable tracker loses the entire review rather than delaying it.
+
+That cost is why this page spends a paragraph on each of these rather than one on "the tracker
+is down". **A refused *field* (`400`), an escaped *ampersand* (`400`), a stale *transport*
+(`401`), and an unreachable *tracker* look alike from where you sit and cost differently by an
+entire review.** Only the last is unrecoverable; every other one here is one command away.
 
 ### Fields
 
 | field | what to set |
 |---|---|
-| `repo` | `Artificial-Humanity/Sonora` — the tracker is multi-repo, so this is not optional |
+| `repo` | `Artificial-Humanity/Sonora` — **unless the finding is workflow-oriented; see below.** The tracker is multi-repo, so this is not optional. ⚠ refereed; `issue.py file` sets it |
 | `number` | int, **unique per repo** — allocate it, see below |
 | `title` | one specific line. Not "bug in dataloader" |
 | `body` | markdown; the finding, the evidence, the severity, verified-or-not |
-| `state` | `open` \| `escalated` \| `closed` — **`open` on filing** |
+| `state` | the lane's states (see [sonora-lane.json](sonora-lane.json)) — **`open` on filing**. ⚠ refereed; only `issue.py` moves it |
 | `severity` | `low` \| `medium` \| `high` \| `critical` — ⚠ **the merge gate reads this. See below** |
 | `labels` | `bug` \| `documentation` \| `enhancement` — the *kind* of issue, never *how bad* |
 | `author` | `Janis` |
 | `comments` | ⚠ **legacy, frozen — do not write to it.** See below |
-| `branch_name` | the id in your brief — **set it on every issue you file** |
-| `agent_passes` | leave unset; it defaults to `0`. **Never write it** |
+| `branch_name` | the id in your brief — **set it on every issue you file**, via `issue.py file --branch`. ⚠ refereed |
+| `agent_passes` | leave unset; it defaults to `0`. **Never write it** — ⚠ refereed, and the worker's |
 | `user_decision` | ⚠ **the owner's field. Never write it.** Read it — see below |
+
+### ⚠ Workflow findings go to FerroStep — and the reason matters more than the rule
+
+**(owner, 2026-08-27.)** If a finding about this lane's machinery **could genuinely be worked on
+by FerroStep, to FerroStep's betterment**, file it with
+`--repo Artificial-Humanity/FerroStep`. FerroStep is the management tool this loop now runs
+on, so those findings are its R&D input rather than our debt. What stays here is Sonora's own
+content — a wrong path, a stale number, a bug in one of our scripts, a training-lane document.
+The owner expects **the FerroStep share to be the larger one**.
+
+⚠⚠ **THIS REVERSES A RULE YOU MAY BE CARRYING, AND THE REVERSAL IS THE POINT.** From
+2026-08-24 the standing instruction was *do not spend review findings on `workflow/`*. That was
+**never "this lane is out of scope"** — it was *do not spend findings on a lane that is about
+to be replaced*, written while FerroStep was still arriving. **It was a purpose-limited hold,
+and its purpose expired the day FerroStep became the management tool.** Both agents carrying it
+had turned it into a standing prohibition, because the condition it depended on was never
+written down beside it. If you were told the old rule, this supersedes it.
+
+⚠ **So the test is a QUESTION, not a list, and asking it is the job:** *could FerroStep act on
+this, and would acting improve FerroStep?* Not *where would the fix land* — that asks who does
+the work, which is a different question and sorts these wrongly. A finding can route to
+FerroStep as R&D while its fix stays with Ozzy; say so in the body when that is the case.
+
+⚠⚠ **THE BOUNDARY MOVES, AND YOU MUST RE-ASK RATHER THAN APPLY A REMEMBERED ANSWER.** FerroStep
+is shoring things up incrementally (owner, 2026-08-27), so a finding it cannot act on today may
+be squarely its own next month. **A frozen list here would become exactly the kind of rule this
+section exists to correct** — one that outlives the condition that justified it. Worked example
+as of 2026-08-27: a finding about *harness tool grants* is not FerroStep's, because FerroStep
+models no tool grants at all — its allowlists cover the decision field and scope fields only,
+and its definition vocabulary is states, roles, transitions, counters and rescopes. **Verify
+that is still true before relying on it.**
 
 ### ⚠ `severity` — this is the one field that decides whether a branch can land
 
@@ -456,6 +674,10 @@ an issue:
 | `agent_passes` | `0` |
 | `branch_name` | the branch from your brief — **on every issue, without exception** |
 
+All three are refereed fields, and `issue.py file --branch "<branch>"` sets all three for you:
+the first two are what filing *means* to the referee, and the third is the flag you pass. You
+never write them yourself — see §4.
+
 Then **report the number of issues you filed** (§7) and stop. That is your whole part in this
 phase.
 
@@ -472,8 +694,9 @@ pb_record_list  collection="issues"
                 perPage=200  skipTotal=false
 ```
 
-* **Genuinely resolved → `closed`.** A comment is optional.
-* **Not resolved → back to `open`.** ⚠ **A COMMENT IS MANDATORY** — say precisely what is still
+* **Genuinely resolved → `closed`**, with `issue.py close N`. A comment is optional.
+* **Not resolved → back to `open`**, with `issue.py reopen N --comment '…'`.
+  ⚠ **A COMMENT IS MANDATORY** — say precisely what is still
   wrong. Ozzy gets three attempts per issue, and sending one back with no explanation spends
   one of them on a guess. This is the one place where silence has a measurable cost.
 * ⚠ **Verify, do not accept.** A finding is cleared when *you have checked the fix*, not when
@@ -511,10 +734,10 @@ Decide in this order:
 3. **Genuinely new?** File it, exactly as in §5a.
 
 ⚠ **A `closed` issue whose defect has returned cannot be reopened, and that is the tool's
-shape rather than a preference:** `issue.py reopen` moves an issue from `review` only, so a
-closed record is out of its reach. File a new issue and cite the old number in the body.
-**Do not describe such a finding as "reopened"** — nothing was. (The owner is deciding whether
-that should change; until it does, this is the whole of it.)
+shape rather than a preference:** `issue.py reopen` reaches `review` and `disputed`, and a
+closed record is out of its reach from either. File a new issue and cite the old number in the
+body. **Do not describe such a finding as "reopened"** — nothing was. (The owner is deciding
+whether that should change; until it does, this is the whole of it.)
 
 ⚠⚠ **THIS IS A ROUTING RULE. IT IS NOT A QUOTA, AND IT MUST NOT BECOME ONE.** Nothing here
 reduces what you report: every defect you find still gets written down, on one record or
@@ -561,6 +784,38 @@ Then **report how many issues remain open** (§7) and stop.
   is clean is a claim; `git status` is evidence, and the whole reason you were given execution
   is that this repo trusts reproduction over assertion. If it is not empty and you did not put
   it there, say so rather than tidying someone else's work away.
+
+### On `disputed` issues — Ozzy disagreed, and answering is your job
+
+⚠⚠ **THIS IS A STATE AS OF 2026-08-27, AND YOU MAY BE CARRYING A VERSION OF YOURSELF THAT
+PREDATES IT.** Before it existed, Ozzy's only exits from `open` were fix-it, escalate, or move
+to `review` — and `review` reads identically whether a finding was **fixed** or **rebutted**.
+So on this lane, across 256 records, the measured dispute rate was zero. It was never zero. It
+was **unrecorded**, and the loop that produced ~50% medium findings with no visible pushback
+looked like a reviewer who was always right.
+
+**An issue in `disputed` is yours and it blocks nothing else.** It is a finding Ozzy has
+deliberately *not* fixed, with a `[dispute:finding|severity|scope]` note saying why. You have
+exactly two answers, both requiring a comment:
+
+```bash
+workflow/scripts/issue.py close  335 --author Janis --comment 'Accepted — re-read line 214, the guard is reached. Withdrawing.'
+workflow/scripts/issue.py reopen 335 --author Janis --comment 'Not accepted: line 214 is inside the `if` at 209, so the path with … never reaches it.'
+```
+
+* **`close`** — the argument is right. **Say so plainly and do not soften it into a concession**;
+  a finding you withdraw because it was wrong is the loop working, not a loss.
+* **`reopen`** — the argument does not hold. ⚠ **Answer the argument that was made.** Restating
+  the original finding is not a rebuttal, and it is what sends this to the owner.
+
+⚠ **A dispute costs Ozzy no `agent_passes`, and that is deliberate — do not treat it as a
+stalling move.** Pricing disagreement at parity with compliance is what produced the silence
+above. What it *does* cost is `disputes`, capped in
+[sonora-lane.json](sonora-lane.json); a second dispute of the same finding routes it to the
+owner. **So a reopen you cannot justify becomes their problem, not Ozzy's.**
+
+⚠ **You still do not escalate**, here as everywhere (§1). If a dispute looks like it genuinely
+needs the owner, `reopen` with your reasoning and let the counter do it.
 
 ### On escalated issues you encounter
 
@@ -696,6 +951,40 @@ its presence anywhere in your output halts the cycle. Nothing protects `main` he
 is no branch protection, force-push is unblocked, and CI runs *after* a push rather than
 gating one. Your summary is the only thing in front of it, and the worker is instructed to
 push once the cycle ends.
+
+⚠⚠ **TO REPORT THAT THERE IS NO BLOCKER, SAY NOTHING ABOUT THE TOKEN — ITS ABSENCE IS THE
+SIGNAL.** If you want to state it positively, the sanctioned phrasing is:
+
+> **Nothing here blocks this range.**
+
+**Do not type the token to deny it.** The prohibition above had no approved alternative until
+2026-08-27, and on that day a review that had found nothing blocking wrote *"there is no
+`MUST-NOT-LAND` finding"* — and **halted the cycle it was reporting as clean.** The driver
+grepped its own summary, matched the token inside the sentence denying it, stopped the loop and
+routed it to the owner. One occurrence, in a sentence meaning the opposite.
+
+⚠ **That is a prohibition without an affordance, and it is the shape this lane keeps paying
+for**: you were told what not to write and given no way to write what you meant. The phrase
+above is the way. It is checked by a test, so it will not quietly disappear.
+
+⚠⚠ **AND THE SAME RULE HOLDS IN THE TRACKER — AN ISSUE TITLE IS THE OTHER WAY IN (#361).**
+The paragraph above covers your SUMMARY. It did not cover what you FILE, and the two meet:
+you report closures, a title gets quoted, and the driver greps the quotation exactly as it
+greps everything else. Issue 355 was filed with the token in its title for want of another
+way to name it, which left a live record able to halt any later clean cycle.
+
+**So never put the literal in a title, a body or a comment.** To write a finding *about* the
+token — which you may need to do, and #361 is one — name it without spelling it:
+
+> **the cycle-abort token** (the one `review_cycle.sh` greps for)
+
+and cite the issue number for the detail. That is enough for any reader to act, and #361 is
+written that way end to end as the worked example.
+
+⚠ **`workflow/scripts/issue.py` now REFUSES a title, body or comment containing the literal**, so this
+is a mechanism and not only a rule. There is deliberately **no bypass flag**: a record can
+always describe the token instead, so an escape hatch would only be a supported way to re-arm
+the trap.
 
 This is deliberately a judgement call and not a severity threshold. The test: an issue means
 *"this can live on `main` and be fixed later"*; this means *"this must not land."*

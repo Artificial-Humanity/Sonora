@@ -225,6 +225,85 @@ if [[ "$PASS" -gt "$MAX_REVIEWS" ]]; then
      adding another review."
 fi
 
+# --- the self-check, before a review pass is spent -------------------------
+# ⚠ NOISE REMOVAL, NOT PRE-CLEARING, and the difference has to be stated wherever this
+# appears. Every finding the reviewer files costs a fix pass, and mechanical findings consume
+# budget that judgement findings need. An outside review's value is unique only where it sees
+# what the author cannot. Nothing downstream may treat a self-checked branch as better
+# covered, and the review is unchanged.
+#
+# ⚠⚠ TWO SETTINGS, BECAUSE THEY ARE ENFORCED DIFFERENTLY AND SAYING SO IS THE HONEST PART.
+# `SELF_REVIEW_CMD` is VERIFIED — it runs, and its exit status decides. The checklist is
+# PROMPTED — nothing can confirm an agent read it. A gate that cannot verify must not pretend
+# to; this lane already says exactly that about the commit-identity convention.
+self_review_scheduled() {  # $1 = review index -> 0 if a self-check is due
+  local want="${SELF_REVIEW_AT:-none}" idx="$1" tok
+  want="${want//[[:space:]]/}"
+  case "$want" in
+    ""|none) return 1 ;;
+    first)   [[ "$idx" -eq 1 ]] && return 0 || return 1 ;;
+    all)     # ⚠ EXPANDS AGAINST THE DERIVED CEILING. A second copy of `max + 1` here is the
+             # exact shadow removed on 2026-08-24; using $MAX_REVIEWS also means an owner
+             # moving the cap moves `all` with it, free.
+             [[ "$idx" -ge 1 && "$idx" -le "$MAX_REVIEWS" ]] && return 0 || return 1 ;;
+  esac
+  # An explicit index list. ⚠ EVERY TOKEN IS VALIDATED EVEN THOUGH ONLY ONE CAN MATCH: a
+  # setting is checked when it is READ, not when it happens to fire, or `1,99` reads as valid
+  # for the whole of review 1 and dies at review 2.
+  [[ "$want" =~ ^[0-9]+(,[0-9]+)*$ ]] || die "SELF_REVIEW_AT: unrecognised value '${SELF_REVIEW_AT}'.
+     Valid: none | first | all | a comma-separated list of review indices (e.g. 1,4).
+     ⚠ There is no fallback to 'none'. A typo resolving silently to never would give this lane
+     a self-check that is configured, documented and never runs — and a check that never fires
+     is indistinguishable from one that ran clean."
+  local hit=1
+  IFS=',' read -r -a _idx <<< "$want"
+  for tok in "${_idx[@]}"; do
+    # ⚠ AN INDEX ABOVE THE CEILING DIES, AND IT IS THE ONE MOST LIKELY TO BE TYPED.
+    # `SELF_REVIEW_AT=5` under a 3-pass definition reads as ON in the config file and is OFF
+    # in every run. The refusal names both numbers so it teaches the arithmetic.
+    [[ "$tok" -ge 1 ]] || die "SELF_REVIEW_AT: review indices are 1-based; got '$tok' in '${SELF_REVIEW_AT}'."
+    [[ "$tok" -le "$MAX_REVIEWS" ]] && continue
+    die "SELF_REVIEW_AT names review $tok, but this lane has at most $MAX_REVIEWS reviews
+     (agent_passes.max in workflow/sonora-lane.json, plus the review that files). That index
+     can never fire: it reads as ON in config and is OFF in every run."
+  done
+  for tok in "${_idx[@]}"; do [[ "$tok" -eq "$idx" ]] && hit=0; done
+  # ⚠ OUT-OF-RANGE IS NOT NEVER-REACHED. `1,4` stays legal when a cycle converges at review 2;
+  # index 4 simply does not come up. That is a lane finishing early and must stay silent.
+  return "$hit"
+}
+
+if self_review_scheduled "$PASS"; then
+  # ⚠⚠ A DRY RUN REPORTS THE SELF-CHECK; IT DOES NOT RUN IT. `--dry-run` is documented as
+  # "prints the plan and exits — spends nothing, files nothing", and it is the ONE form of this
+  # launcher the REVIEWER may invoke: its allowlist entry is scoped to the flag precisely
+  # because the flag "files nothing, launches nothing, and writes no credential file".
+  # Executing an operator-supplied command there would make that sentence false and hand the
+  # reviewer a way to run it. Reported instead, so the plan still SHOWS the gate.
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "request_review.sh: self-check WOULD run at review $PASS (SELF_REVIEW_AT=${SELF_REVIEW_AT:-none})" >&2
+    if [[ -n "${SELF_REVIEW_CMD:-}" ]]; then
+      echo "  command: $SELF_REVIEW_CMD   (not executed under --dry-run)" >&2
+    fi
+  elif [[ -n "${SELF_REVIEW_CMD:-}" ]]; then
+    echo "request_review.sh: self-check — running: $SELF_REVIEW_CMD" >&2
+    # ⚠ SUBSHELL, AND IT IS NOT DECORATION. The value is operator-supplied and `exit 1` is a
+    # plausible thing to type into a "make this fail" setting; a bare eval would then exit
+    # THIS SCRIPT rather than fail the check.
+    #
+    # ⚠ `eval "$VAR"` is safe here and that was MEASURED, not agreed. The trap this lane
+    # already met needs COMMAND SUBSTITUTION: `eval "$(cmd)"` evaluates cmd's OUTPUT, which is
+    # empty when it refuses, and `eval ""` is 0. `eval "$VAR"` evaluates the string as a
+    # command, so the status is that command's.
+    if ! ( eval "$SELF_REVIEW_CMD" ); then
+      die "self-check command failed. Fix that before spending a review pass on it.
+     (SELF_REVIEW_CMD in workflow/config.env)"
+    fi
+  fi
+  echo "request_review.sh: self-check list is DEVELOPER.md § self-check." >&2
+  echo "  It is noise removal, not pre-clearing — the review is unchanged." >&2
+fi
+
 if [[ -n "$NOTES" && -n "$NOTES_FILE" ]]; then
   die "--notes and --notes-file are mutually exclusive."
 fi
@@ -296,14 +375,48 @@ else
   fi
 fi
 
-# --- The changeset: a branch's local-only pull request ---------------------
+# --- The branch IS the reviewable unit -------------------------------------
 # ⚠ ALL WORK HAPPENS ON A BRANCH, AND THE BRANCH IS THE REVIEWABLE UNIT (owner, 2026-08-17).
 # A commit is too granular to review — a fix commit is not a change, it is part of one — and a
-# GitHub PR is the friction this lane exists to avoid. The middle is a branch with a record:
-# `scripts/changeset.sh` gives it an identity, a state and a merge event, and every issue a
-# review files is stamped with it. That is what makes "is this piece of work done?" a query
-# instead of something a session has to remember.
-CS_JSON="$(BRANCH="$BRANCH" REPO_SLUG="$REPO_SLUG" python3 "$REPO_ROOT/scripts/lib/find_changeset.py" 2>/dev/null || true)"
+# GitHub PR is the friction this lane exists to avoid.
+#
+# ⚠⚠ THE CHANGESET RECORD WAS RETIRED THE SAME DAY (owner, 2026-08-17; WORKFLOW.md lists it
+# among the rulings so that nobody restores it). A branch already has an identity and its
+# issues already carry its state, so the record was a second place for the same truth.
+#
+# ⚠ A FIFTH VESTIGE, AND IT SURVIVED THE SWEEP THAT WAS LOOKING FOR IT. Until 2026-08-26 this
+# spot called `scripts/lib/find_changeset.py` under `2>/dev/null || true`. That file is in NO
+# COMMIT — and not because the retirement deleted it. It is the original casualty of the
+# unanchored `lib/` rule in the root `.gitignore` (measured 2026-08-17, issue #98, the reason
+# `tests/test_gitignore_anchoring.py` exists): `git add` skipped it silently, so it worked
+# perfectly for whoever wrote it and **no clone has ever had it.** The call has therefore been
+# dead since the day it was written.
+#
+# Every failure was swallowed, `CS_JSON` was therefore always empty, and the brief's `else`
+# branch fired on EVERY review since the retirement, telling the reviewer:
+#
+#     "Branch X has no open changeset record ... say so in your summary — unstamped issues
+#      appear in no convergence check, so the work cannot be shown to be finished."
+#
+# So the launcher instructed every reviewer to report the absence of a retired mechanism as a
+# problem, and one duly did (2026-08-26). `2f3e7ab` was an owner-asked battery for exactly
+# these vestiges and found four; it missed this one **because a call engineered never to fail
+# is invisible to a search for things that break**. Same family as the silent-`|| echo CLEAN`
+# and empty-enumeration traps this repo keeps paying for.
+#
+# ⚠ AND REMOVING THE BLOCK OUTRIGHT WOULD HAVE LOST SOMETHING: the `branch_name` STAMPING
+# paragraph, and the "query branch_name=… to find what earlier passes filed" recipe, lived in
+# the OTHER arm of that conditional — the arm that could never run. Both are now unconditional
+# below, which is what they always should have been: they are properties of the branch, and
+# the branch always exists.
+#
+# ⚠ An earlier version of this said "no reviewer has been handed it since the retirement".
+# That is FALSE and was not checked before being written: the brief's own header block, ~60
+# lines above, already carries "**branch_name for THIS pass:** `<branch>` — set it on every
+# issue you file." So reviewers were told to stamp; what they were NOT given is the recipe for
+# querying prior passes, and what they WERE given is a spurious instruction to report a
+# retired mechanism as missing. Overstating the loss to make the fix look bigger is the same
+# defect as the vestige itself — a sentence nobody checked.
 
 # --- Sibling repos the reviewer may READ -----------------------------------
 # ⚠ WITHOUT THIS THE REVIEWER IS BLIND TO MECHANISMS THIS REPO ONLY DESCRIBES. Measured:
@@ -322,15 +435,39 @@ CS_JSON="$(BRANCH="$BRANCH" REPO_SLUG="$REPO_SLUG" python3 "$REPO_ROOT/scripts/l
 # sibling checkouts exist is a fact about a machine and a lab, not about this lane. Hardcoding
 # them here was one of two things that would not survive `workflow/` being copied elsewhere.
 # Absent or unset is fine — the reviewer simply gets no --add-dir.
-SIBLING=""
+# ⚠⚠ EVERY EXISTING CANDIDATE, NOT THE FIRST (#347). This loop used to `break` on the first
+# directory that existed, so `SIBLING_REPO_CANDIDATES` was a FALLBACK CHAIN wearing the
+# spelling of a list — two entries for the same repo, one relative and one absolute, which is
+# what made the single-value shape look correct for as long as there was one sibling.
+#
+# It became wrong the moment REVIEWER.md started routing findings to FerroStep and telling the
+# reviewer to VERIFY the boundary rather than remember it: the instruction requires reading a
+# repo the launcher could not grant. The reviewer said so itself — it declined to file a
+# FerroStep engine finding because it could not check a claim about FerroStep's source, and
+# filed that gap instead.
+#
+# ⚠ DE-DUPLICATED BY RESOLVED PATH, because the fallback-chain spelling is still in use: two
+# candidates naming the same directory must grant it once, not twice.
+SIBLINGS=()
+_SEEN_SIBS=""
 IFS=':' read -r -a _cands <<< "${SIBLING_REPO_CANDIDATES:-}"
 for _cand in "${_cands[@]}"; do
+  [[ -n "$_cand" ]] || continue
   _cand="${_cand/#\~/$HOME}"
   [[ "$_cand" == /* ]] || _cand="$REPO_ROOT/$_cand"
-  if [[ -d "$_cand" ]]; then SIBLING="$(cd "$_cand" && pwd)"; break; fi
+  [[ -d "$_cand" ]] || continue
+  _abs="$(cd "$_cand" && pwd)"
+  # ⚠ A STRING MEMBERSHIP TEST, NOT AN INNER LOOP. The de-dup was a `for … break` nested
+  # inside this one, and a guard asserting "the candidate loop does not break" then could not
+  # tell the two loops apart — it went red on correct code. Two loops in one block is a
+  # structure no cheap check can read; this removes the ambiguity rather than teaching every
+  # future reader's scanner about it.
+  case ":${_SEEN_SIBS}:" in *":$_abs:"*) continue ;; esac
+  _SEEN_SIBS="${_SEEN_SIBS}:$_abs"
+  SIBLINGS+=("$_abs")
 done
 ADD_DIR_ARGS=()
-[[ -n "$SIBLING" ]] && ADD_DIR_ARGS=(--add-dir "$SIBLING")
+for _s in ${SIBLINGS+"${SIBLINGS[@]}"}; do ADD_DIR_ARGS+=(--add-dir "$_s"); done
 
 # --- The brief: everything that changes per run ----------------------------
 # ⚠ AN INVENTORY, NOT A DIFFSTAT. A full review has nothing to diff, and handing it an
@@ -443,14 +580,12 @@ You will not be able to run the suite. Mark every finding that needed execution 
 "
 fi
 
-if [[ -n "$CS_JSON" ]]; then
-  CS_ID="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["id"])' "$CS_JSON")"
-  CS_NUM="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["number"])' "$CS_JSON")"
-  CS_TITLE="$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["title"])' "$CS_JSON")"
-  BRIEF+="
-### The changeset this belongs to
+BRIEF+="
+### The unit of work this belongs to
 
-Branch \`$BRANCH\` is **changeset #$CS_NUM — $CS_TITLE**.
+Branch \`$BRANCH\`. **That is the whole identity** — there is no pull request, no review
+document and, since 2026-08-17, no changeset record. If you were expecting one, it was
+retired; its absence is correct and is **not** something to report.
 
 ⚠ **Stamp \`branch_name\` = \`$BRANCH\` on every issue you file.** That is what ties a finding
 to this piece of work, and it is what decides whether the work is finished: an unstamped issue
@@ -458,31 +593,35 @@ belongs to no unit and appears in no convergence check.
 
 **To find what earlier passes on this branch already filed** — you have no memory of them —
 query \`branch_name=\"$BRANCH\" && state=\"open\"\`. That is every open finding on this
-changeset, whichever pass raised it. There is no list of prior ids to be handed any more.
+branch, whichever pass raised it. There is no list of prior ids to be handed any more.
 "
-else
+
+if (( ${#SIBLINGS[@]} )); then
+  # ⚠ GENERATED FROM WHAT WAS GRANTED (#347). This paragraph named "the AI-Lab-AMD
+  # infrastructure repo" in prose while the grant came from config — so a second sibling would
+  # have been readable and undescribed, which is the same unreachable-affordance defect as a
+  # described path that is not readable, pointing the other way.
+  _SIB_LIST=""
+  for _s in "${SIBLINGS[@]}"; do _SIB_LIST+="
+* \`$_s\` — the **$(basename "$_s")** repo"; done
   BRIEF+="
-### No changeset
+### Sibling repos you can read
+$_SIB_LIST
 
-Branch \`$BRANCH\` has no open changeset record. File issues as normal, but **say so in your
-summary** — unstamped issues appear in no convergence check, so the work cannot be shown to be
-finished.
-"
-fi
+Some mechanisms this repo *describes* are *implemented* in one of those. ⚠ The
+\`user_decision\` release is NO LONGER among them (2026-08-24): it is a block inside the
+generated FerroStep hooks installed on the tracker, readable from no repo checkout — the
+personas' description is the only in-repo evidence, by design. **Check them before filing
+anything ELSE as unverifiable**; a previous review had to record a contradiction with its
+direction undetermined because it could not see this.
 
-if [[ -n "$SIBLING" ]]; then
-  BRIEF+="
-### A sibling repo you can read
+⚠ **If FerroStep is listed above, the routing rule in REVIEWER.md § *Workflow findings go to
+FerroStep* is now CHECKABLE.** That rule tells you to verify the boundary rather than apply a
+remembered answer — for example whether FerroStep models tool grants — and until 2026-08-27
+the launcher could not grant you the repo the rule told you to consult. If a claim about
+FerroStep's engine is what decides where a finding goes, read it rather than declining.
 
-\`$SIBLING\` (the **AI-Lab-AMD** infrastructure repo) is readable. Some mechanisms this repo
-*describes* are *implemented* there. ⚠ The \`user_decision\` release is NO LONGER among
-them (2026-08-24): it is a block inside the generated FerroStep hooks installed on the
-tracker, readable from no repo checkout — the personas' description is the only in-repo
-evidence, by design. **Check the sibling before filing anything ELSE as unverifiable**; a
-previous review had to record a contradiction with its direction undetermined because it
-could not see this.
-
-It is READ-ONLY and it is NOT part of your review range. Do not file findings about its
+They are READ-ONLY and are NOT part of your review range. Do not file findings about their
 contents unless they contradict something in the range you were given.
 "
 fi
@@ -612,11 +751,89 @@ REVIEWER_ALLOW=(
   #                  reviewer had no legitimate use for it at all.
   #   Bash(find:*) — `find -delete` and `find -exec rm` are deletion, pre-approved.
   #                  `Glob` and `rg --files` cover every reviewing use.
+  # ⚠ #321. THE REVIEWER'S WRITE PATH. `issue.py` is what REVIEWER.md §4 documents, and it
+  # was in no entry here — so the #318 fix MOVED the blocker instead of removing it: the
+  # referee started accepting the write and the harness started refusing the command. Janis
+  # hit it on every tracker write of that pass and recovered only because
+  # `Bash(.venv/bin/python:*)` happens to cover an interpreter-prefixed invocation. The
+  # documented spelling matched nothing, and §4 tells a reviewer that a tracker it cannot
+  # write to means the whole review is lost — so a refusal here costs a complete review.
+  #
+  # ⚠ SCOPED PER SUBCOMMAND, AND `escalate` IS DELIBERATELY ABSENT. REVIEWER.md §1 carries an
+  # owner ruling (2026-08-17): "YOU DO NOT ESCALATE. ESCALATION IS OZZY'S, AND ONLY OZZY'S."
+  # Granting `Bash(workflow/scripts/issue.py:*)` would pre-approve the one move the role is
+  # forbidden to make, so the entries are enumerated instead. `take`, `grade` and `review` are
+  # the WORKER's verbs and are absent for the same reason.
+  #
+  # ⚠⚠ BUT THIS DOES NOT MAKE THE RULE A MECHANISM, AND AN EARLIER VERSION OF THIS COMMENT
+  # CLAIMED IT DID. Measured 2026-08-26: `Bash(python:*)`, `Bash(python3:*)` and
+  # `Bash(.venv/bin/python:*)` are granted twelve lines above, and every one of them matches
+  # `python workflow/scripts/issue.py escalate N`. The arbitrary-python grant is deliberate
+  # (owner, 2026-08-18) and its own comment already says the plain part: "what stops a
+  # reviewer writing is now the PERSONA, not the allowlist — a rule rather than a mechanism".
+  # So this enumeration RAISES THE BAR — the forbidden move is no longer the path of least
+  # resistance, and a reviewer reaching it has to choose an interpreter prefix — but it does
+  # not close the door, and saying otherwise would be a false sense of a guarantee in the
+  # place people look for guarantees. What actually holds the line is REVIEWER.md §1.
+  #
+  # ⚠ PREFIX MATCHES, so the subcommand must come FIRST — `issue.py close 114 --author Janis`,
+  # NOT `issue.py --author Janis close 114`. `issue.py` accepts both (argparse puts `--author`
+  # on the top-level parser and on every subparser), so the refusal is the allowlist's, not a
+  # parse error, and it does not reproduce when a developer runs the same line by hand.
+  #
+  # ⚠ #329: this comment used to add "and sets identity through `ISSUE_AUTHOR`" — a clause
+  # `df3c439` had already RETRACTED in the file it names, because an env-var prefix breaks the
+  # same prefix match. Stale within one commit of the fix, in the comment sitting next to the
+  # patterns that make it wrong.
+  #
+  # ⚠⚠ AND KEEPING THE SPELLING ONLY HERE WAS THE DEFECT (#328). This comment is in the
+  # LAUNCHER; the agent that has to type the command is handed REVIEWER.md and never reads
+  # this file. The fact was written down, correctly, somewhere its reader could not reach it —
+  # so the rule now lives in REVIEWER.md §4 and this is the copy that points there, not the
+  # other way round. `tests/test_reviewer_write_path.py` asserts every subcommand REVIEWER.md
+  # documents is granted below, which covers the subcommand and NOT this prefix problem.
+  "Bash(workflow/scripts/issue.py file:*)"    "Bash(./workflow/scripts/issue.py file:*)"
+  "Bash(workflow/scripts/issue.py close:*)"   "Bash(./workflow/scripts/issue.py close:*)"
+  "Bash(workflow/scripts/issue.py reopen:*)"  "Bash(./workflow/scripts/issue.py reopen:*)"
+  "Bash(workflow/scripts/issue.py comment:*)" "Bash(./workflow/scripts/issue.py comment:*)"
+  "Bash(workflow/scripts/issue.py list:*)"    "Bash(./workflow/scripts/issue.py list:*)"
+  "Bash(workflow/scripts/issue.py show:*)"    "Bash(./workflow/scripts/issue.py show:*)"
   "mcp__pocketbase__pb_record_list"
   "mcp__pocketbase__pb_record_get"
-  "mcp__pocketbase__pb_record_mutate"
+  # ⚠ #331. `pb_record_mutate` WAS HERE AND IS NOW REVOKED. REVIEWER.md mentions it five
+  # times and every one is a PROHIBITION — §4 forbids it for writes (the referee refuses the
+  # refereed fields anyway) and §1 forbids deletion. Nothing on that page ever tells the
+  # reviewer to use it, and `issue.py` covers every write it is allowed to make.
+  #
+  # ⚠⚠ THE REASON IS DELETION, NOT WRITES. §1 said the tool "will happily take
+  # operation: delete or bulkDelete and the harness cannot stop you at that granularity —
+  # this rule is the only thing standing there." True: the allowlist cannot forbid one
+  # OPERATION of a tool. It can forbid the TOOL. The tracker is now the sole record that a
+  # finding ever existed, so "a rule is the only thing standing there" was the wrong place to
+  # leave it — the same rule-versus-mechanism call as `escalate` above, with a worse blast
+  # radius. §1 has been updated; leaving that sentence saying the harness cannot stop it
+  # would have been the fifth stale-instruction defect in this lane in a week.
+  #
+  # ⚠ IF A REVIEW REPORTS NEEDING IT, PUT IT BACK — one line, and the finding is worth more
+  # than the grant. The evidence it is unused is five prohibitions and no instruction, which
+  # is strong but is not a measurement of what a reviewer actually calls.
   "mcp__pocketbase__pb_schema"
+  # ⚠ `pb_health` ANSWERS FROM A CACHED TOKEN and will report `authenticated: true` while
+  # every other call returns 401 (measured 2026-08-26; the MCP authenticates once at startup
+  # and the superuser token lasts 86400s). It is granted because it is harmless, NOT because
+  # it is a reliable liveness check — REVIEWER.md §4 says so at the point of use.
   "mcp__pocketbase__pb_health"
+  # ⚠ GRANTED BY THE OWNER, 2026-08-26, confirmed directly. Asked for by a reviewer that
+  # wanted to read the response body of a REFUSED write without issuing one at the live
+  # tracker — which is the right instinct: the alternative it declined was pointing a
+  # deliberately-failing write at a real record to see what came back. Read-only, and
+  # redacted by default.
+  #
+  # ⚠ The request reached the owner through a peer relaying the grant. It was NOT added on
+  # that relay: a permission grant to an unattended agent is hard to un-ring, so it went back
+  # for direct confirmation first. The relay turned out to be accurate. The test is the
+  # ACTION, not the messenger — a build step would have been actioned on the same relay.
+  "mcp__pocketbase__pb_logs"
 )
 # ⚠ Scoped to `-m pytest`. A bare `Bash($PYBIN:*)` — which the #96 fix added — pre-approved
 # `python -c '<anything>'`, so the remedy for "the reviewer cannot run the tests" handed it
@@ -761,7 +978,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   printf '  --allowedTools'; printf ' %q' "${REVIEWER_ALLOW[@]}"; printf ' \\\n'
   printf '  --disallowedTools'; printf ' %q' "${REVIEWER_DENY[@]}"; printf ' \\\n'
   printf '  --strict-mcp-config --mcp-config <0600 temp file, written at run time from ~/.claude.json>'
-  [[ -n "$SIBLING" ]] && printf ' \\\n  --add-dir %q' "$SIBLING"
+  for _s in ${SIBLINGS+"${SIBLINGS[@]}"}; do printf ' \\\n  --add-dir %q' "$_s"; done
   printf '\n'
   echo "───── (dry run: nothing called, nothing filed, no credential file written) ─────"
   exit 0

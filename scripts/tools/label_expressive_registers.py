@@ -179,7 +179,7 @@ def main():
     measures = {r["wav"]: r for r in anchor_mod._jsonl(args.measures)}
     heads = {r["wav"]: r for r in anchor_mod._jsonl(args.eiv)}
 
-    # Refresh the mutable half against the SSOT. Read-only — the Auditions app owns this
+    # Refresh the mutable half against the SSOT. Read-only — the Dataset Listening app owns this
     # file — and the mtime is recorded in the manifest so a concurrent edit is visible.
     ratings_mtime = None
     if not args.no_refresh_meta:

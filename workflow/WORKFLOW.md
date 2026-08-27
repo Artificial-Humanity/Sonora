@@ -129,6 +129,26 @@ Ozzy fixed some, and this is the next review.
        exists to prevent. **A crashed pass costs a pass.**
 4. Ozzy taps Janis, and the cycle repeats from §2.
 
+⚠ **STEPS 1–4 HAVE A DRIVER, AND IT IS THE NORMAL PATH:**
+
+```bash
+workflow/scripts/review_cycle.sh --range origin/main..HEAD --developer Ozzy
+```
+
+It runs this cycle to convergence unattended — review, fix, review — stopping at
+`agent_passes.max + 1` reviews (derived from [sonora-lane.json](sonora-lane.json), not a
+second copy of the number), on a stop file, on a spend ceiling, or on `MUST-NOT-LAND`.
+⚠ **It never pushes.** A human still lands the branch.
+
+⚠⚠ **This line said only "the cycle repeats" until 2026-08-27 (#339), which describes the
+repetition without naming the thing that performs it.** The driver existed, was tested, and
+was named in `CLAUDE.md`, `AGENTS.md` and `REVIEWER.md` — every one of them in the third
+person, about an invocation the reader was not in. So the loop was driven by hand, and **it
+stops wherever the person stops**, leaving issues open that were only mid-flight. That is the
+failure the driver was built to end, and the reason it went on happening is that nothing the
+developer reads ever handed them the command. `tests/test_lane_scripts_are_reachable.py` now
+asserts every lane command has a runnable line in this file or `DEVELOPER.md`.
+
 ## 4. Escalation to the owner
 
 1. **Ozzy notifies the owner** of the issues needing a decision. The owner reviews and writes

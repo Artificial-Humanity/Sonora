@@ -77,7 +77,7 @@ below are subject to it.
 
 Migrated into source control 2026-07-22 from `/data/toolchain/teacher-audition/` on
 ai-lab-0, where the working directory (rendered `out/` audio, engine weights) remains.
-Verdict ledger: the teacher-synthesis-portfolio notes and the Dataset Auditions app
+Verdict ledger: the teacher-synthesis-portfolio notes and the Dataset Listening app
 ratings are the source of truth; these scripts are the reproducible render side.
 
 ## Watch list

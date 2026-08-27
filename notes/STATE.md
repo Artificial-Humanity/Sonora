@@ -7,7 +7,7 @@ architecture canon is [ARCHITECTURE.md](../docs/ARCHITECTURE.md); open work is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
-_Last updated: 2026-08-21._
+_Last updated: 2026-08-25._
 
 ---
 
@@ -340,19 +340,98 @@ headline; open items are in [todo.md](todo.md).
    ⚠ **The licence wall REFUSED the first build** — the staged 24 kHz tree was undeclared.
    `sonora_expressive_registers` is now in `configs/data_licenses.yaml`, verified by path:
    **0 of the 832 clips resolve into `LibriTTS_R` or any `emilia*` tree.**
-   ⚠ **TWO IN-CONTAINER STEPS, AND NEITHER HAS A RECORDED RESULT** — status genuinely
-   unverified, not "outstanding": `data_statistics` had to be **re-measured** (they cannot be
-   inherited from v5 — this changes the audio set *and* the split), and
-   `scripts/gates/test_vat_dim_seams.py` had to pass. The run has since trained 10 epochs and
-   holdout-scored, which it could not have done without usable statistics; **the seam gate is
-   the one with no evidence either way, and #197 has since measured that nothing in the suite
-   runs it** — so its "outstanding" was never a status anything could have cleared. Whoever
-   next touches rung 2's corpus should run it and record the count, as v5's `30/30` is.
+   ⚠ **TWO IN-CONTAINER STEPS RAN WITHOUT A RECORDED RESULT** — `data_statistics` had to be
+   **re-measured** (they cannot be inherited from v5 — this changes the audio set *and* the
+   split), and `scripts/gates/test_vat_dim_seams.py` had to pass. The run trained 10 epochs
+   and holdout-scored, which it could not have done without usable statistics. The seam
+   gate's evidence is now direct: **run 2026-08-25 as rung 3's first act — 35/35, exit 0**
+   (throwaway ROCm container, `score_holdout.sh`'s pattern). Why no evidence could exist:
+   **the gate had been unrunnable since the #26 restructure (2026-08-12)** — two repo-root
+   anchors inside it still read `parents[1]` from its pre-move depth, so every invocation
+   died at import with `FileNotFoundError` before a single check ran. Fixed on the rung 3
+   branch. That is a second, independent fact from #197's "nothing in the suite runs it":
+   even a hand run would have died.
+   ⚠ **THIS SAID #197's WIRING GAP WAS "still true" AND IT WAS NOT (#313).** #197 was closed
+   by `706f39f` on **2026-08-21**, four days before that sentence was written — verified:
+   `git merge-base --is-ancestor 706f39f origin/main` exits 0, and
+   `tests/test_gate_scripts.py` carries `TORCH_ONLY = ["test_vat_dim_seams.py"]` with
+   `test_torch_only_gate`. The gate **is** enumerated. Writing otherwise sent the next
+   reader to redo finished work.
+   ⚠⚠ **AND IT POINTED AWAY FROM THE REAL MECHANISM, which is the more expensive half.**
+   The repo `.venv` deliberately has no torch, because the gate is container-side — so
+   **`make test` is green whether those anchors are right or wrong.**
+   ⚠ **THERE ARE THREE STATES, NOT TWO (#314), and the quiet one belongs to the command
+   this paragraph names.** An earlier version said the gate is "skipped with notice" under
+   `make test`. It is not; that is what happens under a *different* command. Measured:
+
+   | command | what `test_torch_only_gate` did (as measured 2026-08-25) |
+   |---|---|
+   | `pytest tests/` | **SKIPPED** — id and reason both printed (`11 skipped`) |
+   | **`make test`** = `pytest -k "not slow"` | **DESELECTED** — `@pytest.mark.slow` is matched by `-k` as a keyword, so it is never collected. **0 collected, no id, no skip line, not even under `-rs`** (`1507 passed, 8 skipped, 3 deselected`) |
+   | throwaway ROCm container | actually **runs** — 35/35 |
+
+   ✅ **FIXED 2026-08-26 (#317): the `@pytest.mark.slow` is gone**, and the middle row is now
+   history rather than current state. The marker contradicted two statements in its own file
+   — the module docstring's definition of `slow` ("needs hardware or an external checkpoint")
+   and the `TORCH_ONLY` comment explaining why a fourth category existed *because* this gate
+   needs no artifact at all. Re-measured under the Makefile's own command: **SKIPPED, with
+   the id and the reason printed** (`10 passed, 1 skipped, 2 deselected`), so the docstring's
+   "never silently absent" is now true where it matters. ⚠ Keep the row above: the reason
+   this was worth finding is that **deselection leaves no line to notice**, and that remains
+   the trap for the next marker somebody adds.
+
+   So the warning was **understated**: under the command in the Makefile the gate does not
+   report itself at all. Enumerated-and-skipped already reads like run; enumerated-and-**deselected**
+   does not even leave a line to notice. ⚠ And a green suite was no guard here for a second,
+   independent reason — **now fixed, see below.** `test_asset_paths.py` runs *two*
+   enumerations, and only the second one was restricted: the half that scores path
+   expressions which are USED rather than NAMED collected `join`/`Path` **call** nodes only.
+   A `/`-composed path is an `ast.BinOp`, so the broken
+   `Path(__file__).resolve().parents[1] / "…"` was never enumerated as a whole — the walk
+   descended past it and scored `Path(__file__)` alone, found it resolvable, and reported
+   **2 falsifiable assertions, both green**. ⚠ #316: an earlier version of this sentence
+   said "the walk enumerates only `join`/`Path` call nodes", which reads as the guard being
+   blind to `parents[N]` anchors generally. It is not, and `_eval` was never the limitation —
+   it has handled `BinOp`/`Div` and `.parents[n]` throughout. The enumeration simply never
+   handed it the node.
+   ✅ **FIXED 2026-08-26 (#315), and the fix is mutation-verified in both directions:** with
+   the same wrong-depth mutation in place, the pre-fix guard reports 112 passed and the
+   post-fix guard fails naming the file, the line and the correct location. The same finding
+   had a second half — those self-referential entries were being counted toward the
+   `>= 24` falsifiable ratchet, so genuine coverage was 23 against a floor of 24 and the
+   guard was padding its own number. Both halves are closed; the floor was re-derived to 25.
+   ⚠ **SUPERSEDED 2026-08-26 (#323): the floor is now 28.** `_eval` stopped refusing `str()`
+   and `X or Y` (#315's named site, which the first fix did not reach), which added three
+   genuinely falsifiable sites — `convert_vat.py:138`, `probe_delivery_intercept.py:118` and
+   `schemas.py:161`. The artifact asserts `>= 28`; **read the floor there, not here.** This
+   paragraph is the record of what was found, not a live number — the same distinction the
+   `#317` note **earlier in this same numbered item** already makes for its own superseded
+   table (search `FIXED 2026-08-26 (#317)`). ⚠ #326: that read "three lines above" and it was
+   **35**. The number was transcribed from the reviewer's own remedy text without measuring —
+   a remedy gets less scrutiny than a finding, and it turns out that holds in the
+   reviewer→artifact direction too, not just developer→fix. **A line distance in prose rots
+   the moment anything is inserted between the two, so it is not cited here at all**; the
+   anchor is a searchable string, which does not.
+   The direct evidence above stands precisely because it came from a container run,
+   not from a green suite.
    `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
-2. **Rung 3 — the 10×** (LibriTTS-R full, ~615 h). Ungated: rung 1 passed. ~2.25 h/epoch,
-   about a day to convergence — it does not need the local-vs-cloud decision first.
+2. 🔄 **Rung 3 — the 10×** (LibriTTS-R full). **IN PROGRESS, started 2026-08-25.** Ungated:
+   rung 1 passed. The other 90% of LibriTTS-R was never on this box — both tarballs
+   (75.8 GB) are now fetched, extracted and permission-fixed, and the **EIV scoring pass is
+   running** over 303,638 duration-filtered clips at batch 32 (~22.5 h;
+   `eiv_scores/libritts_r_full_v7.jsonl`, resumable — it appends and skips what it holds).
+   **The corpus is NOT built and no run is queued.**
+   Measured, replacing the estimates: **321,497 new clips · 2,064 new speakers · ~564 h ·
+   ~345,600 train rows expected**. The strictly-growing rule survives because the new
+   speakers are **disjoint from both v6 and the holdout** (tested under `LC_ALL=C` with a
+   positive control — the first run gave a false 0), and because Emilia's global anchor
+   reads the *frozen* `libritts_r_vat_v4`. Both facts are what keep the warm start from
+   `vat6_finetune` `ep008` legal; **re-verify the byte-identity claim against the shipped v6
+   files at merge time rather than trusting the note.** Decisions, corrections and the
+   12-head requirement:
+   [quality-gap-plan.md § Rung 3 build decisions](quality-gap-plan.md#rung-3-build-decisions--recorded-2026-08-25-audio-on-disk-eiv-pass-running-corpus-not-built).
 3. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
    baseline frozen as the last act of Phase 1.
 4. **A forced-ranking pass over the 46 ceiling-tied groups** — the scale cannot separate

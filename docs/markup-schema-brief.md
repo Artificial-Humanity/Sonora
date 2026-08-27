@@ -150,7 +150,7 @@ Gemma-debugging material, excluded from training pairs.
    the owner hears whether the markup captured the delivery. Gated on the **vat3 round**: the
    derisk checkpoint expresses only the energy channel, so a render today would test the
    model, not the markup. Post-vat3: render `rt_<id>` takes for the audited SCM rows, register
-   them as paired rows (or add a small A/B-pair feature to the Auditions app), compare.
+   them as paired rows (or add a small A/B-pair feature to the Dataset Listening app), compare.
    Voice is NOT part of the comparison (Sonora speakers ≠ teacher voices) — the question is
    conveyance, not timbre.
 

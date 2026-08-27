@@ -1,11 +1,11 @@
-# Dataset Auditions
+# Dataset Listening
 
 Web rating surface for the Sonora **expressive-registers** dataset. Replaces the
 sandboxed Excel workflow: serves each clip's audio inline (`audio/wav`, no download
 dialog, plays on phone/iPad over Tailscale) and edits `ratings.csv` directly as the
 **single source of truth** the training pipeline reads.
 
-- **Live URL:** https://audition.ai-lab-0.mcfarlin.family (Caddy → `localhost:8095`)
+- **Live URL:** https://listen.ai-lab-0.mcfarlin.family (Caddy → `localhost:8095`)
 - **Service:** `audition` in the `ai-lab` compose (CPU-only, `python:3.12-slim`,
   runs as `1000:1002` = `lmcfarlin:datashare` so ledger writes keep NFS ownership)
 - **Data:** `/data/model-training/datasets/sonora-expressive-registers/`
@@ -103,7 +103,7 @@ AUDITION_DATA_ROOT=/data/model-training/datasets \
    stack and (re)creates the `audition` container against the absolute bind.
 3. **Caddy route:** `sudo cp AI-Lab-AMD/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy`
 4. **Dashboard tile:** `sudo rsync -av --delete --exclude '.git*' --exclude 'AGENTS.md' --exclude 'status.json' AI-Lab-AMD/dashboard/ /data/services/dashboard/`
-   (the `Dataset Auditions` tile + regrouped sections are already in `index.html`).
+   (the `Dataset Listening` tile + regrouped sections are already in `index.html`).
 
 ---
 

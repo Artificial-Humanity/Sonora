@@ -69,7 +69,20 @@ datasets:
     # `libritts_r_emilia_expressive_vat_v6` (2026-08-10, Phase 1 rung 2) adds the
     # expressive-registers append set on top of v5. Third source, same rule: its audio is
     # classified as `sonora_expressive_registers` below, not by this line.
-    dirs: [libritts_r_emilia_vat_v5, libritts_r_emilia_expressive_vat_v6]
+    #
+    # `libritts_r_full_vat_v7` (2026-08-25, Phase 1 rung 3) adds train-clean-360 and
+    # train-other-500 on top of v6 — no new SOURCE, just the rest of LibriTTS-R, so the
+    # intersection is unchanged and CC-BY-4.0 still covers the whole. The two
+    # `_derived_*` entries are `derive_vat_corpus` outputs that exist only as merge INPUTS;
+    # they are declared because the wall classifies a filelist's own directory and the merge
+    # now pre-flights `--add` as well as `--out`.
+    # ⚠ ADDED BECAUSE A CLAIM THAT IT WAS UNNECESSARY WAS WRONG (#294). `classify_path` was
+    # called on the AUDIO ROOTS, which do classify, and the result was generalised to "no
+    # manifest edit is needed". `enforce()` iterates `[filelist, *seen_dirs]`, so the corpus
+    # directory is classified too and returned None — the build would have been refused at
+    # load. Checking one of the two things the wall looks at is not checking the wall.
+    dirs: [libritts_r_emilia_vat_v5, libritts_r_emilia_expressive_vat_v6,
+           libritts_r_full_vat_v7, _derived_train_clean_360, _derived_train_other_500]
     license: CC-BY-4.0 (filelists only; each audio path is classified by its own source)
     class: permissive
   sonora_expressive_registers:

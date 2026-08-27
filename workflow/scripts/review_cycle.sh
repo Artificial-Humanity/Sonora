@@ -36,6 +36,7 @@ MODEL="opus"
 EFFORT="xhigh"
 STOPFILE=""
 DRY_RUN=0
+ALLOW_EMPTY_TRACKER=0   # ⚠ set -u is on; an undeclared default aborts the driver (#357)
 
 usage() {
   cat <<'USAGE'
@@ -51,6 +52,12 @@ review_cycle.sh — run the review loop to convergence. NEVER PUSHES.
   --model / --effort  Passed to both roles.             (default: opus / xhigh)
   --stop-file <PATH>  Create this file to halt.  (default: <repo>/.review_cycle.stop)
   --dry-run           Print the plan and exit. Spends nothing, files nothing.
+  --allow-empty-tracker
+                      Accept convergence when the tracker holds NO issues under this repo
+                      slug at all. Default is to REFUSE, because the usual cause is a wrong
+                      slug and every count taken with it was taken over nothing. Use this
+                      only when the slug is verified and the repo genuinely has no issues
+                      yet — a first cycle on a newly adopted lane. (#357)
   -h, --help          This.
 
 STOPS ON, in order of precedence:
@@ -82,6 +89,7 @@ while [[ $# -gt 0 ]]; do
     --effort)      EFFORT="${2:?}"; shift 2 ;;
     --stop-file)   STOPFILE="${2:?}"; shift 2 ;;
     --dry-run)     DRY_RUN=1; shift ;;
+    --allow-empty-tracker) ALLOW_EMPTY_TRACKER=1; shift ;;
     -h|--help)     usage; exit 0 ;;
     *) echo "review_cycle.sh: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -239,7 +247,7 @@ except Exception:
 PY
 }
 
-pb_passes() {  # $1 = branch -> prints SUM of agent_passes over its issues, or "unreachable"
+pb_passes() {  # $1 = branch, $2 = repo slug -> SUM of agent_passes, or "unreachable"
   # ⚠ A SUM, NOT A COUNT, AND OVER EVERY STATE. This is the instrument for "did the worker
   # spend an attempt?", and both properties are load-bearing:
   #
@@ -266,7 +274,12 @@ try:
         with urllib.request.urlopen(r, d) as x: return json.loads(x.read() or b"{}")
     tok = call("/api/collections/_superusers/auth-with-password", "POST",
                {"identity": env.get("PB_EMAIL"), "password": env.get("PB_PASSWORD")})["token"]
-    q = urllib.parse.quote('branch_name="%s"' % sys.argv[1].replace('"', ""))
+    # ⚠ SCOPED BY REPO TOO — see OPEN_FILTER. A branch-only sum here includes issues
+    # rescoped to another repo, whose counters this worker cannot move; the guard would then
+    # read a genuine stall as progress, or progress as a stall, depending on which way the
+    # other repo's agent happened to be working.
+    q = urllib.parse.quote('repo="%s" && branch_name="%s"'
+                           % (sys.argv[2].replace('"', ""), sys.argv[1].replace('"', "")))
     # ⚠ perPage is 500, not the API default of 10 — a truncated page silently under-sums and
     # the guard then sees a stall that never happened.
     r = call("/api/collections/issues/records?perPage=500&skipTotal=false&fields=agent_passes"
@@ -289,7 +302,36 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 # ⚠ No `escalated=false` clause: escalation is a value of `state` (owner, 2026-08-17), so an
 # escalated issue is already not `open`. The clause is not merely redundant — it would be a
 # FILTER ERROR now, since the field it named no longer exists.
-OPEN_FILTER="branch_name=\"$BRANCH\" && state=\"open\""
+# ⚠⚠ `repo` IS PART OF THIS FILTER AND WAS MISSING (2026-08-27). A branch-only filter counts
+# issues that have been RESCOPED TO ANOTHER REPO but still carry this branch's name — and
+# `rescopes` gained a `repo` label the day before, so that population exists. Measured here:
+# four findings moved to Artificial-Humanity/FerroStep left this driver reporting 4 open on a
+# branch whose own queue was empty. It would have run every review to the ceiling, at the
+# per-call spend, and then reported NOT CONVERGED — a loop that cannot finish, caused by
+# records it is not allowed to act on.
+#
+# ⚠ `merge_branch.sh` and `issue.py` both already filter on `repo && branch_name`; this was
+# the one of the three that did not. The gate and the driver disagreeing about which issues
+# belong to a branch is the same class as two copies of the severity ladder.
+# ⚠ SOURCED, NOT JUST READ FROM THE ENVIRONMENT. `merge_branch.sh` and `issue.py` both take
+# REPO_SLUG from workflow/config.env and fall back to `origin`; reading only the environment
+# here would ignore a slug a ported lane has deliberately SET, and derive a different one from
+# origin — reintroducing the gate/driver disagreement this block exists to end, in the one
+# case where the two are not the same string.
+_WF_CFG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config.env"
+# shellcheck disable=SC1090
+[[ -r "$_WF_CFG" ]] && source "$_WF_CFG"
+REPO_SLUG_FILTER="${REPO_SLUG:-}"
+if [[ -z "$REPO_SLUG_FILTER" ]]; then
+  _url="$(git remote get-url origin 2>/dev/null || echo '')"
+  # ⚠ `-n … p` PRINTS ONLY ON A MATCH (#344). Plain `s###` leaves a non-matching string
+  # UNCHANGED, so the emptiness test below accepted anything — a bare `Sonora`, an unparsed
+  # URL, whatever `git remote get-url` happened to say. `issue.py` derives the same slug with
+  # an anchored `re.search` and an explicit "" fallback; this now matches that behaviour.
+  REPO_SLUG_FILTER="$(printf '%s' "${_url%.git}" | sed -nE 's#^.*[:/]([^/:]+/[^/:]+)$#\1#p')"
+fi
+[[ -n "$REPO_SLUG_FILTER" ]] || die "cannot determine the tracker repo slug: config.env leaves REPO_SLUG empty and origin did not resolve. Refusing to run with a branch-only filter, which counts other repos' issues."
+OPEN_FILTER="repo=\"$REPO_SLUG_FILTER\" && branch_name=\"$BRANCH\" && state=\"open\""
 
 check_stop() {
   if [[ -e "$STOPFILE" ]]; then
@@ -360,7 +402,21 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   # ⚠ CHECKED BEFORE THE EXIT CODE. A review can complete cleanly (rc 0) and still be telling
   # you the change must not land; that is a content signal, not a failure signal.
   if grep -q "MUST-NOT-LAND" <<< "$OUT"; then
+    # ⚠⚠ THE MATCH IS DELIBERATELY ANYWHERE-IN-THE-OUTPUT AND MUST STAY THAT WAY. REVIEWER.md
+    # §6 forbids the token in any other context precisely because of this grep, and the
+    # asymmetry is the whole argument: a false HALT costs one cycle, a false PASS can land work
+    # a reviewer said must not land, onto a branch with no protection and a worker instructed
+    # to push. Line-anchoring this would trade a cheap recurring cost for a rare expensive one.
+    #
+    # ⚠ WHAT IS FIXED INSTEAD IS THE DIAGNOSIS. On 2026-08-27 a review that found nothing
+    # blocking wrote "there is no MUST-NOT-LAND finding" and halted the cycle it was reporting
+    # as clean — one occurrence, in a sentence meaning the opposite, and the message below said
+    # only "REVIEW SAYS MUST-NOT-LAND". Reading the log was the only way to tell a real refusal
+    # from a §6 violation. Now the matching lines are printed, so the reader decides in one
+    # glance without opening anything.
     say "REVIEW SAYS MUST-NOT-LAND — stopping. This needs the owner; do not push."
+    say "the line(s) that matched — check whether any is an actual refusal, or §6 prose:"
+    grep -n "MUST-NOT-LAND" <<< "$OUT" | sed 's/^/      /' >&2
     exit 3
   fi
   if [[ "$RC" -ne 0 ]]; then
@@ -376,6 +432,53 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
     exit 4
   fi
   if [[ "$OPEN" == "0" ]]; then
+    # ⚠⚠ THE SLUG IS TESTED AGAINST THE REPO, NOT THE BRANCH — and the first version of this
+    # guard got that wrong in the direction that punishes a good outcome (Sonora #350).
+    #
+    # The hazard is real: with a slug naming no repo the tracker knows, `OPEN` is 0 and the
+    # driver announced CONVERGED having read nothing. But the first fix asked "does this
+    # BRANCH have any issues in any state" — and a branch reviewed clean has none, so a
+    # genuinely clean review exited 5 saying "a branch nobody has reviewed". ⚠ THIS DRIVER RAN
+    # THE REVIEW ITSELF, so it is the one caller that KNOWS a review happened; borrowing
+    # `merge_branch.sh`'s NEVER_REVIEWED reasoning was borrowing a premise that does not hold
+    # here. That gate cannot see whether a review ran and must refuse; this one can.
+    #
+    # ⚠ A clean range is the normal, good outcome (REVIEWER.md §7.5) and the routing rule now
+    # sends the larger share of workflow findings to another repo, so a Sonora-clean pass is
+    # routine rather than exotic. A guard that fires on the good path gets switched off.
+    EVER="$(pb "repo=\"$REPO_SLUG_FILTER\"")"
+    if [[ "$EVER" == "unreachable" ]]; then
+      say "tracker unreachable while confirming convergence — refusing to call this converged."
+      exit 4
+    fi
+    if [[ "$EVER" == "0" ]]; then
+      # ⚠ STATE THE OBSERVATION AND OFFER BOTH BRANCHES — DO NOT NAME ONE CAUSE AS FACT (#357).
+      # This said "That is a slug naming a repo the tracker does not have, not a clean review",
+      # which is a diagnosis rather than a derivation. A CORRECT slug naming a repo the tracker
+      # has no records for yet reaches the identical zero: a repo adopting this deliberately
+      # portable lane, on its first cycle, whose first review finds nothing. On that path every
+      # clause after the comma was false and the operator was sent to re-check two settings
+      # that were already right, with nowhere to go afterwards — the same shape as #350, one
+      # case narrower.
+      if [[ "$ALLOW_EMPTY_TRACKER" -eq 1 ]]; then
+        say "tracker holds no issues at all under repo=\"$REPO_SLUG_FILTER\" — proceeding
+            anyway on --allow-empty-tracker."
+        CONVERGED=1
+        say "CONVERGED after review $review — nothing open (empty tracker, allowed)."
+        break
+      fi
+      say "REFUSING to report convergence: the tracker holds NO issues at all under
+          repo=\"$REPO_SLUG_FILTER\", in any state and on any branch — so every count taken
+          with it, including the zero above, was taken over nothing. Two things reach this,
+          and this script cannot tell them apart:
+            1. the slug names a repo the tracker does not have (the common one) — check it
+               against \`git remote get-url origin\` and workflow/config.env;
+            2. the slug is RIGHT and this repo has simply never had an issue filed — a first
+               cycle on a newly adopted lane whose review found nothing. It self-heals as
+               soon as any issue is ever filed.
+          If you have checked the slug and (2) is your case:  --allow-empty-tracker"
+      exit 5
+    fi
     CONVERGED=1
     say "CONVERGED after review $review — everything closed, escalated, or out of attempts."
     break
@@ -389,7 +492,7 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   # --- fix pass ------------------------------------------------------------
   check_stop "fix pass $review"
   say "fix pass $review — spawning worker (git push denied)"
-  BEFORE_SUM="$(pb_passes "$BRANCH")"
+  BEFORE_SUM="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
 
   WORKER_BRIEF="## This fix pass
 
@@ -412,10 +515,30 @@ you do not filter them out, and you do not work them.
    that file and cannot otherwise tell a fix from an omission.
 "
 
+  # ⚠⚠ ONE `--append-system-prompt`, NOT TWO FLAGS. The CLI refuses
+  # `--append-system-prompt` together with `--append-system-prompt-file`:
+  #     Error: Cannot use both --append-system-prompt and --append-system-prompt-file.
+  # MEASURED 2026-08-27, on the first fix pass this driver was ever asked to run
+  # unattended — the review completed, filed five findings, and the worker died instantly
+  # on argument parsing. So the loop has never completed a fix pass, while three files
+  # described it as the way to run the lane and the owner authorised it as automation.
+  #
+  # ⚠ The failure was LOUD and still nearly invisible: the driver's own stop message says
+  # "the tree may hold partial work; inspect", which reads as a worker that ran and broke
+  # rather than one that never started. Nothing distinguished them.
+  #
+  # ⚠ The persona goes FIRST and the brief SECOND, preserving the original order — the brief
+  # is the run-specific override and must be able to contradict the persona. (DEVELOPER.md
+  # also arrives via CLAUDE.md's `@import`, so this is belt-and-braces rather than the only
+  # copy; it is kept because dropping it would be a behaviour change smuggled into a
+  # syntax fix.)
+  WORKER_PROMPT="$(cat "$REPO_ROOT/workflow/DEVELOPER.md")
+
+$WORKER_BRIEF"
+
   set +e
   claude -p "Address the open issues from this review, then commit." \
-    --append-system-prompt-file "$REPO_ROOT/workflow/DEVELOPER.md" \
-    --append-system-prompt "$WORKER_BRIEF" \
+    --append-system-prompt "$WORKER_PROMPT" \
     --model "$MODEL" --effort "$EFFORT" \
     --permission-mode auto \
     --max-budget-usd "$MAX_USD" \
@@ -440,7 +563,7 @@ you do not filter them out, and you do not work them.
   #
   # Both readings now come from the SAME call on the SAME branch, so the comparison is between
   # like and like — and a stall is `unchanged`, not `equal to some unrelated number`.
-  AFTER_SUM="$(pb_passes "$BRANCH")"
+  AFTER_SUM="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
   if [[ "$AFTER_SUM" != "unreachable" && "$BEFORE_SUM" != "unreachable" ]]; then
     if (( AFTER_SUM == BEFORE_SUM )); then
       say "worker did not advance agent_passes on any issue (sum stayed at $BEFORE_SUM) —

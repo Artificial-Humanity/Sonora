@@ -40,7 +40,7 @@ See [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-cor
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
 | | **rung 2 — v6, +expressive-registers (826 rows appended, 832 staged)** | ✅ **DONE 2026-08-10/11** — built, trained 10 epochs, holdout-scored, **`ep008` selected** (`logs/train/vat6_finetune/SELECTED.md`); flat as pre-registered, and **the delivery block is live** | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) · ⚠ **do not select this run on `total`** and the A-frame question is **open**, not closed — [direction-contract-v3-proposal.md § 3b](direction-contract-v3-proposal.md) |
-| | rung 3 — v7, +LibriTTS-R full (~615 h) | ⏸ **UNGATED — rung 1 passed.** ~**2.25 h/epoch, ~1 day** to convergence (measured 2026-08-09) | rung 1's holdout ✅ | ditto |
+| | rung 3 — v7, +LibriTTS-R full (~564 h measured) | 🔄 **UNGATED — rung 1 passed. AUDIO ON DISK, EIV PASS RUNNING 2026-08-25.** ~**2.25 h/epoch, ~1 day** to convergence (est. 2026-08-09 against ~330,000 rows — **not re-measured against the 345,600 now expected**) | rung 1's holdout ✅ | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
 | | freeze a same-corpus U-Net baseline | ⏸ | **the last act of P1** | [§ Phase 2](#phase-2--the-dit-decoder-spike) |
@@ -202,7 +202,7 @@ cheaper than every hour of synthetic**, and roughly 870 of them are cleared and 
 | — | `libritts_r_vat_v4` | 30,485 | 51.3 | 247 | width only (8-wide) | smoked, superseded |
 | **1** | **`libritts_r_emilia_vat_v5`** | **41,138** | **78.5** | **2,500** | **volume, +36%** | holdout vs `vat3_ep099` |
 | 2 | v6 = +expressive-registers | ~41,980 | ~81 | ~3,350 | **the delivery channel's only training signal** — see below | delivery channel finally has signal |
-| 3 | v7 = +LibriTTS-R full | ~330,000 | ~615 | ~4,900 | **10× volume, same domain** | the real lever |
+| 3 | v7 = +LibriTTS-R full | **~345,600** | **~564** | **~5,414** | **10× volume, same domain** | the real lever |
 | 4 | v8 = +Hi-Fi TTS v1 + VCTK | +? | +336 | +120 | **depth per voice** + studio timbre breadth | independent; slot in when converted |
 | 5 | v9 = +more Emilia-YODAS shards | +? | unbounded | +thousands | **in-the-wild expressivity at scale** | the mining pipeline already exists |
 | 6+ | the synthetic lane | — | — | — | see **§ Phase 1S** below | gated on 1–5 |
@@ -512,6 +512,174 @@ appended per (2)+decision → hash split → measure `data_statistics` → licen
 2026-08-09. Follow `merge_emilia_corpus.py` verbatim; its contiguity, collision and
 val-nonempty guards are the ones that matter.
 
+#### Rung 3 build decisions — recorded 2026-08-25, AUDIO ON DISK, EIV PASS RUNNING, CORPUS NOT BUILT
+
+The other 90% of LibriTTS-R was never on the box. Both tarballs were fetched on 2026-08-25
+(`train_clean_360` 28.95 GB + `train_other_500` 46.84 GB, from `www.openslr.org` — the
+default `us.` mirror is down, http=000) and extracted to exact advertised byte counts. What
+follows is measured on the extracted tree, not estimated from the corpus papers.
+
+| subset | speakers | clips | in v6? |
+|---|---|---|---|
+| `train-clean-100` | **247** | 33,232 | yes |
+| `train-clean-360` | **904** | **116,462** | new |
+| `train-other-500` | **1,160** | **205,035** | new |
+| `dev-clean` (holdout source) | 40 | — | never |
+
+⚠ **`train-clean-100` read 257 here until 2026-08-26 (#319), under this table's own
+"measured, not estimated" caption.** The tree has **247** — re-counted three ways: speaker
+directories, speaker ids parsed from wav basenames, and the numeric LibriTTS ids in v6's
+`speakers.json`. Only the *speakers* column was wrong; 33,232 clips is right. The figure had
+propagated to `notes/training-sources.md`, now also corrected. **This document already used
+247 where the arithmetic depended on it** — §"The model's speaker table is 247 rows and
+Emilia brings 2,408 new speakers … `n_spks: 2655`" reconciles only with 247 — so one file
+disagreed with itself, and the wrong copy was the one carrying the evidential caption. Sizing
+the v7 table from the old row gives 2,321 LibriTTS speakers instead of **2,311**. No code
+reads this: `n_spks` comes from `speakers.json`, so nothing was ever mis-trained.
+
+**THE STRICTLY-GROWING RULE SURVIVES RUNG 3 ONLY BECAUSE THE NEW SPEAKERS ARE DISJOINT, AND
+THAT WAS TESTED RATHER THAN ASSUMED.** `eiv_merge_corpus.py` recomputes *every* clip's combo
+on purpose — the value is `dot(weights, per-speaker z(head))`, so adding clips to a speaker
+moves that speaker's mean and sd and silently rewrites labels already shipped. Its own
+header states the consequence: *"v2 labels are not comparable to v3 labels and the vat3
+checkpoint cannot be fine-tuned onto them."* That is the warm start and the holdout
+comparability in one sentence. Measured under `LC_ALL=C` with a positive control (the
+first run gave a **false 0** — `comm` bailed with "not in sorted order" on locale-collated
+input and still exited clean):
+
+```
+train-clean-100 ∩ train-clean-360 : 0      train-clean-360 ∩ train-other-500 : 0
+train-clean-100 ∩ train-other-500 : 0      train-clean-360 ∩ dev-clean       : 0
+train-clean-100 ∩ dev-clean       : 0      train-other-500 ∩ dev-clean       : 0
+control (dev ∩ dev)               : 40 ✅
+```
+
+⚠ **ALL SIX PAIRS, and this table held only five until 2026-08-26 (#301).** Four sets have
+six pairs, not four or five — and the missing one was **`train-clean-100 ∩ dev-clean`**, the
+pair that asks whether the HOLDOUT SOURCE overlaps the subset v5/v6 already trained on. That
+is the single pair a later auditor most needs shown, and it was the one absent. The script's
+docstring said "all four intersections empty", this table showed five, and "pairwise" requires
+six: three artifacts, three counts, for the evidence that carries both the strictly-growing
+rule and the `--donor-speakers` prefix proof. Re-measured 2026-08-26 with the control above;
+speaker counts 247 / 904 / 1,160 / 40.
+
+So no existing speaker's population changes, v6's rows reproduce byte-identically, and the
+`--donor-speakers` prefix proof still holds. **The Emilia half is safe for a second,
+independent reason:** `anchor_emilia_labels.py` reads `CORPUS = "data/libritts_r_vat_v4"` —
+a *named, frozen* corpus, not "whatever LibriTTS rows exist now" — so a 10× LibriTTS
+population cannot move the global anchor those rows were labelled against.
+
+**THE NEW EIV PASS MUST SCORE EXACTLY THE 12 HEADS THE OLD RAW FILES CARRY.** `combo()`
+keeps only heads present in *every* row (`all(h in v for v in raw.values())`), so a pass
+that scores a different set would silently drop a weighted head **for the whole corpus,
+including clips already labelled**. The set is `corpus_v1.jsonl`'s 4 (Valence, Arousal,
+Distress, Soft_vs._Harsh) + `corpus_families.jsonl`'s 8 (Bitterness, Amusement, Sadness,
+Elation, Hope_Enthusiasm_Optimism, Shame, Fear, Contentment) — covering all 9 nonzero combo
+weights plus the T channel's `Soft_vs._Harsh`.
+
+**Scope: 303,638 clips, not 321,497 — score the keeps, which is what the corpus already
+did.** `corpus_v1.jsonl` holds 30,351 rows against train-clean-100's 33,232 clips, so the
+convention is a duration-filtered list. Applying `derive_vat_corpus`'s own gate
+(`MIN_SECONDS=1.0`, `MAX_SECONDS=22.0`, 24 kHz) over all 321,497 new clips: **kept 303,638
+(94.45%)**, dropped 15,618 under 1 s and 2,241 over 22 s, **0 wrong sample rate and 0
+unreadable** — which is also the extraction's integrity check. List at
+`eiv_scores/libritts_r_full_v7_wavs.txt`. ⚠ The 4 s floor is the *audition-bank* rule and
+does not apply here; this lane's floor is 1 s.
+
+**Throughput is measured, and batch size is a real lever.** Isolation verified (exactly one
+probe container during each window — an earlier batch-64 reading of 1.07 and a second of
+2.13 were both contaminated by an overlapping batch-32 probe, and a naive
+"two-equal-samples" settle check is what let the second one through):
+
+| `--batch-size` | clips/sec | 303,638-clip pass |
+|---|---|---|
+| 8 (the default) | 2.00 | 42.2 h |
+| **32 — chosen** | **3.20** | **26.4 h** |
+| 64 | 2.84 | 29.7 h |
+
+Running since 2026-08-25T02:44:58Z at a steady **3.73 clips/sec** (ETA ~22.5 h) to
+`eiv_scores/libritts_r_full_v7.jsonl`. It appends and skips wavs it already holds, so it is
+safe to interrupt and resume — **it is not a job that has to be protected**.
+
+⚠ **`tar` extracted the audio owner-only (`0600` files, `0700` dirs) and the EIV pass died
+at `PermissionError` on its first clip.** The containers run as `ai-mgr` (105:109) through
+the `datashare` group, and the tarball's own mode bits carry none. Fixed to `2775`/`0664`
+across 973,994 files and 6,823 dirs, scoped to the two new subsets. **Any future corpus
+unpacked from an upstream tarball has this defect** — the existing subsets do not, because
+they were unpacked before the container ran as a service account.
+
+**The ladder table above now carries these measured figures**, replacing the estimates it
+shipped with: train rows **~330,000 → ~345,600** (v6's ~41,980 + 303,638 before the
+text-side drops); hours **~615 → ~564** (new kept audio measures ~483 h against v6's ~81 h;
+the 4,000-clip sample gives median 4.28 s / mean 5.58 s, all 24 kHz); speakers
+**~4,900 → ~5,414** (v6's ~3,350 + 2,064 new). ⚠ The **~2.25 h/epoch** in the pathway table
+is untouched and is now the *stale* half of this pair — it was derived against ~330,000
+rows and nothing has re-measured it. The row count went **up** and the hours **down** — LibriTTS-R
+utterances are shorter than the estimate assumed, so this rung buys more rows per hour than
+planned and the epoch cost should be read off rows, not hours.
+
+**Then the build:** finish the EIV pass → `eiv_merge_corpus.py --add` to rebuild the combo
+and soft maps corpus-wide (it recomputes every clip by design; the disjointness above is
+what makes that a no-op for existing rows, and **that is a claim to re-verify against the
+shipped v6 files, not to trust from this note**) → `derive_vat_corpus.py` over the two new
+roots on per-speaker z (viable here, unlike Emilia: ~2,064 new speakers with a median in
+the hundreds of clips) → **`configs/data_licenses.yaml` must already declare `--out` and every
+`--add`** (`libritts_r_full_vat_v7` plus the two `_derived_*` inputs, under
+`merged_vat_corpora`; **needed a new entry and now has one**) →
+**`scripts/tools/merge_libritts_full_corpus.py --base <v6> --add <clean_360> --add <other_500>
+--out <v7>`**, which appends with v6's rows byte-identical and ids renumbered onto the end →
+`data_statistics` re-measured **in-container** → warm start from `vat6_finetune` **`ep008`**.
+
+⚠ **THE MANIFEST ENTRY IS A PRECONDITION OF THE MERGE, AND THIS CHAIN PUT IT TWO ARROWS AFTER
+IT UNTIL 2026-08-27 (#339)** — a third ordering defect of the same class as the two #338
+fixed, in the arrow chain #338 rewrote. `merge_libritts_full_corpus.py` runs the licence
+pre-flight over `--out`, `--base` and every `--add` **before it reads a single corpus row**,
+and refuses anything `classify_path` cannot place. Its own comment says why: *the answer does
+not change and finding out at load time costs the whole build.*
+
+⚠⚠ **NOBODY IS HURT AT RUNG 3 AND THAT IS EXACTLY THE RISK.** The entry already exists — it
+was added on this branch — so following the old order costs nothing *here*, which is what let
+it survive a rewrite aimed at this paragraph. **This is the template rungs 4 and 5 get written
+from**, and there the entry will not exist: a reader following the chain adds the manifest
+entry after the merge, and the merge refuses before it starts.
+
+⚠⚠ **THIS RECIPE NAMED THE WRONG SCRIPT AND AN EXTRA STEP UNTIL 2026-08-27 (#338), AND BOTH
+WOULD HAVE COST THE RUNG.** It said *"Follow `merge_emilia_corpus.py` verbatim, as rung 2
+did"* and put a **hash split after the merge**. Corrected here because the next reader of
+this paragraph is whoever runs the build:
+
+* **`merge_emilia_corpus.py` is the wrong lane, not merely the wrong name.** It takes `--out`
+  only — no `--base`, no `--add` — and merges Emilia into v4 on the **GLOBAL ANCHOR**, which
+  exists because per-speaker z destroys a corpus with a median of 3 clips per speaker. This
+  rung goes through the ordinary **per-speaker** lane, which the same sentence says two lines
+  earlier. `merge_libritts_full_corpus.py` opens with a section headed *WHY THIS IS NOT
+  merge_emilia_corpus WITH DIFFERENT PATHS* for exactly this reason.
+* ⚠ **THERE IS NO POST-MERGE HASH SPLIT, AND RUNNING ONE WOULD DESTROY THE WARM START.** The
+  merge tool does no splitting: it takes each input's existing split as given, and
+  `check_split_agrees` **refuses** any input whose train/val does not already reproduce under
+  the shared hash rule. Re-splitting the merged corpus would move v6 rows across sides and
+  break the byte-identity this very paragraph depends on. The split already happened, in
+  `derive_vat_corpus.py`, one arrow to the left.
+* **The wording was inherited from rung 2's identical sentence (line ~512), written when no
+  rung-3 script existed.** Then it meant *copy its guard structure*. Now it tells a reader to
+  write a script that is already written, tested and committed — which is why an instruction
+  that was harmless when authored became actively wrong without anyone editing it.
+
+⚠ **THIS PARAGRAPH SAID "no manifest edit is needed" AND THAT WAS WRONG (#294, caught in
+review 1 rather than by the build).** `classify_path` *was* called, on the **audio roots**,
+and they do classify as `libritts_r` — then the answer was generalised to the whole wall.
+`license_wall.enforce()` iterates `[filelist, *seen_dirs]`, so it also classifies **the
+corpus directory that holds the filelists**, and `data/libritts_r_full_vat_v7` returned
+`None`. The build would have been refused at load, after the labelling and the merge were
+already paid for. v5 and v6 each carry their own entry for exactly this reason, and the
+per-corpus checklist's FIRST item was recorded as satisfied on the strength of a check that
+looked at one of the two things the wall reads. **A verification that covers part of a gate
+is not a verification of the gate** — and it fails in the most expensive direction, because
+partial evidence reads exactly like complete evidence once it is written down as a
+conclusion. `merge_libritts_full_corpus.py` now runs the same pre-flight `merge_emilia_corpus`
+does (#293),
+so this cannot be re-established by prose alone.
+
 ### The low-hanging fruit, itemised — ~870 h before anything is rendered
 
 Everything here is **licence-cleared** and costs conversion work rather than GPU-hours.
@@ -584,6 +752,11 @@ looks: it is the instrument that tells us whether the skew hurt.
 - **Widen the mining to ~p75** and re-mine the 53k already-measured clips — 3–4× the Emilia
   half, de-saturates T. Costs EIV + ASR on 53k clips, days of CPU, plus a re-derivation.
 - **Pull more shards.** 160 h probed out of ~114,000 h licensed. Effectively unbounded.
+  ⚠ **The FULL pool is storage-barred** (owner ruling 2026-08-25: viable, not committed):
+  extrapolating the probe (160 h = 8.4 GB raw) puts all ~114,000 h at **~6 TB**, which the
+  3.7 TB `/data` drive cannot hold — an external drive is the unlock, recorded in
+  [training-sources.md](training-sources.md) beside HiFiTTS-2's identical bar. Incremental
+  shard pulls are NOT barred: 10× the current holding is ~85 GB and fits trivially.
 
 **Neither runs before rung 1's holdout.** Widening now would spend days removing a confound
 we have not shown exists *and* change two things at once, which costs us the test. The
@@ -1031,6 +1204,44 @@ is that a number exists in advance, not that it is this number.
   after the fact. Record v6's per-lane delivery result before v7 trains, and read any v7
   regression against it — the same inoculation this plan already wrote for the *untrained*
   channel.
+  - ✅ **THE NUMERIC HALF ALREADY EXISTS AND THIS IS THE POINTER IT WAS MISSING** (checked
+    2026-08-25). `probes/intercept_ep008/` was rendered 2026-08-12 by
+    `probe_delivery_intercept.py` against **exactly the selected vat6 `ep008`** — the csv
+    header and `design.json` both name
+    `vat6_finetune/runs/2026-08-10_23-48-23/checkpoints/checkpoint_epoch=008.ckpt` — and it
+    is complete: 90 wavs, 90 rows, `unknown` + the 4 ACTIVE lanes. **Mean LUFS at A = 0:
+    unknown −29.26 · Speech −31.37 · Neutral −32.42 · Dialogue −33.31 · Newscaster −33.56**,
+    so every named lane renders QUIETER than no lane at all. Nothing in this plan pointed at
+    it, which is how a baseline that exists gets re-derived or quietly forgotten; the record
+    of the run was never the problem, the *reference* to it was.
+    ⚠ **Re-render v7 with the same script or the comparison is void** — that file states its
+    own limit (a run is comparable to another run of itself, not to `delivery_ep010/`).
+  - ✅ **THE EAR HALF RAN 2026-08-25, AND THE ANSWER IS A NULL: the delivery channel is not
+    audible at v6 `ep008`.** Owner's verdicts, full record in
+    `probes/ear_delivery_v6_ep008/RESULT-2026-08-25.md`. Every lane read as Neutral —
+    *"I realized I skipped delivery. All sound neutral to me"* — and `unknown`, no lane at
+    all, placed in the top two of **both** groups. ⚠ **The control is what licenses reading
+    this as a null**: each group hid one lane twice, and in both groups that pair landed at
+    OPPOSITE ends of the ranking, so the differences the ear did report are sampler noise.
+    Without it, "A best, D worst" would have read as the channel working.
+    **So PR-M2's worry is answered by there being nothing to lose: do NOT read a v7 delivery
+    null as dilution damage.** The channel was already inaudible before the dilution.
+    ⚠ **ONE CAVEAT, NAMED BY THE OWNER AND NOT YET CLOSED.** *"There's an energy level to
+    Speech that is not present"* — and that set pins **A = 0**. If projection rides on the
+    energy channel rather than the delivery one-hot, the lane cannot express it there and
+    the test returns a null either way. `probes/ear_delivery_v6_ep008_A+1/` is built from
+    the same probe's A = +1 plane and is **unheard**. Still indistinguishable at +1 ⇒ the
+    null stands and is stronger; `Speech` separating only at +1 ⇒ the finding is about
+    *where the signal lives*, not whether it exists.
+    ⚠ It also means the manner-vs-timbre question is unanswered as posed: *"none of them
+    shift voicing"* is real, but timbre cannot entangle with a channel that is not firing.
+    The owner's structural diagnosis of why — two axes fused in one one-hot — is
+    [direction-contract-v3-proposal.md § 2b](direction-contract-v3-proposal.md).
+  - ⏸ **The ear half as a rung-2 GATE is still open.** The manner-vs-timbre
+    test — one real speaker through each lane, does the manner change while the voice does
+    not — needs the owner's ears, and the loudness probe cannot stand in for it: that probe
+    is deliberately **not** loudness-normalised (the loudness *is* its measurement), while
+    the ear protocol requires normalisation, so the same renders cannot serve both.
 
 ## Why data before decoder
 

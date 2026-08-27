@@ -336,8 +336,9 @@ def test_the_launcher_grant_is_scoped_to_dry_run():
         )
 
 
-def test_the_sibling_repo_is_offered_read_only_and_never_writable():
-    """The reviewer can READ AI-Lab-AMD, because Sonora describes mechanisms implemented there.
+def test_the_sibling_repos_are_offered_read_only_and_never_writable():
+    """The reviewer can READ its sibling checkouts, because Sonora describes mechanisms
+    implemented there — and since 2026-08-27 routes findings to a repo it must be able to check.
 
     A review had to file #114 as "verified, direction undetermined" — it could not tell whether
     the PocketBase hook behind `user_decision` exists, because it lives in the sibling repo and
@@ -348,8 +349,22 @@ def test_the_sibling_repo_is_offered_read_only_and_never_writable():
     Edit/Write ever returned to `--tools`, this would become write access to a second repo.
     The two properties are asserted together deliberately.
     """
-    assert "--add-dir" in SOURCE, "the reviewer should be able to read the sibling repo"
-    assert 'ADD_DIR_ARGS=(--add-dir "$SIBLING")' in SOURCE
+    assert "--add-dir" in SOURCE, "the reviewer should be able to read the sibling repos"
+    # ⚠ PLURAL SINCE #347. This pinned the single-value `ADD_DIR_ARGS=(--add-dir "$SIBLING")`,
+    # which was correct while the resolver granted exactly one — it `break`s on the first
+    # candidate that exists, and the two configured entries were the same repo by two paths, so
+    # nothing looked wrong. It became wrong when REVIEWER.md started routing findings to
+    # FerroStep and telling the reviewer to VERIFY the boundary: the instruction named a repo
+    # the launcher could not grant.
+    #
+    # ⚠ The security property this test exists for is UNCHANGED and is the reason it is
+    # asserted per-argument rather than loosened to "--add-dir appears somewhere": every
+    # granted path must arrive through `--add-dir`, which widens READS only. `--add-dir` on N
+    # repos is still read-only on N repos; it is the Edit/Write pairing that would make it
+    # write access, and that is asserted below.
+    assert "ADD_DIR_ARGS+=(--add-dir " in SOURCE, (
+        "the launcher no longer accumulates --add-dir per sibling; a single-value form grants "
+        "only the first candidate and silently drops the rest (#347)")
     # ⚠ THE CANDIDATE PATHS MOVED TO config.env ON 2026-08-17, and this assertion moved with
     # them. It pinned the literal `$REPO_ROOT/../../AI-Lab-AMD` — a fact about this lab's disk
     # layout rather than about the launcher, and exactly the sort of thing that must not
@@ -458,3 +473,160 @@ def test_the_gate_entries_reach_the_rendered_allowlist():
     assert gates, f"no gate entry in the rendered allowlist at all: {entries}"
     for e in gates:
         assert e.endswith(".py:*)"), f"a gate entry does not name a file: {e}"
+
+
+# --- the self-check gate (owner, 2026-08-27) ----------------------------------------------
+
+def _self_review(at, pass_idx, max_reviews=4):
+    """Drive the shipped evaluator itself — extracted from the launcher, not reimplemented.
+
+    ⚠ A second copy of the resolution rules in this file would be the thing they exist to
+    prevent: a test that agrees with a rule it restated, while the script does something else.
+    """
+    fn = SOURCE[SOURCE.index("self_review_scheduled() {"):SOURCE.index("\nif self_review_scheduled")]
+    script = (f'die() {{ echo "$*" >&2; exit 9; }}\nMAX_REVIEWS={max_reviews}\n'
+              f'SELF_REVIEW_AT={at!r}\n{fn}\n'
+              f'if self_review_scheduled {pass_idx}; then echo DUE; else echo SKIP; fi\n')
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("at,idx,want", [
+    ("none", 1, "SKIP"), ("", 1, "SKIP"),
+    ("first", 1, "DUE"), ("first", 2, "SKIP"),
+    ("all", 1, "DUE"), ("all", 4, "DUE"),
+    ("1,4", 1, "DUE"), ("1,4", 4, "DUE"), ("1,4", 2, "SKIP"),
+])
+def test_the_self_check_schedule_resolves_to_a_set_of_review_indices(at, idx, want):
+    """`first` and `all` are spellings of sets, not separate code paths."""
+    r = _self_review(at, idx)
+    assert r.returncode == 0, r.stderr
+    assert want in r.stdout, f"SELF_REVIEW_AT={at!r} at review {idx}: {r.stdout} {r.stderr}"
+
+
+@pytest.mark.parametrize("bad", ["frist", "First ", "1;4", "yes", "true", "0", "1,0"])
+def test_an_unrecognised_schedule_DIES_and_never_falls_back_to_none(bad):
+    """⚠⚠ A TYPO RESOLVING SILENTLY TO "NEVER" gives this lane a self-check that is
+    configured, documented and never runs — and **a check that never fires is
+    indistinguishable from one that ran clean.** There is no conservative default worth having,
+    so the value is quoted back and the run stops."""
+    r = _self_review(bad, 1)
+    assert r.returncode != 0, (
+        f"SELF_REVIEW_AT={bad!r} was accepted; a bad value must refuse, not resolve to off: "
+        f"{r.stdout}")
+
+
+def test_an_index_above_the_derived_ceiling_DIES_naming_both_numbers():
+    """⚠ THE ONE MOST LIKELY TO BE TYPED. `SELF_REVIEW_AT=5` under a 3-fix-pass definition
+    reads as ON in the config file and is OFF in every run. The refusal names the index AND the
+    ceiling so it teaches the arithmetic rather than just rejecting."""
+    r = _self_review("1,5", 1, max_reviews=4)
+    assert r.returncode != 0, "an unreachable index was accepted: " + r.stdout
+    assert "5" in r.stderr and "4" in r.stderr, (
+        "the refusal must name both the offending index and the derived ceiling: " + r.stderr)
+
+
+def test_a_validation_error_fires_even_when_that_index_is_not_the_current_one():
+    """⚠ A SETTING IS CHECKED WHEN IT IS READ, NOT WHEN IT HAPPENS TO FIRE. Validating only the
+    matching token would let `1,99` read as valid for the whole of review 1 and die at review 2
+    — a configuration error surfacing as a mid-cycle failure."""
+    r = _self_review("1,99", 1, max_reviews=4)
+    assert r.returncode != 0, "99 was not validated because review 1 matched first: " + r.stdout
+
+
+def test_out_of_range_is_not_the_same_as_never_reached():
+    """⚠ `1,4` stays LEGAL when a cycle converges at review 2 — index 4 simply does not come
+    up. That is a lane finishing early, not a misconfiguration, and it must stay silent."""
+    r = _self_review("1,4", 2, max_reviews=4)
+    assert r.returncode == 0, "a legal schedule was refused at a review it does not name: " + r.stderr
+    assert "SKIP" in r.stdout
+
+
+def test_a_dry_run_reports_the_self_check_and_does_not_run_it():
+    """⚠⚠ `--dry-run` is documented as spending nothing, and it is the ONE launcher form the
+    REVIEWER may invoke — its allowlist entry is scoped to the flag precisely because the flag
+    "files nothing, launches nothing, and writes no credential file". Executing an
+    operator-supplied `SELF_REVIEW_CMD` there would make that false and hand the reviewer a way
+    to run it."""
+    code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
+    gate = code[code.index("if self_review_scheduled"):]
+    gate = gate[:gate.index("\nfi\n")]
+    assert 'DRY_RUN" -eq 1' in gate, (
+        "the self-check gate does not special-case --dry-run, so a dry run executes "
+        "SELF_REVIEW_CMD:\n" + gate)
+    assert gate.index('DRY_RUN" -eq 1') < gate.index("eval"), (
+        "the dry-run branch must come before the eval, or it cannot prevent it")
+
+
+def _run_gate(cmd, at="all", pass_idx=1, dry=0):
+    """Drive the SHIPPED gate block — the enforcing half, not the scheduler.
+
+    ⚠ Extracted from the launcher rather than reimplemented, for the same reason
+    `_self_review` is: a test that restates the rule agrees with itself while the script does
+    something else.
+    """
+    fn = SOURCE[SOURCE.index("self_review_scheduled() {"):SOURCE.index("\nif self_review_scheduled")]
+    gate = SOURCE[SOURCE.index("if self_review_scheduled"):]
+    gate = gate[:gate.index("\nfi\n") + 4]
+    script = (f'die() {{ echo "$*" >&2; exit 9; }}\nMAX_REVIEWS=4\nDRY_RUN={dry}\n'
+              f'SELF_REVIEW_AT={at!r}\nSELF_REVIEW_CMD={cmd!r}\nPASS={pass_idx}\n'
+              f'{fn}\n{gate}\necho REACHED_THE_REVIEW\n')
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+
+
+def test_a_failing_self_check_command_REFUSES_the_review():
+    """⚠⚠ THE VERIFIED HALF WAS WATCHED BY NOTHING (#351). The scheduling half had 22 cases;
+    the part the whole design rests on had none, and mutation-measured, replacing the `die`
+    with `|| true` left every assertion green.
+
+    `SELF_REVIEW_CMD` is the half that is *enforced* rather than *prompted* — the commit that
+    added it says so as the design. A gate that cannot verify must not pretend to; one that
+    verifies and then proceeds anyway is worse, because its output says it checked.
+    """
+    r = _run_gate("false")
+    assert r.returncode != 0, (
+        "a failing self-check command did not stop the run:\n" + r.stdout + r.stderr)
+    assert "REACHED_THE_REVIEW" not in r.stdout, (
+        "the review was requested anyway — the die() does not prevent the launch")
+    assert "self-check command failed" in r.stderr, r.stderr
+
+
+def test_a_passing_self_check_command_lets_the_review_proceed():
+    """The other direction, without which the test above is satisfied by a gate that refuses
+    everything."""
+    r = _run_gate("true")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "REACHED_THE_REVIEW" in r.stdout, "a passing self-check must not block the review"
+
+
+def test_a_self_check_command_that_calls_exit_does_not_silently_end_the_script():
+    """⚠ THE SUBSHELL IS NOT DECORATION. The value is operator-supplied and `exit 1` is a
+    plausible thing to type into a "make this fail" setting. Without `( … )` the eval would
+    exit THE LAUNCHER at that point — no die, no message, and a zero exit status reading as a
+    review that ran clean."""
+    r = _run_gate("exit 1")
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "self-check command failed" in r.stderr, (
+        "an `exit` inside SELF_REVIEW_CMD ended the script instead of failing the check — "
+        "the eval is not in a subshell:\n" + r.stdout + r.stderr)
+    assert "REACHED_THE_REVIEW" not in r.stdout
+
+
+def test_no_self_check_command_means_the_checklist_only():
+    """An empty SELF_REVIEW_CMD is the documented "no mechanical gate" case and must not be
+    read as a command that failed."""
+    r = _run_gate("")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "REACHED_THE_REVIEW" in r.stdout
+    assert "self-check list is DEVELOPER.md" in r.stderr
+
+
+def test_a_dry_run_does_not_execute_the_command_even_when_it_would_fail():
+    """⚠⚠ BEHAVIOURAL, not a source scan. `--dry-run` is the ONE launcher form the reviewer's
+    allowlist grants; if it executed SELF_REVIEW_CMD, the reviewer would gain a way to run an
+    operator-supplied command. A failing command must therefore NOT stop a dry run."""
+    r = _run_gate("false", dry=1)
+    assert r.returncode == 0, (
+        "a dry run executed the self-check command and was stopped by it:\n"
+        + r.stdout + r.stderr)
+    assert "WOULD run" in r.stderr, r.stderr
+    assert "REACHED_THE_REVIEW" in r.stdout
