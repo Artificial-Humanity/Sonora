@@ -644,6 +644,31 @@ roots on per-speaker z (viable here, unlike Emilia: ~2,064 new speakers with a m
 the hundreds of clips) → **`configs/data_licenses.yaml` must already declare `--out` and every
 `--add`** (`libritts_r_full_vat_v7` plus the two `_derived_*` inputs, under
 `merged_vat_corpora`; **needed a new entry and now has one**) →
+**⚠ `derive_vat_corpus.py` MUST BE GIVEN `--exclude` WHERE ONE EXISTS** — the flag is how an
+ear-driven drop reaches a run, and omitting it used to be a silent no-op that put the clip
+back (#369). It is now a REFUSAL: the tool reads `configs/data/*.exclude.txt`, and a clip
+declared there and present in the kept set stops the run unless the flag is passed. For v7:
+
+```
+scripts/lib/derive_vat_corpus.py --root <root> --out <donor> \
+  --valence-json .../corpus_valence_combo_v7.json \
+  --soft-json    .../corpus_soft_v7.json \
+  --exclude configs/data/libritts_r_full_vat_v7.exclude.txt
+```
+
+⚠ **The v7 donor was re-derived with `--reuse-from`, and that command was in no file until
+now** — the build was not reproducible from the record with the exclusion applied:
+
+```
+scripts/lib/derive_vat_corpus.py --reuse-from data/_derived_train_other_500 \
+  --root /data/model-training/datasets/LibriTTS_R/train-other-500 \
+  --out data/_derived_train_other_500_excl \
+  --exclude configs/data/libritts_r_full_vat_v7.exclude.txt \
+  --valence-json .../corpus_valence_combo_v7.json --soft-json .../corpus_soft_v7.json
+```
+
+`--reuse-from` relabels without re-measuring audio or re-running G2P, which is what makes an
+ear-driven drop cost minutes instead of hours. →
 **`scripts/tools/merge_libritts_full_corpus.py --base <v6> --add <clean_360> --add <other_500>
 --out <v7>`**, which appends with v6's rows byte-identical and ids renumbered onto the end →
 `data_statistics` re-measured **in-container** → warm start from `vat6_finetune` **`ep008`**.
@@ -734,7 +759,7 @@ cannot fail. That control matters here specifically — `test_corpus_merge_tool.
 that this tool's byte-identity guard was **wrong twice in three commits** (a hardcoded
 `True`, then a comparison true by construction), so its own report is not sufficient.
 
-**Verified on the output, not inherited from the inputs:** 346,896 rows, **0 malformed**;
+**Verified on the output, not inherited from the inputs:** 346,895 rows, **0 malformed**;
 vat width uniformly 8; `n_spks` 5,385 agreeing three ways (report, speaker maps, indices
 actually used in rows); indices contiguous 0..5384 with **0 map collisions**; **0 clips in
 both splits**; and **0 rows on the wrong side** of the hash rule in either file, re-run
@@ -742,10 +767,15 @@ against `derive_vat_corpus._in_val` itself so the check cannot drift from the ru
 collisions between all three sources: **0**, with a positive control (`a ∩ a` = 899).
 
 ✅ **`data_statistics` MEASURED IN-CONTAINER 2026-08-27** — 1,315 batches @ 256 over the
-336,547-clip train split, 4 min 49 s. **`mel_mean -5.543696`, `mel_std 2.430295`.**
+336,546-clip train split. **`mel_mean -5.543695`, `mel_std 2.430293`.**
+⚠ **These are the POST-exclusion values, re-measured after the ear-driven drop** (#371): the
+first measurement ran against 336,547 clips and gave `-5.543696` / `2.430295`, and this
+section carried that pair — the statistic describing a corpus we do not have — while the
+config carried the current one. Removing one clip of 336,547 moves both in the sixth decimal,
+which is why it was re-measured rather than reasoned about.
 
 ⚠⚠ **AND THE MOVE IS LARGE, WHICH SETTLES THE "NEVER INHERIT" RULE FOR THIS RUNG RATHER
-THAN ASSUMING IT.** v6 → v7 moves the mean **+0.155422** and the std **−0.278949** — the same
+THAN ASSUMING IT.** v6 → v7 moves the mean **+0.155423** and the std **−0.278951** — the same
 order as v4 → v5 (+0.1587 / +0.3208), *the move that earned the rule*, and ten times the
 v5 → v6 move. Inheriting v6's pair would have normalised every batch against a mean wrong by
 0.155, and the run would still have trained and converged; the only symptom would have been a

@@ -9,7 +9,7 @@
 # only rung whose whole hypothesis is volume. So a flat holdout here is not neutral — it
 # is the falsification of the lever this phase has been building toward.
 #
-#   336,546 train / 10,349 val · 561.1 h · 5,385 speakers
+#   v7: 336,546 train / 10,349 val · 561.1 h · 5,385 speakers
 #   v6 was  41,937 /  1,331    ·  80.6 h · 3,326 speakers
 #
 # PREDICTION, recorded before the run exists so this stays a test rather than a story:

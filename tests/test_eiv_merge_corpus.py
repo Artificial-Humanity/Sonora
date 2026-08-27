@@ -122,32 +122,83 @@ def test_the_ragged_guard_still_refuses_a_genuinely_mixed_head_set(eiv, monkeypa
 # The pair, held together.
 # --------------------------------------------------------------------------------------
 
-def test_non_head_keys_covers_every_key_the_writer_adds():
-    """AST over eiv_score.py's row literal: a new bookkeeping key fails HERE.
+def keys_written_to_row(source):
+    """Every constant string key written into a local named `row`, by ANY idiom.
 
-    Text-scanning for `wav_mtime` would pass on the comment that mentions it, so this walks
-    the writer's actual `row = {...}` assignment. It asserts the walk found something before
-    it asserts anything about what it found — an enumeration that quietly matches nothing is
-    a vacuous pass, and that is the failure mode a guard like this dies of.
+    ⚠⚠ THE FIRST VERSION OF THIS WALK COLLECTED ONLY `row = {...}` DICT LITERALS, AND THE
+    IDIOM IT COULD NOT SEE WAS THE NEXT LINE OF THE FILE IT GUARDS (#368). `eiv_score.py`
+    writes the stamp in a literal and then `row.update({...})` for the heads, so a future
+    bookkeeping key added by `update()` or by `row["k"] = …` was invisible: the walk returned
+    the same two keys, `unhandled` came out empty, and the guard passed while the reader it
+    protects read the new key as a thirteenth head.
+
+    That is the same defect the guard exists to catch, one level up — an enumeration whose
+    population is narrower than its subject. So this is a FUNCTION, separately exercised
+    against known-answer fixtures below, rather than a walk inlined in the assertion where
+    the only input it ever sees is a file that happens to use the idiom it handles.
     """
-    tree = ast.parse(SCRIPTS.src("eiv_score.py"))
-    literals = [
-        node.value
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Assign)
-        and isinstance(node.value, ast.Dict)
-        and any(isinstance(t, ast.Name) and t.id == "row" for t in node.targets)
-    ]
-    assert literals, (
-        "no `row = {...}` literal found in eiv_score.py — the walk is broken, not the writer; "
-        "this test cannot pass by finding nothing")
+    tree = ast.parse(source)
+    keys, saw_row = set(), False
+    for node in ast.walk(tree):
+        # row = {...}
+        if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)
+                and any(isinstance(t, ast.Name) and t.id == "row" for t in node.targets)):
+            saw_row = True
+            keys |= {k.value for k in node.value.keys
+                     if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+        # row["k"] = ...
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if (isinstance(t, ast.Subscript) and isinstance(t.value, ast.Name)
+                        and t.value.id == "row" and isinstance(t.slice, ast.Constant)
+                        and isinstance(t.slice.value, str)):
+                    saw_row = True
+                    keys.add(t.slice.value)
+        # row.update({...})
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "update" and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "row"):
+            saw_row = True
+            for arg in node.args:
+                if isinstance(arg, ast.Dict):
+                    keys |= {k.value for k in arg.keys
+                             if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+    return keys, saw_row
 
-    written = {k.value for lit in literals for k in lit.keys
-               if isinstance(k, ast.Constant) and isinstance(k.value, str)}
-    assert "wav" in written, f"the row literal no longer carries 'wav': {sorted(written)}"
 
-    bookkeeping = written - {"wav"}
-    unhandled = bookkeeping - set(eiv_merge_corpus.NON_HEAD_KEYS)
+@pytest.mark.parametrize("src,expected", [
+    ('row = {"wav": w, "wav_mtime": m}', {"wav", "wav_mtime"}),
+    ('row = {"wav": w}\nrow["wav_dur"] = d', {"wav", "wav_dur"}),
+    ('row = {"wav": w}\nrow.update({"wav_dur": d})', {"wav", "wav_dur"}),
+    ('row = {"wav": w}\nrow.update({name: v for name in heads})', {"wav"}),
+    ('other = {"wav": w}', set()),
+])
+def test_the_walk_sees_every_idiom_that_writes_a_row_key(src, expected):
+    """Known-answer fixtures through the same code path the real guard uses.
+
+    Rows two and three are the mutations that shipped green before #368 — measured by the
+    reviewer as leaving `written` unchanged. Row four is the comprehension the real writer
+    uses for the heads: it has no constant keys and must contribute none, or the guard would
+    demand that every HEAD be declared non-head. Row five keeps the walk anchored to `row`.
+    """
+    keys, _ = keys_written_to_row(src)
+    assert keys == expected
+
+
+def test_non_head_keys_covers_every_key_the_writer_adds():
+    """The pairing guard: a bookkeeping key the writer adds must be known to the reader.
+
+    It asserts the walk found something before it asserts anything about what it found — an
+    enumeration that quietly matches nothing is a vacuous pass, and that is the failure mode
+    a guard like this dies of.
+    """
+    written, saw_row = keys_written_to_row(SCRIPTS.src("eiv_score.py"))
+    assert saw_row, (
+        "no writes to a local named `row` found in eiv_score.py — the walk is broken, not "
+        "the writer; this test cannot pass by finding nothing")
+    assert "wav" in written, f"the row no longer carries 'wav': {sorted(written)}"
+
+    unhandled = written - {"wav"} - set(eiv_merge_corpus.NON_HEAD_KEYS)
     assert not unhandled, (
         f"eiv_score.py writes non-score key(s) {sorted(unhandled)} that eiv_merge_corpus "
         f"would read as heads. Add them to NON_HEAD_KEYS — otherwise load_raw's ragged "

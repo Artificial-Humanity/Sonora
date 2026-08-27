@@ -24,6 +24,7 @@ rather than having its guard re-implemented in the test.
 """
 
 import json
+import os
 import random
 import subprocess
 
@@ -181,3 +182,61 @@ def test_dropping_one_of_a_pair_relabels_the_survivor_to_all_zero(donor, tmp_pat
     others = [r for r in _rows(dest) if r.startswith("/corpus/train-other-500/100/")]
     assert any(set(r.split("|")[3].split(",")[:3]) != {"0.0000"} for r in others), \
         "every label is zero, so the survivor assertion proves nothing"
+
+
+# --------------------------------------------------------------------------------------
+# #369 — an OMITTED --exclude must be loud, not a silent no-op.
+# --------------------------------------------------------------------------------------
+
+def _run_declared(donor, tmp_path, declared, pass_flag, out="out"):
+    """Run with a configs/data-style exclusion file present, with or without the flag."""
+    d, vj, sj, _ = donor
+    cfg = tmp_path / "cfgdata"
+    cfg.mkdir(exist_ok=True)
+    (cfg / "some_corpus.exclude.txt").write_text(
+        "# declared by ear\n" + "\n".join(declared) + "\n", encoding="utf-8")
+    argv = [str(PY), str(TOOL), "--reuse-from", str(d), "--root", "/corpus/train-other-500",
+            "--out", str(tmp_path / out),
+            "--valence-json", str(vj), "--soft-json", str(sj)]
+    if pass_flag:
+        ex = tmp_path / "exclude.txt"
+        ex.write_text("\n".join(declared) + "\n", encoding="utf-8")
+        argv += ["--exclude", str(ex)]
+    env = dict(os.environ, SONORA_EXCLUDE_DIR=str(cfg))
+    p = subprocess.run(argv, capture_output=True, text=True, cwd=str(REPO), env=env)
+    return p, tmp_path / out
+
+
+def test_omitting_exclude_when_a_clip_is_declared_refuses(donor, tmp_path):
+    """The defect: every other refusal fires only when the flag is PASSED.
+
+    Omitting it was a silent no-op by construction, so the build recipe — which this repo
+    calls the template later rungs are written from — could reinstate an ear-dropped clip
+    with nothing disagreeing. The exclusion FILES are the record; the flag is only how they
+    reach a run.
+    """
+    p, dest = _run_declared(donor, tmp_path, [_wav("100", 5)], pass_flag=False)
+    assert p.returncode != 0, p.stdout
+    out = p.stdout + p.stderr
+    assert "declared excluded by ear" in out, out
+    assert not dest.exists(), "a refused run must write nothing"
+
+
+def test_passing_the_flag_satisfies_the_declaration(donor, tmp_path):
+    """The other direction — the refusal must be clearable by doing the right thing."""
+    p, dest = _run_declared(donor, tmp_path, [_wav("100", 5)], pass_flag=True)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert not any(r.startswith(_wav("100", 5) + "|") for r in _rows(dest))
+
+
+def test_a_declared_clip_already_absent_does_not_deadlock(donor, tmp_path):
+    """⚠ Found by RUNNING it, not reading it.
+
+    Re-deriving an already-excluded donor has no such clip in `kept`. If the guard demanded
+    the flag anyway, passing it would hit the "not in the kept set" refusal while omitting it
+    hit this one — no way through. So the guard considers only clips actually PRESENT.
+    """
+    p, dest = _run_declared(donor, tmp_path, ["/corpus/train-other-500/999/ch/gone.wav"],
+                            pass_flag=False)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert dest.exists()

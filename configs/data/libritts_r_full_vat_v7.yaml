@@ -8,7 +8,7 @@
 # `head -n <v6 lines>` of each output, with a negative control (the n-1 prefix DIFFERS, so
 # the comparison is not vacuous).
 #
-#   336,546 train / 10,349 val · 561.1 h · 5,385 speakers
+#   v7: 336,546 train / 10,349 val · 561.1 h · 5,385 speakers
 #   v6 was 41,937 / 1,331 · 80.6 h · 3,326 speakers — so +702% clips, +596% hours.
 #
 # ⚠ 5,385 SPEAKERS = 3,326 + 2,059, AND 2,059 IS NOT 2,064. The tree holds 904 + 1,160 =
@@ -20,16 +20,29 @@
 # same shape as the 247-vs-257 defect the plan already records — a count taken from the
 # FILESYSTEM where the arithmetic needed the count taken from the KEPT SET.
 #
-# WHAT WAS DROPPED, and by which filter:
-#   321,497 clips on disk in the two new roots
-#   -> 303,638 scored by the EIV pass (the 1 s / 22 s duration gate)
-#   -> 303,628 reachable (10 clips carry no `.normalized.txt`; `find_clips` skips them)
-#   -> 303,628 kept by derivation, less 17,858 dropped on duration/rate/LOUDNESS
-#      (6,438 from clean_360 + 11,420 from other_500)
-#   -> 303,627 after ONE clip excluded BY EAR (see the .exclude.txt beside this file)
-#   =  303,627 new rows, which is what this corpus adds on top of v6.
-# The loudness filter is why derivation's keeps are a strict SUBSET of what was scored,
-# which is what makes `0 kept clips uncovered` the expected reading rather than a lucky one.
+# WHAT WAS DROPPED, and by which filter. ⚠ THIS IS ONE CHAIN, AND AN EARLIER VERSION WROTE
+# IT AS TWO POPULATIONS SPLICED TOGETHER (#367): it subtracted derivation's 17,858 from the
+# EIV pass's keeps, which are a different set, so the block whose whole job is reconciliation
+# produced 285,770 and then carried on from the number it had just contradicted.
+#
+#   321,497  clips on disk in the two new roots
+#      − 11  carry no `.normalized.txt`, so `find_clips` never yields them
+#   321,486  reachable by derivation
+#   − 17,858 dropped on duration (6,438 clean_360 + 11,420 other_500)
+#   303,628  kept by derivation
+#       − 1  excluded BY EAR (see the .exclude.txt beside this file)
+#   303,627  new rows, which is what this corpus adds on top of v6.
+#
+# The EIV pass filtered the SAME roots independently, on duration alone, and kept 303,638.
+# The two sets reconcile exactly: 303,638 − 10 in-range clips that carry no transcript
+# = 303,628. **That is what makes `0 kept clips uncovered` expected rather than lucky** —
+# derivation's keeps are a subset of what was scored because of the TRANSCRIPT check.
+#
+# ⚠⚠ AND THE FILTER THIS BLOCK USED TO CREDIT DROPPED NOTHING. Measured: loudness and sample
+# rate removed **zero** clips; all 17,858 went on duration, and 0 of 321,497 had the wrong
+# sample rate. Naming loudness as the reason was a guess that read like a measurement — the
+# third count-from-the-wrong-population defect this document has now recorded about itself,
+# after 247-vs-257 and 2,064-vs-2,059.
 #
 # ✅ Zero rows dropped for vocab violations, zero unresolved words, and **0 digit-carrying
 # transcripts measured over all 303,638** — D-M3 called that hazard latent for LibriTTS on a
