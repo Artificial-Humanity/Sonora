@@ -8,10 +8,27 @@ mattered more than usual here: **the byte-identity guard was wrong twice in thre
 and firing it. A guard whose sole verifier is the review loop stops being checked the moment
 the branch merges.
 
-So the point of this file is not coverage. It is that every refusal in that tool is exercised
-**in both directions** — the bad input is refused AND the good input is accepted — because a
-guard that only ever sees failing input is indistinguishable from one that refuses everything,
-and a guard that only ever sees passing input is indistinguishable from `return True`.
+The standard this file holds itself to is that a refusal it covers is exercised **in both
+directions** — the bad input is refused AND the good input is accepted — because a guard that
+only ever sees failing input is indistinguishable from one that refuses everything, and a
+guard that only ever sees passing input is indistinguishable from `return True`.
+
+⚠⚠ **THIS PARAGRAPH USED TO SAY "EVERY REFUSAL IN THAT TOOL", AND THAT WAS FALSE — MEASURED
+8 OF 25 (#335).** It was written to retire #312, and it overclaimed in the direction that
+stops anyone checking: a maintainer meets it first, concludes the refusal surface is covered,
+and hand-checks nothing. What went unwatched was the tool's own strongest claim about itself —
+the speaker-collision check, which its comment calls *THE CHECK THAT MAKES THE APPEND LEGAL*.
+A mutation battery with a working control measured `clash = sorted(set(local) & known)` ->
+`clash = []` as **14 passed**. That is now covered, and mutating it fails 2 tests.
+
+⚠ **So the count is in a LEDGER at the bottom of this file rather than in this sentence.**
+Prose asserting its own coverage is what failed; `test_every_refusal_in_the_tool_is_classified`
+enumerates the tool's `die()` sites by AST and refuses to pass while any of them is unlisted.
+It does not claim to VERIFY coverage — a matcher cannot, and two attempts at one proved it in
+both directions (`speakers.json` matched as a refusal phrase when it is a filename; the
+namespace assertion was missed because the asserted text spans a `%s`). What it guarantees is
+that the number cannot drift silently again: add a refusal to the tool and this file goes red
+until someone writes down which kind it is.
 
 The fixture is built under `tmp_path` with directory names that the licence manifest already
 declares (`libritts_r_emilia_expressive_vat_v6`, `_derived_train_clean_360`,
@@ -351,3 +368,210 @@ def test_populated_out_without_force_is_refused(world):
     r = merge(world)
     assert r.returncode != 0
     assert "already holds" in r.stdout + r.stderr
+
+
+# ------------------------------------------------------- #335 — the speaker-collision guard
+#
+# ⚠⚠ THE TOOL'S STRONGEST CLAIM ABOUT ITSELF WAS WATCHED BY NOTHING. Its own comment calls
+# the clash check "THE CHECK THAT MAKES THE APPEND LEGAL", and a mutation battery with a
+# working control measured `clash = sorted(set(local) & known)` -> `clash = []` as **14
+# passed** against the shipped suite. Three other refusals mutated green the same way.
+#
+# ⚠ AND THE FAILURE IS SILENT IN EVERY OTHER INSTRUMENT, which is why it earned a test rather
+# than a note. Re-adding a speaker leaves v6's rows untouched, so byte-identity passes; it
+# appends a fresh dense index, so contiguity passes; it increments the counter in step, so
+# `n_spks` passes. Nothing goes red. It surfaces only as one person holding two rows of
+# `spk_emb.weight`, each trained on half their audio — a voice that is quietly worse.
+
+def test_a_speaker_already_in_the_base_is_refused(world):
+    """The base/add collision. `101` is in the fixture base; a donor carrying it is refused.
+
+    ⚠ THE DONOR NAMES HERE ARE THE REAL v7 ONES (`_derived_train_clean_360`,
+    `_derived_train_other_500`), and that is not decoration. The first draft invented
+    `_derived_other_500`, and the licence pre-flight refused it before the clash check was
+    ever reached — so the test went RED while asserting a non-zero exit that it did get, for
+    entirely the wrong reason. It was caught only because these assertions check the refusal
+    MESSAGE. An exit-code-only test would have passed here and watched nothing.
+    """
+    collide, _, _ = _corpus(world["tmp"], "_derived_train_other_500", ["101", "902"], 60,
+                            world["tmp"] / "LibriTTS-R" / "wavs", "clash")
+    r = run("--base", world["base"], "--add", collide, "--out", world["out"])
+    assert r.returncode != 0, "a speaker already in the base was APPENDED — one person now "\
+                              "holds two embedding rows:\n" + r.stdout + r.stderr
+    out = r.stdout + r.stderr
+    assert "ALREADY in the base" in out, out
+    assert "101" in out, "the refusal must name the colliding id, or it cannot be acted on"
+    # ⚠ "Nothing written" is part of the refusal's own promise, so it is asserted, not assumed.
+    assert not world["out"].exists(), "a refused merge left an output directory behind"
+
+
+def test_a_speaker_shared_between_two_ADDS_is_refused(world):
+    """⚠ THE SECOND COLLISION, AND IT IS NOT THE SAME TEST. The base/add case is caught by
+    the initial `known`; this one is caught only because `known.add(sid)` accumulates ACROSS
+    `--add` directories inside the loop. A rewrite that built `known` once from the base — an
+    entirely natural-looking simplification — would keep the test above green and lose this.
+    """
+    wav = world["tmp"] / "LibriTTS-R" / "wavs"
+    # `world["add"]` is `_derived_train_clean_360` holding 900/901; this donor re-uses 901.
+    # Neither collides with the BASE, so only the accumulating `known` can catch it.
+    b, _, _ = _corpus(world["tmp"], "_derived_train_other_500", ["901", "902"], 60, wav, "b")
+    r = run("--base", world["base"], "--add", world["add"], "--add", b, "--out", world["out"])
+    assert r.returncode != 0, "two donors shared speaker 901 and the merge was ACCEPTED:\n" \
+                              + r.stdout + r.stderr
+    out = r.stdout + r.stderr
+    assert "ALREADY in the base" in out, out
+    assert "901" in out, out
+
+
+def test_the_other_direction_every_speaker_gets_exactly_one_dense_index(world):
+    """⚠ THE POSITIVE HALF, without which the two refusals above are indistinguishable from a
+    guard that refuses everything — this file's own stated standard.
+
+    It asserts the PROPERTY the guard exists to protect rather than just an exit code: the
+    merged map holds every speaker from both inputs, once each, over a contiguous index space
+    starting at 0. A duplicated append would show up here as a count mismatch even if some
+    future refusal string changed.
+    """
+    wav = world["tmp"] / "LibriTTS-R" / "wavs"
+    extra, _, _ = _corpus(world["tmp"], "_derived_train_other_500", ["902", "903"], 60, wav, "x")
+    r = run("--base", world["base"], "--add", world["add"], "--add", extra,
+            "--out", world["out"])
+    assert r.returncode == 0, r.stdout + r.stderr
+
+    spk = json.loads((world["out"] / "speakers.json").read_text())
+    m = spk["libritts_id_to_index"]
+    expected = ["100", "101", "102", "900", "901", "902", "903"]
+    assert sorted(m) == expected, f"speaker set changed across the merge: {sorted(m)}"
+    assert len(set(m.values())) == len(m), f"a speaker id shares an index with another: {m}"
+    assert sorted(m.values()) == list(range(len(expected))), \
+        f"index space is not dense from 0: {sorted(m.values())}"
+    assert spk["n_spks"] == len(expected), f"n_spks={spk['n_spks']} vs {len(expected)} speakers"
+
+
+def test_the_licence_preflight_refuses_an_undeclared_donor(world):
+    """⚠ COVERED BECAUSE IT CAUGHT ME, not because it was next on a list. The first draft of
+    the collision tests above invented a donor directory name (`_derived_other_500`), and this
+    refusal fired first — so the test went red while asserting a non-zero exit it *did* get,
+    for entirely the wrong reason. It survived only because those assertions check the refusal
+    message. Recorded here so the pre-flight ordering is pinned rather than rediscovered.
+    """
+    d, _, _ = _corpus(world["tmp"], "undeclared_donor_dir", ["900", "901"], 60,
+                      world["tmp"] / "LibriTTS-R" / "wavs", "u")
+    r = run("--base", world["base"], "--add", d, "--out", world["out"])
+    assert r.returncode != 0
+    out = r.stdout + r.stderr
+    assert "matches no declared dataset" in out, out
+    assert not world["out"].exists(), "a licence refusal is a PRE-flight; it must write nothing"
+
+
+# ------------------------------------------------------------------- #335 — the refusal ledger
+#
+# ⚠⚠ WHAT THIS IS FOR: the module docstring above claimed every refusal was exercised, and it
+# was 8 of 25. A false coverage claim is worse than no claim, because it is the first thing a
+# maintainer reads and it tells them to stop looking. The fix is not a better sentence — it is
+# that the sentence can no longer drift away from the tool without something going red.
+#
+# ⚠ WHAT THIS IS *NOT*: a coverage verifier. Two attempts at matching refusal text against
+# assertions failed in BOTH directions, which is why this is a hand-classified list:
+#   * FALSE POSITIVE — `%s has no speakers.json` "matched" because the tests mention
+#     `speakers.json` as a FILENAME, which is not an assertion about that refusal at all;
+#   * FALSE NEGATIVE — `test_base_without_the_libritts_namespace_refuses_cleanly` asserts
+#     "has no libritts_id_to_index map", which spans a `%s` in the template, so no matcher
+#     comparing against source text can see it.
+# A guard that reports coverage it cannot see would be #312's defect wearing #335's costume.
+# This one asserts CLASSIFICATION, which it can check exactly.
+
+# Refusals with a test that fires them. The value names it, so a claim here is falsifiable by
+# reading one function rather than trusting this comment.
+COVERED_REFUSALS = {
+    "rows land on the other side under the shared hash split":
+        "test_a_row_on_the_wrong_side_of_the_split_is_refused (+ the _base_ variant)",
+    "--out is the same directory as --base":
+        "test_out_equal_to_base_is_refused, test_out_via_symlink_to_base_is_refused",
+    "--out is the same directory as --add":
+        "test_out_equal_to_an_add_is_refused_even_under_force",
+    "already holds": "test_populated_out_without_force_is_refused",
+    "matches no declared dataset": "test_the_licence_preflight_refuses_an_undeclared_donor",
+    "base %s has no %s map": "test_base_without_the_libritts_namespace_refuses_cleanly",
+    "are ALREADY in the base":
+        "test_a_speaker_already_in_the_base_is_refused, test_a_speaker_shared_between_two_ADDS_is_refused",
+    "BYTE-IDENTITY FAILED": "test_dropped_interior_row_is_caught_by_byte_identity",
+}
+
+# Refusals with NO test, written down so the gap is a fact on the record rather than an
+# absence nobody can see. ⚠ Being listed here is not permission — it is a queue.
+UNCOVERED_REFUSALS = {
+    "is it a corpus directory": "base/add missing train_op/val_op",
+    "has no speakers.json": "base/add missing the map file",
+    "two speakers on index": "donor's own map is already broken",
+    "nothing to add": "no --add passed",
+    "is NON-COMMERCIAL": "the NC licence branch — the other half of the wall",
+    "base n_spks=%s but its maps hold": "base counter disagrees with its map",
+    "base index space is not contiguous": "base has a hole",
+    "%s has no %s map — this script appends LibriTTS-lane": "the --add namespace check; #335 "
+        "notes the base assertion would match this string too, but only the base path runs",
+    "carries more than one namespace": "multi-namespace donor",
+    "row has %d fields": "row parse — field count",
+    "speaker field %r is not an index": "row parse — non-integer speaker",
+    "which its own speakers.json does not define": "row parse — undefined index",
+    "PREFIX PROOF FAILED": "#336 — filed as unreachable, so a test needs the reachability "
+        "question answered first",
+    "merged map holds %d indices but the counter says": "post-merge counter disagreement",
+    "merged index space is not contiguous": "post-merge hole",
+    "merged corpus has an EMPTY val split": "post-merge empty side",
+    "rows disagree about the VAT vector width": "post-merge VAT width",
+    "would NOT be a legal warm-start donor": "the byte-identity refusal's second message",
+}
+
+
+def _die_messages():
+    """Every `die(...)` message in the tool, by AST — not by regex over the text.
+
+    ⚠ #335 counted 25 by regex and had to subtract three: the `def die`, one occurrence inside
+    a COMMENT, and a multi-line duplicate. An AST walk counts call sites and cannot make any
+    of those three mistakes. It also joins EVERY literal chunk of the message, because the
+    first version read only the first chunk and lost any phrase after a `%s`.
+    """
+    import ast
+    tree = ast.parse(TOOL.read_text(encoding="utf-8"))
+    out = []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "die" and n.args:
+            lits = [c.value for c in ast.walk(n.args[0])
+                    if isinstance(c, ast.Constant) and isinstance(c.value, str)]
+            out.append((n.lineno, " ".join(" ".join(lits).split())))
+    return out
+
+
+def test_every_refusal_in_the_tool_is_classified():
+    """The ledger's invariant: no `die()` may be neither covered nor recorded as uncovered."""
+    messages = _die_messages()
+
+    # ⚠ FLOOR FIRST. If the AST walk stopped finding call sites, every assertion below would
+    # pass over an empty list — the vacuous pass, in the file whose subject is a false claim
+    # of coverage.
+    assert len(messages) >= 20, (
+        f"only {len(messages)} die() call sites found in {TOOL.name}; the walk is broken, "
+        f"not the tool")
+
+    known = {**COVERED_REFUSALS, **UNCOVERED_REFUSALS}
+    unclassified = [(ln, m) for ln, m in messages
+                    if not any(k in m for k in known)]
+    assert not unclassified, (
+        "refusal(s) in the tool that this file has never classified:\n"
+        + "\n".join(f"  L{ln}: {m[:88]}" for ln, m in unclassified)
+        + "\n\n⚠ A new refusal is not a problem; an UNRECORDED one is. Add it to "
+          "COVERED_REFUSALS with the test that fires it, or to UNCOVERED_REFUSALS with what "
+          "it guards. #335 was exactly this drift: the docstring said every refusal was "
+          "exercised while 17 of 25 were not, and the claim is what stopped anyone checking.")
+
+    # ⚠ AND THE OTHER DIRECTION, which is the one that rots quietly. A key left behind after
+    # its refusal is deleted or reworded makes this ledger describe a tool that no longer
+    # exists — and it would keep passing forever, since the check above only looks for
+    # unclassified messages.
+    joined = "\n".join(m for _, m in messages)
+    stale = [k for k in known if k not in joined]
+    assert not stale, (
+        "ledger key(s) matching no refusal in the tool any more:\n"
+        + "\n".join(f"  {k!r}  ({known[k]})" for k in stale)
+        + "\n\nThe refusal was reworded or removed. Update the key, or drop the entry.")
