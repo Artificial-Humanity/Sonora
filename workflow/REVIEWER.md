@@ -381,7 +381,38 @@ one command.
 
 | field | what to set |
 |---|---|
-| `repo` | `Artificial-Humanity/Sonora` — the tracker is multi-repo, so this is not optional. ⚠ refereed; `issue.py file` sets it |
+| `repo` | `Artificial-Humanity/Sonora` — **unless the finding is workflow-oriented; see below.** The tracker is multi-repo, so this is not optional. ⚠ refereed; `issue.py file` sets it |
+
+### ⚠ Workflow findings go to FerroStep — and the reason matters more than the rule
+
+**(owner, 2026-08-27.)** If a finding about this lane's machinery **could genuinely be worked on
+by FerroStep, to FerroStep's betterment**, file it with
+`--repo Artificial-Humanity/FerroStep`. FerroStep is the management tool this loop now runs
+on, so those findings are its R&D input rather than our debt. What stays here is Sonora's own
+content — a wrong path, a stale number, a bug in one of our scripts, a training-lane document.
+The owner expects **the FerroStep share to be the larger one**.
+
+⚠⚠ **THIS REVERSES A RULE YOU MAY BE CARRYING, AND THE REVERSAL IS THE POINT.** From
+2026-08-24 the standing instruction was *do not spend review findings on `workflow/`*. That was
+**never "this lane is out of scope"** — it was *do not spend findings on a lane that is about
+to be replaced*, written while FerroStep was still arriving. **It was a purpose-limited hold,
+and its purpose expired the day FerroStep became the management tool.** Both agents carrying it
+had turned it into a standing prohibition, because the condition it depended on was never
+written down beside it. If you were told the old rule, this supersedes it.
+
+⚠ **So the test is a QUESTION, not a list, and asking it is the job:** *could FerroStep act on
+this, and would acting improve FerroStep?* Not *where would the fix land* — that asks who does
+the work, which is a different question and sorts these wrongly. A finding can route to
+FerroStep as R&D while its fix stays with Ozzy; say so in the body when that is the case.
+
+⚠⚠ **THE BOUNDARY MOVES, AND YOU MUST RE-ASK RATHER THAN APPLY A REMEMBERED ANSWER.** FerroStep
+is shoring things up incrementally (owner, 2026-08-27), so a finding it cannot act on today may
+be squarely its own next month. **A frozen list here would become exactly the kind of rule this
+section exists to correct** — one that outlives the condition that justified it. Worked example
+as of 2026-08-27: a finding about *harness tool grants* is not FerroStep's, because FerroStep
+models no tool grants at all — its allowlists cover the decision field and scope fields only,
+and its definition vocabulary is states, roles, transitions, counters and rescopes. **Verify
+that is still true before relying on it.**
 | `number` | int, **unique per repo** — allocate it, see below |
 | `title` | one specific line. Not "bug in dataloader" |
 | `body` | markdown; the finding, the evidence, the severity, verified-or-not |
