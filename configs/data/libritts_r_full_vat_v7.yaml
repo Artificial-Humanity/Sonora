@@ -8,7 +8,7 @@
 # `head -n <v6 lines>` of each output, with a negative control (the n-1 prefix DIFFERS, so
 # the comparison is not vacuous).
 #
-#   336,547 train / 10,349 val · 561.1 h · 5,385 speakers
+#   336,546 train / 10,349 val · 561.1 h · 5,385 speakers
 #   v6 was 41,937 / 1,331 · 80.6 h · 3,326 speakers — so +702% clips, +596% hours.
 #
 # ⚠ 5,385 SPEAKERS = 3,326 + 2,059, AND 2,059 IS NOT 2,064. The tree holds 904 + 1,160 =
@@ -26,7 +26,8 @@
 #   -> 303,628 reachable (10 clips carry no `.normalized.txt`; `find_clips` skips them)
 #   -> 303,628 kept by derivation, less 17,858 dropped on duration/rate/LOUDNESS
 #      (6,438 from clean_360 + 11,420 from other_500)
-#   =  303,628 new rows, which is what this corpus adds on top of v6.
+#   -> 303,627 after ONE clip excluded BY EAR (see the .exclude.txt beside this file)
+#   =  303,627 new rows, which is what this corpus adds on top of v6.
 # The loudness filter is why derivation's keeps are a strict SUBSET of what was scored,
 # which is what makes `0 kept clips uncovered` the expected reading rather than a lucky one.
 #
@@ -35,11 +36,17 @@
 # 5,000-row sample of train-clean-100; it is now latent for all of LibriTTS-R.
 #
 # ⚠ THE DEGENERATE-SPEAKER RESIDUE IS REAL, BOUNDED, AND NOT REPAIRED. Per-speaker z needs a
-# population and 26 of the new speakers do not have one: 21 have exactly ONE kept clip, whose
-# combo is exactly 0.0 by arithmetic, and 5 more have two, whose z is exactly ±1 whatever the
-# underlying scores are. Neither is a label; both are indistinguishable from one. Bounded by
-# control — exactly 21 clips in 303,638 carry a combo of 0.0, so the degenerate population is
-# precisely the one-clip speakers and nothing else (0.007%). `derive_vat_corpus` REPORTS this
+# population and 26 of the new speakers do not have one: **22 have exactly ONE kept clip**, and
+# for those EVERY channel is exactly 0.0 — not just V, because A (from LUFS) and T are
+# per-speaker z too, so the whole conditioning vector is null. **4 more have two**, and those
+# pairs are exact MIRRORS: one clip at (−0.5,−0.5,−0.5) and the other at (+0.5,+0.5,+0.5),
+# because with n=2 the z-score is ±1 whatever the audio does. Neither is a label; both are
+# indistinguishable from one. Bounded by control — exactly 22 clips of 303,627 carry an
+# all-zero vector, and that count EQUALS the n=1 speaker count, so the degenerate population
+# is precisely those speakers and nothing else (0.007%).
+#
+# The owner auditioned all 31 (as it then was) on 2026-08-27 and kept them, with one
+# exception recorded in the exclusion file. **26 speakers, 30 clips** after that drop. `derive_vat_corpus` REPORTS this
 # per run and deliberately does not repair it, because dropping or neutralising those clips
 # changes labels and changing labels is a corpus version bump and an owner call. Left in,
 # knowingly. This is the same failure that forced the Emilia half onto a global anchor, where
@@ -62,9 +69,9 @@
 # their original indices in the written map`) and must still be checked at warm-start, not
 # inherited from this comment. Warm start from `vat6_finetune` **`ep008`**.
 #
-# **vat_dim is UNCHANGED at 8** — LibriTTS predates the delivery axis, so all 303,628 new
+# **vat_dim is UNCHANGED at 8** — LibriTTS predates the delivery axis, so all 303,627 new
 # rows enter with `unknown` delivery, i.e. all-zero channels, which is byte-identical
-# conditioning to v1 and is CORRECT for this corpus rather than a gap. 0 of 303,628 carry a
+# conditioning to v1 and is CORRECT for this corpus rather than a gap. 0 of 303,627 carry a
 # lane, deliberately.
 #
 # Independence gate passed on BOTH donors, and the readings are NOT pooled here — each
@@ -72,6 +79,22 @@
 #   clean_360   corr(T,A) -0.076  corr(T,V) -0.070  corr(V,A) +0.030
 #   other_500   corr(T,A) -0.054  corr(T,V) -0.065  corr(V,A) +0.037
 #
+# ⚠ ONE CLIP EXCLUDED BY EAR, AND NO GATE HERE COULD HAVE FOUND IT (owner, 2026-08-27).
+# `6003_58761_000005_000009.wav` is truncated — the audio stops after "as it wou…" while the
+# transcript carries the whole sentence. That is a TEXT/AUDIO gap, the harmful direction:
+# the model would learn phonemes for words the recording never speaks. `speech_ok` is a 4 s
+# floor and the clip is 12.28 s; `head_ok` is measured and not gated; nothing compares
+# transcript length to duration. See `libritts_r_full_vat_v7.exclude.txt`.
+#
+# ⚠⚠ AND THE OBVIOUS DETECTOR DOES NOT WORK — FALSIFIED, NOT UNTRIED. Characters-per-second
+# over all 303,628 clips is mean 16.96, sd 2.93; this clip sits at **20.28 c/s, z = +1.13,
+# the 88th percentile, with 37,458 clips above it**. Any threshold catching it flags a tenth
+# of the corpus. The truncation removed only ~20% of the utterance and normal speaking-rate
+# variation swamps that. **Do not add a rate heuristic here believing it is a gate.** The
+# instrument that would find this class is forced-alignment COVERAGE — does the audio reach
+# the end of the transcript — which `scripts/stages/librivox_align.sh` already does for
+# another lane.
+
 # Built by `scripts/tools/merge_libritts_full_corpus.py`. Lineage and every source:
 # notes/training-sources.md (SSOT).
 _target_: matcha.data.text_mel_datamodule.TextMelDataModule
@@ -95,7 +118,7 @@ f_min: 0
 f_max: 12000
 # MEASURED, NOT INHERITED — and this rung is the strongest evidence yet for that rule.
 #
-#   v6 -> v7   mel_mean +0.155422   mel_std -0.278949     <- measured 2026-08-27
+#   v6 -> v7   mel_mean +0.155423   mel_std -0.278951     <- measured 2026-08-27
 #   v4 -> v5   mel_mean +0.158700   mel_std +0.320800     <- the move that earned this rule
 #   v2 -> v3c  mel_mean +0.020300   mel_std +0.002400     <- the move that first raised it
 #   v5 -> v6   mel_mean -0.015356   mel_std -0.000079     <- small, and CHECKED, not assumed
@@ -112,10 +135,15 @@ f_max: 12000
 # against v6's mix of that plus Emilia and the loudness-normalised expressive bank, so the
 # corpus got larger and more homogeneous at the same time. A narrower mel distribution is
 # the expected consequence of that, not an anomaly — but it IS a prediction, and the
-# holdout is what checks it.
-data_statistics:  # matcha/utils/generate_data_statistics.py, in-container, 2026-08-27, 336,547-clip train split (1,315 batches @ 256)
-  mel_mean: -5.543696
-  mel_std: 2.430295
+# holdout is what checks it.#
+# ⚠ RE-MEASURED after the ear-driven exclusion, not adjusted. Removing one clip of 336,547
+# moved the mean and the std in the SIXTH decimal (-5.543696 -> -5.543695, 2.430295 ->
+# 2.430293). That is the size of move a single clip should make, which is the point of
+# re-running it rather than reasoning that one clip cannot matter: the cost was five
+# minutes and the alternative was a statistic that describes a corpus we do not have.
+data_statistics:  # matcha/utils/generate_data_statistics.py, in-container, 2026-08-27, 336,546-clip train split (1,315 batches @ 256)
+  mel_mean: -5.543695
+  mel_std: 2.430293
 seed: ${seed}
 load_durations: false
 load_vat: true

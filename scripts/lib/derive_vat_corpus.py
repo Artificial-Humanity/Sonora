@@ -397,6 +397,13 @@ def main():
     ap.add_argument("--soft-json", default=None,
                     help="JSON {wav_path: raw EIV Soft_vs._Harsh}; enables "
                          "the tension-v2 blend (-z(soft) fourth component).")
+    ap.add_argument("--exclude", default=None,
+                    help="file of wav paths to leave out, one per line (# comments and "
+                         "blank lines ignored). For clips the EAR rejects after a corpus "
+                         "is built — truncation, a text/audio gap — which no gate here "
+                         "measures. ⚠ REFUSES if any listed path is not in the kept set: "
+                         "a typo that silently excludes nothing would leave the defect in "
+                         "the corpus while every log line says it was dropped.")
     ap.add_argument("--reuse-from", default=None,
                     help="existing derivation dir: reuse its kept clips, "
                          "phonemes (filelists) and measures.jsonl — relabel "
@@ -480,6 +487,45 @@ def main():
         kept = [(p, t, s) for p, t, s in clips if measured.get(p)]
         print(f"kept {len(kept)} after duration/rate/loudness filters "
               f"({len(clips) - len(kept)} dropped)")
+
+    # ⚠ APPLIED TO BOTH BRANCHES ABOVE, AND AFTER `kept` IS FINAL. An exclusion that ran
+    # only on the fresh path would silently do nothing under --reuse-from, which is the
+    # path an ear-driven drop actually uses: re-measuring 200k clips to remove one is not
+    # a thing anyone will do, so the cheap path is the one that must honour it.
+    #
+    # ⚠⚠ AND IT REFUSES ON A PATH IT DID NOT FIND. An exclusion list is an enumeration, and
+    # an enumeration that matches nothing is indistinguishable from one that worked — the
+    # run would report a drop, write a corpus that still contains the clip, and every log
+    # line would agree with the intent rather than the result. A stale path here means the
+    # corpus moved under the list, which is exactly when you want to be stopped.
+    if args.exclude:
+        with open(args.exclude, encoding="utf-8") as fh:
+            wanted = [ln.split("#", 1)[0].strip() for ln in fh]
+        wanted = {w for w in wanted if w}
+        if not wanted:
+            raise SystemExit(f"--exclude {args.exclude} lists no paths; refusing a no-op drop")
+        present = {p for p, _, _ in kept}
+        missing = sorted(wanted - present)
+        if missing:
+            raise SystemExit(
+                "--exclude names %d path(s) not in the kept set, so excluding them would do "
+                "nothing:\n  %s\n  The corpus moved under the list, or the path is wrong. "
+                "Fix the list rather than the check." % (len(missing), "\n  ".join(missing[:5])))
+        before = len(kept)
+        kept = [(p, t, s_) for p, t, s_ in kept if p not in wanted]
+        gone = before - len(kept)
+        print(f"excluded {gone} clip(s) by --exclude ({before} -> {len(kept)})")
+        if gone != len(wanted):
+            raise SystemExit(f"--exclude listed {len(wanted)} path(s) but removed {gone}")
+        # A speaker emptied by the exclusion would RENUMBER every speaker after it, which
+        # silently invalidates a warm start from a checkpoint trained on the old map.
+        emptied = {sp for sp in {w.split("/")[-3] for w in wanted}
+                   if not any(s_ == sp for _, _, s_ in kept)}
+        if emptied:
+            raise SystemExit(
+                "--exclude would leave speaker(s) %s with no clips, which renumbers every "
+                "speaker after them and breaks the prefix property a warm start relies on. "
+                "Drop the speaker deliberately, as its own decision." % sorted(emptied))
 
     # Per-speaker z-scores (v1): A from LUFS; T from the phonation composite
     # (z(alpha) + z(cpp) - z(h1h2), re-z-scored); V from --valence-json when

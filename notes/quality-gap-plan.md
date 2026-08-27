@@ -716,10 +716,10 @@ the coverage check above is safe.
 |---|---|---|---|
 | v6 (base, unchanged) | 41,937 tr / 1,331 val | 3,326 | 80.6 |
 | `_derived_train_clean_360` | 110,013 | 899 | 182.9 |
-| `_derived_train_other_500` | 193,615 | 1,160 | 297.6 |
-| **`libritts_r_full_vat_v7`** | **336,547 tr / 10,349 val = 346,896** | **5,385** | **561.1** |
+| `_derived_train_other_500` | 193,614 | 1,160 | 297.6 |
+| **`libritts_r_full_vat_v7`** | **336,546 tr / 10,349 val = 346,895** | **5,385** | **561.1** |
 
-**Against this document's own predictions:** rows ~345,600 → **346,896**; hours ~564 →
+**Against this document's own predictions:** rows ~345,600 → **346,895**; hours ~564 →
 **561.1**; speakers ~5,414 → **5,385**. The first two are close enough to call the estimates
 good. The third is the 2,064-vs-2,059 correction above, and the derivations confirmed it
 without being told: clean_360 produced **899 = 904 − 5** and other_500 produced its full
@@ -768,6 +768,48 @@ about the WRAPPER read as a fact about the WORK* — and the fix is to confirm w
 default against 8 dataloader workers. `sonora_training` runs **16 GiB with `ipc=host`**, read
 off the live container with `docker inspect` rather than guessed, and the throwaway now
 matches it. **Any future throwaway-container lane that builds a dataloader needs both flags.**
+
+#### The ear found a defect no gate could — 2026-08-27
+
+The owner auditioned the 31 degenerate-label clips (staged at `listen…/probes/`, deliberately
+NOT registered in `ratings.csv`, which is the dataset ledger and a live writer) and rejected
+exactly one: **`6003_58761_000005_000009.wav` is truncated** — the audio stops after *"as it
+wou…"* while the transcript carries the sentence to its end.
+
+**That is a TEXT/AUDIO gap, not a short clip**, and it is the harmful direction: the model
+would learn to produce phonemes for words the recording never speaks. A wrong VAT label
+biases conditioning; this corrupts the text→audio mapping itself.
+
+⚠ **Nothing in this pipeline could have caught it.** `speech_ok` is a 4 s hard floor and the
+clip is 12.28 s. `head_ok` is measured and deliberately ungated. Nothing compares transcript
+length against duration. It surfaced only because the owner was listening for an unrelated
+reason, which is not a detection strategy.
+
+⚠⚠ **AND THE OBVIOUS DETECTOR IS FALSIFIED, MEASURED RATHER THAN UNTRIED.** Characters per
+second over all 303,628 new clips: mean **16.96**, sd **2.93**. The rejected clip sits at
+**20.28 c/s — z = +1.13, the 88th percentile, 37,458 clips above it.** A threshold that
+caught it would flag a tenth of the corpus. The truncation removed only ~20% of the
+utterance and ordinary speaking-rate variation (17% relative sd) swamps that. **Do not add a
+rate heuristic believing it is a gate** — it would be an instrument that cannot detect its
+own subject. The instrument that WOULD find this class is forced-alignment **coverage** (does
+the audio reach the end of the transcript), which `scripts/stages/librivox_align.sh` already
+performs for another lane. Filed, not scheduled.
+
+**How the drop was made**, since two conventions constrain it: filelists are generated and
+must not be hand-edited, and the drop-quarantine convention does **not** apply to licensed
+trees, so the LibriTTS-R audio was not moved. `derive_vat_corpus.py` gained `--exclude`, a
+path list that **refuses when any entry is not in the kept set** — an exclusion list is an
+enumeration, and one that matches nothing would report a drop while writing a corpus that
+still contains the clip. Verified by negative control: a bogus path refuses and writes
+nothing. `--reuse-from` then relabelled without re-measuring audio or re-running G2P.
+
+⚠ **The drop re-labelled a clip that was KEPT, and that is arithmetic rather than a second
+decision.** Speaker 6003 has exactly two recordings in the whole tree, so removing one leaves
+`_000008` an only clip: its label moved from `(−0.4999, +0.5000, −0.4988)` to `(0, 0, 0)`. It
+left the mirrored-pair population and joined the null-vector one. The degenerate residue is
+therefore now **26 speakers / 30 clips — 22 null-vector, 4 mirrored pairs** (was 21 / 5).
+Speaker count is unchanged at 1,160, so nothing renumbered and the warm-start prefix property
+survives — which `--exclude` also refuses to break, by design.
 
 **Remaining for rung 3:** warm start from `vat6_finetune`
 **`ep008`**, widening the speaker embedding from 3,326 to 5,385 rather than copying it
