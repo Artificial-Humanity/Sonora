@@ -144,8 +144,15 @@ def test_rideable_states_derive_from_the_lane_definition(tmp_path):
     A definition marking `review` halted must flip the verdict with no edit here — and no
     readable definition must block EVERYTHING, because a gate that cannot read its own rules
     may not guess them. The last assertion pins that the live definition yields exactly the
-    two states every other test in this file assumes, so a definition edit that changes the
-    rideable set goes red here rather than silently rewriting the floor's meaning."""
+    states every other test in this file assumes, so a definition edit that changes the
+    rideable set goes red here rather than silently rewriting the floor's meaning.
+
+    ⚠ IT WENT RED AS DESIGNED ON 2026-08-27, when `disputed` was added to the lane. Updated
+    deliberately, and the direction was checked before it was: `disputed` is NOT halted, so it
+    rides — but only at the severities `open` already rides at, because `rides()` still
+    requires `severity < floor`. A disputed MEDIUM blocks exactly as an open medium does.
+    That was the thing worth verifying, since a new state that quietly waved findings past
+    the gate would have made "dispute it" the cheapest way to land a branch."""
     d = tmp_path / "lane.json"
     d.write_text('{"states": ["open", "review"], "halted": ["review"], "terminal": []}',
                  encoding="utf-8")
@@ -155,7 +162,11 @@ def test_rideable_states_derive_from_the_lane_definition(tmp_path):
     bad = tmp_path / "bad.json"
     bad.write_text("{not json", encoding="utf-8")
     assert merge_floor.rideable_states(str(bad)) == frozenset()
-    assert merge_floor.rideable_states() == frozenset({"open", "review"})
+    assert merge_floor.rideable_states() == frozenset({"open", "review", "disputed"})
+    # ⚠ AND THE VERDICT, NOT JUST THE MEMBERSHIP. The set above is what the floor READS; this
+    # is what it DOES with it, and only the second one can catch a new state opening the gate.
+    assert merge_floor.rides("disputed", "low") is True
+    assert merge_floor.rides("disputed", "medium") is False
 
 
 def test_the_ladder_is_ordered_and_the_order_is_the_comparison():

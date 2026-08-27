@@ -149,8 +149,8 @@ the reporting turns between passes, never that one.
 ```bash
 workflow/scripts/issue.py list --branch "$(git rev-parse --abbrev-ref HEAD)"
 workflow/scripts/issue.py take 114                    # agent_passes += 1, BEFORE any work
-workflow/scripts/issue.py review 114 --comment "…"    # addressed, awaiting Janis
-workflow/scripts/issue.py escalate 114 --comment "…"  # the owner must decide (comment REQUIRED)
+workflow/scripts/issue.py review 114 --comment '…'    # addressed, awaiting Janis
+workflow/scripts/issue.py escalate 114 --comment '…'  # the owner must decide (comment REQUIRED)
 ```
 
 Not a convenience — and since phase 2 (owner directive, 2026-08-24) not the enforcer
@@ -214,8 +214,11 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
 
 ⚠ **Before you read the issue, before you touch any code:** `workflow/scripts/issue.py take N`, which
 increments `agent_passes` on every issue you are taking on — meaning every issue whose `state`
-is `open`. `state` has four exclusive values (`open`, `review`, `escalated`, `closed`), so
-"open" already means "not addressed, not parked, not resolved"; there is no flag beside it.
+is `open`. The values are exclusive and [sonora-lane.json](sonora-lane.json) is the one place
+they are listed, so "open" already means "not addressed, not parked, not resolved, not
+disputed"; there is no flag beside it. ⚠ **This sentence used to enumerate them and say "four"**
+— it was a second copy of the lane's `states`, and it was wrong within a day of `disputed`
+landing, in the paragraph that tells you what `open` means.
 
 ⚠⚠ **WHEN THE FIX IS COMMITTED, SET `review` — DO NOT LEAVE IT OPEN.**
 `workflow/scripts/issue.py review N`. That is the signal Janis reads on the next pass; an issue you
@@ -242,9 +245,24 @@ often saves a round.
 Then, on each issue:
 
 * **Fix what is genuinely wrong**, and say so in the issue's comments, naming the commit.
-* **Where a finding is wrong, argue it in the comments and leave the code alone.** Do not make
-  a change you believe is wrong to close a finding — *a review is a report, not an order*
-  (AGENTS.md §5).
+* ⚠⚠ **WHERE A FINDING IS WRONG, DISPUTE IT — THERE IS A STATE FOR THAT NOW** (owner,
+  2026-08-27). Do not make a change you believe is wrong to close a finding: *a review is a
+  report, not an order* (AGENTS.md §5). Say why on the record, and move the issue:
+
+  ```bash
+  workflow/scripts/issue.py dispute 335 --kind finding --author Ozzy \
+    --comment 'Re-derived the case: the guard is reached at line 214, not skipped. …'
+  ```
+
+  `--kind` is `finding` (it is not a defect), `severity` (it is, but not at that grade) or
+  `scope` (real, but not this branch's). **It spends `disputes`, never `agent_passes`** — a
+  rebuttal must not cost a fix pass, or the cheap move is always to comply. Janis then closes
+  it or sends it back to `open`, and if it comes back, proceeding costs a pass as it always did.
+
+  ⚠ **Arguing in the comments and moving to `review` is what this replaces, and it did not
+  work.** `review` is the same state whether you fixed a finding or rebutted it, so every
+  rebuttal on this lane — across 256 records — was recorded as a capitulation. Your
+  disagreement was not rare; it was **unwritable**. Do not keep using the old shape.
 * ⚠ **CLOSE NOTHING.** Not what you fixed, not what you rebutted. Resolving is Janis's job.
   **A worker closing its own findings is marking its own homework**, and it defeats the one
   thing the split buys. A rebuttal is not a close either: Janis accepts the argument and

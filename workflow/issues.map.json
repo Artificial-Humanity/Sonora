@@ -3,6 +3,12 @@
   "events": "ferrostep_events",
   "state_field": "state",
   "version_field": "ferrostep_version",
-  "counter_fields": ["agent_passes"],
-  "scope_fields": ["repo", "branch_name"]
+  "counter_fields": [
+    "agent_passes",
+    "disputes"
+  ],
+  "scope_fields": [
+    "repo",
+    "branch_name"
+  ]
 }

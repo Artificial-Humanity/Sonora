@@ -2,7 +2,7 @@
   "name": "sonora-review",
   "purpose": "notes/north-star.md@main",
   "roles": ["developer", "reviewer", { "name": "owner", "human": true }],
-  "states": ["open", "review", "escalated", "closed"],
+  "states": ["open", "review", "disputed", "escalated", "closed"],
   "initial": "open",
   "terminal": ["closed"],
   "halted": ["escalated"],
@@ -12,15 +12,25 @@
       "max": 3,
       "on_exhausted": "escalated",
       "exhausted_requires_note": true
+    },
+    {
+      "name": "disputes",
+      "max": 1,
+      "on_exhausted": "escalated",
+      "exhausted_requires_note": true
     }
   ],
   "rescopes": [
-    { "label": "branch_name", "role": "developer", "requires_note": true }
+    { "label": "branch_name", "role": "developer", "requires_note": true },
+    { "label": "repo", "role": "developer", "requires_note": true }
   ],
   "transitions": [
     { "from": "open", "to": "open", "role": "developer", "spends": ["agent_passes"] },
     { "from": "open", "to": "review", "role": "developer" },
     { "from": "open", "to": "escalated", "role": "developer", "requires_note": true },
+    { "from": "open", "to": "disputed", "role": "developer", "requires_note": true, "spends": ["disputes"] },
+    { "from": "disputed", "to": "closed", "role": "reviewer", "requires_note": true },
+    { "from": "disputed", "to": "open", "role": "reviewer", "requires_note": true },
     { "from": "review", "to": "closed", "role": "reviewer" },
     { "from": "open", "to": "closed", "role": "reviewer", "requires_note": true },
     { "from": "review", "to": "open", "role": "reviewer", "requires_note": true },

@@ -126,6 +126,45 @@ def _definition():
     return json.loads((REPO / "workflow" / "sonora-lane.json").read_text(encoding="utf-8"))
 
 
+def test_every_counter_the_lane_declares_is_a_column_the_adapter_map_carries():
+    """⚠⚠ THE LANE AND THE ADAPTER ARE TWO FILES AND NOTHING CHECKED THAT THEY AGREE.
+
+    `sonora-lane.json` says what counters EXIST; `issues.map.json` says which columns the
+    referee OWNS. A counter in the first and not the second is the worst available outcome and
+    it is silent in both directions: the CLI never applies the increment, so the ceiling never
+    fires — and the guard never closes the column, so any writer holding credentials can set
+    it by hand. Nothing goes red. The move returns 200.
+
+    ⚠ MEASURED 2026-08-27, adding the `disputes` counter. The generated hooks copied ONLY
+    `counters["agent_passes"]` at the apply route and listed only it in `REFEREED`, because
+    both are emitted from the map. Regenerating fixed it — but the only thing that caught it
+    was diffing the generated file by hand before installing, which is not a mechanism.
+
+    ⚠ THIS IS THE CHEAP HALF, STATED SO NOBODY MISTAKES IT FOR THE WHOLE. It compares two
+    files in this repo. It does NOT reach the store, so it cannot see a column that is mapped
+    here and absent there, nor a `states` entry missing from the tracker's `state` select —
+    which is a real 400 waiting to happen and is why the state had to be added to PocketBase
+    before this definition changed. That check needs the definition compared against a LIVE
+    schema, it belongs in the engine rather than in one adopter's test suite, and it is filed
+    against FerroStep rather than faked here with a snapshot that would drift.
+    """
+    import json
+    lane = _definition()
+    declared = sorted(c["name"] for c in lane.get("counters") or [])
+    mapped = sorted(json.loads(
+        (REPO / "workflow" / "issues.map.json").read_text(encoding="utf-8"))["counter_fields"])
+
+    # ⚠ A floor first: two empty lists are equal and would prove nothing.
+    assert declared, "the lane declares no counters — the pass ceiling is the lane's mechanism"
+    assert declared == mapped, (
+        "the lane definition and the adapter map disagree about counters:\n"
+        "  sonora-lane.json declares %s\n  issues.map.json  maps     %s\n"
+        "⚠ A counter missing from the map is applied by NOTHING and guarded by NOTHING — the "
+        "ceiling never fires and the column stays writable. Add it to the map AND regenerate "
+        "the hooks from notes/ferrostep-cutover/issues.emit.json; the installed file hardcodes "
+        "both lists." % (declared, mapped))
+
+
 def _human_roles(d):
     return {r["name"] for r in d["roles"] if isinstance(r, dict) and r.get("human")}
 

@@ -268,18 +268,18 @@ through the referee, which checks it against [sonora-lane.json](sonora-lane.json
 performs it. Your whole surface is four commands:
 
 ```bash
-workflow/scripts/issue.py file --title "…" --body-file f.md --branch "<branch>" \
+workflow/scripts/issue.py file --title '…' --body-file f.md --branch "<branch>" \
                                --severity medium --label bug   # allocates `number`, files `open`
-workflow/scripts/issue.py close  114 --comment "…"   # review -> closed, once YOU verified it
-workflow/scripts/issue.py reopen 114 --comment "…"   # review -> open, comment MANDATORY
-workflow/scripts/issue.py comment 114 --text "…"     # never moves `state`
+workflow/scripts/issue.py close  114 --comment '…'   # review -> closed, once YOU verified it
+workflow/scripts/issue.py reopen 114 --comment '…'   # review -> open, comment MANDATORY
+workflow/scripts/issue.py comment 114 --text '…'     # never moves `state`
 ```
 
 ⚠⚠ **`--author Janis` GOES AFTER THE SUBCOMMAND, AND THE POSITION IS LOAD-BEARING.**
 
 ```bash
-workflow/scripts/issue.py close 114 --author Janis --comment "…"   # ✅ runs
-workflow/scripts/issue.py --author Janis close 114 --comment "…"   # ❌ REFUSED by the harness
+workflow/scripts/issue.py close 114 --author Janis --comment '…'   # ✅ runs
+workflow/scripts/issue.py --author Janis close 114 --comment '…'   # ❌ REFUSED by the harness
 ```
 
 `issue.py` itself accepts both — `--author` is on the top-level parser *and* on every
@@ -691,10 +691,10 @@ Decide in this order:
 3. **Genuinely new?** File it, exactly as in §5a.
 
 ⚠ **A `closed` issue whose defect has returned cannot be reopened, and that is the tool's
-shape rather than a preference:** `issue.py reopen` moves an issue from `review` only, so a
-closed record is out of its reach. File a new issue and cite the old number in the body.
-**Do not describe such a finding as "reopened"** — nothing was. (The owner is deciding whether
-that should change; until it does, this is the whole of it.)
+shape rather than a preference:** `issue.py reopen` reaches `review` and `disputed`, and a
+closed record is out of its reach from either. File a new issue and cite the old number in the
+body. **Do not describe such a finding as "reopened"** — nothing was. (The owner is deciding
+whether that should change; until it does, this is the whole of it.)
 
 ⚠⚠ **THIS IS A ROUTING RULE. IT IS NOT A QUOTA, AND IT MUST NOT BECOME ONE.** Nothing here
 reduces what you report: every defect you find still gets written down, on one record or
@@ -741,6 +741,38 @@ Then **report how many issues remain open** (§7) and stop.
   is clean is a claim; `git status` is evidence, and the whole reason you were given execution
   is that this repo trusts reproduction over assertion. If it is not empty and you did not put
   it there, say so rather than tidying someone else's work away.
+
+### On `disputed` issues — Ozzy disagreed, and answering is your job
+
+⚠⚠ **THIS IS A STATE AS OF 2026-08-27, AND YOU MAY BE CARRYING A VERSION OF YOURSELF THAT
+PREDATES IT.** Before it existed, Ozzy's only exits from `open` were fix-it, escalate, or move
+to `review` — and `review` reads identically whether a finding was **fixed** or **rebutted**.
+So on this lane, across 256 records, the measured dispute rate was zero. It was never zero. It
+was **unrecorded**, and the loop that produced ~50% medium findings with no visible pushback
+looked like a reviewer who was always right.
+
+**An issue in `disputed` is yours and it blocks nothing else.** It is a finding Ozzy has
+deliberately *not* fixed, with a `[dispute:finding|severity|scope]` note saying why. You have
+exactly two answers, both requiring a comment:
+
+```bash
+workflow/scripts/issue.py close  335 --author Janis --comment 'Accepted — re-read line 214, the guard is reached. Withdrawing.'
+workflow/scripts/issue.py reopen 335 --author Janis --comment 'Not accepted: line 214 is inside the `if` at 209, so the path with … never reaches it.'
+```
+
+* **`close`** — the argument is right. **Say so plainly and do not soften it into a concession**;
+  a finding you withdraw because it was wrong is the loop working, not a loss.
+* **`reopen`** — the argument does not hold. ⚠ **Answer the argument that was made.** Restating
+  the original finding is not a rebuttal, and it is what sends this to the owner.
+
+⚠ **A dispute costs Ozzy no `agent_passes`, and that is deliberate — do not treat it as a
+stalling move.** Pricing disagreement at parity with compliance is what produced the silence
+above. What it *does* cost is `disputes`, capped in
+[sonora-lane.json](sonora-lane.json); a second dispute of the same finding routes it to the
+owner. **So a reopen you cannot justify becomes their problem, not Ozzy's.**
+
+⚠ **You still do not escalate**, here as everywhere (§1). If a dispute looks like it genuinely
+needs the owner, `reopen` with your reasoning and let the counter do it.
 
 ### On escalated issues you encounter
 

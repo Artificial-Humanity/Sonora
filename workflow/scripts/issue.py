@@ -10,6 +10,10 @@
     workflow/scripts/issue.py take      N [N ...] [--note D]  Ozzy: agent_passes += 1, BEFORE any
                                         work; at the ceiling, --note routes it to escalated
     workflow/scripts/issue.py review    N --comment C      Ozzy: addressed, awaiting Janis
+    workflow/scripts/issue.py dispute   N --kind finding|severity|scope --comment C
+                                        Ozzy: I disagree and have NOT fixed it. Spends
+                                        `disputes`, never `agent_passes` — a rebuttal must
+                                        not cost a fix pass or nobody rebuts
     workflow/scripts/issue.py escalate  N --comment C      Ozzy: the owner must decide
     workflow/scripts/issue.py close     N [--comment C]    Janis: verified resolved
     workflow/scripts/issue.py reopen    N --comment C      Janis: not resolved
@@ -147,10 +151,17 @@ OPEN_STATES = ("open", "review", "escalated")
 # escalation, and a server-side hook performs it.
 ROLE_FOR = {
     "review": ("developer", "review"),
+    "dispute": ("developer", "disputed"),
     "escalate": ("developer", "escalated"),
     "close": ("reviewer", "closed"),
     "reopen": ("reviewer", "open"),
 }
+
+# ⚠ THE KINDS A DISPUTE CAN BE, AS A FIELD ON THE NOTE RATHER THAN A STATE PER KIND. One
+# lifecycle, so one state: three states would triple the transition table to record something
+# a word already carries. Required at the command line because "what are you disputing" is
+# exactly the ambiguity this state exists to remove -- a bare rebuttal reads as all three.
+DISPUTE_KINDS = ("finding", "severity", "scope")
 
 
 def die(msg):
@@ -515,6 +526,39 @@ def cmd_escalate(pb, args):
           "returns it to 'open' with a fresh counter.")
 
 
+def cmd_dispute(pb, args):
+    """Disagree with a finding on the record, at a price the loop can afford.
+
+    ⚠⚠ THIS EXISTS BECAUSE `review` MEANT TWO THINGS. The developer's only exits from `open`
+    were take-it, move-to-`review`, or escalate -- and `review` is the SAME STATE whether the
+    finding was fixed or rebutted. So a disagreement, once made, was indistinguishable from a
+    capitulation the moment it landed, and the lane's dispute rate read as zero across 256
+    records. It was never zero; it was UNRECORDED (owner, 2026-08-27).
+
+    ⚠ IT SPENDS `disputes`, NOT `agent_passes`, AND THAT IS THE POINT. Pricing disagreement at
+    parity with compliance is the defect: if arguing costs a fix pass, arguing is what you stop
+    doing. A dispute the reviewer rejects lands back at `open`, where proceeding costs one pass
+    as it always did -- so being WRONG is priced, and disagreeing is not.
+
+    ⚠ ONE RE-DISPUTE, THEN THE OWNER (`disputes.max` in workflow/sonora-lane.json -- their
+    dial, like `agent_passes.max`, and not this module's to correct). A state nothing spends
+    would let open -> disputed -> open cycle free, and `agent_passes` is otherwise the only
+    thing guaranteeing this lane terminates at all.
+
+    ⚠ AN OWNER RULING DOES NOT REFUND IT. `release.reset_counters` clears `agent_passes` and
+    deliberately leaves `disputes` spent: after the owner settles an argument the developer
+    gets a fresh budget to do the WORK and no further budget to RE-ARGUE. Widening that later
+    is cheap; discovering a worker re-litigated a ruling is not.
+
+    The note requirement is the ENGINE's (`requires_note` on the transition), not restated here.
+    """
+    args.comment = "[dispute:%s] %s" % (args.kind, (args.comment or "").strip())
+    transition(pb, args, "dispute", args.author)
+    print("⚠ #%d is now DISPUTED and is %s's to answer. You have not fixed it and must not: "
+          "the branch still carries it, and the merge gate still weighs it at its severity."
+          % (args.number, reviewer_name()))
+
+
 def cmd_close(pb, args):
     # ⚠ review -> closed needs no note; open -> closed (withdraw/dedupe) REQUIRES one.
     # Both rules are the definition's, and the engine refuses -- not this module.
@@ -761,18 +805,32 @@ def main():
         s.add_argument("--comment", default="")
         s.set_defaults(fn=fn)
 
+    s = add("dispute"); s.add_argument("number", type=int)
+    s.add_argument("--kind", required=True, choices=list(DISPUTE_KINDS),
+                   help="what you are disputing: the finding itself, its severity, or "
+                        "whether it is in scope for this branch")
+    s.add_argument("--comment", default="", help="why. The engine refuses a dispute without "
+                   "one -- `requires_note` on the transition, not a check in this module")
+    s.set_defaults(fn=cmd_dispute)
+
     s = add("comment"); s.add_argument("number", type=int)
     s.add_argument("--text", required=True); s.set_defaults(fn=cmd_comment)
 
     add("escalated").set_defaults(fn=cmd_escalated)
 
     args = p.parse_args()
-    # ⚠ EVERY WRITING SUBCOMMAND BELONGS IN THIS TUPLE. `grade` was added 2026-08-20 and the
+    # ⚠ EVERY WRITING SUBCOMMAND BELONGS IN THIS SET. `grade` was added 2026-08-20 and the
     # tuple was not extended (#211), so a grade could land unattributed — and severity is the
     # field the merge gate reads, which makes "who decided this blocks?" a question someone
     # will ask. A new write subcommand must be added here in the same commit that adds it.
-    if not args.author and args.cmd in ("file", "review", "escalate", "close", "reopen",
-                                        "comment", "grade"):
+    #
+    # ⚠⚠ HALF OF IT IS NOW DERIVED, because the warning above did not work. `dispute` was
+    # added 2026-08-27 and this tuple was the SECOND copy of "which subcommands move an
+    # issue" — the first being `ROLE_FOR`, six lines of which had to agree with seven lines
+    # here by hand. Every transition subcommand is a write by construction, so it is read out
+    # of `ROLE_FOR` and a new state can no longer arrive unattributed. The three that remain
+    # written out are the ones that write something OTHER than a state.
+    if not args.author and args.cmd in (set(ROLE_FOR) | {"file", "comment", "grade"}):
         die("--author is required for writes (Janis or Ozzy), or set $ISSUE_AUTHOR. "
             "An unattributed comment cannot be answered.")
     args.fn(PB(), args)
