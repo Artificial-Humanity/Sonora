@@ -852,6 +852,14 @@ def cmd_grade(pb, args):
     # move this call. If you migrate first, have it read /api/ferrostep/issues/ping and
     # refuse when `writes` does not contain "attributes" — the ping exists to be asked
     # exactly this, and it currently answers ["state", "counters", "scope"].
+    #
+    # ⚠ THE "ANSWERED 200" ABOVE IS A FACT ABOUT THE FILE INSTALLED ON THE BOARD TODAY,
+    # NOT ABOUT FerroStep. Upstream `0de2d0b` makes the mapped apply route REFUSE an
+    # undeclared column by name (`unwritable_column:`) before the transaction, so once
+    # those hooks are installed the failure becomes a loud 400 rather than a silent
+    # success. **The conclusion does not change — do not migrate until the column is
+    # declared — but the reason does**, and this paragraph is the thing that goes stale
+    # at that install. Re-read it then; it is the same class of seam it describes.
     st, r = pb.call("/api/collections/issues/records/" + rec["id"], "PATCH",
                     {"severity": new_sev})
     if st >= 300:
