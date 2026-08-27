@@ -1,0 +1,123 @@
+# @package _global_
+
+# Phase 1 rung 3 — THE VOLUME RUNG. The lever rung 2 deliberately did not pull.
+#
+# ⚠ READ THIS BEFORE THE HOLDOUT NUMBER, NOT AFTER.
+#
+# v6 was a conditioning rung and its own config says a flat holdout was the expected,
+# acceptable result. This is the opposite: **+480 hours and 7× the rows**, and it is the
+# only rung whose whole hypothesis is volume. So a flat holdout here is not neutral — it
+# is the falsification of the lever this phase has been building toward.
+#
+#   336,546 train / 10,349 val · 561.1 h · 5,385 speakers
+#   v6 was  41,937 /  1,331    ·  80.6 h · 3,326 speakers
+#
+# PREDICTION, recorded before the run exists so this stays a test rather than a story:
+#   * The holdout `total` improves MATERIALLY on vat6's selected `ep008`. vat6's entire
+#     run spanned 1.7823–1.7921 — a 0.5% band, a flat basin — and rung 1 moved the
+#     holdout −0.0606 on +27 h. This adds +480 h.
+#   * ⚠ **If the holdout is flat, that is the finding, and it is a big one**: it would say
+#     the corpus is no longer the binding constraint and the gap is capacity, decoder or
+#     distillation. Do not explain a flat result away as "the holdout is insensitive" —
+#     it moved for rung 1 on a twentieth of this data.
+#   * Convergence under 10 epochs is the PRIOR, not the plan. v5 gave 100% of its gain in
+#     epochs 0–9 and 10–39 were net worse. But that run was **data-limited**, and this one
+#     removes exactly that limit, so a longer useful run is the one outcome that would not
+#     be surprising. Let the watcher say when, not this comment.
+#   * Epoch cost ~2.3 h at 336,546 rows (the ~2.25 h/epoch in the plan was derived against
+#     ~330,000 rows and never re-measured). Read the epoch cost off ROWS, not hours: this
+#     rung buys more rows per hour than the estimate assumed.
+#
+# WHAT CHANGED FROM v6, in one list:
+#   * +303,627 rows / +480.5 h — the rest of LibriTTS-R (train-clean-360 + train-other-500).
+#   * n_spks 3,326 -> 5,385 (+2,059 new speakers, NOT 2,064 — five speaker directories
+#     contribute no clip that clears the 1 s / 22 s gate; see the data config).
+#   * ONE clip excluded by ear: a truncated read whose transcript runs past the audio.
+#     No gate here could see it and the obvious detector is falsified — data config again.
+#   * `data_statistics` re-measured: mel_mean **-5.543695** / mel_std **2.430293**. The
+#     move from v6 is +0.155 / -0.279, the same ORDER as v4->v5, so inheriting would have
+#     trained against statistics wrong by that much and produced only a quietly worse model.
+#   * vat_dim UNCHANGED at 8. LibriTTS predates the delivery axis, so all 303,627 new rows
+#     enter `unknown` = all-zero, which is byte-identical conditioning to v1. **The
+#     delivery signal is therefore DILUTED by this rung**: v6's 864 labelled rows are now
+#     864 in 346,895 instead of 864 in 43,268. That is a real cost of the volume lever and
+#     is the second thing to check if delivery steering regresses.
+#
+# ⚠⚠ `run_name` IS LOAD-BEARING AND IS NOT COSMETIC. The convergence watcher
+# (`vat7-gate-watch.timer`, AI-Lab-AMD) polls `logs/train/vat7_finetune` BY NAME and sends
+# the owner's one-shot ntfy push from there. Rename this and the watcher goes blind while
+# its timer stays green — no marker, no push, and the failure looks exactly like "not
+# converged yet". If this run must be renamed, set `VAT7_RUN_NAME` on the unit in the same
+# change.
+#
+# Pre-flight, all mandatory:
+#   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
+#     engines, not just the trainer's.
+#   * scripts/gates/test_vat_dim_seams.py — IN-CONTAINER (needs torch). ⚠ With real shm:
+#     the suite and the datamodule both use DataLoader workers and Docker's default 64 MB
+#     /dev/shm DEADLOCKS them silently — workers alive at 0.0% CPU, no error, forever. The
+#     training service sets `ipc: host` + `shm_size: 16gb` for exactly this reason, and a
+#     throwaway container must be given both.
+#   * The corpus is licence-declared: the filelist dir and both `_derived_*` donors under
+#     `merged_vat_corpora`. The merge refuses to write filelists at all otherwise.
+#   * `data_statistics` MEASURED, not inherited — see the data config's four-generation
+#     comparison. Already done; the values are in the data config.
+#   * The convergence watcher is ENABLED **and pointed at an 8-wide holdout**. ⚠ It shipped
+#     defaulting to `holdout.txt`, which is the 3-wide vat3-era filelist; an 8-wide config
+#     refuses it on the vat_dim seam, so every checkpoint would have failed into a journal
+#     and the push could never fire. Fixed 2026-08-27. Confirm with
+#     `systemctl is-active vat7-gate-watch.timer` and by reading the default in
+#     `/usr/local/bin/vat7_gate_watch.sh`.
+#   * Warm start built and VERIFIED WIDENED — see below.
+#
+# ⚠⚠ THE WARM START WIDENS THE SPEAKER TABLE 3,326 -> 5,385, AND THIS IS THE ONE OPERATION
+# IN THE RUN WITH A HISTORY OF FAILING SILENTLY. The v4->v5 work found `make_warmstart`
+# DISCARDING the widened tensor instead of widening it: the table stays freshly
+# initialised, the script exits 0, and the run trains the new speakers on random rows.
+# **The widening here is 2,059 speakers — 38% of the table — so the silent version of this
+# failure is far more expensive than it was at v6.** Do not accept the exit code as proof:
+# `_speaker_prefix_ok` must confirm v6's map is an index-preserving PREFIX of v7's, and the
+# merge already proves the prefix property on its side (`prefix proof: 3326 base speakers
+# hold their original indices in the written map`).
+#
+#   python scripts/lib/make_warmstart.py --experiment vat7_finetune \
+#       --donor /data/model-training/sonora/logs/train/vat6_finetune/runs/2026-08-10_23-48-23/checkpoints/checkpoint_epoch=008.ckpt \
+#       --donor-speakers data/libritts_r_emilia_expressive_vat_v6/speakers.json \
+#       --out /data/model-training/sonora/warmstart/vat7_init.ckpt
+#   python -m matcha.train experiment=vat7_finetune \
+#       ckpt_path=/data/model-training/sonora/warmstart/vat7_init.ckpt \
+#       callbacks.model_checkpoint.every_n_epochs=1 \
+#       callbacks.model_checkpoint.save_top_k=-1
+#
+# ⚠ `--donor-speakers` IS NOT OPTIONAL AND IT IS THE FLAG WITH NO ERROR MESSAGE. It is what
+# PERMITS the widening; without it `_widen` returns `None` for `spk_emb.weight`, the table
+# stays random, and the script still exits 0.
+#
+# ⚠ ep008 IS THE OWNER-SELECTED vat6 CHECKPOINT, chosen on the ear from a flat basin where
+# four instruments gave four answers — it is NOT the lowest-loss epoch, and re-deriving a
+# "better" donor from `total` would discard that judgement. Do not substitute one.
+#
+# ⚠ BOTH `model_checkpoint` OVERRIDES ARE REQUIRED and the second is the one easy to drop.
+# The composed `configs/callbacks/model_checkpoint.yaml` is `monitor: epoch` / `mode: max` /
+# `save_top_k: 10` — "keep the ten HIGHEST-NUMBERED epochs" — so a run reaching epoch 19 has
+# already deleted `checkpoint_000..009`, which for v5 was the window holding the entire gain.
+# Without `save_top_k=-1` that failure reproduces exactly, with per-epoch checkpointing on
+# the whole time. ⚠ It also breaks the WATCHER, which evaluates the newest checkpoint and
+# assumes earlier ones remain for the history it reasons over.
+#
+# JUDGING THIS RUN: score on the never-trained holdout, NEVER on `loss/val_epoch`. v7's val
+# split spans three domains and 10,349 clips; a move in it could be any of them. The
+# watcher's plateau verdict is a STOP SIGNAL, not a selection — choosing a checkpoint stays
+# an ear job, because on vat6 four instruments disagreed and diff/mel loss may be
+# anti-correlated with naturalness.
+
+defaults:
+  - override /data: libritts_r_full_vat_v7.yaml
+
+tags: ["libritts_r", "emilia_yodas", "expressive_registers", "vat", "vat7", "phase1",
+       "rung3", "volume", "delivery", "valence", "tension", "energy"]
+
+run_name: vat7_finetune
+
+model:
+  use_vat: true
