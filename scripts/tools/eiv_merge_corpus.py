@@ -54,6 +54,23 @@ RAW = ("corpus_v1.jsonl", "corpus_families.jsonl")
 SPEC = EIV / "valence_combo_v1.json"
 SOFT_HEAD = "Soft_vs._Harsh"
 
+# eiv_score.py writes `{"wav": ..., "wav_mtime": ..., "<head>": score, ...}` — its module
+# header says so, and `row = {"wav": w, "wav_mtime": mtimes[i]}` is where it happens. Only
+# `wav` was ever stripped below, because `wav_mtime` did not exist when this was written; it
+# arrived later as the per-row resume stamp that replaced a whole-file mtime check (#56).
+#
+# The cost was not a mislabelling. `load_raw` promises `wav -> {head: score}`, so a stray
+# bookkeeping key becomes a thirteenth "head" for exactly the files that carry it, and the
+# ragged check in main() then REFUSES the merge — measured 303,638 of 333,989 clips reading
+# as a different head set on the v7 pass. The guard did its job; the writer and the reader
+# had simply disagreed about the format for as long as both existed, and nothing exercised
+# the pair until a raw file written by the new writer met the old reader.
+#
+# Keep this a NAMED SET, not an inline pop: test_eiv_merge_corpus.py reads the writer's row
+# literal by AST and fails if it grows a key this tuple does not list. A future stamp is
+# then a red test rather than a refused build.
+NON_HEAD_KEYS = ("wav_mtime",)
+
 
 def load_raw(paths) -> dict[str, dict]:
     """wav -> {head: score}, merged across every raw file (heads were split over two)."""
@@ -67,7 +84,10 @@ def load_raw(paths) -> dict[str, dict]:
             if not line.strip():
                 continue
             r = json.loads(line)
-            out[r.pop("wav")].update(r)
+            wav = r.pop("wav")
+            for k in NON_HEAD_KEYS:
+                r.pop(k, None)
+            out[wav].update(r)
             n += 1
         print(f"  {p.name}: {n} rows")
     return dict(out)
