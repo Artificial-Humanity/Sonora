@@ -367,15 +367,58 @@ the password as a tool argument and writes a live credential into your transcrip
 text, and for the same reason do not pass it to a subprocess as an argument either: `argv` is
 readable by `ps` while the call is in flight.
 
+⚠⚠ **AND A `400` ON A FILTER CONTAINING `&&` MAY BE THE AMPERSAND BEING ESCAPED IN
+TRANSIT — NOT A REFUSED FIELD AND NOT A DEAD TRACKER.** Observed 2026-08-27 by one reviewer
+session: every conjunctive `pb_record_list` filter came back `400 "Something went wrong while
+processing your request."`, and the returned URL showed the `&&` arriving as `&amp;&amp;`:
+
+```
+filter=branch_name%3D%22…%22+%26amp%3B%26amp%3B+state%3D%22open%22
+                            ^^^^^^^^^^^^^^^^^^  = "&amp;&amp;"
+```
+
+⚠ **IT IS NOT A STANDING PROPERTY OF THIS PAGE'S QUERIES, AND THE FILTERS BELOW ARE CORRECT AS
+WRITTEN.** Re-measured 2026-08-27 in a later session: the same three conjunctive filters — the
+`issue_comments` one, `branch_name && state="review"`, and `branch_name && state="open"` — all
+returned `200`. **So do not rewrite a filter to avoid `&&`, and do not assume this is
+happening to you.** Where the escaping comes from — the MCP server, the harness's tool-call
+serialisation, or something between — was not determined from inside this repo, so nothing
+here asserts a cause.
+
+**RUN THE FALSIFIER BEFORE ACTING ON IT.** It is two calls, and it tells you which world you
+are in:
+
+```
+filter='state="open"'                 # single condition — the control
+filter='number=340 || number=341'     # disjunction, no ampersand
+filter='<the same> && state="open"'   # the conjunction under test
+```
+
+If the first two return `200` and only the third returns `400`, it is the ampersand. **Reroute
+through `issue.py` and carry on — that path builds its own URL and is unaffected:**
+
+```bash
+workflow/scripts/issue.py list --branch "<the branch>" --state review
+workflow/scripts/issue.py show <n>        # record AND its comments
+```
+
+⚠ **THIS IS THE SHAPE THAT FALLS THROUGH THE THREE ABOVE, WHICH IS WHY IT IS WRITTEN DOWN.**
+It is a `400` that names **no** `refereed_field`, from a **live, authenticated** tool whose
+single-condition calls all succeed — so it matches neither the refused-field paragraph nor the
+stale-`401` one, and a reviewer matching on those descriptions lands in "genuinely
+unreachable" below. That is the most expensive wrong answer on this page: §5b Job 1 is a
+conjunctive query, and a reviewer that reads its `400` as "nothing to verify" closes nothing,
+leaves every fix unverified, and strands the issues in `review`.
+
 **Only when BOTH paths fail is the tracker genuinely unreachable — connection refused, the
 host down, `issue.py` failing on every issue alike. Then you cannot file: say so loudly in
 your summary and put the full findings in that summary instead.** With the report file gone,
 an unreachable tracker loses the entire review rather than delaying it.
 
-That cost is why this page now spends three paragraphs on telling the three apart. **A refused
-*field* (`400`), a stale *transport* (`401`), and an unreachable *tracker* look alike from
-where you sit and cost differently by an entire review.** Two of the three are recoverable in
-one command.
+That cost is why this page spends a paragraph on each of these rather than one on "the tracker
+is down". **A refused *field* (`400`), an escaped *ampersand* (`400`), a stale *transport*
+(`401`), and an unreachable *tracker* look alike from where you sit and cost differently by an
+entire review.** Only the last is unrecoverable; every other one here is one command away.
 
 ### Fields
 

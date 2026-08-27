@@ -127,8 +127,17 @@ def test_it_refuses_a_dirty_tree():
 
 def test_the_abort_marker_is_checked_before_the_exit_code():
     """A review can exit 0 and still say the change must not land — a content signal, not a
-    failure signal. Order matters: checking rc first would `exit` before reading the text."""
-    marker = SOURCE.index("MUST-NOT-LAND")
+    failure signal. Order matters: checking rc first would `exit` before reading the text.
+
+    ⚠ Pin the CHECK, not the first mention of the token. This asserted
+    `SOURCE.index("MUST-NOT-LAND")`, which finds the `usage()` heredoc ~340 lines above the
+    check it means — so it stayed green with the abort block moved after the rc check AND
+    with the abort block deleted outright (both mutation-measured, #355). Same lesson as
+    `_open_filter()` below: a substring search over a whole script does not pin the line
+    you mean.
+    """
+    assert 'if grep -q "MUST-NOT-LAND"' in SOURCE, "the abort check is gone"
+    marker = SOURCE.index('if grep -q "MUST-NOT-LAND"')
     rc_check = SOURCE.index('if [[ "$RC" -ne 0 ]]')
     assert marker < rc_check
 

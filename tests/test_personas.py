@@ -161,7 +161,19 @@ def test_the_reviewer_can_reach_the_repo_the_routing_rule_names():
 
 # --- #353: a section inserted mid-table is silent damage ----------------------------------
 
-PERSONA_MD = ["workflow/REVIEWER.md", "workflow/DEVELOPER.md", "workflow/WORKFLOW.md"]
+# ⚠ THE POPULATION, AND WHY IT IS NOT JUST THE PERSONAS (#356). This was `PERSONA_MD`, three
+# files of which TWO HELD NO TABLES AT ALL — an effective population of one, under a test named
+# "every". `AGENTS.md` was outside it while holding as many table runs as REVIEWER.md, and it
+# is the repo's rules of record, always in scope per REVIEWER.md §3, and exactly the kind of
+# page a section gets appended into. Measured at the time: REVIEWER 4, DEVELOPER 0, WORKFLOW 0,
+# AGENTS 4, CLAUDE 0. Renamed off "PERSONA" because the guard is about tables, not personas.
+TABLE_MD = [
+    "workflow/REVIEWER.md",
+    "workflow/DEVELOPER.md",
+    "workflow/WORKFLOW.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+]
 
 
 def _table_runs(rel):
@@ -194,10 +206,33 @@ def test_every_markdown_table_run_carries_its_own_header_and_delimiter():
     with a header and a `|---|` delimiter — which is what GFM requires to treat a run as a
     table. It cannot see column-count mismatches or escaping errors, and no markdown library is
     installed in this venv to check the rendering itself.
+
+    ⚠ THE OTHER LIMITS, NAMED SO THE LIST ABOVE DOES NOT READ AS COMPLETE (#356):
+      * `_table_runs` DOES NOT SKIP FENCED CODE BLOCKS, so a ```-fenced block containing a
+        pipe-prefixed line would be scored as a table. No such block exists in this
+        population today. It is a latent false POSITIVE — it fails loudly, which is the
+        cheap direction, so it is named rather than fixed.
+      * #353 named two structural faults; this covers fault 1 (no header/delimiter) and NOT
+        fault 2 (no blank line between the table and the paragraph above it). Whether fault
+        2 alone breaks rendering is UNSETTLED — no markdown library is installed to decide it.
+
+    ⚠ AND IT HAS AN ANTI-VACUITY FLOOR, because it did not (#356). Nothing asserted that any
+    table was ever found: the population emptied, or reduced to only the table-less files,
+    both went GREEN over nothing. An empty result and a broken instrument are
+    indistinguishable — DEVELOPER.md § self-check item 2, and the shape this branch already
+    paid for at #315, #330 and #333. The floor is derived, not a magic count: every path must
+    resolve, and the sweep must have found at least one table somewhere. A hardcoded
+    `>= 4` would go stale the first time REVIEWER.md's tables were restructured.
     """
-    broken = []
-    for rel in PERSONA_MD:
+    missing = [rel for rel in TABLE_MD if not (REPO / rel).exists()]
+    assert not missing, (
+        f"the table guard's population no longer resolves: {missing} — a rename or a path "
+        "typo would otherwise leave this green while checking fewer files than it names")
+
+    broken, total_runs = [], 0
+    for rel in TABLE_MD:
         for start, run in _table_runs(rel):
+            total_runs += 1
             if len(run) < 2:
                 broken.append(f"{rel}:{start} — a single `|` line, not a table")
                 continue
@@ -205,6 +240,11 @@ def test_every_markdown_table_run_carries_its_own_header_and_delimiter():
                 broken.append(
                     f"{rel}:{start} — run of {len(run)} rows whose 2nd line is not a "
                     f"delimiter:\n      {run[0][:70]}\n      {run[1][:70]}")
+
+    assert total_runs, (
+        "the table guard found NO tables in any of "
+        f"{TABLE_MD} — it reported a pass over an empty population, which is "
+        "indistinguishable from a clean one. Check the paths and `_table_runs`.")
 
     assert not broken, (
         "markdown table run(s) with no header/delimiter — these render as literal text:\n  "

@@ -36,6 +36,7 @@ MODEL="opus"
 EFFORT="xhigh"
 STOPFILE=""
 DRY_RUN=0
+ALLOW_EMPTY_TRACKER=0   # ⚠ set -u is on; an undeclared default aborts the driver (#357)
 
 usage() {
   cat <<'USAGE'
@@ -51,6 +52,12 @@ review_cycle.sh — run the review loop to convergence. NEVER PUSHES.
   --model / --effort  Passed to both roles.             (default: opus / xhigh)
   --stop-file <PATH>  Create this file to halt.  (default: <repo>/.review_cycle.stop)
   --dry-run           Print the plan and exit. Spends nothing, files nothing.
+  --allow-empty-tracker
+                      Accept convergence when the tracker holds NO issues under this repo
+                      slug at all. Default is to REFUSE, because the usual cause is a wrong
+                      slug and every count taken with it was taken over nothing. Use this
+                      only when the slug is verified and the repo genuinely has no issues
+                      yet — a first cycle on a newly adopted lane. (#357)
   -h, --help          This.
 
 STOPS ON, in order of precedence:
@@ -82,6 +89,7 @@ while [[ $# -gt 0 ]]; do
     --effort)      EFFORT="${2:?}"; shift 2 ;;
     --stop-file)   STOPFILE="${2:?}"; shift 2 ;;
     --dry-run)     DRY_RUN=1; shift ;;
+    --allow-empty-tracker) ALLOW_EMPTY_TRACKER=1; shift ;;
     -h|--help)     usage; exit 0 ;;
     *) echo "review_cycle.sh: unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -444,11 +452,31 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
       exit 4
     fi
     if [[ "$EVER" == "0" ]]; then
+      # ⚠ STATE THE OBSERVATION AND OFFER BOTH BRANCHES — DO NOT NAME ONE CAUSE AS FACT (#357).
+      # This said "That is a slug naming a repo the tracker does not have, not a clean review",
+      # which is a diagnosis rather than a derivation. A CORRECT slug naming a repo the tracker
+      # has no records for yet reaches the identical zero: a repo adopting this deliberately
+      # portable lane, on its first cycle, whose first review finds nothing. On that path every
+      # clause after the comma was false and the operator was sent to re-check two settings
+      # that were already right, with nowhere to go afterwards — the same shape as #350, one
+      # case narrower.
+      if [[ "$ALLOW_EMPTY_TRACKER" -eq 1 ]]; then
+        say "tracker holds no issues at all under repo=\"$REPO_SLUG_FILTER\" — proceeding
+            anyway on --allow-empty-tracker."
+        CONVERGED=1
+        say "CONVERGED after review $review — nothing open (empty tracker, allowed)."
+        break
+      fi
       say "REFUSING to report convergence: the tracker holds NO issues at all under
-          repo=\"$REPO_SLUG_FILTER\", in any state and on any branch. That is a slug naming a
-          repo the tracker does not have, not a clean review — every count taken with it,
-          including the zero above, was taken over nothing.
-          Check it against \`git remote get-url origin\` and workflow/config.env."
+          repo=\"$REPO_SLUG_FILTER\", in any state and on any branch — so every count taken
+          with it, including the zero above, was taken over nothing. Two things reach this,
+          and this script cannot tell them apart:
+            1. the slug names a repo the tracker does not have (the common one) — check it
+               against \`git remote get-url origin\` and workflow/config.env;
+            2. the slug is RIGHT and this repo has simply never had an issue filed — a first
+               cycle on a newly adopted lane whose review found nothing. It self-heals as
+               soon as any issue is ever filed.
+          If you have checked the slug and (2) is your case:  --allow-empty-tracker"
       exit 5
     fi
     CONVERGED=1
