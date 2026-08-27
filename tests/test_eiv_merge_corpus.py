@@ -138,8 +138,27 @@ def keys_written_to_row(source):
     the only input it ever sees is a file that happens to use the idiom it handles.
     """
     tree = ast.parse(source)
-    keys, saw_row = set(), False
+    keys, saw_row, unknown = set(), False, []
     for node in ast.walk(tree):
+        # row |= {...}
+        if (isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name)
+                and node.target.id == "row"):
+            saw_row = True
+            if isinstance(node.op, ast.BitOr) and isinstance(node.value, ast.Dict):
+                keys |= {k.value for k in node.value.keys
+                         if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+            else:
+                unknown.append(f"line {node.lineno}: augmented assignment to `row`")
+        # row.<method>(...) — setdefault understood, anything else REFUSED rather than skipped
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name) and node.func.value.id == "row"):
+            saw_row = True
+            if node.func.attr == "setdefault":
+                if node.args and isinstance(node.args[0], ast.Constant) \
+                        and isinstance(node.args[0].value, str):
+                    keys.add(node.args[0].value)
+            elif node.func.attr not in ("update", "get", "keys", "items", "values"):
+                unknown.append(f"line {node.lineno}: row.{node.func.attr}(...)")
         # row = {...}
         if (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)
                 and any(isinstance(t, ast.Name) and t.id == "row" for t in node.targets)):
@@ -163,7 +182,7 @@ def keys_written_to_row(source):
                 if isinstance(arg, ast.Dict):
                     keys |= {k.value for k in arg.keys
                              if isinstance(k, ast.Constant) and isinstance(k.value, str)}
-    return keys, saw_row
+    return keys, saw_row, unknown
 
 
 @pytest.mark.parametrize("src,expected", [
@@ -172,6 +191,8 @@ def keys_written_to_row(source):
     ('row = {"wav": w}\nrow.update({"wav_dur": d})', {"wav", "wav_dur"}),
     ('row = {"wav": w}\nrow.update({name: v for name in heads})', {"wav"}),
     ('other = {"wav": w}', set()),
+    ('row = {"wav": w}\nrow |= {"wav_dur": d}', {"wav", "wav_dur"}),
+    ('row = {"wav": w}\nrow.setdefault("wav_dur", d)', {"wav", "wav_dur"}),
 ])
 def test_the_walk_sees_every_idiom_that_writes_a_row_key(src, expected):
     """Known-answer fixtures through the same code path the real guard uses.
@@ -181,7 +202,7 @@ def test_the_walk_sees_every_idiom_that_writes_a_row_key(src, expected):
     uses for the heads: it has no constant keys and must contribute none, or the guard would
     demand that every HEAD be declared non-head. Row five keeps the walk anchored to `row`.
     """
-    keys, _ = keys_written_to_row(src)
+    keys, _, _ = keys_written_to_row(src)
     assert keys == expected
 
 
@@ -192,7 +213,12 @@ def test_non_head_keys_covers_every_key_the_writer_adds():
     enumeration that quietly matches nothing is a vacuous pass, and that is the failure mode
     a guard like this dies of.
     """
-    written, saw_row = keys_written_to_row(SCRIPTS.src("eiv_score.py"))
+    written, saw_row, unknown = keys_written_to_row(SCRIPTS.src("eiv_score.py"))
+    assert not unknown, (
+        f"eiv_score.py mutates `row` in a way this walk does not model: {unknown}. "
+        f"An enumeration of IDIOMS silently omits the one nobody listed — which is how "
+        f"#374 was reached after #368 fixed the two idioms it named. Teach the walk the "
+        f"new idiom, or the key it writes is invisible to the pairing guard.")
     assert saw_row, (
         "no writes to a local named `row` found in eiv_score.py — the walk is broken, not "
         "the writer; this test cannot pass by finding nothing")
@@ -210,3 +236,20 @@ def test_non_head_keys_is_not_a_wildcard():
     """`wav` stays a positional strip, not a member — load_raw needs it as the KEY."""
     assert "wav" not in eiv_merge_corpus.NON_HEAD_KEYS
     assert eiv_merge_corpus.NON_HEAD_KEYS, "an empty tuple would silently restore the defect"
+
+
+@pytest.mark.parametrize("src", [
+    'row = {"wav": w}\nrow.merge_from(other)',
+    'row = {"wav": w}\nrow += other',
+])
+def test_an_unmodelled_mutation_of_row_is_REFUSED_not_skipped(src):
+    """The residual #368 left, and the reason it recurred (#374).
+
+    Handling three idioms and skipping the rest is still an enumeration — the next writer to
+    use a fourth gets silence, exactly as `row.update({...})` got silence before. So the walk
+    now REPORTS what it could not model, and the real guard asserts that report is empty. A
+    new idiom is a red test naming the line, instead of a key that disappears.
+    """
+    _, saw_row, unknown = keys_written_to_row(src)
+    assert saw_row
+    assert unknown, "an unmodelled mutation of `row` must be reported, not silently skipped"

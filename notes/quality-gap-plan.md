@@ -730,10 +730,17 @@ this hazard "latent for LibriTTS" on a **5,000-row sample of train-clean-100**; 
 latent for all of LibriTTS-R. So `--allow-digits` stays off, and the abort at that check —
 which fires *after* the expensive audio-measuring stage — will not be reached.
 
-**10 clips carry no `.normalized.txt`** (all in train-clean-360; 3 have an `.original.txt`,
-7 have nothing but the wav). `find_clips` skips them, so they never enter the corpus and
-nothing crashes. This makes derive's kept set a strict subset of the EIV list, which is why
-the coverage check above is safe.
+**11 clips carry no `.normalized.txt`** — all in train-clean-360; **4** have an
+`.original.txt` and 7 have nothing but the wav. `find_clips` skips them, so they never enter
+the corpus and nothing crashes.
+
+⚠ **10 AND 11 ARE BOTH RIGHT, FOR DIFFERENT POPULATIONS, AND THIS LINE USED TO GIVE THE
+NARROWER ONE AS IF IT WERE THE WIDER** (#372). **11** lack a transcript *on disk*; **10** of
+those fall inside the 1 s / 22 s window, so 10 is the number that appears in the
+EIV-vs-derivation reconciliation and 11 is the number that appears in the drop chain. Naming
+the population is the whole fix — the same discipline the 247-vs-257 and 2,064-vs-2,059
+corrections needed, and the reason the config and this file briefly disagreed after one of
+them was corrected and the other was not.
 
 #### ✅ BUILT — v7 exists, 2026-08-27
 

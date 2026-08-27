@@ -29,7 +29,10 @@
 #     rung buys more rows per hour than the estimate assumed.
 #
 # WHAT CHANGED FROM v6, in one list:
-#   * +303,627 rows / +480.5 h — the rest of LibriTTS-R (train-clean-360 + train-other-500).
+#   * +303,627 rows / +480.4 h — the rest of LibriTTS-R (train-clean-360 + train-other-500).
+#     ⚠ 480.4, not 480.5: the donors' `seconds_total` are 182.8614 h + 297.5713 h = 480.4327.
+#     480.5 is 182.9 + 297.6, the sum of the two ROUNDED values from the plan's table — which
+#     is a different operation from rounding the sum, and this is the ladder record (#373).
 #   * n_spks 3,326 -> 5,385 (+2,059 new speakers, NOT 2,064 — five speaker directories
 #     contribute no clip that clears the 1 s / 22 s gate; see the data config).
 #   * ONE clip excluded by ear: a truncated read whose transcript runs past the audio.

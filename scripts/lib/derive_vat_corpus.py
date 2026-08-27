@@ -507,21 +507,55 @@ def main():
             raise SystemExit(f"--exclude {args.exclude} lists no paths; refusing a no-op drop")
         present = {p for p, _, _ in kept}
         missing = sorted(wanted - present)
-        if missing:
+        # ⚠⚠ NOT-IN-KEPT SPLITS INTO TWO CASES AND ONLY ONE IS A FAULT (#369, reopened).
+        #
+        # The first version refused both, which made the exclusion UNREPEATABLE: re-derive
+        # from a donor the clip was already removed from — the exact command the build recipe
+        # instructs — and passing the flag refused because the clip is absent, while omitting
+        # it refused because the clip is declared. The recipe was unfollowable, and the
+        # refusal told the reader to "fix the list", i.e. to edit the version-controlled
+        # record of an ear drop that was correct.
+        #
+        # A path that does NOT EXIST ON DISK is the fault this guard was built for: a typo or
+        # a moved corpus, where the clip the author meant to remove is still in the output.
+        # A path that exists but is already absent from `kept` is the drop having ALREADY
+        # HAPPENED — the outcome the caller asked for. Excluding it again is a no-op, and a
+        # no-op is the correct answer to "make sure this clip is not in the corpus".
+        unknown = [m for m in missing if not os.path.exists(m)]
+        already = [m for m in missing if os.path.exists(m)]
+        if unknown:
             raise SystemExit(
-                "--exclude names %d path(s) not in the kept set, so excluding them would do "
-                "nothing:\n  %s\n  The corpus moved under the list, or the path is wrong. "
-                "Fix the list rather than the check." % (len(missing), "\n  ".join(missing[:5])))
+                "--exclude names %d path(s) that do not exist on disk, so the clip they were "
+                "meant to remove is still in the output:\n  %s\n  Check the path. If a clip "
+                "was renamed or the corpus moved, the LIST is what needs correcting; if it is "
+                "simply already excluded, this check would have let it through."
+                % (len(unknown), "\n  ".join(unknown[:5])))
+        if already:
+            print(f"  {len(already)} declared clip(s) already absent from this input "
+                  f"(nothing to remove) — e.g. {os.path.basename(already[0])}")
         before = len(kept)
+        _spk_before = {s_ for _, _, s_ in kept}
         kept = [(p, t, s_) for p, t, s_ in kept if p not in wanted]
         gone = before - len(kept)
         print(f"excluded {gone} clip(s) by --exclude ({before} -> {len(kept)})")
-        if gone != len(wanted):
-            raise SystemExit(f"--exclude listed {len(wanted)} path(s) but removed {gone}")
+        # ⚠ The expected removal count is what was listed MINUS what was already gone. The
+        # first version compared against `len(wanted)`, which re-broke idempotence one check
+        # below the place it was fixed — same assumption, second site. Found by running the
+        # recipe's own command rather than by reading the diff, again.
+        if gone != len(wanted) - len(already):
+            raise SystemExit(
+                f"--exclude listed {len(wanted)} path(s), {len(already)} already absent, "
+                f"so {len(wanted) - len(already)} should have been removed but {gone} were")
         # A speaker emptied by the exclusion would RENUMBER every speaker after it, which
         # silently invalidates a warm start from a checkpoint trained on the old map.
+        # ⚠ Only speakers that HAD clips here. A declared path pointing outside this input —
+        # an already-removed clip, or one belonging to another root — yields a path-derived
+        # "speaker" that was never in `kept`, and testing membership after the filter alone
+        # reported it as EMPTIED when it was never populated. Third wrong-population defect
+        # in this lane; the population is "speakers present before the exclusion", not
+        # "speaker-shaped strings mentioned in the list".
         emptied = {sp for sp in {w.split("/")[-3] for w in wanted}
-                   if not any(s_ == sp for _, _, s_ in kept)}
+                   if sp in _spk_before and not any(s_ == sp for _, _, s_ in kept)}
         if emptied:
             raise SystemExit(
                 "--exclude would leave speaker(s) %s with no clips, which renumbers every "

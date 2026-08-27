@@ -131,13 +131,37 @@ def test_comments_and_blank_lines_are_ignored(donor, tmp_path):
 # The refusals. Each one writes NOTHING.
 # --------------------------------------------------------------------------------------
 
-def test_a_path_not_in_the_kept_set_refuses_and_writes_nothing(donor, tmp_path):
-    """The defect this guard exists for: a list that quietly matches nothing."""
+def test_a_path_that_does_not_exist_on_disk_refuses_and_writes_nothing(donor, tmp_path):
+    """The defect this guard exists for: a list that quietly matches nothing.
+
+    ⚠ The refusal is keyed on the path not EXISTING, not on it being absent from `kept` —
+    those are two different situations and refusing both made the exclusion unrepeatable
+    (#369, reopened). This is the one that is a real fault: the clip the author meant to
+    remove is still in the output and nothing said so.
+    """
     p, dest = _run(donor, tmp_path, ["/corpus/train-other-500/100/ch/NOT_A_REAL_CLIP.wav"])
 
     assert p.returncode != 0
-    assert "not in the kept set" in (p.stdout + p.stderr)
+    assert "do not exist on disk" in (p.stdout + p.stderr)
     assert not dest.exists(), "a refused run must not write a corpus"
+
+
+def test_a_clip_already_removed_is_a_no_op_not_a_refusal(donor, tmp_path):
+    """Re-running the exclusion against an already-clean input must SUCCEED.
+
+    This is the path the build recipe instructs, and the reviewer found it unfollowable by
+    running the command the record named: the donor it pointed at had already had the clip
+    removed, so passing the flag refused because the clip was absent while omitting it
+    refused because the clip was declared. Excluding a clip that is already gone is a no-op,
+    and a no-op is the correct answer to "make sure this clip is not in the corpus".
+    """
+    gone = tmp_path / "already_removed.wav"      # exists on disk, absent from `kept`
+    gone.write_bytes(b"")
+    p, dest = _run(donor, tmp_path, [str(gone)])
+
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "already absent" in p.stdout, p.stdout
+    assert dest.exists(), "an idempotent exclusion must still write the corpus"
 
 
 def test_emptying_a_speaker_refuses_because_it_renumbers(donor, tmp_path):
