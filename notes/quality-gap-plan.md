@@ -623,11 +623,34 @@ and soft maps corpus-wide (it recomputes every clip by design; the disjointness 
 what makes that a no-op for existing rows, and **that is a claim to re-verify against the
 shipped v6 files, not to trust from this note**) → `derive_vat_corpus.py` over the two new
 roots on per-speaker z (viable here, unlike Emilia: ~2,064 new speakers with a median in
-the hundreds of clips) → merge with v6's rows byte-identical and ids appended → hash split
-→ `data_statistics` re-measured **in-container** → `configs/data_licenses.yaml` **needed a
-new entry and now has one** (`libritts_r_full_vat_v7` plus the two `_derived_*` inputs,
-under `merged_vat_corpora`) → warm start from `vat6_finetune` **`ep008`**. Follow
-`merge_emilia_corpus.py` verbatim, as rung 2 did.
+the hundreds of clips) → **`scripts/tools/merge_libritts_full_corpus.py --base <v6> --add
+<clean_360> --add <other_500> --out <v7>`**, which appends with v6's rows byte-identical and
+ids renumbered onto the end → `data_statistics` re-measured **in-container** →
+`configs/data_licenses.yaml` **needed a new entry and now has one**
+(`libritts_r_full_vat_v7` plus the two `_derived_*` inputs, under `merged_vat_corpora`) →
+warm start from `vat6_finetune` **`ep008`**.
+
+⚠⚠ **THIS RECIPE NAMED THE WRONG SCRIPT AND AN EXTRA STEP UNTIL 2026-08-27 (#338), AND BOTH
+WOULD HAVE COST THE RUNG.** It said *"Follow `merge_emilia_corpus.py` verbatim, as rung 2
+did"* and put a **hash split after the merge**. Corrected here because the next reader of
+this paragraph is whoever runs the build:
+
+* **`merge_emilia_corpus.py` is the wrong lane, not merely the wrong name.** It takes `--out`
+  only — no `--base`, no `--add` — and merges Emilia into v4 on the **GLOBAL ANCHOR**, which
+  exists because per-speaker z destroys a corpus with a median of 3 clips per speaker. This
+  rung goes through the ordinary **per-speaker** lane, which the same sentence says two lines
+  earlier. `merge_libritts_full_corpus.py` opens with a section headed *WHY THIS IS NOT
+  merge_emilia_corpus WITH DIFFERENT PATHS* for exactly this reason.
+* ⚠ **THERE IS NO POST-MERGE HASH SPLIT, AND RUNNING ONE WOULD DESTROY THE WARM START.** The
+  merge tool does no splitting: it takes each input's existing split as given, and
+  `check_split_agrees` **refuses** any input whose train/val does not already reproduce under
+  the shared hash rule. Re-splitting the merged corpus would move v6 rows across sides and
+  break the byte-identity this very paragraph depends on. The split already happened, in
+  `derive_vat_corpus.py`, one arrow to the left.
+* **The wording was inherited from rung 2's identical sentence (line ~512), written when no
+  rung-3 script existed.** Then it meant *copy its guard structure*. Now it tells a reader to
+  write a script that is already written, tested and committed — which is why an instruction
+  that was harmless when authored became actively wrong without anyone editing it.
 
 ⚠ **THIS PARAGRAPH SAID "no manifest edit is needed" AND THAT WAS WRONG (#294, caught in
 review 1 rather than by the build).** `classify_path` *was* called, on the **audio roots**,
@@ -640,7 +663,8 @@ per-corpus checklist's FIRST item was recorded as satisfied on the strength of a
 looked at one of the two things the wall reads. **A verification that covers part of a gate
 is not a verification of the gate** — and it fails in the most expensive direction, because
 partial evidence reads exactly like complete evidence once it is written down as a
-conclusion. The merge script now runs the same pre-flight `merge_emilia_corpus` does (#293),
+conclusion. `merge_libritts_full_corpus.py` now runs the same pre-flight `merge_emilia_corpus`
+does (#293),
 so this cannot be re-established by prose alone.
 
 ### The low-hanging fruit, itemised — ~870 h before anything is rendered

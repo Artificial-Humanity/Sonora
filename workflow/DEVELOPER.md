@@ -113,6 +113,37 @@ naming and idiom rather than importing a house style from elsewhere.
 the two differ. This section is your half of it. The reviewer is **Janis**, and it is not a
 session you talk to — it is a **one-shot process you run**.
 
+### ⚠ The loop has a driver — run it, and read the steps below as its fallback
+
+```bash
+workflow/scripts/review_cycle.sh --range origin/main..HEAD --developer Ozzy
+workflow/scripts/full_review.sh   # the whole-codebase sweep, when the owner asks for one by name
+```
+
+`review_cycle.sh` runs Steps 1–4 unattended, in a loop: request the review, take the findings,
+fix them, request the next pass. It stops on its own at `agent_passes.max + 1` reviews — the
+same ceiling Step 4 describes, derived from the same [sonora-lane.json](sonora-lane.json)
+rather than a second copy of the number. It has a stop file, a per-call spend ceiling, and a
+stall guard. ⚠ **It never pushes** — `git push` is denied to the worker it spawns and the
+driver does not push either, so a human still lands the branch.
+
+⚠ **Everything below this line is what the driver does, and what you do by hand when it cannot
+run.** It is not the normal path. Doing the steps manually is correct and has one failure mode
+the driver does not: **the loop stops wherever the person stopped.** The script's own header
+says exactly that — *"when that person stopped, the loop stopped wherever it happened to be,
+leaving issues open that were merely mid-flight."*
+
+⚠⚠ **AND THIS PAGE IS WHY THAT KEPT HAPPENING.** Until 2026-08-27 the driver was named in
+three files — `CLAUDE.md`, `AGENTS.md`, `REVIEWER.md` — and by **no** line addressed to the
+role that runs it. All three mention it in the third person: two inside a warning about not
+inferring your role from the invocation, one telling the *reviewer* that a machine greps its
+summary. **The name was reachable the whole time; the affordance never was.** Six reviews were
+driven by hand in a single session while the driver sat in `workflow/scripts/`.
+
+**What the driver does not decide.** It does not clear the ceiling. When the passes are spent
+the cycle ends and the owner authorises another — a real decision, and theirs. Chaining saves
+the reporting turns between passes, never that one.
+
 ### ⚠ Use `workflow/scripts/issue.py` for every tracker write
 
 ```bash
