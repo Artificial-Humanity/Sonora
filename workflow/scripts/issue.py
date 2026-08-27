@@ -825,6 +825,33 @@ def cmd_grade(pb, args):
                 "       reviewer regrade or refuse — a review is a report, not an order."
                 % (was, new_sev, reviewer_name()))
 
+    # ⚠⚠ THIS IS A DIRECT WRITE ON PURPOSE. DO NOT MOVE IT TO /apply YET — measured
+    # 2026-08-27 against the hooks generated from this lane's own map.
+    #
+    # `severity` is not in the installed `REFEREED` list, so this PATCH lands and the
+    # referee is indifferent to it. The obvious tidy-up is to route it through
+    # /api/ferrostep/issues/apply like every other refereed write. That would BREAK
+    # GRADING SILENTLY, and the silence is the point:
+    #
+    #   * the apply route emits one branch PER DECLARED COLUMN, and this lane's map
+    #     declares `counter_fields` and `scope_fields` and NO `attribute_fields`;
+    #   * so the generated file contains ZERO occurrences of `body.attributes` — not a
+    #     rejecting branch, NO branch. Measured on both the installed file and a freshly
+    #     generated one.
+    #   * a POST carrying {"attributes": {"severity": …}} is therefore accepted, ignored,
+    #     and answered 200. `st >= 300` below would not fire. The grade would read as
+    #     applied and the column would never change.
+    #
+    # The CURRENT shape fails the other way, which is the way worth having: when
+    # `severity` joins `attribute_fields` it also joins `REFEREED`, and the referee's
+    # update hook throws `refereed_field: …` — a 400 that `st >= 300` catches on an
+    # ordinary grade. A loud break at the moment the assumption expires beats a quiet one
+    # that starts the moment the migration lands.
+    #
+    # So the order is: declare `attribute_fields`, regenerate and install the hooks, THEN
+    # move this call. If you migrate first, have it read /api/ferrostep/issues/ping and
+    # refuse when `writes` does not contain "attributes" — the ping exists to be asked
+    # exactly this, and it currently answers ["state", "counters", "scope"].
     st, r = pb.call("/api/collections/issues/records/" + rec["id"], "PATCH",
                     {"severity": new_sev})
     if st >= 300:
