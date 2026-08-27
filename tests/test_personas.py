@@ -175,6 +175,15 @@ TABLE_MD = [
     "CLAUDE.md",
 ]
 
+# ⚠ THE SUBSET THAT IS KNOWN TO HOLD TABLES, so a per-file floor can be asserted (#363).
+# Membership, deliberately NOT counts: a count here would go stale on the next edit that adds
+# a row, and this repo's rule is to derive numbers rather than state them. The others in
+# TABLE_MD legitimately hold none, so flooring them would fail on a true fact.
+# ⚠ THIS LIST IS THE THING THAT MAKES A PER-FILE COLLAPSE VISIBLE. `assert total_runs` sees
+# only a TOTAL collapse; REVIEWER.md is the file with a live history of the defect (#353) and
+# was exactly the one that could drop out unnoticed while AGENTS.md kept the total non-zero.
+TABLES_EXPECTED_IN = ("workflow/REVIEWER.md", "AGENTS.md")
+
 
 def _table_runs(rel):
     """Every maximal run of consecutive `|`-prefixed lines, with its start line.
@@ -213,6 +222,12 @@ def _table_runs(rel):
             runs.append((start, cur)); cur = []
     if cur:
         runs.append((start, cur))
+    # ⚠ THE UNCLOSED OPENER IS RETURNED, NOT DISCARDED (#363). Carrying fence STATE gave the
+    # scanner a way to be silently WRONG that it did not have before: every line after an
+    # unbalanced marker is excluded, so one stray fence drops a whole file's tables and the
+    # global floor below cannot see it — measured, a single inserted ``` line at REVIEWER.md:6
+    # took that file's 4 runs to 0 and the suite stayed GREEN. The caller asserts on this.
+    return runs, fence
     return runs
 
 
@@ -236,6 +251,10 @@ def test_every_markdown_table_run_carries_its_own_header_and_delimiter():
         stand here, that not skipping them "fails loudly, which is the cheap direction", was
         true of a lone pipe line in a fence and FALSE of a well-formed table in one, which
         passed silently and could satisfy the floor below on its own.
+      * ⚠ Skipping them opened the OPPOSITE direction, and it is the silent one (#363): an
+        unbalanced fence marker excludes every line after it, so a stray ``` drops that
+        file's tables from the population entirely. Both new assertions below exist for
+        that — fence balance per file, and a per-file floor for the files that hold tables.
       * #353 named two structural faults; this covers fault 1 (no header/delimiter) and NOT
         fault 2 (no blank line between the table and the paragraph above it). Whether fault
         2 alone breaks rendering is UNSETTLED — no markdown library is installed to decide it.
@@ -253,9 +272,13 @@ def test_every_markdown_table_run_carries_its_own_header_and_delimiter():
         f"the table guard's population no longer resolves: {missing} — a rename or a path "
         "typo would otherwise leave this green while checking fewer files than it names")
 
-    broken, total_runs = [], 0
+    broken, total_runs, unbalanced, per_file = [], 0, [], {}
     for rel in TABLE_MD:
-        for start, run in _table_runs(rel):
+        runs, unclosed = _table_runs(rel)
+        if unclosed:
+            unbalanced.append(f"{rel} — a `{unclosed}` fence is never closed")
+        per_file[rel] = len(runs)
+        for start, run in runs:
             total_runs += 1
             if len(run) < 2:
                 broken.append(f"{rel}:{start} — a single `|` line, not a table")
@@ -265,10 +288,29 @@ def test_every_markdown_table_run_carries_its_own_header_and_delimiter():
                     f"{rel}:{start} — run of {len(run)} rows whose 2nd line is not a "
                     f"delimiter:\n      {run[0][:70]}\n      {run[1][:70]}")
 
+    # ⚠ BEFORE the floor, because an unbalanced fence is what makes the floor lie (#363).
+    assert not unbalanced, (
+        "unbalanced code fence(s) — every line after the opener is excluded from this "
+        "guard, so the file's tables silently stop being checked:\n  "
+        + "\n  ".join(unbalanced))
+
     assert total_runs, (
         "the table guard found NO tables in any of "
         f"{TABLE_MD} — it reported a pass over an empty population, which is "
         "indistinguishable from a clean one. Check the paths and `_table_runs`.")
+
+    # ⚠ AND THE FLOOR IS PER FILE, NOT ONLY GLOBAL (#363). `assert total_runs` sees a TOTAL
+    # collapse and is blind to a per-file one: with AGENTS.md still supplying runs, REVIEWER.md
+    # — the single file with a live history of the defect this guard was built for (#353) —
+    # could drop to zero and the total stayed non-empty. Only files KNOWN to hold tables are
+    # floored; the rest legitimately have none, and hardcoding a count here would go stale on
+    # the next edit, so the population is derived.
+    for rel, n in per_file.items():
+        if rel in TABLES_EXPECTED_IN:
+            assert n, (
+                f"{rel} contributed NO table runs to this guard. It is listed as a file that "
+                "holds tables, so zero means the scan lost it — a fence, a rename, or a "
+                "rewrite — not that the tables are fine.")
 
     assert not broken, (
         "markdown table run(s) with no header/delimiter — these render as literal text:\n  "

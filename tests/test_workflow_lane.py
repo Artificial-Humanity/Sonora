@@ -328,14 +328,107 @@ def test_every_tracker_write_surface_is_actually_guarded():
     """The call sites, because a guard nothing calls is decoration.
 
     Exercising `refuse_abort_token` proves the function refuses; it does not prove `cmd_file`
-    or `add_comment` ever reach it. Deleting either call leaves the test above green."""
-    assert ISSUE_SRC.count("refuse_abort_token(") >= 4, (
-        "a write surface stopped calling the abort-token guard: expected its definition plus "
-        "the title, body and comment call sites")
+    or `add_comment` ever reach it. Deleting either call leaves the test above green.
+
+    ⚠ AND THIS TEST CANNOT SEE ORDER, which is how #362 shipped green underneath it: every
+    site below was present and the comment site was reached only AFTER the move that had
+    already persisted the same text. `test_no_tracker_write_survives_a_refused_comment`
+    is the one that watches the ordering; this one only watches that the calls exist."""
     for site in ('refuse_abort_token(args.title, "title")',
                  'refuse_abort_token(body, "body")',
-                 'refuse_abort_token(text, "comment")'):
-        assert site in ISSUE_SRC, "the abort-token guard is no longer called: %s" % site
+                 'refuse_abort_token(note, "note")',
+                 'refuse_unpostable_comment(text)',
+                 'refuse_unpostable_comment(args.comment)'):
+        assert site in ISSUE_SRC, "a tracker write surface is no longer guarded: %s" % site
+
+
+def test_no_tracker_write_survives_a_refused_comment():
+    """⚠⚠ #362 — THE GUARD FIRED AFTER THE WRITE IT EXISTS TO PREVENT.
+
+    `transition` moves first and comments second, and the refusal lived in `add_comment`. So
+    the identical text had ALREADY ridden the move as the event `--note` — a tracker write,
+    verbatim — before anything inspected it. Three consequences, all measured on the shipped
+    code: the token reached the tracker anyway, the state had already moved (so the retry is
+    refused by the referee as a no-op move), and the mandatory comment was silently dropped.
+    `cmd_take --note` reached no guard at all, on the escalation route the owner reads.
+
+    ⚠ THE HARNESS RECORDS EVERY TRACKER CONTACT, rather than asserting a refusal. A test that
+    only caught SystemExit passes on the broken code — it DID refuse, just too late. What
+    distinguishes the two versions is whether anything reached the tracker first, so that is
+    what is asserted.
+
+    ⚠ READS ARE RECORDED ALONGSIDE WRITES, and that is deliberate. Asserting "no writes"
+    alone cannot tell a guard hoisted above the whole command from one sitting inside the
+    per-number loop, because the loop checks before its own move either way — measured, by
+    mutation, while writing this test. The text these commands refuse is a pure argument and
+    needs no record to judge it, so the property worth pinning is the unqualified one: a
+    refusable comment touches the tracker ZERO times."""
+    import pytest
+
+    m = _issue_module()
+    token = m.ABORT_TOKEN
+    contact = []
+    m.ferrostep_move = lambda pb, rec, role, to, note, actor: contact.append(("event", note))
+
+    class StubPB:
+        base, tok = "x", "y"
+
+        def find(self, args, n):
+            contact.append(("read", n))
+            return {"id": "r1", "number": n, "state": "review"}
+
+        def add_comment(self, args, rec, text, author):
+            contact.append(("comment", text))
+
+    def ns(**kw):
+        return types.SimpleNamespace(author="Janis", repo=None, **kw)
+
+    # Every surface that carries free text into a state move, with the literal in it.
+    cases = [
+        ("close", lambda: m.transition(StubPB(), ns(number=1, comment="a %s finding" % token),
+                                       "close", "Janis")),
+        # ⚠ `reopen` specifically: its comment is MANDATORY, so dropping it is the silent
+        # consequence that costs the developer a fix pass guessing why.
+        ("reopen", lambda: m.transition(StubPB(), ns(number=1, comment="%s here" % token),
+                                        "reopen", "Janis")),
+        ("take --note", lambda: m.cmd_take(StubPB(), ns(numbers=[1], note="%s" % token))),
+        # ⚠ One note serves EVERY number, so the check belongs above the loop, not in it.
+        # A per-iteration guard writes nothing either — it is the READ recorded above that
+        # tells the two apart, which is why this case is here.
+        ("take multi", lambda: m.cmd_take(StubPB(), ns(numbers=[1, 2, 3], note="%s" % token))),
+        # The length cap is the same act-then-die shape and drops the same comment.
+        ("over the cap", lambda: m.transition(StubPB(),
+                                              ns(number=1, comment="x" * (m.COMMENT_MAX + 1)),
+                                              "close", "Janis")),
+    ]
+    for label, call in cases:
+        contact.clear()
+        with pytest.raises(SystemExit):
+            call()
+        assert contact == [], (
+            "%s: the refusal came too late — the tracker was already touched %d time(s): %r"
+            % (label, len(contact), contact))
+
+    # ⚠ POSITIVE CONTROL. A guard that refused everything would also pass the assert above,
+    # so prove the legitimate paths still reach the tracker — and in the documented order,
+    # since move-before-comment is the half of `transition` deliberately NOT changed.
+    for label, call, want in [
+        ("benign comment", lambda: m.transition(
+            StubPB(), ns(number=1, comment="fixed in abc1234"), "close", "Janis"),
+         ["read", "event", "comment"]),
+        ("no comment", lambda: m.transition(
+            StubPB(), ns(number=1, comment=None), "close", "Janis"), ["read", "event"]),
+        ("benign note", lambda: m.cmd_take(
+            StubPB(), ns(numbers=[1], note="the owner must choose X")), ["read", "event"]),
+        # The boundary itself: exactly at the cap is legal, one over is not (above).
+        ("exactly at the cap", lambda: m.transition(
+            StubPB(), ns(number=1, comment="x" * m.COMMENT_MAX), "close", "Janis"),
+         ["read", "event", "comment"]),
+    ]:
+        contact.clear()
+        call()
+        assert [kind for kind, _ in contact] == want, (
+            "%s was refused, or reached the tracker out of order: %r" % (label, contact))
 
 
 def test_the_tracker_script_does_not_spell_the_abort_token():

@@ -202,6 +202,49 @@ def refuse_abort_token(text, where):
             "  issue number. REVIEWER.md §6 carries the sanctioned phrasings." % where)
 
 
+def redact(text):
+    """Blunt the cycle-abort token on the way OUT of the tracker, wherever it is printed.
+
+    ⚠⚠ THE WRITE GUARD CANNOT REACH WHAT IS ALREADY STORED. `refuse_abort_token` stops the
+    NEXT record carrying the literal; it does nothing about the ones filed before it existed,
+    and those are live: issue 355 carries it in its TITLE, 201/246/355 in their bodies (#361).
+    Rewriting closed records would settle it too, and is deliberately NOT what this does --
+    see #361 for that argument. This side needs no ruling: printing a record is not the same
+    act as storing one, and the trap only springs when the text is PRINTED into a summary.
+
+    ⚠ THE MEASURED ROUTE IS THE DOCUMENTED ONE. `issue.py list --branch <b> --all` -- the
+    reroute REVIEWER.md §4 tells a reviewer to run when the MCP transport is stale -- prints
+    titles, so following the instructions as written put the literal into the reviewer's
+    context. That is not an unusual keystroke; it is the sanctioned read command.
+
+    ⚠ REPLACED, NOT DROPPED. The reader still needs to see that something was there, or a
+    title reads as though it were written that way. The marker names the issue that explains
+    it, and cannot itself match what the driver greps for.
+    """
+    return (text or "").replace(ABORT_TOKEN, "[cycle-abort token, redacted — #361]")
+
+
+def refuse_unpostable_comment(text, where="comment"):
+    """Everything that makes a comment unpostable, in ONE place that can be called EARLY.
+
+    ⚠ THIS EXISTS TO BE CALLED BEFORE THE STATE MOVE, NOT WHERE THE COMMENT IS WRITTEN.
+    Both checks used to live inside `add_comment`, which `transition` reaches only AFTER
+    `ferrostep_move` has already persisted the same text as the event note. So a refusal
+    arrived with the record already moved, the note already stored, and the comment
+    dropped -- and for `reopen`, whose comment the definition makes mandatory, that left
+    the developer an unexplained reopen and one of three fix passes spent guessing (#362).
+
+    ⚠ THE LENGTH CAP IS HOISTED WITH THE TOKEN, NOT JUST THE TOKEN. It is the same
+    act-then-die shape and it drops the same mandatory comment; splitting them would fix
+    one instance of the defect and leave its twin two lines away.
+    """
+    text = (text or "").strip()
+    refuse_abort_token(text, where)
+    if len(text) > COMMENT_MAX:
+        die("%s is %d characters; the cap is %d. Put detail in the issue body, which "
+            "allows 200,000." % (where, len(text), COMMENT_MAX))
+
+
 class PB:
     def __init__(self):
         try:
@@ -260,10 +303,10 @@ class PB:
         # not be written. Kept short by policy -- the owner capped comment length because a
         # reviewer averaged 1839 characters and detail belongs in the issue body.
         text = text.strip()
-        refuse_abort_token(text, "comment")
-        if len(text) > COMMENT_MAX:
-            die("comment is %d characters; the cap is %d. Put detail in the issue body, which "
-                "allows 200,000." % (len(text), COMMENT_MAX))
+        # ⚠ RE-CHECKED HERE ON PURPOSE, THOUGH `transition` ALREADY CHECKED. `cmd_comment`
+        # reaches this method WITHOUT a state move, so this is the only gate on that path.
+        # Two calls, one function -- not two copies of the rule that can disagree (#362).
+        refuse_unpostable_comment(text)
         # ⚠ `posted_at` IS STAMPED HERE BECAUSE NOTHING ELSE STAMPS IT. This collection has
         # no `created` system field -- it was built to mirror the imported GitHub comments,
         # which carried their own timestamps. A comment written through this script had
@@ -300,7 +343,7 @@ def show_row(i):
     # and this column is the one the merge gate blocks on.
     return "  #%-5s %-10s %-8s passes=%-2s %s" % (
         i.get("number"), i.get("state"), i.get("severity") or "--",
-        i.get("agent_passes") or 0, (i.get("title") or "")[:52])
+        i.get("agent_passes") or 0, redact(i.get("title"))[:52])
 
 
 def cmd_list(pb, args):
@@ -332,10 +375,11 @@ def cmd_show(pb, args):
     rec = pb.find(args, args.number)
     for k in ("number", "state", "severity", "agent_passes", "branch_name", "author",
               "labels", "title"):
-        print("%-13s %s" % (k, rec.get(k)))
+        print("%-13s %s" % (k, redact(str(rec.get(k)))))
     if (rec.get("user_decision") or "").strip():
-        print("\nUSER DECISION (the owner's; outranks any finding)\n%s" % rec["user_decision"])
-    print("\n%s" % (rec.get("body") or "")[:4000])
+        print("\nUSER DECISION (the owner's; outranks any finding)\n%s"
+              % redact(rec["user_decision"]))
+    print("\n%s" % redact(rec.get("body"))[:4000])
     # ⚠⚠ THIS QUERY RETURNED HTTP 400 FOR EVERY ISSUE, AND THE STATUS WAS DISCARDED, SO
     # `show` PRINTED ZERO COMMENTS FROM THE DAY IT WAS WRITTEN. `issue_comments` has no
     # `created` system field, and PocketBase refuses a sort on a field that does not exist.
@@ -376,7 +420,7 @@ def cmd_show(pb, args):
         print("\n(no comments)")
     for c in items:
         print("\n--- %s (%s)\n%s"
-              % (c.get("author"), (c.get("posted_at") or "")[:19], c.get("body")))
+              % (c.get("author"), (c.get("posted_at") or "")[:19], redact(c.get("body"))))
 
 
 def cmd_file(pb, args):
@@ -507,14 +551,33 @@ def cmd_take(pb, args):
     already spent is REFUSED unless --note says what decision the owner is being asked for;
     WITH the note it ROUTES the issue to `escalated`, the note riding the event.
     """
+    note = getattr(args, "note", None)
+    # ⚠ CHECKED ONCE, ABOVE THE LOOP, AND BEFORE ANY MOVE. This note rides the event as a
+    # tracker write exactly as a `--comment` does, and it was the ONE write surface with no
+    # guard at all -- the escalation route's note, which is the note the owner is meant to
+    # read (#362). Hoisting it out of the loop matters for the same reason it is hoisted
+    # above `ferrostep_move`: one note serves every number, so a per-iteration check would
+    # move the first issue before refusing the second.
+    refuse_abort_token(note, "note")
     for number in args.numbers:
         rec = pb.find(args, number)
-        ferrostep_move(pb, rec, "developer", "open", getattr(args, "note", None),
-                       args.author)
+        ferrostep_move(pb, rec, "developer", "open", note, args.author)
 
 
 def transition(pb, args, action, author):
     role, to_state = ROLE_FOR[action]
+    # ⚠ VALIDATE, THEN MOVE, THEN COMMENT -- and the validation is hoisted while the WRITE
+    # is not. Move-before-write still holds for the reason below. What did not hold was
+    # checking the text where it is written: `add_comment` is reached only after
+    # `ferrostep_move` has persisted the identical text as the event note, so every refusal
+    # fired too late to prevent the write it existed to prevent (#362).
+    #
+    # ⚠ ABOVE `pb.find` TOO, NOT MERELY ABOVE THE MOVE. The comment is a pure-text argument
+    # and needs no record to judge, so refusing it before ANY tracker contact makes the
+    # invariant one a test can state without qualification: a refusable comment touches the
+    # tracker zero times. Ordered after the lookup it is still correct and no longer simple
+    # -- "no writes, but one read" is the kind of caveat that later grows an exception.
+    refuse_unpostable_comment(args.comment)
     rec = pb.find(args, args.number)
     # ⚠ MOVE FIRST, COMMENT SECOND. The engine's refusal must not leave a comment describing
     # a move that never happened. The comment is the human-readable trail (issue_comments);
