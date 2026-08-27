@@ -555,3 +555,78 @@ def test_a_dry_run_reports_the_self_check_and_does_not_run_it():
         "SELF_REVIEW_CMD:\n" + gate)
     assert gate.index('DRY_RUN" -eq 1') < gate.index("eval"), (
         "the dry-run branch must come before the eval, or it cannot prevent it")
+
+
+def _run_gate(cmd, at="all", pass_idx=1, dry=0):
+    """Drive the SHIPPED gate block — the enforcing half, not the scheduler.
+
+    ⚠ Extracted from the launcher rather than reimplemented, for the same reason
+    `_self_review` is: a test that restates the rule agrees with itself while the script does
+    something else.
+    """
+    fn = SOURCE[SOURCE.index("self_review_scheduled() {"):SOURCE.index("\nif self_review_scheduled")]
+    gate = SOURCE[SOURCE.index("if self_review_scheduled"):]
+    gate = gate[:gate.index("\nfi\n") + 4]
+    script = (f'die() {{ echo "$*" >&2; exit 9; }}\nMAX_REVIEWS=4\nDRY_RUN={dry}\n'
+              f'SELF_REVIEW_AT={at!r}\nSELF_REVIEW_CMD={cmd!r}\nPASS={pass_idx}\n'
+              f'{fn}\n{gate}\necho REACHED_THE_REVIEW\n')
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+
+
+def test_a_failing_self_check_command_REFUSES_the_review():
+    """⚠⚠ THE VERIFIED HALF WAS WATCHED BY NOTHING (#351). The scheduling half had 22 cases;
+    the part the whole design rests on had none, and mutation-measured, replacing the `die`
+    with `|| true` left every assertion green.
+
+    `SELF_REVIEW_CMD` is the half that is *enforced* rather than *prompted* — the commit that
+    added it says so as the design. A gate that cannot verify must not pretend to; one that
+    verifies and then proceeds anyway is worse, because its output says it checked.
+    """
+    r = _run_gate("false")
+    assert r.returncode != 0, (
+        "a failing self-check command did not stop the run:\n" + r.stdout + r.stderr)
+    assert "REACHED_THE_REVIEW" not in r.stdout, (
+        "the review was requested anyway — the die() does not prevent the launch")
+    assert "self-check command failed" in r.stderr, r.stderr
+
+
+def test_a_passing_self_check_command_lets_the_review_proceed():
+    """The other direction, without which the test above is satisfied by a gate that refuses
+    everything."""
+    r = _run_gate("true")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "REACHED_THE_REVIEW" in r.stdout, "a passing self-check must not block the review"
+
+
+def test_a_self_check_command_that_calls_exit_does_not_silently_end_the_script():
+    """⚠ THE SUBSHELL IS NOT DECORATION. The value is operator-supplied and `exit 1` is a
+    plausible thing to type into a "make this fail" setting. Without `( … )` the eval would
+    exit THE LAUNCHER at that point — no die, no message, and a zero exit status reading as a
+    review that ran clean."""
+    r = _run_gate("exit 1")
+    assert r.returncode != 0, r.stdout + r.stderr
+    assert "self-check command failed" in r.stderr, (
+        "an `exit` inside SELF_REVIEW_CMD ended the script instead of failing the check — "
+        "the eval is not in a subshell:\n" + r.stdout + r.stderr)
+    assert "REACHED_THE_REVIEW" not in r.stdout
+
+
+def test_no_self_check_command_means_the_checklist_only():
+    """An empty SELF_REVIEW_CMD is the documented "no mechanical gate" case and must not be
+    read as a command that failed."""
+    r = _run_gate("")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "REACHED_THE_REVIEW" in r.stdout
+    assert "self-check list is DEVELOPER.md" in r.stderr
+
+
+def test_a_dry_run_does_not_execute_the_command_even_when_it_would_fail():
+    """⚠⚠ BEHAVIOURAL, not a source scan. `--dry-run` is the ONE launcher form the reviewer's
+    allowlist grants; if it executed SELF_REVIEW_CMD, the reviewer would gain a way to run an
+    operator-supplied command. A failing command must therefore NOT stop a dry run."""
+    r = _run_gate("false", dry=1)
+    assert r.returncode == 0, (
+        "a dry run executed the self-check command and was stopped by it:\n"
+        + r.stdout + r.stderr)
+    assert "WOULD run" in r.stderr, r.stderr
+    assert "REACHED_THE_REVIEW" in r.stdout

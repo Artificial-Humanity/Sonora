@@ -394,7 +394,21 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   # ⚠ CHECKED BEFORE THE EXIT CODE. A review can complete cleanly (rc 0) and still be telling
   # you the change must not land; that is a content signal, not a failure signal.
   if grep -q "MUST-NOT-LAND" <<< "$OUT"; then
+    # ⚠⚠ THE MATCH IS DELIBERATELY ANYWHERE-IN-THE-OUTPUT AND MUST STAY THAT WAY. REVIEWER.md
+    # §6 forbids the token in any other context precisely because of this grep, and the
+    # asymmetry is the whole argument: a false HALT costs one cycle, a false PASS can land work
+    # a reviewer said must not land, onto a branch with no protection and a worker instructed
+    # to push. Line-anchoring this would trade a cheap recurring cost for a rare expensive one.
+    #
+    # ⚠ WHAT IS FIXED INSTEAD IS THE DIAGNOSIS. On 2026-08-27 a review that found nothing
+    # blocking wrote "there is no MUST-NOT-LAND finding" and halted the cycle it was reporting
+    # as clean — one occurrence, in a sentence meaning the opposite, and the message below said
+    # only "REVIEW SAYS MUST-NOT-LAND". Reading the log was the only way to tell a real refusal
+    # from a §6 violation. Now the matching lines are printed, so the reader decides in one
+    # glance without opening anything.
     say "REVIEW SAYS MUST-NOT-LAND — stopping. This needs the owner; do not push."
+    say "the line(s) that matched — check whether any is an actual refusal, or §6 prose:"
+    grep -n "MUST-NOT-LAND" <<< "$OUT" | sed 's/^/      /' >&2
     exit 3
   fi
   if [[ "$RC" -ne 0 ]]; then
@@ -410,27 +424,31 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
     exit 4
   fi
   if [[ "$OPEN" == "0" ]]; then
-    # ⚠⚠ "NO OPEN ISSUES" AND "THE FILTER MATCHED NOTHING" ARE THE SAME READING (#344), and
-    # tightening the slug regex does NOT settle it — a local checkout path yields a
-    # plausible-looking `repos/Sonora`, which is well-formed and wrong. So the question is
-    # asked of the DATA instead: a repo+branch with zero issues in ANY state has not
-    # converged, it has never been reviewed or is being counted under the wrong name.
+    # ⚠⚠ THE SLUG IS TESTED AGAINST THE REPO, NOT THE BRANCH — and the first version of this
+    # guard got that wrong in the direction that punishes a good outcome (Sonora #350).
     #
-    # ⚠ `merge_branch.sh` already learned exactly this and calls it NEVER_REVIEWED — measured
-    # there when a branch's findings moved away and the gate offered to push 21 unreviewed
-    # commits to main. The driver had no equivalent, so a bad slug made it announce CONVERGED
-    # having read nothing at all: the empty-enumeration vacuous pass, in the one line that
-    # decides the loop is finished.
-    EVER="$(pb "repo=\"$REPO_SLUG_FILTER\" && branch_name=\"$BRANCH\"")"
+    # The hazard is real: with a slug naming no repo the tracker knows, `OPEN` is 0 and the
+    # driver announced CONVERGED having read nothing. But the first fix asked "does this
+    # BRANCH have any issues in any state" — and a branch reviewed clean has none, so a
+    # genuinely clean review exited 5 saying "a branch nobody has reviewed". ⚠ THIS DRIVER RAN
+    # THE REVIEW ITSELF, so it is the one caller that KNOWS a review happened; borrowing
+    # `merge_branch.sh`'s NEVER_REVIEWED reasoning was borrowing a premise that does not hold
+    # here. That gate cannot see whether a review ran and must refuse; this one can.
+    #
+    # ⚠ A clean range is the normal, good outcome (REVIEWER.md §7.5) and the routing rule now
+    # sends the larger share of workflow findings to another repo, so a Sonora-clean pass is
+    # routine rather than exotic. A guard that fires on the good path gets switched off.
+    EVER="$(pb "repo=\"$REPO_SLUG_FILTER\"")"
     if [[ "$EVER" == "unreachable" ]]; then
       say "tracker unreachable while confirming convergence — refusing to call this converged."
       exit 4
     fi
     if [[ "$EVER" == "0" ]]; then
-      say "REFUSING to report convergence: this branch has ZERO issues under
-          repo=\"$REPO_SLUG_FILTER\" in ANY state. That is not a clean review — it is a
-          branch nobody has reviewed, or a slug that names no repo in the tracker.
-          Check the slug against \`git remote get-url origin\` and config.env."
+      say "REFUSING to report convergence: the tracker holds NO issues at all under
+          repo=\"$REPO_SLUG_FILTER\", in any state and on any branch. That is a slug naming a
+          repo the tracker does not have, not a clean review — every count taken with it,
+          including the zero above, was taken over nothing.
+          Check it against \`git remote get-url origin\` and workflow/config.env."
       exit 5
     fi
     CONVERGED=1

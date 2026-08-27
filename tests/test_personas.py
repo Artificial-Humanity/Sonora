@@ -157,3 +157,57 @@ def test_the_reviewer_can_reach_the_repo_the_routing_rule_names():
             "REVIEWER.md routes findings to FerroStep and tells the reviewer to VERIFY the "
             "boundary, but no candidate path names FerroStep — so the rule cannot be "
             "followed:\n  " + line)
+
+
+# --- #353: a section inserted mid-table is silent damage ----------------------------------
+
+PERSONA_MD = ["workflow/REVIEWER.md", "workflow/DEVELOPER.md", "workflow/WORKFLOW.md"]
+
+
+def _table_runs(rel):
+    """Every maximal run of consecutive `|`-prefixed lines, with its start line."""
+    lines = (REPO / rel).read_text(encoding="utf-8").splitlines()
+    runs, cur, start = [], [], 0
+    for n, l in enumerate(lines, 1):
+        if l.lstrip().startswith("|"):
+            if not cur:
+                start = n
+            cur.append(l)
+        elif cur:
+            runs.append((start, cur)); cur = []
+    if cur:
+        runs.append((start, cur))
+    return runs
+
+
+def test_every_markdown_table_run_carries_its_own_header_and_delimiter():
+    """⚠⚠ #353 — A SECTION WAS INSERTED BETWEEN ROW 1 AND ROW 2 OF THE FIELDS TABLE, and the
+    remaining rows became literal text: no header, no delimiter, no blank line. That table is
+    what tells the reviewer what to put in every field of a new issue, INCLUDING the `severity`
+    row annotated "the merge gate reads this".
+
+    ⚠ The damage is silent in both directions — the file still parses, every row is still
+    present in the source, and a reader skimming the diff sees a new section rather than a
+    broken table. Only rendering shows it, and nothing here rendered anything.
+
+    ⚠ THIS IS A STRUCTURAL CHECK, NOT A RENDERER. It asserts that every run of `|` lines starts
+    with a header and a `|---|` delimiter — which is what GFM requires to treat a run as a
+    table. It cannot see column-count mismatches or escaping errors, and no markdown library is
+    installed in this venv to check the rendering itself.
+    """
+    broken = []
+    for rel in PERSONA_MD:
+        for start, run in _table_runs(rel):
+            if len(run) < 2:
+                broken.append(f"{rel}:{start} — a single `|` line, not a table")
+                continue
+            if not re.match(r"^\s*\|[\s:|-]+\|\s*$", run[1]):
+                broken.append(
+                    f"{rel}:{start} — run of {len(run)} rows whose 2nd line is not a "
+                    f"delimiter:\n      {run[0][:70]}\n      {run[1][:70]}")
+
+    assert not broken, (
+        "markdown table run(s) with no header/delimiter — these render as literal text:\n  "
+        + "\n  ".join(broken)
+        + "\n\n⚠ Usually caused by inserting a section INTO a table. Move the section after "
+          "the table, or give the orphaned rows their own header.")

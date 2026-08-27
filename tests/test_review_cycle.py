@@ -588,3 +588,26 @@ def test_zero_issues_in_ANY_state_is_refused_not_reported_as_convergence():
     # ⚠ And unreachable must not read as zero — the same trap one layer down.
     assert "unreachable" in code[ever:converged], (
         "an unreachable tracker is not a count of zero; it must refuse separately")
+
+
+def test_the_reviewer_has_a_sanctioned_way_to_say_there_is_no_blocker():
+    """⚠⚠ A PROHIBITION WITHOUT AN AFFORDANCE HALTED A CLEAN CYCLE.
+
+    §6 forbids the token "in any other context" because the driver greps for it anywhere — and
+    gave no approved way to report the negative. On 2026-08-27 a review that found nothing
+    blocking wrote *"there is no MUST-NOT-LAND finding"* and stopped the loop it was reporting
+    as clean. One occurrence, in a sentence meaning the opposite.
+
+    ⚠ The grep is NOT loosened, and that is the point: a false halt costs one cycle, a false
+    pass can land work a reviewer said must not land, on a branch with no protection and a
+    worker instructed to push. The fix is the missing phrase, plus a message that shows what
+    matched so a §6 violation is diagnosable without opening the log.
+    """
+    persona = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
+    assert "Nothing here blocks this range." in persona, (
+        "REVIEWER.md gives no sanctioned wording for 'no blocker', so the only vocabulary for "
+        "it is the token that halts the cycle")
+    code = "\n".join(l.split("#", 1)[0] for l in SOURCE.splitlines())
+    assert 'grep -n "MUST-NOT-LAND"' in code, (
+        "the halt does not show which line matched, so a §6 violation cannot be told from a "
+        "real refusal without reading the log")

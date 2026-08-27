@@ -382,6 +382,17 @@ one command.
 | field | what to set |
 |---|---|
 | `repo` | `Artificial-Humanity/Sonora` — **unless the finding is workflow-oriented; see below.** The tracker is multi-repo, so this is not optional. ⚠ refereed; `issue.py file` sets it |
+| `number` | int, **unique per repo** — allocate it, see below |
+| `title` | one specific line. Not "bug in dataloader" |
+| `body` | markdown; the finding, the evidence, the severity, verified-or-not |
+| `state` | the lane's states (see [sonora-lane.json](sonora-lane.json)) — **`open` on filing**. ⚠ refereed; only `issue.py` moves it |
+| `severity` | `low` \| `medium` \| `high` \| `critical` — ⚠ **the merge gate reads this. See below** |
+| `labels` | `bug` \| `documentation` \| `enhancement` — the *kind* of issue, never *how bad* |
+| `author` | `Janis` |
+| `comments` | ⚠ **legacy, frozen — do not write to it.** See below |
+| `branch_name` | the id in your brief — **set it on every issue you file**, via `issue.py file --branch`. ⚠ refereed |
+| `agent_passes` | leave unset; it defaults to `0`. **Never write it** — ⚠ refereed, and the worker's |
+| `user_decision` | ⚠ **the owner's field. Never write it.** Read it — see below |
 
 ### ⚠ Workflow findings go to FerroStep — and the reason matters more than the rule
 
@@ -413,17 +424,6 @@ as of 2026-08-27: a finding about *harness tool grants* is not FerroStep's, beca
 models no tool grants at all — its allowlists cover the decision field and scope fields only,
 and its definition vocabulary is states, roles, transitions, counters and rescopes. **Verify
 that is still true before relying on it.**
-| `number` | int, **unique per repo** — allocate it, see below |
-| `title` | one specific line. Not "bug in dataloader" |
-| `body` | markdown; the finding, the evidence, the severity, verified-or-not |
-| `state` | `open` \| `escalated` \| `closed` — **`open` on filing**. ⚠ refereed; only `issue.py` moves it |
-| `severity` | `low` \| `medium` \| `high` \| `critical` — ⚠ **the merge gate reads this. See below** |
-| `labels` | `bug` \| `documentation` \| `enhancement` — the *kind* of issue, never *how bad* |
-| `author` | `Janis` |
-| `comments` | ⚠ **legacy, frozen — do not write to it.** See below |
-| `branch_name` | the id in your brief — **set it on every issue you file**, via `issue.py file --branch`. ⚠ refereed |
-| `agent_passes` | leave unset; it defaults to `0`. **Never write it** — ⚠ refereed, and the worker's |
-| `user_decision` | ⚠ **the owner's field. Never write it.** Read it — see below |
 
 ### ⚠ `severity` — this is the one field that decides whether a branch can land
 
@@ -908,6 +908,21 @@ its presence anywhere in your output halts the cycle. Nothing protects `main` he
 is no branch protection, force-push is unblocked, and CI runs *after* a push rather than
 gating one. Your summary is the only thing in front of it, and the worker is instructed to
 push once the cycle ends.
+
+⚠⚠ **TO REPORT THAT THERE IS NO BLOCKER, SAY NOTHING ABOUT THE TOKEN — ITS ABSENCE IS THE
+SIGNAL.** If you want to state it positively, the sanctioned phrasing is:
+
+> **Nothing here blocks this range.**
+
+**Do not type the token to deny it.** The prohibition above had no approved alternative until
+2026-08-27, and on that day a review that had found nothing blocking wrote *"there is no
+`MUST-NOT-LAND` finding"* — and **halted the cycle it was reporting as clean.** The driver
+grepped its own summary, matched the token inside the sentence denying it, stopped the loop and
+routed it to the owner. One occurrence, in a sentence meaning the opposite.
+
+⚠ **That is a prohibition without an affordance, and it is the shape this lane keeps paying
+for**: you were told what not to write and given no way to write what you meant. The phrase
+above is the way. It is checked by a test, so it will not quietly disappear.
 
 This is deliberately a judgement call and not a severity threshold. The test: an issue means
 *"this can live on `main` and be fixed later"*; this means *"this must not land."*

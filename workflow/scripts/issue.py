@@ -355,7 +355,7 @@ def cmd_file(pb, args):
     # collide. Retried rather than pre-reserved: the unique index is the real arbiter, and a
     # reserved-then-abandoned number leaves a permanent hole in the sequence.
     for attempt in range(6):
-        # ⚠⚠ GLOBAL MAXIMUM, NOT THIS REPO'S (#341, high). The filter here used to be
+        # ⚠⚠ GLOBAL MAXIMUM, NOT THIS REPO'S (Sonora #345, high). The filter here used to be
         # `repo="<this repo>"`, and a RESCOPE OUT OF THE REPO LOWERS THAT MAXIMUM — so the
         # next filing reissues a number that is already in use, for a different finding, under
         # a different repo. The unique index is `(repo, number)`, so nothing refuses it and

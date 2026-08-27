@@ -158,7 +158,7 @@ def test_every_counter_the_lane_declares_is_a_column_the_adapter_map_carries():
     ⚠⚠ THIS PARAGRAPH SAID "IT IS FILED AGAINST FERROSTEP" BEFORE ANYTHING WAS FILED (#346).
     Measured against the tracker: no such record existed among FerroStep's 24. The gap had
     been described to FerroStep's resident and recorded in their register, and I wrote that up
-    as *filed* — a follow-up stated as an accomplished fact, which is the same defect as #343
+    as *filed* — a follow-up stated as an accomplished fact, the same defect as FerroStep #343
     one row over. It is worse here than a wrong number would be: this docstring is written for
     the maintainer asking *what happens when the lane and the store disagree*, and "handled,
     tracked elsewhere" is exactly the answer that stops them recording it. #348 now exists.
@@ -763,7 +763,7 @@ def _issue_module():
 
 
 def test_issue_numbers_are_allocated_from_the_GLOBAL_maximum_not_this_repos():
-    """⚠⚠ #341 (high) — A RESCOPE OUT OF A REPO FREED A NUMBER FOR REUSE.
+    """⚠⚠ Sonora #345 (high) — A RESCOPE OUT OF A REPO FREED A NUMBER FOR REUSE.
 
     `cmd_file` allocated `number` as this repo's maximum plus one. `rescopes` gained a `repo`
     label on 2026-08-26; moving four findings Sonora -> FerroStep dropped Sonora's maximum by

@@ -302,8 +302,13 @@ Then, on each issue:
 ### § self-check — before the review, when the lane asks for it
 
 `request_review.sh` runs this at the reviews named by `SELF_REVIEW_AT` in
-[config.env](config.env) (this lane: **every** review). It also runs `SELF_REVIEW_CMD` — here,
-the test suite — and **refuses to request the review if that fails.**
+[config.env](config.env), and runs `SELF_REVIEW_CMD` from the same file — **refusing to
+request the review if that command fails.** Read both there; neither value is repeated here.
+
+⚠ **This paragraph named the setting's value in prose — *"(this lane: every review)"* — four
+paragraphs above item 4 below, which forbids exactly that** (#354). It was written in the same
+commit as the checklist it was violating. Nothing cross-checked it, and it would have gone
+stale silently the first time the owner changed the dial.
 
 ⚠⚠ **THIS IS NOISE REMOVAL, NOT PRE-CLEARING.** Every finding Janis files costs a fix pass, and
 mechanical findings eat budget that judgement findings need. An outside review is uniquely
