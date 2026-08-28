@@ -898,6 +898,43 @@ therefore now **26 speakers / 30 clips — 22 null-vector, 4 mirrored pairs** (w
 Speaker count is unchanged at 1,160, so nothing renumbered and the warm-start prefix property
 survives — which `--exclude` also refuses to break, by design.
 
+#### ⏹ THE RUN — launched 2026-08-28T00:31Z, STOPPED at 22:17Z on the owner's call
+
+10 epochs at ~2 h each, warm-started from `vat6_finetune` `ep008` with the speaker table
+widened 3,326 → 5,385 (verified: the donor's rows byte-identical, the 2,059 new speaker slots initialised).
+
+| epoch | holdout `total` | |
+|---|---|---|
+| 000 | 1.7713 | |
+| 001 | 1.7682 | new best |
+| **004** | **1.7653** | **best of the run** |
+| 005–008 | 1.7697 / 1.7698 / 1.7694 / 1.7676 | all worse than ep004 |
+| 009 | 1.7765 | **worse than ep000** |
+
+⚠⚠ **THE GAIN WAS IN EPOCHS 0–4 AND EPOCHS 5–9 WERE NET WORSE** — the v5 pattern, arriving
+*earlier* rather than later. v5 gave 100% of its gain in epochs 0–9; this gave it in 0–4, on
+**7× the data**. `loss/train_epoch` fell monotonically across the whole run (1.7213 → 1.6743)
+while the never-trained holdout got worse, which is overfitting rather than instability.
+
+⚠ **THE RUNG'S OWN QUESTION IS STILL OPEN AND MUST NOT BE READ OFF THIS TABLE.** These numbers
+are internal to the run. Whether rung 3 IMPROVED on rung 2 needs vat6's `ep008` scored against
+**the same 8-wide holdout**, and that has not been done: the only holdout lineage on disk was
+scored against the 3-wide `holdout.txt` and belongs to an earlier model era. The
+`1.7823–1.7921` band quoted for vat6 in `notes/training-operations.md` and in the experiment
+config is a **document claim that no artifact in this tree verifies**. If it is right, ep004 is
+~1% better than vat6's whole run and the volume lever worked; if it is not, the rung is
+unevaluated. **Do not close rung 3 on the trajectory above.**
+
+✅ **`ep004` is on disk.** `save_top_k=-1` held, so the window carrying the entire gain was not
+pruned — the v5 failure (best epoch never written, or written and deleted) did not recur.
+⚠ **Selection is still an ear job**: on vat6 four instruments gave four answers and diff/mel
+loss may be anti-correlated with naturalness, so `ep004` is the best LOSS, not the choice.
+
+⚠ **The stop signal fired at epoch 2, one to two checkpoints early, and was directionally
+right.** The developer argued the 0.25%/checkpoint threshold was too strict for a big-corpus
+run; the data says otherwise and the argument was wrong. See the gate's own history for the
+window defect that made it fire at 2 rather than 3.
+
 **Remaining for rung 3:** warm start from `vat6_finetune`
 **`ep008`**, widening the speaker embedding from 3,326 to 5,385 rather than copying it
 (`make_warmstart._WIDENABLE`; this corpus has already been bitten by that path DISCARDING
