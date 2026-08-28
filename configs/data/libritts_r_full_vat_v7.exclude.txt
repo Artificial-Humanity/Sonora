@@ -1,0 +1,38 @@
+# Clips excluded from the v7 donors by EAR, after the corpus was built.
+#
+# Consumed by `scripts/lib/derive_vat_corpus.py --exclude`. One wav path per line; `#`
+# comments and blank lines ignored. The tool REFUSES a path that does not EXIST ON DISK —
+# a typo, or a corpus that moved — because then the clip it names is still in the output.
+# A path that exists but is already gone from this input is a NO-OP, not a fault: the drop
+# has happened, which is what was asked for, and refusing it made the exclusion
+# unrepeatable (#369). ⚠ This paragraph said the tool refuses ANY path not in the kept set
+# until #376 — the contract changed and four statements of the old one were left standing.
+#
+# ⚠ THE AUDIO IS NOT MOVED. LibriTTS-R is a licensed corpus and the drop-quarantine
+# convention (sweep to `_dropped/`, rewrite links) explicitly does not apply to licensed or
+# `audit-*` trees. The exclusion lives here, in version control, and the corpus is rebuilt
+# without the clip — so the record of WHY is a diff rather than a missing file.
+#
+# ---------------------------------------------------------------------------------------
+# 2026-08-27 — owner, on the ear, during the degenerate-label audition
+#
+# `6003_58761_000005_000009.wav` is TRUNCATED: the audio stops after "as it wou…" while the
+# transcript carries the whole sentence to "…forced down to the surface of the earth."
+#
+# That makes it a TEXT/AUDIO GAP, not merely a short clip, and it is the harmful direction:
+# the model would learn to produce phonemes for words the recording never speaks. A wrong
+# VAT label biases conditioning; this corrupts the text->audio mapping itself.
+#
+# ⚠ NO GATE IN THIS PIPELINE COULD SEE IT, and that is the part worth keeping. `speech_ok`
+# is a 4 s floor and the clip is 12.28 s, so it passes. `head_ok` is measured and not gated.
+# Nothing compares transcript length against duration. It was found because the owner
+# listened to 31 clips for an unrelated reason — the degenerate per-speaker-z labels — which
+# is not a detection strategy.
+#
+# ⚠ CONSEQUENCE, and it is arithmetic rather than a second decision: speaker 6003 has
+# exactly two recordings in the whole tree, so removing this one leaves `_000008` as an
+# only clip. Its label therefore moves from (-0.4999, +0.5000, -0.4988) to (0, 0, 0) — it
+# stops being half of a mirrored pair and joins the null-vector population described in
+# `configs/data/libritts_r_full_vat_v7.yaml`. The owner kept it deliberately ("the rest are
+# fine"); this note exists so the label change is not read later as a bug.
+/data/model-training/datasets/LibriTTS_R/train-other-500/6003/58761/6003_58761_000005_000009.wav

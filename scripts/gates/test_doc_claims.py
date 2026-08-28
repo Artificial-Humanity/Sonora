@@ -85,6 +85,13 @@ V5_TRAIN = os.path.join(V5, "train_op.txt")
 V5_VAL = os.path.join(V5, "val_op.txt")
 V5_REPORT = os.path.join(V5, "derivation_report.json")
 V6_REPORT = os.path.join(V6, "derivation_report.json")
+# v7 (Phase 1 rung 3). Registered because the rung-3 range shipped the densest block of
+# corpus numbers in the repo into a generation the gate had no fact for — it printed
+# "checked 16 of 16 ... PASS" while enforcing nothing about any of them (#370).
+V7 = os.path.join(REPO, "data", "libritts_r_full_vat_v7")
+V7_TRAIN = os.path.join(V7, "train_op.txt")
+V7_VAL = os.path.join(V7, "val_op.txt")
+V7_SPEAKERS = os.path.join(V7, "speakers.json")
 V4_TRAIN = os.path.join(V4, "train_op.txt")
 V4_VAL = os.path.join(V4, "val_op.txt")
 HOLDOUT_FILE = os.path.join(HOLDOUT, "holdout_8w.txt")
@@ -266,7 +273,15 @@ FACTS = [
         "scope": r"v5|libritts_r_emilia_vat_v5",
         "patterns": [r"([\d,]{6,}) train / [\d,]+ val", r"([\d,]{6,}) train rows",
                      r"([\d,]{6,}) train \+ [\d,]+ val\)"],
-        "exempt": [],
+        # ⚠ A COMPARISON SENTENCE NAMES BOTH CORPORA ON ONE LINE, and scope matches the LINE
+        # while the pattern takes the FIRST number on it. `vat6_finetune.yaml:10` reads
+        # "41,937 train rows against v5's 41,138" — correct prose, in which the v5 figure is
+        # the second number. Surfaced the moment `configs/experiment/` entered `docs()`
+        # (#370), as a RED GATE ON A CORRECT SENTENCE, which is the failure mode this file
+        # fears most: the cheap repair is to loosen the pattern, and a loosened pattern stops
+        # catching the drift the fact exists for. Exempt the sentence instead — narrowly, on
+        # a phrase that only a v6-vs-v5 comparison contains.
+        "exempt": ["train rows against v5's"],
     },
     {
         "name": "v5 VAL rows",
@@ -448,6 +463,34 @@ FACTS = [
         "exempt": ["846 appended"],
     },
     {
+        # ⚠ SCOPE IS `v7|vat7` AND IT MATCHES PER LINE, so a number is only read where the
+        # line itself names the corpus. That is why the headline rows in both v7 configs
+        # carry a `v7:` marker: without it the most load-bearing line in each file is out of
+        # scope and enforced by nothing. Same fix the v6 work applied to notes/STATE.md.
+        "name": "v7 train rows",
+        "truth": lambda: rows(V7_TRAIN),
+        "artifacts": [V7_TRAIN],
+        "scope": r"v7|vat7",
+        "patterns": [r"(?<![\d,])(\d[\d,]*) (?:train|tr)\b"],
+        "exempt": [],
+    },
+    {
+        "name": "v7 val rows",
+        "truth": lambda: rows(V7_VAL),
+        "artifacts": [V7_VAL],
+        "scope": r"v7|vat7",
+        "patterns": [r"(?<![\d,])(\d[\d,]*) val\b"],
+        "exempt": [],
+    },
+    {
+        "name": "v7 n_spks",
+        "truth": lambda: json.loads(open(V7_SPEAKERS, encoding="utf-8").read())["n_spks"],
+        "artifacts": [V7_SPEAKERS],
+        "scope": r"v7|vat7",
+        "patterns": [r"(?<![\d,])(\d[\d,]*) speakers\b"],
+        "exempt": [],
+    },
+    {
         "name": "v4 TOTAL rows (the base v5 merges into)",
         "truth": lambda: rows(V4_TRAIN) + rows(V4_VAL),
         "artifacts": [V4_TRAIN, V4_VAL],
@@ -543,10 +586,18 @@ def docs():
             if name.endswith(".md"):
                 out.append(os.path.join(base, name))
     out.append(os.path.join(REPO, "README.md"))
-    cfg = os.path.join(REPO, "configs", "data")
-    if os.path.isdir(cfg):
-        out += [os.path.join(cfg, n) for n in sorted(os.listdir(cfg))
-                if n.endswith((".yaml", ".yml"))]
+    # ⚠ BOTH config groups, not just `data` (#370). `configs/experiment/*.yaml` restates the
+    # corpus split, both speaker counts, the hours delta and the data_statistics pair — the
+    # vat7 experiment config alone carries five enforceable numbers — and it was outside this
+    # set entirely, so registering a v7 FACT still reached none of them. Measured at the time:
+    # corrupting `n_spks` in the experiment config left the gate green while the same
+    # corruption in the data config failed it. Adding a fact and adding scope are two separate
+    # acts and this file has now been bitten by each of them separately.
+    for group in ("data", "experiment"):
+        cfg = os.path.join(REPO, "configs", group)
+        if os.path.isdir(cfg):
+            out += [os.path.join(cfg, n) for n in sorted(os.listdir(cfg))
+                    if n.endswith((".yaml", ".yml"))]
     return out
 
 

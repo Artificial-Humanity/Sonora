@@ -40,7 +40,7 @@ See [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-cor
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
 | | **rung 2 — v6, +expressive-registers (826 rows appended, 832 staged)** | ✅ **DONE 2026-08-10/11** — built, trained 10 epochs, holdout-scored, **`ep008` selected** (`logs/train/vat6_finetune/SELECTED.md`); flat as pre-registered, and **the delivery block is live** | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) · ⚠ **do not select this run on `total`** and the A-frame question is **open**, not closed — [direction-contract-v3-proposal.md § 3b](direction-contract-v3-proposal.md) |
-| | rung 3 — v7, +LibriTTS-R full (~564 h measured) | 🔄 **UNGATED — rung 1 passed. AUDIO ON DISK, EIV PASS RUNNING 2026-08-25.** ~**2.25 h/epoch, ~1 day** to convergence (est. 2026-08-09 against ~330,000 rows — **not re-measured against the 345,600 now expected**) | rung 1's holdout ✅ | ditto |
+| | rung 3 — v7, +LibriTTS-R full (~564 h measured) | 🔄 **UNGATED — rung 1 passed. AUDIO ON DISK, EIV PASS COMPLETE 2026-08-26, DERIVATION RUNNING 2026-08-27.** ~**2.25 h/epoch, ~1 day** to convergence (est. 2026-08-09 against ~330,000 rows — **not re-measured against the 345,600 now expected**) | rung 1's holdout ✅ | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
 | | freeze a same-corpus U-Net baseline | ⏸ | **the last act of P1** | [§ Phase 2](#phase-2--the-dit-decoder-spike) |
@@ -597,9 +597,19 @@ probe container during each window — an earlier batch-64 reading of 1.07 and a
 | **32 — chosen** | **3.20** | **26.4 h** |
 | 64 | 2.84 | 29.7 h |
 
-Running since 2026-08-25T02:44:58Z at a steady **3.73 clips/sec** (ETA ~22.5 h) to
+Ran from 2026-08-25T02:44:58Z at a steady **3.73 clips/sec** (ETA ~22.5 h) to
 `eiv_scores/libritts_r_full_v7.jsonl`. It appends and skips wavs it already holds, so it is
 safe to interrupt and resume — **it is not a job that has to be protected**.
+
+✅ **COMPLETE 2026-08-26T04:57:50Z, and verified rather than counted.** 303,638 rows for
+303,638 listed wavs is the weakest of the checks and the only one a line count gives you, so
+three more were run: **0 duplicate wav paths** (the append-on-resume shape that let one
+re-scored clip appear twice), **0 malformed rows**, and — the one that mattered — **exactly
+one head set across all 303,638 rows**, carrying all 12 required heads. That last is the
+check `combo()`'s `all(h in v for v in raw.values())` makes unforgiving: a resume under a
+different `--heads` would have left a mixed set and silently dropped a weighted head *for
+the whole corpus, including clips already labelled*. It did not happen. Environment captured
+at `eiv_scores/_env/eiv.txt` per D-M2.
 
 ⚠ **`tar` extracted the audio owner-only (`0600` files, `0700` dirs) and the EIV pass died
 at `PermissionError` on its first clip.** The containers run as `ai-mgr` (105:109) through
@@ -612,7 +622,15 @@ they were unpacked before the container ran as a service account.
 shipped with: train rows **~330,000 → ~345,600** (v6's ~41,980 + 303,638 before the
 text-side drops); hours **~615 → ~564** (new kept audio measures ~483 h against v6's ~81 h;
 the 4,000-clip sample gives median 4.28 s / mean 5.58 s, all 24 kHz); speakers
-**~4,900 → ~5,414** (v6's ~3,350 + 2,064 new). ⚠ The **~2.25 h/epoch** in the pathway table
+**~4,900 → ~5,385** (v6's 3,326 + **2,059** new). ⚠ **2,064 IS THE DIRECTORY COUNT, NOT
+THE SPEAKER COUNT, AND THIS TABLE USED IT UNTIL 2026-08-27.** The tree holds 904 + 1,160 =
+2,064 speaker directories, but **5 of them contribute no clip at all** — 157, 583, 1001,
+2085 and 4071 hold 1–4 clips each and every one falls outside the 1 s / 22 s gate, so they
+vanish at the same step that produced the 303,638 figure this same sentence quotes. Same
+shape as the 247-vs-257 defect above, in the same table, under the same "measured" caption:
+a count taken from the *filesystem* where the arithmetic needed the count taken from the
+*kept set*. Derivation applies further text-side drops, so 5,385 is a ceiling, not a
+prediction. ⚠ The **~2.25 h/epoch** in the pathway table
 is untouched and is now the *stale* half of this pair — it was derived against ~330,000
 rows and nothing has re-measured it. The row count went **up** and the hours **down** — LibriTTS-R
 utterances are shorter than the estimate assumed, so this rung buys more rows per hour than
@@ -626,6 +644,65 @@ roots on per-speaker z (viable here, unlike Emilia: ~2,064 new speakers with a m
 the hundreds of clips) → **`configs/data_licenses.yaml` must already declare `--out` and every
 `--add`** (`libritts_r_full_vat_v7` plus the two `_derived_*` inputs, under
 `merged_vat_corpora`; **needed a new entry and now has one**) →
+**⚠ `derive_vat_corpus.py` MUST BE GIVEN `--exclude` WHERE ONE EXISTS** — the flag is how an
+ear-driven drop reaches a run, and omitting it used to be a silent no-op that put the clip
+back (#369). It is now a REFUSAL: the tool reads `configs/data/*.exclude.txt`, and a clip
+declared there and present in the kept set stops the run unless the flag is passed. For v7:
+
+```
+scripts/lib/derive_vat_corpus.py --root <root> --out <donor> \
+  --valence-json /data/model-training/sonora/eiv_scores/corpus_valence_combo_v7.json \
+  --soft-json    /data/model-training/sonora/eiv_scores/corpus_soft_v7.json \
+  --exclude configs/data/libritts_r_full_vat_v7.exclude.txt
+```
+
+⚠⚠ **HOW THE SHIPPED DONOR WOULD BE REPRODUCED — a FULL derivation. ⚠ THIS HAS NOT BEEN
+RUN.** What was checked is that every path below exists and that the tool accepts every flag;
+the derivation itself costs ~2 h and nobody has executed it, so this block is a procedure
+rather than a result. It is written that way because three rounds of this issue were reopened
+for asserting reproductions that had not happened, or that could not fail (#369, #384) —
+the commit message said UNVERIFIED and the document did not, which is the same defect one
+file over. Paths are complete on purpose: an earlier version elided them as
+`.../corpus_valence_combo_v7.json`, which is unresolvable, and claimed the command "runs
+verbatim" when it did not.
+
+```
+.venv/bin/python scripts/lib/derive_vat_corpus.py \
+  --root /data/model-training/datasets/LibriTTS_R/train-other-500 \
+  --out /tmp/v7_repro_other_500 \
+  --exclude configs/data/libritts_r_full_vat_v7.exclude.txt \
+  --valence-json /data/model-training/sonora/eiv_scores/corpus_valence_combo_v7.json \
+  --soft-json    /data/model-training/sonora/eiv_scores/corpus_soft_v7.json
+```
+
+⚠⚠ **`--out` IS A SCRATCH PATH ON PURPOSE.** An earlier version of this block pointed it at
+`data/_derived_train_other_500` — the shipped donor itself — so following the instruction
+OVERWROTE the artifact it exists to compare against (#381), and a run interrupted during the
+write stage would have left a partial donor with the build record gone and no copy.
+
+**Compare afterwards**, rather than trusting that a re-run is a reproduction:
+
+```
+diff <(sort /tmp/v7_repro_other_500/train_op.txt) <(sort data/_derived_train_other_500/train_op.txt)
+diff <(sort /tmp/v7_repro_other_500/val_op.txt)   <(sort data/_derived_train_other_500/val_op.txt)
+```
+
+⚠ **NOT MEASURED: whether a fresh derivation is byte-stable.** The clip order is deterministic
+(`find_clips` walks `sorted()` and `kept` preserves that order), and the labels are a pure
+function of the measures — but `measure_clip` runs under `imap_unordered`, `seconds_total` is
+a float sum, and none of that has been checked across two full runs. So the comparison above
+sorts, and a difference is something to INVESTIGATE rather than proof of corruption. Naming a
+byte-for-byte comparison here without measuring it would repeat the vacuous-evidence failure
+that reopened #369 twice.
+
+⚠ **The clip was ACTUALLY removed with `--reuse-from`, and that command can no longer be
+run** — its input was the pre-exclusion donor, which no longer exists on disk because the
+corrected one replaced it. Re-running the reuse form today reads an already-clean input,
+removes nothing, and reproduces the donor trivially: **that demonstrates idempotence, not the
+build**, and offering it as evidence was a vacuous comparison (#369, reopened twice). The
+full derivation above is the reproduction; `--reuse-from` remains the cheap path for making a
+NEW drop, costing minutes instead of hours because it relabels without re-measuring audio or
+re-running G2P. →
 **`scripts/tools/merge_libritts_full_corpus.py --base <v6> --add <clean_360> --add <other_500>
 --out <v7>`**, which appends with v6's rows byte-identical and ids renumbered onto the end →
 `data_statistics` re-measured **in-container** → warm start from `vat6_finetune` **`ep008`**.
@@ -642,6 +719,190 @@ was added on this branch — so following the old order costs nothing *here*, wh
 it survive a rewrite aimed at this paragraph. **This is the template rungs 4 and 5 get written
 from**, and there the entry will not exist: a reader following the chain adds the manifest
 entry after the merge, and the merge refuses before it starts.
+
+#### What the build actually met — measured 2026-08-27, running the chain above
+
+**The merge was blocked, by a guard doing its job.** `eiv_merge_corpus.py --add
+libritts_r_full_v7.jsonl` refused with *"303638 clips carry a different head set"* — every
+new clip. Cause: `eiv_score.py` writes `{"wav", "wav_mtime", "<head>": …}` and `load_raw`
+stripped only `wav`, so the resume stamp added in #56 read as a thirteenth head. **Nothing
+was ever mislabelled** — the ragged check is what caught it — but the two halves of one file
+format had disagreed for as long as both existed, and no test held them together. The
+previous merge (v6) folded in `expressive_registers_v6.jsonl`, written *before* the stamp
+existed, which is why this surfaced only now. Fixed with a named `NON_HEAD_KEYS` plus
+`tests/test_eiv_merge_corpus.py`, the first test that RUNS that tool; it reads the writer's
+row literal by AST, so a third stamp is a red test rather than a build that dies hours in.
+
+⚠ **THE `corr=1.000000, mean shift +0.0000` LINE IS VACUOUS HERE TOO — it is the same trap
+this document already records for the v6 append, and it recurs for the same reason.** New
+clips join **new** speaker groups, so they cannot move an existing clip's mean or sd; the
+script prints that line whether or not the new scores are sane. What was checked instead:
+recomputing the combo with and without the 303,638 additions and differencing the 30,351
+pre-existing clips gave **max|Δ| = 0.000e+00** — not a correlation, an exact identity. That
+is the strictly-growing rule tested rather than asserted. The informative statistic in the
+tool's own output is the **soft** mean, `Soft_vs._Harsh` being a raw head score and not
+z-scored: **+0.330 new vs +0.320 corpus**.
+
+**Coverage: 0 of 303,638 kept clips uncovered** in either `corpus_valence_combo_v7.json` or
+`corpus_soft_v7.json` (333,989 entries each), so `derive_vat_corpus` runs without
+`--allow-uncovered` — the flag whose own help text records how 1,094 mislabelled clips
+shipped.
+
+⚠ **The per-speaker-z tail was never checked, and "median in the hundreds" is not the claim
+that matters.** The median is 141 clips/speaker and holds. But **21 new speakers have exactly
+one kept clip**, and per-speaker z gives those a combo of **exactly 0.0** — the degenerate
+label that forced Emilia onto the global anchor, indistinguishable from a genuine
+at-speaker-mean one. Bounded by control: **exactly 21 clips of the 303,638 SCORED are 0.0**,
+i.e. the degenerate population is precisely the one-clip speakers and nothing else, 0.007% of
+the add.
+
+⚠ **THE v7 CONFIG SAYS 22 OF 303,627 AND BOTH ARE RIGHT — THE POPULATIONS DIFFER** (#378).
+This paragraph measures the corpus **as scored**, before the ear exclusion; the config
+measures it **as built**, after. Removing one clip of a two-clip speaker left its survivor a
+one-clip speaker, so the null-vector population went 21 → 22 while the row count went
+303,628 → 303,627. Neither number was labelled, which is how two correct measurements read as
+a contradiction — the same defect as #372 and #377, ten lines apart, and the reason every
+count in this section now names its population. 26 speakers have ≤2 clips (z fixed at ±1 by arithmetic), and **66 have <10** — which is what `derive_vat_corpus` reports, because its own comparison is `< MIN_SPK_CLIPS`. ⚠ **71 is the ≤10 count** and this line gave it under a `<10` label (#377).
+`derive_vat_corpus`'s `MIN_SPK_CLIPS` report prints this per run and **deliberately does not
+repair it** — changing labels is a corpus version bump and an owner call.
+
+✅ **Digits: 0 of 303,638, measured over the whole population** with the tool's own
+`op_g2p.carries_digits` (positive control: it returns True on *"I have 3 cats"*). D-M3 called
+this hazard "latent for LibriTTS" on a **5,000-row sample of train-clean-100**; it is now
+latent for all of LibriTTS-R. So `--allow-digits` stays off, and the abort at that check —
+which fires *after* the expensive audio-measuring stage — will not be reached.
+
+**11 clips carry no `.normalized.txt`** — all in train-clean-360; **4** have an
+`.original.txt` and 7 have nothing but the wav. `find_clips` skips them, so they never enter
+the corpus and nothing crashes.
+
+⚠ **10 AND 11 ARE BOTH RIGHT, FOR DIFFERENT POPULATIONS, AND THIS LINE USED TO GIVE THE
+NARROWER ONE AS IF IT WERE THE WIDER** (#372). **11** lack a transcript *on disk*; **10** of
+those fall inside the 1 s / 22 s window, so 10 is the number that appears in the
+EIV-vs-derivation reconciliation and 11 is the number that appears in the drop chain. Naming
+the population is the whole fix — the same discipline the 247-vs-257 and 2,064-vs-2,059
+corrections needed, and the reason the config and this file briefly disagreed after one of
+them was corrected and the other was not.
+
+#### ✅ BUILT — v7 exists, 2026-08-27
+
+| | rows | speakers | hours |
+|---|---|---|---|
+| v6 (base, unchanged) | 41,937 tr / 1,331 val | 3,326 | 80.6 |
+| `_derived_train_clean_360` | 110,013 | 899 | 182.9 |
+| `_derived_train_other_500` | 193,614 | 1,160 | 297.6 |
+| **`libritts_r_full_vat_v7`** | **336,546 tr / 10,349 val = 346,895** | **5,385** | **561.0** |
+
+**Against this document's own predictions:** rows ~345,600 → **346,895**; hours ~564 →
+**561.1**; speakers ~5,414 → **5,385**. The first two are close enough to call the estimates
+good. The third is the 2,064-vs-2,059 correction above, and the derivations confirmed it
+without being told: clean_360 produced **899 = 904 − 5** and other_500 produced its full
+**1,160**, so all five zero-clip speakers were in one root, exactly as measured beforehand.
+
+**Byte-identity was verified twice, by different means.** The tool records the SHA-256 of
+v6's file and of v7's leading bytes in `derivation_report.json` — *measured from the written
+files, not asserted*. Then re-checked independently by hashing `head -n <v6 lines>` of each
+output: identical on both `train_op.txt` and `val_op.txt`. ⚠ **With a negative control**: the
+n−1 prefix DIFFERS, which is what makes the match evidence rather than a comparison that
+cannot fail. That control matters here specifically — `test_corpus_merge_tool.py` records
+that this tool's byte-identity guard was **wrong twice in three commits** (a hardcoded
+`True`, then a comparison true by construction), so its own report is not sufficient.
+
+**Verified on the output, not inherited from the inputs:** 346,895 rows, **0 malformed**;
+vat width uniformly 8; `n_spks` 5,385 agreeing three ways (report, speaker maps, indices
+actually used in rows); indices contiguous 0..5384 with **0 map collisions**; **0 clips in
+both splits**; and **0 rows on the wrong side** of the hash rule in either file, re-run
+against `derive_vat_corpus._in_val` itself so the check cannot drift from the rule. Speaker
+collisions between all three sources: **0**, with a positive control (`a ∩ a` = 899).
+
+✅ **`data_statistics` MEASURED IN-CONTAINER 2026-08-27** — 1,315 batches @ 256 over the
+336,546-clip train split. **`mel_mean -5.543695`, `mel_std 2.430293`.**
+⚠ **These are the POST-exclusion values, re-measured after the ear-driven drop** (#371): the
+first measurement ran against 336,547 clips and gave `-5.543696` / `2.430295`, and this
+section carried that pair — the statistic describing a corpus we do not have — while the
+config carried the current one. Removing one clip of 336,547 moves both in the sixth decimal,
+which is why it was re-measured rather than reasoned about.
+
+⚠⚠ **AND THE MOVE IS LARGE, WHICH SETTLES THE "NEVER INHERIT" RULE FOR THIS RUNG RATHER
+THAN ASSUMING IT.** v6 → v7 moves the mean **+0.155423** and the std **−0.278951** — the same
+order as v4 → v5 (+0.1587 / +0.3208), *the move that earned the rule*, and ten times the
+v5 → v6 move. Inheriting v6's pair would have normalised every batch against a mean wrong by
+0.155, and the run would still have trained and converged; the only symptom would have been a
+checkpoint that was worse than it should be, with nothing pointing at why. The config carried
+`data_statistics: null` until the measurement landed precisely so a run started early would
+die at load instead of inheriting.
+
+⚠ **The std moves DOWN while the mean moves UP — the opposite sign pattern to v4 → v5.** v7
+is ~96% LibriTTS-R read speech against v6's mix of that plus Emilia and the
+loudness-normalised expressive bank, so the corpus got bigger and *more homogeneous* at once,
+and a narrower mel distribution is the expected consequence. **That is a prediction, and the
+holdout is what checks it** — read it before the holdout number, not after.
+
+⚠ **Two wrong turns on the way to that number, both worth the space.** The first run reported
+**exit code 0 and measured nothing**: `docker` refused the flags because this host's shell is
+`zsh`, which does not word-split an unquoted `$GPU` the way `bash` does, and a trailing `|
+tail` swallowed the non-zero status. That is the `eval`/`nohup` shape again — *a status line
+about the WRAPPER read as a fact about the WORK* — and the fix is to confirm with
+`docker ps`, never the exit code. The second failed honestly on `/dev/shm`: Docker's 64 MB
+default against 8 dataloader workers. `sonora_training` runs **16 GiB with `ipc=host`**, read
+off the live container with `docker inspect` rather than guessed, and the throwaway now
+matches it. **Any future throwaway-container lane that builds a dataloader needs both flags.**
+
+#### The ear found a defect no gate could — 2026-08-27
+
+The owner auditioned the 31 degenerate-label clips (staged at `listen…/probes/`, deliberately
+NOT registered in `ratings.csv`, which is the dataset ledger and a live writer) and rejected
+exactly one: **`6003_58761_000005_000009.wav` is truncated** — the audio stops after *"as it
+wou…"* while the transcript carries the sentence to its end.
+
+**That is a TEXT/AUDIO gap, not a short clip**, and it is the harmful direction: the model
+would learn to produce phonemes for words the recording never speaks. A wrong VAT label
+biases conditioning; this corrupts the text→audio mapping itself.
+
+⚠ **Nothing in this pipeline could have caught it.** `speech_ok` is a 4 s hard floor and the
+clip is 12.28 s. `head_ok` is measured and deliberately ungated. Nothing compares transcript
+length against duration. It surfaced only because the owner was listening for an unrelated
+reason, which is not a detection strategy.
+
+⚠⚠ **AND THE OBVIOUS DETECTOR IS FALSIFIED, MEASURED RATHER THAN UNTRIED.** Characters per
+second over all 303,628 new clips: mean **16.96**, sd **2.93**. The rejected clip sits at
+**20.28 c/s — z = +1.13, the 88th percentile, 37,458 clips above it.** A threshold that
+caught it would flag a tenth of the corpus. The truncation removed only ~20% of the
+utterance and ordinary speaking-rate variation (17% relative sd) swamps that. **Do not add a
+rate heuristic believing it is a gate** — it would be an instrument that cannot detect its
+own subject. The instrument that WOULD find this class is forced-alignment **coverage** (does
+the audio reach the end of the transcript), which `scripts/stages/librivox_align.sh` already
+performs for another lane. Filed, not scheduled.
+
+**How the drop was made**, since two conventions constrain it: filelists are generated and
+must not be hand-edited, and the drop-quarantine convention does **not** apply to licensed
+trees, so the LibriTTS-R audio was not moved. `derive_vat_corpus.py` gained `--exclude`, a
+path list that **refuses an entry which does not EXIST ON DISK** — an exclusion list is an
+enumeration, and one that matches nothing would report a drop while writing a corpus that
+still contains the clip. ⚠ An entry that exists but is already gone from the input is a
+**no-op, not a fault**: refusing that too made the exclusion unrepeatable, because the
+recipe's own re-derivation runs against a donor the clip has already been removed from
+(#369). Verified in both directions. `--reuse-from` then relabelled without re-measuring
+audio or re-running G2P.
+
+⚠ **The omit-the-flag guard is anchored on the KEPT SET, not on `--root`** (#375). `--root`
+is inert under `--reuse-from` and carries a default, so a guard keyed on it silently passed
+on the reuse path — writing the ear-dropped clip back at exit 0. The population that matters
+is what is about to be written.
+
+⚠ **The drop re-labelled a clip that was KEPT, and that is arithmetic rather than a second
+decision.** Speaker 6003 has exactly two recordings in the whole tree, so removing one leaves
+`_000008` an only clip: its label moved from `(−0.4999, +0.5000, −0.4988)` to `(0, 0, 0)`. It
+left the mirrored-pair population and joined the null-vector one. The degenerate residue is
+therefore now **26 speakers / 30 clips — 22 null-vector, 4 mirrored pairs** (was 21 / 5).
+Speaker count is unchanged at 1,160, so nothing renumbered and the warm-start prefix property
+survives — which `--exclude` also refuses to break, by design.
+
+**Remaining for rung 3:** warm start from `vat6_finetune`
+**`ep008`**, widening the speaker embedding from 3,326 to 5,385 rather than copying it
+(`make_warmstart._WIDENABLE`; this corpus has already been bitten by that path DISCARDING
+the widened tensor and training the new rows on a randomly-initialised embedding) → score on
+rung 1's holdout.
 
 ⚠⚠ **THIS RECIPE NAMED THE WRONG SCRIPT AND AN EXTRA STEP UNTIL 2026-08-27 (#338), AND BOTH
 WOULD HAVE COST THE RUNG.** It said *"Follow `merge_emilia_corpus.py` verbatim, as rung 2

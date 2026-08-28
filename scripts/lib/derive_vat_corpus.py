@@ -397,6 +397,14 @@ def main():
     ap.add_argument("--soft-json", default=None,
                     help="JSON {wav_path: raw EIV Soft_vs._Harsh}; enables "
                          "the tension-v2 blend (-z(soft) fourth component).")
+    ap.add_argument("--exclude", default=None,
+                    help="file of wav paths to leave out, one per line (# comments and "
+                         "blank lines ignored). For clips the EAR rejects after a corpus "
+                         "is built — truncation, a text/audio gap — which no gate here "
+                         "measures. ⚠ REFUSES a path that does not EXIST ON DISK — a typo "
+                         "silently excludes nothing and leaves the defect in the corpus "
+                         "while every log line says it was dropped. A path that exists but "
+                         "is already gone from this input is a NO-OP, not a fault.")
     ap.add_argument("--reuse-from", default=None,
                     help="existing derivation dir: reuse its kept clips, "
                          "phonemes (filelists) and measures.jsonl — relabel "
@@ -480,6 +488,165 @@ def main():
         kept = [(p, t, s) for p, t, s in clips if measured.get(p)]
         print(f"kept {len(kept)} after duration/rate/loudness filters "
               f"({len(clips) - len(kept)} dropped)")
+
+    # ⚠ APPLIED TO BOTH BRANCHES ABOVE, AND AFTER `kept` IS FINAL. An exclusion that ran
+    # only on the fresh path would silently do nothing under --reuse-from, which is the
+    # path an ear-driven drop actually uses: re-measuring 200k clips to remove one is not
+    # a thing anyone will do, so the cheap path is the one that must honour it.
+    #
+    # ⚠⚠ AND IT REFUSES A PATH THAT DOES NOT EXIST ON DISK. An exclusion list is an
+    # enumeration, and one that matches nothing is indistinguishable from one that worked —
+    # the run would report a drop, write a corpus that still contains the clip, and every log
+    # line would agree with the intent rather than the result. ⚠ Absent-from-`kept` is a
+    # DIFFERENT case and used to be refused too, which made the exclusion unrepeatable
+    # (#369); the split is below.
+    wanted = set()
+    if args.exclude:
+        with open(args.exclude, encoding="utf-8") as fh:
+            wanted = [ln.split("#", 1)[0].strip() for ln in fh]
+        wanted = {w for w in wanted if w}
+        if not wanted:
+            raise SystemExit(f"--exclude {args.exclude} lists no paths; refusing a no-op drop")
+        present = {p for p, _, _ in kept}
+        # ⚠⚠ COMPARE FILES, NOT SPELLINGS (#380). `present` and `wanted` are raw strings and
+        # the test was exact equality, so a listed clip naming a KEPT file by an equivalent
+        # path — a symlinked root, a `..`, a trailing slash difference — was not "present",
+        # yet `os.path.exists` said yes, so it fell into the already-absent NO-OP branch and
+        # the ear drop silently did nothing at exit 0.
+        #
+        # ⚠ COST, stated accurately because the first version of this comment was not (#385):
+        # the exact match is the fast path for each LISTED path, but if ANY listed path fails
+        # it — which is the ordinary case, since one exclusion file names clips under a root
+        # another derivation is not building — this realpaths EVERY kept clip, once. That is
+        # one `realpath` pass over `kept` per run, not "190k clips are not stat'd".
+        missing = sorted(wanted - present)
+        if missing:
+            _by_real = {}
+            for p_, _, _ in kept:
+                _by_real.setdefault(os.path.realpath(p_), p_)
+            _resolved = {}
+            for m in list(missing):
+                hit = _by_real.get(os.path.realpath(m))
+                if hit is not None:
+                    _resolved[m] = hit
+            if _resolved:
+                # Rewrite the request in the corpus's own spelling and re-derive `missing`.
+                wanted = {_resolved.get(w, w) for w in wanted}
+                present = {p for p, _, _ in kept}
+                missing = sorted(wanted - present)
+        # ⚠⚠ NOT-IN-KEPT SPLITS INTO TWO CASES AND ONLY ONE IS A FAULT (#369, reopened).
+        #
+        # The first version refused both, which made the exclusion UNREPEATABLE: re-derive
+        # from a donor the clip was already removed from — the exact command the build recipe
+        # instructs — and passing the flag refused because the clip is absent, while omitting
+        # it refused because the clip is declared. The recipe was unfollowable, and the
+        # refusal told the reader to "fix the list", i.e. to edit the version-controlled
+        # record of an ear drop that was correct.
+        #
+        # A path that does NOT EXIST ON DISK is the fault this guard was built for: a typo or
+        # a moved corpus, where the clip the author meant to remove is still in the output.
+        # A path that exists but is already absent from `kept` is the drop having ALREADY
+        # HAPPENED — the outcome the caller asked for. Excluding it again is a no-op, and a
+        # no-op is the correct answer to "make sure this clip is not in the corpus".
+        unknown = [m for m in missing if not os.path.exists(m)]
+        already = [m for m in missing if os.path.exists(m)]
+        if unknown:
+            raise SystemExit(
+                "--exclude names %d path(s) that do not exist on disk, so the clip they were "
+                "meant to remove is still in the output:\n  %s\n  Check the path. If a clip "
+                "was renamed or the corpus moved, the LIST is what needs correcting; if it is "
+                "simply already excluded, this check would have let it through."
+                % (len(unknown), "\n  ".join(unknown[:5])))
+        if already:
+            print(f"  {len(already)} declared clip(s) already absent from this input "
+                  f"(nothing to remove) — e.g. {os.path.basename(already[0])}")
+        before = len(kept)
+        _spk_before = {s_ for _, _, s_ in kept}
+        kept = [(p, t, s_) for p, t, s_ in kept if p not in wanted]
+        gone = before - len(kept)
+        print(f"excluded {gone} clip(s) by --exclude ({before} -> {len(kept)})")
+        # ⚠ The expected removal count is what was listed MINUS what was already gone. The
+        # first version compared against `len(wanted)`, which re-broke idempotence one check
+        # below the place it was fixed — same assumption, second site. Found by running the
+        # recipe's own command rather than by reading the diff, again.
+        if gone != len(wanted) - len(already):
+            raise SystemExit(
+                f"--exclude listed {len(wanted)} path(s), {len(already)} already absent, "
+                f"so {len(wanted) - len(already)} should have been removed but {gone} were")
+        # A speaker emptied by the exclusion would RENUMBER every speaker after it, which
+        # silently invalidates a warm start from a checkpoint trained on the old map.
+        # ⚠ Only speakers that HAD clips here. A declared path pointing outside this input —
+        # an already-removed clip, or one belonging to another root — yields a path-derived
+        # "speaker" that was never in `kept`, and testing membership after the filter alone
+        # reported it as EMPTIED when it was never populated. Third wrong-population defect
+        # in this lane; the population is "speakers present before the exclusion", not
+        # "speaker-shaped strings mentioned in the list".
+        emptied = {sp for sp in {w.split("/")[-3] for w in wanted}
+                   if sp in _spk_before and not any(s_ == sp for _, _, s_ in kept)}
+        if emptied:
+            raise SystemExit(
+                "--exclude would leave speaker(s) %s with no clips, which renumbers every "
+                "speaker after them and breaks the prefix property a warm start relies on. "
+                "Drop the speaker deliberately, as its own decision." % sorted(emptied))
+
+    # ⚠⚠ REFUSE A DERIVATION THAT WOULD SILENTLY REINSTATE AN EAR-DROPPED CLIP (#369).
+    #
+    # Every refusal below fires only when --exclude is PASSED, so omitting the flag was a
+    # silent no-op by construction and the build recipe did not carry it. The exclusion FILES
+    # are therefore the source of truth: a clip declared there and about to be WRITTEN stops
+    # the run unless the flag names it.
+    #
+    # ⚠ ANCHORED ON `kept`, NOT ON `--root` (#375). The first version matched declared clips
+    # against `args.root` — which is INERT under `--reuse-from` (its only other reader is
+    # `find_clips`, in the other branch) and carries a DEFAULT, so on the reuse path a run
+    # that omitted `--root` found nothing declared and wrote the ear-dropped clip back at
+    # exit 0. Reproduced by the reviewer with a control. `kept` is the population that
+    # actually reaches the corpus on both paths, so matching against it cannot be bypassed
+    # by an argument that does not govern the input.
+    _cfg_dir = os.environ.get("SONORA_EXCLUDE_DIR",
+                              os.path.join(_SONORA_REPO, "configs", "data"))
+    # ⚠⚠ BOTH HALVES OF THE MECHANISM COMPARE FILES, NOT SPELLINGS (#380). The first fix
+    # normalised only the `--exclude` path and left THIS one — the guard that fires when the
+    # flag is FORGOTTEN, which is the case #369 and #375 exist for — still on exact string
+    # equality. Reproduced by the reviewer with a control: the same file listed through a
+    # symlinked root left the guard silent and the ear-dropped clip written, at exit 0. The
+    # finding had named both halves; fixing the one I was looking at is not fixing it.
+    _present = {p_ for p_, _, _ in kept}
+    _declared, _pending = {}, []
+    for _name in (sorted(os.listdir(_cfg_dir)) if os.path.isdir(_cfg_dir) else []):
+        if not _name.endswith(".exclude.txt"):
+            continue
+        with open(os.path.join(_cfg_dir, _name), encoding="utf-8") as fh:
+            for _ln in fh:
+                _ln = _ln.split("#", 1)[0].strip()
+                if not _ln:
+                    continue
+                if _ln in _present:
+                    _declared[_ln] = _name
+                else:
+                    _pending.append((_ln, _name))
+    # ⚠ The realpath map is built ONCE and only when something did not match exactly. That is
+    # the common case — a v7 exclusion file names a clip under one root while another root is
+    # being derived — so it costs one pass of `realpath` over `kept` per run, against a
+    # derivation measured in minutes at best. Keyed on the CORPUS's spelling, because that is
+    # what `wanted` is compared against below.
+    if _pending:
+        _by_real = {}
+        for p_, _, _ in kept:
+            _by_real.setdefault(os.path.realpath(p_), p_)
+        for _ln, _name in _pending:
+            _hit = _by_real.get(os.path.realpath(_ln))
+            if _hit is not None:
+                _declared[_hit] = _name
+    _missed = sorted(set(_declared) - wanted)
+    if _missed:
+        raise SystemExit(
+            "REFUSING: %d clip(s) about to be written are declared excluded by ear but were "
+            "not passed to --exclude, so this derivation would put them back:\n  %s\n"
+            "  Re-run with --exclude configs/data/%s (or the file naming each one). The "
+            "exclusion files are the record; the flag is only how they reach this run."
+            % (len(_missed), "\n  ".join("%s  <- %s" % (m, _declared[m]) for m in _missed[:5]),
+               _declared[_missed[0]]))
 
     # Per-speaker z-scores (v1): A from LUFS; T from the phonation composite
     # (z(alpha) + z(cpp) - z(h1h2), re-z-scored); V from --valence-json when
