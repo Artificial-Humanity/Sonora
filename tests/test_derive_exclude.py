@@ -355,3 +355,52 @@ def test_an_equivalent_path_spelling_still_removes_the_clip(tmp_path):
     assert len(rows) == len(wavs) - 1
     assert not any(r.startswith(victim_real + "|") for r in rows), \
         "the clip named through the symlink is still in the corpus"
+
+
+def test_the_OMIT_guard_also_compares_files_not_spellings(tmp_path):
+    """#380, reopened — the half I missed.
+
+    The first fix normalised only the `--exclude` path. The omit-the-flag guard, which is the
+    last line of defence and the case #369 and #375 exist for, still compared raw strings — so
+    the same file declared through a symlinked root left it silent and the ear-dropped clip
+    was written at exit 0. The finding named both halves; fixing one is not fixing it.
+    """
+    real = tmp_path / "real" / "100" / "ch"
+    real.mkdir(parents=True)
+    wavs = []
+    for i in range(200):
+        w = real / f"100_ch_{i:06d}.wav"
+        w.write_bytes(b"")
+        wavs.append(str(w))
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+
+    d = tmp_path / "donor"; d.mkdir()
+    (d / "speakers.json").write_text(json.dumps({"libritts_id_to_index": {"100": 0},
+                                                 "n_spks": 1}), encoding="utf-8")
+    rng = random.Random(3802)
+    with open(d / "measures.jsonl", "w", encoding="utf-8") as fh:
+        for w in wavs:
+            fh.write(json.dumps({"wav": w, "seconds": rng.uniform(2, 15),
+                                 "lufs": rng.gauss(-18, 2),
+                                 **{h: rng.gauss(0, 1) for h in HEADS}}) + "\n")
+    with open(d / "train_op.txt", "w", encoding="utf-8") as fh:
+        for w in wavs:
+            fh.write(f"{w}|0|hɛlˈoʊ|0,0,0,0,0,0,0,0\n")
+    (d / "val_op.txt").write_text("", encoding="utf-8")
+    vj = tmp_path / "v.json"; sj = tmp_path / "s.json"
+    vj.write_text(json.dumps({w: rng.gauss(0, 1) for w in wavs}), encoding="utf-8")
+    sj.write_text(json.dumps({w: rng.gauss(0, 1) for w in wavs}), encoding="utf-8")
+
+    cfg = tmp_path / "cfgdata"; cfg.mkdir()
+    victim_link = wavs[5].replace(str(tmp_path / "real"), str(tmp_path / "link"))
+    (cfg / "some.exclude.txt").write_text(victim_link + "\n", encoding="utf-8")
+
+    dest = tmp_path / "out"
+    p = subprocess.run(                       # --exclude DELIBERATELY OMITTED
+        [str(PY), str(TOOL), "--reuse-from", str(d), "--out", str(dest),
+         "--valence-json", str(vj), "--soft-json", str(sj)],
+        capture_output=True, text=True, cwd=str(REPO),
+        env=dict(os.environ, SONORA_EXCLUDE_DIR=str(cfg)))
+    assert p.returncode != 0, p.stdout + p.stderr
+    assert "declared excluded by ear" in (p.stdout + p.stderr)
+    assert not dest.exists(), "a refused run must write nothing"

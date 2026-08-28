@@ -512,8 +512,13 @@ def main():
         # the test was exact equality, so a listed clip naming a KEPT file by an equivalent
         # path — a symlinked root, a `..`, a trailing slash difference — was not "present",
         # yet `os.path.exists` said yes, so it fell into the already-absent NO-OP branch and
-        # the ear drop silently did nothing at exit 0. The fast path stays exact; only the
-        # leftovers pay for `realpath`, so 190k kept clips are not stat'd to find one clip.
+        # the ear drop silently did nothing at exit 0.
+        #
+        # ⚠ COST, stated accurately because the first version of this comment was not (#385):
+        # the exact match is the fast path for each LISTED path, but if ANY listed path fails
+        # it — which is the ordinary case, since one exclusion file names clips under a root
+        # another derivation is not building — this realpaths EVERY kept clip, once. That is
+        # one `realpath` pass over `kept` per run, not "190k clips are not stat'd".
         missing = sorted(wanted - present)
         if missing:
             _by_real = {}
@@ -600,16 +605,39 @@ def main():
     # by an argument that does not govern the input.
     _cfg_dir = os.environ.get("SONORA_EXCLUDE_DIR",
                               os.path.join(_SONORA_REPO, "configs", "data"))
+    # ⚠⚠ BOTH HALVES OF THE MECHANISM COMPARE FILES, NOT SPELLINGS (#380). The first fix
+    # normalised only the `--exclude` path and left THIS one — the guard that fires when the
+    # flag is FORGOTTEN, which is the case #369 and #375 exist for — still on exact string
+    # equality. Reproduced by the reviewer with a control: the same file listed through a
+    # symlinked root left the guard silent and the ear-dropped clip written, at exit 0. The
+    # finding had named both halves; fixing the one I was looking at is not fixing it.
     _present = {p_ for p_, _, _ in kept}
-    _declared = {}
+    _declared, _pending = {}, []
     for _name in (sorted(os.listdir(_cfg_dir)) if os.path.isdir(_cfg_dir) else []):
         if not _name.endswith(".exclude.txt"):
             continue
         with open(os.path.join(_cfg_dir, _name), encoding="utf-8") as fh:
             for _ln in fh:
                 _ln = _ln.split("#", 1)[0].strip()
-                if _ln and _ln in _present:
+                if not _ln:
+                    continue
+                if _ln in _present:
                     _declared[_ln] = _name
+                else:
+                    _pending.append((_ln, _name))
+    # ⚠ The realpath map is built ONCE and only when something did not match exactly. That is
+    # the common case — a v7 exclusion file names a clip under one root while another root is
+    # being derived — so it costs one pass of `realpath` over `kept` per run, against a
+    # derivation measured in minutes at best. Keyed on the CORPUS's spelling, because that is
+    # what `wanted` is compared against below.
+    if _pending:
+        _by_real = {}
+        for p_, _, _ in kept:
+            _by_real.setdefault(os.path.realpath(p_), p_)
+        for _ln, _name in _pending:
+            _hit = _by_real.get(os.path.realpath(_ln))
+            if _hit is not None:
+                _declared[_hit] = _name
     _missed = sorted(set(_declared) - wanted)
     if _missed:
         raise SystemExit(
