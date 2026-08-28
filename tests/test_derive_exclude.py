@@ -10,7 +10,17 @@ leaves it only by ear, so the removal path is load-bearing and had no test.
 an enumeration that matches nothing is indistinguishable from one that worked — the run
 prints a drop, writes a corpus that still contains the clip, and every log line agrees with
 the intent rather than the result. So a stale path must STOP the build rather than be
-skipped. Same for the speaker-emptying case: dropping a speaker's last clip renumbers every
+skipped — where **stale means a path that does not EXIST ON DISK**.
+
+⚠ It does NOT mean "absent from `kept`". That case is a NO-OP and
+`test_a_clip_already_removed_is_a_no_op_not_a_refusal` asserts exit 0 on it: refusing it too
+made the exclusion unrepeatable, because the recipe's own re-derivation runs against a donor
+the clip has already been removed from (#369). ⚠⚠ This paragraph stated the removed contract
+in DIFFERENT WORDS and so survived a grep keyed on the old wording (#376) — the check's
+population was the phrase rather than the claim, which is the defect this branch has now
+recorded five times, this time inside my own verification of a fix for it.
+
+Same for the speaker-emptying case: dropping a speaker's last clip renumbers every
 speaker after it, which silently invalidates a warm start from a checkpoint trained on the
 old map, and the symptom appears far from the cause.
 
@@ -290,3 +300,58 @@ def test_the_guard_holds_when_root_is_omitted_entirely(donor, tmp_path):
     assert p.returncode != 0, p.stdout + p.stderr
     assert "declared excluded by ear" in (p.stdout + p.stderr)
     assert not dest.exists(), "a refused run must write nothing"
+
+
+def test_an_equivalent_path_spelling_still_removes_the_clip(tmp_path):
+    """#380 — the membership test must compare FILES, not spellings.
+
+    `present` and `wanted` were raw strings compared for equality, so a listed clip naming a
+    KEPT file through a symlinked root satisfied `os.path.exists` but was not "present" — it
+    fell into the already-absent no-op branch and the ear drop silently did nothing at exit 0.
+    The corpus kept the clip and the log said it was handled.
+    """
+    real = tmp_path / "real" / "100" / "ch"
+    real.mkdir(parents=True)
+    wavs = []
+    for i in range(200):
+        w = real / f"100_ch_{i:06d}.wav"
+        w.write_bytes(b"")
+        wavs.append(str(w))
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+
+    d = tmp_path / "donor"
+    d.mkdir()
+    (d / "speakers.json").write_text(json.dumps({"libritts_id_to_index": {"100": 0},
+                                                 "n_spks": 1}), encoding="utf-8")
+    rng = random.Random(380)
+    with open(d / "measures.jsonl", "w", encoding="utf-8") as fh:
+        for w in wavs:
+            fh.write(json.dumps({"wav": w, "seconds": rng.uniform(2, 15),
+                                 "lufs": rng.gauss(-18, 2),
+                                 **{h: rng.gauss(0, 1) for h in HEADS}}) + "\n")
+    with open(d / "train_op.txt", "w", encoding="utf-8") as fh:
+        for w in wavs:
+            fh.write(f"{w}|0|hɛlˈoʊ|0,0,0,0,0,0,0,0\n")
+    (d / "val_op.txt").write_text("", encoding="utf-8")
+    vj = tmp_path / "v.json"; sj = tmp_path / "s.json"
+    vj.write_text(json.dumps({w: rng.gauss(0, 1) for w in wavs}), encoding="utf-8")
+    sj.write_text(json.dumps({w: rng.gauss(0, 1) for w in wavs}), encoding="utf-8")
+
+    # the SAME file, named through the symlink
+    victim_real = wavs[5]
+    victim_link = victim_real.replace(str(tmp_path / "real"), str(tmp_path / "link"))
+    assert os.path.realpath(victim_link) == os.path.realpath(victim_real)
+    ex = tmp_path / "exclude.txt"
+    ex.write_text(victim_link + "\n", encoding="utf-8")
+
+    dest = tmp_path / "out"
+    p = subprocess.run(
+        [str(PY), str(TOOL), "--reuse-from", str(d), "--out", str(dest),
+         "--exclude", str(ex), "--valence-json", str(vj), "--soft-json", str(sj)],
+        capture_output=True, text=True, cwd=str(REPO))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "excluded 1 clip(s)" in p.stdout, p.stdout
+    rows = _rows(dest)
+    assert len(rows) == len(wavs) - 1
+    assert not any(r.startswith(victim_real + "|") for r in rows), \
+        "the clip named through the symlink is still in the corpus"

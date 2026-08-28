@@ -656,19 +656,44 @@ scripts/lib/derive_vat_corpus.py --root <root> --out <donor> \
   --exclude configs/data/libritts_r_full_vat_v7.exclude.txt
 ```
 
-⚠⚠ **HOW TO REPRODUCE THE SHIPPED DONOR — a FULL derivation, and this is the only command
-that reproduces it.** Paths are complete on purpose: an earlier version of this block elided
-them as `.../corpus_valence_combo_v7.json`, which is unresolvable, and claimed the command
-"runs verbatim" when it did not (#369).
+⚠⚠ **HOW THE SHIPPED DONOR WOULD BE REPRODUCED — a FULL derivation. ⚠ THIS HAS NOT BEEN
+RUN.** What was checked is that every path below exists and that the tool accepts every flag;
+the derivation itself costs ~2 h and nobody has executed it, so this block is a procedure
+rather than a result. It is written that way because three rounds of this issue were reopened
+for asserting reproductions that had not happened, or that could not fail (#369, #384) —
+the commit message said UNVERIFIED and the document did not, which is the same defect one
+file over. Paths are complete on purpose: an earlier version elided them as
+`.../corpus_valence_combo_v7.json`, which is unresolvable, and claimed the command "runs
+verbatim" when it did not.
 
 ```
 .venv/bin/python scripts/lib/derive_vat_corpus.py \
   --root /data/model-training/datasets/LibriTTS_R/train-other-500 \
-  --out data/_derived_train_other_500 \
+  --out /tmp/v7_repro_other_500 \
   --exclude configs/data/libritts_r_full_vat_v7.exclude.txt \
   --valence-json /data/model-training/sonora/eiv_scores/corpus_valence_combo_v7.json \
   --soft-json    /data/model-training/sonora/eiv_scores/corpus_soft_v7.json
 ```
+
+⚠⚠ **`--out` IS A SCRATCH PATH ON PURPOSE.** An earlier version of this block pointed it at
+`data/_derived_train_other_500` — the shipped donor itself — so following the instruction
+OVERWROTE the artifact it exists to compare against (#381), and a run interrupted during the
+write stage would have left a partial donor with the build record gone and no copy.
+
+**Compare afterwards**, rather than trusting that a re-run is a reproduction:
+
+```
+diff <(sort /tmp/v7_repro_other_500/train_op.txt) <(sort data/_derived_train_other_500/train_op.txt)
+diff <(sort /tmp/v7_repro_other_500/val_op.txt)   <(sort data/_derived_train_other_500/val_op.txt)
+```
+
+⚠ **NOT MEASURED: whether a fresh derivation is byte-stable.** The clip order is deterministic
+(`find_clips` walks `sorted()` and `kept` preserves that order), and the labels are a pure
+function of the measures — but `measure_clip` runs under `imap_unordered`, `seconds_total` is
+a float sum, and none of that has been checked across two full runs. So the comparison above
+sorts, and a difference is something to INVESTIGATE rather than proof of corruption. Naming a
+byte-for-byte comparison here without measuring it would repeat the vacuous-evidence failure
+that reopened #369 twice.
 
 ⚠ **The clip was ACTUALLY removed with `--reuse-from`, and that command can no longer be
 run** — its input was the pre-exclusion donor, which no longer exists on disk because the
@@ -766,7 +791,7 @@ them was corrected and the other was not.
 | v6 (base, unchanged) | 41,937 tr / 1,331 val | 3,326 | 80.6 |
 | `_derived_train_clean_360` | 110,013 | 899 | 182.9 |
 | `_derived_train_other_500` | 193,614 | 1,160 | 297.6 |
-| **`libritts_r_full_vat_v7`** | **336,546 tr / 10,349 val = 346,895** | **5,385** | **561.1** |
+| **`libritts_r_full_vat_v7`** | **336,546 tr / 10,349 val = 346,895** | **5,385** | **561.0** |
 
 **Against this document's own predictions:** rows ~345,600 → **346,895**; hours ~564 →
 **561.1**; speakers ~5,414 → **5,385**. The first two are close enough to call the estimates

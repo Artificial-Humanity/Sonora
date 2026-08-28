@@ -508,7 +508,27 @@ def main():
         if not wanted:
             raise SystemExit(f"--exclude {args.exclude} lists no paths; refusing a no-op drop")
         present = {p for p, _, _ in kept}
+        # ⚠⚠ COMPARE FILES, NOT SPELLINGS (#380). `present` and `wanted` are raw strings and
+        # the test was exact equality, so a listed clip naming a KEPT file by an equivalent
+        # path — a symlinked root, a `..`, a trailing slash difference — was not "present",
+        # yet `os.path.exists` said yes, so it fell into the already-absent NO-OP branch and
+        # the ear drop silently did nothing at exit 0. The fast path stays exact; only the
+        # leftovers pay for `realpath`, so 190k kept clips are not stat'd to find one clip.
         missing = sorted(wanted - present)
+        if missing:
+            _by_real = {}
+            for p_, _, _ in kept:
+                _by_real.setdefault(os.path.realpath(p_), p_)
+            _resolved = {}
+            for m in list(missing):
+                hit = _by_real.get(os.path.realpath(m))
+                if hit is not None:
+                    _resolved[m] = hit
+            if _resolved:
+                # Rewrite the request in the corpus's own spelling and re-derive `missing`.
+                wanted = {_resolved.get(w, w) for w in wanted}
+                present = {p for p, _, _ in kept}
+                missing = sorted(wanted - present)
         # ⚠⚠ NOT-IN-KEPT SPLITS INTO TWO CASES AND ONLY ONE IS A FAULT (#369, reopened).
         #
         # The first version refused both, which made the exclusion UNREPEATABLE: re-derive

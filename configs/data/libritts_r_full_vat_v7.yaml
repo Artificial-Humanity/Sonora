@@ -8,7 +8,11 @@
 # `head -n <v6 lines>` of each output, with a negative control (the n-1 prefix DIFFERS, so
 # the comparison is not vacuous).
 #
-#   v7: 336,546 train / 10,349 val · 561.1 h · 5,385 speakers
+#   v7: 336,546 train / 10,349 val · 561.0 h · 5,385 speakers
+# ⚠ 561.0, not 561.1 (#382): the donors' `seconds_total` give 480.4327 h, and 561.1 was
+#   80.6 + 182.9 + 297.6 — three ROUNDED values added. ⚠ v6's own report carries NO
+#   `seconds_total`, so its 80.6 is itself only known to 0.1 h and the total cannot honestly
+#   be given more precisely than 561.0.
 #   v6 was 41,937 / 1,331 · 80.6 h · 3,326 speakers — so +702% clips, +596% hours.
 #
 # ⚠ 5,385 SPEAKERS = 3,326 + 2,059, AND 2,059 IS NOT 2,064. The tree holds 904 + 1,160 =
