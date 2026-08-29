@@ -30,6 +30,48 @@
 #     gap is capacity, decoder or distillation. Do not re-run at 40% to rescue it without
 #     saying so out loud first.
 #
+# ============================================================================
+# MEASURED 2026-08-29 — the prediction held. All four checkpoints scored in ONE
+# GPU run, so every number below is comparable to every other number below.
+#   `total`, 5,463 dev-clean holdout clips, 4 samples, v7's `data_statistics`:
+#     v7 donor  ep001s0017529   1.764570     -
+#     v7r       s0003505        1.767259   +0.15%
+#     v7r       s0007011        1.775798   +0.64%
+#     v7r       s0010517        1.769839   +0.30%
+#   PASSES the 1% regression bar. The worst arm is 0.64% off, the best 0.15% off.
+#
+# ⚠ THE MOVEMENT IS ALMOST ALL IN `dur`. Per-component deltas off the donor:
+#     s0003505   dur +0.0032   prior -0.0008   diff +0.0003
+#     s0007011   dur +0.0096   prior +0.0009   diff +0.0008
+#     s0010517   dur +0.0046   prior +0.0002   diff +0.0005
+#   `dur` accounts for the whole `total` delta at all three checkpoints. The mel
+#   decoder moved 0.13%-0.34%. So the rebalance did not damage clean-read
+#   ACOUSTICS. It retimed them, which is what a 9x speaking-rate shift predicts.
+#   Anyone who reads this run as "diversity hurt audio quality" reads it wrong.
+#
+# ⚠ THE REGRESSION IS REAL AND IT IS TINY. Those are two separate statements and
+#   both belong here. Paired per clip across 5,463 pairs, the smallest arm gives
+#   t=+4.73 and the largest t=+18.43 — not noise. But d=0.06, and v7r wins on
+#   46.8% of clips at s0003505. Per clip it is a coin flip.
+#   ⚠⚠ A MEAN-ONLY READ SAYS THE OPPOSITE, and it is the trap in this table. The
+#   v7r run's own three means span 0.0085, THREE TIMES the 0.0027 donor gap. That
+#   invites "the instrument cannot separate these models", which is false. Pairing
+#   removes per-clip difficulty, and difficulty is the dominant variance here.
+#   Compute the paired number before making that claim. I nearly did not.
+#
+#   Instrument noise floor, because these digits are small: this scoring
+#   reproduced the donor at 1.764570 and matches `baseline_init_vs_trained` to six
+#   decimal places. The CPU watcher scored the SAME checkpoint at 1.764353, which
+#   is 0.012% away — same clips, same samples, same statistics. So 0.012% is the
+#   cross-device band, and it is 12x smaller than the smallest effect above.
+#   ⚠ Cross-DEVICE, not cross-run: only compare CPU with CPU, or GPU with GPU.
+#
+# ⚠ NO VERDICT HERE, AND THE HOLDOUT CANNOT SUPPLY ONE. It is dev-clean LibriTTS.
+#   This run bought diversity, and this measurement prices the COST at under 1%.
+#   It cannot see the PURCHASE. The blind ear test against `ep001s0017529` is the
+#   verdict and it is UNRUN as of this line.
+# ============================================================================
+#
 # WHAT CHANGED FROM v7, in one list:
 #   * the data config only — `libritts_r_full_vat_v7r`, v7's rows with the minority
 #     repeated 9x. Read that file before this one; it carries the deliberate
@@ -87,7 +129,8 @@
 # reboot, so this does not need undoing afterwards.
 #
 # ⚠ `ep001s0017529` IS THE DONOR AND IT IS NOT THE LAST CHECKPOINT. It is v7's best on the
-# holdout (1.76435), reached in 17,529 steps of a 63,107-step run. Warm-starting from
+# holdout (1.764353 on CPU, 1.764570 on GPU — see the noise-floor note above and do not
+# mix the two), reached in 17,529 steps of a 63,107-step run. Warm-starting from
 # `last.ckpt` would start this probe from a checkpoint measurably worse than the one it is
 # being compared against, and every result would read as a diversity effect.
 #
