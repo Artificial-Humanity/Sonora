@@ -1,0 +1,58 @@
+{
+  "//": "Generation config for ferrostep-pocketbase's emit-mapped example. This is the",
+  "//1": "input that produces pb_hooks/ferrostep.issues.pb.js. It did not exist until",
+  "//2": "2026-08-29: the installed file had been generated from an ad-hoc config that was",
+  "//3": "never committed, so a regenerate had no source to be faithful to.",
+  "//4": "",
+  "//5": "WHY EVERY KEY BELOW IS WRITTEN OUT EVEN WHERE IT MATCHES A DEFAULT: three of",
+  "//6": "them are #[serde(default)] on the Rust side, so OMITTING one is not 'unspecified',",
+  "//7": "it is a silent behaviour change at the next regenerate.",
+  "//8": "",
+  "//9": "  guard_refereed_fields  defaults FALSE. The installed file has the guard ON.",
+  "//10": "    Omitting it regenerates a file that drops the refusal on direct writes to",
+  "//11": "    state/version/counters/scope -- and 1787630000_actor_accounts.js grants",
+  "//12": "    issues.update, whose own header says that grant 'is safe only in company'",
+  "//13": "    with this guard. Omit the boolean and the grant becomes the hole.",
+  "//14": "  release                omitted = no release hook emitted at all. The console's",
+  "//15": "    one-save owner flow (write user_decision) would stop taking the transition",
+  "//16": "    and stop appending its event, while every route still answered normally.",
+  "//17": "  actors.allow_unbound   TRUE reproduces what is installed. ferrostep_actors has",
+  "//18": "    ZERO rows today (measured 2026-08-29), so false would refuse every write",
+  "//19": "    including a superuser's, and the board's write path would be dead.",
+  "//20": "    Flip it once actors exist -- that is a deliberate change, not this one.",
+  "//21": "",
+  "//22": "attribute_fields is EMPTY on purpose. severity is the merge gate's column and",
+  "//23": "listing it here would close it to direct writes -- which would break issue.py's",
+  "//24": "severity PATCH until it routes through apply. That is a real decision with a",
+  "//25": "blast radius, and it is not this install's decision.",
+  "//26": "",
+  "//27": "The map below MUST stay identical to workflow/issues.map.json, which is the same",
+  "//28": "map in the shape the ferrostep CLI's --map takes. Two copies, one fact: checked",
+  "//29": "with `jq -S .map workflow/issues.emit.json` vs `jq -S . workflow/issues.map.json`.",
+
+  "map": {
+    "records": "issues",
+    "events": "ferrostep_events",
+    "state_field": "state",
+    "version_field": "ferrostep_version",
+    "counter_fields": ["agent_passes", "disputes"],
+    "scope_fields": ["repo", "branch_name"],
+    "attribute_fields": [],
+    "guard_refereed_fields": true
+  },
+
+  "release": {
+    "decision_field": "user_decision",
+    "from_state": "escalated",
+    "to_state": "open",
+    "reset_counters": ["agent_passes"],
+    "writers": ["lloyd@artificialhumanity.io"],
+    "role": "owner"
+  },
+
+  "actors": {
+    "collection": "ferrostep_actors",
+    "role_field": "role",
+    "allow_unbound": true
+  }
+}
