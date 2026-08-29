@@ -208,3 +208,49 @@ record. LibriVox URLs route to the force-align lane instead. Full lane docs:
   fallback-only; synthesize only where no real audio exists.
 - **24 kHz quality bar**: disqualifies MLS-English at 16 kHz regardless of scale.
 - **QC gate is mandatory** after every generation pass.
+
+## Re-acquisition — what left the disk, and exactly how to get it back
+
+**Added 2026-08-29, on the owner's instruction: "ensure that we don't actually lose
+sight of datasets we want to use for training, regardless of drive limitations.
+Storage purchasers are not out of the question."**
+
+⚠ **A dataset's absence from `/data` is not a decision about it.** Four entries were
+deleted in the 2026-08-29 cleanup, and every one of them was deleted *because* it is
+recoverable — not because we stopped wanting it. This section exists so that a future
+reader finds the intent and the recipe together, instead of finding an empty directory
+and inferring a ruling that was never made. Write the re-acquisition line **before**
+deleting anything else here.
+
+| what | freed | state before | how to get it back |
+|---|---|---|---|
+| `datasets/_downloads/train_other_500.tar.gz` | 44 GB | extracted, verified, 1,162 speaker dirs live in `LibriTTS_R/train-other-500` | OpenSLR 141 (`openslr.org/141`), CC-BY-4.0. Only needed to re-extract; the extracted corpus is what training reads and **it stays** |
+| `datasets/_downloads/train_clean_360.tar.gz` | 27 GB | same, 906 dirs | same |
+| `datasets/_downloads/dev_clean.tar.gz` | 1.3 GB | same, 42 dirs. ⚠ this is the **holdout** source | same. Training on `dev-clean` destroys the instrument permanently — re-extracting it does not undo that |
+| `datasets/emilia_yodas_probe` | 9.8 GB | RAW shards; the pool the 10,997 keeps were mined from | HF `amphion/Emilia-Dataset`, **YODAS subset only** (that subset is CC-BY-4.0; the original 101 k-h Emilia is CC-BY-NC-4.0 and stays BLOCKED). Re-mine with the emilia mining stage. **The keeps are NOT affected** — `emilia_kept_24k` is what v5–v7 train on and it stays |
+| `datasets/expresso` + `huggingface/hub/datasets--ylacombe--expresso` | 7.2 GB | held **twice**, never trained on | HF `ylacombe/expresso`. ⚠ **The licence question is still open** — see § The Expresso conflict. Deleting the bytes did not resolve it and must not be read as resolving it. If the owner rules it in, re-download is one command |
+| `datasets/HiFiTTS-2-metadata` | 17 GB | manifests and chapter lists only; NVIDIA does not redistribute the audio | HF `nvidia/hifitts-2`. See the wishlist row below — the metadata is cheap to re-fetch and worthless until the storage exists |
+
+### Wanted, and blocked only by hardware
+
+These are not licence problems and not quality problems. They are purchase orders.
+
+| source | what it costs | what it buys |
+|---|---|---|
+| **HiFiTTS-2 @ 22 kHz** | **2.8 TB** of audio, fetched from LibriVox via NeMo-speech-data-processor | 36.7 k hours, ~5 k speakers, CC-BY-4.0. Roughly **65× the v7 corpus** |
+| **HiFiTTS-2 @ 44 kHz** | **4.0 TB** | same corpus at the higher rate; only worth it if the quality bar ever moves above 24 kHz |
+| — the blocker — | `/data` is 3.7 TB with ~2.9 TB free. 44 kHz does not fit at all; 22 kHz would leave under 100 GB of working room | **An external drive of ≥8 TB unlocks the 44 kHz option; ≥4 TB unlocks 22 kHz with room to work.** A bandwidth-filtered subset is the realistic first version either way |
+
+⚠ **Before ordering, read [the rung 3 finding](quality-gap-plan.md) first.** v7 added
+480 hours of LibriTTS-R and the model reached its final holdout value in **3,505 steps —
+a third of one epoch**. The measured lever is **diversity, not volume**, and HiFiTTS-2 is
+LibriVox read speech, which is the domain we are already saturated in. It is worth having
+and it is not obviously the next thing to buy. Storage that unlocks *expressive and
+conversational* audio would move the number this one did not.
+
+### Still not pulled, no hardware blocker
+
+`parler-tts/libritts-r-filtered-speaker-descriptions` and `cdminix/libritts-r-aligned`
+(both CC-BY-4.0, both annotations over LibriTTS-R we already hold), and GLOBE V2 (CC0,
+low priority — true bandwidth is below its nominal 44.1 kHz). Nothing stops these but
+time.
