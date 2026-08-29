@@ -46,9 +46,19 @@
 #
 # Pre-flight, all mandatory:
 #   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL engines.
-#   * ⚠ THE CADENCE IS PASSED BY ENVIRONMENT, AND `SONORA_CKPT_FILENAME` HAS NO DEFAULT.
-#     Omitting it makes the filename literally empty, and the container crash-loops after
-#     printing LAUNCHING — the run looks started and is not.
+#   * ⚠⚠ ONLY TWO OF THE FOUR `SONORA_*` VARIABLES ARE PASSED THROUGH. The other two
+#     fail SILENTLY. Measured on this run's own launch, 2026-08-29:
+#       SONORA_EXPERIMENT / SONORA_WARMSTART — `environment:` carries `${VAR:-}`, works
+#       SONORA_CKPT_FILENAME       — HARDCODED in compose. A host value is discarded, and
+#                                    mine happened to match, so nothing looked wrong.
+#       SONORA_CKPT_EVERY_N_STEPS  — NOT in `environment:` at all, so the command's
+#                                    `${...:-3506}` always wins.
+#     The compose command READS the cadence variable, which reads as though setting it
+#     works. It does not. **The effective cadence is 3,506 steps and cannot be changed
+#     from the host.** This run asked for 1,000 and got 3,506; the only evidence was the
+#     first checkpoint's name, `step=0003505`. Fixing the passthrough is an AI-Lab-AMD
+#     change (the `sonora_training` environment block). Until it lands, do not write a
+#     launch line that pretends otherwise.
 #   * The warm start built from v7's BEST, and VERIFIED to have widened nothing:
 #     n_spks is 5,385 in both corpora, so every tensor shape matches and `spk_emb.weight`
 #     copies verbatim. `shape-mismatched (fresh)` must print EMPTY. If it names anything,
@@ -59,15 +69,19 @@
 #       --out /data/model-training/sonora/warmstart/vat7r_init.ckpt
 #   SONORA_EXPERIMENT=vat7r_rebalance \
 #   SONORA_WARMSTART=/data/model-training/sonora/warmstart/vat7r_init.ckpt \
-#   SONORA_CKPT_EVERY_N_STEPS=1000 \
-#   SONORA_CKPT_FILENAME='checkpoint_{epoch:03d}_{step:07d}' \
 #     docker compose --profile training up -d sonora_training
 #
-# ⚠ THE 5,000 STEPS ARE STOPPED BY HAND. `sonora_training` has no env hook for
+# ⚠ CHECKPOINTS LAND AT 3,505 / 7,011 / 10,517, not every 1,000 — see the passthrough
+# warning above. The "5,000 steps" in this file's title is an ORDER OF MAGNITUDE, not a
+# boundary the run can hit. **Stop AT a checkpoint**: stopping between them throws away
+# every step since the last one. 7,011 gives two points; 10,517 gives three, which is a
+# curve rather than a pair.
+#
+# ⚠ THE RUN IS STOPPED BY HAND. `sonora_training` has no env hook for
 # `trainer.max_steps` and `trainer.max_epochs` is -1, so the run does not end on its own —
 # the same as every run in this lineage, all of which were stopped by the owner. Checkpoints
-# land every 1,000 steps, so the granularity does not depend on stopping precisely; stopping
-# late costs GPU time and nothing else. Stop with:
+# land every 3,506 steps, so stopping late costs GPU time and stopping early costs data.
+# Stop with:
 #     docker compose stop sonora_training
 # `restart: unless-stopped` keeps a manually stopped container stopped, including across a
 # reboot, so this does not need undoing afterwards.
