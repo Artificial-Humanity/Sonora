@@ -1,0 +1,95 @@
+# @package _global_
+#
+# Phase 1, the DIVERSITY probe. Not a rung — a 5,000-step question.
+#
+# THE FINDING THIS ANSWERS. Rung 3 was the volume rung: +303,627 rows, +480 hours, 7x the
+# corpus. The holdout moved 3.63% off the v6 donor and then stopped, and it stopped early:
+# `prior` was 98% of the way to its final value and `diff` 101% of the way at **step
+# 3,505**, which is 112,160 samples, a THIRD of one epoch. Sixty thousand further steps
+# bought a 0.5% band of noise. The prediction in `vat7_finetune.yaml` said a flat holdout
+# would be the finding and a big one. It was not flat, but it was flat EARLY, which says
+# the same thing: the corpus stopped being the binding constraint almost immediately.
+#
+# Composition is why. v7 is 96.6% LibriTTS-R read speech, and every one of the 303,627 new
+# rows is more of exactly that. Meanwhile the rung DILUTED the other two sources: Emilia
+# fell 25.4% -> 3.2% and expressive-registers 1.9% -> 0.24%.
+#
+# PREDICTION, recorded before the run exists so this stays a test rather than a story:
+#   * The dev-clean holdout `total` gets WORSE, or does not move. That is the EXPECTED
+#     result and it is not a failure. The holdout is dev-clean LibriTTS; this run spends
+#     24% of every batch on other domains. A large improvement there would be surprising
+#     and would need explaining, not celebrating.
+#   * The REGRESSION BAR is what matters: `total` must stay within about 1% of v7's best
+#     (1.76435). Beyond that the run is trading clean read speech for the rest, which is
+#     not the deal.
+#   * The real verdict is the EAR, on the same prompts, blind against
+#     `checkpoint_epoch=001_step=0017529.ckpt`. The owner's complaint is expressive
+#     quality, and no instrument we own measures it.
+#   * ⚠ If the ear says nothing changed, that is a REAL result and an expensive one to
+#     get wrong: it would mean diversity at this ratio is not the lever either, and the
+#     gap is capacity, decoder or distillation. Do not re-run at 40% to rescue it without
+#     saying so out loud first.
+#
+# WHAT CHANGED FROM v7, in one list:
+#   * the data config only — `libritts_r_full_vat_v7r`, v7's rows with the minority
+#     repeated 9x. Read that file before this one; it carries the deliberate
+#     `data_statistics` exception and the reason it is bounded to a short run.
+#   * NOTHING ELSE. Same model, same vat_dim, same batch size, same lr, same speaker table.
+#     One variable is the entire point.
+#
+# ⚠ NO WATCHER FOR THIS RUN, AND THAT IS DELIBERATE. `vat7-gate-watch.timer` polls
+# `logs/train/vat7_finetune` BY NAME, and pointing it here needs a systemd unit edit that
+# takes root. A 5,000-step run is about one hour; the watcher exists for multi-day runs
+# where the owner cannot sit with it. Score the checkpoints by hand afterwards with
+# `scripts/stages/score_holdout.py` against `holdout_8w.txt` — 8-wide, not the 3-wide
+# vat3-era `holdout.txt`, which an 8-wide config refuses on the vat_dim seam.
+#
+# Pre-flight, all mandatory:
+#   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL engines.
+#   * The warm start built from v7's BEST, and VERIFIED to have widened nothing:
+#     n_spks is 5,385 in both corpora, so every tensor shape matches and `spk_emb.weight`
+#     copies verbatim. `shape-mismatched (fresh)` must print EMPTY. If it names anything,
+#     stop — a fresh speaker table would make this run measure nothing.
+#
+#   python scripts/lib/make_warmstart.py --experiment vat7r_rebalance \
+#       --donor /data/model-training/sonora/logs/train/vat7_finetune/runs/2026-08-29_01-45-09/checkpoints/checkpoint_epoch=001_step=0017529.ckpt \
+#       --out /data/model-training/sonora/warmstart/vat7r_init.ckpt
+#   python -m matcha.train experiment=vat7r_rebalance \
+#       ckpt_path=/data/model-training/sonora/warmstart/vat7r_init.ckpt \
+#       'callbacks.model_checkpoint.filename=checkpoint_{epoch:03d}_{step:07d}' \
+#       callbacks.model_checkpoint.every_n_train_steps=1000 \
+#       callbacks.model_checkpoint.every_n_epochs=null \
+#       callbacks.model_checkpoint.save_top_k=-1 \
+#       trainer.max_steps=5000
+#
+# ⚠ `ep001s0017529` IS THE DONOR AND IT IS NOT THE LAST CHECKPOINT. It is v7's best on the
+# holdout (1.76435), reached in 17,529 steps of a 63,107-step run. Warm-starting from
+# `last.ckpt` would start this probe from a checkpoint measurably worse than the one it is
+# being compared against, and every result would read as a diversity effect.
+#
+# ⚠ THREE CHECKPOINT OVERRIDES AND ALL THREE ARE LOAD-BEARING. Taken from the v7 run's own
+# resolved `.hydra/config.yaml` — the artifact that would have changed if the fact had —
+# rather than from the repo default, which describes a cadence this lineage stopped using.
+#   * `every_n_epochs=null` — **Lightning REFUSES two cadences at once.** The repo default
+#     is `every_n_epochs: 1`, so setting only `every_n_train_steps` errors at construction.
+#   * `filename=...{step:07d}` — without the step, several saves inside one epoch resolve
+#     to ONE name and overwrite each other, leaving only the last. That is the granularity
+#     this probe exists to avoid: v7's answer was visible at step 3,505.
+#   * `save_top_k=-1` — the default is `monitor: epoch` / `mode: max` / `save_top_k: 10`,
+#     "keep the ten HIGHEST-NUMBERED epochs". Early is where the answer is.
+#
+# JUDGING THIS RUN: score on the never-trained holdout as a REGRESSION check, never on
+# `loss/val_epoch`, and never as proof of improvement. The val split is v7's, unchanged, so
+# it is comparable — and it is still contaminated, still three domains, still not a
+# generalization measure. Selection stays an ear job.
+
+defaults:
+  - override /data: libritts_r_full_vat_v7r.yaml
+
+tags: ["libritts_r", "emilia_yodas", "expressive_registers", "vat", "vat7r", "phase1",
+       "probe", "rebalance", "diversity", "delivery"]
+
+run_name: vat7r_rebalance
+
+model:
+  use_vat: true

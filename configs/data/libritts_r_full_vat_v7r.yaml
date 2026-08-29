@@ -1,0 +1,82 @@
+# v7 REBALANCED — the same rows, a different diet.
+#
+# ⚠ READ THIS BEFORE THE HOLDOUT NUMBER, NOT AFTER. This corpus is built to fail a
+# comparison it is not being judged on.
+#
+# WHAT THIS IS. v7's train split with every non-LibriTTS row repeated 9x. No new audio, no
+# new speaker, no new source. The unique row SET is byte-identical to v7's, verified with
+# `sort -u`, and `speakers.json` is copied byte-for-byte so a warm start from any v7
+# checkpoint lands on the same 5,385 indices.
+#
+#   v7   336,546 rows — LibriTTS-R 96.6% · Emilia 3.17% · expressive 0.24%
+#   v7r  428,162 rows — LibriTTS-R 75.9% · Emilia 22.4% · expressive 1.68%
+#
+# WHY. Rung 3 added 303,627 rows and 480 hours, and the model reached its final holdout
+# value in **3,505 optimizer steps — a third of one epoch**. Acoustic terms were 98-101%
+# done there; only `dur` kept moving. The corpus is not too small. It is too SAME: the 480
+# hours were all the domain the model already had. Diversity is the untested lever, and
+# these rows are already on disk — they are simply outvoted 28-to-1.
+#
+# ⚠⚠ `data_statistics` IS DELIBERATELY INHERITED FROM v7 AND THIS BREAKS A STANDING RULE.
+# Measured 2026-08-29 on matched 6,000-row samples of both mixtures, same seed:
+#
+#     v7   mel_mean -5.5489  mel_std 2.4377     (full-set values: -5.543695 / 2.430293,
+#     v7r  mel_mean -5.6666  mel_std 2.6723      so the sampling is sound to ~0.005)
+#     shift            -0.118          +0.235
+#
+# That is the SAME ORDER as the v6->v7 shift (+0.155 / -0.279) which this project's own
+# rule says must never be inherited. The rule is right, and it is about a different
+# situation. It protects a long run from spending epochs against wrong normalisation. This
+# corpus exists for a 5,000-step A/B against a v7 checkpoint, where:
+#
+#   * re-measuring would move the target space under the warm start, so the first few
+#     hundred steps would be spent re-learning output scale — and that adaptation would be
+#     indistinguishable from the composition effect the run is meant to measure;
+#   * `score_holdout.py` normalises with the TRAINING corpus's statistics, so a v7r model
+#     scored under v7r statistics is not comparable with the v7 numbers in
+#     `vat7_gate_watch/history.jsonl`. The regression check would silently stop being one.
+#
+# Holding normalisation fixed makes composition the only variable. The cost is that the
+# targets are off-centre by 0.05 sigma and about 10% wide, which a fine-tune absorbs.
+#
+# ⚠⚠ **IF THE PROBE WINS, THE FOLLOW-UP RUN MUST RE-MEASURE.** The exception above is
+# bought entirely by the run being short and comparative. A long run on this mixture with
+# v7's statistics is the exact defect the rule was written about, and it would produce only
+# a quietly worse model. Re-measure with `matcha/utils/generate_data_statistics.py`.
+#
+# ⚠ THE DUPLICATES ARE ROWS, NOT WEIGHTS. Each minority clip appears 9 times per epoch. At
+# 5,000 steps a clip is seen ~3.4 times, which is nothing. Over many epochs it is a
+# memorisation risk on `expressive_registers_24k`, which is only 799 unique clips.
+#
+# ⚠ THE CURRENT HOLDOUT CANNOT SCORE THIS RUN AS A WIN. It is dev-clean LibriTTS — the one
+# domain we are already saturated in — so it measures what this change deliberately gives
+# ground on. Use it as a REGRESSION check: clean read speech must not get worse. The
+# verdict on whether this helped is the ear, until a holdout exists that can see the goal.
+#
+# Built by: scripts/tools/build_rebalanced_corpus.py --factor 9
+# Report:   data/libritts_r_full_vat_v7r/rebalance_report.json
+
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_full_vat_v7r
+train_filelist_path: data/libritts_r_full_vat_v7r/train_op.txt
+valid_filelist_path: data/libritts_r_full_vat_v7r/val_op.txt
+batch_size: 32
+num_workers: 8
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 5385
+n_fft: 1024
+n_feats: 80
+sample_rate: 24000
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 12000
+data_statistics:  # INHERITED FROM v7 ON PURPOSE — see the block above before changing this
+  mel_mean: -5.543695
+  mel_std: 2.430293
+seed: ${seed}
+load_durations: false
+load_vat: true
+vat_dim: ${model.vat_dim}

@@ -81,8 +81,16 @@ datasets:
     # manifest edit is needed". `enforce()` iterates `[filelist, *seen_dirs]`, so the corpus
     # directory is classified too and returned None — the build would have been refused at
     # load. Checking one of the two things the wall looks at is not checking the wall.
+    #
+    # `libritts_r_full_vat_v7r` (2026-08-29) is v7 with its MINORITY rows repeated 9x, so
+    # Emilia and expressive-registers fill ~24% of every batch instead of 3.4%. The unique
+    # row SET is byte-identical to v7's — verified with `sort -u` — so it introduces no
+    # source and no path this entry did not already cover. Declared anyway, because the
+    # wall classifies the corpus DIRECTORY as well as the audio, and an undeclared
+    # directory is refused at load however familiar its contents are (#294).
     dirs: [libritts_r_emilia_vat_v5, libritts_r_emilia_expressive_vat_v6,
-           libritts_r_full_vat_v7, _derived_train_clean_360, _derived_train_other_500]
+           libritts_r_full_vat_v7, libritts_r_full_vat_v7r,
+           _derived_train_clean_360, _derived_train_other_500]
     license: CC-BY-4.0 (filelists only; each audio path is classified by its own source)
     class: permissive
   sonora_expressive_registers:
