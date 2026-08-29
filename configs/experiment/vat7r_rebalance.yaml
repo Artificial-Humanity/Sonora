@@ -46,19 +46,19 @@
 #
 # Pre-flight, all mandatory:
 #   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL engines.
-#   * ⚠⚠ ONLY TWO OF THE FOUR `SONORA_*` VARIABLES ARE PASSED THROUGH. The other two
-#     fail SILENTLY. Measured on this run's own launch, 2026-08-29:
-#       SONORA_EXPERIMENT / SONORA_WARMSTART — `environment:` carries `${VAR:-}`, works
-#       SONORA_CKPT_FILENAME       — HARDCODED in compose. A host value is discarded, and
-#                                    mine happened to match, so nothing looked wrong.
-#       SONORA_CKPT_EVERY_N_STEPS  — NOT in `environment:` at all, so the command's
-#                                    `${...:-3506}` always wins.
-#     The compose command READS the cadence variable, which reads as though setting it
-#     works. It does not. **The effective cadence is 3,506 steps and cannot be changed
-#     from the host.** This run asked for 1,000 and got 3,506; the only evidence was the
-#     first checkpoint's name, `step=0003505`. Fixing the passthrough is an AI-Lab-AMD
-#     change (the `sonora_training` environment block). Until it lands, do not write a
-#     launch line that pretends otherwise.
+#   * ⚠ THIS RUN GOT A CADENCE IT DID NOT ASK FOR, AND THE HOLE IS NOW FIXED — read this
+#     before trusting any older launch line. On 2026-08-29 the `sonora_training` command
+#     READ `${SONORA_CKPT_EVERY_N_STEPS:-3506}` while compose never put that variable in
+#     the container, so the fallback always won. This run asked for 1,000 and got 3,506;
+#     the only evidence anywhere was the first checkpoint being named `step=0003505`,
+#     which is why its checkpoints sit at 3,505 / 7,011 / 10,517.
+#     ✅ Fixed the same day in AI-Lab-AMD `3b5711f` — the passthrough is declared, and
+#     `SONORA_CKPT_EVERY_N_STEPS=<n>` now works. Verified against the pre-fix file as a
+#     negative control: fixed gives 3506 unset and 1000 when set; pre-fix gives ABSENT in
+#     both arms.
+#     ⚠ `SONORA_CKPT_FILENAME` is still deliberately NOT overridable and is a CONSTANT
+#     spelled as a variable: its braces must reach Hydra backslashed, and `{step:07d}` is
+#     load-bearing. Setting it from a shell is a crash-loop at LAUNCHING, not a knob.
 #   * The warm start built from v7's BEST, and VERIFIED to have widened nothing:
 #     n_spks is 5,385 in both corpora, so every tensor shape matches and `spk_emb.weight`
 #     copies verbatim. `shape-mismatched (fresh)` must print EMPTY. If it names anything,
@@ -71,8 +71,8 @@
 #   SONORA_WARMSTART=/data/model-training/sonora/warmstart/vat7r_init.ckpt \
 #     docker compose --profile training up -d sonora_training
 #
-# ⚠ CHECKPOINTS LAND AT 3,505 / 7,011 / 10,517, not every 1,000 — see the passthrough
-# warning above. The "5,000 steps" in this file's title is an ORDER OF MAGNITUDE, not a
+# ⚠ THIS RUN'S CHECKPOINTS LANDED AT 3,505 / 7,011 / 10,517, not every 1,000 — see the
+# cadence note above; that hole is fixed, so a NEW run gets the cadence it asks for. The "5,000 steps" in this file's title is an ORDER OF MAGNITUDE, not a
 # boundary the run can hit. **Stop AT a checkpoint**: stopping between them throws away
 # every step since the last one. 7,011 gives two points; 10,517 gives three, which is a
 # curve rather than a pair.
