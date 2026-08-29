@@ -46,6 +46,9 @@
 #
 # Pre-flight, all mandatory:
 #   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL engines.
+#   * ⚠ THE CADENCE IS PASSED BY ENVIRONMENT, AND `SONORA_CKPT_FILENAME` HAS NO DEFAULT.
+#     Omitting it makes the filename literally empty, and the container crash-loops after
+#     printing LAUNCHING — the run looks started and is not.
 #   * The warm start built from v7's BEST, and VERIFIED to have widened nothing:
 #     n_spks is 5,385 in both corpora, so every tensor shape matches and `spk_emb.weight`
 #     copies verbatim. `shape-mismatched (fresh)` must print EMPTY. If it names anything,
@@ -54,13 +57,20 @@
 #   python scripts/lib/make_warmstart.py --experiment vat7r_rebalance \
 #       --donor /data/model-training/sonora/logs/train/vat7_finetune/runs/2026-08-29_01-45-09/checkpoints/checkpoint_epoch=001_step=0017529.ckpt \
 #       --out /data/model-training/sonora/warmstart/vat7r_init.ckpt
-#   python -m matcha.train experiment=vat7r_rebalance \
-#       ckpt_path=/data/model-training/sonora/warmstart/vat7r_init.ckpt \
-#       'callbacks.model_checkpoint.filename=checkpoint_{epoch:03d}_{step:07d}' \
-#       callbacks.model_checkpoint.every_n_train_steps=1000 \
-#       callbacks.model_checkpoint.every_n_epochs=null \
-#       callbacks.model_checkpoint.save_top_k=-1 \
-#       trainer.max_steps=5000
+#   SONORA_EXPERIMENT=vat7r_rebalance \
+#   SONORA_WARMSTART=/data/model-training/sonora/warmstart/vat7r_init.ckpt \
+#   SONORA_CKPT_EVERY_N_STEPS=1000 \
+#   SONORA_CKPT_FILENAME='checkpoint_{epoch:03d}_{step:07d}' \
+#     docker compose --profile training up -d sonora_training
+#
+# ⚠ THE 5,000 STEPS ARE STOPPED BY HAND. `sonora_training` has no env hook for
+# `trainer.max_steps` and `trainer.max_epochs` is -1, so the run does not end on its own —
+# the same as every run in this lineage, all of which were stopped by the owner. Checkpoints
+# land every 1,000 steps, so the granularity does not depend on stopping precisely; stopping
+# late costs GPU time and nothing else. Stop with:
+#     docker compose stop sonora_training
+# `restart: unless-stopped` keeps a manually stopped container stopped, including across a
+# reboot, so this does not need undoing afterwards.
 #
 # ⚠ `ep001s0017529` IS THE DONOR AND IT IS NOT THE LAST CHECKPOINT. It is v7's best on the
 # holdout (1.76435), reached in 17,529 steps of a 63,107-step run. Warm-starting from
