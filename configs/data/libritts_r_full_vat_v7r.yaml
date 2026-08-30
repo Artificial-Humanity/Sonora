@@ -53,8 +53,40 @@
 # ground on. Use it as a REGRESSION check: clean read speech must not get worse. The
 # verdict on whether this helped is the ear, until a holdout exists that can see the goal.
 #
+# ⚠⚠ MEASURED 2026-08-30 — "THE MINORITY" IS TWO POPULATIONS, AND THE 9x FALLS ALMOST
+# ENTIRELY ON THE ONE THAT CARRIES NO DELIVERY LABEL. Read this before designing the
+# next ratio experiment; it is the fact that decides whether there should be one.
+#
+#   source                  rows   distinct   repeat   delivery lanes
+#   LibriTTS_R           325,094    325,094       1x   45 rows labeled
+#   emilia                95,877     10,653       9x   ALL BLANK
+#   expressive_registers   7,191        799       9x   789 labeled
+#
+# So 93% of the oversampled rows teach nothing about the delivery channel. Corpus-wide,
+# 834 distinct clips carry any lane label — 1.7% of rows — and per lane:
+#   Dialogue 336 · Neutral 314 · Newscaster 74 · Speech 65
+#
+# ⚠ Newscaster and Speech are taught by 74 and 65 DISTINCT clips, repeated nine times.
+# Repetition adds no information; it adds nine chances to memorise the same recordings.
+# Every expressive_registers clip is also its own speaker (799 clips, 799 speakers), so
+# those embeddings each trained on a single utterance.
+#
+# ⚠ AND THE LANE IS NEARLY CONFOUNDED WITH THE SPEAKER CLASS: 7,101 of the 7,146
+# lane-labeled rows use an expressive_registers speaker. Newscaster and Speech NEVER
+# co-occur with a LibriTTS voice anywhere in this corpus. Asking a well-trained LibriTTS
+# voice for those lanes is asking for a combination the corpus does not contain, which
+# is also the product question — so ask it, but do not read a null answer as "the
+# delivery channel does not work".
+#
+# ⚠⚠ WHAT THIS FORBIDS: reading a flat delivery result as "diversity is not the lever,
+# so the gap is capacity/decoder/distillation". That inference is licensed only where
+# the lever was actually pulled, and on delivery it was not. The fix a flat result
+# implies is MORE DISTINCT LANE-LABELED SPEECH, not a larger multiplier on 799 clips.
+#
 # Built by: scripts/tools/build_rebalanced_corpus.py --factor 9
 # Report:   data/libritts_r_full_vat_v7r/rebalance_report.json
+# Ear test: /data/model-training/sonora/eartest/vat7r_vs_v7 (served by the `eartest`
+#           service on :8096; Set A tests the 22%, Set B the 1.7%)
 
 _target_: matcha.data.text_mel_datamodule.TextMelDataModule
 name: libritts_r_full_vat_v7r
