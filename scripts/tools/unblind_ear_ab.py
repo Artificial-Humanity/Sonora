@@ -90,7 +90,12 @@ def main():
             print(f"     sign test on the {w1 + w2} splits: p = {p:.3f}"
                   f"{'  (not distinguishable from a coin)' if p > 0.05 else ''}")
         for item, choice, note in s["notes"]:
-            print(f"       · {item} [{arm_of[items[item][choice]]}] {note}")
+            # ⚠ A TIE HAS NO ARM TO NAME. `items[item]["same"]` is a KeyError, and the
+            # fixture that was supposed to cover this rigged every tie with an EMPTY
+            # note, so the path never ran. A tie carrying a note is the most informative
+            # row in the file — it is a listener saying what they could not hear.
+            who = "tie" if choice == "same" else arm_of[items[item][choice]]
+            print(f"       · {item} [{who}] {note}")
         print()
     print("  ⚠ Do not pool the sets. See the module docstring.\n")
 
