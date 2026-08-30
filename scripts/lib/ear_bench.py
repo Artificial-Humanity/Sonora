@@ -91,7 +91,8 @@ class Bench:
             self._model, self._loaded = load_matcha("custom", ckpt, DEVICE), ckpt
         return self._model
 
-    def render(self, pair_key, side_key, ckpt, text, spk, vat, lane, label):
+    def render(self, pair_key, side_key, ckpt, text, spk, vat, lane, label,
+               n_timesteps=None):
         """Render one side of one pair. Returns its opaque id.
 
         `label` is what DISTINGUISHES this side inside its pair — a checkpoint name for
@@ -105,10 +106,17 @@ class Bench:
             return name
         enc = process_text_for_lane(1, text, DEVICE, self.lane_kind)
         vec = delivery.vat_vector(*vat, lane)
+        # ⚠ THE SEED IS SET BEFORE THE MODEL RUNS, AND THAT IS WHAT MAKES AN ODE-STEP
+        # COMPARISON MEANINGFUL. `CFM.forward` draws z ONCE (`torch.randn_like(mu)`) and
+        # `solve_euler` is deterministic afterwards, and `n_timesteps` touches only
+        # `t_span` — which is built AFTER the draw. So two sides of a pair that differ
+        # only in step count get bit-identical noise, and the difference heard is
+        # integration accuracy and nothing else.
         torch.manual_seed(seed_for(pair_key, self.seed))
         with torch.no_grad():
             o = self._model_for(ckpt).synthesise(
-                enc["x"], enc["x_lengths"], n_timesteps=N_TIMESTEPS,
+                enc["x"], enc["x_lengths"],
+                n_timesteps=N_TIMESTEPS if n_timesteps is None else n_timesteps,
                 temperature=TEMPERATURE, length_scale=LENGTH_SCALE,
                 spks=torch.tensor([spk], dtype=torch.long),
                 vat=torch.tensor([vec]), guidance=GUIDANCE)
@@ -159,8 +167,10 @@ class Bench:
         kp.write_text(json.dumps(
             {"test_dir": str(self.out), "salt": self.salt, "clips": self.key} | meta,
             indent=2))
+        # `n_timesteps` is the DEFAULT here. A bench that varies it per side records the
+        # real values in its own meta, so this key is not mistaken for what ran.
         (self.out / "render_meta.json").write_text(json.dumps(
-            {"n_timesteps": N_TIMESTEPS, "temperature": TEMPERATURE,
+            {"n_timesteps_default": N_TIMESTEPS, "temperature": TEMPERATURE,
              "length_scale": LENGTH_SCALE, "guidance": GUIDANCE, "seed": self.seed,
              "sample_rate": self.sample_rate, "pairs": len(served),
              "clips_written": self.written} | meta, indent=2))
