@@ -128,6 +128,12 @@ def main():
     ap.add_argument("--pair", required=True,
                     help="the two arm names that form the blind A/B, comma separated")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--key-out", default=None,
+                    help="where the unblinding map goes. Default puts it in a SIBLING "
+                         "_keys/ directory, deliberately outside --out: the app mounts "
+                         "the test directory whole, so a key inside it would be in the "
+                         "container and blinding would rest on the app not opening a "
+                         "file it can reach.")
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--limit", type=int, default=0,
                     help="render only the first N items (smoke test; leaves an "
@@ -212,9 +218,12 @@ def main():
             "A": opaque(it["id"], a, args.salt), "B": opaque(it["id"], b, args.salt)})
     (out / "items.json").write_text(json.dumps(
         {"test": "vat7r_vs_v7", "sample_rate": sr, "items": served}, indent=2))
-    # The unblinding map. NOT served: the app reads items.json only.
-    (out / "key.json").write_text(json.dumps(
-        {"pair": pair, "salt": args.salt, "clips": key}, indent=2))
+    # The unblinding map, OUTSIDE the served directory by default. See --key-out.
+    key_path = Path(args.key_out) if args.key_out else (
+        out.parent / "_keys" / f"{out.name}.key.json")
+    key_path.parent.mkdir(parents=True, exist_ok=True)
+    key_path.write_text(json.dumps(
+        {"pair": pair, "salt": args.salt, "test_dir": str(out), "clips": key}, indent=2))
     (out / "render_meta.json").write_text(json.dumps({
         "arms": arms, "pair": pair, "n_spks": n_spks, "vat_dim": vat_dim,
         "n_timesteps": N_TIMESTEPS, "temperature": TEMPERATURE,
@@ -222,6 +231,7 @@ def main():
         "sample_rate": sr, "items": len(items), "clips_written": done}, indent=2))
     print(f"\n  {len(items)} items x {len(arms)} arms -> {out}")
     print(f"  blind pair: {pair[0]} vs {pair[1]}  ({done} clips rendered this run)")
+    print(f"  unblinding key (keep out of the app's mount): {key_path}")
 
 
 if __name__ == "__main__":

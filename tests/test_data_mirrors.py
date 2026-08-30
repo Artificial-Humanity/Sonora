@@ -53,6 +53,8 @@ MIRRORS = [
      DATA / "toolchain/teacher-audition", "*.sh"),
     (REPO / "audition/app",
      DATA / "services/audition/app", "*.py"),
+    (REPO / "eartest/app",
+     DATA / "services/eartest/app", "*.py"),
     (PROJECTS / "AI-Lab-AMD/dashboard",
      DATA / "services/dashboard", "*.html"),
     (PROJECTS / "AI-Lab-AMD/dashboard/scripts",
