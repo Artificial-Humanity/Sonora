@@ -44,8 +44,9 @@ def main():
     args = ap.parse_args()
 
     key = json.loads(Path(args.key).read_text())
-    items = {i["id"]: i for i in json.loads(
-        (Path(args.test) / "items.json").read_text())["items"]}
+    manifest = json.loads((Path(args.test) / "items.json").read_text())
+    items = {i["id"]: i for i in manifest["items"]}
+    set_meta = manifest.get("sets", {})
     vpath = Path(args.test) / "verdicts" / "verdicts.csv"
     if not vpath.is_file():
         raise SystemExit(f"no verdicts yet at {vpath}")
@@ -96,7 +97,13 @@ def main():
         n = w1 + w2 + tie
         total = sum(1 for i in items.values() if i["set"] == name)
         p = sign_test(w1, w2)
+        # ⚠ PRINT WHAT A COUNT MEANS. Not every bench tallies a preference: the lane
+        # control and the ODE bench ask which clip carries MORE of a defect, so "10: 8"
+        # means 10 steps LOST eight times. Without this line the two kinds of report are
+        # visually identical and the reader supplies the wrong polarity for free.
+        means = set_meta.get(name, {}).get("choice_means", "was preferred")
         print(f"  == {name}  ({n} of {total} judged) ==")
+        print(f"     counts below = how often each {means}")
         print(f"     {a1:14s} {w1:3d}")
         print(f"     {a2:14s} {w2:3d}")
         print(f"     {'no difference':14s} {tie:3d}   ({s['unsure']} marked not sure)")
