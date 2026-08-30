@@ -52,7 +52,11 @@ def main():
     with vpath.open(newline="", encoding="utf-8") as f:
         verdicts = list(csv.DictReader(f))
 
-    arm_of = {k: v["arm"] for k, v in key["clips"].items()}
+    # ⚠ `label`, not `arm`. A contrast bench pairs two CONDITIONING settings from one
+    # checkpoint, so "which arm won" is not the question it asks. The A/B bench writes
+    # the arm name as the label, so its report is unchanged. `arm` is the pre-2026-08-30
+    # spelling and is accepted so an older key file still reads.
+    arm_of = {k: v.get("label", v.get("arm")) for k, v in key["clips"].items()}
     per_set = defaultdict(lambda: {"wins": Counter(), "tie": 0, "notes": [],
                                    "unsure": 0})
     for v in verdicts:
@@ -72,10 +76,22 @@ def main():
         if v.get("note"):
             s["notes"].append((v["item"], v["choice"], v["note"]))
 
-    a1, a2 = key["pair"]
-    print(f"\n  blind pair: {a1}  vs  {a2}\n")
+    # ⚠ THE TWO LABELS ARE DERIVED PER SET, NOT TAKEN FROM key["pair"]. One test can
+    # hold sets that contrast different things — an A/B set contrasts checkpoints while
+    # a control set contrasts conditioning — and a single global pair would mislabel one
+    # of them while still printing plausible numbers.
+    labels_in = defaultdict(set)
+    for it in items.values():
+        labels_in[it["set"]] |= {arm_of[it["A"]], arm_of[it["B"]]}
+
+    print()
     for name in sorted(per_set):
         s = per_set[name]
+        lab = sorted(labels_in[name])
+        if len(lab) != 2:
+            print(f"  ⚠ {name}: expected two labels, found {lab} — skipped")
+            continue
+        a1, a2 = lab
         w1, w2, tie = s["wins"][a1], s["wins"][a2], s["tie"]
         n = w1 + w2 + tie
         total = sum(1 for i in items.values() if i["set"] == name)

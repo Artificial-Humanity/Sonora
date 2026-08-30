@@ -126,7 +126,12 @@ def items(set: str = "all"):
         out.append(it | {"choice": v.get("choice", ""),
                          "confidence": v.get("confidence", ""),
                          "note": v.get("note", "")})
-    return {"test": data.get("test", "?"), "sets": SET_BRIEF, "items": out}
+    # ⚠ THE TEST DESCRIBES ITSELF. A bench knows what question its sets ask; this app
+    # does not, and hardcoding it here meant a new test rendered with different set
+    # names showed the wrong tabs and the wrong question. SET_BRIEF is the fallback for
+    # manifests written before 2026-08-30.
+    return {"test": data.get("test", "?"),
+            "sets": data.get("sets") or SET_BRIEF, "items": out}
 
 
 @app.get("/audio")
@@ -213,8 +218,7 @@ kbd{background:#232833;border:1px solid #2a2f3a;border-radius:4px;padding:1px 6p
 .done{color:#4d9c63}
 </style></head><body>
 <header><h1>Sonora ear test</h1>
-  <div class="tab on" data-set="A_domain_vat">Set A</div>
-  <div class="tab" data-set="B_delivery_lane">Set B</div>
+  <div id="tabs" style="display:flex;gap:10px"></div>
   <div class="prog" id="prog"></div>
 </header>
 <main>
@@ -226,9 +230,7 @@ kbd{background:#232833;border:1px solid #2a2f3a;border-radius:4px;padding:1px 6p
     <button class="play" id="pb">▶ B <kbd>2</kbd></button>
   </div>
   <div class="choices">
-    <button data-c="A">A is better <kbd>a</kbd></button>
-    <button data-c="same">No difference <kbd>s</kbd></button>
-    <button data-c="B">B is better <kbd>b</kbd></button>
+    <button data-c="A"></button><button data-c="same"></button><button data-c="B"></button>
   </div>
   <div class="conf">
     <button data-f="sure">Sure</button><button data-f="unsure">Not sure</button>
@@ -238,21 +240,35 @@ kbd{background:#232833;border:1px solid #2a2f3a;border-radius:4px;padding:1px 6p
   <div class="hint">
     <kbd>1</kbd> play A · <kbd>2</kbd> play B · <kbd>a</kbd>/<kbd>s</kbd>/<kbd>b</kbd> choose ·
     <kbd>←</kbd>/<kbd>→</kbd> move · replay as often as you like.<br>
-    Which arm is A changes from item to item, so the sides tell you nothing.
-    "No difference" is a real answer — do not force one.
+    Which clip is A changes from item to item, so the sides tell you nothing.
+    The middle answer is a real answer — do not force a choice.
   </div>
 </main>
 <script>
-let ITEMS=[],SETS={},i=0,SET="A_domain_vat",au=new Audio();
+let ALL=[],ITEMS=[],SETS={},i=0,SET=null,au=new Audio();
 const $=id=>document.getElementById(id);
+const DEFAULT_LABELS={A:"A is better",same:"No difference",B:"B is better"};
 async function load(){
-  const r=await(await fetch("/api/items?set="+SET)).json();
-  ITEMS=r.items;SETS=r.sets;i=0;
+  const r=await(await fetch("/api/items")).json();
+  ALL=r.items;SETS=r.sets;
+  const names=Object.keys(SETS).filter(n=>ALL.some(x=>x.set===n));
+  if(!SET||!names.includes(SET))SET=names[0];
+  $("tabs").innerHTML=names.map((n,k)=>
+    `<div class="tab${n===SET?" on":""}" data-set="${n}">Set ${n.replace(/^([A-Z])[_ ].*/,"$1")||k+1}</div>`).join("");
+  document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{SET=t.dataset.set;load();});
+  select();
+}
+function select(){
+  ITEMS=ALL.filter(x=>x.set===SET); i=0;
   const f=ITEMS.findIndex(x=>!x.choice); if(f>=0)i=f;
   render();
 }
 function render(){
   const it=ITEMS[i]; if(!it)return;
+  const L=SETS[SET].labels||DEFAULT_LABELS;
+  document.querySelectorAll(".choices button").forEach(b=>{
+    const k={a:"a",same:"s",b:"b"}[b.dataset.c.toLowerCase()];
+    b.innerHTML=(L[b.dataset.c]||DEFAULT_LABELS[b.dataset.c])+` <kbd>${k}</kbd>`;});
   $("brief").innerHTML="<b>"+SETS[SET].title+"</b><br>"+SETS[SET].ask;
   $("meta").textContent=`item ${i+1} of ${ITEMS.length}  ·  speaker ${it.spk}  ·  V/A/T ${it.vat.join(", ")}  ·  delivery ${it.delivery_ui}`;
   $("text").textContent="“"+it.text+"”";
@@ -273,6 +289,8 @@ function play(which){
 au.onended=()=>{$("pa").classList.remove("playing");$("pb").classList.remove("playing")};
 async function save(){
   const it=ITEMS[i];
+  // ⚠ mutate in place; ALL and ITEMS share objects, so the tab counters stay right
+  // without a refetch that would jump the listener back to the first unjudged item.
   await fetch("/api/verdict",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({item:it.id,choice:it.choice||"",confidence:it.confidence||"",note:it.note||""})});
   render();
@@ -285,9 +303,6 @@ $("prev").onclick=()=>move(-1); $("next").onclick=()=>move(1);
 document.querySelectorAll(".choices button").forEach(b=>b.onclick=()=>choose(b.dataset.c));
 document.querySelectorAll(".conf button").forEach(b=>b.onclick=()=>conf(b.dataset.f));
 $("note").onchange=()=>{ITEMS[i].note=$("note").value;save();};
-document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{
-  document.querySelectorAll(".tab").forEach(x=>x.classList.remove("on"));
-  t.classList.add("on");SET=t.dataset.set;load();});
 document.onkeydown=e=>{
   if(e.target.tagName==="TEXTAREA")return;
   const k=e.key.toLowerCase();
