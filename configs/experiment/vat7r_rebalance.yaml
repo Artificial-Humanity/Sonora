@@ -69,7 +69,50 @@
 # ⚠ NO VERDICT HERE, AND THE HOLDOUT CANNOT SUPPLY ONE. It is dev-clean LibriTTS.
 #   This run bought diversity, and this measurement prices the COST at under 1%.
 #   It cannot see the PURCHASE. The blind ear test against `ep001s0017529` is the
-#   verdict and it is UNRUN as of this line.
+#   verdict, and it RAN — see below.
+# ============================================================================
+#
+# ============================================================================
+# EAR VERDICT, 2026-08-30. Owner, blind, 28 forced-choice pairs, donor vs
+# v7r s0010517. NEITHER SET REACHED SIGNIFICANCE.
+#
+#   Set A (delivery blank, V/A/T varied — the 22% lever):
+#     donor 3 · v7r 9 · no difference 4      sign test on 12 splits, p = 0.146
+#   Set B (V/A/T neutral, lane requested — the 1.7% lever):
+#     donor 6 · v7r 5 · no difference 1      sign test on 11 splits, p = 1.000
+#
+# ⚠⚠ THE NOTES CARRY A LARGER FINDING THAN EITHER TALLY, AND IT IS NOT ABOUT THIS
+# RUN. The complaint in nearly every note is a ROBOTIC / ELECTRONIC HUM, present in
+# BOTH arms: 8/8 notes on speaker 4899, 12/12 across Set B, 4/8 on speaker 4896.
+# "Both sound very robotic, and neither would be passable." No corpus rebalance
+# addresses that, and it is the ceiling the owner has been describing.
+#
+# ⚠ SPEAKER DOMINATES CHECKPOINT. Same text, same settings, two voices:
+#     spk4896 (LibriTTS 5181): donor 3 · v7r 3 · tie 2  — a dead heat, "both good"
+#     spk4899 (LibriTTS 5198): donor 0 · v7r 6 · tie 2  — "highly robotic" throughout
+#   ⚠ POST-HOC SUBGROUP. p = 0.031 on the 4899 split, and that number is NOT a
+#   result: the split was chosen after seeing the data, which is how a 1-in-32
+#   coincidence gets published. It is a HYPOTHESIS — "diversity helps where the
+#   voice is weak and does nothing where it is already good" — and it needs a
+#   PRE-REGISTERED test on new speakers chosen by their donor quality.
+#
+# ⚠ DESIGN FLAW IN THIS TEST, RECORDED SO THE NEXT ONE DOES NOT REPEAT IT: Set A
+# and Set B share ZERO text, and Set B has no delivery-BLANK control. The notes
+# suggest lane-conditioned renders are worse (12/12 robotic vs 4/8 on the same
+# speaker in Set A) — but text is confounded with lane, so THAT COMPARISON CANNOT
+# BE MADE FROM THIS DATA. The fix is 6 clips: the three Set B texts rendered
+# blank-lane, same speaker, same V/A/T.
+#
+# WHAT THIS LICENSES, AND WHAT IT DOES NOT:
+#   ✅ Set A pulled its lever properly at 22% and produced no significant gain. For
+#      GENERAL naturalness, corpus diversity at this ratio is not a large lever.
+#      That does point at capacity / decoder / distillation.
+#   ❌ Set B did NOT pull its lever — 74 distinct Newscaster clips, 65 Speech,
+#      repeated 9x (see the data config). Its null says nothing about the delivery
+#      channel except that 834 clips is not enough. Do not read it as "delivery
+#      conditioning does not work".
+#   ⚠ Newscaster went 3-0 to the DONOR. n=3, p=0.250, so it is not a finding — but
+#      it is the direction 9x-repeating 74 clips would predict if it overfits.
 # ============================================================================
 #
 # WHAT CHANGED FROM v7, in one list:
