@@ -1,0 +1,99 @@
+"""Join blind ear-test verdicts to the arm key and report the result.
+
+Run BY HAND after the listening session, never by the app: the whole point of the
+sibling `_keys/` directory is that the serving container cannot reach this map.
+
+⚠ SET A AND SET B ARE REPORTED SEPARATELY AND MUST STAY THAT WAY. They interrogate
+levers of very different size in the same corpus change — Set A the 22% that was
+really oversampled, Set B the 1.7% carrying delivery labels. A pooled number belongs
+to neither and reads as a verdict on both.
+
+⚠ "NO DIFFERENCE" IS DATA, NOT A MISSING ANSWER. It is reported as its own count and
+excluded from the sign test, which asks a narrower question: GIVEN that a listener
+heard a difference, did it go one way more often than a coin would? A test with 20
+ties and 4 splits 3-1 has not found an effect, and the tie count is what says so.
+
+Usage:
+    python scripts/tools/unblind_ear_ab.py \
+        --key  /data/model-training/sonora/eartest/_keys/vat7r_vs_v7.key.json \
+        --test /data/model-training/sonora/eartest/vat7r_vs_v7
+"""
+
+import argparse
+import csv
+import json
+from collections import Counter, defaultdict
+from math import comb
+from pathlib import Path
+
+
+def sign_test(a, b):
+    """Two-sided exact binomial p for `a` successes in `a+b` trials at p=0.5."""
+    n = a + b
+    if n == 0:
+        return None
+    k = min(a, b)
+    tail = sum(comb(n, i) for i in range(k + 1)) / (2 ** n)
+    return min(1.0, 2 * tail)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--key", required=True)
+    ap.add_argument("--test", required=True)
+    args = ap.parse_args()
+
+    key = json.loads(Path(args.key).read_text())
+    items = {i["id"]: i for i in json.loads(
+        (Path(args.test) / "items.json").read_text())["items"]}
+    vpath = Path(args.test) / "verdicts" / "verdicts.csv"
+    if not vpath.is_file():
+        raise SystemExit(f"no verdicts yet at {vpath}")
+    with vpath.open(newline="", encoding="utf-8") as f:
+        verdicts = list(csv.DictReader(f))
+
+    arm_of = {k: v["arm"] for k, v in key["clips"].items()}
+    per_set = defaultdict(lambda: {"wins": Counter(), "tie": 0, "notes": [],
+                                   "unsure": 0})
+    for v in verdicts:
+        if not v["choice"]:
+            continue
+        it = items.get(v["item"])
+        if it is None:
+            print(f"  ⚠ verdict for unknown item {v['item']} — skipped")
+            continue
+        s = per_set[v["set"]]
+        if v["choice"] == "same":
+            s["tie"] += 1
+        else:
+            s["wins"][arm_of[it[v["choice"]]]] += 1
+        if v.get("confidence") == "unsure":
+            s["unsure"] += 1
+        if v.get("note"):
+            s["notes"].append((v["item"], v["choice"], v["note"]))
+
+    a1, a2 = key["pair"]
+    print(f"\n  blind pair: {a1}  vs  {a2}\n")
+    for name in sorted(per_set):
+        s = per_set[name]
+        w1, w2, tie = s["wins"][a1], s["wins"][a2], s["tie"]
+        n = w1 + w2 + tie
+        total = sum(1 for i in items.values() if i["set"] == name)
+        p = sign_test(w1, w2)
+        print(f"  == {name}  ({n} of {total} judged) ==")
+        print(f"     {a1:14s} {w1:3d}")
+        print(f"     {a2:14s} {w2:3d}")
+        print(f"     {'no difference':14s} {tie:3d}   ({s['unsure']} marked not sure)")
+        if p is None:
+            print("     every judgement was a tie — no direction to test")
+        else:
+            print(f"     sign test on the {w1 + w2} splits: p = {p:.3f}"
+                  f"{'  (not distinguishable from a coin)' if p > 0.05 else ''}")
+        for item, choice, note in s["notes"]:
+            print(f"       · {item} [{arm_of[items[item][choice]]}] {note}")
+        print()
+    print("  ⚠ Do not pool the sets. See the module docstring.\n")
+
+
+if __name__ == "__main__":
+    main()
