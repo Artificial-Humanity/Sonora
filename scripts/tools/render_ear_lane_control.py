@@ -82,8 +82,19 @@ def main():
     lane_kind, n_spks, vat_dim = ear_bench.require_comparable(arms)
     bench = ear_bench.Bench(args.out, args.salt, args.seed, lane_kind)
 
+    # ⚠ BALANCED, NOT INDEPENDENTLY RANDOM. An unbiased coin gave 10 blank-first out of
+    # 12 on the first draw (p = 0.039), and on THIS test that is worse than on an A/B:
+    # requesting a lane is meant to change the delivery audibly, so a listener who
+    # notices "the plainer read is usually A" can start answering from expectation
+    # instead of from the hum. A shuffled balanced list removes the pattern to learn.
     rng = random.Random(args.seed)
     sets, served = {}, []
+    n_pairs = len(TEXT) * len(delivery.ACTIVE_DELIVERY_LANES)
+    flips = {}
+    for arm in arms:
+        f = [True] * (n_pairs // 2) + [False] * (n_pairs - n_pairs // 2)
+        rng.shuffle(f)
+        flips[arm] = f
     for arm, ckpt in arms.items():
         set_name = f"C_{arm}"
         for ti, text in enumerate(TEXT):
@@ -98,7 +109,7 @@ def main():
                 lane_id = bench.render(pk, lane, ckpt, text, SPK, VAT, lane, "lane")
                 if arm not in serve:
                     continue
-                a, b = ((blank_id, lane_id) if rng.random() < 0.5
+                a, b = ((blank_id, lane_id) if flips[arm][len(served)]
                         else (lane_id, blank_id))
                 served.append({"id": pk, "set": set_name, "text": text, "spk": SPK,
                                "vat": list(VAT), "delivery_ui": f"{lane} vs blank",

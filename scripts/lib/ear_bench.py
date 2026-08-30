@@ -19,6 +19,7 @@ process would reseed the remaining work and silently turn sampling noise into th
 measured effect.
 """
 
+import csv
 import hashlib
 import json
 import zlib
@@ -125,9 +126,33 @@ class Bench:
         whole, so a key inside it would be in the container and blinding would rest on
         the app not opening a path it can reach.
         """
-        (self.out / "items.json").write_text(json.dumps(
-            {"test": test_name, "sample_rate": self.sample_rate,
-             "sets": sets, "items": served}, indent=2))
+        # ⚠⚠ A COLLECTED VERDICT IS A REFERENCE INTO items.json. It records "the
+        # listener chose A", and only this manifest says which clip A was. Rewriting it
+        # with a different A/B assignment does not corrupt anything visibly — it
+        # silently RE-POINTS every verdict already collected, and the unblinder goes on
+        # printing confident numbers for a test that no longer happened. Regenerating a
+        # manifest is normal and safe when the assignment is unchanged; changing it
+        # under existing verdicts is not, so this refuses rather than warns.
+        manifest = {"test": test_name, "sample_rate": self.sample_rate,
+                    "sets": sets, "items": served}
+        old = self.out / "items.json"
+        vcsv = self.out / "verdicts" / "verdicts.csv"
+        if old.is_file() and vcsv.is_file():
+            with vcsv.open(newline="", encoding="utf-8") as f:
+                judged = {r["item"] for r in csv.DictReader(f) if r.get("choice")}
+            if judged:
+                was = {i["id"]: (i["A"], i["B"])
+                       for i in json.loads(old.read_text())["items"]}
+                now = {i["id"]: (i["A"], i["B"]) for i in served}
+                moved = sorted(k for k in judged
+                               if k in was and k in now and was[k] != now[k])
+                if moved:
+                    raise SystemExit(
+                        f"REFUSING: {len(moved)} already-judged pairs would change "
+                        f"sides, which re-points every verdict collected for them "
+                        f"(e.g. {moved[:3]}). Render to a NEW --out, or bump --salt for "
+                        f"a deliberate re-blinding.")
+        old.write_text(json.dumps(manifest, indent=2))
         kp = Path(key_out) if key_out else (
             self.out.parent / "_keys" / f"{self.out.name}.key.json")
         kp.parent.mkdir(parents=True, exist_ok=True)
