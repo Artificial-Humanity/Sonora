@@ -49,6 +49,28 @@ TEXT = [
     "She set the letter down, read it again, and finally understood what he meant.",
 ]
 
+# ⚠ ADDED 2026-08-30, AFTER THE LANE CONTROL CAME BACK. Requesting a delivery lane makes
+# the audio measurably worse on a LibriTTS voice: blank 0, lane 10, two ties, p = 0.002,
+# and the blank render was never the worse one in twelve pairs. Speech and Dialogue drew
+# "drastic" and "very severe"; Neutral and Newscaster were mild. That makes a new question
+# worth the same sitting: is the lane damage an INTEGRATION artifact that more sampling
+# repairs, or is it the conditioning pushing the trunk somewhere it was never trained?
+# Cheap to ask, and the answers differ by a quarter of work.
+LANE_SET = ("Speech", "Dialogue")      # the two the owner called drastic / very severe
+LANE_CONTRAST = (10, 64)               # maximum contrast; this is a screen, not a curve
+LANE_SPK = 4896                        # the voice the lane control measured the damage on
+# The lane control's text, so the two tests read against each other line for line.
+LANE_TEXT = [
+    "The results arrived this morning, and they are not what anyone expected.",
+    "We will begin at the top of the hour, once everyone has taken their seats.",
+    "There is a great deal more to say about this, but not tonight.",
+]
+LANE_ASK = ("Both clips requested the SAME delivery lane from the same model, voice and "
+            "words, with the same random noise. They differ ONLY in how finely the "
+            "sampler integrated. The lane is known to add a hum — the question here is "
+            "whether more sampling removes it. Which clip carries MORE hum? 'Same "
+            "amount' means more steps do not fix it, which is a real answer.")
+
 ASK = ("Both clips are the SAME model, voice, words and random noise. They differ ONLY "
        "in how finely the sampler integrated — one used more steps than the other. They "
        "are the same length on purpose. Which clip carries MORE of the robotic or "
@@ -99,6 +121,33 @@ def main():
             "ask": ASK, "labels": LABELS,
             "choice_means": "was judged to carry MORE robotic hum",
         }
+
+    # ⚠ APPENDED AFTER the blank-lane sets, so their RNG draws and therefore their A/B
+    # assignment are untouched. Verified against the previous manifest.
+    lo, hi = LANE_CONTRAST
+    set_name = f"D_lane_steps_{lo}v{hi}"
+    n = len(LANE_SET) * len(LANE_TEXT)
+    flips = [True] * (n // 2) + [False] * (n - n // 2)
+    rng.shuffle(flips)
+    k = 0
+    for lane in LANE_SET:
+        for ti, text in enumerate(LANE_TEXT):
+            pk = f"{set_name}_{lane}_T{ti:02d}"
+            a_id = bench.render(pk, f"s{lo}", args.ckpt, text, LANE_SPK, VAT, lane,
+                                str(lo), n_timesteps=lo)
+            b_id = bench.render(pk, f"s{hi}", args.ckpt, text, LANE_SPK, VAT, lane,
+                                str(hi), n_timesteps=hi)
+            A, B = (a_id, b_id) if flips[k] else (b_id, a_id)
+            k += 1
+            served.append({"id": pk, "set": set_name, "text": text, "spk": LANE_SPK,
+                           "vat": list(VAT),
+                           "delivery_ui": f"{lane} · {lo} vs {hi} ODE steps",
+                           "A": A, "B": B})
+    sets[set_name] = {
+        "title": f"Set E — does more sampling repair the LANE damage? ({lo} vs {hi})",
+        "ask": LANE_ASK, "labels": LABELS,
+        "choice_means": "was judged to carry MORE robotic hum",
+    }
 
     bench.write("ode_steps", sets, served,
                 {"ckpt": args.ckpt, "baseline_steps": BASELINE,
