@@ -17,7 +17,7 @@ categorical will interpolate them ([STATE.md](../notes/STATE.md) § The delivery
 Shipped on the training side is
 not shipped on the device.
 The seam assertions that make the width safe are proven to fire (`scripts/gates/test_vat_dim_seams.py`).
-Last updated: 2026-08-09._
+Last updated: 2026-08-30 (the delivery-channel standing note in §1)._
 
 ---
 
@@ -38,12 +38,34 @@ remain host-side per the exploit-before-train measurement — training owns pitc
 |---|---|---|
 | **Text** | 178-symbol locked IPA vocab; op_g2p lane (OpenPhonemizer dict → DeepPhonemizer TFLite OOV fallback, U+0303 rule); `cleaners=[no_cleaners]`; intersperse-0 | Digits/abbreviations are the **caller's** job (op_g2p does not expand them). espeak is banned from the runtime path. |
 | **Control** | `vat = (valence, energy, tension)`, each float ∈ [−1, 1], 0 = speaker-neutral | Semantics are per-speaker z-scores of the corpus measures (§2). Slot map `{valence:0, energy:1, tension:2}`. Per-utterance today; per-token is the plumbing's native shape (expansion via the duration alignment). |
-| **Delivery** (v2) | one of `{Dialogue, Neutral, Documentary, Newscaster, Speech}` + `unknown`, embedded host-side to a small vector on the same zero-init FiLM path as `vat` | `unknown` ≡ zero vector ≡ v1 behavior, so v1 consumers work unchanged. First implementation: the next training run; de-risked with the §7 playbook (identity-at-init, leakage ≤ 0.2). Vocabulary changes are contract changes. **Per-utterance today, and the CHANNEL BLOCK is deliberately closed at five — see the embodiment note below.** `Documentary` was **retired into `Neutral`** (owner, 2026-08-10): four lanes are assignable, five channels stay on the wire. Order is the wire format, so removing a channel would renumber the two after it and reinterpret every filelist and checkpoint at `vat_dim` 8. `matcha/delivery.RETIRED_LANES` holds the distinction and `check_assignable()` enforces it on writers; readers stay on the full vocabulary. |
+| **Delivery** (v2) | one of `{Dialogue, Neutral, Documentary, Newscaster, Speech}` + `unknown`, embedded host-side to a small vector on the same zero-init FiLM path as `vat` | `unknown` ≡ zero vector ≡ v1 behavior, so v1 consumers work unchanged. First implementation: the next training run; de-risked with the §7 playbook (identity-at-init, leakage ≤ 0.2). Vocabulary changes are contract changes. **Per-utterance today, and the CHANNEL BLOCK is deliberately closed at five — see the embodiment note below.** `Documentary` was **retired into `Neutral`** (owner, 2026-08-10): four lanes are assignable, five channels stay on the wire. Order is the wire format, so removing a channel would renumber the two after it and reinterpret every filelist and checkpoint at `vat_dim` 8. `matcha/delivery.RETIRED_LANES` holds the distinction and `check_assignable()` enforces it on writers; readers stay on the full vocabulary. ⚠⚠ **MEASURED 2026-08-30: requesting a lane currently DEGRADES the audio** — the encoding is right, the channel is not yet fit to ship. See the standing note below. |
 | **Speaker** | 64-dim float vector | **Never an id.** The mini tier resolves ids→vectors via a host-side table; a future speaker encoder produces the same vector. Nothing downstream may assume a roster. |
 | **Rate** | `length_scale` (1.0 default) | Deliberate: speaking rate is NOT a learned channel. |
 | **Amplification (optional)** | CFG guidance scale `s` on the decoder field; unconditional = vat 0; default 1 (off) | Pure host orchestration — the decoder graph is unchanged, run twice per ODE step and extrapolated. Validated by ear at s = 2–3 **with ≥ 25 ODE steps** (2026-07-16); at 10 steps solver artifacts dominate. Raw out-of-range VAT input saturates — never use input extrapolation. |
 | **Audio interchange** | 80-band mel, 24 kHz, n_fft 1024, hop 256, win 1024, fmin 0, fmax 12000 | Acoustic↔vocoder boundary ([model-decisions.md § Sample rate](model-decisions.md)). Mel normalization stats are corpus properties (shipped in each export's `config.json`), not contract. |
 | **Chunking** | Director chunks on sentence/clause boundaries within the tier's export budget (mini: 256 interspersed tokens / 512 mel frames ≈ 5.46 s) | Model quality does not bind before ~2 min (chunk-size sweep, 2026-07-16) — the budget is an export-shape property. Cross-chunk seams are a Director concern (pause-based joins). |
+
+⚠⚠ **THE DELIVERY CHANNEL IS PINNED BUT NOT YET FIT TO SHIP — MEASURED 2026-08-30.**
+Requesting any lane degrades the audio against requesting none. Blind forced-choice, one
+checkpoint, one speaker, V/A/T pinned at zero, three texts × the four assignable lanes, so
+**the only variable inside a pair is whether the delivery block was turned on at all** —
+the control side is `unknown`, which this row defines as all five channels at zero. The
+`unknown` side was judged to carry less robotic hum in **10 of 12 pairs, and was never once
+judged worse** (2 ties, sign test p = 0.002).
+
+Severity does **not** track training-clip count, which rules out the obvious remedy as a
+sufficient one: Dialogue (336 distinct clips) and Speech (65) are both 3-for-3, while
+Neutral (314) is the mildest of the four. The cause is unresolved between a few-step solver
+artifact — which a step floor would fix, exactly as the Amplification row already carries
+one at ≥ 25 steps — and the conditioning leaving the region the corpus taught, which it
+would not. The bench that separates them is built and unscored.
+
+**What this does and does not change.** It does not change the contract: the encoding, the
+`unknown` ≡ zero rule and the five-channel wire format are all still right, and nothing here
+argues for a different shape. It changes what a **consumer** should do — treat the delivery
+control as unproven and default it to `unknown`, which is also the v1 behavior, until this
+note is retired. Evidence and both hypotheses:
+[vat7r_rebalance.yaml § LANE CONTROL](../configs/experiment/vat7r_rebalance.yaml).
 
 **Embodiment is NOT a sixth delivery value** (owner, 2026-08-02). An embodiment clip is
 narration in which the narrator voices a character mid-sentence and returns — *"Then Marcus

@@ -99,9 +99,12 @@
 # ⚠ DESIGN FLAW IN THIS TEST, RECORDED SO THE NEXT ONE DOES NOT REPEAT IT: Set A
 # and Set B share ZERO text, and Set B has no delivery-BLANK control. The notes
 # suggest lane-conditioned renders are worse (12/12 robotic vs 4/8 on the same
-# speaker in Set A) — but text is confounded with lane, so THAT COMPARISON CANNOT
-# BE MADE FROM THIS DATA. The fix is 6 clips: the three Set B texts rendered
+# speaker in Set A) — but text is confounded with lane, so THAT COMPARISON COULD
+# NOT BE MADE FROM THIS DATA. The fix was 6 clips: the three Set B texts rendered
 # blank-lane, same speaker, same V/A/T.
+#
+# ✅ THE FIX WAS BUILT AND RUN, AT 12 PAIRS RATHER THAN 6. See LANE CONTROL below.
+#    It came back decisive, and it is what explains Set B's coin flip.
 #
 # WHAT THIS LICENSES, AND WHAT IT DOES NOT:
 #   ✅ Set A pulled its lever properly at 22% and produced no significant gain. For
@@ -111,8 +114,55 @@
 #      repeated 9x (see the data config). Its null says nothing about the delivery
 #      channel except that 834 clips is not enough. Do not read it as "delivery
 #      conditioning does not work".
+#      ⚠ UPDATED 2026-08-30: the LANE CONTROL below gives the stronger reason. BOTH
+#      of Set B's arms requested a lane, so both were damaged, and a coin flip
+#      between two damaged renders is what you would expect. Set B is not evidence
+#      about corpus ratio at all.
 #   ⚠ Newscaster went 3-0 to the DONOR. n=3, p=0.250, so it is not a finding — but
 #      it is the direction 9x-repeating 74 clips would predict if it overfits.
+#
+# ============================================================================
+# LANE CONTROL, 2026-08-30. Owner, blind, 12 forced-choice pairs, ALL 12 JUDGED.
+# THE DECISIVE RESULT ON THIS PAGE — and it is not about v7r. It is about the
+# delivery channel itself, and it applies to every checkpoint in the lineage.
+#
+# ONE checkpoint (the donor), ONE speaker (4896 — the voice the owner called good),
+# V/A/T pinned at (0,0,0), three texts x the four assignable lanes. The only thing
+# that differs inside a pair is whether a lane was requested at all: the control
+# side is `DELIVERY_UNKNOWN`, which the contract defines as channels 3..7 all zero.
+# Question asked of the ear: which side carries more robotic hum.
+#
+#   blank            0
+#   lane            10
+#   no difference    2
+#   sign test on the 10 splits: p = 0.002
+#
+# ⚠⚠ THE BLANK RENDER WAS NEVER ONCE JUDGED WORSE. Not "blank wins on average" —
+# 0 of 12. Turning the delivery block on, versus leaving it at the contract's
+# `unknown`, DEGRADES the audio on identical text from the same checkpoint.
+#
+# ⚠ SEVERITY DOES NOT TRACK TRAINING-CLIP COUNT, which is what kills the obvious
+# remedy of "just add more clips of the starved lanes":
+#     Dialogue    3 lane / 0 blank / 0 tie   336 distinct  "Very severe in B"
+#     Speech      3 / 0 / 0                   65 distinct  "Drastic difference"
+#     Newscaster  2 / 0 / 1                   74 distinct  "Small difference"
+#     Neutral     2 / 0 / 1                  314 distinct  "Very little, if any"
+# The best-taught lane and the worst-taught lane are BOTH 3-for-3, and the mildest
+# is the second-best-taught. There is no monotone relationship to lean on.
+#
+# ⚠ IT DOES NOT SAY WHY, AND THE TWO LIVE HYPOTHESES NEED OPPOSITE RESPONSES:
+#   (a) a few-step solver artifact — the conditioning perturbs a field the 10-step
+#       euler solve cannot follow, in which case MORE STEPS FIX IT and the answer
+#       is a step floor, the same shape CFG already carries at >=25 steps;
+#   (b) the conditioning pushes the trunk somewhere the corpus never took it, in
+#       which case more steps change nothing and the lever is new distinct clips.
+#   `scripts/tools/render_ear_ode_steps.py` set `D_lane_steps_10v64` exists to
+#   separate them, and the noise draw is shared across step counts so the pairs are
+#   an exact comparison. UNSCORED as of 2026-09-01.
+#
+# Second arm ALREADY RENDERED, NOT YET SERVED: the same 12 pairs against the v7r
+# checkpoint, in the same clips directory, answering "did the rebalance reduce the
+# damage?". Regenerating the manifest with both arms is the whole cost.
 # ============================================================================
 #
 # WHAT CHANGED FROM v7, in one list:

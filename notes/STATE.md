@@ -7,7 +7,7 @@ architecture canon is [ARCHITECTURE.md](../docs/ARCHITECTURE.md); open work is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
-_Last updated: 2026-08-25._
+_Last updated: 2026-08-30._
 
 ---
 
@@ -73,11 +73,41 @@ _Last updated: 2026-08-25._
 > end-condition (same file, § Parked), not scheduled; it is half of goal 1 and no rung
 > ladders to it.
 
-## The delivery channel — SHIPPED on the training side (2026-08-07)
+## The delivery channel — SHIPPED on the training side (2026-08-07), MEASURED HARMFUL (2026-08-30)
 
 `vat_dim` is **8**: three V/A/T channels plus a five-wide one-hot delivery block.
 `matcha/delivery.py` is the only definition of that encoding, and the corpus derivation,
 the CLI, the Vocalizer and the export converter all read it.
+
+> ⚠⚠ **REQUESTING A LANE CURRENTLY MAKES THE AUDIO WORSE, AND THE PLUMBING IS NOT THE
+> PROBLEM.** Blind forced-choice, 12 pairs, all judged: one checkpoint, one speaker (4896,
+> the voice the owner called good), V/A/T pinned at zero, three texts × the four assignable
+> lanes. The only thing that differs inside a pair is whether the delivery block was turned
+> on at all — the control side is `DELIVERY_UNKNOWN`, all five channels at zero.
+>
+>     blank 0 · lane 10 · no difference 2      sign test on the 10 splits, p = 0.002
+>
+> **The blank render was never once judged worse.** Complaint in every note: robotic hum.
+>
+> ⚠ **Severity does not track training-clip count**, so "add more clips of the starved
+> lanes" is not established as the fix: Dialogue (336 distinct) and Speech (65) are both
+> 3-for-3, and Neutral (314) is the mildest of the four.
+>
+> **Two hypotheses, opposite responses, not yet separated.** Either the conditioning
+> perturbs a field the 10-step euler solve cannot follow — in which case a step floor fixes
+> it, the shape [ARCHITECTURE.md](../docs/ARCHITECTURE.md) § 1 already carries for CFG at
+> ≥ 25 steps — or it pushes the trunk outside what the corpus taught, in which case steps
+> change nothing. `scripts/tools/render_ear_ode_steps.py` set `D_lane_steps_10v64` exists to
+> settle it and the noise draw is shared across step counts, so the pairs are exact.
+> **UNSCORED as of 2026-09-01.**
+>
+> ⚠ **This retires nothing above.** The encoding, the `unknown` ≡ zero rule and the
+> five-channel wire format are all still right; what is not established is that the channel
+> pays for itself yet. Full record, both arms and the per-lane split:
+> [vat7r_rebalance.yaml § LANE CONTROL](../configs/experiment/vat7r_rebalance.yaml).
+>
+> ⚠ A second arm — the same 12 pairs against v7r — is **already rendered and not yet
+> served**, so "did the rebalance reduce the damage?" costs one manifest regeneration.
 
 **Eight, not the four the review proposed.** A single ordered channel asserts the five
 lanes lie on one continuum, and `seed_delivery.py` records that they do not — Dialogue vs
