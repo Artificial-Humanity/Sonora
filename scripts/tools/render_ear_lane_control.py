@@ -28,6 +28,17 @@ Usage:
         --arm v7r_late=/path/to/v7r_s0010517.ckpt \
         --serve donor \
         --out /data/model-training/sonora/eartest/vat7r_lane_control
+
+⚠ A FOLLOW-UP ROUND GOES TO A NEW --out, NOT THE SAME ONE. Serving the second arm into a
+directory whose first arm has been judged would drop those pairs from items.json, and the
+unblinder resolves a verdict to its clips through that file alone — the result becomes
+unreadable. `ear_bench.Bench.write` refuses this now; before 2026-09-01 it did not, and
+this docstring recommended it. Clip ids are salt-derived, so copy the already-rendered
+wavs into the new directory and nothing re-renders:
+
+    cp <old>/clips/<the other arm's clips>.wav <new>/clips/
+
+The container recipe for running either bench is in `scripts/lib/ear_bench.py`.
 """
 
 import argparse
@@ -62,7 +73,8 @@ def main():
     ap.add_argument("--arm", action="append", required=True, metavar="NAME=CKPT")
     ap.add_argument("--serve", required=True,
                     help="comma-separated arm names to put IN the test. Others are "
-                         "rendered and left on disk, so a follow-up round costs no GPU.")
+                         "rendered and left on disk, so a follow-up round costs no GPU "
+                         "— but it needs a NEW --out; see the module docstring.")
     ap.add_argument("--out", required=True)
     ap.add_argument("--key-out", default=None)
     ap.add_argument("--seed", type=int, default=4321)

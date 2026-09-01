@@ -17,6 +17,41 @@ so the only thing varying inside a pair is the thing under test.
 ⚠ crc32, NOT hash(): str hashing is salted per process, so a render resumed in a second
 process would reseed the remaining work and silently turn sampling noise into the
 measured effect.
+
+HOW TO RUN EITHER BENCH
+-----------------------
+NOT from the repo `.venv` — it has no torch, and neither bench can import. They run in the
+same pinned image the training service uses, from the DEPLOY CLONE, so `deploy.sh
+training-code` must be current or you are running yesterday's renderer. `DEVICE` is CPU
+below, so this needs no GPU and contends with nothing.
+
+    docker run --rm \
+      -v /data/model-training:/data/model-training \
+      -v /data/repos/Sonora:/workspace \
+      -v /data/model-training/sonora/logs:/workspace/logs \
+      -v /data/model-training/sonora/data:/workspace/data \
+      -v /data/models:/data/models:ro \
+      -w /workspace -e DEBIAN_FRONTEND=noninteractive \
+      rocm/pytorch:latest bash -c '
+        set -e
+        apt-get update -qq && apt-get install -y -qq libsndfile1
+        pip install -q uv
+        uv pip install -q --python /opt/venv/bin/python Cython
+        uv pip install -q --python /opt/venv/bin/python --no-build-isolation -e .
+        uv pip install -q --python /opt/venv/bin/python ai-edge-litert
+        python3 scripts/tools/render_ear_<bench>.py …
+      '
+
+⚠ ALL FOUR DATA MOUNTS ARE LOAD-BEARING and three of them fail late rather than at
+import. `/data/models` holds the G2P dictionary, `ai-edge-litert` is the neural G2P
+fallback, and `/data/model-training/vocoder` — reached via the whole-tree mount above,
+which is why it is not `…/sonora` — holds `cp_hifigan_24k/config.json`, without which
+`Bench.__init__` dies AFTER the prep chain has run. Mount the tree, not the subdirectory.
+
+⚠ CHECK THE STATUS OF THE RUN, NOT OF A PIPE. `docker run … | tail` reports tail's
+status, so a traceback inside the container reads as success. This recipe was reconstructed
+on 2026-09-01 because it had never been written down, and the first attempt reported exit 0
+while rendering nothing.
 """
 
 import csv
@@ -160,6 +195,28 @@ class Bench:
                         f"sides, which re-points every verdict collected for them "
                         f"(e.g. {moved[:3]}). Render to a NEW --out, or bump --salt for "
                         f"a deliberate re-blinding.")
+                # ⚠⚠ AND THE SAME VERDICT IS LOST IF THE PAIR SIMPLY VANISHES. The check
+                # above only ever looked at pairs present in BOTH manifests, so serving a
+                # DIFFERENT arm into the same --out walked straight past it: the new
+                # manifest holds none of the old keys, `moved` is empty, and items.json is
+                # overwritten with the judged pairs gone. Nothing is corrupted and nothing
+                # warns — but `unblind_ear_ab.py` maps an item to its two clips THROUGH
+                # this file, so those verdicts become unreadable, and the result they
+                # encode can no longer be re-derived from the artifacts.
+                #
+                # Found 2026-09-01 while setting up exactly that follow-up round on the
+                # lane control, whose donor arm carries the p = 0.002 result. The guard
+                # was written against the hazard I had in mind and not against the shape
+                # of the operation the renderer's own --help recommends.
+                dropped = sorted(k for k in judged if k in was and k not in now)
+                if dropped:
+                    raise SystemExit(
+                        f"REFUSING: {len(dropped)} already-judged pairs are missing from "
+                        f"the new manifest (e.g. {dropped[:3]}), which orphans their "
+                        f"verdicts — the unblinder resolves an item to its clips through "
+                        f"items.json and nothing else does. Serve the other arm into a "
+                        f"NEW --out; the clip ids are salt-derived, so copying the "
+                        f"already-rendered wavs across costs no GPU.")
         old.write_text(json.dumps(manifest, indent=2))
         kp = Path(key_out) if key_out else (
             self.out.parent / "_keys" / f"{self.out.name}.key.json")
