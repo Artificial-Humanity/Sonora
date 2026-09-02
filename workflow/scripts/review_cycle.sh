@@ -32,8 +32,14 @@ RANGE="origin/main..HEAD"
 DEVELOPER="Ozzy"
 MAX_REVIEWS=""   # default derives from the lane definition once the repo root is known
 MAX_USD=5
-MODEL="opus"
-EFFORT="xhigh"
+# The WORKER's launch settings (owner, 2026-09-02: Fable 5.1 at high). A script default,
+# not a roster key, on purpose: the developer is a constant agent whose model the owner sets
+# at RUNTIME (the interactive session, /model), so its roster entry carries no `model:` /
+# `effort:` — unlike the reviewer's, which is a one-shot process with no runtime to set it
+# in. This driver's nested `claude -p` is the one worker launch with no human at the keyboard,
+# so it needs a value, and --model / --effort override it per run.
+MODEL="claude-fable-5-1"
+EFFORT="high"
 STOPFILE=""
 DRY_RUN=0
 ALLOW_EMPTY_TRACKER=0   # ⚠ set -u is on; an undeclared default aborts the driver (#357)
@@ -49,7 +55,7 @@ review_cycle.sh — run the review loop to convergence. NEVER PUSHES.
                       That sum is what the fix-pass cap requires: the review that finds
                       an issue, then one after each fix pass.
   --max-usd <N>       Spend ceiling PER claude call.    (default: 5)
-  --model / --effort  The WORKER's only.                (default: opus / xhigh)
+  --model / --effort  The WORKER's only.      (default: claude-fable-5-1 / high)
                       The reviewer's are its roster entry in config.yaml; this driver
                       does not forward them to request_review.sh and never did.
   --stop-file <PATH>  Create this file to halt.  (default: <repo>/.review_cycle.stop)
