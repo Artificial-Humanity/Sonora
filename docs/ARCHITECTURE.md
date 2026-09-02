@@ -17,7 +17,7 @@ categorical will interpolate them ([STATE.md](../notes/STATE.md) § The delivery
 Shipped on the training side is
 not shipped on the device.
 The seam assertions that make the width safe are proven to fire (`scripts/gates/test_vat_dim_seams.py`).
-Last updated: 2026-08-30 (the delivery-channel standing note in §1)._
+Last updated: 2026-09-02 (the delivery-channel standing note in §1)._
 
 ---
 
@@ -55,10 +55,25 @@ judged worse** (2 ties, sign test p = 0.002).
 
 Severity does **not** track training-clip count, which rules out the obvious remedy as a
 sufficient one: Dialogue (336 distinct clips) and Speech (65) are both 3-for-3, while
-Neutral (314) is the mildest of the four. The cause is unresolved between a few-step solver
-artifact — which a step floor would fix, exactly as the Amplification row already carries
-one at ≥ 25 steps — and the conditioning leaving the region the corpus taught, which it
-would not. The bench that separates them is built and unscored.
+Neutral (314) is the mildest of the four.
+
+**It is not the sampler — measured 2026-09-02.** The two candidate causes were a few-step
+solver artifact, which a step floor would fix exactly as the Amplification row already
+carries one at ≥ 25 steps, and the conditioning leaving the region the corpus taught, which
+no step count repairs. A blind 18-pair bench with the noise draw shared across step counts
+settled it: 10 vs 64 with a lane requested went 4 ties and 2 splits (p = 0.500), and 10 vs
+64 with no lane was **a tie in all six pairs**. More steps change nothing, so the second
+cause stands and the lever is data, not sampling. ⚠ That does **not** promote "add more
+clips" to the remedy — the per-lane split above already argues against it. What is settled
+is the class of problem, not the fix.
+
+⚠ **Two consequences beyond the delivery channel.** First, the house default of 10 steps is
+vindicated: every quality judgement this lab has made at that default was not handicapped by
+it. Second, the hum appears **speaker-bound rather than step-bound** — one voice drew
+"almost imperceptible" and the other "very noticeable" in 6 of 6 notes, at every step count.
+That reading comes from the listener's free text, not from the forced choice, which compared
+only *within* pairs and says nothing about absolute level. **Treat it as a lead that needs
+its own test.**
 
 **What this does and does not change.** It does not change the contract: the encoding, the
 `unknown` ≡ zero rule and the five-channel wire format are all still right, and nothing here

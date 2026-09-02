@@ -93,21 +93,40 @@ the CLI, the Vocalizer and the export converter all read it.
 > lanes" is not established as the fix: Dialogue (336 distinct) and Speech (65) are both
 > 3-for-3, and Neutral (314) is the mildest of the four.
 >
-> **Two hypotheses, opposite responses, not yet separated.** Either the conditioning
-> perturbs a field the 10-step euler solve cannot follow — in which case a step floor fixes
-> it, the shape [ARCHITECTURE.md](../docs/ARCHITECTURE.md) § 1 already carries for CFG at
-> ≥ 25 steps — or it pushes the trunk outside what the corpus taught, in which case steps
-> change nothing. `scripts/tools/render_ear_ode_steps.py` set `D_lane_steps_10v64` exists to
-> settle it and the noise draw is shared across step counts, so the pairs are exact.
-> **UNSCORED as of 2026-09-01.**
+> **Two hypotheses, opposite responses — SETTLED 2026-09-02, and it is not the sampler.**
+> Either the conditioning perturbed a field the 10-step euler solve cannot follow, in which
+> case a step floor fixes it — the shape [ARCHITECTURE.md](../docs/ARCHITECTURE.md) § 1
+> already carries for CFG at ≥ 25 steps — or it pushes the trunk outside what the corpus
+> taught, in which case steps change nothing. `render_ear_ode_steps.py`, blind, 18 pairs,
+> all judged, noise draw shared across step counts so each pair is exact:
+>
+>     no lane, 10 v 64      10: 0   64: 0   tie 6      every judgement a tie
+>     no lane, 10 v 32      10: 1   32: 0   tie 5      p = 1.000
+>     LANE ON, 10 v 64      10: 0   64: 2   tie 4      p = 0.500
+>
+> **More steps change nothing, including with a lane requested.** The second hypothesis
+> stands: the lever is data, not sampling.
+>
+> ⚠ **The null has power.** 4899 was in the design because it drew "highly robotic" in all
+> eight earlier notes — the room to show a repair was there, and 64 steps did not move it.
+> Both non-ties named 64 as the hummier side.
+>
+> ⚠ **This does NOT promote "add more clips" to the remedy.** The per-lane split above
+> already argues against it. What is settled is the class of problem, not the fix.
+>
+> ⚠ **Two consequences beyond this channel.** The house default of 10 steps is vindicated,
+> so prior judgements made at it were not handicapped. And the hum looks **speaker-bound,
+> not step-bound** — 4896 drew "almost imperceptible / barely audible", 4899 "very
+> noticeable" in 6 of 6, at every step count. That is read off the free text, not the forced
+> choice, which compared only within pairs. **A lead that needs its own test.**
 >
 > ⚠ **This retires nothing above.** The encoding, the `unknown` ≡ zero rule and the
 > five-channel wire format are all still right; what is not established is that the channel
 > pays for itself yet. Full record, both arms and the per-lane split:
 > [vat7r_rebalance.yaml § LANE CONTROL](../configs/experiment/vat7r_rebalance.yaml).
 >
-> ⚠ A second arm — the same 12 pairs against v7r — is **already rendered and not yet
-> served**, so "did the rebalance reduce the damage?" costs one manifest regeneration.
+> A second arm — the same 12 pairs against v7r — is **served as of 2026-09-02**, answering
+> "did the rebalance reduce the damage?".
 
 **Eight, not the four the review proposed.** A single ordered channel asserts the five
 lanes lie on one continuum, and `seed_delivery.py` records that they do not — Dialogue vs

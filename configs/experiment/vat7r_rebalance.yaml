@@ -150,19 +150,51 @@
 # The best-taught lane and the worst-taught lane are BOTH 3-for-3, and the mildest
 # is the second-best-taught. There is no monotone relationship to lean on.
 #
-# ⚠ IT DOES NOT SAY WHY, AND THE TWO LIVE HYPOTHESES NEED OPPOSITE RESPONSES:
+# ⚠ IT DID NOT SAY WHY, AND THE TWO LIVE HYPOTHESES NEEDED OPPOSITE RESPONSES:
 #   (a) a few-step solver artifact — the conditioning perturbs a field the 10-step
 #       euler solve cannot follow, in which case MORE STEPS FIX IT and the answer
 #       is a step floor, the same shape CFG already carries at >=25 steps;
 #   (b) the conditioning pushes the trunk somewhere the corpus never took it, in
 #       which case more steps change nothing and the lever is new distinct clips.
-#   `scripts/tools/render_ear_ode_steps.py` set `D_lane_steps_10v64` exists to
-#   separate them, and the noise draw is shared across step counts so the pairs are
-#   an exact comparison. UNSCORED as of 2026-09-01.
 #
-# Second arm ALREADY RENDERED, NOT YET SERVED: the same 12 pairs against the v7r
-# checkpoint, in the same clips directory, answering "did the rebalance reduce the
-# damage?". Regenerating the manifest with both arms is the whole cost.
+# ⚠⚠ SETTLED 2026-09-02 — (a) IS DEAD. `render_ear_ode_steps.py`, owner, blind, 18
+# pairs, ALL JUDGED. The noise draw is shared across step counts, so each pair is an
+# exact comparison: same words, same length, same z, integrated coarsely or finely.
+#
+#   D_steps_10v64       no lane, max contrast    10: 0   64: 0   tie 6   all ties
+#   D_steps_10v32       no lane                  10: 1   32: 0   tie 5   p = 1.000
+#   D_lane_steps_10v64  LANE REQUESTED           10: 0   64: 2   tie 4   p = 0.500
+#
+# MORE STEPS CHANGE NOTHING, INCLUDING ON THE LANE PAIRS. The bench pre-committed to
+# this reading — 10v64 is the maximum-contrast arm, so an inaudible result there rules
+# step count out and needs no follow-up. It was inaudible, so 10 vs 32 never had to be
+# priced.
+#
+# ⚠ THE NULL HAS POWER, WHICH IS WHAT MAKES IT USABLE. 4899 was in the design precisely
+# because it drew "highly robotic" in all eight of its earlier notes: if more steps
+# repaired anything, the room to show it was there. Every 4899 note this round still
+# reads "very high" or "very noticeable", and 64 steps did not move it. Both non-ties
+# named 64 as the HUMMIER side, so there is not even a hint of the predicted direction.
+#
+# SO (b) STANDS AND THE LEVER IS NOT THE SAMPLER. ⚠ But (b)'s own second clause — "the
+# lever is new distinct clips" — IS NOT ESTABLISHED BY THIS RESULT, and the per-lane
+# split above is the reason: severity does not track clip count. What is settled is that
+# this is a conditioning problem rather than an integration one. The remedy is open.
+#
+# ⚠ 10 STEPS IS VINDICATED AS THE HOUSE DEFAULT, which was the bench's larger question:
+# whether every quality judgement this lab has made was made at a step count nobody
+# chose on purpose. They were not handicapped by it.
+#
+# ⚠ SPEAKER-DEPENDENT, STEP-INDEPENDENT — A LEAD, NOT A RESULT. Across both no-lane sets
+# 4896 drew "almost imperceptible / barely audible / very slight" and 4899 drew "very
+# high / very noticeable" in 6 of 6. That is read off the free-text notes: the sign test
+# compared WITHIN pairs and says nothing about absolute level. Worth a designed test
+# before it is leaned on.
+#
+# Second arm SERVED 2026-09-02: the same 12 pairs against the v7r checkpoint, answering
+# "did the rebalance reduce the damage?". Served into its own --out, never the donor's,
+# because the unblinder resolves an item to its clips through items.json alone and
+# reusing the directory would orphan the 12 judged verdicts above.
 # ============================================================================
 #
 # WHAT CHANGED FROM v7, in one list:
