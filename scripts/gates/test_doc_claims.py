@@ -360,9 +360,21 @@ FACTS = [
         #     phrase, so a wrong number cannot hide by being wrong.
         #   * CAPTURE — anchored to the number actually being claimed. `(?<!of the )`
         #     refuses the bare "N of the M" idiom (that shape is v6's, below), and
-        #     `(?<![\d,])` stops the capture starting INSIDE a longer number, which is
+        #     `(?<![\w,])` stops the capture starting INSIDE a longer number, which is
         #     how a lookbehind alone gets fooled: without it, "of the 13,141" merely
         #     shifts the match one digit right and reports "3,141".
+        #
+        #     ⚠ THE CLASS IS `\w`, NOT `\d`, AND THAT IS THE WHOLE POINT (2026-09-02).
+        #     It was `[\d,]` until a CORRECT sentence in notes/training-sources.md went
+        #     red: "`emilia_kept_24k` is what v5–v7 train on". `[\d,]` only refuses a
+        #     digit before the capture, so the `7` of `v7` started a match, `train` was
+        #     read as the noun, and the gate reported the v7 train filelist held 7 rows
+        #     against an artifact holding 336,546. A COUNT IS A STANDALONE TOKEN; a
+        #     version tag is not. `\w` says exactly that and costs nothing — every real
+        #     count in the tree is preceded by a space, a `*` or a `|`. The narrow class
+        #     was wrong for `vat7` too (`t` is not a digit either), so the bug was one
+        #     wording away from hitting every fact here, not just this one. Fixed on all
+        #     twelve patterns at once rather than the one line that happened to fail.
         #
         # ⚠ THE REFUSAL ABOVE LEFT A SILENT MISS, AND IT IS CLOSED BY THE LAST PATTERN.
         # `(?<!of the )` made a WRONG v5 count written as "1,677 of the 13,141 dropped on
@@ -381,10 +393,10 @@ FACTS = [
         "truth": lambda: drop_count("emilia.dropped.digits"),
         "artifacts": [V5_REPORT],
         "scope": r"Emilia|emilia|13,141|digit rows|D-M3",
-        "patterns": [r"(?<!of the )(?<![\d,])([\d,]+) (?:rows )?dropped on digits",
-                     r"(?<![\d,])([\d,]+) digit rows",
-                     r"(?<![\d,])([\d,]+) carry digits",
-                     r"(?<![\d,])([\d,]+) of the 13,141 (?:rows |keeps )?dropped on digits"],
+        "patterns": [r"(?<!of the )(?<![\w,])([\d,]+) (?:rows )?dropped on digits",
+                     r"(?<![\w,])([\d,]+) digit rows",
+                     r"(?<![\w,])([\d,]+) carry digits",
+                     r"(?<![\w,])([\d,]+) of the 13,141 (?:rows |keeps )?dropped on digits"],
         "exempt": [],
     },
     {
@@ -408,7 +420,7 @@ FACTS = [
         "truth": lambda: drop_count6("expressive.dropped.digits"),
         "artifacts": [V6_REPORT],
         "scope": r"v6|expressive|append|clips resolve",
-        "patterns": [r"(?<![\d,])([\d,]+) of the [\d,]+ (?:rows )?dropped on digits",
+        "patterns": [r"(?<![\w,])([\d,]+) of the [\d,]+ (?:rows )?dropped on digits",
                      r", ([\d,]+) (?:rows )?dropped on digits\)"],
         "exempt": [],
     },
@@ -430,8 +442,8 @@ FACTS = [
         "patterns": [r"[\d,]+ of the ([\d,]+) (?:rows )?dropped on digits",
                      r"0 of the ([\d,]+) clips resolve",
                      r"append(?: set)? is settled at \*\*([\d,]+) rows\*\*",
-                     r"(?<![\d,])([\d,]+) rows to append",
-                     r"(?<![\d,])(\d[\d,]*) rows staged"],
+                     r"(?<![\w,])([\d,]+) rows to append",
+                     r"(?<![\w,])(\d[\d,]*) rows staged"],
         "exempt": [],
     },
     {
@@ -458,8 +470,8 @@ FACTS = [
         "truth": lambda: report6("expressive.kept"),
         "artifacts": [V6_REPORT],
         "scope": r"v6|expressive|append",
-        "patterns": [r"(?<![\d,])(\d[\d,]*) appended rows",
-                     r"(?<![\d,])(\d[\d,]*) rows appended"],
+        "patterns": [r"(?<![\w,])(\d[\d,]*) appended rows",
+                     r"(?<![\w,])(\d[\d,]*) rows appended"],
         "exempt": ["846 appended"],
     },
     {
@@ -471,7 +483,7 @@ FACTS = [
         "truth": lambda: rows(V7_TRAIN),
         "artifacts": [V7_TRAIN],
         "scope": r"v7|vat7",
-        "patterns": [r"(?<![\d,])(\d[\d,]*) (?:train|tr)\b"],
+        "patterns": [r"(?<![\w,])(\d[\d,]*) (?:train|tr)\b"],
         "exempt": [],
     },
     {
@@ -479,7 +491,7 @@ FACTS = [
         "truth": lambda: rows(V7_VAL),
         "artifacts": [V7_VAL],
         "scope": r"v7|vat7",
-        "patterns": [r"(?<![\d,])(\d[\d,]*) val\b"],
+        "patterns": [r"(?<![\w,])(\d[\d,]*) val\b"],
         "exempt": [],
     },
     {
@@ -487,7 +499,7 @@ FACTS = [
         "truth": lambda: json.loads(open(V7_SPEAKERS, encoding="utf-8").read())["n_spks"],
         "artifacts": [V7_SPEAKERS],
         "scope": r"v7|vat7",
-        "patterns": [r"(?<![\d,])(\d[\d,]*) speakers\b"],
+        "patterns": [r"(?<![\w,])(\d[\d,]*) speakers\b"],
         "exempt": [],
     },
     {
@@ -523,12 +535,52 @@ FACTS = [
 #
 # The invariant is self-updating instead: every `SELECTED.md` on disk names a checkpoint,
 # and that checkpoint must exist. A new run's verdict is picked up with no edit here.
+#
+# ⚠ A PICK HAS TWO LEGAL STATES, AND "PRESENT" IS ONLY ONE OF THEM (2026-09-02).
+# The rule above read "the file the verdict names must exist, because 'warm start from
+# epNNN' is worthless if it does not". That rationale is FALSE, and v5 is the counter-
+# example that proved it. `vat5_finetune`'s pick `ep019` was deleted on 2026-08-29 while
+# reclaiming disk, and the warm start it seeded was NOT worthless: v6 trained from it and
+# `warmstart/vat6_init.ckpt` still holds those weights. Measured rather than assumed —
+# `vat6_init` was compared tensor-by-tensor against `ep009`, the only vat5 checkpoint left
+# on disk, and 335 of 337 shared same-shape tensors DIFFER. So the donor was one of the
+# deleted checkpoints and the document is right about the lineage.
+#
+# The convention that makes this normal is `scripts/lib/make_warmstart.py`: a pick becomes
+# a donor by being STRIPPED to a ~90 MB weights-only file in `warmstart/`, after which the
+# 273 MB original with its optimizer state is dead weight. Demanding the fat file forever
+# means the gate goes red for doing the routine thing.
+#
+# So a reclaimed pick is accepted — but only when the verdict DECLARES it, in two lines the
+# gate can read:
+#
+#     RECLAIMED: checkpoint_epoch=019.ckpt
+#     LINEAGE: /data/model-training/sonora/warmstart/vat6_init.ckpt
+#
+# and the named lineage file is on disk. Absence alone is never enough. An accidental
+# deletion looks exactly like a reclaimed one ON DISK and differs only in whether anybody
+# wrote it down, so the declaration IS the check — without it this degrades to "the file is
+# missing, therefore fine", which is the vacuous pass this whole gate exists to refuse.
+#
+# ⚠ WHAT THIS DOES NOT VERIFY. That the lineage file DESCENDS from the pick. `make_warmstart`
+# records no donor in its output, so nothing on disk ties `vat6_init.ckpt` to `ep019` — the
+# tensor comparison above can only prove which checkpoints it is NOT. The `LINEAGE:` line is
+# trusted prose pointing at a verified-present file. Closing that gap means stamping the
+# donor path and hash into the stripped checkpoint at strip time; until then, do not read a
+# pass here as a proof of ancestry.
 TRAIN_LOGS = "/data/model-training/sonora/logs/train"
 CKPT_IN_VERDICT = re.compile(r"checkpoint_epoch=\d+\.ckpt")
+RECLAIMED_IN_VERDICT = re.compile(r"^RECLAIMED:\s*(checkpoint_epoch=\d+\.ckpt)\s*$", re.M)
+LINEAGE_IN_VERDICT = re.compile(r"^LINEAGE:\s*(\S+)\s*$", re.M)
 
 
 def selected_checkpoints():
-    """-> [(experiment, checkpoint filename, verdict path)] for every concluded run."""
+    """-> [(experiment, checkpoint, verdict path, reclaimed, lineage)] per concluded run.
+
+    `reclaimed` is the checkpoint the verdict declares reclaimed (or None), and `lineage`
+    the file it says the weights survive in (or None). Both are read here rather than at
+    the call site so the whole parse is exercised by one probe.
+    """
     out = []
     if not os.path.isdir(TRAIN_LOGS):
         return out
@@ -537,11 +589,23 @@ def selected_checkpoints():
         if not os.path.isfile(verdict):
             continue
         with open(verdict, encoding="utf-8") as fh:
-            names = CKPT_IN_VERDICT.findall(fh.read())
+            body = fh.read()
+        rec = RECLAIMED_IN_VERDICT.search(body)
+        lin = LINEAGE_IN_VERDICT.search(body)
         # The heading names the pick; later mentions may reference others (ep039 as the
         # newest, ep009 as the runner-up), so the FIRST is the one the verdict selects.
+        #
+        # ⚠ THE `RECLAIMED:` LINE IS REMOVED BEFORE THE PICK IS READ, and that is not
+        # tidiness. It names a checkpoint, so wherever it sits above the pick's own first
+        # mention it BECOMES `names[0]` — and then "does the reclaim match the pick?" is
+        # comparing the line to itself and can never fail. A declaration that authenticates
+        # itself is not a check. Reading the pick from the body WITHOUT the declaration
+        # keeps the two independent, so the mismatch probe has something real to catch.
+        names = CKPT_IN_VERDICT.findall(RECLAIMED_IN_VERDICT.sub("", body))
         if names:
-            out.append((exp, names[0], verdict))
+            out.append((exp, names[0], verdict,
+                        rec.group(1) if rec else None,
+                        lin.group(1) if lin else None))
     return out
 
 
@@ -674,15 +738,33 @@ def main():
         picked = selected_checkpoints()
         if not picked:
             print("  ~ no concluded run carries a SELECTED.md")
-        for exp, name, verdict in picked:
+        for exp, name, verdict, reclaimed, lineage in picked:
             hits = glob.glob(os.path.join(TRAIN_LOGS, exp, "runs", "*", "checkpoints", name))
             if hits:
                 print(f"  {exp} selected {name} — present")
-            else:
+            elif reclaimed is None:
                 failures.append(
                     f"{verdict} selects {name}, which is not on disk under "
                     f"{TRAIN_LOGS}/{exp}/runs/*/checkpoints/ — the docs name a warm start "
-                    f"that does not exist")
+                    f"that does not exist. If it was reclaimed on purpose, say so in the "
+                    f"verdict with a 'RECLAIMED: {name}' line and a 'LINEAGE: <path>' line "
+                    f"naming the stripped donor that carries its weights")
+            elif reclaimed != name:
+                failures.append(
+                    f"{verdict} selects {name} but declares 'RECLAIMED: {reclaimed}' — the "
+                    f"verdict reclaims a checkpoint it did not pick, so the pick is still "
+                    f"unaccounted for")
+            elif not lineage:
+                failures.append(
+                    f"{verdict} declares {name} reclaimed but carries no 'LINEAGE: <path>' "
+                    f"line — a reclaimed pick must name the file its weights survive in, or "
+                    f"the deletion is indistinguishable from losing the lineage")
+            elif not os.path.exists(lineage):
+                failures.append(
+                    f"{verdict} declares {name} reclaimed into {lineage}, which is not on "
+                    f"disk either — the pick and its stated lineage are both gone")
+            else:
+                print(f"  {exp} selected {name} — reclaimed, lineage in {lineage}")
 
     if failures:
         print(f"\nFAIL — {len(failures)} claim(s) disagree with the artifact:\n")

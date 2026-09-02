@@ -524,3 +524,136 @@ def test_the_live_delivery_mix_floor_statement_is_still_read():
             f"notes/delivery-mix-campaign.md:{lineno} states the QC floor and NO fact reads "
             f"it. The line left the fact's scope, so the gate now passes by not looking:\n"
             f"  {line.strip()}")
+
+
+# --- a version tag is not a count (2026-09-02) ----------------------------------------
+#
+# The bug this section holds shut: the capture lookbehind was `(?<![\d,])`, which refuses
+# only a DIGIT before the number, so the `7` of `v7` was free to start a match.
+# `notes/training-sources.md` says "`emilia_kept_24k` is what v5–v7 train on" — correct
+# prose — and the gate read it as a claim that the v7 train filelist holds 7 rows, against
+# an artifact holding 336,546. A red gate on a true sentence, which is the failure this
+# whole file exists to catch.
+#
+# The class is now `\w`: a count is a STANDALONE TOKEN and a version tag is not. Note the
+# narrow class was wrong for `vat7` as well — `t` is not a digit either — so the bug sat
+# one wording away from every fact here, not just the line that happened to fail.
+#
+# BOTH DIRECTIONS ARE PROBED BELOW ON PURPOSE. The cheap way to stop a false positive is a
+# lookbehind that also blinds the gate to the numbers it exists to check, and that failure
+# reads as a pass.
+
+VERSION_TAG_PROSE = [
+    ("v7 train rows", "`emilia_kept_24k` is what v5–v7 train on and it stays"),
+    ("v7 train rows", "the vat7 train filelist is what the run actually reads"),
+    ("v7 val rows", "v5–v7 val splits are all hash-derived, never random"),
+    ("v7 n_spks", "vat7 speakers are a superset of v6's, by construction"),
+]
+
+
+@pytest.mark.parametrize("name,line", VERSION_TAG_PROSE,
+                         ids=[f"{n}::{ln[:30]}" for n, ln in VERSION_TAG_PROSE])
+def test_a_version_tag_is_never_read_as_a_count(name, line):
+    """`v7`/`vat7` sitting next to the noun a pattern wants is prose, not a claim.
+
+    The line must stay IN SCOPE — that is precisely what makes it a trap. A fix that worked
+    by dropping the sentence out of scope would pass this assertion for the wrong reason
+    and would take the real claims on the same line down with it.
+    """
+    assert in_scope(name, line), "the line must remain in scope for this to be a real trap"
+    assert captures(name, line) == []
+
+
+REAL_V7_COUNTS = [
+    ("v7 train rows", "#   v7: 336,546 train / 10,349 val · 561.0 h · 5,385 speakers", "336,546"),
+    ("v7 val rows", "#   v7: 336,546 train / 10,349 val · 561.0 h · 5,385 speakers", "10,349"),
+    ("v7 n_spks", "#   v7: 336,546 train / 10,349 val · 561.0 h · 5,385 speakers", "5,385"),
+    ("v7 train rows", "| **`libritts_r_full_vat_v7`** | **336,546 tr / 10,349 val** |", "336,546"),
+]
+
+
+@pytest.mark.parametrize("name,line,value", REAL_V7_COUNTS,
+                         ids=[f"{n}::{v}" for n, _, v in REAL_V7_COUNTS])
+def test_the_real_v7_counts_are_still_read(name, line, value):
+    """The other half: the widened lookbehind must not cost a single live statement.
+
+    These are the exact lines the tree carries today, in both wordings — the `v7:` marked
+    config headers and the quality-gap-plan table row that abbreviates train to `tr`.
+    """
+    assert value in captures(name, line)
+
+
+# --- a reclaimed pick, and a declaration that must not authenticate itself (2026-09-02) --
+#
+# `vat5_finetune`'s pick `ep019` was deleted on 2026-08-29 while reclaiming disk. The gate
+# read that as "the docs name a warm start that does not exist", but the warm start was not
+# lost: v6 trained from it and the stripped donor still holds the weights. A pick therefore
+# has two legal states, PRESENT and RECLAIMED, and the second is only legal when the verdict
+# declares it and names a lineage file that is really there.
+#
+# ⚠ The subtle half is the last test. The declaration NAMES a checkpoint, so wherever it
+# sits above the pick's own first mention it becomes the pick as far as the parser is
+# concerned — and then "does the reclaim match the pick?" compares the line to itself and
+# can never fail. A declaration that authenticates itself is not a check.
+
+RECLAIM_HEAD = "# SELECTED — `ep019` is the pick (owner).\n\n"
+RECLAIM_TAIL = "\nTo build on it:\n\n    checkpoint_epoch=019.ckpt  (this run)\n"
+
+
+def _verdict(tmp_path, exp, body):
+    d = tmp_path / exp
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "SELECTED.md").write_text(body, encoding="utf-8")
+    return d
+
+
+def _picked(tmp_path, monkeypatch):
+    monkeypatch.setattr(gate, "TRAIN_LOGS", str(tmp_path))
+    return {p[0]: p for p in gate.selected_checkpoints()}
+
+
+def test_a_verdict_with_no_declaration_reports_no_reclaim(tmp_path, monkeypatch):
+    """The untouched shape: a pick, and nothing claiming it was reclaimed."""
+    _verdict(tmp_path, "plain", RECLAIM_HEAD + RECLAIM_TAIL)
+    exp, name, _verd, reclaimed, lineage = _picked(tmp_path, monkeypatch)["plain"]
+    assert name == "checkpoint_epoch=019.ckpt"
+    assert reclaimed is None and lineage is None
+
+
+def test_a_declared_reclaim_is_read_with_its_lineage(tmp_path, monkeypatch):
+    _verdict(tmp_path, "rec", RECLAIM_HEAD
+             + "RECLAIMED: checkpoint_epoch=019.ckpt\n"
+             + "LINEAGE: /data/model-training/sonora/warmstart/vat6_init.ckpt\n"
+             + RECLAIM_TAIL)
+    _e, name, _v, reclaimed, lineage = _picked(tmp_path, monkeypatch)["rec"]
+    assert name == "checkpoint_epoch=019.ckpt"
+    assert reclaimed == "checkpoint_epoch=019.ckpt"
+    assert lineage == "/data/model-training/sonora/warmstart/vat6_init.ckpt"
+
+
+def test_an_inline_mention_is_not_a_declaration(tmp_path, monkeypatch):
+    """`RECLAIMED:` only counts at the start of a line, so prose cannot declare by accident."""
+    _verdict(tmp_path, "inline", RECLAIM_HEAD
+             + "We later RECLAIMED: checkpoint_epoch=019.ckpt to free space.\n"
+             + RECLAIM_TAIL)
+    _e, _n, _v, reclaimed, _l = _picked(tmp_path, monkeypatch)["inline"]
+    assert reclaimed is None
+
+
+def test_the_declaration_cannot_become_the_pick_it_claims_to_reclaim(tmp_path, monkeypatch):
+    """THE RED ONE. A reclaim naming the wrong checkpoint must stay visibly wrong.
+
+    The declaration is placed ABOVE the pick's own mention, which is where a reader would
+    naturally put it and exactly where it used to win. If the parser reads the pick from a
+    body that still contains this line, `name` and `reclaimed` are both `039` and the
+    mismatch is undetectable — the gate would then accept a verdict that reclaimed a
+    checkpoint it never picked, leaving the real pick unaccounted for.
+    """
+    _verdict(tmp_path, "trap", RECLAIM_HEAD
+             + "RECLAIMED: checkpoint_epoch=039.ckpt\n"
+             + "LINEAGE: /somewhere/else.ckpt\n"
+             + RECLAIM_TAIL)
+    _e, name, _v, reclaimed, _l = _picked(tmp_path, monkeypatch)["trap"]
+    assert name == "checkpoint_epoch=019.ckpt", "the pick must be read independently"
+    assert reclaimed == "checkpoint_epoch=039.ckpt"
+    assert name != reclaimed, "the mismatch the gate reports must be visible here"
