@@ -39,8 +39,8 @@ fi
 PASS=1
 NOTES=""
 NOTES_FILE=""
-MODEL="opus"
-EFFORT="xhigh"
+MODEL=""       # resolved from the roster's reviewer entry (config.yaml); --model overrides
+EFFORT=""      # same; --effort overrides
 DRY_RUN=0
 FULL=0
 
@@ -63,8 +63,9 @@ request_review.sh — one-shot code review by Janis. Blocks; prints the review o
                         The per-ISSUE count lives on the issue as agent_passes.
   --notes <TEXT>        What you fixed and how, what you rebutted and why.
   --notes-file <PATH>   Same, read from a file. Mutually exclusive with --notes.
-  --model <M>           (default: opus)
-  --effort <E>          low|medium|high|xhigh|max                    (default: xhigh)
+  --model <M>           (default: the roster's reviewer `model:` — config.yaml)
+  --effort <E>          low|medium|high|xhigh|max
+                        (default: the roster's reviewer `effort:` — config.yaml)
   --full                FULL CODE REVIEW: review the whole codebase, not a commit range.
                         For the periodic sweep the owner asks for by name. Cut the branch with
                         `workflow/scripts/full_review.sh`, which makes `review-YYYY-MM-DD` from
@@ -135,6 +136,27 @@ eval "$AGENT_ENV"
 PERSONA="${AGENT_PERSONA:-}"
 [[ -n "$PERSONA" ]] || die "agent-env emitted no AGENT_PERSONA for the reviewer"
 [[ -r "$PERSONA" ]] || die "reviewer persona not readable at $PERSONA"
+# ⚠ THE MODEL AND EFFORT RESOLVE FROM THE SAME ROSTER ENTRY (owner, 2026-09-02) — they were
+# `MODEL="opus"` / `EFFORT="xhigh"` here AND in review_cycle.sh, two copies of one setting.
+# `agent-env` does not emit them (it tolerates the keys and ignores them), so the reader is
+# workflow/scripts/roster_launch.py, given the roster agent-env just said it read. A missing
+# key REFUSES: there is deliberately no default left in this file to fall back to.
+if [[ -z "$MODEL" || -z "$EFFORT" ]]; then
+  LAUNCH_ENV="$(python3 - "${AGENT_ROSTER:-$REPO_ROOT/config.yaml}" "$(dirname "${BASH_SOURCE[0]}")" <<'PY'
+import sys
+sys.path.insert(0, sys.argv[2])
+from roster_launch import LaunchError, shell_lines
+try:
+    sys.stdout.write(shell_lines(sys.argv[1], "reviewer"))
+except LaunchError as e:
+    sys.stderr.write(f"roster_launch: {e}\n"); raise SystemExit(1)
+PY
+)" || die "cannot resolve how to launch the reviewer: the roster entry lacks model/effort
+     (its stderr, above, names the key)."
+  eval "$LAUNCH_ENV"
+  [[ -n "$MODEL" ]]  || MODEL="$AGENT_MODEL"
+  [[ -n "$EFFORT" ]] || EFFORT="$AGENT_EFFORT"
+fi
 if [[ -z "$DEVELOPER" ]]; then
   AGENT_ENV="$(ferrostep agent-env --roster "$REPO_ROOT/config.yaml")" \
     || die "cannot resolve the default (developer) agent from the roster."

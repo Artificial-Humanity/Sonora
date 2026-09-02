@@ -630,3 +630,20 @@ def test_a_dry_run_does_not_execute_the_command_even_when_it_would_fail():
         + r.stdout + r.stderr)
     assert "WOULD run" in r.stderr, r.stderr
     assert "REACHED_THE_REVIEW" in r.stdout
+
+
+def test_the_reviewer_launches_with_its_roster_entry_s_model_and_effort(run):
+    """Owner, 2026-09-02: the model and effort come from the reviewer's entry in config.yaml.
+    The expected values are READ from the roster here, not typed — a literal in this test
+    would be the second copy the arrangement exists to remove."""
+    import yaml
+    entry = yaml.safe_load(open(os.path.join(REPO, "config.yaml")))["agents"]["reviewer"]
+    rc, out = run("--range", "HEAD~1..HEAD", "--dry-run")
+    assert rc == 0, out
+    assert f"--model {entry['model']} --effort {entry['effort']}" in out, out
+
+
+def test_a_flag_still_overrides_the_roster(run):
+    rc, out = run("--range", "HEAD~1..HEAD", "--dry-run", "--model", "some-other", "--effort", "low")
+    assert rc == 0, out
+    assert "--model some-other --effort low" in out, out

@@ -49,7 +49,9 @@ review_cycle.sh — run the review loop to convergence. NEVER PUSHES.
                       That sum is what the fix-pass cap requires: the review that finds
                       an issue, then one after each fix pass.
   --max-usd <N>       Spend ceiling PER claude call.    (default: 5)
-  --model / --effort  Passed to both roles.             (default: opus / xhigh)
+  --model / --effort  The WORKER's only.                (default: opus / xhigh)
+                      The reviewer's are its roster entry in config.yaml; this driver
+                      does not forward them to request_review.sh and never did.
   --stop-file <PATH>  Create this file to halt.  (default: <repo>/.review_cycle.stop)
   --dry-run           Print the plan and exit. Spends nothing, files nothing.
   --allow-empty-tracker

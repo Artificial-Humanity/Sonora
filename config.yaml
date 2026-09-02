@@ -14,3 +14,10 @@ agents:
     name: Janis
     email: janis@artificialhumanity.io
     persona: workflow/REVIEWER.md
+    # How Janis is LAUNCHED — the ONE place it is set (owner, 2026-09-02). Read by
+    # workflow/scripts/request_review.sh through workflow/scripts/roster_launch.py, NOT by
+    # `ferrostep agent-env`, which tolerates keys it does not know and ignores them.
+    # Both keys are REQUIRED: a missing one is a refusal, never a script-side default —
+    # a default would be the second copy of this setting, and it would win silently.
+    model: claude-fable-5-1
+    effort: high        # the claude CLI's ladder: low | medium | high | xhigh | max
