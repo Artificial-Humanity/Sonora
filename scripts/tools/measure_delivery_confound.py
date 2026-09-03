@@ -107,13 +107,27 @@ def read_rows(corpus_dir):
                     _refuse(EXIT_UNREADABLE,
                             f"ABORT: {path}:{lineno} has {len(parts)} fields, expected at "
                             f"least 4 (audio|speaker|phonemes|vat).")
-                vec = [float(x) for x in parts[3].split(",")]
+                # ⚠ Both parses below raise ValueError, which would leave as exit 1 with a
+                # traceback — the shape the docstring promises exit 2 for. Measured (#388):
+                # a non-numeric channel, a two-hot block and a fractional label all did.
+                # Routed through `_refuse` so a caller keyed on the code sees "unreadable",
+                # not "crashed"; `lane_of_vector`'s own message is kept, it says why.
+                try:
+                    vec = [float(x) for x in parts[3].split(",")]
+                except ValueError as exc:
+                    _refuse(EXIT_UNREADABLE,
+                            f"ABORT: {path}:{lineno} conditioning block is not numeric "
+                            f"({exc}). Nothing measured.")
                 if len(vec) != VAT_DIM:
                     _refuse(EXIT_UNREADABLE,
                             f"ABORT: {path}:{lineno} carries {len(vec)} conditioning "
                             f"channels, not {VAT_DIM}. A 3-wide filelist has no delivery "
                             f"block to measure — see scripts/gates/test_vat_dim_seams.py.")
-                yield _source_of(parts[0]), parts[1], lane_of_vector(vec)
+                try:
+                    lane = lane_of_vector(vec)
+                except ValueError as exc:
+                    _refuse(EXIT_UNREADABLE, f"ABORT: {path}:{lineno}: {exc}")
+                yield _source_of(parts[0]), parts[1], lane
 
 
 def measure(corpus_dir):

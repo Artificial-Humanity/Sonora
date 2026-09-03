@@ -37,7 +37,7 @@ removal [notes/README.md](README.md) already made of its own copy, for the same 
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
 | | **rung 2 — v6, +expressive-registers (826 rows appended, 832 staged)** | ✅ **DONE 2026-08-10/11** — built, trained 10 epochs, holdout-scored, **`ep008` selected** (`logs/train/vat6_finetune/SELECTED.md`); flat as pre-registered, and **the delivery block is live** | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) · ⚠ **do not select this run on `total`** and the A-frame question is **open**, not closed — [direction-contract-v3-proposal.md § 3b](direction-contract-v3-proposal.md) |
-| | rung 3 — v7, +LibriTTS-R full (~564 h measured) | 🔄 **BUILT 2026-08-27 · RUN 2026-08-28, stopped at the owner's call · v7r rebalance arm 2026-08-29.** ⚠ **The rung's VERDICT is still OPEN** — the comparison against rung 2 is blocked on the mel normalisation, not on the holdout's width; § THE RUN carries the correction and the job that closes it | rung 1's holdout ✅ | ditto |
+| | rung 3 — v7, +LibriTTS-R full (~564 h measured) | ✅ **BUILT 2026-08-27 · RUN 2026-08-28, stopped at the owner's call · v7r rebalance arm 2026-08-29 · VERDICT CLOSED 2026-09-03** — v7 beats rung 2's `ep008` under BOTH normalisations, both diagonal controls reproduced; § THE VERDICT owns the figures (the two directions disagree on the magnitude, so quote from there, not from here). ⚠ **No checkpoint is SELECTED** — selection is an ear job, and the scored checkpoint belongs to the 2026-08-29 run, whose 2026-08-28 predecessor's checkpoints are gone | rung 1's holdout ✅ | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
 | | freeze a same-corpus U-Net baseline | ⏸ | **the last act of P1** | [§ Phase 2](#phase-2--the-dit-decoder-spike) |
@@ -994,16 +994,36 @@ domain rung 3 ADDED, so a gain here is the friendliest possible test of the volu
 says nothing about delivery, expressiveness or the lane defect —
 [delivery-lane-remediation.md](delivery-lane-remediation.md) is where that lives.
 
-**Recipe**, the whole of it — the two swapped configs carry a header saying what was changed:
+**Recipe**, the whole of it — four runs, one per cell. The two swapped configs carry a header
+saying what was changed. ⚠ **`--assert-disjoint-from` names the corpus each CHECKPOINT trained
+on**, so it differs per lineage: v6's lists for `vat6_ep008`, v7's for the v7 checkpoint. v7 is
+a superset of v6, so checking a v7 checkpoint against v6's lists is a strictly weaker check that
+cannot see a v7-only leak — and the reports cannot show which lists were used (next paragraph).
+The invocation and its stdout are kept beside the reports as `$O/run.sh` and `$O/run.log`; the
+log's `disjoint from` lines are the only record of which lists each cell was checked against.
 
 ```bash
+set -u
 B=/data/model-training/sonora; O=$B/rung3_verdict
-scripts/stages/score_holdout.sh --filelist $B/data/libritts_r_holdout_devclean/holdout_8w.txt \
-  --model-config $O/vat6_config_v7stats.yaml \
-  --ckpt "vat6_ep008=$B/logs/train/vat6_finetune/runs/2026-08-10_23-48-23/checkpoints/checkpoint_epoch=008.ckpt" \
-  --assert-disjoint-from $B/data/libritts_r_emilia_expressive_vat_v6/train_op.txt \
-                         $B/data/libritts_r_emilia_expressive_vat_v6/val_op.txt \
-  --out $O/vat6_under_v7/holdout.csv
+FL=$B/data/libritts_r_holdout_devclean/holdout_8w.txt
+CK6="$B/logs/train/vat6_finetune/runs/2026-08-10_23-48-23/checkpoints/checkpoint_epoch=008.ckpt"
+CK7="$B/logs/train/vat7_finetune/runs/2026-08-29_01-45-09/checkpoints/checkpoint_epoch=001_step=0017529.ckpt"
+C6=$B/logs/train/vat6_finetune/runs/2026-08-10_23-48-23/.hydra/config.yaml
+C7=$B/logs/train/vat7_finetune/runs/2026-08-29_01-45-09/.hydra/config.yaml
+C6X=$O/vat6_config_v7stats.yaml     # vat6's config, v7's data_statistics
+C7X=$O/vat7_config_v6stats.yaml     # v7's config, v6's data_statistics
+# each checkpoint is checked against the corpus IT trained on -- that is what the
+# holdout's disjointness claim is about, and it differs per lineage.
+D6="$B/data/libritts_r_emilia_expressive_vat_v6/train_op.txt $B/data/libritts_r_emilia_expressive_vat_v6/val_op.txt"
+D7="$B/data/libritts_r_full_vat_v7/train_op.txt $B/data/libritts_r_full_vat_v7/val_op.txt"
+run(){ echo "===== $1 ====="; date -Is
+  scripts/stages/score_holdout.sh --filelist $FL --model-config "$2" --ckpt "$3" \
+    --assert-disjoint-from $4 --out $O/$1/holdout.csv
+  echo "rc=$? for $1"; }
+run control_vat6_under_v6 "$C6"  "vat6_ep008=$CK6"      "$D6"
+run control_v7_under_v7   "$C7"  "v7_ep001s17529=$CK7"  "$D7"
+run vat6_under_v7         "$C6X" "vat6_ep008=$CK6"      "$D6"
+run v7_under_v6           "$C7X" "v7_ep001s17529=$CK7"  "$D7"
 ```
 
 ⚠ `--assert-disjoint-from` is **not optional and the tool refuses without it** — and the
@@ -1017,11 +1037,12 @@ MLflow experiment 1 holds **two** vat7_finetune runs: `ambitious-skunk-775`, 202
 01:45→14:36, reaching epoch 5, which no document mentions. **Every v7 artifact on disk belongs
 to the second**: the 18 step checkpoints, `last.ckpt`, and all of `/data/model-training/sonora/
 vat7_holdout/`. A `find` over the whole tree returns no vat7 checkpoint outside that run's
-directory, and there is no 2026-08-28 run directory at all. So *"✅ `ep004` is on disk"* above
-is **false today** — those checkpoints are gone, and this section's per-epoch table cannot be
-re-derived from anything here. The verdict above is real and it belongs to the shorter run.
+directory, and there is no 2026-08-28 run directory at all. So the *"`ep004` is on disk"* claim
+**below** (now qualified in place) is **false today** — those checkpoints are gone, and this
+section's per-epoch table cannot be re-derived from anything here. The verdict above is real and it belongs to the shorter run.
 
-✅ **`ep004` is on disk.** `save_top_k=-1` held, so the window carrying the entire gain was not
+~~✅~~ **`ep004` WAS on disk as of 2026-08-28 — GONE by 2026-09-03, see the paragraph above.**
+At the time `save_top_k=-1` held, so the window carrying the entire gain was not
 pruned — the v5 failure (best epoch never written, or written and deleted) did not recur.
 ⚠ **Selection is still an ear job**: on vat6 four instruments gave four answers and diff/mel
 loss may be anti-correlated with naturalness, so `ep004` is the best LOSS, not the choice.
@@ -1031,7 +1052,8 @@ right.** The developer argued the 0.25%/checkpoint threshold was too strict for 
 run; the data says otherwise and the argument was wrong. See the gate's own history for the
 window defect that made it fire at 2 rather than 3.
 
-**Remaining for rung 3:** warm start from `vat6_finetune`
+**Remaining for rung 3** *(written before the run — DONE 2026-08-28: the warm start ran as
+described, and the scoring is § THE VERDICT above)*: warm start from `vat6_finetune`
 **`ep008`**, widening the speaker embedding from 3,326 to 5,385 rather than copying it
 (`make_warmstart._WIDENABLE`; this corpus has already been bitten by that path DISCARDING
 the widened tensor and training the new rows on a randomly-initialised embedding) → score on
