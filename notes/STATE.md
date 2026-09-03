@@ -489,10 +489,14 @@ headline; open items are in [todo.md](todo.md).
    of LibriTTS-R was never on this box; both tarballs (75.8 GB) were fetched, extracted and
    permission-fixed, and the EIV scoring pass ran over 303,638 duration-filtered clips
    (`eiv_scores/libritts_r_full_v7.jsonl`).
-   ⚠⚠ **THE RUNG'S VERDICT IS OPEN, AND THIS ENTRY CLAIMED THE CORPUS WAS UNBUILT UNTIL
-   2026-09-03** — six days after the run it does not mention. What blocks the verdict is the
-   mel normalisation, not the holdout's width; the correction and the one job that closes it
-   are in [quality-gap-plan.md § THE RUN](quality-gap-plan.md).
+   ✅ **THE RUNG CLOSED 2026-09-03: v7 beats rung 2's `ep008` under BOTH normalisations**,
+   by 1.51% under v6's constants and 3.63% under v7's, on `holdout_8w.txt` with both diagonal
+   controls reproducing. The sign is what closes it; the magnitude is not settled and the
+   conservative figure is the one to quote. ⚠ The gain sits mostly in the **duration**
+   predictor, and the holdout is dev-clean read speech — the one domain this rung added — so
+   it says nothing about delivery. ⚠⚠ **The scored checkpoint is from a 2026-08-29 run that no
+   document described; the 10-epoch 2026-08-28 run's checkpoints are gone.** Full table,
+   recipe and caveats: [quality-gap-plan.md § THE VERDICT](quality-gap-plan.md).
    Measured, replacing the estimates: **321,497 new clips · 2,064 new speakers · ~564 h ·
    ~345,600 train rows expected**. The strictly-growing rule survives because the new
    speakers are **disjoint from both v6 and the holdout** (tested under `LC_ALL=C` with a

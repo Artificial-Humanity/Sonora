@@ -938,13 +938,74 @@ reading this paragraph used to offer is not available.
 labelled `init_vat6ep008`. Its `ckpt_path` is `warmstart/vat7_init.ckpt` — the **widened v7
 init**, not vat6's `ep008`. Do not read its number as rung 2's.
 
-**What closes it is one scoring job**, and everything it needs is on disk: vat6 `ep008`, the
-v7 checkpoint, `holdout_8w.txt` and both run configs. Score the pair under one set of
-`data_statistics`, then again under the other — each direction needs a copy of a run config
-with only `data.data_statistics` changed, because `--model-config` also fixes `n_spks`.
-⚠ **Run it BOTH ways.** Either normalisation penalises the lineage that did not train under
-it, so a single direction is not neutral. Agreeing signs close the rung; disagreeing signs say
-the instrument cannot answer the question, which is itself the finding.
+#### ✅ THE VERDICT — SCORED 2026-09-03. RUNG 3 IMPROVED ON RUNG 2, IN BOTH DIRECTIONS.
+
+vat6 `ep008` against the best surviving v7 checkpoint, on `holdout_8w.txt`, 5,463 clips × 4
+paired draws, under **each** set of `data_statistics` — because `--model-config` fixes the
+architecture as well as the constants, each checkpoint keeps its own config and only
+`data.data_statistics` is swapped (`n_spks` is 3,326 against 5,385).
+
+| normalisation | vat6 `ep008` | v7 `ep001s0017529` | v7 better by |
+|---|---|---|---|
+| **v6's constants** | 1.782305 | **1.755355** | 0.026949 · 1.51% |
+| **v7's constants** | 1.831055 | **1.764570** | 0.066486 · 3.63% |
+
+**The sign agrees both ways, so the rung closes.** ⚠ **The MAGNITUDE does not** — 1.51% against
+3.63% for the same two checkpoints. Quote the conservative one. The normalisation is not a
+neutral choice and no direction of it is; what the pair establishes is the direction, not the
+size.
+
+⚠ **Both diagonal cells are CONTROLS and both reproduced.** vat6 under v6's constants came back
+`1.782305` against the `1.7823` in `logs/train/vat6_finetune/holdout_vat6_ep000-010.json`
+(2026-08-11), and v7 under v7's came back `1.764570` — the value
+[vat7r_rebalance.yaml](../configs/experiment/vat7r_rebalance.yaml) already records as the donor
+reproduction, to six decimals. Without them the two new cells would be numbers from an
+unvalidated harness.
+
+⚠ **THE PREDICTED MECHANISM WAS WRONG AND THE RESULT IS UNAFFECTED.** The job was designed on
+the reasoning that each normalisation penalises the lineage that did not train under it, so the
+two directions would bracket the truth. That is not what happened: **both** models score lower
+under v6's constants, because its `mel_std` is the larger of the two and the loss is computed
+on normalised quantities. So the swap moves the level for both and changes the gap's size — it
+is not a symmetric penalty. The comparison still holds, because within one column both models
+are measured the same way, which is the only property it needs.
+
+**Where the gain sits, under v6's constants:** `dur` −0.0204, `diff` −0.0069, `prior` +0.0003.
+⚠ So it is mostly the DURATION predictor, which 2,064 new speakers of read speech would teach,
+and only partly the decoder. That is a narrower claim than "the model got better", and the
+standing rule against selecting on `total` still applies — selection is an ear job.
+
+⚠ **WHAT THIS DOES NOT SAY.** The holdout is dev-clean LibriTTS read speech, which is the one
+domain rung 3 ADDED, so a gain here is the friendliest possible test of the volume lever. It
+says nothing about delivery, expressiveness or the lane defect —
+[delivery-lane-remediation.md](delivery-lane-remediation.md) is where that lives.
+
+**Recipe**, the whole of it — the two swapped configs carry a header saying what was changed:
+
+```bash
+B=/data/model-training/sonora; O=$B/rung3_verdict
+scripts/stages/score_holdout.sh --filelist $B/data/libritts_r_holdout_devclean/holdout_8w.txt \
+  --model-config $O/vat6_config_v7stats.yaml \
+  --ckpt "vat6_ep008=$B/logs/train/vat6_finetune/runs/2026-08-10_23-48-23/checkpoints/checkpoint_epoch=008.ckpt" \
+  --assert-disjoint-from $B/data/libritts_r_emilia_expressive_vat_v6/train_op.txt \
+                         $B/data/libritts_r_emilia_expressive_vat_v6/val_op.txt \
+  --out $O/vat6_under_v7/holdout.csv
+```
+
+⚠ `--assert-disjoint-from` is **not optional and the tool refuses without it** — and the
+refusal is invisible in the reports, because `holdout.json` has no field recording that the
+check ran. Reading its absence from the report as "the earlier runs did not use it" is what
+cost the first attempt at this job.
+
+⚠⚠ **AND THE CHECKPOINT SCORED HERE IS NOT FROM THE RUN THIS SECTION DESCRIBES.**
+MLflow experiment 1 holds **two** vat7_finetune runs: `ambitious-skunk-775`, 2026-08-28
+00:31→22:32, reaching epoch 9 — the run tabled above — and `melodic-frog-522`, 2026-08-29
+01:45→14:36, reaching epoch 5, which no document mentions. **Every v7 artifact on disk belongs
+to the second**: the 18 step checkpoints, `last.ckpt`, and all of `/data/model-training/sonora/
+vat7_holdout/`. A `find` over the whole tree returns no vat7 checkpoint outside that run's
+directory, and there is no 2026-08-28 run directory at all. So *"✅ `ep004` is on disk"* above
+is **false today** — those checkpoints are gone, and this section's per-epoch table cannot be
+re-derived from anything here. The verdict above is real and it belongs to the shorter run.
 
 ✅ **`ep004` is on disk.** `save_top_k=-1` held, so the window carrying the entire gain was not
 pruned — the v5 failure (best epoch never written, or written and deleted) did not recur.
