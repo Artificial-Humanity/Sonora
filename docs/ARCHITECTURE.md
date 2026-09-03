@@ -75,6 +75,17 @@ That reading comes from the listener's free text, not from the forced choice, wh
 only *within* pairs and says nothing about absolute level. **Treat it as a lead that needs
 its own test.**
 
+**And it is not the oversample — measured 2026-09-02.** The vat7r run existed to test whether
+a 9× rebalance of the lane-labelled rows reduces the damage. The same 12 blind pairs against
+the v7r checkpoint went **0 blank / 12 lane / 0 ties** (p = 0.0005), against the donor's
+0 / 10 / 2. Every lane is 3-for-3. Row duplication changed nothing the ear can find, which is
+what "repeating 65 clips nine times adds no information" predicts. Three explanations are now
+dead on measurement — the sampler, row duplication, and simple lane starvation — and the one
+untried lever is **new distinct clips**, whose effect is an open question rather than an
+inference from these results. ⚠ One listener note, *"these do almost sound like different
+voices"*, is not a hum complaint: if a lane request shifts speaker identity, the delivery FiLM
+path may be entangled with the speaker embedding. **A lead that needs its own test.**
+
 **What this does and does not change.** It does not change the contract: the encoding, the
 `unknown` ≡ zero rule and the five-channel wire format are all still right, and nothing here
 argues for a different shape. It changes what a **consumer** should do — treat the delivery

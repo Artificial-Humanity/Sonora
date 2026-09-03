@@ -191,10 +191,45 @@
 # compared WITHIN pairs and says nothing about absolute level. Worth a designed test
 # before it is leaned on.
 #
-# Second arm SERVED 2026-09-02: the same 12 pairs against the v7r checkpoint, answering
-# "did the rebalance reduce the damage?". Served into its own --out, never the donor's,
-# because the unblinder resolves an item to its clips through items.json alone and
-# reusing the directory would orphan the 12 judged verdicts above.
+# ⚠⚠ SECOND ARM, SCORED 2026-09-02 — THE REBALANCE DID NOT REDUCE THE DAMAGE. The same
+# 12 pairs (speaker 4896, V/A/T at zero, three texts x four lanes) against the v7r
+# checkpoint, owner, blind, ALL 12 JUDGED. Served into its own --out, never the donor's,
+# because the unblinder resolves an item to its clips through items.json alone.
+#
+#   blank            0
+#   lane            12
+#   no difference    0
+#   sign test on the 12 splits: p = 0.0005 (two-sided exact, 2 x 0.5^12)
+#
+#   vs the donor above:  0 / 10 / 2, p = 0.002
+#
+# IT GOT MORE CONSISTENT, NOT LESS. The donor left two ties; v7r leaves none. Every lane
+# is 3-for-3, so the per-lane split that argued against "add more clips" now reads
+# 3/3/3/3 and argues the same thing harder: the 9x oversample changed the 74-clip lane
+# and the 336-clip lane by exactly nothing the ear can find.
+#
+# ⚠ THIS IS THE RESULT THE WHOLE RUN WAS BUILT TO TEST, AND IT IS NEGATIVE. Together
+# with the ODE null above, three explanations are now dead on measurement:
+#   - not the sampler            (ODE bench: more steps change nothing)
+#   - not row duplication        (this arm: 9x repetition changed nothing)
+#   - not simple lane starvation (both arms: severity never tracked clip count)
+# What stands is the conditioning taking the trunk somewhere the corpus never went.
+# The only lever not yet tried is NEW DISTINCT clips; whether that lever works is an
+# open question, not an inference from these results.
+#
+# ⚠ AUDITED FOR REVERSAL BEFORE IT WAS READ. Side balance on button A was 6 lane / 6
+# blank; an independent recount matched the unblinder; every note that names a side
+# agrees with the recorded click, on both sides of the button. This is discrimination,
+# not a positional habit.
+#
+# ⚠ TWO THINGS IN THE FREE TEXT THAT THE FORCED CHOICE DID NOT MEASURE:
+#   - T02_Newscaster: "These do almost sound like different voices." That is not a hum
+#     complaint. If a lane request shifts speaker identity, the delivery FiLM path may
+#     be entangled with the speaker embedding — a different and worse defect than the
+#     one this page chases. A LEAD, needs its own designed test.
+#   - Four notes say only "drastic difference" without naming hum. The click answers
+#     "which carries more hum", so the measured effect is on hum; the audible gap may
+#     be wider than the question. The instrument may UNDERSTATE the difference.
 # ============================================================================
 #
 # WHAT CHANGED FROM v7, in one list:

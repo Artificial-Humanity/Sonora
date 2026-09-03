@@ -125,8 +125,20 @@ the CLI, the Vocalizer and the export converter all read it.
 > pays for itself yet. Full record, both arms and the per-lane split:
 > [vat7r_rebalance.yaml § LANE CONTROL](../configs/experiment/vat7r_rebalance.yaml).
 >
-> A second arm — the same 12 pairs against v7r — is **served as of 2026-09-02**, answering
-> "did the rebalance reduce the damage?".
+>
+> **The rebalance did not reduce the damage — SCORED 2026-09-02.** The same 12 pairs
+> against the v7r checkpoint, blind, all judged:
+>
+>     v7r     blank 0   lane 12   tie 0      p = 0.0005
+>     donor   blank 0   lane 10   tie 2      p = 0.002
+>
+> More consistent, not less: every lane 3-for-3, no ties. The 9× oversample was the
+> thing this run was built to test, and it changed nothing the ear can find. Dead on
+> measurement now: the sampler, row duplication, simple lane starvation. The one untried
+> lever is **new distinct clips**, and whether it works is an open question, not an
+> inference. Audited for button reversal before reading (6/6 side balance, notes agree
+> with clicks on both sides). ⚠ One note — *"these do almost sound like different
+> voices"* — points at speaker identity, not hum: **a lead that needs its own test.**
 
 **Eight, not the four the review proposed.** A single ordered channel asserts the five
 lanes lie on one continuum, and `seed_delivery.py` records that they do not — Dialogue vs
