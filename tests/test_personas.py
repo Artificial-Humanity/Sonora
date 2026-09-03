@@ -1,7 +1,7 @@
 """The persona wiring: how a session acquires a role, and how the reviewer refuses one.
 
 Since 2026-08-17 the developer role needs no flag — `CLAUDE.md` `@import`s
-`workflow/DEVELOPER.md`, and Claude Code auto-discovers `CLAUDE.md`. That removed the owner's
+`FerroStep/personas/DEVELOPER.md`, and Claude Code auto-discovers `CLAUDE.md`. That removed the owner's
 standing irritation (*"I'm still not very keen on having to start claude code with a
 pre-prompt"*) and replaced a remembered flag with a mechanism.
 
@@ -26,15 +26,15 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 CLAUDE_MD = (REPO / "CLAUDE.md").read_text(encoding="utf-8")
-REVIEWER = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
-LAUNCHER = (REPO / "workflow" / "scripts" / "request_review.sh").read_text(encoding="utf-8")
+REVIEWER = (REPO / "FerroStep" / "personas" / "REVIEWER.md").read_text(encoding="utf-8")
+LAUNCHER = (REPO / "FerroStep" / "workflow" / "scripts" / "request_review.sh").read_text(encoding="utf-8")
 
 IMPORT_RE = re.compile(r"^@(\S+)$", re.M)
 
 
 def test_claude_md_imports_the_developer_persona():
     """The import IS the mechanism. A link would be a request the session may decline."""
-    assert "@workflow/DEVELOPER.md" in CLAUDE_MD
+    assert "@FerroStep/personas/DEVELOPER.md" in CLAUDE_MD
 
 
 def test_every_import_target_exists():
@@ -52,7 +52,7 @@ def test_every_import_target_exists():
 
 def test_claude_md_does_not_import_the_reviewer_persona():
     """Importing REVIEWER.md would hand every ordinary session the role that must not write."""
-    assert "@workflow/REVIEWER.md" not in CLAUDE_MD
+    assert "@FerroStep/personas/REVIEWER.md" not in CLAUDE_MD
 
 
 def test_the_reviewer_persona_revokes_the_imported_developer_persona():
@@ -148,10 +148,10 @@ def test_the_sibling_paragraph_is_generated_from_what_was_actually_granted():
 def test_the_reviewer_can_reach_the_repo_the_routing_rule_names():
     """The end-to-end property, config included — the two halves above are satisfiable and
     still leave the rule unfollowable if nothing lists FerroStep."""
-    cfg = (REPO / "workflow" / "config.env").read_text(encoding="utf-8")
+    cfg = (REPO / "FerroStep" / "workflow" / "config.env").read_text(encoding="utf-8")
     line = next((l for l in cfg.splitlines() if l.startswith("SIBLING_REPO_CANDIDATES=")), "")
     assert line, "SIBLING_REPO_CANDIDATES is absent from config.env"
-    reviewer = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
+    reviewer = (REPO / "FerroStep" / "personas" / "REVIEWER.md").read_text(encoding="utf-8")
     if "FerroStep" in reviewer:
         assert "FerroStep" in line, (
             "REVIEWER.md routes findings to FerroStep and tells the reviewer to VERIFY the "
@@ -168,9 +168,9 @@ def test_the_reviewer_can_reach_the_repo_the_routing_rule_names():
 # page a section gets appended into. Measured at the time: REVIEWER 4, DEVELOPER 0, WORKFLOW 0,
 # AGENTS 4, CLAUDE 0. Renamed off "PERSONA" because the guard is about tables, not personas.
 TABLE_MD = [
-    "workflow/REVIEWER.md",
-    "workflow/DEVELOPER.md",
-    "workflow/WORKFLOW.md",
+    "FerroStep/personas/REVIEWER.md",
+    "FerroStep/personas/DEVELOPER.md",
+    "FerroStep/workflow/WORKFLOW.md",
     "AGENTS.md",
     "CLAUDE.md",
 ]
@@ -182,7 +182,7 @@ TABLE_MD = [
 # ⚠ THIS LIST IS THE THING THAT MAKES A PER-FILE COLLAPSE VISIBLE. `assert total_runs` sees
 # only a TOTAL collapse; REVIEWER.md is the file with a live history of the defect (#353) and
 # was exactly the one that could drop out unnoticed while AGENTS.md kept the total non-zero.
-TABLES_EXPECTED_IN = ("workflow/REVIEWER.md", "AGENTS.md")
+TABLES_EXPECTED_IN = ("FerroStep/personas/REVIEWER.md", "AGENTS.md")
 
 
 def _table_runs(rel):

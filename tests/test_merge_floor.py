@@ -16,7 +16,7 @@ import pytest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _SPEC = importlib.util.spec_from_file_location(
-    "merge_floor", os.path.join(REPO, "workflow", "scripts", "merge_floor.py"))
+    "merge_floor", os.path.join(REPO, "FerroStep", "workflow", "scripts", "merge_floor.py"))
 merge_floor = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(merge_floor)
 
@@ -109,7 +109,7 @@ def test_the_two_rideable_states_still_ride(state):
 # --------------------------------------------------------------------------- #
 def test_the_threshold_comes_from_config_not_from_this_module():
     """⚠ The owner's ruling: settle the rule everywhere it surfaces, AND make it
-    reconfigurable from a single place. `workflow/config.env` is that place."""
+    reconfigurable from a single place. `FerroStep/workflow/config.env` is that place."""
     assert merge_floor.floor_setting() == "medium"
 
 
@@ -181,7 +181,7 @@ def test_the_ladder_is_ordered_and_the_order_is_the_comparison():
 def _issue_module():
     import importlib.util
     spec = importlib.util.spec_from_file_location(
-        "issue_mod", os.path.join(REPO, "workflow", "scripts", "issue.py"))
+        "issue_mod", os.path.join(REPO, "FerroStep", "workflow", "scripts", "issue.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
@@ -199,19 +199,19 @@ def test_issue_py_does_not_keep_its_own_copy_of_the_severity_order():
     # …and DERIVED, not re-typed. `is` cannot express this: issue.py loads its own instance of
     # merge_floor, so the tuples are equal without being identical. The property worth pinning
     # is that no second literal exists to drift, so the check is on the source.
-    src = open(os.path.join(REPO, "workflow", "scripts", "issue.py"), encoding="utf-8").read()
+    src = open(os.path.join(REPO, "FerroStep", "workflow", "scripts", "issue.py"), encoding="utf-8").read()
     body = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("#"))
     assert '"low", "medium", "high", "critical"' not in body, \
         "issue.py re-declares the severity ladder instead of importing merge_floor.LADDER"
 
 
 def test_the_reviewer_name_resolves_from_the_roster_not_config_env():
-    """#216 made the setting consumed; 2026-08-24 moved it. Identities live in config.yaml
+    """#216 made the setting consumed; 2026-08-24 moved it. Identities live in FerroStep/config.yaml
     (the FerroStep roster), config.env dropped its identity keys in the same commit, and
     issue.py resolves the reviewer through `ferrostep agent-env`. This RUNS the resolution
     and checks both ends: the name is non-empty, and it is the roster's — not a literal
     surviving in issue.py. The config.env half needs no binary and always runs."""
-    cfg = open(os.path.join(REPO, "workflow", "config.env"), encoding="utf-8").read()
+    cfg = open(os.path.join(REPO, "FerroStep", "workflow", "config.env"), encoding="utf-8").read()
     assert "REVIEWER_NAME=" not in cfg, \
         "config.env still carries REVIEWER_NAME — two copies of the identity drift"
     import shutil
@@ -220,9 +220,9 @@ def test_the_reviewer_name_resolves_from_the_roster_not_config_env():
     mod = _issue_module()
     name = mod.reviewer_name()
     assert name, "the roster resolved an empty reviewer — the #218 guard would name nobody"
-    roster = open(os.path.join(REPO, "config.yaml"), encoding="utf-8").read()
+    roster = open(os.path.join(REPO, "FerroStep", "config.yaml"), encoding="utf-8").read()
     assert f"name: {name}" in roster, \
-        "issue.py's reviewer does not match config.yaml — it is hardcoded somewhere"
+        "issue.py's reviewer does not match FerroStep/config.yaml — it is hardcoded somewhere"
 
 
 def test_the_grade_guard_is_documented_as_a_convention_not_a_mechanism():
@@ -236,7 +236,7 @@ def test_the_grade_guard_is_documented_as_a_convention_not_a_mechanism():
     believes a boundary is structural stops checking it. This pins the honest wording so the
     stronger claim cannot come back.
     """
-    src = open(os.path.join(REPO, "workflow", "scripts", "issue.py"), encoding="utf-8").read()
+    src = open(os.path.join(REPO, "FerroStep", "workflow", "scripts", "issue.py"), encoding="utf-8").read()
     assert "CONVENTION, NOT A MECHANISM" in src
 
     # ⚠ THE PHRASE MAY APPEAR, BUT ONLY AS A QUOTATION OF THE OLD CLAIM. This repo's comments
@@ -299,7 +299,7 @@ def test_grade_is_listed_in_the_usage_block_with_the_other_writes():
     The guard's behaviour is covered by the parametrised cases above; this pins only a
     discoverability fact, which is the kind of thing a source check can honestly assert.
     """
-    src = open(os.path.join(REPO, "workflow", "scripts", "issue.py"), encoding="utf-8").read()
+    src = open(os.path.join(REPO, "FerroStep", "workflow", "scripts", "issue.py"), encoding="utf-8").read()
     usage = src.split('"""', 2)[1]
     for cmd in ("list", "show", "file", "grade", "take", "review", "escalate", "close",
                 "reopen", "comment", "escalated"):
@@ -327,7 +327,7 @@ def test_cmd_grade_actually_CALLS_the_guard_not_merely_defines_it():
     import types
 
     spec = importlib.util.spec_from_file_location(
-        "_issue_grade_wiring", os.path.join(REPO, "workflow", "scripts", "issue.py"))
+        "_issue_grade_wiring", os.path.join(REPO, "FerroStep", "workflow", "scripts", "issue.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 

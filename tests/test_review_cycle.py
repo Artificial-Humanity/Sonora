@@ -1,6 +1,6 @@
 """The driver's safety properties, pinned because it runs unattended with write access.
 
-`workflow/scripts/review_cycle.sh` alternates a review with a `claude -p` WORKER that edits files and
+`FerroStep/workflow/scripts/review_cycle.sh` alternates a review with a `claude -p` WORKER that edits files and
 commits, without a human in the loop. That is a different risk class from anything else in
 `scripts/`, and exactly one property makes it acceptable:
 
@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-SCRIPT = REPO / "workflow" / "scripts" / "review_cycle.sh"
+SCRIPT = REPO / "FerroStep" / "workflow" / "scripts" / "review_cycle.sh"
 SOURCE = SCRIPT.read_text(encoding="utf-8")
 
 
@@ -57,13 +57,13 @@ def test_the_worker_cannot_re_enter_the_loop():
 
     ⚠ THE FULL PATH IS CHECKED, NOT THE BASENAME, AND THAT IS NOW THE POINT. This asserted
     `any("review_cycle.sh" in d for d in deny)` until 2026-08-17 — a substring test that stayed
-    GREEN after the scripts moved from `scripts/` to `workflow/` while every deny entry still
+    GREEN after the scripts moved from `scripts/` to `FerroStep/workflow/` while every deny entry still
     named the old path. The guard was disarmed and the test said nothing, because a permission
     entry naming a path that does not exist denies precisely nothing.
     """
     deny = _array("WORKER_DENY")
-    for s in ("workflow/scripts/review_cycle.sh", "workflow/scripts/request_review.sh",
-              "workflow/scripts/merge_branch.sh"):
+    for s in ("FerroStep/workflow/scripts/review_cycle.sh", "FerroStep/workflow/scripts/request_review.sh",
+              "FerroStep/workflow/scripts/merge_branch.sh"):
         assert f"Bash({s}:*)" in deny, f"the worker must not be able to run {s}"
         assert f"Bash(./{s}:*)" in deny, f"the './' form of {s} is a second way in"
 
@@ -85,7 +85,7 @@ def test_every_denied_script_actually_exists():
 def test_the_worker_keeps_the_tracker_script():
     """⚠ The inverse assertion, deliberate.
 
-    `workflow/scripts/issue.py` is how the worker takes an issue, comments, escalates, and moves one to
+    `FerroStep/workflow/scripts/issue.py` is how the worker takes an issue, comments, escalates, and moves one to
     `review` — its actual job — and it is the single path that enforces the counter cap and the
     mandatory-comment rules. Denying it would push the worker back to raw tracker writes, where
     none of those refusals exist.
@@ -145,7 +145,7 @@ def test_the_abort_marker_is_checked_before_the_exit_code():
 def test_the_reviewer_persona_is_told_to_emit_the_marker():
     """The driver greps for a token the reviewer must know to produce — a machine contract
     split across two files, which is how one half gets edited alone."""
-    persona = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
+    persona = (REPO / "FerroStep" / "personas" / "REVIEWER.md").read_text(encoding="utf-8")
     assert "MUST-NOT-LAND" in persona
 
 
@@ -171,7 +171,7 @@ def test_convergence_is_scoped_to_the_branch_under_review():
     ⚠ This docstring cited "the migrated GitHub backlog … on `github-issues-fixes`" until
     2026-08-19. Those records are not in the live tracker (it holds nothing below #90); they
     are in `notes/tracker-export-2026-08-17.json`. The property under test is unchanged —
-    only the example was stale. ⚠ It was one of FOUR copies, not three: `workflow/REVIEWER.md`
+    only the example was stale. ⚠ It was one of FOUR copies, not three: `FerroStep/personas/REVIEWER.md`
     carried it twice — the retraction was added beside one and the other survived another two
     passes (issue #163). Counting the copies before claiming completeness is the lesson.
     """
@@ -267,7 +267,7 @@ def test_no_query_names_the_removed_escalated_field():
 
 def test_it_is_classified_in_the_pipeline_manifest():
     manifest = (REPO / "scripts" / "pipeline_manifest.py").read_text(encoding="utf-8")
-    assert "workflow/scripts/review_cycle.sh" in manifest
+    assert "FerroStep/workflow/scripts/review_cycle.sh" in manifest
 
 
 def test_the_script_parses():
@@ -275,26 +275,28 @@ def test_the_script_parses():
 
 
 def _ported_lane(tmp_path):
-    """A minimal repo holding `workflow/` and NOTHING ELSE — the ported-lane shape.
+    """A minimal repo holding `FerroStep/` and NOTHING ELSE — the ported-lane shape.
 
-    ⚠ NO `.gitignore`, DELIBERATELY. WORKFLOW.md's "Porting this lane" says to copy
-    `workflow/` into the new repo, so a ported copy has no ignore entry for the driver's
-    runtime files. A fixture that copied this repo's `.gitignore` would make the test pass
-    for a reason the ported lane does not have, which is the failure mode `_array` had.
+    ⚠ NO `.gitignore`, DELIBERATELY. WORKFLOW.md's "Porting this lane" says to copy the
+    whole `FerroStep/` folder into the new repo, so a ported copy has no ignore entry for
+    the driver's runtime files. A fixture that copied this repo's `.gitignore` would make
+    the test pass for a reason the ported lane does not have, which is the failure mode
+    `_array` had.
     """
-    (tmp_path / "workflow" / "scripts").mkdir(parents=True)
+    (tmp_path / "FerroStep" / "workflow" / "scripts").mkdir(parents=True)
+    (tmp_path / "FerroStep" / "personas").mkdir(parents=True)
     for name in ("request_review.sh",):
-        p = tmp_path / "workflow" / "scripts" / name
+        p = tmp_path / "FerroStep" / "workflow" / "scripts" / name
         p.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
         p.chmod(0o755)
-    dst = tmp_path / "workflow" / "scripts" / "review_cycle.sh"
+    dst = tmp_path / "FerroStep" / "workflow" / "scripts" / "review_cycle.sh"
     dst.write_text(SOURCE, encoding="utf-8")
     dst.chmod(0o755)
-    (tmp_path / "workflow" / "DEVELOPER.md").write_text("persona\n", encoding="utf-8")
+    (tmp_path / "FerroStep" / "personas" / "DEVELOPER.md").write_text("persona\n", encoding="utf-8")
     # The driver derives its review ceiling from the lane definition at startup (phase 2)
     # and refuses without one — correct for a real repo, so the fixture provides the file,
     # exactly as WORKFLOW.md's porting instructions say it must travel with the lane.
-    (tmp_path / "workflow" / "sonora-lane.json").write_text(
+    (tmp_path / "FerroStep" / "workflow" / "sonora-lane.json").write_text(
         '{"counters": [{"name": "agent_passes", "max": 3}]}\n', encoding="utf-8")
     # ⚠ THE DRIVER NOW NEEDS A TRACKER SLUG, for the same reason it needs the lane definition
     # above: its convergence filter is scoped by `repo` as well as `branch_name` (2026-08-27),
@@ -305,7 +307,7 @@ def _ported_lane(tmp_path):
     # An `origin` remote rather than a REPO_SLUG line, because that is the path Sonora itself
     # takes: `config.env` ships with REPO_SLUG EMPTY and the slug is derived, so hardcoding
     # one here would leave the derivation — the half that actually runs — unexercised.
-    (tmp_path / "workflow" / "config.env").write_text("REPO_SLUG=\n", encoding="utf-8")
+    (tmp_path / "FerroStep" / "workflow" / "config.env").write_text("REPO_SLUG=\n", encoding="utf-8")
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
     subprocess.run(["git", "init", "-q", "."], cwd=tmp_path, check=True)
     subprocess.run(["git", "remote", "add", "origin",
@@ -342,7 +344,7 @@ def _real_startup(repo, *extra):
     """
     env = dict(os.environ, HOME=str(repo / "fake-home"))
     (repo / "fake-home").mkdir(exist_ok=True)
-    return subprocess.run(["bash", "workflow/scripts/review_cycle.sh", *extra],
+    return subprocess.run(["bash", "FerroStep/workflow/scripts/review_cycle.sh", *extra],
                           cwd=repo, capture_output=True, text=True, env=env)
 
 
@@ -392,7 +394,7 @@ def test_a_dry_run_does_not_touch_the_runtime_files(tmp_path, runtime_file):
     repo = _ported_lane(tmp_path)
     (repo / runtime_file).write_text("armed by the operator\n", encoding="utf-8")
 
-    r = subprocess.run(["bash", "workflow/scripts/review_cycle.sh", "--dry-run"],
+    r = subprocess.run(["bash", "FerroStep/workflow/scripts/review_cycle.sh", "--dry-run"],
                        cwd=repo, capture_output=True, text=True)
     assert r.returncode == 0, f"the dry run refused: {r.stderr[-400:]}"
     assert (repo / runtime_file).exists(), (
@@ -409,7 +411,7 @@ def test_a_dry_run_is_not_refused_by_its_own_leftovers(tmp_path):
     repo = _ported_lane(tmp_path)
     (repo / ".review_cycle.notes").write_text("stale\n", encoding="utf-8")
     (repo / ".review_cycle.stop").write_text("armed\n", encoding="utf-8")
-    r = subprocess.run(["bash", "workflow/scripts/review_cycle.sh", "--dry-run"],
+    r = subprocess.run(["bash", "FerroStep/workflow/scripts/review_cycle.sh", "--dry-run"],
                        cwd=repo, capture_output=True, text=True)
     assert r.returncode == 0, f"leftovers alone refused the dry run: {r.stderr[-400:]}"
 
@@ -478,7 +480,7 @@ def test_the_drivers_own_files_are_not_read_as_dirt(tmp_path):
     (repo / ".review_cycle.notes").write_text("stale\n", encoding="utf-8")
     (repo / "sub" / "halt").write_text("armed\n", encoding="utf-8")
 
-    r = subprocess.run(["bash", "workflow/scripts/review_cycle.sh", "--dry-run",
+    r = subprocess.run(["bash", "FerroStep/workflow/scripts/review_cycle.sh", "--dry-run",
                         "--stop-file", "sub/halt"],
                        cwd=repo, capture_output=True, text=True)
     assert r.returncode == 0, (
@@ -646,7 +648,7 @@ def test_the_reviewer_has_a_sanctioned_way_to_say_there_is_no_blocker():
     worker instructed to push. The fix is the missing phrase, plus a message that shows what
     matched so a §6 violation is diagnosable without opening the log.
     """
-    persona = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
+    persona = (REPO / "FerroStep" / "personas" / "REVIEWER.md").read_text(encoding="utf-8")
     assert "Nothing here blocks this range." in persona, (
         "REVIEWER.md gives no sanctioned wording for 'no blocker', so the only vocabulary for "
         "it is the token that halts the cycle")

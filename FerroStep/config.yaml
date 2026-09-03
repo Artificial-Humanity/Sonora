@@ -9,11 +9,11 @@ agents:
   developer:
     name: Ozzy
     email: ozzy@artificialhumanity.io
-    persona: workflow/DEVELOPER.md
+    persona: personas/DEVELOPER.md
   reviewer:
     name: Janis
     email: janis@artificialhumanity.io
-    persona: workflow/REVIEWER.md
+    persona: personas/REVIEWER.md
     # How Janis is LAUNCHED — the ONE place it is set (owner, 2026-09-02). Read by
     # workflow/scripts/request_review.sh through workflow/scripts/roster_launch.py, NOT by
     # `ferrostep agent-env`, which tolerates keys it does not know and ignores them.

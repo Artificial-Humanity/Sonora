@@ -1,7 +1,7 @@
 """⚠ #321. Every tracker command REVIEWER.md documents must be one the launcher GRANTS.
 
 The defect this exists to prevent, measured: the fix for #318 pointed the reviewer's `state`
-moves at `workflow/scripts/issue.py` — correct, and the referee accepts those writes — while
+moves at `FerroStep/workflow/scripts/issue.py` — correct, and the referee accepts those writes — while
 `REVIEWER_ALLOW` in `request_review.sh` contained no `issue.py` entry at all. So the blocker
 MOVED rather than went away: the store started accepting the write and the harness started
 refusing the command. Janis hit it on every tracker write of that pass.
@@ -26,8 +26,8 @@ import re
 import pytest
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
-REVIEWER_MD = REPO / "workflow" / "REVIEWER.md"
-LAUNCHER = REPO / "workflow" / "scripts" / "request_review.sh"
+REVIEWER_MD = REPO / "FerroStep" / "personas" / "REVIEWER.md"
+LAUNCHER = REPO / "FerroStep" / "workflow" / "scripts" / "request_review.sh"
 
 # Verbs `issue.py` exposes that belong to the DEVELOPER, never to the reviewer. ⚠ All four
 # are the developer's — none of them is the OWNER's, and an earlier version of this file said
@@ -59,7 +59,7 @@ def _allowlist():
 
 def _granted_issue_subcommands():
     return sorted({m.group(1) for e in _allowlist()
-                   for m in [re.match(r"Bash\(\.?/?workflow/scripts/issue\.py ([a-z]+):", e)]
+                   for m in [re.match(r"Bash\(\.?/?FerroStep/workflow/scripts/issue\.py ([a-z]+):", e)]
                    if m})
 
 
@@ -155,14 +155,14 @@ def test_every_documented_command_is_granted():
         + "\n".join(f"  issue.py {s}" for s in missing)
         + "\n\nA reviewer running these verbatim is refused by the harness, and §4 tells it "
           "that an unwritable tracker means the whole review goes in the summary. Add "
-          '"Bash(workflow/scripts/issue.py <sub>:*)" AND the "./" spelling to REVIEWER_ALLOW.')
+          '"Bash(FerroStep/workflow/scripts/issue.py <sub>:*)" AND the "./" spelling to REVIEWER_ALLOW.')
 
 
 def test_the_reviewer_is_not_granted_the_developers_verbs():
     """⚠ The 2026-08-17 escalation ruling as a MECHANISM, not as prose.
 
     REVIEWER.md §1 has said "YOU DO NOT ESCALATE" since 2026-08-17 and nothing enforced it.
-    Granting `Bash(workflow/scripts/issue.py:*)` — the obvious one-line fix for #321 — would
+    Granting `Bash(FerroStep/workflow/scripts/issue.py:*)` — the obvious one-line fix for #321 — would
     have pre-approved the single move the role is forbidden to make. This is why #321's fix
     enumerates subcommands instead.
     """
@@ -219,8 +219,8 @@ def test_pb_auth_superuser_is_never_granted():
 def test_no_unscoped_grant_of_the_whole_script():
     """The wildcard that would silently re-open everything the test above closes."""
     bad = [e for e in _allowlist()
-           if re.match(r"Bash\(\.?/?workflow/scripts/issue\.py:?\*?\)?$", e)
-           or re.match(r"Bash\(\.?/?workflow/scripts/issue\.py:\*\)$", e)]
+           if re.match(r"Bash\(\.?/?FerroStep/workflow/scripts/issue\.py:?\*?\)?$", e)
+           or re.match(r"Bash\(\.?/?FerroStep/workflow/scripts/issue\.py:\*\)$", e)]
     assert not bad, (
         f"REVIEWER_ALLOW grants issue.py unscoped: {bad}. That pre-approves `escalate`, "
         f"which the owner reserved to Ozzy. Enumerate the subcommands instead.")
@@ -228,13 +228,13 @@ def test_no_unscoped_grant_of_the_whole_script():
 
 @pytest.mark.parametrize("sub", ["file", "close", "reopen", "comment"])
 def test_both_spellings_are_granted(sub):
-    """⚠ Prefix matches are literal. `./workflow/...` and `workflow/...` are different
+    """⚠ Prefix matches are literal. `./FerroStep/workflow/...` and `FerroStep/workflow/...` are different
     strings, and the launcher's own request_review entry already carries both — a reviewer
     that writes the `./` form would otherwise be refused for a path-prefix nobody thought
     about."""
     entries = set(_allowlist())
     for prefix in ("", "./"):
-        want = f"Bash({prefix}workflow/scripts/issue.py {sub}:*)"
+        want = f"Bash({prefix}FerroStep/workflow/scripts/issue.py {sub}:*)"
         assert want in entries, f"missing grant: {want}"
 
 
@@ -242,7 +242,7 @@ def test_reviewer_md_documents_the_write_path_at_all():
     """A positive control for the parse above: if §4 stopped naming issue.py, every
     documented-vs-granted assertion would pass vacuously and #318 would be back."""
     text = REVIEWER_MD.read_text(encoding="utf-8")
-    assert "workflow/scripts/issue.py" in text
+    assert "FerroStep/workflow/scripts/issue.py" in text
     assert "refereed" in text.lower(), "§4 no longer explains WHY the MCP write is refused"
     assert "pb_record_mutate" in text, "§4 no longer warns against the tool that is refused"
 

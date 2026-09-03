@@ -74,33 +74,33 @@ case-insensitive macOS/Windows.
 is reviewed by a one-shot reviewer process, and merges to `main` only once every issue on it is
 closed.
 
-⚠⚠ **[workflow/WORKFLOW.md](workflow/WORKFLOW.md) IS THE MAP OF THE LOOP AND IT OUTRANKS THIS
+⚠⚠ **[FerroStep/workflow/WORKFLOW.md](FerroStep/workflow/WORKFLOW.md) IS THE MAP OF THE LOOP AND IT OUTRANKS THIS
 SECTION.** It holds the state machine, both roles' steps, and the four rulings of 2026-08-17
 that **reversed** what this file used to enforce: escalation moved to the worker, escalation
 now blocks the merge, the changeset record is retired, and `state: review` exists. Read it
 first. What follows is the contract *between* the roles, not either role's procedure.
 
-⚠ **`workflow/` IS A PORTABLE LANE, NOT PART OF THIS REPO'S SUBJECT MATTER** (owner,
+⚠ **`FerroStep/workflow/` IS A PORTABLE LANE, NOT PART OF THIS REPO'S SUBJECT MATTER** (owner,
 2026-08-17). It is meant to be copied whole into another repo, which is why the paragraph above
 is a pointer and not a summary: **a summary here becomes a second copy that the port leaves
 behind — still authoritative-looking, and now wrong.** The procedure is
-`workflow/WORKFLOW.md`, "Porting this lane": a copy, two lines in `CLAUDE.md`, and a glance at
-`workflow/config.env`. Nothing in this section should need editing to move the lane.
+`FerroStep/workflow/WORKFLOW.md`, "Porting this lane": a copy, two lines in `CLAUDE.md`, and a glance at
+`FerroStep/workflow/config.env`. Nothing in this section should need editing to move the lane.
 
 ⚠ **YOUR ROLE HAS A SYSTEM PROMPT, AND IT IS WHERE THE PROCEDURE NOW LIVES** (owner,
 2026-08-14):
 
 | role | roster title | system prompt |
 |---|---|---|
-| **Developer** | `developer` — the roster's `default_agent` | [workflow/DEVELOPER.md](workflow/DEVELOPER.md) |
-| **Reviewer** | `reviewer` | [workflow/REVIEWER.md](workflow/REVIEWER.md) |
+| **Developer** | `developer` — the roster's `default_agent` | [FerroStep/personas/DEVELOPER.md](FerroStep/personas/DEVELOPER.md) |
+| **Reviewer** | `reviewer` | [FerroStep/personas/REVIEWER.md](FerroStep/personas/REVIEWER.md) |
 
 ⚠ **Names and emails are deliberately NOT restated here.** They live in
-[config.yaml](config.yaml) — the FerroStep roster, the ONE place identities are set
+[config.yaml](FerroStep/config.yaml) — the FerroStep roster, the ONE place identities are set
 (owner, 2026-08-24) — and resolve with `ferrostep agent-env [--agent <title>]`.
 
 **If you are the developer session for this repo, read
-[workflow/DEVELOPER.md](workflow/DEVELOPER.md) now and work as Ozzy.** It is your standing
+[FerroStep/personas/DEVELOPER.md](FerroStep/personas/DEVELOPER.md) now and work as Ozzy.** It is your standing
 brief and carries the steps below in the detail your role actually needs. This file keeps the
 *contract between* the roles — the loop, the cap, the abort, and the repo facts both sides
 depend on. It does not duplicate either role's procedure; that duplication is what drifted
@@ -120,10 +120,10 @@ file that *is* loaded, and all it does is send you here and to your role's perso
   `claude` in this repo comes up as Ozzy, because the import is inlined into the auto-loaded
   file rather than linked from it. Measured the same day: `@`-imports resolve, including from
   a subdirectory, and **a plain `claude -p` receives the imported content with no action of
-  its own.** The old route — `--append-system-prompt-file workflow/DEVELOPER.md` — still
+  its own.** The old route — `--append-system-prompt-file FerroStep/personas/DEVELOPER.md` — still
   works and still survives `/clear`, but it is now redundant, and a persona that depends on
   someone remembering a flag is the failure this repo keeps re-learning.
-* **The reviewer is given `workflow/REVIEWER.md` through `--system-prompt-file`** (the
+* **The reviewer is given `FerroStep/personas/REVIEWER.md` through `--system-prompt-file`** (the
   replacing form), which is why that file is written to stand alone and this one is not.
 * ⚠⚠ **THE IMPORT REACHES THE REVIEWER TOO, AND THAT IS THE COST OF THE ABOVE.**
   `--system-prompt-file` replaces the *default assistant prompt*; it does **not** suppress
@@ -143,7 +143,7 @@ file that *is* loaded, and all it does is send you here and to your role's perso
     via `review_cycle.sh`. It distinguishes the *invocation*, never the *role*. It is a
     falsifier for a confused session and nothing more; the role is decided at the call site.
 
-⚠ **The reviewer does not arrive holding this file.** `workflow/REVIEWER.md` is passed to
+⚠ **The reviewer does not arrive holding this file.** `FerroStep/personas/REVIEWER.md` is passed to
 `claude -p` with `--system-prompt-file`, which **replaces** the default prompt outright. Janis
 gets `CLAUDE.md` auto-loaded (measured: that still happens even under `--system-prompt-file`)
 and so gets a *pointer* here — but a pointer is only followed if something makes it worth
@@ -152,7 +152,7 @@ optional hop.** Anything Janis must not miss belongs in the persona or in the br
 `request_review.sh` builds.
 
 1. **The developer commits**, then runs
-   `workflow/scripts/request_review.sh --range origin/main..HEAD --developer Ozzy`, naming **the whole
+   `FerroStep/workflow/scripts/request_review.sh --range origin/main..HEAD --developer Ozzy`, naming **the whole
    range it is about to push**.
 2. **The script blocks.** `Reviewer` reads the range and files issues straight into
    PocketBase, each carrying the `branch_name` of the review that produced it.
@@ -167,12 +167,12 @@ optional hop.** Anything Janis must not miss belongs in the persona or in the br
 
 **The loop's procedure is not here.** The state machine, both roles' steps, the
 three-fix-pass cap, escalation and the `user_decision` return path all live in
-[workflow/WORKFLOW.md](workflow/WORKFLOW.md), with each role's half in
-[workflow/DEVELOPER.md](workflow/DEVELOPER.md) and
-[workflow/REVIEWER.md](workflow/REVIEWER.md). **They were restated here until 2026-08-17 and
+[FerroStep/workflow/WORKFLOW.md](FerroStep/workflow/WORKFLOW.md), with each role's half in
+[FerroStep/personas/DEVELOPER.md](FerroStep/personas/DEVELOPER.md) and
+[FerroStep/personas/REVIEWER.md](FerroStep/personas/REVIEWER.md). **They were restated here until 2026-08-17 and
 the copy drifted from the original three times in one pull request** — including a role table
 that still assigned escalation to the reviewer a day after the owner moved it to the worker.
-One copy, in `workflow/`.
+One copy, in `FerroStep/workflow/`.
 
 **There is no report file at any point**: the tracker is the report.
 
@@ -238,16 +238,16 @@ the simple version that holds until then. Do not build tooling on its shape.
   header comment for weeks, got ignored eleven hours into a live training run, and is now a
   hard refusal in code.
 * **The steps, the cap, escalation and `user_decision` are in
-  [workflow/WORKFLOW.md](workflow/WORKFLOW.md).** It is the map; this section is the contract
+  [FerroStep/workflow/WORKFLOW.md](FerroStep/workflow/WORKFLOW.md).** It is the map; this section is the contract
   between the roles plus the repo facts both depend on.
   * ⚠ **The rules are also MECHANISMS now, which is why restating them here is worse than
     useless.** The FerroStep engine refuses an undeclared state move, a mandatory note that
-    is missing, and a take at the spent ceiling — all against `workflow/sonora-lane.json`,
+    is missing, and a take at the spent ceiling — all against `FerroStep/workflow/sonora-lane.json`,
     the one copy of the state machine (phase 2 of the cutover, 2026-08-24; `issue.py` only
     requests the moves);
-    `workflow/scripts/merge_branch.sh` refuses to merge a branch that carries a finding at or
+    `FerroStep/workflow/scripts/merge_branch.sh` refuses to merge a branch that carries a finding at or
     above the **severity floor** — the threshold is `MERGE_SEVERITY_FLOOR` in
-    `workflow/config.env` and is deliberately not repeated here; anything below it rides to a
+    `FerroStep/workflow/config.env` and is deliberately not repeated here; anything below it rides to a
     follow-up; ungraded findings and halted states block at any severity (owner, ratified
     2026-08-19, built 2026-08-20 — WHICH states are halted is the definition's fact too).
     A paraphrase in this file cannot refuse anything, and a reader who believes it over the
@@ -376,7 +376,7 @@ the simple version that holds until then. Do not build tooling on its shape.
     anything — nothing checks it. When in doubt on a mixed diff, request the review.
 * ⚠ **THE `workflow/` LANE ITSELF IS OUTSIDE REVIEW SPEND** (owner, 2026-08-24; recorded
   here at the reviewer's request, after two passes in which the instruction reached it only
-  as a relayed claim). Review findings are not spent on `workflow/` or its machinery — the
+  as a relayed claim). Review findings are not spent on `FerroStep/workflow/` or its machinery — the
   lane is being replaced by FerroStep. A reviewer with a workflow concern puts it in the
   summary for the owner, never the tracker.
 * ⚠ **Periodic wholesale review is a different altitude, and the one-shot move SETTLED HALF OF
@@ -393,7 +393,7 @@ the simple version that holds until then. Do not build tooling on its shape.
     tracker as §1 uses it — that loop files issues scoped to one range under one `branch_name`,
     and a wholesale read has neither. Ask before inventing a home for it.
   * **Also still open: whether Janis's persona fits that altitude.**
-    [workflow/REVIEWER.md](workflow/REVIEWER.md) is written for a bounded range with a
+    [FerroStep/personas/REVIEWER.md](FerroStep/personas/REVIEWER.md) is written for a bounded range with a
     `branch_name` to file under. A wholesale read has neither, and reusing the persona
     unmodified would produce a per-diff review pointed at a whole codebase. Ask, do not assume.
 

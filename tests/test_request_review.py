@@ -1,6 +1,6 @@
 """The review launcher's guards, which have twice been defeated with the suite green (#110).
 
-`workflow/scripts/request_review.sh` decides what a reviewer is told and what it is allowed to run.
+`FerroStep/workflow/scripts/request_review.sh` decides what a reviewer is told and what it is allowed to run.
 Nothing tested it. That is not a general "add tests" gap — it is specific, and it has a
 history:
 
@@ -49,7 +49,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-SCRIPT = REPO / "workflow" / "scripts" / "request_review.sh"
+SCRIPT = REPO / "FerroStep" / "workflow" / "scripts" / "request_review.sh"
 SOURCE = SCRIPT.read_text(encoding="utf-8")
 
 
@@ -274,7 +274,7 @@ def test_the_script_is_classified_in_the_pipeline_manifest():
     """#90: it is a tracked shell under scripts/, so test_stage_coverage requires a decision
     about what it is. Asserted here too so this file fails for its own reason."""
     manifest = (REPO / "scripts" / "pipeline_manifest.py").read_text(encoding="utf-8")
-    assert "workflow/scripts/request_review.sh" in manifest
+    assert "FerroStep/workflow/scripts/request_review.sh" in manifest
 
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="bash not available")
@@ -309,7 +309,7 @@ def test_the_array_parser_ignores_entries_that_appear_only_in_comments():
 def test_the_launcher_grant_is_scoped_to_dry_run():
     """#119: the #115 fix was correct and unpinned, which is this cycle's most repeated shape.
 
-    `Bash(./workflow/scripts/request_review.sh:*)` — the whole script — was granted while the comment
+    `Bash(./FerroStep/workflow/scripts/request_review.sh:*)` — the whole script — was granted while the comment
     beside it justified only `--dry-run`. Without that flag the script launches a real nested
     `claude -p`, files issues under a branch_name nobody watches, and the nested reviewer holds
     the same entry: unbounded recursion, billed, with a credential file at every level.
@@ -368,11 +368,11 @@ def test_the_sibling_repos_are_offered_read_only_and_never_writable():
     # ⚠ THE CANDIDATE PATHS MOVED TO config.env ON 2026-08-17, and this assertion moved with
     # them. It pinned the literal `$REPO_ROOT/../../AI-Lab-AMD` — a fact about this lab's disk
     # layout rather than about the launcher, and exactly the sort of thing that must not
-    # survive `workflow/` being copied into another repo. What the script must still do is READ
+    # survive `FerroStep/workflow/` being copied into another repo. What the script must still do is READ
     # the list from config; which paths are in it is the port's business.
     assert "SIBLING_REPO_CANDIDATES" in SOURCE, \
         "the sibling paths must come from config.env, not from this script"
-    cfg = (REPO / "workflow" / "config.env").read_text(encoding="utf-8")
+    cfg = (REPO / "FerroStep" / "workflow" / "config.env").read_text(encoding="utf-8")
     assert "SIBLING_REPO_CANDIDATES=" in cfg, "config.env must declare the setting, even if empty"
     # And read-only: no editing tool exists, and all three are denied by name.
     tools = SOURCE[SOURCE.index("REVIEWER_TOOLS="):].split("\n")[0]
@@ -633,11 +633,11 @@ def test_a_dry_run_does_not_execute_the_command_even_when_it_would_fail():
 
 
 def test_the_reviewer_launches_with_its_roster_entry_s_model_and_effort(run):
-    """Owner, 2026-09-02: the model and effort come from the reviewer's entry in config.yaml.
+    """Owner, 2026-09-02: the model and effort come from the reviewer's entry in FerroStep/config.yaml.
     The expected values are READ from the roster here, not typed — a literal in this test
     would be the second copy the arrangement exists to remove."""
     import yaml
-    entry = yaml.safe_load(open(os.path.join(REPO, "config.yaml")))["agents"]["reviewer"]
+    entry = yaml.safe_load(open(os.path.join(REPO, "FerroStep", "config.yaml")))["agents"]["reviewer"]
     rc, out = run("--range", "HEAD~1..HEAD", "--dry-run")
     assert rc == 0, out
     assert f"--model {entry['model']} --effort {entry['effort']}" in out, out

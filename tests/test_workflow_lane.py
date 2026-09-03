@@ -1,6 +1,6 @@
-"""`workflow/` — the merge gate and the tracker script.
+"""`FerroStep/workflow/` — the merge gate and the tracker script.
 
-These two are where the workflow stopped being prose. `workflow/WORKFLOW.md` describes a state
+These two are where the workflow stopped being prose. `FerroStep/workflow/WORKFLOW.md` describes a state
 machine and two mandatory-comment rules; `issue.py` refuses the violations and
 `merge_branch.sh` refuses the merge. This repo's most expensive recurring lesson is that **a
 rule in a file is not an enforcement mechanism**, so what is pinned here is the refusing, not
@@ -10,7 +10,7 @@ the wording.
 2026-08-17 the property that made the lane safe was "nothing here can push"; then it became
 "nothing merges while an issue is open, review or escalated"; **since 2026-08-20 it is a
 SEVERITY FLOOR** — nothing merges while a finding sits at or above the threshold configured in
-`workflow/config.env`, is ungraded, or is escalated; anything below it rides to a follow-up.
+`FerroStep/workflow/config.env`, is ungraded, or is escalated; anything below it rides to a follow-up.
 Each restatement is narrower than the last, and the reason the assertions below are specific
 about which one is in force. ⚠ The threshold itself is not named here on purpose: it is
 configurable, and a copy of it in a docstring is a copy that goes stale on the next pivot.
@@ -27,11 +27,11 @@ import urllib.parse
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-MERGE = REPO / "workflow" / "scripts" / "merge_branch.sh"
-ISSUE = REPO / "workflow" / "scripts" / "issue.py"
+MERGE = REPO / "FerroStep" / "workflow" / "scripts" / "merge_branch.sh"
+ISSUE = REPO / "FerroStep" / "workflow" / "scripts" / "issue.py"
 MERGE_SRC = MERGE.read_text(encoding="utf-8")
 ISSUE_SRC = ISSUE.read_text(encoding="utf-8")
-WORKFLOW_MD = (REPO / "workflow" / "WORKFLOW.md").read_text(encoding="utf-8")
+WORKFLOW_MD = (REPO / "FerroStep" / "workflow" / "WORKFLOW.md").read_text(encoding="utf-8")
 
 # ⚠ COMMENTS STRIPPED BEFORE ANY SEARCH FOR AN OPERATION.
 #
@@ -124,11 +124,11 @@ def test_it_parses():
 # --- the tracker script -----------------------------------------------------------------
 
 def _definition():
-    """workflow/sonora-lane.json — the lane definition the engine referees. Since phase 2 it
+    """FerroStep/workflow/sonora-lane.json — the lane definition the engine referees. Since phase 2 it
     is the ONE copy of the state machine (the TRANSITIONS dict these tests used to read from
     issue.py's AST is gone), so the definition is what gets pinned."""
     import json
-    return json.loads((REPO / "workflow" / "sonora-lane.json").read_text(encoding="utf-8"))
+    return json.loads((REPO / "FerroStep" / "workflow" / "sonora-lane.json").read_text(encoding="utf-8"))
 
 
 def test_every_counter_the_lane_declares_is_a_column_the_adapter_map_carries():
@@ -167,7 +167,7 @@ def test_every_counter_the_lane_declares_is_a_column_the_adapter_map_carries():
     lane = _definition()
     declared = sorted(c["name"] for c in lane.get("counters") or [])
     mapped = sorted(json.loads(
-        (REPO / "workflow" / "issues.map.json").read_text(encoding="utf-8"))["counter_fields"])
+        (REPO / "FerroStep" / "workflow" / "issues.map.json").read_text(encoding="utf-8"))["counter_fields"])
 
     # ⚠ A floor first: two empty lists are equal and would prove nothing.
     assert declared, "the lane declares no counters — the pass ceiling is the lane's mechanism"
@@ -446,23 +446,23 @@ def test_the_workflow_map_matches_the_states_the_code_enforces():
     """WORKFLOW.md is the map; drift between it and the scripts is the failure this catches."""
     for state in ("open", "review", "escalated", "closed"):
         assert f"`{state}`" in WORKFLOW_MD
-    assert "workflow/scripts/merge_branch.sh" in WORKFLOW_MD
+    assert "FerroStep/workflow/scripts/merge_branch.sh" in WORKFLOW_MD
 
 
 # --- portability ------------------------------------------------------------------------
 
-CONFIG = (REPO / "workflow" / "config.env").read_text(encoding="utf-8")
+CONFIG = (REPO / "FerroStep" / "workflow" / "config.env").read_text(encoding="utf-8")
 
 
 def test_the_repo_slug_is_not_hardcoded_anywhere_in_the_lane():
     """⚠ THE ONE FAILURE A COPY-PASTE PORT PRODUCES SILENTLY.
 
-    `workflow/` is meant to be copied into another repo wholesale. A hardcoded slug survives
+    `FerroStep/workflow/` is meant to be copied into another repo wholesale. A hardcoded slug survives
     that copy and files the NEW repo's issues against the OLD one, where they look entirely
     normal — right title, right branch, right author — and nothing ever flags them. So the slug
     is derived from `git remote get-url origin` and no file in the lane may name one.
     """
-    for path in sorted((REPO / "workflow").rglob("*")):
+    for path in sorted((REPO / "FerroStep" / "workflow").rglob("*")):
         if not (path.is_file() and path.suffix in (".sh", ".py")):
             continue
         code = "\n".join(l.split("#", 1)[0] for l in path.read_text(encoding="utf-8").splitlines())
@@ -490,7 +490,7 @@ def test_every_setting_has_a_fallback_in_the_scripts():
 
 def test_porting_instructions_exist_and_name_the_untravelled_parts():
     """A port that silently lacks the hook turns escalation into a one-way door."""
-    for needed in ("Porting this lane", "@workflow/DEVELOPER.md", "config.env",
+    for needed in ("Porting this lane", "@FerroStep/personas/DEVELOPER.md", "config.env",
                    "user_decision", "DOES NOT TRAVEL"):
         assert needed in WORKFLOW_MD, needed
 
@@ -502,16 +502,16 @@ def test_escalation_comments_are_required_to_be_ste():
     assert "ste_warnings" in ISSUE_SRC
     assert "ASD-STE100" in ISSUE_SRC
     assert "NECESSARY, NOT SUFFICIENT" in ISSUE_SRC
-    dev = (REPO / "workflow" / "DEVELOPER.md").read_text(encoding="utf-8")
+    dev = (REPO / "FerroStep" / "personas" / "DEVELOPER.md").read_text(encoding="utf-8")
     assert "ESCALATION COMMENT IS THE EXCEPTION" in dev
 
 
 # --- the full code review ----------------------------------------------------------------
 
-FULL = REPO / "workflow" / "scripts" / "full_review.sh"
+FULL = REPO / "FerroStep" / "workflow" / "scripts" / "full_review.sh"
 FULL_SRC = FULL.read_text(encoding="utf-8")
 FULL_CODE = "\n".join(l.split("#", 1)[0] for l in FULL_SRC.splitlines())
-LAUNCHER = (REPO / "workflow" / "scripts" / "request_review.sh").read_text(encoding="utf-8")
+LAUNCHER = (REPO / "FerroStep" / "workflow" / "scripts" / "request_review.sh").read_text(encoding="utf-8")
 
 
 def test_full_review_cuts_a_dated_branch_with_no_upstream():
@@ -578,14 +578,14 @@ def test_the_brief_is_built_without_nesting_heredocs_in_the_brief_string():
 
 def test_the_reviewer_persona_knows_about_full_reviews():
     """The launcher's brief and the persona are a machine contract split across two files."""
-    rev = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
+    rev = (REPO / "FerroStep" / "personas" / "REVIEWER.md").read_text(encoding="utf-8")
     assert "FULL CODE REVIEW" in rev
     assert "Porting this lane" in WORKFLOW_MD
 
 
 def test_full_review_is_declared_in_the_manifest():
     manifest = (REPO / "scripts" / "pipeline_manifest.py").read_text(encoding="utf-8")
-    assert "workflow/scripts/full_review.sh" in manifest
+    assert "FerroStep/workflow/scripts/full_review.sh" in manifest
 
 
 # --------------------------------------------------------------------------------------
@@ -864,7 +864,7 @@ def test_the_zero_warning_does_not_refuse():
 
 # --- the reviewer's routing rule (owner, 2026-08-21) --------------------------------------
 
-REVIEWER_MD = (REPO / "workflow" / "REVIEWER.md").read_text(encoding="utf-8")
+REVIEWER_MD = (REPO / "FerroStep" / "personas" / "REVIEWER.md").read_text(encoding="utf-8")
 
 
 def test_the_reviewer_is_not_told_to_reopen_from_a_state_the_code_refuses():
@@ -877,7 +877,7 @@ def test_the_reviewer_is_not_told_to_reopen_from_a_state_the_code_refuses():
     reviewer has no way to discover that, because a persona is the one document it cannot
     check against the code. This test is what makes the two move together.
 
-    ⚠ `workflow/*.md` IS OUTSIDE THE DOC-CLAIMS GATE, which enumerates `notes/*.md`, the root
+    ⚠ `FerroStep/workflow/*.md` IS OUTSIDE THE DOC-CLAIMS GATE, which enumerates `notes/*.md`, the root
     README and `configs/data` (scripts/gates/test_doc_claims.py:476-485). So no existing
     mechanism would have caught this drift; assuming the gate covers a persona is itself the
     error this pins.
@@ -912,7 +912,7 @@ def test_the_routing_rule_says_to_file_when_in_doubt():
 def _issue_module():
     """issue.py loaded as a module, so `cmd_file` can be driven against a fake tracker.
 
-    ⚠ Loaded by path rather than imported: `workflow/scripts/` is not a package and the file
+    ⚠ Loaded by path rather than imported: `FerroStep/workflow/scripts/` is not a package and the file
     is executable-first. The same loader appears in test_merge_floor.py for the same reason.
     """
     spec = importlib.util.spec_from_file_location("issue_mod", ISSUE)

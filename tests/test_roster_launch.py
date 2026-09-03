@@ -1,7 +1,7 @@
 """The reviewer's model and effort come from ITS ROSTER ENTRY, and from nowhere else.
 
 Owner, 2026-09-02: Janis runs Fable 5.1 at high. The values are `model:` / `effort:` on the
-reviewer entry in config.yaml; `workflow/scripts/roster_launch.py` reads them and
+reviewer entry in FerroStep/config.yaml; `FerroStep/workflow/scripts/roster_launch.py` reads them and
 `request_review.sh` evals what it emits. Two things are asserted here:
 
   * the reader is a READER — a temp roster's values come back verbatim, quoted for a shell;
@@ -9,7 +9,7 @@ reviewer entry in config.yaml; `workflow/scripts/roster_launch.py` reads them an
     unknown title each REFUSE. A default would be the second copy the module was written to
     remove, and the one that wins silently when the roster's key is misspelt.
 
-⚠ The real config.yaml is checked too, but only for SHAPE (present, on the ladder), never for
+⚠ The real FerroStep/config.yaml is checked too, but only for SHAPE (present, on the ladder), never for
 a value: a test that says "the model is X" is a copy of X that goes stale on the next owner
 change, which is the drift this whole arrangement exists to end.
 """
@@ -23,7 +23,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 # Loaded by path, as test_merge_floor.py does: a hand `sys.path.insert` leaks into every
 # later module (tests/test_stage_coverage.py polices exactly that).
 _SPEC = importlib.util.spec_from_file_location(
-    "roster_launch", REPO / "workflow" / "scripts" / "roster_launch.py")
+    "roster_launch", REPO / "FerroStep" / "workflow" / "scripts" / "roster_launch.py")
 rl = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(rl)
 
@@ -32,11 +32,11 @@ agents:
   developer:
     name: PJ
     email: pj@example.invalid
-    persona: workflow/DEVELOPER.md
+    persona: FerroStep/personas/DEVELOPER.md
   reviewer:
     name: J
     email: j@example.invalid
-    persona: workflow/REVIEWER.md
+    persona: FerroStep/personas/REVIEWER.md
 """
 
 
@@ -95,5 +95,5 @@ def test_the_ladder_is_the_cli_s():
 
 def test_the_real_reviewer_entry_resolves():
     """Shape only — see the module docstring for why no value is asserted."""
-    s = rl.launch_settings(str(REPO / "config.yaml"), "reviewer")
+    s = rl.launch_settings(str(REPO / "FerroStep" / "config.yaml"), "reviewer")
     assert s["model"] and s["effort"] in rl.EFFORTS

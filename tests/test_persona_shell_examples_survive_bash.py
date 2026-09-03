@@ -38,7 +38,7 @@ import re
 REPO = pathlib.Path(__file__).resolve().parents[1]
 # The documents that hand an agent a command to run. `WORKFLOW.md` is included because
 # DEVELOPER.md §3 says it outranks the persona wherever the two differ — so it is read too.
-PERSONA_DOCS = ["workflow/REVIEWER.md", "workflow/DEVELOPER.md", "workflow/WORKFLOW.md"]
+PERSONA_DOCS = ["FerroStep/personas/REVIEWER.md", "FerroStep/personas/DEVELOPER.md", "FerroStep/workflow/WORKFLOW.md"]
 
 # The options whose values are free prose written by an agent, and therefore the ones that
 # attract backticks. `--branch`, `--severity`, `--kind` and friends take fixed vocabularies

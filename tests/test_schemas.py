@@ -247,11 +247,11 @@ def test_no_source_directory_would_swallow_a_new_file():
     import subprocess
 
     roots = sorted({str(p.parent.relative_to(REPO))
-                    for d in ("scripts", "tests", "matcha", "configs", "workflow")
+                    for d in ("scripts", "tests", "matcha", "configs", "FerroStep")
                     if (REPO / d).is_dir()
                     for p in (REPO / d).rglob("*.py")
                     if "__pycache__" not in p.parts})
-    roots += [d for d in ("scripts", "tests", "matcha", "workflow") if (REPO / d).is_dir()]
+    roots += [d for d in ("scripts", "tests", "matcha", "FerroStep") if (REPO / d).is_dir()]
     assert roots, "found no source directories — is the walk working?"
 
     probes = [f"{r}/_probe_new_file.py" for r in sorted(set(roots))]

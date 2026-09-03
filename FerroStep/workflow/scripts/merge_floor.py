@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The merge floor's one decision: does this issue ride, or does it block?
 
-⚠⚠ THE THRESHOLD IS NOT SET HERE. It is `MERGE_SEVERITY_FLOOR` in `workflow/config.env`, and
+⚠⚠ THE THRESHOLD IS NOT SET HERE. It is `MERGE_SEVERITY_FLOOR` in `FerroStep/workflow/config.env`, and
 that is the only place it may be set (owner, 2026-08-20). This module reads it.
 
 WHY. The rule was previously spelled out in prose in eight places — scripts, personas, the
@@ -32,7 +32,7 @@ Everything below fails CLOSED, deliberately:
   * a HALTED state blocks at ANY severity. Severity says how bad a finding is; halted says a
     human is waiting, and the floor does not get to overrule the second with the first.
     ⚠ WHICH states are halted or terminal is the LANE DEFINITION's fact, not this module's
-    (phase 2): `rideable_states()` derives the whitelist from workflow/sonora-lane.json, and
+    (phase 2): `rideable_states()` derives the whitelist from FerroStep/workflow/sonora-lane.json, and
     an unreadable definition blocks everything.
 """
 import os
@@ -54,7 +54,7 @@ def rideable_states(path=None):
     ⚠ DERIVED, NOT DECLARED (phase 2, 2026-08-24). This was `frozenset({"open", "review"})`
     beside a comment explaining why `escalated` and `closed` are excluded — a second copy of
     state semantics the definition already carries, which would disagree with it the day a
-    state is added. workflow/sonora-lane.json is the one copy; this module reads it.
+    state is added. FerroStep/workflow/sonora-lane.json is the one copy; this module reads it.
 
     ⚠ FAILS CLOSED like everything else here: a missing, unreadable or malformed definition
     returns the EMPTY set, so every state blocks — a gate that cannot read its own rules

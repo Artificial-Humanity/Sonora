@@ -25,7 +25,7 @@ below cannot match one — but that is a property of the pattern, and
 WHAT IT DOES NOT COVER — read this before trusting a pass
 ---------------------------------------------------------
 * ⚠ **THE FILE SET — read this first, because it is what a green run is scoped to.** Both
-  halves scan `repo_markdown()`: every TRACKED `.md` except `workflow/`. That is 50 of the
+  halves scan `repo_markdown()`: every TRACKED `.md` except `FerroStep/`. That is 50 of the
   repo's 53 today. It was `notes/`+`docs/`+`workflow/`+3 root files — 38 of 53 — while this
   banner said "every relative link this repo owns resolves", and **7 dead links were living
   in one of the 15 files it never opened** (#261). Untracked markdown is deliberately not
@@ -74,7 +74,7 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 # the tuple still listed `workflow/`, which the owner excluded. A second scan set is a second
 # thing to keep in sync; this gate has now had three and been wrong about which was live.
 
-# ⚠⚠ THIS REPO'S SCAN IS EVERY TRACKED `.md`, MINUS `workflow/` — one set for BOTH halves.
+# ⚠⚠ THIS REPO'S SCAN IS EVERY TRACKED `.md`, MINUS `FerroStep/` — one set for BOTH halves.
 #
 # It was `PROSE_DIRS + ROOT_DOCS` for links and a different, wider set for `§N` citations, and
 # BOTH were wrong in the same direction. Measured (#261): the link half read **38 of the
@@ -89,12 +89,18 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 # that is exactly what the link half's blind spot then produced (#260). Two halves of one gate
 # disagreeing about which files exist is a second thing to keep in sync and nobody was.
 #
-# ⚠ `workflow/` IS EXCLUDED, both halves, by owner ruling 2026-08-21: the review lane is
+# ⚠ `FerroStep/` IS EXCLUDED, both halves, by owner ruling 2026-08-21: the review lane is
 # retired and this gate is scoped to Sonora's own code and docs. A dead link or a `§N` inside
 # `REVIEWER.md` is not a Sonora defect and must not fail a Sonora merge. The honest cost is
 # stated at `section_citations`: `CLAUDE.md:21` cites a `REVIEWER.md §0` that does not exist,
 # and this gate steps over it deliberately.
-_SCAN_EXCLUDE = ("workflow/",)
+#
+# ⚠ Widened from `FerroStep/workflow/` when the lane's deployment folder split the persona
+# docs into `FerroStep/personas/` (consolidation, 2026-09-03): the ruling was never about the
+# `workflow/` directory name, it was about the review lane's OWN documents, which now span
+# two subdirectories of one folder. A prefix match on the narrower name would have silently
+# started scanning REVIEWER.md and DEVELOPER.md the moment they moved.
+_SCAN_EXCLUDE = ("FerroStep/",)
 
 
 
@@ -135,7 +141,7 @@ EXTERNAL = ("http://", "https://", "mailto:", "file://", "#")
 
 # Sibling checkouts whose links point INTO this repo. Colon-separated, `~` allowed, relative
 # paths resolve from the repo root — the same shape as `SIBLING_REPO_CANDIDATES` in
-# workflow/config.env, which already solved this problem for the reviewer.
+# FerroStep/workflow/config.env, which already solved this problem for the reviewer.
 # ⚠ CANDIDATES, NOT REQUIREMENTS. Each one that is absent is printed and skipped.
 SIBLING_ENV = "SONORA_SIBLING_REPOS"
 SIBLING_DEFAULTS = (

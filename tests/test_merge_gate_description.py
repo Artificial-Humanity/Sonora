@@ -119,19 +119,20 @@ HARDCODED = [
 # Where naming the value is the point rather than a copy: config.env DEFINES it, merge_floor
 # and its tests EXERCISE the ladder, and this file lists the spellings it hunts.
 VALUE_OWNERS = (
-    "workflow/config.env",
-    "workflow/scripts/merge_floor.py",
+    "FerroStep/workflow/config.env",
+    "FerroStep/workflow/scripts/merge_floor.py",
     "tests/test_merge_floor.py",
     "tests/test_merge_gate_description.py",
 )
 
 
 def test_no_document_hardcodes_the_configured_threshold():
-    """⚠ THE OWNER'S RULING, AS A CHECK. The floor moved into `workflow/config.env` so a pivot
+    """⚠ THE OWNER'S RULING, AS A CHECK. The floor moved into `workflow/config.env` (now
+    `FerroStep/workflow/config.env`) so a pivot
     is one edit. That only holds while no document repeats the value — and the history here is
     unambiguous: the same rule spelled out in prose survived three sweeps and a first guard.
 
-    A pointer ("the floor set in workflow/config.env") never goes stale. "MEDIUM and above
+    A pointer ("the floor set in FerroStep/workflow/config.env") never goes stale. "MEDIUM and above
     blocks" goes stale the moment someone changes the setting, and nothing would say so.
     """
     hits = []
@@ -150,7 +151,7 @@ def test_no_document_hardcodes_the_configured_threshold():
                 hits.append(f"{rel}:{n}: {line.strip()[:100]}")
     assert not hits, (
         "these name the merge floor's threshold instead of pointing at MERGE_SEVERITY_FLOOR "
-        "in workflow/config.env, which is the single place it is set:\n  " + "\n  ".join(hits))
+        "in FerroStep/workflow/config.env, which is the single place it is set:\n  " + "\n  ".join(hits))
 
 
 def test_the_guard_can_actually_fail():
@@ -181,7 +182,7 @@ def test_the_HARDCODED_guard_can_actually_fail():
         assert any(p.search(text) for p in HARDCODED), f"not caught: {text!r}"
 
     # …and it must not fire on the pointer form, or the fix would be unwritable.
-    for ok in ["a finding at or above the floor set in workflow/config.env blocks",
+    for ok in ["a finding at or above the floor set in FerroStep/workflow/config.env blocks",
                "grade this finding LOW unless it misdirects work",
                "anything below the floor rides to a follow-up branch"]:
         assert not any(p.search(ok) for p in HARDCODED), f"false positive: {ok!r}"

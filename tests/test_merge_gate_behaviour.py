@@ -26,7 +26,7 @@ tests never execute the floor rule. They exercise the SHELL half: how already-cl
 are routed, which of the two refusals is printed, and the exit status.
 
 Measured, not assumed, and re-measured 2026-08-21 against the configured floor. Setting
-`MERGE_SEVERITY_FLOOR=low` in `workflow/config.env` makes **nothing** rideable — there is no
+`MERGE_SEVERITY_FLOOR=low` in `FerroStep/workflow/config.env` makes **nothing** rideable — there is no
 severity below the bottom of the ladder — and turns the floor back into the zero-open-issues
 gate it replaced. Under that mutation:
 
@@ -49,7 +49,7 @@ import subprocess
 import pytest
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPT = os.path.join(REPO, "workflow", "scripts", "merge_branch.sh")
+SCRIPT = os.path.join(REPO, "FerroStep", "workflow", "scripts", "merge_branch.sh")
 
 
 @pytest.fixture

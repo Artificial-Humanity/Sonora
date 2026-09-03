@@ -2,7 +2,7 @@
 #
 # full_review.sh — the periodic whole-codebase review the owner asks for by name.
 #
-#     workflow/scripts/full_review.sh [--date YYYY-MM-DD] [--dry-run] [-- <request_review args>]
+#     FerroStep/workflow/scripts/full_review.sh [--date YYYY-MM-DD] [--dry-run] [-- <request_review args>]
 #
 # Cuts `review-YYYY-MM-DD` from the base branch and starts a FULL review on it: no commit
 # range, no history, just the code as it stands (owner, 2026-08-17).
@@ -78,8 +78,8 @@ else
 fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "  would run: workflow/scripts/request_review.sh --full ${PASSTHRU[*]:-}"
+  echo "  would run: FerroStep/workflow/scripts/request_review.sh --full ${PASSTHRU[*]:-}"
   exit 0
 fi
 
-exec "$REPO_ROOT/workflow/scripts/request_review.sh" --full "${PASSTHRU[@]}"
+exec "$REPO_ROOT/FerroStep/workflow/scripts/request_review.sh" --full "${PASSTHRU[@]}"

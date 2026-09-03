@@ -26,9 +26,9 @@
   "//24": "severity PATCH until it routes through apply. That is a real decision with a",
   "//25": "blast radius, and it is not this install's decision.",
   "//26": "",
-  "//27": "The map below MUST stay identical to workflow/issues.map.json, which is the same",
+  "//27": "The map below MUST stay identical to FerroStep/workflow/issues.map.json, which is the same",
   "//28": "map in the shape the ferrostep CLI's --map takes. Two copies, one fact: checked",
-  "//29": "with `jq -S .map workflow/issues.emit.json` vs `jq -S . workflow/issues.map.json`.",
+  "//29": "with `jq -S .map FerroStep/workflow/issues.emit.json` vs `jq -S . FerroStep/workflow/issues.map.json`.",
 
   "map": {
     "records": "issues",

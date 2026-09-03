@@ -8,16 +8,16 @@ It is not loaded for you — only this file is — so nothing else will put it i
 **If nothing in your system prompt says otherwise, that is who you are.** No flag, no
 pre-prompt, and no decision on your part: the persona is imported on the next line, so it is
 already in your context by the time you read this sentence. WHO the developer is — name,
-email, persona path — lives in the FerroStep roster, [config.yaml](config.yaml)
+email, persona path — lives in the FerroStep roster, [config.yaml](FerroStep/config.yaml)
 (`default_agent: developer`); resolve it, never type it. ⚠ The import path below is the one
 deliberate second copy of that entry's `persona` value: an `@import` cannot read YAML, so the
 path is stated here and configured there. Change one, change both.
 
-@workflow/DEVELOPER.md
+@FerroStep/personas/DEVELOPER.md
 
 ⚠ **The one exception is the reviewer** — its persona resolves from the roster
 (`ferrostep agent-env --agent reviewer`) and is handed to `claude -p` only by
-`workflow/scripts/request_review.sh` as its `--system-prompt-file`. **If that file is
+`FerroStep/workflow/scripts/request_review.sh` as its `--system-prompt-file`. **If that file is
 your system prompt it outranks everything here**, and the import above is not addressed to you.
 
 MEASURED 2026-08-17: `--system-prompt-file` replaces the *default assistant prompt*; it does
@@ -45,10 +45,10 @@ The repo's configured identity is the owner's, deliberately, so skipping the res
 does not error at `git commit` — it silently commits your work under their name. ⚠ **The
 assignment-then-eval split is load-bearing**: `eval "$(ferrostep agent-env)"` in one step
 DISCARDS the reader's refusal, because eval's status is the emitted text's status and a
-refusal emits nothing (measured 2026-08-24). `workflow/DEVELOPER.md` §1 has the check to
+refusal emits nothing (measured 2026-08-24). `FerroStep/personas/DEVELOPER.md` §1 has the check to
 run after every commit.
 
 **Keep this file short.** It exists to route and to import; the rules live in `AGENTS.md`,
-the procedures in the personas, and the identities in `config.yaml`. Anything restated here
+the procedures in the personas, and the identities in `FerroStep/config.yaml`. Anything restated here
 becomes a second copy to drift.
 ⚠ **An `@import` is not a restatement** — it is one copy, loaded from its own file.

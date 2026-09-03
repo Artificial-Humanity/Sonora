@@ -51,12 +51,12 @@ review_cycle.sh — run the review loop to convergence. NEVER PUSHES.
   --range <RANGE>     Two-dot range under review.       (default: origin/main..HEAD)
   --developer <ID>    Worker identity.                  (default: Ozzy)
   --max-reviews <N>   Hard ceiling on reviews.   (default: the definition's fix-pass
-                      ceiling + 1 — agent_passes.max in workflow/sonora-lane.json)
+                      ceiling + 1 — agent_passes.max in FerroStep/workflow/sonora-lane.json)
                       That sum is what the fix-pass cap requires: the review that finds
                       an issue, then one after each fix pass.
   --max-usd <N>       Spend ceiling PER claude call.    (default: 5)
   --model / --effort  The WORKER's only.      (default: claude-fable-5-1 / high)
-                      The reviewer's are its roster entry in config.yaml; this driver
+                      The reviewer's are its roster entry in FerroStep/config.yaml; this driver
                       does not forward them to request_review.sh and never did.
   --stop-file <PATH>  Create this file to halt.  (default: <repo>/.review_cycle.stop)
   --dry-run           Print the plan and exit. Spends nothing, files nothing.
@@ -120,18 +120,18 @@ cd "$REPO_ROOT"
 [[ "$STOPFILE" == */ || -d "$STOPFILE" ]] && die "--stop-file must name a file, not a
      directory: $STOPFILE"
 [[ "$STOPFILE" != /* ]] && STOPFILE="$REPO_ROOT/$STOPFILE"
-[[ -x workflow/scripts/request_review.sh ]] || die "workflow/scripts/request_review.sh not found or not executable"
-[[ -r workflow/DEVELOPER.md ]] || die "workflow/DEVELOPER.md not readable"
+[[ -x FerroStep/workflow/scripts/request_review.sh ]] || die "FerroStep/workflow/scripts/request_review.sh not found or not executable"
+[[ -r FerroStep/personas/DEVELOPER.md ]] || die "FerroStep/personas/DEVELOPER.md not readable"
 # ⚠ DERIVED from the lane definition — this was a hardcoded `^[1-4]$`, the cap's arithmetic
 # shadow (max+1) wearing a refusal, which would have silently disagreed with any owner
 # change to agent_passes.max (found 2026-08-24, the same day the cap moved).
-DEF_REVIEWS="$(python3 - "$REPO_ROOT/workflow/sonora-lane.json" <<'PY'
+DEF_REVIEWS="$(python3 - "$REPO_ROOT/FerroStep/workflow/sonora-lane.json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
 (c,) = [c for c in d.get("counters", []) if c.get("name") == "agent_passes"]
 print(int(c["max"]) + 1)
 PY
-)" || die "cannot derive the review ceiling from workflow/sonora-lane.json"
+)" || die "cannot derive the review ceiling from FerroStep/workflow/sonora-lane.json"
 [[ -n "$MAX_REVIEWS" ]] || MAX_REVIEWS="$DEF_REVIEWS"
 [[ "$MAX_REVIEWS" =~ ^[0-9]+$ && "$MAX_REVIEWS" -ge 1 && "$MAX_REVIEWS" -le "$DEF_REVIEWS" ]] \
   || die "--max-reviews must be 1..$DEF_REVIEWS (the definition's fix-pass ceiling + 1)"
@@ -150,7 +150,7 @@ NOTES_FILE="$REPO_ROOT/.review_cycle.notes"
 # LAST cycle's fix notes — describing fixes to a different range as though they were this one's.
 #
 # ⚠ THE `rm` IS LOAD-BEARING EVEN THOUGH `.gitignore` NOW LISTS THE FILE, because porting this
-# lane copies `workflow/` and nothing else (WORKFLOW.md, "Porting this lane"). A ported copy
+# lane copies `FerroStep/workflow/` and nothing else (WORKFLOW.md, "Porting this lane"). A ported copy
 # gets no `.gitignore` entry, so a driver that leaned on ignoring alone would arrive in the new
 # repo with the once-only bug intact. Ignoring keeps it out of `git status`; this keeps it out
 # of the next cycle.
@@ -322,7 +322,7 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 # the one of the three that did not. The gate and the driver disagreeing about which issues
 # belong to a branch is the same class as two copies of the severity ladder.
 # ⚠ SOURCED, NOT JUST READ FROM THE ENVIRONMENT. `merge_branch.sh` and `issue.py` both take
-# REPO_SLUG from workflow/config.env and fall back to `origin`; reading only the environment
+# REPO_SLUG from FerroStep/workflow/config.env and fall back to `origin`; reading only the environment
 # here would ignore a slug a ported lane has deliberately SET, and derive a different one from
 # origin — reintroducing the gate/driver disagreement this block exists to end, in the one
 # case where the two are not the same string.
@@ -372,15 +372,15 @@ fi
 WORKER_DENY=(
   "Bash(git push:*)"
   "Bash(git remote:*)"
-  "Bash(workflow/scripts/review_cycle.sh:*)" "Bash(./workflow/scripts/review_cycle.sh:*)"
-  "Bash(workflow/scripts/request_review.sh:*)" "Bash(./workflow/scripts/request_review.sh:*)"
+  "Bash(FerroStep/workflow/scripts/review_cycle.sh:*)" "Bash(./FerroStep/workflow/scripts/review_cycle.sh:*)"
+  "Bash(FerroStep/workflow/scripts/request_review.sh:*)" "Bash(./FerroStep/workflow/scripts/request_review.sh:*)"
   # ⚠ THE MERGE IS NOT THIS LOOP'S TO MAKE. `merge_branch.sh` merges to main AND PUSHES once
   # the tracker says the branch is settled — correct when Ozzy runs it deliberately, wrong for
   # an unattended fix loop, which would then be able to land its own work. The driver's job
   # ends at convergence; the merge is a separate, deliberate act.
-  "Bash(workflow/scripts/merge_branch.sh:*)" "Bash(./workflow/scripts/merge_branch.sh:*)"
+  "Bash(FerroStep/workflow/scripts/merge_branch.sh:*)" "Bash(./FerroStep/workflow/scripts/merge_branch.sh:*)"
 )
-# ⚠ `workflow/scripts/issue.py` is deliberately NOT denied: taking, commenting, escalating and moving
+# ⚠ `FerroStep/workflow/scripts/issue.py` is deliberately NOT denied: taking, commenting, escalating and moving
 # an issue to `review` IS the worker's job, and it is the one path that enforces the counter
 # cap and the mandatory-comment rules.
 
@@ -396,7 +396,7 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   [[ -f "$NOTES_FILE" ]] && NOTES_ARG=(--notes-file "$NOTES_FILE")
 
   set +e
-  OUT="$(workflow/scripts/request_review.sh --range "$RANGE" --developer "$DEVELOPER" \
+  OUT="$(FerroStep/workflow/scripts/request_review.sh --range "$RANGE" --developer "$DEVELOPER" \
           --pass "$review" \
           "${NOTES_ARG[@]+"${NOTES_ARG[@]}"}" 2>&1)"
   RC=$?
@@ -480,7 +480,7 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
           with it, including the zero above, was taken over nothing. Two things reach this,
           and this script cannot tell them apart:
             1. the slug names a repo the tracker does not have (the common one) — check it
-               against \`git remote get-url origin\` and workflow/config.env;
+               against \`git remote get-url origin\` and FerroStep/workflow/config.env;
             2. the slug is RIGHT and this repo has simply never had an issue filed — a first
                cycle on a newly adopted lane whose review found nothing. It self-heals as
                soon as any issue is ever filed.
@@ -505,7 +505,7 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   WORKER_BRIEF="## This fix pass
 
 You are **$DEVELOPER**, working in \`$REPO_ROOT\` on range \`$RANGE\`. Run by
-\`workflow/scripts/review_cycle.sh\`, unattended — **there is no one to ask**, so where you would
+\`FerroStep/workflow/scripts/review_cycle.sh\`, unattended — **there is no one to ask**, so where you would
 normally check, act on your best reading and say so in the issue comment.
 
 Issues to address: those under branch_name(s) \`$(IFS=,; echo "${REVIEW_TIPS[*]}")\` whose
@@ -540,7 +540,7 @@ you do not filter them out, and you do not work them.
   # also arrives via CLAUDE.md's `@import`, so this is belt-and-braces rather than the only
   # copy; it is kept because dropping it would be a behaviour change smuggled into a
   # syntax fix.)
-  WORKER_PROMPT="$(cat "$REPO_ROOT/workflow/DEVELOPER.md")
+  WORKER_PROMPT="$(cat "$REPO_ROOT/FerroStep/personas/DEVELOPER.md")
 
 $WORKER_BRIEF"
 

@@ -5,7 +5,7 @@ This is the inverse of `tests/test_reviewer_write_path.py`. That file asserts ev
 This one asserts everything **runnable** is **documented**, and it exists because the same
 seam has now been found from the other side.
 
-⚠ THE INSTANCE, AND THERE IS EXACTLY ONE — stated as one on purpose. `workflow/scripts/
+⚠ THE INSTANCE, AND THERE IS EXACTLY ONE — stated as one on purpose. `FerroStep/workflow/scripts/
 review_cycle.sh` is a 469-line driver that runs the whole review loop to convergence. It was
 named in three files (`CLAUDE.md`, `AGENTS.md`, `REVIEWER.md`) and **by no line addressed to
 the role that runs it**: two of those are warnings about not inferring your role from the
@@ -41,11 +41,11 @@ import subprocess
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
 # The developer's reading set: its own persona, plus the map that outranks it (DEVELOPER.md §3).
-DEV_DOCS = ["workflow/DEVELOPER.md", "workflow/WORKFLOW.md"]
+DEV_DOCS = ["FerroStep/personas/DEVELOPER.md", "FerroStep/workflow/WORKFLOW.md"]
 
 
 def _lane_scripts():
-    out = subprocess.run(["git", "ls-files", "workflow/scripts/*"],
+    out = subprocess.run(["git", "ls-files", "FerroStep/workflow/scripts/*"],
                          cwd=REPO, capture_output=True, text=True, check=True)
     return [p for p in out.stdout.split() if p and "__pycache__" not in p]
 

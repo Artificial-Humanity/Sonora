@@ -436,7 +436,8 @@ def test_in_repo_asset_paths_resolve(rel):
     "fix the path".
 
     ⚠ SCOPE: `scripts/**/*.py` only (see SCRIPTS). #207 also asked for shell scripts, whose
-    live population was entirely under `workflow/` — retired by owner ruling 2026-08-21, so
+    live population was entirely under `workflow/` (now `FerroStep/workflow/`) — retired by
+    owner ruling 2026-08-21, so
     that half is deliberately NOT here and #207 stays open for it.
     """
     broken = []

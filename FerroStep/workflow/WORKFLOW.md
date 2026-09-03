@@ -42,7 +42,7 @@ Two facts stay in words, because they are WHY the data says what it says:
 
 ## 2. The review cycle
 
-1. **Ozzy runs `workflow/scripts/request_review.sh`** to call Janis.
+1. **Ozzy runs `FerroStep/workflow/scripts/request_review.sh`** to call Janis.
 2. **Janis wakes in a `-p` session and asks one question first: are there already issues under
    this `branch_name`?** That answer, and nothing else, decides which review this is.
    * **none → INITIAL review**
@@ -72,7 +72,7 @@ The owner periodically asks for a **"full code review"**. It is the same loop wi
 difference: **there is no commit range.**
 
 ```bash
-workflow/scripts/full_review.sh          # cuts review-YYYY-MM-DD from main, then reviews
+FerroStep/workflow/scripts/full_review.sh          # cuts review-YYYY-MM-DD from main, then reviews
 ```
 
 1. A branch **`review-YYYY-MM-DD`** is cut from `main` (today's date). It starts with **zero
@@ -101,9 +101,9 @@ Ozzy fixed some, and this is the next review.
 
 1. Ozzy reads the issues for this branch.
 2. **Clears the SEVERITY FLOOR → merge to `main`, push, and the workflow ends.** Use
-   `workflow/scripts/merge_branch.sh`, which re-checks the tracker server-side and refuses
+   `FerroStep/workflow/scripts/merge_branch.sh`, which re-checks the tracker server-side and refuses
    otherwise. ⚠ **The floor is not zero-open-issues** (owner, ratified 2026-08-19, built 2026-08-20).
-   **A finding at or above the severity floor set in `workflow/config.env` blocks; anything below it
+   **A finding at or above the severity floor set in `FerroStep/workflow/config.env` blocks; anything below it
    rides to a follow-up branch**; ungraded and escalated block at any severity.
    ⚠ **The threshold is deliberately NOT repeated here** — that file is the only place it is
    set, and a second copy is one that goes stale the moment someone reconfigures it. A finding that rides is still open — move it to a
@@ -132,7 +132,7 @@ Ozzy fixed some, and this is the next review.
 ⚠ **STEPS 1–4 HAVE A DRIVER, AND IT IS THE NORMAL PATH:**
 
 ```bash
-workflow/scripts/review_cycle.sh --range origin/main..HEAD --developer Ozzy
+FerroStep/workflow/scripts/review_cycle.sh --range origin/main..HEAD --developer Ozzy
 ```
 
 It runs this cycle to convergence unattended — review, fix, review — stopping at
@@ -170,23 +170,27 @@ asserts every lane command has a runnable line in this file or `DEVELOPER.md`.
 
 ## Porting this lane to another repo
 
-The goal is a copy plus two lines. `workflow/` is meant to be self-contained: personas, map,
-scripts and settings.
+The goal is a copy plus two lines. `FerroStep/` is meant to be self-contained: the roster
+(`config.yaml`), the personas, the map, the scripts and the settings — one folder, adopted
+directly by `ferrostep-roster`'s discovery (2026-09-03: this is the same deployment folder
+FerroTrack and AI-Lab-AMD carry, not a Sonora-specific shape).
 
-1. **Copy `workflow/` into the new repo.**
+1. **Copy the whole `FerroStep/` folder into the new repo.** `config.yaml`,
+   `FerroStep/personas/` and `FerroStep/workflow/` move together; splitting them defeats the
+   one thing the folder buys.
 2. **Add the import to that repo's `CLAUDE.md`.** This is what makes the developer role need no
    flag — and `CLAUDE.md` is the only file Claude Code auto-discovers, while `AGENTS.md` is
    **not**, so this line is what makes any of the rest reachable at all:
 
    ```markdown
    ## By default you are the developer
-   @workflow/DEVELOPER.md
+   @FerroStep/personas/DEVELOPER.md
    ```
 
-   (Identities come from the FerroStep roster — copy `config.yaml` to the new repo root
-   and edit its names, emails and persona paths there; nothing else restates them.)
+   (Identities come from the FerroStep roster — edit `FerroStep/config.yaml`'s names, emails
+   and persona paths for the new repo; nothing else restates them.)
 
-3. **Check `workflow/config.env`** — the only file with per-repo settings, and every value has
+3. **Check `FerroStep/workflow/config.env`** — the only file with per-repo settings, and every value has
    a working default. ⚠ **Leave `REPO_SLUG` empty** so it derives from
    `git remote get-url origin`: a hardcoded slug that survives the copy files the *new* repo's
    issues against the *old* one, where they look entirely normal and nothing ever flags them.
@@ -199,8 +203,8 @@ scripts and settings.
   four values — plus, since the referee cutover, `ferrostep_version` on `issues` and the
   `ferrostep_events` collection, created by FerroStep's provisioning, not by these scripts.
 * **The referee itself.** The `ferrostep` binary (installed via cargo), and this lane's two
-  data files — `workflow/sonora-lane.json` (rename its `name` for the new lane) and
-  `workflow/issues.map.json`. Without the binary NO state moves at all; `issue.py` refuses
+  data files — `FerroStep/workflow/sonora-lane.json` (rename its `name` for the new lane) and
+  `FerroStep/workflow/issues.map.json`. Without the binary NO state moves at all; `issue.py` refuses
   by name rather than falling back to writing state itself.
 * **The `user_decision` release hook** — since 2026-08-24 a block inside the generated
   FerroStep hooks installed on the tracker. It is what returns a decided issue to `open`
@@ -232,7 +236,7 @@ deliberate owner ruling rather than a drift. They are listed so no one "restores
 And one later than the four, same rule — listed so no one "restores" it either:
 
 * **The state machine left prose and code for data** (owner directive, 2026-08-24, phase 2):
-  `workflow/sonora-lane.json`, enforced by the FerroStep engine. issue.py's `TRANSITIONS`
+  `FerroStep/workflow/sonora-lane.json`, enforced by the FerroStep engine. issue.py's `TRANSITIONS`
   dict, its cap check and its mandatory-comment refusals are DELETED, not disabled — the
   engine's refusals are the one copy, and re-adding a coded guard beside them would be two
   refusals for one rule, disagreeing the day one is edited.

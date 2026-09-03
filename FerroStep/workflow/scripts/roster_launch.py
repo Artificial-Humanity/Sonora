@@ -1,7 +1,7 @@
 """How an agent in the roster is LAUNCHED: which model, at which effort.
 
 ⚠⚠ THE VALUES ARE NOT SET HERE. They are the `model:` and `effort:` keys on an agent's entry
-in `config.yaml` — the FerroStep roster at the repo root — and that is the only place they
+in `FerroStep/config.yaml` — the FerroStep roster — and that is the only place they
 may be set (owner, 2026-09-02: the reviewer runs Fable 5.1 at high). This module reads them.
 
 WHY A READER AND NOT A DEFAULT. Until 2026-09-02 `request_review.sh` and `review_cycle.sh`
@@ -70,7 +70,7 @@ def launch_settings(roster_path, title):
         if value is None or not str(value).strip():
             raise LaunchError(
                 f"agent '{title}' in {roster_path} has no `{key}:` — set it there; the "
-                f"launcher has no default on purpose (see workflow/scripts/roster_launch.py)")
+                f"launcher has no default on purpose (see FerroStep/workflow/scripts/roster_launch.py)")
         out[key] = str(value).strip()
     if out["effort"] not in EFFORTS:
         raise LaunchError(

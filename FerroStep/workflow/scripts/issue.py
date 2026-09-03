@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """issue.py — every standard tracker operation in the review loop, as one command.
 
-    workflow/scripts/issue.py list      [--branch B] [--state S]
-    workflow/scripts/issue.py show      N
-    workflow/scripts/issue.py file      --title T (--body B | --body-file F) [--label L] [--branch B]
-    workflow/scripts/issue.py grade     N --severity low|medium|high|critical
+    FerroStep/workflow/scripts/issue.py list      [--branch B] [--state S]
+    FerroStep/workflow/scripts/issue.py show      N
+    FerroStep/workflow/scripts/issue.py file      --title T (--body B | --body-file F) [--label L] [--branch B]
+    FerroStep/workflow/scripts/issue.py grade     N --severity low|medium|high|critical
                                         writes the field the MERGE GATE reads. Raising is
                                         open; lowering an existing grade is the reviewer's
-    workflow/scripts/issue.py take      N [N ...] [--note D]  Ozzy: agent_passes += 1, BEFORE any
+    FerroStep/workflow/scripts/issue.py take      N [N ...] [--note D]  Ozzy: agent_passes += 1, BEFORE any
                                         work; at the ceiling, --note routes it to escalated
-    workflow/scripts/issue.py review    N --comment C      Ozzy: addressed, awaiting Janis
-    workflow/scripts/issue.py dispute   N --kind finding|severity|scope --comment C
+    FerroStep/workflow/scripts/issue.py review    N --comment C      Ozzy: addressed, awaiting Janis
+    FerroStep/workflow/scripts/issue.py dispute   N --kind finding|severity|scope --comment C
                                         Ozzy: I disagree and have NOT fixed it. Spends
                                         `disputes`, never `agent_passes` — a rebuttal must
                                         not cost a fix pass or nobody rebuts
-    workflow/scripts/issue.py escalate  N --comment C      Ozzy: the owner must decide
-    workflow/scripts/issue.py close     N [--comment C]    Janis: verified resolved
-    workflow/scripts/issue.py reopen    N --comment C      Janis: not resolved
-    workflow/scripts/issue.py comment   N --text T
-    workflow/scripts/issue.py escalated                    what the owner owes a decision on
+    FerroStep/workflow/scripts/issue.py escalate  N --comment C      Ozzy: the owner must decide
+    FerroStep/workflow/scripts/issue.py close     N [--comment C]    Janis: verified resolved
+    FerroStep/workflow/scripts/issue.py reopen    N --comment C      Janis: not resolved
+    FerroStep/workflow/scripts/issue.py comment   N --text T
+    FerroStep/workflow/scripts/issue.py escalated                    what the owner owes a decision on
 
 WHY THIS EXISTS. The workflow's rules were prose in three files, and this repo's most
 expensive recurring lesson is that **a rule in a file is not an enforcement mechanism**. Every
@@ -30,7 +30,7 @@ rule below is one an agent could previously break by forgetting:
   * ⚠ STATE MOVES AND THE PASS CAP ARE THE REFEREE'S SINCE PHASE 2 (owner directive,
     2026-08-24): take/review/escalate/close/reopen shell out to `ferrostep move`, and the
     rules they obey -- who may move what, the counter ceiling, where exhaustion routes,
-    which moves need a note -- are DATA in workflow/sonora-lane.json, enforced by the
+    which moves need a note -- are DATA in FerroStep/workflow/sonora-lane.json, enforced by the
     engine, not code here. This module keeps the jobs the referee deliberately does not
     do: numbering, filing, comments, severity, and the queries.
 
@@ -64,10 +64,10 @@ socket.setdefaulttimeout(20)
 NUMBER_FLOOR = 120
 
 def _config():
-    """workflow/config.env, plus a derived repo slug. See that file for why it is derived.
+    """FerroStep/workflow/config.env, plus a derived repo slug. See that file for why it is derived.
 
     ⚠ THE SLUG IS DERIVED FROM `origin` BY DEFAULT, and that is a portability decision with a
-    real failure behind it: a hardcoded slug that survives a copy of `workflow/` into another
+    real failure behind it: a hardcoded slug that survives a copy of `FerroStep/workflow/` into another
     repo files that repo's issues against the ORIGINAL, where they look entirely normal and
     nothing ever flags them.
     """
@@ -96,12 +96,12 @@ def _config():
 CFG = _config()
 REPO_SLUG = CFG.get("REPO_SLUG") or ""
 # ⚠ MAX_PASSES IS GONE FROM config.env (phase 2): the ceiling is `agent_passes.max` in
-# workflow/sonora-lane.json, and the engine enforces it — "out of attempts" and "escalate
+# FerroStep/workflow/sonora-lane.json, and the engine enforces it — "out of attempts" and "escalate
 # it" are one fact there (`on_exhausted`), not two that can disagree.
 # ⚠ READ, NOT DECORATIVE. Until 2026-08-20 this setting existed and nothing consumed it
 # (#216). `cmd_grade` uses it to decide who may LOWER a severity, which is the one
 # tracker write that can clear the merge gate without closing anything (#218).
-# ⚠ RESOLVED FROM THE ROSTER (config.yaml at the repo root) SINCE 2026-08-24, LAZILY:
+# ⚠ RESOLVED FROM THE ROSTER (FerroStep/config.yaml) SINCE 2026-08-24, LAZILY:
 # config.env dropped its identity keys when the FerroStep roster became the one place
 # identities live, and only the grade guards need the name — the suite must import this
 # module on machines where the `ferrostep` binary is not installed.
@@ -112,6 +112,11 @@ def reviewer_name():
     global _REVIEWER_CACHE
     if _REVIEWER_CACHE is None:
         import subprocess
+        # Three levels up from FerroStep/workflow/scripts/issue.py lands on FerroStep/,
+        # where config.yaml now lives (2026-09-03) — unchanged from before the deployment
+        # folder existed, when three levels up from workflow/scripts/issue.py landed on
+        # the repo root, where config.yaml lived then. Both this file and its target moved
+        # one directory deeper together; if either moves alone, recount.
         roster = os.path.join(os.path.dirname(os.path.dirname(
             os.path.dirname(os.path.abspath(__file__)))), "config.yaml")
         try:
@@ -123,7 +128,7 @@ def reviewer_name():
         except Exception as e:
             die("cannot resolve the reviewer from the roster %s:\n       %s\n"
                 "     `ferrostep agent-env` installs with FerroStep (~/.cargo/bin); the\n"
-                "     roster is config.yaml at the repo root." % (roster, e))
+                "     roster is FerroStep/config.yaml." % (roster, e))
         if not name:
             # The reader refuses an empty entry, so this is belt-and-braces — but an
             # empty reviewer would FAIL OPEN in ungraded_guard_blocks, which is the one
@@ -144,7 +149,7 @@ SEVERITY_LADDER = _MERGE_FLOOR.LADDER
 COMMENT_MAX = int(CFG.get("COMMENT_MAX") or 1500)
 OPEN_STATES = ("open", "review", "escalated")
 
-# ⚠ THE STATE MACHINE LIVES IN workflow/sonora-lane.json AND THE REFEREE ENFORCES IT
+# ⚠ THE STATE MACHINE LIVES IN FerroStep/workflow/sonora-lane.json AND THE REFEREE ENFORCES IT
 # (phase 2). This table only maps a subcommand to the (role, target state) it REQUESTS —
 # routing, not rules: legality, notes and the counter are the engine's refusals now.
 # `escalated -> open` has no subcommand on purpose: only the owner's decision releases an
@@ -504,7 +509,7 @@ FERROSTEP_TIMEOUT = 60
 
 
 def ferrostep_move(pb, rec, role, to_state, note, actor):
-    """One state move, refereed by the engine against workflow/sonora-lane.json.
+    """One state move, refereed by the engine against FerroStep/workflow/sonora-lane.json.
 
     The token is the session this module already authenticated -- no second auth. A refusal
     is the PRODUCT here, not an error to soften: the engine says which rule refused and what
@@ -547,7 +552,7 @@ def cmd_take(pb, args):
     pass free, and "retry until it works" is the unbounded loop the cap exists to prevent.
 
     Since phase 2 the spend is the engine's open -> open developer move, and the ceiling is
-    `agent_passes.max` in workflow/sonora-lane.json. ⚠ The attempt that finds the ceiling
+    `agent_passes.max` in FerroStep/workflow/sonora-lane.json. ⚠ The attempt that finds the ceiling
     already spent is REFUSED unless --note says what decision the owner is being asked for;
     WITH the note it ROUTES the issue to `escalated`, the note riding the event.
     """
@@ -662,7 +667,7 @@ def cmd_dispute(pb, args):
     doing. A dispute the reviewer rejects lands back at `open`, where proceeding costs one pass
     as it always did -- so being WRONG is priced, and disagreeing is not.
 
-    ⚠ ONE RE-DISPUTE, THEN THE OWNER (`disputes.max` in workflow/sonora-lane.json -- their
+    ⚠ ONE RE-DISPUTE, THEN THE OWNER (`disputes.max` in FerroStep/workflow/sonora-lane.json -- their
     dial, like `agent_passes.max`, and not this module's to correct). A state nothing spends
     would let open -> disputed -> open cycle free, and `agent_passes` is otherwise the only
     thing guaranteeing this lane terminates at all.
@@ -820,7 +825,7 @@ def cmd_grade(pb, args):
         if lowering and args.author != reviewer_name():
             die("refusing: lowering %s -> %s makes a blocking finding RIDE past the merge\n"
                 "     gate, which is the worker marking its own homework. Only %s may lower a\n"
-                "     grade (config.yaml: the roster's reviewer entry).\n"
+                "     grade (FerroStep/config.yaml: the roster's reviewer entry).\n"
                 "       Disagree with the grade? Argue it in the issue's comments and let the\n"
                 "       reviewer regrade or refuse — a review is a report, not an order."
                 % (was, new_sev, reviewer_name()))

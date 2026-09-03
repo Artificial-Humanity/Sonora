@@ -8,13 +8,13 @@
 # retired — the old transport could fail silently in both directions, and a worker whose
 # reviewer never answered saw a review that simply never arrived.
 #
-# The persona is static and lives in workflow/REVIEWER.md, passed with --system-prompt-file
+# The persona is static and lives in FerroStep/personas/REVIEWER.md, passed with --system-prompt-file
 # so its several kilobytes never go through shell quoting. Everything that changes per run
 # — the range, the branch_name, who to address, which pass, what the worker already did —
 # is assembled here and passed inline with --append-system-prompt. No temp prompt file is
 # written for it (owner, 2026-08-14).
 #
-# Usage: workflow/scripts/request_review.sh --help
+# Usage: FerroStep/workflow/scripts/request_review.sh --help
 #
 set -euo pipefail
 
@@ -25,7 +25,7 @@ RANGE="origin/main..HEAD"
 DEVELOPER=""   # resolved from the roster once the repo root is known; --developer overrides
 # --- Per-repo settings -----------------------------------------------------
 # ⚠ ONE FILE TO EDIT WHEN PORTING THIS LANE. Sourced rather than hardcoded so that copying
-# `workflow/` into another repo does not carry this repo's identity with it. REPO_SLUG is
+# `FerroStep/workflow/` into another repo does not carry this repo's identity with it. REPO_SLUG is
 # DERIVED from `origin` when config.env leaves it empty — a stale hardcoded slug would file
 # the new repo's issues against the old one, where they look perfectly normal.
 _WF_CFG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config.env"
@@ -39,7 +39,7 @@ fi
 PASS=1
 NOTES=""
 NOTES_FILE=""
-MODEL=""       # resolved from the roster's reviewer entry (config.yaml); --model overrides
+MODEL=""       # resolved from the roster's reviewer entry (FerroStep/config.yaml); --model overrides
 EFFORT=""      # same; --effort overrides
 DRY_RUN=0
 FULL=0
@@ -53,8 +53,8 @@ request_review.sh — one-shot code review by Janis. Blocks; prints the review o
                         the last commit — a push carries every unpushed commit, and this loop
                         has measured the range growing after the request on every cycle.
   --developer <ID>      Agent id the reviewer addresses in issues.
-                        (default: the roster's developer — config.yaml)
-  --repo <SLUG>         Tracker `repo` field.  (default: workflow/config.env, or derived
+                        (default: the roster's developer — FerroStep/config.yaml)
+  --repo <SLUG>         Tracker `repo` field.  (default: FerroStep/workflow/config.env, or derived
                         from `git remote get-url origin` when that leaves it empty)
   --pass <N>            Which REVIEW this is.                        (default: 1)
                         ⚠ Reviews, not fix passes. The ceiling derives from the lane
@@ -63,12 +63,12 @@ request_review.sh — one-shot code review by Janis. Blocks; prints the review o
                         The per-ISSUE count lives on the issue as agent_passes.
   --notes <TEXT>        What you fixed and how, what you rebutted and why.
   --notes-file <PATH>   Same, read from a file. Mutually exclusive with --notes.
-  --model <M>           (default: the roster's reviewer `model:` — config.yaml)
+  --model <M>           (default: the roster's reviewer `model:` — FerroStep/config.yaml)
   --effort <E>          low|medium|high|xhigh|max
-                        (default: the roster's reviewer `effort:` — config.yaml)
+                        (default: the roster's reviewer `effort:` — FerroStep/config.yaml)
   --full                FULL CODE REVIEW: review the whole codebase, not a commit range.
                         For the periodic sweep the owner asks for by name. Cut the branch with
-                        `workflow/scripts/full_review.sh`, which makes `review-YYYY-MM-DD` from
+                        `FerroStep/workflow/scripts/full_review.sh`, which makes `review-YYYY-MM-DD` from
                         main and calls this. ⚠ The range guards below do not apply: a fresh
                         review branch has NO commits ahead of main, which is exactly the state
                         they refuse.
@@ -123,13 +123,14 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
   || die "cannot determine the branch (detached HEAD?). All work happens on a branch —
      the branch IS the reviewable unit, and issues are stamped with its name."
 
-# ⚠ IDENTITIES AND PERSONAS RESOLVE FROM THE ROSTER — config.yaml at the repo root
-# (FerroStep, 2026-08-24) — never from a hardcoded name or path. The assignment-then-eval
+# ⚠ IDENTITIES AND PERSONAS RESOLVE FROM THE ROSTER — FerroStep/config.yaml
+# (FerroStep, 2026-08-24; deployment folder adopted 2026-09-03) — never from a hardcoded
+# name or path. The assignment-then-eval
 # split is load-bearing: `eval "$(…)"` in ONE step discards the reader's refusal, because
 # eval's status is the emitted text's status and a refusal emits nothing (measured
 # 2026-08-24, both lanes). AGENT_PERSONA arrives ABSOLUTE, resolved against the roster's
 # own directory — do not join it to $REPO_ROOT.
-AGENT_ENV="$(ferrostep agent-env --agent reviewer --roster "$REPO_ROOT/config.yaml")" \
+AGENT_ENV="$(ferrostep agent-env --agent reviewer --roster "$REPO_ROOT/FerroStep/config.yaml")" \
   || die "cannot resolve the reviewer from the roster: ferrostep agent-env refused (its
      stderr, above, names the roster it read)."
 eval "$AGENT_ENV"
@@ -139,10 +140,10 @@ PERSONA="${AGENT_PERSONA:-}"
 # ⚠ THE MODEL AND EFFORT RESOLVE FROM THE SAME ROSTER ENTRY (owner, 2026-09-02) — they were
 # `MODEL="opus"` / `EFFORT="xhigh"` here AND in review_cycle.sh, two copies of one setting.
 # `agent-env` does not emit them (it tolerates the keys and ignores them), so the reader is
-# workflow/scripts/roster_launch.py, given the roster agent-env just said it read. A missing
+# FerroStep/workflow/scripts/roster_launch.py, given the roster agent-env just said it read. A missing
 # key REFUSES: there is deliberately no default left in this file to fall back to.
 if [[ -z "$MODEL" || -z "$EFFORT" ]]; then
-  LAUNCH_ENV="$(python3 - "${AGENT_ROSTER:-$REPO_ROOT/config.yaml}" "$(dirname "${BASH_SOURCE[0]}")" <<'PY'
+  LAUNCH_ENV="$(python3 - "${AGENT_ROSTER:-$REPO_ROOT/FerroStep/config.yaml}" "$(dirname "${BASH_SOURCE[0]}")" <<'PY'
 import sys
 sys.path.insert(0, sys.argv[2])
 from roster_launch import LaunchError, shell_lines
@@ -158,7 +159,7 @@ PY
   [[ -n "$EFFORT" ]] || EFFORT="$AGENT_EFFORT"
 fi
 if [[ -z "$DEVELOPER" ]]; then
-  AGENT_ENV="$(ferrostep agent-env --roster "$REPO_ROOT/config.yaml")" \
+  AGENT_ENV="$(ferrostep agent-env --roster "$REPO_ROOT/FerroStep/config.yaml")" \
     || die "cannot resolve the default (developer) agent from the roster."
   eval "$AGENT_ENV"
   DEVELOPER="$AGENT_NAME"
@@ -210,7 +211,7 @@ fi
 
 if [[ "$COMMIT_COUNT" -eq 0 ]]; then
   die "range '$RANGE' is empty — nothing to review.
-     For a whole-codebase sweep use --full (or workflow/scripts/full_review.sh), which does
+     For a whole-codebase sweep use --full (or FerroStep/workflow/scripts/full_review.sh), which does
      not need commits ahead of main."
 fi
 fi  # end of the range guards
@@ -232,13 +233,13 @@ fi
 # version hardcoded the sum and, before that, miscounted it — refusing the review that
 # verifies the LAST fix, the one that decides whether anything gets escalated at all. A
 # hardcoded sum here would be the cap's second copy, wearing a refusal.
-MAX_REVIEWS="$(python3 - "$REPO_ROOT/workflow/sonora-lane.json" <<'PY'
+MAX_REVIEWS="$(python3 - "$REPO_ROOT/FerroStep/workflow/sonora-lane.json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
 (c,) = [c for c in d.get("counters", []) if c.get("name") == "agent_passes"]
 print(int(c["max"]) + 1)
 PY
-)" || die "cannot derive the review ceiling: workflow/sonora-lane.json is missing the
+)" || die "cannot derive the review ceiling: FerroStep/workflow/sonora-lane.json is missing the
      agent_passes counter, or is unreadable. Refusing rather than guessing a number."
 if [[ "$PASS" -gt "$MAX_REVIEWS" ]]; then
   die "--pass $PASS exceeds $MAX_REVIEWS reviews, which is what the definition's fix-pass
@@ -286,7 +287,7 @@ self_review_scheduled() {  # $1 = review index -> 0 if a self-check is due
     [[ "$tok" -ge 1 ]] || die "SELF_REVIEW_AT: review indices are 1-based; got '$tok' in '${SELF_REVIEW_AT}'."
     [[ "$tok" -le "$MAX_REVIEWS" ]] && continue
     die "SELF_REVIEW_AT names review $tok, but this lane has at most $MAX_REVIEWS reviews
-     (agent_passes.max in workflow/sonora-lane.json, plus the review that files). That index
+     (agent_passes.max in FerroStep/workflow/sonora-lane.json, plus the review that files). That index
      can never fire: it reads as ON in config and is OFF in every run."
   done
   for tok in "${_idx[@]}"; do [[ "$tok" -eq "$idx" ]] && hit=0; done
@@ -319,7 +320,7 @@ if self_review_scheduled "$PASS"; then
     # command, so the status is that command's.
     if ! ( eval "$SELF_REVIEW_CMD" ); then
       die "self-check command failed. Fix that before spending a review pass on it.
-     (SELF_REVIEW_CMD in workflow/config.env)"
+     (SELF_REVIEW_CMD in FerroStep/workflow/config.env)"
     fi
   fi
   echo "request_review.sh: self-check list is DEVELOPER.md § self-check." >&2
@@ -455,7 +456,7 @@ fi
 # ⚠ CANDIDATES COME FROM config.env, NOT FROM HERE. `SIBLING_REPO_CANDIDATES` is a
 # colon-separated list of paths the reviewer may READ, and it is per-repo by nature: which
 # sibling checkouts exist is a fact about a machine and a lab, not about this lane. Hardcoding
-# them here was one of two things that would not survive `workflow/` being copied elsewhere.
+# them here was one of two things that would not survive `FerroStep/workflow/` being copied elsewhere.
 # Absent or unset is fine — the reviewer simply gets no --add-dir.
 # ⚠⚠ EVERY EXISTING CANDIDATE, NOT THE FIRST (#347). This loop used to `break` on the first
 # directory that existed, so `SIBLING_REPO_CANDIDATES` was a FALLBACK CHAIN wearing the
@@ -561,9 +562,9 @@ BRIEF="## This run
 
 ⚠ **You are Janis, the reviewer. You are not Ozzy.** This repo's \`CLAUDE.md\` is loaded into
 you as project memory — replacing the system prompt does not displace it — and it imports
-\`workflow/DEVELOPER.md\` in full, because that is what gives an ordinary session the developer
+\`FerroStep/personas/DEVELOPER.md\` in full, because that is what gives an ordinary session the developer
 role without a flag. **That import is not addressed to you.** You do not commit, you do not
-edit, and you do not touch \`agent_passes\`. \`workflow/REVIEWER.md\` §0 has the conflict table.
+edit, and you do not touch \`agent_passes\`. \`FerroStep/personas/REVIEWER.md\` §0 has the conflict table.
 
 You are reviewing the repository at \`$REPO_ROOT\` (host: $(hostname)). That is your working
 directory. The tracker \`repo\` field for everything you file is \`$REPO_SLUG\`.
@@ -766,7 +767,7 @@ REVIEWER_ALLOW=(
   # Fifth instance of this file's comment claiming less than its flags allowed.
   #
   # ⚠ These are PREFIX matches, so `--dry-run` must be the FIRST argument. REVIEWER.md says so.
-  "Bash(./workflow/scripts/request_review.sh --dry-run:*)" "Bash(workflow/scripts/request_review.sh --dry-run:*)"
+  "Bash(./FerroStep/workflow/scripts/request_review.sh --dry-run:*)" "Bash(FerroStep/workflow/scripts/request_review.sh --dry-run:*)"
   # REMOVED, each for a measured reason rather than on principle:
   #   Bash(uv:*)   — `uv run` executes arbitrary code and `uv pip install` writes into the
   #                  tree, and AGENTS.md §3 forbids `uv run` for host scripts anyway, so a
@@ -783,14 +784,14 @@ REVIEWER_ALLOW=(
   #
   # ⚠ SCOPED PER SUBCOMMAND, AND `escalate` IS DELIBERATELY ABSENT. REVIEWER.md §1 carries an
   # owner ruling (2026-08-17): "YOU DO NOT ESCALATE. ESCALATION IS OZZY'S, AND ONLY OZZY'S."
-  # Granting `Bash(workflow/scripts/issue.py:*)` would pre-approve the one move the role is
+  # Granting `Bash(FerroStep/workflow/scripts/issue.py:*)` would pre-approve the one move the role is
   # forbidden to make, so the entries are enumerated instead. `take`, `grade` and `review` are
   # the WORKER's verbs and are absent for the same reason.
   #
   # ⚠⚠ BUT THIS DOES NOT MAKE THE RULE A MECHANISM, AND AN EARLIER VERSION OF THIS COMMENT
   # CLAIMED IT DID. Measured 2026-08-26: `Bash(python:*)`, `Bash(python3:*)` and
   # `Bash(.venv/bin/python:*)` are granted twelve lines above, and every one of them matches
-  # `python workflow/scripts/issue.py escalate N`. The arbitrary-python grant is deliberate
+  # `python FerroStep/workflow/scripts/issue.py escalate N`. The arbitrary-python grant is deliberate
   # (owner, 2026-08-18) and its own comment already says the plain part: "what stops a
   # reviewer writing is now the PERSONA, not the allowlist — a rule rather than a mechanism".
   # So this enumeration RAISES THE BAR — the forbidden move is no longer the path of least
@@ -814,12 +815,12 @@ REVIEWER_ALLOW=(
   # so the rule now lives in REVIEWER.md §4 and this is the copy that points there, not the
   # other way round. `tests/test_reviewer_write_path.py` asserts every subcommand REVIEWER.md
   # documents is granted below, which covers the subcommand and NOT this prefix problem.
-  "Bash(workflow/scripts/issue.py file:*)"    "Bash(./workflow/scripts/issue.py file:*)"
-  "Bash(workflow/scripts/issue.py close:*)"   "Bash(./workflow/scripts/issue.py close:*)"
-  "Bash(workflow/scripts/issue.py reopen:*)"  "Bash(./workflow/scripts/issue.py reopen:*)"
-  "Bash(workflow/scripts/issue.py comment:*)" "Bash(./workflow/scripts/issue.py comment:*)"
-  "Bash(workflow/scripts/issue.py list:*)"    "Bash(./workflow/scripts/issue.py list:*)"
-  "Bash(workflow/scripts/issue.py show:*)"    "Bash(./workflow/scripts/issue.py show:*)"
+  "Bash(FerroStep/workflow/scripts/issue.py file:*)"    "Bash(./FerroStep/workflow/scripts/issue.py file:*)"
+  "Bash(FerroStep/workflow/scripts/issue.py close:*)"   "Bash(./FerroStep/workflow/scripts/issue.py close:*)"
+  "Bash(FerroStep/workflow/scripts/issue.py reopen:*)"  "Bash(./FerroStep/workflow/scripts/issue.py reopen:*)"
+  "Bash(FerroStep/workflow/scripts/issue.py comment:*)" "Bash(./FerroStep/workflow/scripts/issue.py comment:*)"
+  "Bash(FerroStep/workflow/scripts/issue.py list:*)"    "Bash(./FerroStep/workflow/scripts/issue.py list:*)"
+  "Bash(FerroStep/workflow/scripts/issue.py show:*)"    "Bash(./FerroStep/workflow/scripts/issue.py show:*)"
   "mcp__pocketbase__pb_record_list"
   "mcp__pocketbase__pb_record_get"
   # ⚠ #331. `pb_record_mutate` WAS HERE AND IS NOW REVOKED. REVIEWER.md mentions it five

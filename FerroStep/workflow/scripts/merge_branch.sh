@@ -2,7 +2,7 @@
 #
 # merge_branch.sh — merge the current branch to main, but only once it clears the SEVERITY FLOOR.
 #
-#     workflow/scripts/merge_branch.sh [--branch B] [--base main] [--no-push] [--dry-run]
+#     FerroStep/workflow/scripts/merge_branch.sh [--branch B] [--base main] [--no-push] [--dry-run]
 #                              [--allow-unreviewed] [--no-review]
 #
 # ⚠ THE GATE IS ON THE MERGE, NOT THE PUSH (owner, 2026-08-17). A branch that merged
@@ -10,7 +10,7 @@
 # do is merge a branch that still carries a finding at or above the floor.
 #
 # ⚠ SINCE 2026-08-20 THAT IS A SEVERITY FLOOR, NOT ZERO-OPEN-ISSUES. The threshold is
-# MERGE_SEVERITY_FLOOR in workflow/config.env and is deliberately NOT repeated here; at or
+# MERGE_SEVERITY_FLOOR in FerroStep/workflow/config.env and is deliberately NOT repeated here; at or
 # above it blocks, below it rides, and UNGRADED or ESCALATED block at any severity. This
 # header described the old gate for the length of the branch that replaced it (#202) —
 # which is the same defect the branch was fixing, one file up.
@@ -27,7 +27,7 @@ set -euo pipefail
 
 # --- Per-repo settings -----------------------------------------------------
 # ⚠ ONE FILE TO EDIT WHEN PORTING THIS LANE. Sourced rather than hardcoded so that copying
-# `workflow/` into another repo does not carry this repo's identity with it. REPO_SLUG is
+# `FerroStep/workflow/` into another repo does not carry this repo's identity with it. REPO_SLUG is
 # DERIVED from `origin` when config.env leaves it empty — a stale hardcoded slug would file
 # the new repo's issues against the old one, where they look perfectly normal.
 _WF_CFG="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/config.env"
@@ -120,7 +120,7 @@ if [[ "$_REVIEWED_TIP" != "$_TIP" && "$NO_REVIEW" -ne 1 ]]; then
   if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "merge_branch.sh: HEAD ($(git rev-parse --short HEAD)) is NOT recorded as reviewed"
     echo "  last reviewed tip for '$BRANCH': ${_REVIEWED_TIP:-<none recorded>}"
-    echo "  would: workflow/scripts/request_review.sh --range $BASE..HEAD  (then re-check)"
+    echo "  would: FerroStep/workflow/scripts/request_review.sh --range $BASE..HEAD  (then re-check)"
   else
     echo "merge_branch.sh: HEAD is not recorded as reviewed — calling for a review first."
     echo "  last reviewed tip for '$BRANCH': ${_REVIEWED_TIP:-<none recorded>}"
@@ -211,7 +211,7 @@ PY
 )"
 
 if [[ "$UNSETTLED" == FLOOR_MODULE_MISSING:* ]]; then
-  die "workflow/scripts/merge_floor.py is missing or unreadable, so the severity floor cannot
+  die "FerroStep/workflow/scripts/merge_floor.py is missing or unreadable, so the severity floor cannot
      be evaluated. This is a broken installation, NOT a tracker problem and NOT a clean
      branch. (${UNSETTLED#FLOOR_MODULE_MISSING: })"
 fi
@@ -225,7 +225,7 @@ if [[ "$UNSETTLED" == *NEVER_REVIEWED* ]]; then
   [[ "$ALLOW_UNREVIEWED" -eq 1 ]] || die "'$BRANCH' has NO issues at all — not one was ever
      filed against it. That reads identically to 'reviewed and found clean', and this gate
      cannot tell the two apart, so it refuses rather than guessing the flattering one.
-       Review it:  workflow/scripts/request_review.sh
+       Review it:  FerroStep/workflow/scripts/request_review.sh
        Or, if a review genuinely ran and found nothing:  --allow-unreviewed"
   UNSETTLED="${UNSETTLED/NEVER_REVIEWED/}"
 fi
@@ -277,7 +277,7 @@ if [[ -n "${BLOCKING//[[:space:]]/}" ]]; then
       echo "  AND, separately, these ARE findings below the floor:" >&2
       echo "$FINDINGS" >&2
       echo "    close them, or grade them if they are UNGRADED:" >&2
-      echo "      workflow/scripts/issue.py grade <N> --severity <s>" >&2
+      echo "      FerroStep/workflow/scripts/issue.py grade <N> --severity <s>" >&2
     fi
     die "refusing is the designed behaviour here, not a failure."
   fi
@@ -285,8 +285,8 @@ if [[ -n "${BLOCKING//[[:space:]]/}" ]]; then
   echo "$BLOCKING" >&2
   die "resolve them first. Anything at or above the configured floor must be closed.
      UNGRADED must be graded (or closed) because a floor cannot pass what it cannot read;
-     escalated means the owner owes a decision at any severity (workflow/WORKFLOW.md §4).
-       An UNGRADED one:  workflow/scripts/issue.py grade <N> --severity <s>
+     escalated means the owner owes a decision at any severity (FerroStep/workflow/WORKFLOW.md §4).
+       An UNGRADED one:  FerroStep/workflow/scripts/issue.py grade <N> --severity <s>
      ⚠ That is for grading what has NO grade. It is not a way past a finding that HAS one:
        lowering an existing grade is refused for anyone but the reviewer, because it would
        make a blocking finding ride without closing it (#218). Disagree with a grade? Argue

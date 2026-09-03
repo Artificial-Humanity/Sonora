@@ -119,7 +119,7 @@ about, so the move must not be done by hand.
      already-rotting surface untouched — the 10 dead links found there **when this was
      written** proved that surface is the one that actually fails. (They were repaired; the
      count is 0 today. The argument rests on the rot having happened, not on it persisting.) Sibling checkouts are already configured for the reviewer in
-     `workflow/config.env` (`SIBLING_REPO_CANDIDATES`); the checker uses the same idea and
+     `FerroStep/workflow/config.env` (`SIBLING_REPO_CANDIDATES`); the checker uses the same idea and
      **reports rather than fails when a sibling is absent**, because a laptop without Prosodia
      checked out has not found a defect.
    * ⚠ **Skips `[[double-bracket]]` names.** Those are agent memory slugs, deliberately not
@@ -172,7 +172,8 @@ notice.** Assert the MECHANISM instead: move a file, confirm red; restore, confi
 ### The measurement that reshaped this item
 
 The original proposal was "widen `test_doc_claims.py`'s `docs()` to cover `AGENTS.md`,
-`CLAUDE.md` and `workflow/*.md`". **Measured 2026-08-17, that change on its own enrols nothing.**
+`CLAUDE.md` and `workflow/*.md`" (now `FerroStep/workflow/*.md` and `FerroStep/personas/*.md`).
+**Measured 2026-08-17, that change on its own enrols nothing.**
 Running the existing registry over those five files:
 
 | | |
@@ -183,7 +184,7 @@ Running the existing registry over those five files:
 
 The reason is structural, not incidental. Every fact in the registry today reads its truth from
 a **corpus artifact** — `derivation_report.json`, a filelist's row count, a checkpoint on disk —
-and the numbers in `AGENTS.md` and `workflow/` are not corpus numbers at all. They are
+and the numbers in `AGENTS.md` and `FerroStep/workflow/` are not corpus numbers at all. They are
 **protocol constants**: how many passes a review gets, how long a comment may be, what the state
 vocabulary is. A registry keyed on corpus artifacts cannot see them however wide its file list
 grows.
@@ -199,9 +200,9 @@ come back. This is exactly the argument that added `configs/data/*.yaml` on 2026
 moved the counts from 32 files / 36 statements to 42 / 37 — one statement, and the point was
 never the one statement.
 
-⚠ **`workflow/` is portable by design.** Its numbers get *copied into other repos*, where they
+⚠ **`FerroStep/workflow/` is portable by design.** Its numbers get *copied into other repos*, where they
 drift independently and where nothing at all is checking them. That raises the value of M1b and
-lowers the value of treating `workflow/` as ordinary prose.
+lowers the value of treating `FerroStep/workflow/` as ordinary prose.
 
 ### M1b — a second registry: protocol facts
 
@@ -213,8 +214,8 @@ work, and saying so plainly is part of the plan:
 
 | constant | owner | independent restatements |
 |---|---|---|
-| review pass cap (`3`) | `workflow/config.env` `MAX_PASSES` | `WORKFLOW.md` ×2; `DEVELOPER.md` ×3; `issue.py` docstring; `config.env`'s **own comment** — **7 restatements in 4 files** |
-| comment cap (`1500`) | `workflow/config.env` `COMMENT_MAX` | `REVIEWER.md`; separately enforced by the PocketBase `issue_comments.body.max` |
+| review pass cap (`3`) | `FerroStep/workflow/config.env` `MAX_PASSES` | `WORKFLOW.md` ×2; `DEVELOPER.md` ×3; `issue.py` docstring; `config.env`'s **own comment** — **7 restatements in 4 files** |
+| comment cap (`1500`) | `FerroStep/workflow/config.env` `COMMENT_MAX` | `REVIEWER.md`; separately enforced by the PocketBase `issue_comments.body.max` |
 | issue body cap (`200,000`) | the PocketBase `issues.body.max` | `issue.py` error message; `config.env` comment; `DEVELOPER.md`; `REVIEWER.md` |
 | state vocabulary | the PocketBase `issues.state` select | `WORKFLOW.md`; `DEVELOPER.md`; `REVIEWER.md`; `issue.py` transition table |
 
@@ -232,7 +233,7 @@ dial — `0` means deliberately re-armed — so a schema ceiling would fight the
 
 ⚠⚠ **SUPERSEDED IN PART (phase 2 of the FerroStep cutover, 2026-08-24).** The pass cap no
 longer lives in `issue.py` or `config.env`: it is `agent_passes.max` in
-`workflow/sonora-lane.json`, ENFORCED by the engine, and the state vocabulary's transition
+`FerroStep/workflow/sonora-lane.json`, ENFORCED by the engine, and the state vocabulary's transition
 table left `issue.py` for the same file. Two of the table's four forks are therefore
 closed by consolidation rather than by the gate this plan proposed; the table stands as
 the 2026-08-17 measurement that motivated exactly that move.
@@ -290,7 +291,7 @@ This is the dominant *runtime* failure mode, as doc drift is the dominant *conte
 
 * **Any config naming a path is checked against the filesystem.** One instance of this was
   written on 2026-08-17 (`test_every_denied_script_actually_exists`); generalise it to every
-  path-bearing constant in `workflow/` and `scripts/`.
+  path-bearing constant in `FerroStep/workflow/` and `scripts/`.
 * **Any guard test must be able to fail.** Generalise
   `test_the_guard_actually_asserts_something` — a test whose assertion is a substring search
   over a whole file is presumed disarmed until it demonstrates a red direction.
@@ -374,7 +375,7 @@ alongside anything else.
 M2 after that: the largest *runtime* class, patterns proven but scattered. M3 and M4 are small,
 independent, and can land in either order.
 
-Each is its own branch and its own review under `workflow/WORKFLOW.md`.
+Each is its own branch and its own review under `FerroStep/workflow/WORKFLOW.md`.
 
 ## What M1 changed about the rest of this plan
 

@@ -50,7 +50,7 @@ _Answering a specific question? **"What are we training on"** → `training-sour
 _Bookkeeping: none to maintain here. The changelog and the `code-review-*.md` cycle were both
 retired 2026-08-11 — a change is recorded by its commit message, and a review finding that its
 cycle could not settle becomes a **PocketBase issue**, filed by the reviewer under
-[`workflow/WORKFLOW.md`](../workflow/WORKFLOW.md). ⚠ This paragraph was stale in two ways until
+[`FerroStep/workflow/WORKFLOW.md`](../FerroStep/workflow/WORKFLOW.md). ⚠ This paragraph was stale in two ways until
 2026-08-17: it said "GitHub issue (AGENTS.md §1)" — GitHub issues were retired and AGENTS.md no
 longer mentions them — and it described a `notes/reviews/` directory that has not existed since
 the review lane was rebuilt. Both are the drift the `docs/` split exists to make visible._

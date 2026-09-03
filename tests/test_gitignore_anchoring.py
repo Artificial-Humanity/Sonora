@@ -46,8 +46,9 @@ RECURSIVE_BY_DESIGN = {
 # `matcha` outright is the worst case of all and was not probed.
 SOURCE_DIRS = ["scripts", "scripts/lib", "scripts/gates", "scripts/tools", "scripts/stages",
                "scripts/assets", "scripts/assets/director_skills", "configs",
-               "matcha", "matcha/models", "matcha/utils", "tests", "workflow",
-               "workflow/scripts", "audition/app", "notes"]
+               "matcha", "matcha/models", "matcha/utils", "tests", "FerroStep",
+               "FerroStep/personas", "FerroStep/workflow", "FerroStep/workflow/scripts",
+               "audition/app", "notes"]
 
 # ⚠ ONE PROBE PER EXTENSION, because a rule can be extension-specific. `*.onnx`, `*.cover`
 # and `*.py,cover` are all live in this .gitignore, so "a new .py file is safe here" says

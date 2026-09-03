@@ -2,7 +2,7 @@
 
 WHY THIS FILE EXISTS (2026-08-18, issue #101)
 ---------------------------------------------
-Two rules in `workflow/DEVELOPER.md` §1 had no enforcement:
+Two rules in `FerroStep/personas/DEVELOPER.md` §1 had no enforcement:
 
   * commits are authored **Ozzy <ozzy@artificialhumanity.io>**, via the `-c` pair, because the
     repo's configured identity is deliberately the owner's — so a forgotten `-c` does not
@@ -52,11 +52,11 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _cfg(key, default):
-    """⚠ FROM `workflow/config.env`, NOT TYPED OUT HERE. `workflow/` is a portable lane meant
+    """⚠ FROM `FerroStep/workflow/config.env`, NOT TYPED OUT HERE. `FerroStep/workflow/` is a portable lane meant
     to be copied whole into another repo (AGENTS.md §1); an identity hardcoded in `tests/`
     does not travel with it and becomes a second definition that drifts."""
     try:
-        src = open(os.path.join(REPO, "workflow", "config.env"), encoding="utf-8").read()
+        src = open(os.path.join(REPO, "FerroStep", "workflow", "config.env"), encoding="utf-8").read()
     except OSError:
         return default
     m = re.search(r"^%s=(.*)$" % re.escape(key), src, re.M)

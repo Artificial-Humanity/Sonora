@@ -216,7 +216,7 @@ def test_the_scan_is_every_tracked_markdown_except_workflow():
 
     ⚠ The set widened on 2026-08-21 (#261): it was `notes/`+`docs/`+`workflow/`+3 root files,
     38 of 53 tracked markdown files, and **7 dead links were living in one of the 15 it never
-    opened**. Both halves of the gate now scan `repo_markdown()`. `workflow/` is excluded by
+    opened**. Both halves of the gate now scan `repo_markdown()`. `FerroStep/` is excluded by
     owner ruling — the review lane is retired and a dead link in `REVIEWER.md` must not fail
     a Sonora merge.
     """
@@ -226,7 +226,7 @@ def test_the_scan_is_every_tracked_markdown_except_workflow():
                 "README-Matcha.md", "audition/README.md", "scripts/README.md",
                 "scripts/teacher_audition/README.md"):
         assert os.path.join(REPO, rel) in scanned, f"{rel} is not scanned"
-    for rel in ("workflow/WORKFLOW.md", "workflow/REVIEWER.md", "workflow/DEVELOPER.md"):
+    for rel in ("FerroStep/workflow/WORKFLOW.md", "FerroStep/personas/REVIEWER.md", "FerroStep/personas/DEVELOPER.md"):
         assert os.path.join(REPO, rel) not in scanned, (
             f"{rel} IS scanned — the retired lane is back in a Sonora merge gate")
 

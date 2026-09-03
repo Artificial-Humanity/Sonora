@@ -119,7 +119,7 @@ model_e2e_test_tflite/
 # hiding every `.review_cycle.stop` anywhere in the tree is not this file's business.
 #
 # ⚠ The driver ALSO `rm -f`s the notes file at startup, and that is not redundant: porting
-# this lane copies `workflow/` alone, so a ported copy has no entry here. Ignoring keeps the
+# this lane copies `FerroStep/` alone, so a ported copy has no entry here. Ignoring keeps the
 # file out of the dirty-tree check; the `rm` keeps the last cycle's notes out of the next
 # cycle's first review.
 /.review_cycle.notes
