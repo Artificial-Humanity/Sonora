@@ -484,12 +484,15 @@ headline; open items are in [todo.md](todo.md).
    `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
-2. 🔄 **Rung 3 — the 10×** (LibriTTS-R full). **IN PROGRESS, started 2026-08-25.** Ungated:
-   rung 1 passed. The other 90% of LibriTTS-R was never on this box — both tarballs
-   (75.8 GB) are now fetched, extracted and permission-fixed, and the **EIV scoring pass is
-   running** over 303,638 duration-filtered clips at batch 32 (~22.5 h;
-   `eiv_scores/libritts_r_full_v7.jsonl`, resumable — it appends and skips what it holds).
-   **The corpus is NOT built and no run is queued.**
+2. 🔄 **Rung 3 — the 10×** (LibriTTS-R full). **BUILT 2026-08-27 · RUN 2026-08-28, stopped
+   at the owner's call · v7r rebalance arm 2026-08-29.** Ungated: rung 1 passed. The other 90%
+   of LibriTTS-R was never on this box; both tarballs (75.8 GB) were fetched, extracted and
+   permission-fixed, and the EIV scoring pass ran over 303,638 duration-filtered clips
+   (`eiv_scores/libritts_r_full_v7.jsonl`).
+   ⚠⚠ **THE RUNG'S VERDICT IS OPEN, AND THIS ENTRY CLAIMED THE CORPUS WAS UNBUILT UNTIL
+   2026-09-03** — six days after the run it does not mention. What blocks the verdict is the
+   mel normalisation, not the holdout's width; the correction and the one job that closes it
+   are in [quality-gap-plan.md § THE RUN](quality-gap-plan.md).
    Measured, replacing the estimates: **321,497 new clips · 2,064 new speakers · ~564 h ·
    ~345,600 train rows expected**. The strictly-growing rule survives because the new
    speakers are **disjoint from both v6 and the holdout** (tested under `LC_ALL=C` with a

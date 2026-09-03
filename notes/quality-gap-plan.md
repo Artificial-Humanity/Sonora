@@ -23,16 +23,13 @@ a casting rung, while the repo leads with "directable, **castable**, and mobile-
 and goal 2 (Dramatic Reader) depends on casting more than on mel loss. Every step below
 ladders to *quality*; nothing here ladders to *castability*. That is a deliberate scope,
 now stated rather than implied — see [§ Parked — the casting/blend layer](#parked--the-castingblend-layer).
-**Where the front is: Phase 1, rung 2 — v5 trained and scored, `ep019` selected; v6 is
-scoped, labelled and decided but NOT built.** The append set is settled at **832 rows**
-(822 delivery-labelled + 10 delivery-blank), and as of **2026-08-10 all three
-prerequisites are closed**: V from the 12-head EIV pass, **A and T from a new acoustic
-pass** (846/846 measured, 0 unmeasurable), and the labelling lane ratified as the **global
-anchor with A centred per campaign**. What remains is the **build script itself**, which
-does not exist — plus one open owner decision that can still move the count: **14 clips
-exceeded `MAX_SECONDS` (22 s) and were **dropped** (owner, 2026-08-10), so the append is
-**832**.
-See [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
+⚠ **Where the front is: the table below owns it.** This paragraph restated the status in
+prose and the copy drifted — it called v6 *"scoped, labelled and decided but NOT built"* and
+said *"what remains is the build script itself, which does not exist"* for weeks after v6 was
+built and `ep008` selected, **two lines above the table row marking rung 2 done**. It also
+carried a third copy of [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued)'
+append-set arithmetic. ⚠ **Do not restore it.** A status needs one owner, and this is the
+removal [notes/README.md](README.md) already made of its own copy, for the same reason (#200).
 
 | | step | status | gated on | detail |
 |---|---|---|---|---|
@@ -40,7 +37,7 @@ See [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-cor
 | | 0b — clean-lineage restart | ⛔ **NOT INDICATED** | — | [§ 0b](#0b--clean-lineage-restart--not-indicated-owners-call-to-ratify) |
 | **P1** | **rung 1 — v5, +Emilia (78.5 h, 2,500 spk)** | ✅ **DONE 2026-08-08/09** — 48 epochs, holdout-scored, **`ep019` selected**; converged by epoch 9 | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) |
 | | **rung 2 — v6, +expressive-registers (826 rows appended, 832 staged)** | ✅ **DONE 2026-08-10/11** — built, trained 10 epochs, holdout-scored, **`ep008` selected** (`logs/train/vat6_finetune/SELECTED.md`); flat as pre-registered, and **the delivery block is live** | — | [§ the ladder](#the-ladder--a-strictly-growing-corpus-one-lever-per-rung) · ⚠ **do not select this run on `total`** and the A-frame question is **open**, not closed — [direction-contract-v3-proposal.md § 3b](direction-contract-v3-proposal.md) |
-| | rung 3 — v7, +LibriTTS-R full (~564 h measured) | 🔄 **UNGATED — rung 1 passed. AUDIO ON DISK, EIV PASS COMPLETE 2026-08-26, DERIVATION RUNNING 2026-08-27.** ~**2.25 h/epoch, ~1 day** to convergence (est. 2026-08-09 against ~330,000 rows — **not re-measured against the 345,600 now expected**) | rung 1's holdout ✅ | ditto |
+| | rung 3 — v7, +LibriTTS-R full (~564 h measured) | 🔄 **BUILT 2026-08-27 · RUN 2026-08-28, stopped at the owner's call · v7r rebalance arm 2026-08-29.** ⚠ **The rung's VERDICT is still OPEN** — the comparison against rung 2 is blocked on the mel normalisation, not on the holdout's width; § THE RUN carries the correction and the job that closes it | rung 1's holdout ✅ | ditto |
 | | rung 4 — v8, +Hi-Fi TTS (292 h) + VCTK (44 h) | ⏸ **both ON DISK, unconverted** | independent — slot in when converted | ditto |
 | | rung 5 — v9, +more Emilia-YODAS shards | ⏸ 9 of ~114,000 h probed | rung 3's holdout | ditto |
 | | freeze a same-corpus U-Net baseline | ⏸ | **the last act of P1** | [§ Phase 2](#phase-2--the-dit-decoder-spike) |
@@ -917,13 +914,37 @@ widened 3,326 → 5,385 (verified: the donor's rows byte-identical, the 2,059 ne
 while the never-trained holdout got worse, which is overfitting rather than instability.
 
 ⚠ **THE RUNG'S OWN QUESTION IS STILL OPEN AND MUST NOT BE READ OFF THIS TABLE.** These numbers
-are internal to the run. Whether rung 3 IMPROVED on rung 2 needs vat6's `ep008` scored against
-**the same 8-wide holdout**, and that has not been done: the only holdout lineage on disk was
-scored against the 3-wide `holdout.txt` and belongs to an earlier model era. The
-`1.7823–1.7921` band quoted for vat6 in `notes/training-operations.md` and in the experiment
-config is a **document claim that no artifact in this tree verifies**. If it is right, ep004 is
-~1% better than vat6's whole run and the volume lever worked; if it is not, the rung is
-unevaluated. **Do not close rung 3 on the trajectory above.**
+are internal to the run. Whether rung 3 IMPROVED on rung 2 needs vat6's `ep008` and a v7
+checkpoint scored under ONE normalisation, and no artifact does that.
+**Do not close rung 3 on the trajectory above.**
+
+⚠⚠ **CORRECTED 2026-09-03 — THE REASON RECORDED HERE WAS WRONG, AND IT SENT THE READER TO
+REDO FINISHED WORK.** This paragraph said the only holdout lineage on disk was scored against
+the 3-wide `holdout.txt`, and that the `1.7823–1.7921` band quoted for vat6 was a document
+claim no artifact verifies. Both are false.
+`logs/train/vat6_finetune/holdout_vat6_ep000-010.json`, written 2026-08-11, names
+**`holdout_8w.txt`** over 5,463 clips, and that band is exactly its own minimum and maximum.
+
+The real blocker is the **mel normalisation**. `score_holdout.py` takes it from
+`--model-config`, so the vat6 lineage was scored under v6's constants and the v7 and v7r
+lineages under v7's. Compare the `data_statistics` block in that vat6 report against any
+report under `/data/model-training/sonora/vat7_holdout/`: they differ by far more than the
+cross-lineage gap that script's own docstring waves through as *"under 1% of a std, and shared
+by every checkpoint scored here"*. So the two totals do not compare, and the *"~1% better"*
+reading this paragraph used to offer is not available.
+
+⚠ **AND THE ARTIFACT THAT LOOKS LIKE THE ANSWER IS NOT ONE.**
+`/data/model-training/sonora/vat7_holdout/baseline_init_vs_trained/holdout.json` carries a row
+labelled `init_vat6ep008`. Its `ckpt_path` is `warmstart/vat7_init.ckpt` — the **widened v7
+init**, not vat6's `ep008`. Do not read its number as rung 2's.
+
+**What closes it is one scoring job**, and everything it needs is on disk: vat6 `ep008`, the
+v7 checkpoint, `holdout_8w.txt` and both run configs. Score the pair under one set of
+`data_statistics`, then again under the other — each direction needs a copy of a run config
+with only `data.data_statistics` changed, because `--model-config` also fixes `n_spks`.
+⚠ **Run it BOTH ways.** Either normalisation penalises the lineage that did not train under
+it, so a single direction is not neutral. Agreeing signs close the rung; disagreeing signs say
+the instrument cannot answer the question, which is itself the finding.
 
 ✅ **`ep004` is on disk.** `save_top_k=-1` held, so the window carrying the entire gain was not
 pruned — the v5 failure (best epoch never written, or written and deleted) did not recur.
