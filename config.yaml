@@ -20,4 +20,4 @@ agents:
     # Both keys are REQUIRED: a missing one is a refusal, never a script-side default —
     # a default would be the second copy of this setting, and it would win silently.
     model: claude-fable-5-1
-    effort: high        # the claude CLI's ladder: low | medium | high | xhigh | max
+    effort: medium      # the claude CLI's ladder: low | medium | high | xhigh | max
