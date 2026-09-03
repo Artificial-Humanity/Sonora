@@ -489,10 +489,10 @@ headline; open items are in [todo.md](todo.md).
    of LibriTTS-R was never on this box; both tarballs (75.8 GB) were fetched, extracted and
    permission-fixed, and the EIV scoring pass ran over 303,638 duration-filtered clips
    (`eiv_scores/libritts_r_full_v7.jsonl`).
-   ✅ **THE RUNG CLOSED 2026-09-03: v7 beats rung 2's `ep008` under BOTH normalisations**,
-   by 1.51% under v6's constants and 3.63% under v7's, on `holdout_8w.txt` with both diagonal
-   controls reproducing. The sign is what closes it; the magnitude is not settled and the
-   conservative figure is the one to quote. ⚠ The gain sits mostly in the **duration**
+   ✅ **THE RUNG CLOSED 2026-09-03: v7 beats rung 2's `ep008` under BOTH normalisations**, on
+   `holdout_8w.txt`, with both diagonal controls reproducing. The sign is what closes it; the
+   two directions disagree on the magnitude, so read the figures from the table that owns
+   them rather than from here. ⚠ The gain sits mostly in the **duration**
    predictor, and the holdout is dev-clean read speech — the one domain this rung added — so
    it says nothing about delivery. ⚠⚠ **The scored checkpoint is from a 2026-08-29 run that no
    document described; the 10-epoch 2026-08-28 run's checkpoints are gone.** Full table,

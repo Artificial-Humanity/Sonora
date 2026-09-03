@@ -955,6 +955,20 @@ architecture as well as the constants, each checkpoint keeps its own config and 
 neutral choice and no direction of it is; what the pair establishes is the direction, not the
 size.
 
+⚠ **THE v7-COLUMN RESULT IS NOT NEW, AND SAYING SO IS THE POINT.** `3.63%` is already stated
+at [vat7r_rebalance.yaml](../configs/experiment/vat7r_rebalance.yaml) line 6 — *"the holdout
+moved 3.63% off the v6 donor"* — computed from `baseline_init_vs_trained`. What this job adds
+is two things: it scores the **real** vat6 `ep008` rather than the widened init that row
+actually points at, and it adds the **second column**, which nobody had run. The conservative
+1.51% is the new number; reproducing 3.63% is a third control.
+
+⚠ **The noise floor is DOCUMENTED and it is far below both effects.** The same file records
+0.012% as the cross-device band, GPU against CPU on the same checkpoint, with the rule that
+only like may be compared with like. All four cells here are GPU, one harness, one session.
+The smallest effect above is over a hundred times that band. (This also explains the
+`1.7644`/`1.7646` pair in `vat7_holdout/`: the lower one is the CPU watcher, not unaccounted
+scatter.)
+
 ⚠ **Both diagonal cells are CONTROLS and both reproduced.** vat6 under v6's constants came back
 `1.782305` against the `1.7823` in `logs/train/vat6_finetune/holdout_vat6_ep000-010.json`
 (2026-08-11), and v7 under v7's came back `1.764570` — the value
