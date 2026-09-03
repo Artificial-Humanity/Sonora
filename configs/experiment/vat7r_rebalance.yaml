@@ -217,6 +217,14 @@
 # The only lever not yet tried is NEW DISTINCT clips; whether that lever works is an
 # open question, not an inference from these results.
 #
+# ⚠⚠ AMENDED 2026-09-03 — DISTINCTNESS IS NOT THE LEVER, AND THIS LINE WOULD HAVE BOUGHT
+# THE SAME DEFECT AGAIN. Almost every labelled speaker id in v7 carries exactly ONE lane,
+# so delivery and speaker identity are very nearly the same fact to the model. A bank of
+# new distinct clips built the same way reproduces the confound at any size. What is
+# untried is clips ARRANGED so one voice carries several lanes. Derive the numbers with
+# scripts/tools/measure_delivery_confound.py; the design and the owner's rulings are in
+# notes/delivery-lane-remediation.md.
+#
 # ⚠ AUDITED FOR REVERSAL BEFORE IT WAS READ. Side balance on button A was 6 lane / 6
 # blank; an independent recount matched the unblinder; every note that names a side
 # agrees with the recorded click, on both sides of the button. This is discrimination,

@@ -134,11 +134,17 @@ the CLI, the Vocalizer and the export converter all read it.
 >
 > More consistent, not less: every lane 3-for-3, no ties. The 9× oversample was the
 > thing this run was built to test, and it changed nothing the ear can find. Dead on
-> measurement now: the sampler, row duplication, simple lane starvation. The one untried
-> lever is **new distinct clips**, and whether it works is an open question, not an
-> inference. Audited for button reversal before reading (6/6 side balance, notes agree
-> with clicks on both sides). ⚠ One note — *"these do almost sound like different
-> voices"* — points at speaker identity, not hum: **a lead that needs its own test.**
+> measurement now: the sampler, row duplication, simple lane starvation. Audited for
+> button reversal before reading (6/6 side balance, notes agree with clicks on both sides).
+>
+> ⚠⚠ **AND THE REMEDY IS NOT "MORE DISTINCT CLIPS" — MEASURED 2026-09-03.** Almost every
+> labelled speaker id carries exactly one lane, so lane and speaker identity are very nearly
+> the same fact and a bank built the same way reproduces the confound at any size. The lever
+> is clips ARRANGED so one voice carries several lanes. Derive the numbers with
+> `scripts/tools/measure_delivery_confound.py`; the design and the owner's rulings are
+> [delivery-lane-remediation.md](delivery-lane-remediation.md). ⚠ It also **answers** the
+> note *"these do almost sound like different voices"*, which was a lead wanting its own
+> test: the corpus taught it.
 
 **Eight, not the four the review proposed.** A single ordered channel asserts the five
 lanes lie on one continuum, and `seed_delivery.py` records that they do not — Dialogue vs
