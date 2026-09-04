@@ -254,6 +254,10 @@ def test_omitting_exclude_when_a_clip_is_declared_refuses(donor, tmp_path):
     out = p.stdout + p.stderr
     assert "declared excluded by ear" in out, out
     assert not dest.exists(), "a refused run must write nothing"
+    # ⚠ THE NEGATIVE HALF OF #386. Here the file and the corpus spell the clip
+    # identically, so a "(listed there as ...)" annotation would be pure noise. A
+    # citation that always fires says nothing about the case it was added for.
+    assert "listed there as" not in out, out
 
 
 def test_passing_the_flag_satisfies_the_declaration(donor, tmp_path):
@@ -401,6 +405,16 @@ def test_the_OMIT_guard_also_compares_files_not_spellings(tmp_path):
          "--valence-json", str(vj), "--soft-json", str(sj)],
         capture_output=True, text=True, cwd=str(REPO),
         env=dict(os.environ, SONORA_EXCLUDE_DIR=str(cfg)))
-    assert p.returncode != 0, p.stdout + p.stderr
-    assert "declared excluded by ear" in (p.stdout + p.stderr)
+    out = p.stdout + p.stderr
+    assert p.returncode != 0, out
+    assert "declared excluded by ear" in out
     assert not dest.exists(), "a refused run must write nothing"
+
+    # ⚠ #386 — THE REFUSAL MUST NAME A STRING THE OPERATOR CAN FIND. It tells them to
+    # re-run with a named exclusion file; here the corpus spells the clip under `real/`
+    # and the file lists it under `link/`, so citing the corpus spelling alone sends them
+    # to grep for something that is not in it. This is the aliased half; the exact-match
+    # test asserts the annotation is ABSENT, so it is not unconditional noise.
+    assert victim_link in out, (
+        "the refusal did not cite the spelling the exclusion file uses:\n" + out)
+    assert "listed there as" in out, out

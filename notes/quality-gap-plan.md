@@ -791,7 +791,7 @@ them was corrected and the other was not.
 | **`libritts_r_full_vat_v7`** | **336,546 tr / 10,349 val = 346,895** | **5,385** | **561.0** |
 
 **Against this document's own predictions:** rows ~345,600 → **346,895**; hours ~564 →
-**561.1**; speakers ~5,414 → **5,385**. The first two are close enough to call the estimates
+**561.0**; speakers ~5,414 → **5,385**. The first two are close enough to call the estimates
 good. The third is the 2,064-vs-2,059 correction above, and the derivations confirmed it
 without being told: clean_360 produced **899 = 904 − 5** and other_500 produced its full
 **1,160**, so all five zero-clip speakers were in one root, exactly as measured beforehand.

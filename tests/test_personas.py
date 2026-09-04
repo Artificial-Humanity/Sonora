@@ -228,7 +228,6 @@ def _table_runs(rel):
     # global floor below cannot see it — measured, a single inserted ``` line at REVIEWER.md:6
     # took that file's 4 runs to 0 and the suite stayed GREEN. The caller asserts on this.
     return runs, fence
-    return runs
 
 
 def test_every_markdown_table_run_carries_its_own_header_and_delimiter():
