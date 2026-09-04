@@ -64,6 +64,7 @@ the review lane was rebuilt. Both are the drift the `docs/` split exists to make
 | [audiobook-corpus-policy.md](../docs/audiobook-corpus-policy.md) | the owner's-audiobooks boundary + private-lineage firewall |
 | [book-prose-lane.md](book-prose-lane.md) | the book text→synthesis lane + the LibriVox real-audio/quote lane (operations first, rationale second) |
 | [delivery-mix-campaign.md](delivery-mix-campaign.md) | the 50/30/8/6/6 delivery rebalance — **complete 2026-08-04**; kept for the findings and the traps it exposed |
+| [delivery-lane-remediation.md](delivery-lane-remediation.md) | the **crossed bank** — the campaign that tests whether within-speaker lane contrast repairs the delivery channel. Owns the 2026-09-03 confound measurement and the owner's rulings behind the bank's design |
 
 _When these two disagree: `training-sources.md` wins on a source's **state**,
 `dataset-landscape.md` wins on its **licence**._

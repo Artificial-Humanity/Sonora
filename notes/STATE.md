@@ -134,11 +134,17 @@ the CLI, the Vocalizer and the export converter all read it.
 >
 > More consistent, not less: every lane 3-for-3, no ties. The 9× oversample was the
 > thing this run was built to test, and it changed nothing the ear can find. Dead on
-> measurement now: the sampler, row duplication, simple lane starvation. The one untried
-> lever is **new distinct clips**, and whether it works is an open question, not an
-> inference. Audited for button reversal before reading (6/6 side balance, notes agree
-> with clicks on both sides). ⚠ One note — *"these do almost sound like different
-> voices"* — points at speaker identity, not hum: **a lead that needs its own test.**
+> measurement now: the sampler, row duplication, simple lane starvation. Audited for
+> button reversal before reading (6/6 side balance, notes agree with clicks on both sides).
+>
+> ⚠⚠ **AND THE REMEDY IS NOT "MORE DISTINCT CLIPS" — MEASURED 2026-09-03.** Almost every
+> labelled speaker id carries exactly one lane, so lane and speaker identity are very nearly
+> the same fact and a bank built the same way reproduces the confound at any size. The lever
+> is clips ARRANGED so one voice carries several lanes. Derive the numbers with
+> `scripts/tools/measure_delivery_confound.py`; the design and the owner's rulings are
+> [delivery-lane-remediation.md](delivery-lane-remediation.md). ⚠ It also **answers** the
+> note *"these do almost sound like different voices"*, which was a lead wanting its own
+> test: the corpus taught it.
 
 **Eight, not the four the review proposed.** A single ordered channel asserts the five
 lanes lie on one continuum, and `seed_delivery.py` records that they do not — Dialogue vs
@@ -478,12 +484,19 @@ headline; open items are in [todo.md](todo.md).
    `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
    Full derivation, tables and the rejected alternatives:
    [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
-2. 🔄 **Rung 3 — the 10×** (LibriTTS-R full). **IN PROGRESS, started 2026-08-25.** Ungated:
-   rung 1 passed. The other 90% of LibriTTS-R was never on this box — both tarballs
-   (75.8 GB) are now fetched, extracted and permission-fixed, and the **EIV scoring pass is
-   running** over 303,638 duration-filtered clips at batch 32 (~22.5 h;
-   `eiv_scores/libritts_r_full_v7.jsonl`, resumable — it appends and skips what it holds).
-   **The corpus is NOT built and no run is queued.**
+2. 🔄 **Rung 3 — the 10×** (LibriTTS-R full). **BUILT 2026-08-27 · RUN 2026-08-28, stopped
+   at the owner's call · v7r rebalance arm 2026-08-29.** Ungated: rung 1 passed. The other 90%
+   of LibriTTS-R was never on this box; both tarballs (75.8 GB) were fetched, extracted and
+   permission-fixed, and the EIV scoring pass ran over 303,638 duration-filtered clips
+   (`eiv_scores/libritts_r_full_v7.jsonl`).
+   ✅ **THE RUNG CLOSED 2026-09-03: v7 beats rung 2's `ep008` under BOTH normalisations**, on
+   `holdout_8w.txt`, with both diagonal controls reproducing. The sign is what closes it; the
+   two directions disagree on the magnitude, so read the figures from the table that owns
+   them rather than from here. ⚠ The gain sits mostly in the **duration**
+   predictor, and the holdout is dev-clean read speech — the one domain this rung added — so
+   it says nothing about delivery. ⚠⚠ **The scored checkpoint is from a 2026-08-29 run that no
+   document described; the 10-epoch 2026-08-28 run's checkpoints are gone.** Full table,
+   recipe and caveats: [quality-gap-plan.md § THE VERDICT](quality-gap-plan.md).
    Measured, replacing the estimates: **321,497 new clips · 2,064 new speakers · ~564 h ·
    ~345,600 train rows expected**. The strictly-growing rule survives because the new
    speakers are **disjoint from both v6 and the holdout** (tested under `LC_ALL=C` with a
