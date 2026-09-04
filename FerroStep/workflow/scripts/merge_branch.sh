@@ -322,9 +322,41 @@ fi
   || die "working tree is dirty. Commit or stash first — a merge would carry edits that were
      never reviewed, which is precisely what the gate above exists to prevent."
 
+# ⚠ THE MERGE COMMIT NEEDS THE ROSTER'S IDENTITY, AND NOTHING ELSE SUPPLIES IT.
+# This repo's configured git identity is the OWNER's, deliberately, so that their own hand
+# commits stay theirs — which means a merge made WITHOUT the `-c` pair below does not error.
+# It lands under their name, silently. That is not hypothetical: merge commits on `main` are
+# authored as the owner from exactly this gap, and this is the one script in the repo that
+# reaches `main` on its own. DEVELOPER.md §1 states the rule for a hand commit; the script
+# that automates the merge was not obeying it.
+# ⚠ ASSIGNMENT THEN CHECK, never `eval "$(ferrostep agent-env)"` in one step — eval's status
+# is the emitted text's status, a refusal emits nothing, and `eval ""` is 0 (measured
+# 2026-08-24). request_review.sh resolves the reviewer the same way, three lines apart.
+# ⚠ RESOLVED HERE rather than beside the gate, for the reason the dirty-tree check states
+# above it: a roster refusal is a reason not to MERGE, not a reason to refuse to ANSWER what
+# the gate found. `--dry-run` still reports its verdict on a box with no roster.
+AGENT_ENV="$(ferrostep agent-env --roster "$REPO_ROOT/FerroStep/config.yaml")" \
+  || die "cannot resolve the developer from the roster: \`ferrostep agent-env\` refused, and
+     its stderr is above. NOTHING WAS MERGED."
+eval "$AGENT_ENV"
+[[ -n "${AGENT_NAME:-}" && -n "${AGENT_EMAIL:-}" ]] \
+  || die "the roster emitted no AGENT_NAME/AGENT_EMAIL for the default agent. NOTHING WAS
+     MERGED — a merge without them would land under this repo's configured identity, which
+     is the owner's."
+
 git checkout "$BASE"
-git merge --no-ff "$BRANCH" -m "merge $BRANCH"
-echo "merged $BRANCH into $BASE"
+git -c user.name="$AGENT_NAME" -c user.email="$AGENT_EMAIL" \
+    merge --no-ff "$BRANCH" -m "merge $BRANCH"
+
+# ⚠ VERIFY, DO NOT ASSUME — and do it BEFORE the push, which is the only window where the
+# fix is free (DEVELOPER.md §1). The `-c` pair is a convention until something checks it.
+_MERGE_AUTHOR="$(git log -1 --format='%an <%ae>')"
+[[ "$_MERGE_AUTHOR" == "$AGENT_NAME <$AGENT_EMAIL>" ]] \
+  || die "the merge landed but is authored '$_MERGE_AUTHOR', not '$AGENT_NAME <$AGENT_EMAIL>'.
+     IT IS NOT PUSHED. Fix it while that is still true:
+       git -c user.name=\"$AGENT_NAME\" -c user.email=\"$AGENT_EMAIL\" commit --amend --reset-author"
+
+echo "merged $BRANCH into $BASE (authored $_MERGE_AUTHOR)"
 
 if [[ "$PUSH" -eq 1 ]]; then
   # ⚠ EXPLICIT REFSPEC. `push.default=upstream` is set in this repo, so a bare `git push` from
