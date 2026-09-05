@@ -316,3 +316,36 @@ def test_every_markdown_table_run_carries_its_own_header_and_delimiter():
         + "\n  ".join(broken)
         + "\n\n⚠ Usually caused by inserting a section INTO a table. Move the section after "
           "the table, or give the orphaned rows their own header.")
+
+
+def test_the_mcp_read_instruction_carries_its_redaction_warning():
+    """⚠ #365 — THE REDACTION COVERED THE FALLBACK AND THE PRIMARY PATH WAS UNGUARDED.
+
+    `issue.py` blunts the cycle-abort token on the way out. The `pocketbase` MCP server reads
+    PocketBase directly and never loads `issue.py`, so records stored before the write guard
+    existed come back verbatim — and the MCP tools are what REVIEWER.md names as the PRIMARY
+    read path. A reviewer following the page as written put the literal into its own summary,
+    which is what `review_cycle.sh` greps to halt a cycle.
+
+    ⚠ SO THE INVARIANT IS PLACEMENT, NOT PRESENCE. A warning elsewhere on the page is what
+    the repo already had: `redact()`'s docstring called `issue.py list` "the sanctioned read
+    command", which is true of the fallback and reads as though it were the only route. This
+    asserts the caveat sits WITH the instruction it qualifies.
+
+    ⚠ LIMIT, STATED: prose cannot be executed, so this pins proximity and wording, not that a
+    reviewer obeys it. It is the strongest check available for an instruction.
+    """
+    lines = REVIEWER.splitlines()
+    anchors = [i for i, ln in enumerate(lines)
+               if "READ it with the `pocketbase` MCP tools" in ln]
+    assert len(anchors) == 1, (
+        "expected exactly one MCP read instruction to qualify, found %d — if the page now "
+        "names the read path twice, both need the caveat" % len(anchors))
+
+    window = "\n".join(lines[anchors[0]:anchors[0] + 20])
+    assert "does not redact" in window.lower(), (
+        "the MCP read instruction no longer says that path returns stored text unredacted")
+    assert "verbatim" in window.lower(), (
+        "the caveat no longer tells the reviewer what not to do with what it reads")
+    assert "issue.py show" in window, (
+        "the caveat names no redacting alternative, so it reports a hazard with no way out")
