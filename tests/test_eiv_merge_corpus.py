@@ -240,6 +240,18 @@ def keys_written_to_row(source):
     # the head comprehension the REAL writer uses: readable, contributes nothing, and must
     # NOT be reported — reporting it would demand every HEAD be declared a non-head.
     ('row = {"wav": w}\nrow.update({n: v for n in heads})', {"wav"}),
+    # ⚠ #383 — THE SCOPE ANCHOR, WHICH NOTHING ABOVE REACHES. None of the fixtures above
+    # contains `json.dumps(row)`, so every one of them takes the `scope = [tree]` FALLBACK
+    # and the narrowing branch was exercised only by the real `eiv_score.py` — a guard whose
+    # own known-answer cases all miss the branch it was added for. This one reaches it, and
+    # the decoy binding OUTSIDE the dumps block is what makes it a test of narrowing rather
+    # than of walking: if the anchor stops narrowing, `decoy` joins the result.
+    ('def main():\n'
+     '    row = {"decoy": x}\n'
+     '    for line in fh:\n'
+     '        row = {"wav": w}\n'
+     '        row["wav_dur"] = d\n'
+     '        out.write(json.dumps(row))\n', {"wav", "wav_dur"}),
 ])
 def test_the_walk_sees_every_idiom_that_writes_a_row_key(src, expected):
     """Known-answer fixtures through the same code path the real guard uses.
