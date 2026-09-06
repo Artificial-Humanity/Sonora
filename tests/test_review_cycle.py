@@ -200,9 +200,15 @@ def test_convergence_is_scoped_to_the_branch_under_review():
 
 
 def _guard_readings():
-    """The two `agent_passes` readings the stall guard compares."""
+    """The two readings the stall guard compares — the TRACKER queries, not the sums.
+
+    ⚠ These moved when #379 made the query emit one line per issue instead of a total. The
+    readings are now `BEFORE_SNAP` / `AFTER_SNAP` and the sums are derived from them by
+    `snap_sum`, so the like-with-like property lives on the snapshot assignments. Pointing this
+    at the `_SUM` lines instead would compare two variable names and prove nothing.
+    """
     return [ln.strip() for ln in SOURCE.splitlines()
-            if ln.strip().startswith(("BEFORE_SUM=", "AFTER_SUM="))]
+            if ln.strip().startswith(("BEFORE_SNAP=", "AFTER_SNAP="))]
 
 
 def test_the_stall_guard_compares_like_with_like():
@@ -221,6 +227,14 @@ def test_the_stall_guard_compares_like_with_like():
     before, after = _guard_readings()
     assert before.split("=", 1)[1] == after.split("=", 1)[1], (before, after)
     assert "pb_passes" in before, before
+
+    # ⚠ AND THE DERIVATION MUST MATCH TOO (#379). The snapshots being identical queries is no
+    # longer sufficient, because a sum now sits between the query and the comparison. Two
+    # different reductions over two identical snapshots is the same defect one layer along.
+    sums = [ln.strip() for ln in SOURCE.splitlines()
+            if ln.strip().startswith(("BEFORE_SUM=", "AFTER_SUM="))]
+    assert len(sums) == 2, sums
+    assert all("snap_sum" in ln for ln in sums), sums
 
 
 def test_the_stall_guard_sums_over_every_state():
@@ -656,3 +670,80 @@ def test_the_reviewer_has_a_sanctioned_way_to_say_there_is_no_blocker():
     assert 'grep -n "MUST-NOT-LAND"' in code, (
         "the halt does not show which line matched, so a §6 violation cannot be told from a "
         "real refusal without reading the log")
+
+
+def _cap_helpers():
+    """`snap_sum` and `unspent_reviews` lifted out and EXERCISED, not grepped.
+
+    The rest of this file asserts on the script's source, which is right for the deny-list:
+    those are capabilities, and their presence is the property. This one is a computation, and
+    a substring cannot tell a correct awk program from a wrong one.
+    """
+    src = SCRIPT.read_text(encoding="utf-8")
+    out = []
+    for name in ("snap_sum", "unspent_reviews"):
+        m = re.search(r"^%s\(\) \{.*?^\}" % name, src, re.S | re.M)
+        assert m, "%s is gone from the driver" % name
+        out.append(m.group(0))
+    return "\n".join(out)
+
+
+def _run_helpers(before, after):
+    body = "%s\nprintf '%%s|' \"$(snap_sum \"$1\")\"\nunspent_reviews \"$1\" \"$2\"\n" % _cap_helpers()
+    p = subprocess.run(["bash", "-c", body, "_", before, after],
+                       capture_output=True, text=True, timeout=60)
+    assert p.returncode == 0, p.stderr
+    total, _, rest = p.stdout.partition("|")
+    return total, [ln for ln in rest.split("\n") if ln.strip()]
+
+
+def test_an_issue_reaching_review_without_spending_a_pass_is_caught():
+    """⚠⚠ #379 — THE SUM CANNOT SEE A PARTIAL SKIP, AND THAT IS THE OBSERVED CASE.
+
+    `sonora-lane.json` spends `agent_passes` on the `open -> open` take alone, so
+    `open -> review` arrives free and the cap binds only when the worker takes first. The sum
+    guard catches a worker that did nothing at all. It does not catch one that takes some
+    issues and skips the others, because the sum still rises.
+
+    Owner's ruling, 2026-09-06 (#379 `user_decision`): *"Tighten the driver, not the
+    contract."* Moving the spend onto `open -> review` would have made the cap mechanical and
+    lost the property that the counter moves BEFORE the work — which is what makes a crashed
+    pass cost a pass.
+
+    The fixture is the measured case: 369 and 372 advanced, 373 and 374 reached `review` at
+    zero. **The sum rises either way**, which is asserted here so the blind spot is pinned
+    rather than described.
+    """
+    before = "369\t1\topen\n372\t0\topen\n373\t0\topen\n374\t0\topen"
+    after = "369\t2\treview\n372\t1\treview\n373\t0\treview\n374\t0\treview"
+    total, unspent = _run_helpers(before, after)
+    assert total == "1", "the fixture's own arithmetic moved"
+    assert unspent == ["373", "374"], unspent
+
+    # ⚠ THE CONTROL THAT MATTERS: the OLD guard is satisfied by this very fixture. Without
+    # this line the test above is consistent with the sum having caught it all along.
+    after_total, _ = _run_helpers(after, after)
+    assert int(after_total) > int(total), (
+        "the sum did not rise on the fixture, so it never had the blind spot this closes")
+
+
+def test_only_the_open_to_review_transition_is_required_to_have_spent():
+    """The population is the TRANSITION, not the state — three ways to be exempt.
+
+    An issue already at `review` did its spending on an earlier pass. `open -> escalated`
+    spends nothing by design. `open -> disputed` spends `disputes`, a different counter: a
+    rebuttal must not cost a fix pass, or the cheap move is always to comply.
+
+    Each of these sits at `agent_passes` unchanged, so a check keyed on the counter alone
+    would flag all three.
+    """
+    before = "900\t2\treview\n901\t0\topen\n902\t0\topen\n903\t0\topen"
+    after = "900\t2\treview\n901\t0\tescalated\n902\t0\tdisputed\n903\t1\treview"
+    _, unspent = _run_helpers(before, after)
+    assert unspent == [], "an exempt transition was demanded to spend a fix pass: %s" % unspent
+
+
+def test_an_unreachable_tracker_is_passed_through_not_counted_as_zero():
+    """`unreachable` must survive `snap_sum`, or a dead tracker reads as a stalled worker."""
+    total, _ = _run_helpers("unreachable", "unreachable")
+    assert total == "unreachable", total

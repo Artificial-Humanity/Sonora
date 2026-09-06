@@ -295,10 +295,40 @@ try:
     items = r.get("items") or []
     if r.get("totalItems", 0) > len(items):
         raise RuntimeError("paged: %d of %d" % (len(items), r["totalItems"]))
-    print(sum(int(i.get("agent_passes") or 0) for i in items))
+    for i in items:
+        print("%s\t%s\t%s" % (i.get("number"), int(i.get("agent_passes") or 0),
+                               i.get("state") or ""))
 except Exception:
     print("unreachable")
 PY
+}
+
+# The sum the stall guard has always compared, DERIVED from the snapshot above rather
+# than fetched again. Two queries a pass apart can disagree about more than the worker did.
+snap_sum() {
+  [[ "$1" == "unreachable" ]] && { printf 'unreachable'; return; }
+  awk -F"\t" '{n+=$2} END {print n+0}' <<<"$1"
+}
+
+# ⚠⚠ PER-ISSUE, BECAUSE THE SUM CANNOT SEE A PARTIAL SKIP (#379; owner 2026-09-06,
+# "Tighten the driver, not the contract"). `sonora-lane.json` spends `agent_passes` on the
+# `open -> open` take alone, so `open -> review` arrives FREE and the cap binds only when
+# the worker chooses to take first. The sum guard below catches a worker that did nothing
+# at all. It does NOT catch one that takes some issues and skips the take on others,
+# because the sum still rises — the case Janis observed live: 369 and 372 advanced while
+# 373 and 374 reached `review` at zero, and this driver saw a healthy pass.
+#
+# ⚠ THE POPULATION IS THE TRANSITION, NOT THE STATE. Only issues that went `open ->
+# review` during THIS pass are required to have advanced:
+#   * one already at `review` beforehand did its spending on an earlier pass;
+#   * `open -> escalated` spends nothing by design and must not be demanded here;
+#   * `open -> disputed` spends `disputes`, a different counter — a rebuttal must not cost
+#     a fix pass, or the cheap move is always to comply.
+unspent_reviews() {  # $1 = before snapshot, $2 = after snapshot -> offending numbers
+  awk -F"\t" '
+    NR==FNR { st[$1]=$3; pa[$1]=$2; next }
+    $3=="review" && st[$1]=="open" && $2+0 <= pa[$1]+0 { print $1 }
+  ' <(printf '%s\n' "$1") <(printf '%s\n' "$2")
 }
 
 # ⚠ RESOLVED ONCE, HERE, and read by everything below — the convergence filter and the
@@ -500,7 +530,8 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   # --- fix pass ------------------------------------------------------------
   check_stop "fix pass $review"
   say "fix pass $review — spawning worker (git push denied)"
-  BEFORE_SUM="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
+  BEFORE_SNAP="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
+  BEFORE_SUM="$(snap_sum "$BEFORE_SNAP")"
 
   WORKER_BRIEF="## This fix pass
 
@@ -571,8 +602,18 @@ $WORKER_BRIEF"
   #
   # Both readings now come from the SAME call on the SAME branch, so the comparison is between
   # like and like — and a stall is `unchanged`, not `equal to some unrelated number`.
-  AFTER_SUM="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
+  AFTER_SNAP="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
+  AFTER_SUM="$(snap_sum "$AFTER_SNAP")"
   if [[ "$AFTER_SUM" != "unreachable" && "$BEFORE_SUM" != "unreachable" ]]; then
+    # The per-issue check runs FIRST: it is strictly more specific than the sum, and a
+    # run that trips both should be reported by the one that names the issues.
+    UNSPENT="$(unspent_reviews "$BEFORE_SNAP" "$AFTER_SNAP")"
+    if [[ -n "$UNSPENT" ]]; then
+      say "issue(s) reached 'review' without spending a fix pass: $(tr '\n' ' ' <<<"$UNSPENT")
+          The take is what meters the cap and 'open -> review' does not, so those issues
+          are uncapped. Stopping rather than looping (#379)."
+      exit 5
+    fi
     if (( AFTER_SUM == BEFORE_SUM )); then
       say "worker did not advance agent_passes on any issue (sum stayed at $BEFORE_SUM) —
           stopping rather than looping. Check the worker's output above."
