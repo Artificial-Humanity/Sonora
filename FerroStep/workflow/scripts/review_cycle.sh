@@ -267,7 +267,13 @@ pb_passes() {  # $1 = branch, $2 = repo slug -> SUM of agent_passes, or "unreach
   #
   # Nothing in this loop lowers `agent_passes` (only the owner resets, and the owner is not in
   # it), so across a single worker run this is monotonic: it rises iff the worker incremented.
-  python3 - "$1" <<'PY'
+  #
+  # ⚠⚠ BOTH ARGUMENTS GO TO THE HEREDOC (#391). This passed "$1" alone while the query read
+  # `sys.argv[2]` for the repo slug, so every call raised IndexError inside the `try`, printed
+  # `unreachable`, and the guard below SKIPPED ITSELF — sum and per-issue alike — on every
+  # pass since the repo scope was added. Found by the first test to run this function rather
+  # than a fixture shaped like its output.
+  python3 - "$1" "$2" <<'PY'
 import json, os, socket, sys, urllib.parse, urllib.request
 socket.setdefaulttimeout(15)
 try:
@@ -290,8 +296,15 @@ try:
                            % (sys.argv[2].replace('"', ""), sys.argv[1].replace('"', "")))
     # ⚠ perPage is 500, not the API default of 10 — a truncated page silently under-sums and
     # the guard then sees a stall that never happened.
-    r = call("/api/collections/issues/records?perPage=500&skipTotal=false&fields=agent_passes"
-             "&filter=" + q, token=tok)
+    #
+    # ⚠⚠ `fields` MUST NAME EVERY COLUMN THE ROW BELOW PRINTS (#391). PocketBase honours the
+    # projection: with `fields=agent_passes` every item came back as `{"agent_passes": N}` and
+    # nothing else (measured against the live store, 2026-09-07), so the per-issue guard read
+    # `None\tN\t` for every issue — number and state absent — and could never match. The sum
+    # still worked, because field 2 was intact, which is why nothing looked wrong. The test
+    # for this runs the real function against a server that projects the way PocketBase does.
+    r = call("/api/collections/issues/records?perPage=500&skipTotal=false"
+             "&fields=number,agent_passes,state&filter=" + q, token=tok)
     items = r.get("items") or []
     if r.get("totalItems", 0) > len(items):
         raise RuntimeError("paged: %d of %d" % (len(items), r["totalItems"]))
@@ -626,6 +639,11 @@ $WORKER_BRIEF"
       say "agent_passes fell ($BEFORE_SUM -> $AFTER_SUM) — an issue was re-armed mid-cycle.
           That is the owner's dial, not a fault. Continuing."
     fi
+  else
+    # ⚠ SAY SO. This branch was taken on EVERY pass while pb_passes was broken (#391) and
+    # nothing in the output distinguished "guard skipped" from "guard satisfied".
+    say "tracker unreachable around the worker run — the fix-pass guard could not be applied
+          this pass. That is a skipped check, not a passed one."
   fi
 done
 

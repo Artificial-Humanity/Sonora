@@ -514,11 +514,15 @@ def main():
         # yet `os.path.exists` said yes, so it fell into the already-absent NO-OP branch and
         # the ear drop silently did nothing at exit 0.
         #
-        # ⚠ COST, stated accurately because the first version of this comment was not (#385):
-        # the exact match is the fast path for each LISTED path, but if ANY listed path fails
-        # it — which is the ordinary case, since one exclusion file names clips under a root
-        # another derivation is not building — this realpaths EVERY kept clip, once. That is
-        # one `realpath` pass over `kept` per run, not "190k clips are not stat'd".
+        # ⚠ COST, stated accurately because the first TWO versions of this comment were not
+        # (#385): the exact match is the fast path for each LISTED path, but if ANY listed path
+        # fails it — which is the ordinary case, since one exclusion file names clips under a
+        # root another derivation is not building — this block realpaths EVERY kept clip. That
+        # is one `realpath` pass over `kept` for THIS BLOCK, and the run has a second block of
+        # the same shape (the configs/data guard below, over post-exclusion `kept`), so the
+        # ordinary run pays TWO passes — not one "per run", and not "190k clips are not
+        # stat'd". Measured 2026-08-28 on a 200-clip corpus: 400 realpath calls when --exclude
+        # names a clip the corpus no longer holds, 200 without --exclude.
         missing = sorted(wanted - present)
         if missing:
             _by_real = {}
@@ -627,11 +631,14 @@ def main():
                     _declared[_ln] = (_name, _ln)
                 else:
                     _pending.append((_ln, _name))
-    # ⚠ The realpath map is built ONCE and only when something did not match exactly. That is
-    # the common case — a v7 exclusion file names a clip under one root while another root is
-    # being derived — so it costs one pass of `realpath` over `kept` per run, against a
-    # derivation measured in minutes at best. Keyed on the CORPUS's spelling, because that is
-    # what `wanted` is compared against below.
+    # ⚠ The realpath map is built once FOR THIS BLOCK, and only when something did not match
+    # exactly. That is the common case — a v7 exclusion file names a clip under one root while
+    # another root is being derived — so this costs one pass of `realpath` over `kept`, ON TOP
+    # OF the pass the --exclude block above already made over pre-exclusion `kept` (#385: the
+    # ordinary run pays two passes, and the two maps are over different populations, so
+    # neither can be hoisted into the other). Against a derivation measured in minutes at
+    # best. Keyed on the CORPUS's spelling, because that is what `wanted` is compared against
+    # below.
     if _pending:
         _by_real = {}
         for p_, _, _ in kept:

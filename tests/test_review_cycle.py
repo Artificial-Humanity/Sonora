@@ -14,9 +14,13 @@ a *capability* rather than a sentence, reverting it would have restored unbounde
 reviews (#115).
 """
 
+import http.server
+import json
 import os
 import re
 import subprocess
+import threading
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -747,3 +751,80 @@ def test_an_unreachable_tracker_is_passed_through_not_counted_as_zero():
     """`unreachable` must survive `snap_sum`, or a dead tracker reads as a stalled worker."""
     total, _ = _run_helpers("unreachable", "unreachable")
     assert total == "unreachable", total
+
+
+def _pb_passes_fn():
+    src = SCRIPT.read_text(encoding="utf-8")
+    m = re.search(r"^pb_passes\(\) \{.*?^\}", src, re.S | re.M)
+    assert m, "pb_passes is gone from the driver"
+    return m.group(0)
+
+
+class _ProjectingTracker(http.server.BaseHTTPRequestHandler):
+    """A PocketBase stand-in that HONOURS `fields` — the one behaviour #391 is about.
+
+    Every record is projected to exactly the columns the query asked for, which is what the
+    real store does (measured 2026-09-07: `fields=agent_passes` returned `{"agent_passes": N}`
+    and nothing else). A stub that returned whole records would pass the old query too.
+    """
+    records = []
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        self._json({"token": "t"})
+
+    def do_GET(self):
+        qs = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        fields = [f for f in qs.get("fields", [""])[0].split(",") if f]
+        items = [{k: v for k, v in r.items() if not fields or k in fields}
+                 for r in self.records]
+        self._json({"items": items, "totalItems": len(items)})
+
+    def _json(self, obj):
+        body = json.dumps(obj).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):
+        pass
+
+
+def test_the_per_issue_guard_sees_number_and_state_in_what_the_query_returns(tmp_path):
+    """⚠⚠ #391 — THE GUARD WAS DEAD ON ARRIVAL, AND THREE GREEN TESTS NEVER SAW THE QUERY.
+
+    `pb_passes` requested `fields=agent_passes`, PocketBase honoured it, and the row it
+    printed was `None\\tN\\t` for every issue — so `unspent_reviews`' `$3=="review"` was false
+    on every line and the #379 check could not fire. The sum used field 2 and kept working,
+    which is exactly why nothing looked wrong. The tests above feed the awk hand-typed
+    fixtures; this one feeds it the REAL function's output against a server that projects
+    the way the real store does, so a `fields` that drops a column the awk reads fails here.
+    """
+    _ProjectingTracker.records = [
+        {"id": "a", "number": 369, "agent_passes": 2, "state": "review", "title": "x"},
+        {"id": "b", "number": 372, "agent_passes": 1, "state": "review", "title": "y"},
+        {"id": "c", "number": 373, "agent_passes": 0, "state": "review", "title": "z"},
+        {"id": "d", "number": 374, "agent_passes": 0, "state": "review", "title": "w"},
+    ]
+    srv = http.server.HTTPServer(("127.0.0.1", 0), _ProjectingTracker)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        (tmp_path / ".claude.json").write_text(json.dumps({"mcpServers": {"pocketbase": {
+            "env": {"PB_URL": "http://127.0.0.1:%d" % srv.server_address[1],
+                    "PB_EMAIL": "e", "PB_PASSWORD": "p"}}}}))
+        body = "%s\n%s\npb_passes \"$1\" \"$2\"\n" % (_pb_passes_fn(), _cap_helpers())
+        p = subprocess.run(["bash", "-c", body, "_", "some/branch", "o/r"],
+                           capture_output=True, text=True, timeout=60,
+                           env={**os.environ, "HOME": str(tmp_path)})
+    finally:
+        srv.shutdown()
+    assert p.returncode == 0, p.stderr
+    assert p.stdout.split("\n")[:-1] == [
+        "369\t2\treview", "372\t1\treview", "373\t0\treview", "374\t0\treview"], p.stdout
+
+    # ⚠ AND THE GUARD FIRES ON THAT OUTPUT, not on a fixture shaped like it.
+    before = "369\t1\topen\n372\t0\topen\n373\t0\topen\n374\t0\topen"
+    _, unspent = _run_helpers(before, p.stdout.rstrip("\n"))
+    assert unspent == ["373", "374"], unspent

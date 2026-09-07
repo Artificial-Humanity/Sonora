@@ -249,7 +249,9 @@ ones already stored, and rewriting them was considered and refused (#361).
 * **Do not paste a stored `title` or `body` verbatim into a summary.** Describe the record
   instead. #361 is its own proof that this is always possible.
 * **To read one safely, use the redacting path** — `FerroStep/workflow/scripts/issue.py show <n>`,
-  the same command §4 names below for a stale transport. It is the only read here that redacts.
+  the same command §4 names below for a stale transport, or `issue.py list`, whose rows go
+  through the same `redact`. ⚠ This called `show` *"the only read here that redacts"* while
+  naming `list` three times as the reroute (#392). Both redact; the raw API does not.
 * ⚠ **Which records carry it is a LIVE fact.** Find them with a filter when you need to know;
   a count written here would be a second copy that goes stale the next time one is filed.
 

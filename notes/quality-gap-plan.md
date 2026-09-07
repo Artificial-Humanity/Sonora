@@ -758,16 +758,20 @@ Labelling the number without fixing which population it counts over left the hal
 crossed.
 
 ⚠ **THE v7 CONFIG SAYS 22 OF 303,627 AND BOTH ARE RIGHT — THE POPULATIONS DIFFER** (#378).
-This paragraph measures the corpus **as scored**, before the ear exclusion; the config
-measures it **as built**, after. Removing one clip of a two-clip speaker left its survivor a
-one-clip speaker, so the null-vector population went 21 → 22 while the row count went
-303,628 → 303,627. Neither number was labelled, which is how two correct measurements read as
-a contradiction — the same defect as #372 and #377, ten lines apart, and the reason every
-count in this section now names its population. 26 speakers have ≤2 clips — and ⚠ **that parenthetical used to say
-"z fixed at ±1 by arithmetic", which is true of only 4 of them** (#378): two clips give ±1,
-but the other 22 have ONE clip and their z is exactly 0.0, which is the degenerate case the
-paragraph above is entirely about. The ≤2 total is 26 either side of the exclusion; only its
-split moves. And **66 have <10** — which is what `derive_vat_corpus` reports, because its own comparison is `< MIN_SPK_CLIPS`. ⚠ **71 is the ≤10 count** and this line gave it under a `<10` label (#377).
+This paragraph measures the corpus **as KEPT by `derive_vat_corpus`, before the ear
+exclusion**; the config measures it **as built**, after. ⚠ This said *"as scored"* six lines
+under a sentence saying the denominator is the kept set and NOT the scored one — one word,
+opposite senses, adjacent paragraphs (#378). Removing one clip of a two-clip speaker left its
+survivor a one-clip speaker, so the null-vector population went 21 → 22 while the row count
+went 303,628 → 303,627. Neither number was labelled, which is how two correct measurements
+read as a contradiction — the same defect as #372 and #377, ten lines apart, and the reason
+every count in this section now names its population. 26 speakers have ≤2 clips, and the
+split is **21 one-clip + 5 two-clip before the exclusion, 22 + 4 as built** — the same speaker
+crossing. ⚠ **A parenthetical here used to say "z fixed at ±1 by arithmetic", which is true
+only of the two-clip speakers** (#378): two clips give ±1, but a one-clip speaker's z is
+exactly 0.0, the degenerate case the paragraph above is entirely about. The ≤2 total is 26
+either side of the exclusion; only its split moves, and the first fix gave the as-built split
+under the pre-exclusion label. And **66 have <10** — which is what `derive_vat_corpus` reports, because its own comparison is `< MIN_SPK_CLIPS`. ⚠ **71 is the ≤10 count** and this line gave it under a `<10` label (#377).
 `derive_vat_corpus`'s `MIN_SPK_CLIPS` report prints this per run and **deliberately does not
 repair it** — changing labels is a corpus version bump and an owner call.
 
