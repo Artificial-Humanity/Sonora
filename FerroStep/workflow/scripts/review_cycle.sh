@@ -54,7 +54,12 @@ review_cycle.sh — run the review loop to convergence. NEVER PUSHES.
                       ceiling + 1 — agent_passes.max in FerroStep/workflow/sonora-lane.json)
                       That sum is what the fix-pass cap requires: the review that finds
                       an issue, then one after each fix pass.
-  --max-usd <N>       Spend ceiling PER claude call.    (default: 5)
+  --max-usd <N>       Spend ceiling for the WORKER's claude call. (default: 5)
+                      ⚠ NOT "per claude call", which this said until 2026-09-07: the
+                      REVIEWER's call is request_review.sh's, and its ceiling is the
+                      roster's `budget_usd` for that agent (FerroStep/config.yaml).
+                      Until that key existed the reviewer ran with no ceiling at all
+                      while this line claimed one covered it.
   --model / --effort  The WORKER's only.      (default: claude-fable-5-1 / high)
                       The reviewer's are its roster entry in FerroStep/config.yaml; this driver
                       does not forward them to request_review.sh and never did.
