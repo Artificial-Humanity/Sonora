@@ -26,7 +26,15 @@
 # it is the one thing that reaches `main` on its own. There is deliberately no path through
 # here that lands a merge under the invoker's name: `GIT_AUTHOR_*` in the environment
 # OVERRIDES a `-c` pair (measured 2026-09-07), so it is refused before the merge rather than
-# caught after it. An owner who wants a merge under their own name runs `git merge` by hand.
+# caught after it.
+#
+# ⚠⚠ THIS SCRIPT IS FOR AGENTS. THE OWNER DOES NOT RUN IT (owner, 2026-09-07, deciding #394).
+# That is why there is no opt-in and no --as-invoker flag: there is no case to serve. ⚠ And
+# do NOT reintroduce "merge by hand if the commit is meant to be yours" as the escape — an
+# earlier wording said exactly that, and a bare `git merge` SKIPS the severity floor, the
+# server-side tracker re-read and the explicit push refspec. This repo has no branch
+# protection and force-push is unblocked, so that advice traded the only guard in front of
+# `main` for a name in an author field.
 #
 # Replaces `changeset.sh merge`. The changeset record is retired: a branch already has an
 # identity and its issues already carry its state.
@@ -383,7 +391,8 @@ fi
 if _OVERRIDE="$(env_identity_override)"; then
   die "$_OVERRIDE is set in the environment, and it OVERRIDES the roster identity this merge
      is authored with. NOTHING WAS MERGED. A merge through this script is the developer's act
-     (header above); unset it, or merge by hand if the commit is meant to be yours."
+     and this script is for agents (header above) — so unset it and re-run. ⚠ Do not reach for
+     a hand merge instead: it skips the severity floor and the tracker re-check this performs."
 fi
 AGENT_ENV="$(ferrostep agent-env --agent developer --roster "$REPO_ROOT/FerroStep/config.yaml")" \
   || die "cannot resolve the developer from the roster: \`ferrostep agent-env\` refused, and
