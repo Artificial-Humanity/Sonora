@@ -104,7 +104,9 @@ def test_the_gate_states_what_it_does_not_prove():
 
 def test_the_gate_runs_before_any_git_write():
     """A stale local view must not be able to authorise a merge."""
-    for op in ("git checkout", "git merge --no-ff", "git push"):
+    # `merge --no-ff`, not `git merge --no-ff`: the real merge carries a `-c` pair between the
+    # two words (9056233), and so does the dry-run preview of it (#393).
+    for op in ("git checkout", "merge --no-ff", "git push"):
         assert MERGE_CODE.index("UNSETTLED=") < MERGE_CODE.index(op), op
 
 

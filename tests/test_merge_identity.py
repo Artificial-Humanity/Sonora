@@ -76,14 +76,15 @@ def lane(tmp_path):
         f"echo \"AGENT_EMAIL='{ROSTER_IDENT[1]}'\"\n")
     (bindir / "ferrostep").chmod(0o755)
 
-    def _run(script=SCRIPT):
+    def _run(script=SCRIPT, *flags, env_extra=None):
         env = dict(os.environ)
         env["PATH"] = f"{bindir}:{env['PATH']}"
+        env.update(env_extra or {})
         # ⚠ --no-review is not incidental. Without it the gate attempts a review, which
         # cannot run in a throwaway repo; the script tolerates that and continues, so the
         # test would still pass — while exercising an error path nobody chose. Pinning it
         # keeps what these tests drive stable under someone else's edit to that sub-step.
-        p = subprocess.run([script, "--branch", "feature/x", "--no-push", "--no-review"],
+        p = subprocess.run([script, "--branch", "feature/x", "--no-push", "--no-review", *flags],
                            cwd=str(work), env=env, capture_output=True, text=True, timeout=120)
         author = subprocess.run(["git", "log", "-1", "--format=%an <%ae>"], cwd=str(work),
                                 capture_output=True, text=True).stdout.strip()
@@ -134,3 +135,66 @@ def test_a_roster_refusal_stops_the_merge_rather_than_landing_it_wrong(lane, tmp
     assert author == f"{REPO_IDENT[0]} <{REPO_IDENT[1]}>" and "seed" in subprocess.run(
         ["git", "log", "-1", "--format=%s"], cwd=str(lane.work), capture_output=True,
         text=True).stdout, "main moved despite the roster refusing"
+
+
+def test_the_dry_run_previews_the_c_pair_the_real_merge_uses(lane):
+    """#393. The preview printed the bare `git merge --no-ff` — the pre-9056233 command, the
+    one that authored merges as the owner — under a comment arguing that a preview of a
+    different command is worse than none. It must name the same `-c` pair the merge below
+    it runs with, resolved from the roster, and say the author is checked afterwards."""
+    rc, out, author = lane(SCRIPT, "--dry-run")
+    assert rc == 0, out
+    assert (f'would: git checkout main && git -c user.name="{ROSTER_IDENT[0]}" '
+            f'-c user.email="{ROSTER_IDENT[1]}" merge --no-ff feature/x') in out, out
+    assert "check the merge author" in out, out
+    assert "git merge --no-ff" not in out, "the pre-fix command is still being previewed"
+    assert "seed" in subprocess.run(["git", "log", "-1", "--format=%s"], cwd=str(lane.work),
+                                    capture_output=True, text=True).stdout, "a dry run merged"
+
+
+def test_the_dry_run_still_answers_without_a_roster_and_says_so(lane, tmp_path):
+    """The property 9056233 chose — a dry run reports the gate's verdict on a box with no
+    roster — survives #393. But it must say the roster did not resolve, not print a green
+    preview of a merge that would refuse."""
+    bad = tmp_path / "bin" / "ferrostep"
+    bad.write_text("#!/bin/sh\necho 'roster: no such entry' >&2\nexit 1\n")
+    bad.chmod(0o755)
+
+    rc, out, author = lane(SCRIPT, "--dry-run")
+    assert rc == 0, out
+    assert "<roster developer>" in out and "did NOT resolve" in out, out
+
+
+@pytest.mark.parametrize("var", ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL"])
+def test_git_author_in_the_environment_is_refused_before_the_merge(lane, var):
+    """#394. `GIT_AUTHOR_*` OVERRIDES a `-c user.*` pair (measured 2026-09-07), so with it set
+    the merge would land under the invoker's name and the post-merge check would refuse a
+    commit already on `main`. Refusing first leaves `main` where it was — and the message
+    names the variable, so the reader is not sent to amend a commit that never happened."""
+    rc, out, author = lane(SCRIPT, env_extra={var: "Someone Else"})
+    assert rc != 0, out
+    assert var in out and "NOTHING WAS MERGED" in out, out
+    assert "seed" in subprocess.run(["git", "log", "-1", "--format=%s"], cwd=str(lane.work),
+                                    capture_output=True, text=True).stdout, "main moved"
+    assert "--amend" not in out, "refused up front, so no amend instruction should print"
+
+
+def test_git_author_in_the_environment_does_override_the_c_pair(lane, tmp_path):
+    """The control for the test above: with the up-front refusal stripped, the same
+    environment produces a merge authored by the ENVIRONMENT — the outcome the refusal
+    exists to prevent, caught only afterwards by the post-merge check. Without this the
+    refusal could be guarding against something git does not do."""
+    mutated = tmp_path / "merge_branch_mutated.sh"
+    src = open(SCRIPT, encoding="utf-8").read()
+    broken = src.replace('if _OVERRIDE="$(env_identity_override)"; then\n  die',
+                         'if false; then\n  die')
+    assert broken != src, "the up-front refusal moved — this control mutates nothing"
+    mutated.write_text(broken)
+    mutated.chmod(0o755)
+
+    rc, out, author = lane(str(mutated), env_extra={"GIT_AUTHOR_NAME": "Env Person",
+                                                    "GIT_AUTHOR_EMAIL": "env@example.invalid"})
+    assert author == "Env Person <env@example.invalid>", (
+        f"the environment did not override the -c pair (got {author!r}), so the up-front "
+        "refusal is guarding against a mechanism that does not exist")
+    assert rc != 0 and "--amend" in out, out

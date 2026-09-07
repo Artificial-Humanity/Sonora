@@ -36,6 +36,10 @@ identity is the owner's (`lmcfarlin <2363604+lmcfarlin@users.noreply.github.com>
 left that way deliberately so the owner's own hand-commits from either checkout stay theirs.
 A forgotten `-c` pair therefore does not error — it commits your work under the owner's name,
 and nothing downstream will tell you. **Check after every commit, before you push:**
+⚠ **A merge through `merge_branch.sh` is not a hand commit** (#394): it is authored as the
+roster's developer whoever runs it, including the owner, and it refuses `GIT_AUTHOR_*` in the
+environment rather than honouring it — those variables override a `-c` pair (measured
+2026-09-07). A merge that is meant to be the owner's is made by hand, with a bare `git merge`.
 
 ```bash
 git log -1 --format='%an <%ae>'      # must match FerroStep/config.yaml's developer entry

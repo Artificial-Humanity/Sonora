@@ -20,6 +20,14 @@
 # so this check is no longer one guard among several, it is the guard. The repo has no branch
 # protection and force-push is unblocked (AGENTS.md §1).
 #
+# ⚠ THE MERGE COMMIT IS AUTHORED AS THE ROSTER'S DEVELOPER, WHOEVER RUNS THIS SCRIPT (#394).
+# DEVELOPER.md §1 leaves the repo's configured identity as the owner's so their HAND commits
+# stay theirs; a merge through this script is not a hand commit, it is the lane's act, and
+# it is the one thing that reaches `main` on its own. There is deliberately no path through
+# here that lands a merge under the invoker's name: `GIT_AUTHOR_*` in the environment
+# OVERRIDES a `-c` pair (measured 2026-09-07), so it is refused before the merge rather than
+# caught after it. An owner who wants a merge under their own name runs `git merge` by hand.
+#
 # Replaces `changeset.sh merge`. The changeset record is retired: a branch already has an
 # identity and its issues already carry its state.
 #
@@ -62,6 +70,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 die() { echo "merge_branch.sh: $*" >&2; exit 1; }
+
+# Names the GIT_AUTHOR_* variable(s) set in the environment, or fails when none are. These
+# OVERRIDE a `-c user.*` pair (measured 2026-09-07: `GIT_AUTHOR_NAME=Env git -c user.name=Ozzy
+# commit` is authored Env), so a merge made under them would land wrong and be caught only by
+# the post-merge check, after `main` has moved. Both paths ask this BEFORE the merge instead.
+env_identity_override() {
+  local v set=""
+  for v in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL; do
+    [[ -n "${!v:-}" ]] && set="${set:+$set, }$v"
+  done
+  [[ -n "$set" ]] && printf '%s' "$set"
+}
 
 command -v python3 >/dev/null 2>&1 || die "python3 is not on PATH."
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository."
@@ -307,7 +327,26 @@ echo "  ⚠ this proves nothing AT OR ABOVE THE FLOOR is outstanding — NOT tha
     and NOT that a review covered $(git rev-parse --short HEAD)."
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "  would: git checkout $BASE && git merge --no-ff $BRANCH"
+  # ⚠ THE SAME COMMAND THE REAL MERGE RUNS, `-c` PAIR INCLUDED (#393). This printed a bare
+  # `git merge --no-ff` for the whole of the commit that added the pair below — the command
+  # the script ran BEFORE it, the one that authored merges on `main` as the owner — four
+  # lines above a comment arguing that a preview of a different command is worse than none.
+  # The roster is ASKED here, not required: a dry run still answers on a box with no roster
+  # (the reason the real resolution sits after this block), and it says so, because that
+  # refusal is exactly where the real merge would stop.
+  if _DRY_ENV="$(ferrostep agent-env --agent developer --roster "$REPO_ROOT/FerroStep/config.yaml" 2>/dev/null)" \
+     && eval "$_DRY_ENV" && [[ -n "${AGENT_NAME:-}" && -n "${AGENT_EMAIL:-}" ]]; then
+    echo "  would: git checkout $BASE && git -c user.name=\"$AGENT_NAME\" -c user.email=\"$AGENT_EMAIL\" merge --no-ff $BRANCH"
+  else
+    echo "  would: git checkout $BASE && git -c user.name=<roster developer> -c user.email=<roster developer> merge --no-ff $BRANCH"
+    echo "  ⚠ the roster did NOT resolve here (ferrostep agent-env --agent developer). The real"
+    echo "    merge REFUSES at that point, with nothing merged."
+  fi
+  if _OVERRIDE="$(env_identity_override)"; then
+    echo "  ⚠ $_OVERRIDE is set in the environment and would OVERRIDE that -c pair. The real"
+    echo "    merge REFUSES before merging; unset it first."
+  fi
+  echo "  then:  check the merge author is the roster developer, before any push"
   # ⚠ THE SAME REFSPEC THE REAL PUSH USES. This printed `git push origin $BASE` while the real
   # command is `origin "$BASE:$BASE"` — a dry run that describes a different command from the
   # one it previews is worse than no dry run at all, because it gets believed.
@@ -335,12 +374,23 @@ fi
 # ⚠ RESOLVED HERE rather than beside the gate, for the reason the dirty-tree check states
 # above it: a roster refusal is a reason not to MERGE, not a reason to refuse to ANSWER what
 # the gate found. `--dry-run` still reports its verdict on a box with no roster.
-AGENT_ENV="$(ferrostep agent-env --roster "$REPO_ROOT/FerroStep/config.yaml")" \
+# ⚠ `--agent developer`, NOT THE ROSTER'S DEFAULT (#394). The header says "the developer" and
+# the merge is the developer's act; `default_agent` names the same entry today, and a script
+# that relied on that would go on saying "developer" the day the default changed.
+# ⚠ REFUSED BEFORE THE MERGE, not caught after it. `GIT_AUTHOR_*` overrides the `-c` pair, so
+# with it set the merge would land under the invoker's name and the check below would refuse
+# a commit already on `main` — an amend instruction where a refusal was available for free.
+if _OVERRIDE="$(env_identity_override)"; then
+  die "$_OVERRIDE is set in the environment, and it OVERRIDES the roster identity this merge
+     is authored with. NOTHING WAS MERGED. A merge through this script is the developer's act
+     (header above); unset it, or merge by hand if the commit is meant to be yours."
+fi
+AGENT_ENV="$(ferrostep agent-env --agent developer --roster "$REPO_ROOT/FerroStep/config.yaml")" \
   || die "cannot resolve the developer from the roster: \`ferrostep agent-env\` refused, and
      its stderr is above. NOTHING WAS MERGED."
 eval "$AGENT_ENV"
 [[ -n "${AGENT_NAME:-}" && -n "${AGENT_EMAIL:-}" ]] \
-  || die "the roster emitted no AGENT_NAME/AGENT_EMAIL for the default agent. NOTHING WAS
+  || die "the roster emitted no AGENT_NAME/AGENT_EMAIL for the developer. NOTHING WAS
      MERGED — a merge without them would land under this repo's configured identity, which
      is the owner's."
 
