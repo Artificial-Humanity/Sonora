@@ -62,7 +62,7 @@ def tree(tmp_path, files):
 def test_a_double_bracket_memory_slug_is_not_a_link():
     """⚠ THE ONE RULE THIS GATE INHERITS RATHER THAN INVENTS.
 
-    `notes/README.md` is the only place it is written down: `[[double-bracket]]` names point at
+    `docs/README.md` is where it is written down: `[[double-bracket]]` names point at
     the agent's persistent memory and are deliberately unresolvable. A checker that flagged
     them would report dozens of "failures" that are all correct, and be turned off within a
     day. They contain no `](`, so the pattern cannot match one — but that is a PROPERTY of the
@@ -221,7 +221,9 @@ def test_the_scan_is_every_tracked_markdown_except_workflow():
     a Sonora merge.
     """
     scanned = set(gate.repo_markdown(REPO))
-    for rel in ("notes/README.md", "docs/README.md", "docs/ARCHITECTURE.md", "docs/STATE.md",
+    # ⚠ `notes/README.md` was in this list until 2026-09-08 and is retired — the sample is
+    # of files the scan must REACH, so a retired file left here asserts a permanent failure.
+    for rel in ("docs/README.md", "docs/ARCHITECTURE.md", "docs/STATE.md",
                 # the four that the old PROSE_DIRS set never opened — #260 lived in the last
                 "README-Matcha.md", "audition/README.md", "scripts/README.md",
                 "scripts/teacher_audition/README.md"):
@@ -261,7 +263,7 @@ def test_the_canon_landed_where_the_plan_said(rel):
 
 def test_the_high_ambition_series_did_not_move():
     """⚠ Prosodia links to these BY NAME across repo boundaries; moving them breaks links no
-    checker in this repo would ever see. `notes/README.md` states the constraint and the
+    checker in this repo would ever see. `docs/README.md` states the constraint and the
     measurement backed it: the rejected 16-file draft would have broken 21 inbound links."""
     for name in ("high-ambition-index.md", "high-ambition-1-matcha-actor.md",
                  "high-ambition-2-dramatic-reader.md",
@@ -657,34 +659,3 @@ def test_a_tracked_top_level_file_is_not_called_a_directory(tmp_path):
     root = tree(tmp_path, {"notes/a.md": "x\n", "Prosodia": "not a directory\n"})
     assert "Prosodia" not in gate._tracked_top_dirs(root), (
         "a tracked top-level FILE is being listed as a directory")
-
-
-def test_the_notes_map_lists_every_note():
-    """`notes/README.md` says "One line per file". That is a claim about its own members.
-
-    ⚠ IT WAS FALSE, AND NOTHING COULD SEE IT. Three notes — `data-mirrors.md`,
-    `direction-contract-v3-proposal.md` and `quality-mechanisms-plan.md` — were absent from the
-    map while it asserted completeness, and `data-mirrors.md` is cited by name from AGENTS.md
-    §6 and §7. A reader looking for a subject in the index concluded the note did not exist.
-
-    ⚠ THE FAILURE IS ASYMMETRIC, WHICH IS WHY IT SURVIVED. A link to a file that does not exist
-    is caught by the link gate above. A file that nothing links to is invisible to it: there is
-    no broken reference to find, only a missing one. This is the direction the link gate cannot
-    look.
-
-    A map that states its own rule can be checked against its members. This does that.
-    """
-    notes = os.path.join(REPO, "notes")
-    with open(os.path.join(notes, "README.md"), encoding="utf-8") as fh:
-        listed = fh.read()
-    names = [n for n in sorted(os.listdir(notes)) if n.endswith(".md")]
-    missing = [n for n in names if n != "README.md" and "(%s)" % n not in listed]
-    assert not missing, (
-        "notes/README.md claims one line per file and does not list: %s. Add a line, or "
-        "delete the note — an unlisted note is one nobody finds by looking." % ", ".join(missing))
-
-    # ⚠ POSITIVE CONTROL, because an empty enumeration passes vacuously. If the glob ever
-    # stops matching — a layout change, a rename of the directory — this fails loudly instead
-    # of reporting a clean map it never looked at.
-    assert len(names) > 5, (
-        "the notes glob matched almost nothing; this guard was checking an empty set")

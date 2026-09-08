@@ -3,8 +3,11 @@
 This is the entry point for any agent or developer working on Project Sonora's training
 codebase. This is an independent GitHub repo (the PyTorch training pipeline that produces the
 actor model artifacts published to the `Sonora/huggingface` sibling checkout). Internal engineering notes —
-architecture, current state, open decisions — live in [notes/](notes/), mapped one-line-per-file
-in [notes/README.md](notes/README.md). Before starting work, read
+architecture, current state, open decisions — live in [notes/](notes/). ⚠ **That directory had a
+hand-maintained index, `notes/README.md`, and it was retired 2026-09-08**: it was a second copy of
+the directory listing, it had drifted (three files were missing from it), and every convention it
+carried is stated in `docs/README.md`, in § File Naming Conventions below, or in
+`scripts/gates/test_doc_links.py` itself. Before starting work, read
 [docs/STATE.md](docs/STATE.md) for the current state of the project and
 [notes/todo.md](notes/todo.md) for the open work.
 
@@ -63,6 +66,14 @@ case-insensitive macOS/Windows.
 * **All other docs & notes → `lowercase-kebab-case.md`:** e.g. `open-decisions.md`, `code-review-findings.md`. This is the rule for everything in `notes/`.
 * **Source code → the language's own convention:** Rust `snake_case.rs`, Swift `PascalCase.swift`, Kotlin `PascalCase.kt`.
 * **Never** let case be the only difference between two paths, and always reference files with their exact case.
+
+⚠ **A CONSOLIDATED FILE KEEPS ITS SOURCES' SECTIONS, SO CITE THE SECTION AND NOT THE
+FILENAME.** `vat-channels.md`, `dataset-landscape.md`, `model-decisions.md` and
+`book-prose-lane.md` each absorbed two to four retired briefs, and their headers name what
+folded in. A citation to a vanished filename is then still findable; one to a section
+survives the consolidation that deleted the file. Carried here 2026-09-08 from
+`notes/README.md`, which was retired — it was the only convention in that file not already
+stated in `docs/README.md`, in this section, or in `scripts/gates/test_doc_links.py` itself.
 
 ---
 

@@ -29,7 +29,8 @@ said *"what remains is the build script itself, which does not exist"* for weeks
 built and `ep008` selected, **two lines above the table row marking rung 2 done**. It also
 carried a third copy of [§ Rung 2 build decisions](#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued)'
 append-set arithmetic. ⚠ **Do not restore it.** A status needs one owner, and this is the
-removal [notes/README.md](README.md) already made of its own copy, for the same reason (#200).
+removal `notes/README.md` already made of its own copy, for the same reason (#200). ⚠ That
+file was itself retired 2026-09-08, so this cites it by name rather than by link.
 
 | | step | status | gated on | detail |
 |---|---|---|---|---|

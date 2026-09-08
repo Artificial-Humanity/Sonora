@@ -17,7 +17,7 @@ A checker that only looked at Sonora's own outbound links would have reported a 
 the day that number was 10, which is the definition of a check pointed away from the failure.
 
 ⚠ `[[double-bracket]]` NAMES ARE NOT LINKS. They are the agent's persistent-memory slugs and
-are deliberately unresolvable; `notes/README.md` is the only place that rule is written down,
+are deliberately unresolvable; `docs/README.md` is where that rule is written down,
 which makes it part of this file's specification. They contain no `](`, so the link pattern
 below cannot match one — but that is a property of the pattern, and
 `tests/test_doc_links_gate.py` asserts it rather than trusting it.

@@ -122,7 +122,6 @@ then: DiffSinger/openvpi, VISinger2, NNSVS; the commercial bar is Synthesizer V 
 
 ---
 
-Linked from: [high-ambition-index.md](high-ambition-index.md) ·
-[README.md](README.md). Engine bench records live in
+Linked from: [high-ambition-index.md](high-ambition-index.md). Engine bench records live in
 [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md) and are not restated
 here.

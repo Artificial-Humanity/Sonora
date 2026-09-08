@@ -21,7 +21,7 @@ absorb everything authoritative-feeling is the flat `notes/` directory again wit
 
 ## Rules for this directory
 
-Inherited from `notes/README.md`, and they apply to both:
+Inherited from `notes/README.md` (retired 2026-09-08), and they apply to both directories:
 
 * **Each file owns its subject.** When two disagree, the one named as SSOT wins — and for the
   subjects below, that is the file in this directory.
@@ -53,11 +53,13 @@ _These are **design and policy records, not build status.** ⚠ The delivery cha
 
 ## Where the rest is
 
-`notes/` holds everything in flight: [STATE.md](STATE.md) (what is true now),
+[STATE.md](STATE.md) — what is true now — lives HERE as of 2026-09-08; it is the snapshot
+every arriving agent is told to read, not a working plan. `notes/` holds what is in flight:
 [quality-gap-plan.md](../notes/quality-gap-plan.md) (what happens next),
 [todo.md](../notes/todo.md), the campaign records, the research, the runbook
 ([training-operations.md](../notes/training-operations.md)), and the whole `high-ambition-*`
-series. Start at [notes/README.md](../notes/README.md).
+series. ⚠ That directory's index was retired with `notes/README.md` on the same day — it was a
+hand-maintained copy of a directory listing and it had drifted.
 
 ⚠ **The `high-ambition-N` series stays in `notes/` and must not move.** It is a **cross-repo**
 series — goals 3 and 4 live in `Prosodia/notes` — and Prosodia links back to these files **by
