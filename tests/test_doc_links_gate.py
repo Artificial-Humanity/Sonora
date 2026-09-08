@@ -561,13 +561,23 @@ def test_the_live_citation_count_holds():
     measured 2026-08-21.
     """
     _dangling, examined, skipped = gate.section_citations(REPO)
-    assert examined >= 30, (
-        f"only {examined} §N citation(s) are read in this repo, from the 37 measured on "
-        f"2026-08-21. Either SECTION_CITE stopped matching or the scanned set shrank — "
+    # ⚠ 30 -> 10 on 2026-09-08. `notes/` moved to the private Notes repo and is gitignored,
+    # so its markdown is no longer tracked and the scan cannot reach it — the citations did
+    # not stop being checked, they stopped being IN this repo. Re-derived (11 examined), not
+    # lowered to fit; the floor sits one under so adding a document cannot fail it.
+    # ⚠ The point of the floor is unchanged and it still bites: a partial blinding inside
+    # what remains is what this catches, and that population is now docs/ and the root.
+    assert examined >= 10, (
+        f"only {examined} §N citation(s) are read in this repo, from the 11 measured on "
+        f"2026-09-08. Either SECTION_CITE stopped matching or the scanned set shrank — "
         f"re-derive this floor deliberately rather than lowering it to fit.")
-    assert examined + len(skipped) >= 35, (
-        f"only {examined + len(skipped)} citation(s) were FOUND at all (42 measured) — "
-        f"suspect the regex before believing the citations went away.")
+    # ⚠ 35 -> 20 on 2026-09-08, same cause as the floor above: notes/ left this repo for the
+    # private Notes repo. This half exists to tell "the regex broke" apart from "the documents
+    # went away", and both halves had to move together — leaving this one at 35 would have
+    # reported a regex failure for a migration.
+    assert examined + len(skipped) >= 20, (
+        f"only {examined + len(skipped)} citation(s) were FOUND at all (21 measured on "
+        f"2026-09-08) — suspect the regex before believing the citations went away.")
 
 
 def test_main_does_not_fail_a_tree_that_simply_has_no_citations(tmp_path):

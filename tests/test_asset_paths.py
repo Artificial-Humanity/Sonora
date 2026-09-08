@@ -401,9 +401,15 @@ def test_the_guard_actually_asserts_something():
     # Re-run the body rather than trusting the block above; that instruction outranks it.
     # The floor is the measurement: this is a ratchet, so any drop in falsifiable coverage
     # is meant to be noticed, including a legitimate one.
-    assert len(falsifiable) >= 28, (
-        f"falsifiable asset paths dropped to {len(falsifiable)} from the 28 measured on\n"
-        f"2026-08-26. Either the evaluator stopped resolving a spelling, or coverage really\n"
+    # ⚠ 28 -> 27 on 2026-09-08, re-derived rather than lowered to fit. `notes/` became a
+    # gitignored symlink to the private Notes repo, and this guard counts an expression as
+    # FALSIFIABLE only when the path it names is tracked — so `NOTES = os.path.join(REPO,
+    # "notes")` in scripts/gates/test_doc_claims.py left the population. The expression is
+    # unchanged and still resolves locally; what changed is that nothing in the index can
+    # confirm it, which is exactly the distinction this floor is built on.
+    assert len(falsifiable) >= 27, (
+        f"falsifiable asset paths dropped to {len(falsifiable)} from the 27 measured on\n"
+        f"2026-09-08. Either the evaluator stopped resolving a spelling, or coverage really\n"
         f"shrank — if the latter, re-derive and lower this number deliberately:\n"
         + "\n".join(falsifiable)
     )
