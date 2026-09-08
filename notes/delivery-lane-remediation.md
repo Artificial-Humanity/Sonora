@@ -2,7 +2,7 @@
 
 **Designed 2026-09-03. Not built.** This file owns the campaign that tests whether
 *within-speaker lane contrast* repairs the delivery channel. The channel's standing — that
-requesting a lane makes the audio worse — is [STATE.md](STATE.md), and the two arms that
+requesting a lane makes the audio worse — is [STATE.md](../docs/STATE.md), and the two arms that
 killed the sampler and the row-duplication explanations are recorded in
 [vat7r_rebalance.yaml § LANE CONTROL](../configs/experiment/vat7r_rebalance.yaml). Neither is
 restated here.
@@ -71,7 +71,7 @@ Three requirements, in order of how much they matter:
 
 Text is held constant where the lane allows it. Neutral, Newscaster and Speech are properties
 of the RENDER, so one text carries all three; Dialogue is a property of the TEXT and needs its
-own lines against the same voice ([STATE.md](STATE.md) § the delivery channel).
+own lines against the same voice ([STATE.md](../docs/STATE.md) § the delivery channel).
 
 ⚠ **Real audio cannot supply this, and that is measured rather than assumed.** Run the tool
 above: the LibriTTS-R contribution reaches Dialogue and Neutral only, and Newscaster and Speech

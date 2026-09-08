@@ -89,7 +89,7 @@ V5_IN_THE_OF_THE_IDIOM = (
 V5_AS_WRITTEN_TODAY = (
     "2,144 of the 13,141 keeps did not make it: **1,676 carry digits** (D-M3 — the tokenizer")
 
-# `notes/STATE.md`, after #48 gave it the corpus marker it was missing.
+# `docs/STATE.md`, after #48 gave it the corpus marker it was missing.
 V6_STATE_LINE = (
     "   **6 of the 832 dropped on digits (D-M3)** in the v6 append — five correctly (the "
     "audio")
@@ -186,7 +186,7 @@ def test_a_line_with_no_corpus_marker_is_seen_by_nothing_and_that_is_the_deal():
     """The cost of dropping `D-M3`, stated so it cannot be discovered by surprise.
 
     A sentence naming no corpus is unattributable, and the registry refuses to guess. The
-    remedy is a marker on the LINE — which `notes/STATE.md` now carries, asserted below
+    remedy is a marker on the LINE — which `docs/STATE.md` now carries, asserted below
     against the live file.
     """
     assert captures(V6_DIGITS, V6_STATE_LINE_WITHOUT_A_CORPUS_MARKER) == []
@@ -196,19 +196,19 @@ def test_a_line_with_no_corpus_marker_is_seen_by_nothing_and_that_is_the_deal():
 def test_the_live_state_md_still_names_the_corpus_on_its_digit_line():
     """Guards the document half of #48's fix, which the registry half depends on."""
     idiom = re.compile(r"(?<![\d,])\d[\d,]* of the [\d,]+ (?:rows )?dropped on digits")
-    with open(os.path.join(REPO, "notes", "STATE.md"), encoding="utf-8") as fh:
+    with open(os.path.join(REPO, "docs", "STATE.md"), encoding="utf-8") as fh:
         stated = [(n, ln) for n, ln in enumerate(fh, 1) if idiom.search(ln)]
-    assert stated, "notes/STATE.md no longer states the v6 digit drop in a checked idiom"
+    assert stated, "docs/STATE.md no longer states the v6 digit drop in a checked idiom"
     for lineno, line in stated:
         assert captures(V6_DIGITS, line), (
-            f"notes/STATE.md:{lineno} states a digit drop that NO fact reads — it has lost "
+            f"docs/STATE.md:{lineno} states a digit drop that NO fact reads — it has lost "
             f"its corpus marker, and #48's fix with it:\n  {line.strip()}")
 
 
 def test_no_digit_sentence_is_ever_claimed_by_both_corpora():
     """The #48 invariant, over every live document.
 
-    Scope overlap is fine — `notes/STATE.md`'s line is inside v5's scope through `D-M3` and
+    Scope overlap is fine — `docs/STATE.md`'s line is inside v5's scope through `D-M3` and
     always will be. What must never happen again is two entries CAPTURING from one sentence,
     which is two facts claiming one number, and a red gate on prose that is right.
 
@@ -217,7 +217,7 @@ def test_no_digit_sentence_is_ever_claimed_by_both_corpora():
     anyone to edit. **There is no changelog** (AGENTS.md §4), so the exemption has nothing
     left to exempt. Every **digit-drop sentence** in a scanned file must now have a reader.
     ⚠ NOT every digit sentence: this loop only examines lines matching the idiom compiled below
-    — 3 lines across 40 scanned files. `notes/STATE.md`'s "2,500 speakers" is a digit sentence in
+    — 3 lines across 40 scanned files. `docs/STATE.md`'s "2,500 speakers" is a digit sentence in
     a scanned file and nothing here looks at it. Do not read this as a guarantee that a new digit
     claim would be caught; that is what the registry's own per-fact reader test is for.
     ⚠ If an append-only quoting document is ever reintroduced, the carve-out comes back WITH

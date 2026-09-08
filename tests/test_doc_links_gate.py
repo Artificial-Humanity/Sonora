@@ -221,7 +221,7 @@ def test_the_scan_is_every_tracked_markdown_except_workflow():
     a Sonora merge.
     """
     scanned = set(gate.repo_markdown(REPO))
-    for rel in ("notes/README.md", "docs/README.md", "docs/ARCHITECTURE.md", "notes/STATE.md",
+    for rel in ("notes/README.md", "docs/README.md", "docs/ARCHITECTURE.md", "docs/STATE.md",
                 # the four that the old PROSE_DIRS set never opened — #260 lived in the last
                 "README-Matcha.md", "audition/README.md", "scripts/README.md",
                 "scripts/teacher_audition/README.md"):

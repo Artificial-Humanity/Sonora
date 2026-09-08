@@ -13,7 +13,7 @@ making an error the structure invited.
 **The test for admission:** does the file state a rule other work must conform to, or does it
 record state, progress, research, or a plan? A runbook listing runs-to-date is a record and
 belongs in `notes/`. A ratified contract is a rule and belongs here. **Being important is not
-the test** — `notes/STATE.md` and `notes/training-sources.md` are load-bearing and are still
+the test** — `docs/STATE.md` and `notes/training-sources.md` are load-bearing and are still
 records.
 
 ⚠ **Deliberately small.** Prosodia's canon directory holds four files. A `docs/` that grows to
@@ -48,12 +48,12 @@ Inherited from `notes/README.md`, and they apply to both:
 _These are **design and policy records, not build status.** ⚠ The delivery channel that
 `vat-channels.md` and `direction-interface-brief.md` describe **SHIPPED in the model core on
 2026-08-07** — a five-wide one-hot block, `vat_dim` 8, `matcha/delivery.py`
-([STATE.md](../notes/STATE.md)). **The EXPORT half is what is still open.** This paragraph said
+([STATE.md](STATE.md)). **The EXPORT half is what is still open.** This paragraph said
 "not implemented" until 2026-08-22 (#283), in a file created after the channel shipped._
 
 ## Where the rest is
 
-`notes/` holds everything in flight: [STATE.md](../notes/STATE.md) (what is true now),
+`notes/` holds everything in flight: [STATE.md](STATE.md) (what is true now),
 [quality-gap-plan.md](../notes/quality-gap-plan.md) (what happens next),
 [todo.md](../notes/todo.md), the campaign records, the research, the runbook
 ([training-operations.md](../notes/training-operations.md)), and the whole `high-ambition-*`

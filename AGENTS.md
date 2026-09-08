@@ -5,7 +5,7 @@ codebase. This is an independent GitHub repo (the PyTorch training pipeline that
 actor model artifacts published to the `Sonora/huggingface` sibling checkout). Internal engineering notes —
 architecture, current state, open decisions — live in [notes/](notes/), mapped one-line-per-file
 in [notes/README.md](notes/README.md). Before starting work, read
-[notes/STATE.md](notes/STATE.md) for the current state of the project and
+[docs/STATE.md](docs/STATE.md) for the current state of the project and
 [notes/todo.md](notes/todo.md) for the open work.
 
 ---
@@ -345,7 +345,7 @@ the simple version that holds until then. Do not build tooling on its shape.
   information that already exists in two authoritative places, and the copy is the one that
   goes stale. This repo has already paid for doc-vs-artifact drift repeatedly.
 * **What genuinely does not fit in a commit or a PR belongs in `notes/`** as a durable
-  document about the *current* state of something (`notes/STATE.md`, a design note), never as
+  document about the *current* state of something (`docs/STATE.md`, a design note), never as
   a dated log of past events. If you catch yourself writing "on 2026-08-11 we changed X",
   that belongs in the commit that changed X.
 
@@ -420,7 +420,7 @@ same hour twice.
     instance of it, and the claim was made by measuring on a tree that predated the config
     scan.
   * ⚠ **The same-line rule — real, and the reason mode 2 looked instantiated:**
-    `notes/STATE.md` already stated v5's 2,500 speakers, but `scope` is
+    `docs/STATE.md` already stated v5's 2,500 speakers, but `scope` is
     matched **per line** and the scope token sat on the line above, so the fact never matched
     there. **Check that a fact's scope and its number are on the SAME LINE.**
   * ✅ **This class is now ENFORCED IN CODE, not by vigilance.** #62 added

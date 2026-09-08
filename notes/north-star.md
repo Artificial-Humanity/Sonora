@@ -204,7 +204,7 @@ cross-chunk seam is the open problem**, and raising the ceiling is a second, lar
 
 **Phase 0 (measurement repair) → Phase 1 (data, rungs 1–5) → Phase 1S (synthetic) → Phase 2 (the DiT
 decoder spike).** [quality-gap-plan.md](quality-gap-plan.md) is the SSOT for sequencing and holds
-the live status; [STATE.md](STATE.md) says where the front is. ⚠ **Neither is summarised here** — a
+the live status; [STATE.md](../docs/STATE.md) says where the front is. ⚠ **Neither is summarised here** — a
 status in two places is a status that drifts, and this file would be the stale copy.
 
 What is structural about the route, and does not move:
@@ -313,7 +313,7 @@ into the guards rather than the culture:
 * the vocoder was assumed to be the bottleneck and **measured not to be** — the gap is the acoustic
   model's, so the levers are data, decoder and capacity;
 * runs are **data-limited, not epoch-limited** — a v5 run took its entire gain in the first handful
-  of epochs and every epoch after that was net worse ([STATE.md](STATE.md) has the counts);
+  of epochs and every epoch after that was net worse ([STATE.md](../docs/STATE.md) has the counts);
 * `loss/val_epoch` is **not** a generalisation measure here, because the val split is contaminated;
 * four instruments disagreed on one checkpoint selection, and diff/mel loss may be *anti-correlated*
   with naturalness — so **never select on a single scalar**, and hand the owner the disagreement

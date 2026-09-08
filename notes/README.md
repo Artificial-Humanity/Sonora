@@ -30,14 +30,14 @@ Two conventions that surprise readers:
 | # | file | is |
 |---|---|---|
 | 1 | [north-star.md](north-star.md) | **why any of this exists** — the vision, the seven-ambition arc, the size/hardware envelope and the load-bearing constraints. Owns nothing but its §1; every figure names the file that does |
-| 2 | [STATE.md](STATE.md) | **what is true now**, per front |
+| 2 | [STATE.md](../docs/STATE.md) | **what is true now**, per front |
 | 3 | [quality-gap-plan.md](quality-gap-plan.md) | **what happens next**, and in what order — the SSOT for sequencing. **Its § the pathway is the whole route in one table**, Phase 0 → the five corpus rungs → decoder spike → the deferred conditioning chain and multilingual |
 | 4 | [todo.md](todo.md) | open *residue* — code-review findings and the ears queue. Not the plan |
 | 5 | [ARCHITECTURE.md](../docs/ARCHITECTURE.md) | **canon** — the Director↔Actor contract (v2), corpus rules, gates, promotion |
 
 _**Where the front is today**: deliberately not stated here._ This paragraph used to carry a
 third copy of a status owned by [quality-gap-plan.md](quality-gap-plan.md) **§ the pathway** and
-summarised by [STATE.md](STATE.md) — rows 2 and 3 above — and it is the copy that drifted: it
+summarised by [STATE.md](../docs/STATE.md) — rows 2 and 3 above — and it is the copy that drifted: it
 reported rung 2 as built-but-unverified for ten days after `ep008` was selected, under the
 repo's first *"Start here"* heading, where it changed what a reader thought the next action was
 (#200). ⚠ **Do not restore it.** A status needs one owner, and the two rows already point at
@@ -83,7 +83,7 @@ _The first four are **design records**, not build status, and the fifth is an un
 proposal. ⚠ This sentence said "all four" while the table held four, and adding a row is what
 made it false — the shape a table's own summary sentence always has. ⚠ The delivery channel they describe
 **SHIPPED in the model core on 2026-08-07** (`vat_dim` 8, `matcha/delivery.py`); the **EXPORT**
-half is what remains — [STATE.md](STATE.md). Said "not implemented" until 2026-08-22 (#283)._
+half is what remains — [STATE.md](../docs/STATE.md). Said "not implemented" until 2026-08-22 (#283)._
 
 _⚠ The first three are **canon** and live in [`docs/`](../docs/README.md); they are listed here
 because this is where you look for them by topic.

@@ -12,7 +12,7 @@ _Last updated: 2026-08-06._
 
 ## Runs to date
 
-**Checkpoint standing lives in [STATE.md § Checkpoint lineage](STATE.md)** — one table, not
+**Checkpoint standing lives in [STATE.md § Checkpoint lineage](../docs/STATE.md)** — one table, not
 restated here. What belongs in this file is how to run one, and what has bitten.
 
 ### Reading a Matcha training curve (learned on vat3c)
@@ -77,7 +77,7 @@ a run can only ever resume itself.
 with it unset prints why and idles. It used to default to `vat3_ep099`, described here as
 "the best checkpoint in the lineage", which stopped being true when ep019 was selected and
 could not know it. **A default may encode a fact, never a judgement.** The current base is
-in [STATE.md § Checkpoint lineage](STATE.md); the launcher points at that record rather than
+in [STATE.md § Checkpoint lineage](../docs/STATE.md); the launcher points at that record rather than
 copying it, so it cannot go stale the same way twice.
 
 **A concluded run cannot be silently continued.** The launcher refuses any experiment whose
@@ -367,7 +367,7 @@ rw mount for the matcha install).
 [quality-gap-plan.md](quality-gap-plan.md) (what to run next) ·
 [training-sources.md](training-sources.md) (what it trains on) ·
 [model-decisions.md § Sample rate](../docs/model-decisions.md) ·
-[vat-channels.md](../docs/vat-channels.md) · [STATE.md](STATE.md) ·
+[vat-channels.md](../docs/vat-channels.md) · [STATE.md](../docs/STATE.md) ·
 [next-steps §B](../../../Prosodia/notes/next-steps.md) ·
 [AI-Lab-AMD/notes/machine-setup.md](../../../AI-Lab-AMD/notes/machine-setup.md)
 

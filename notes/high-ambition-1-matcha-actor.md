@@ -177,7 +177,10 @@ this is just the cheapest forcing function to settle the decisions below.
   trained against it.
 - [x] **Export/runtime decision.** ✅ **Resolved (2026-06-17):** keep **TFLite**, not ONNX Runtime.
   The custom conversion was validated on `model_e2e.onnx` and the FFI contract locked (see
-  [STATE.md](../../../Prosodia/notes/STATE.md) and [next-steps.md](../../../Prosodia/notes/next-steps.md)).
+  [next-steps.md](../../../Prosodia/notes/next-steps.md)). ⚠ This also cited Prosodia's
+  `STATE.md`, which no longer exists there: Prosodia's notes moved to the private `Notes`
+  repo on 2026-09-08 and no `STATE.md` came across. Named rather than re-pointed, because
+  which file succeeded it is Prosodia's to say — I checked the directory, not the history.
   ⚠ **The route inside TFLite reversed 2026-07-12:** Plan A is the `litert-torch` fixed-shape
   **split-graph** export (textenc / decoder / vocoder + host-side ODE), and the `onnx2tf` monolith
   this row originally named is Plan B. The decision — TFLite over ONNX Runtime — is unchanged.

@@ -3,7 +3,7 @@
 The current-state snapshot: what is true now, what is running, and what comes next.
 Behavioral rules and the stack/layout manifest live in [AGENTS.md](../AGENTS.md); the
 architecture canon is [ARCHITECTURE.md](../docs/ARCHITECTURE.md); open work is
-[todo.md](todo.md). One entry per front, newest facts first — superseded narrative is
+[todo.md](../notes/todo.md). One entry per front, newest facts first — superseded narrative is
 deleted, not banner'd (git history is the archive; the pre-2026-08-02 roadmap
 narrative was removed in the consolidation pass).
 
@@ -39,7 +39,7 @@ _Last updated: 2026-08-30._
 > this run. **That is not a labelling bug — it is the mining criteria arriving at the
 > label**: keeps were tail-selected at a T threshold of 5.75 sigma, so the Emilia half is
 > 27 hours of extremes against a LibriTTS centre at roughly 3:1. The failure signature is
-> written down in [quality-gap-plan.md](quality-gap-plan.md) **before** the result exists
+> written down in [quality-gap-plan.md](../notes/quality-gap-plan.md) **before** the result exists
 > and must be read before the holdout number, not after.
 >
 > ⚠ **`loss/val_epoch` is worse than useless here** — v5's val set is 1,304 clips of which
@@ -57,7 +57,7 @@ _Last updated: 2026-08-30._
 > and the donor its warm start widens from. The owner's call was to smoke rather than spend
 > 100 epochs, because v4 is the same 31,445 clips `vat3c_finetune` already spent 100 epochs
 > on and came back a measured regression — a full run would re-buy a conclusion we own.
-> The v1–v4 lineage and every source: **[training-sources.md](training-sources.md)** (SSOT).
+> The v1–v4 lineage and every source: **[training-sources.md](../notes/training-sources.md)** (SSOT).
 >
 > ⚠ **What v5 does NOT close: the ear gap.** Its new material was mined on acoustics and
 > nobody has heard a clip of it; every Emilia row is delivery-`unknown`, so the corpus still
@@ -66,9 +66,9 @@ _Last updated: 2026-08-30._
 > deliberate: rung 1 asks "does volume move quality at all?" for no ear time.
 >
 > Pre-flight is unchanged and non-negotiable: stop **all** inference engines first
-> ([spin-down rule](training-operations.md)), and run `scripts/gates/test_vat_dim_seams.py`
-> (30 checks). Residual review debt that touches training: [todo.md §1](todo.md).
-> The quality ladder, one table: **[quality-gap-plan.md § the pathway](quality-gap-plan.md)**
+> ([spin-down rule](../notes/training-operations.md)), and run `scripts/gates/test_vat_dim_seams.py`
+> (30 checks). Residual review debt that touches training: [todo.md §1](../notes/todo.md).
+> The quality ladder, one table: **[quality-gap-plan.md § the pathway](../notes/quality-gap-plan.md)**
 > — the route to a model worth casting. Casting itself is **parked** with an
 > end-condition (same file, § Parked), not scheduled; it is half of goal 1 and no rung
 > ladders to it.
@@ -142,7 +142,7 @@ the CLI, the Vocalizer and the export converter all read it.
 > the same fact and a bank built the same way reproduces the confound at any size. The lever
 > is clips ARRANGED so one voice carries several lanes. Derive the numbers with
 > `scripts/tools/measure_delivery_confound.py`; the design and the owner's rulings are
-> [delivery-lane-remediation.md](delivery-lane-remediation.md). ⚠ It also **answers** the
+> [delivery-lane-remediation.md](../notes/delivery-lane-remediation.md). ⚠ It also **answers** the
 > note *"these do almost sound like different voices"*, which was a lead wanting its own
 > test: the corpus taught it.
 
@@ -203,11 +203,11 @@ are validated components, not the shippable directable actor.
 **Portfolio (five):** chatterbox · qwen · zonos · orpheus · moss_vg. VibeVoice and Dia
 are **set aside** (2026-07-29, reversible, `ref_select.SET_ASIDE`) — VV stages scenes
 on dialogue, and the survivors already narrate at 94%. Engine standing, license
-verdicts, and the shortlist record: [teacher-tts-audition-shortlist.md](teacher-tts-audition-shortlist.md);
+verdicts, and the shortlist record: [teacher-tts-audition-shortlist.md](../notes/teacher-tts-audition-shortlist.md);
 onboarding pattern + gotchas: [tts-engine-onboarding.md](../docs/tts-engine-onboarding.md).
 
 **Delivery campaign — COMPLETE 2026-08-04 (SSOT:
-[delivery-mix-campaign.md](delivery-mix-campaign.md)).** **1,189 fold-eligible keeps**
+[delivery-mix-campaign.md](../notes/delivery-mix-campaign.md)).** **1,189 fold-eligible keeps**
 against the 1,156 it was sized for, at a measured 49.3 / 30.2 / 7.4 / 7.2 / 5.9 versus
 the ratified book-actor mix of 50 / 30 / 8 / 6 / 6. Dialogue 578 is the anchor; Neutral
 closed at 354/347 when 30 real-audio clips from `librivox-v2` came back 30/30 Neutral;
@@ -217,7 +217,7 @@ real audio is segmented anywhere and −5 does not pay for a fresh ingest.
 The corpus is no longer the constraint, and as of 2026-08-07 neither is the model core:
 **the 4th FiLM channel it was built for exists**, as a five-wide one-hot block
 (`vat_dim` 8). What is left is re-deriving the corpus at that width — see
-[todo.md §2](todo.md).
+[todo.md §2](../notes/todo.md).
 
 **Engine allocation is now three-layer** (`ref_select.py`, 2026-08-02): capability veto
 (`ENGINE_CHANNELS` — the relay audit made executable), measured per-lane weights
@@ -248,12 +248,12 @@ be a corrupted restatement of `4abfd3f`'s measurement — `moss_vg 19/54 (35%)` 
 `delivery-v1-narration`**, a narration campaign. The one real weakness is **Documentary
 (60.0% vs an 83.3% lane mean)**, and `ENGINE_MIX_BY_LANE` already holds moss_vg to a 0.05
 floor share there for that reason. Promotion to `normal` is the owner's call; the
-measurement supports it. Full ears queue: [todo.md §5](todo.md).
+measurement supports it. Full ears queue: [todo.md §5](../notes/todo.md).
 
 **Director models:** `gemma-4-31b-qat-spec` directs (skill-file obedience 24/24 where
 the MoE managed 8/24 and e4b 5/24); `gemma-4-e4b-qat-spec` handles volume jobs
 (labeler, judge_passages). **e4b for volume, 31b for judgement — e4b is NOT the
-director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
+director.** Record: [book-prose-lane.md](../notes/book-prose-lane.md) § Director model.
 
 ## Pipeline integrity (hardening rounds, 2026-07-31 → 08-02)
 
@@ -293,7 +293,7 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
 - **Atomic writes** across all 8 renderers (`synth_common.py`); orpheus voice ban and
   zonos `emotion: null` are code, not markdown; loudnorm failure is fatal.
 - teacher-ab-v1 keeps normalized to −23 LUFS (the 5.99 dB engine spread confounded the
-  Qwen-vs-VV ranking; re-test is now possible — [todo.md §4](todo.md)).
+  Qwen-vs-VV ranking; re-test is now possible — [todo.md §4](../notes/todo.md)).
 
 ## Model architecture fronts
 
@@ -305,7 +305,7 @@ director.** Record: [book-prose-lane.md](book-prose-lane.md) § Director model.
   retired in public MIT code: StableTTS's 31M `DiTConVBlock` (conv FFN in-block + long
   skips + adaLN-Zero) with MAS retained. Start from that block shape; carry the CFG
   direction-strength lever into the spike's scope.
-  [matcha-siblings-study.md](matcha-siblings-study.md) is the standing comparison
+  [matcha-siblings-study.md](../notes/matcha-siblings-study.md) is the standing comparison
   bench — check it before designing any component blind.
 - **Contract v2** (2026-07-30): delivery is the 4th FiLM channel (5 lanes + unknown ≡
   zero); register compiles away Director-side; tempo/loudness stay host-side. Pinned in
@@ -347,7 +347,7 @@ spec, fixed before anyone ports it.
 
 ⚠ G7 **refuses a homograph-enabled export**, so if D-M4 is turned on for the next
 derivation, `matcha/text/homographs.py` has to be ported to the device before the model
-can ship. That cost belongs to the D-M4 decision ([todo.md §3](todo.md)) and was invisible
+can ship. That cost belongs to the D-M4 decision ([todo.md §3](../notes/todo.md)) and was invisible
 when it was filed.
 
 ⚠ What remains is a **re-export**: the artifacts on `/data` are the 3-channel era, and
@@ -357,8 +357,8 @@ when it was filed.
 ## Next actions (short list)
 
 The ordered plan and the gate between each phase is
-**[quality-gap-plan.md](quality-gap-plan.md)** — the SSOT for sequencing. This is only its
-headline; open items are in [todo.md](todo.md).
+**[quality-gap-plan.md](../notes/quality-gap-plan.md)** — the SSOT for sequencing. This is only its
+headline; open items are in [todo.md](../notes/todo.md).
 
 1. ~~**Phase 1 rung 2 — build v6**~~ ✅ **DONE 2026-08-10/11** — built, trained 10 epochs,
    holdout-scored, **`ep008` selected**, run closed (`logs/train/vat6_finetune/SELECTED.md`).
@@ -483,7 +483,7 @@ headline; open items are in [todo.md](todo.md).
    not from a green suite.
    `vat_dim` is unchanged at 8, so **`ep019` warm-started with no widening.**
    Full derivation, tables and the rejected alternatives:
-   [quality-gap-plan.md § Rung 2 build decisions](quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
+   [quality-gap-plan.md § Rung 2 build decisions](../notes/quality-gap-plan.md#rung-2-build-decisions--recorded-2026-08-09-corpus-not-built-no-run-queued).
 2. 🔄 **Rung 3 — the 10×** (LibriTTS-R full). **BUILT 2026-08-27 · RUN 2026-08-28, stopped
    at the owner's call · v7r rebalance arm 2026-08-29.** Ungated: rung 1 passed. The other 90%
    of LibriTTS-R was never on this box; both tarballs (75.8 GB) were fetched, extracted and
@@ -496,7 +496,7 @@ headline; open items are in [todo.md](todo.md).
    predictor, and the holdout is dev-clean read speech — the one domain this rung added — so
    it says nothing about delivery. ⚠⚠ **The scored checkpoint is from a 2026-08-29 run that no
    document described; the 10-epoch 2026-08-28 run's checkpoints are gone.** Full table,
-   recipe and caveats: [quality-gap-plan.md § THE VERDICT](quality-gap-plan.md).
+   recipe and caveats: [quality-gap-plan.md § THE VERDICT](../notes/quality-gap-plan.md).
    Measured, replacing the estimates: **321,497 new clips · 2,064 new speakers · ~564 h ·
    ~345,600 train rows expected**. The strictly-growing rule survives because the new
    speakers are **disjoint from both v6 and the holdout** (tested under `LC_ALL=C` with a
@@ -505,11 +505,11 @@ headline; open items are in [todo.md](todo.md).
    `vat6_finetune` `ep008` legal; **re-verify the byte-identity claim against the shipped v6
    files at merge time rather than trusting the note.** Decisions, corrections and the
    12-head requirement:
-   [quality-gap-plan.md § Rung 3 build decisions](quality-gap-plan.md#rung-3-build-decisions--recorded-2026-08-25-audio-on-disk-eiv-pass-running-corpus-not-built).
+   [quality-gap-plan.md § Rung 3 build decisions](../notes/quality-gap-plan.md#rung-3-build-decisions--recorded-2026-08-25-audio-on-disk-eiv-pass-running-corpus-not-built).
 3. **Phase 2 — the DiT decoder spike**, after Phase 1 lands, against a same-corpus U-Net
    baseline frozen as the last act of Phase 1.
 4. **A forced-ranking pass over the 46 ceiling-tied groups** — the scale cannot separate
-   six engines at 5, and the corpus trains on keeps ([todo.md](todo.md) §4).
+   six engines at 5, and the corpus trains on keeps ([todo.md](../notes/todo.md) §4).
 
 ## Pointers
 
@@ -530,7 +530,7 @@ headline; open items are in [todo.md](todo.md).
   bugs, **F-C1** (the only Critical) and F-H1/F-M4, plus C-M10 and D-M5. The **2026-08-07**
   round (`87c65f8`..`72786ac`, twelve commits) closed the whole of §1, §3, §5 and §6 and
   most of §7 — the host suite went 119 → **264** tests, the vat_dim seam checks 13 → **22**. The export lane (§1) closed the next day, `905e91b`..`e18877a`.
-  Every fix carries a regression test; the running tally is [todo.md](todo.md).
+  Every fix carries a regression test; the running tally is [todo.md](../notes/todo.md).
   Six findings turned out to be **live or wider than filed**: the export harness ran three
   weeks stale on `/data`; `eiv_merge_corpus` fabricated a full-scale valence contribution
   from floating-point dust for 224 clips; the ONNX "Plan B" exporter silently dropped every
@@ -539,7 +539,7 @@ headline; open items are in [todo.md](todo.md).
   `transformers` **5.14.1** today against the 4.x the corpus was built on; and
   `make_bulk_bank.py` had been sending all 87 qwen lines to the model with the voice design
   stripped — verbatim the 2026-07-25 finding `build_direction` exists to prevent.
-- Code on `/data` — [data-mirrors.md](data-mirrors.md). Nothing of ours is unbacked; the
+- Code on `/data` — [data-mirrors.md](../notes/data-mirrors.md). Nothing of ours is unbacked; the
   risk is **drift**, and it had already bitten: the running export harness was three weeks
   stale and missing a seam guard the repo recorded as landed. `tests/test_data_mirrors.py`
   fails on any divergence. **The repo is authoritative; `/data` is a working copy.**

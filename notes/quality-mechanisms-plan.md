@@ -103,7 +103,7 @@ two weeks, and the split is merely the event that made anyone look.
 | | |
 |---|---|
 | absolute `notes/<file>.md` references across the tree | **190** |
-| relative intra-`notes/` links (`[STATE.md](STATE.md)`) | **224** |
+| relative intra-`notes/` links (`[STATE.md](../docs/STATE.md)`) | **224** |
 
 The second number is the dangerous one. Those links are bare filenames that resolve **because
 every file sits in one directory**, and the split is exactly what stops that being true. They

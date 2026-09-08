@@ -174,7 +174,7 @@ or-freer), not recording or hand-labeling from scratch. Two compounding effects:
 2. **Provenance:** record each source + license in the registry model card per the promotion
    convention, so the Apache claim on future weights is auditable.
 
-Cross-refs: [STATE roadmap §3 (VAT)](STATE.md) · [high-ambition-1 §Contract-lock](high-ambition-1-matcha-actor.md) ·
+Cross-refs: [STATE roadmap §3 (VAT)](../docs/STATE.md) · [high-ambition-1 §Contract-lock](high-ambition-1-matcha-actor.md) ·
 [open-decision-licensing.md tightening #3](../../../Prosodia/notes/open-decision-licensing.md).
 
 ---
@@ -415,5 +415,5 @@ Two distinct things wear the MLCommons name; keep them separate.
 Cross-refs: **§ Cleared for training** at the top of this file (the English licence SSOT) ·
 [open-decision-licensing.md tightening #3](../../../Prosodia/notes/open-decision-licensing.md) ·
 [audiobook-corpus-policy.md](../docs/audiobook-corpus-policy.md) (the private-lineage boundary, unchanged
-cross-lingually) · [STATE.md](STATE.md).
+cross-lingually) · [STATE.md](../docs/STATE.md).
 

@@ -20,7 +20,7 @@ documentary real audio segmented anywhere, and −5 does not pay for a fresh ing
 
 **The corpus is no longer the constraint.** ⚠ The 4th FiLM channel it was built for
 **SHIPPED in the model core on 2026-08-07** and trained 8-wide to `ep019`; the **EXPORT** half
-is what does not exist yet — [STATE.md](STATE.md). This line said the channel itself did not
+is what does not exist yet — [STATE.md](../docs/STATE.md). This line said the channel itself did not
 exist until 2026-08-22 (#283).
 
 **Fold-eligible = every keep except the three instrument campaigns**

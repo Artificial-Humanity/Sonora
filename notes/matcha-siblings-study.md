@@ -76,7 +76,7 @@ training. Applied to *our* conditioning vector that yields an inference-time **g
 scale on direction strength** — "how hard should the actor take the note?" — exactly the
 knob [[vocalizer-vetting-surface]] obliges us to ship a dial for.
 
-This is **not a new idea here**: [STATE.md](STATE.md) records it adopted 2026-07-16 as
+This is **not a new idea here**: [STATE.md](../docs/STATE.md) records it adopted 2026-07-16 as
 "a classifier-free-guidance amplification lever … (conditioning dropout 0.15 keeps the
 unconditional mode alive — testable on the current checkpoint)." What is new is (a) a
 working precedent that it survives a **DiT** decoder rather than only the U-Net, and

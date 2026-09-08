@@ -412,7 +412,7 @@ FACTS = [
         # these patterns require, which is one wording away from what
         # `notes/training-sources.md:129` says today. The file's old defence — "harmless BY
         # CONSTRUCTION, none of them is written in that form" — was a claim about the
-        # CURRENT WORDING, and nothing holds the wording. `notes/STATE.md:313`, the line
+        # CURRENT WORDING, and nothing holds the wording. `docs/STATE.md:313`, the line
         # that motivated `D-M3` because it named no corpus, was given a corpus marker in
         # the same commit instead: the fix for a line with no handle is to give the LINE a
         # handle, never to hand the registry a rule id that spans two generations.
@@ -478,7 +478,7 @@ FACTS = [
         # ⚠ SCOPE IS `v7|vat7` AND IT MATCHES PER LINE, so a number is only read where the
         # line itself names the corpus. That is why the headline rows in both v7 configs
         # carry a `v7:` marker: without it the most load-bearing line in each file is out of
-        # scope and enforced by nothing. Same fix the v6 work applied to notes/STATE.md.
+        # scope and enforced by nothing. Same fix the v6 work applied to docs/STATE.md.
         "name": "v7 train rows",
         "truth": lambda: rows(V7_TRAIN),
         "artifacts": [V7_TRAIN],
