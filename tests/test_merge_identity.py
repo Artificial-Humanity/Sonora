@@ -18,6 +18,13 @@ the tracker query, and a `ferrostep` stub standing in for the roster. The repo's
 identity is set to a stand-in for the owner, so a regression does not merely fail to set the
 right name — it produces the wrong one, which is the actual defect.
 
+⚠ HERMETIC INCLUDES THE CALLER'S SHELL (#395). `GIT_AUTHOR_*` / `GIT_COMMITTER_*` override every
+`-c user.*` pair below — the seed commits' AND the script's — so an exported `GIT_AUTHOR_NAME`
+in the developer's own shell (the environment #394 was filed from) made the seed commit the
+environment's, the script refuse up front, and three tests fail with messages naming the wrong
+cause ("main moved" when it had not). The fixture strips those variables from the environment
+it hands to git and to the script; `env_extra` is the ONLY way a test puts them back.
+
 ⚠ `--no-push` throughout. Nothing here has a remote.
 """
 import os
@@ -33,8 +40,25 @@ REPO_IDENT = ("Repo Owner", "owner@example.invalid")     # what a missed -c pair
 ROSTER_IDENT = ("Roster Dev", "dev@example.invalid")     # what the roster says
 
 
-def _git(cwd, *args):
-    return subprocess.run(("git",) + args, cwd=cwd, capture_output=True, text=True, check=True)
+# ⚠ Stripped from the environment the fixture hands to git and to the script (#395). Any of
+# these in the caller's shell overrides the `-c user.*` pairs this file's premise rests on.
+IDENTITY_VARS = ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL")
+
+
+def _hermetic_env():
+    return {k: v for k, v in os.environ.items() if k not in IDENTITY_VARS}
+
+
+def _git(cwd, *args, env=None):
+    return subprocess.run(("git",) + args, cwd=cwd, capture_output=True, text=True, check=True,
+                          env=env if env is not None else _hermetic_env())
+
+
+def _ident(cwd, line="author"):
+    """`Name <email>` of HEAD's author or committer line."""
+    fmt = {"author": "%an <%ae>", "committer": "%cn <%ce>"}[line]
+    return subprocess.run(["git", "log", "-1", f"--format={fmt}"], cwd=str(cwd),
+                          capture_output=True, text=True).stdout.strip()
 
 
 @pytest.fixture
@@ -62,6 +86,13 @@ def lane(tmp_path):
     (work / "seed.txt").write_text("changed\n")
     _git(work, "commit", "-qam", "a reviewed change")
     _git(work, "checkout", "-q", "main")
+    # ⚠ The premise, asserted where it is made (#395): every test below reads "the owner's
+    # identity" off REPO_IDENT. If the seed carries anything else, the failure belongs here,
+    # under its own name — not in a test three assertions later saying "main moved".
+    for line in ("author", "committer"):
+        assert _ident(work, line) == f"{REPO_IDENT[0]} <{REPO_IDENT[1]}>", (
+            f"the seed commit's {line} is {_ident(work, line)!r}, not the stand-in owner — "
+            "the fixture is not hermetic against the calling environment")
 
     bindir = tmp_path / "bin"
     bindir.mkdir()
@@ -77,7 +108,7 @@ def lane(tmp_path):
     (bindir / "ferrostep").chmod(0o755)
 
     def _run(script=SCRIPT, *flags, env_extra=None):
-        env = dict(os.environ)
+        env = _hermetic_env()
         env["PATH"] = f"{bindir}:{env['PATH']}"
         env.update(env_extra or {})
         # ⚠ --no-review is not incidental. Without it the gate attempts a review, which
@@ -86,9 +117,7 @@ def lane(tmp_path):
         # keeps what these tests drive stable under someone else's edit to that sub-step.
         p = subprocess.run([script, "--branch", "feature/x", "--no-push", "--no-review", *flags],
                            cwd=str(work), env=env, capture_output=True, text=True, timeout=120)
-        author = subprocess.run(["git", "log", "-1", "--format=%an <%ae>"], cwd=str(work),
-                                capture_output=True, text=True).stdout.strip()
-        return p.returncode, p.stdout + p.stderr, author
+        return p.returncode, p.stdout + p.stderr, _ident(work)
 
     _run.work = work
     return _run
@@ -99,6 +128,29 @@ def test_the_merge_commit_is_authored_by_the_roster_not_the_repo(lane):
     assert rc == 0, out
     assert author == f"{ROSTER_IDENT[0]} <{ROSTER_IDENT[1]}>", out
     assert author != f"{REPO_IDENT[0]} <{REPO_IDENT[1]}>"
+    assert _ident(lane.work, "committer") == f"{ROSTER_IDENT[0]} <{ROSTER_IDENT[1]}>", out
+
+
+@pytest.fixture
+def exported_identity(monkeypatch):
+    """The environment #395 named: the developer's shell with `GIT_AUTHOR_NAME` exported.
+
+    Requested BEFORE `lane` in the test signature so it is in `os.environ` while the fixture
+    seeds its repo — which is where the leak bit, not only in the script run."""
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Exported Person")
+    monkeypatch.setenv("GIT_COMMITTER_NAME", "Exported Person")
+
+
+def test_the_fixture_is_hermetic_against_an_exported_identity(exported_identity, lane):
+    """#395. With `GIT_AUTHOR_NAME` in the calling process's environment the seed commit was
+    authored by it, the script refused up front, and the reader was sent to "main moved".
+    Neither may happen: the seed is the stand-in owner's (asserted inside the fixture) and the
+    merge goes through authored by the roster, exactly as it does from a clean shell."""
+    assert os.environ["GIT_AUTHOR_NAME"] == "Exported Person"     # the case is really set up
+    rc, out, author = lane()
+    assert rc == 0, out
+    assert author == f"{ROSTER_IDENT[0]} <{ROSTER_IDENT[1]}>", out
+    assert "Exported Person" not in out, out
 
 
 def test_without_the_c_pair_the_owners_identity_is_what_lands(lane, tmp_path):
@@ -165,12 +217,14 @@ def test_the_dry_run_still_answers_without_a_roster_and_says_so(lane, tmp_path):
     assert "<roster developer>" in out and "did NOT resolve" in out, out
 
 
-@pytest.mark.parametrize("var", ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL"])
+@pytest.mark.parametrize("var", IDENTITY_VARS)
 def test_git_author_in_the_environment_is_refused_before_the_merge(lane, var):
     """#394. `GIT_AUTHOR_*` OVERRIDES a `-c user.*` pair (measured 2026-09-07), so with it set
     the merge would land under the invoker's name and the post-merge check would refuse a
     commit already on `main`. Refusing first leaves `main` where it was — and the message
-    names the variable, so the reader is not sent to amend a commit that never happened."""
+    names the variable, so the reader is not sent to amend a commit that never happened.
+    #396: `GIT_COMMITTER_*` does the same to the committer line, and was neither refused nor
+    checked — a merge landed "Roster Dev authored, Committer Person committed" and pushed."""
     rc, out, author = lane(SCRIPT, env_extra={var: "Someone Else"})
     assert rc != 0, out
     assert var in out and "NOTHING WAS MERGED" in out, out
@@ -179,11 +233,13 @@ def test_git_author_in_the_environment_is_refused_before_the_merge(lane, var):
     assert "--amend" not in out, "refused up front, so no amend instruction should print"
 
 
-def test_git_author_in_the_environment_does_override_the_c_pair(lane, tmp_path):
+@pytest.mark.parametrize("line", ["author", "committer"])
+def test_git_identity_in_the_environment_does_override_the_c_pair(lane, tmp_path, line):
     """The control for the test above: with the up-front refusal stripped, the same
-    environment produces a merge authored by the ENVIRONMENT — the outcome the refusal
-    exists to prevent, caught only afterwards by the post-merge check. Without this the
-    refusal could be guarding against something git does not do."""
+    environment produces a merge whose author — or, #396, committer — line is the
+    ENVIRONMENT's: the outcome the refusal exists to prevent, caught only afterwards by the
+    post-merge check. Without this the refusal could be guarding against something git does
+    not do, and the committer half of the check could be reading a line nothing can change."""
     mutated = tmp_path / "merge_branch_mutated.sh"
     src = open(SCRIPT, encoding="utf-8").read()
     broken = src.replace('if _OVERRIDE="$(env_identity_override)"; then\n  die',
@@ -192,9 +248,11 @@ def test_git_author_in_the_environment_does_override_the_c_pair(lane, tmp_path):
     mutated.write_text(broken)
     mutated.chmod(0o755)
 
-    rc, out, author = lane(str(mutated), env_extra={"GIT_AUTHOR_NAME": "Env Person",
-                                                    "GIT_AUTHOR_EMAIL": "env@example.invalid"})
-    assert author == "Env Person <env@example.invalid>", (
-        f"the environment did not override the -c pair (got {author!r}), so the up-front "
-        "refusal is guarding against a mechanism that does not exist")
+    prefix = {"author": "GIT_AUTHOR", "committer": "GIT_COMMITTER"}[line]
+    rc, out, author = lane(str(mutated), env_extra={f"{prefix}_NAME": "Env Person",
+                                                    f"{prefix}_EMAIL": "env@example.invalid"})
+    got = _ident(lane.work, line)
+    assert got == "Env Person <env@example.invalid>", (
+        f"the environment did not override the -c pair on the {line} line (got {got!r}), so "
+        "the up-front refusal is guarding against a mechanism that does not exist")
     assert rc != 0 and "--amend" in out, out

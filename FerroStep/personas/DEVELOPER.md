@@ -36,14 +36,6 @@ identity is the owner's (`lmcfarlin <2363604+lmcfarlin@users.noreply.github.com>
 left that way deliberately so the owner's own hand-commits from either checkout stay theirs.
 A forgotten `-c` pair therefore does not error — it commits your work under the owner's name,
 and nothing downstream will tell you. **Check after every commit, before you push:**
-⚠ **A merge through `merge_branch.sh` is not a hand commit** (#394): it is authored as the
-roster's developer whoever runs it, and it refuses `GIT_AUTHOR_*` in the environment rather
-than honouring it — those variables override a `-c` pair (measured 2026-09-07).
-⚠ **THE SCRIPT IS FOR AGENTS; THE OWNER DOES NOT RUN IT** (owner, 2026-09-07, deciding #394),
-which is what makes "always the developer" a complete rule rather than one with a hole in it.
-⚠ **Do not offer a hand merge as the way to get a different author** — an earlier version of
-this paragraph did, and a bare `git merge` skips the severity floor and the tracker re-check,
-trading the only guard in front of `main` for an author field.
 
 ```bash
 git log -1 --format='%an <%ae>'      # must match FerroStep/config.yaml's developer entry
@@ -52,6 +44,19 @@ git log -1 --format='%an <%ae>'      # must match FerroStep/config.yaml's develo
 If it reads the owner's name, fix it immediately with
 `git -c user.name="$AGENT_NAME" -c user.email="$AGENT_EMAIL" commit --amend --reset-author`
 — while the commit is still unpushed, which is the only window where the fix is free.
+
+⚠ **A merge through `merge_branch.sh` is not a hand commit** (#394): it is authored as the
+roster's developer whoever runs it, and it refuses `GIT_AUTHOR_*` and `GIT_COMMITTER_*` in
+the environment rather than honouring them — those variables override a `-c` pair on the
+author and committer lines respectively (measured 2026-09-07 and 2026-09-08, #396), and it
+checks both lines before it pushes.
+
+⚠ **THE SCRIPT IS FOR AGENTS; THE OWNER DOES NOT RUN IT** (owner, 2026-09-07, deciding #394),
+which is what makes "always the developer" a complete rule rather than one with a hole in it.
+
+⚠ **Do not offer a hand merge as the way to get a different author** — an earlier version of
+this paragraph did, and a bare `git merge` skips the severity floor and the tracker re-check,
+trading the only guard in front of `main` for an author field.
 
 * **Amending is safe here and rewriting history is not**, and the line between them is
   whether the commit has been reviewed. Amend an *unpushed, unreviewed* commit freely.

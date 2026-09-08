@@ -24,9 +24,12 @@
 # DEVELOPER.md §1 leaves the repo's configured identity as the owner's so their HAND commits
 # stay theirs; a merge through this script is not a hand commit, it is the lane's act, and
 # it is the one thing that reaches `main` on its own. There is deliberately no path through
-# here that lands a merge under the invoker's name: `GIT_AUTHOR_*` in the environment
-# OVERRIDES a `-c` pair (measured 2026-09-07), so it is refused before the merge rather than
-# caught after it.
+# here that lands a merge under the invoker's name — on EITHER line. `GIT_AUTHOR_*` in the
+# environment OVERRIDES a `-c` pair (measured 2026-09-07), and `GIT_COMMITTER_*` overrides
+# the committer line the same way (measured 2026-09-08, #396: `-c user.name="Roster Dev"`
+# merged, committer `Committer Person`). Both pairs are refused before the merge rather
+# than caught after it, and both lines are checked before the push. The first version
+# refused the author pair only and checked the author line only, while claiming "no path".
 #
 # ⚠⚠ THIS SCRIPT IS FOR AGENTS. THE OWNER DOES NOT RUN IT (owner, 2026-09-07, deciding #394).
 # That is why there is no opt-in and no --as-invoker flag: there is no case to serve. ⚠ And
@@ -79,13 +82,14 @@ done
 
 die() { echo "merge_branch.sh: $*" >&2; exit 1; }
 
-# Names the GIT_AUTHOR_* variable(s) set in the environment, or fails when none are. These
-# OVERRIDE a `-c user.*` pair (measured 2026-09-07: `GIT_AUTHOR_NAME=Env git -c user.name=Ozzy
-# commit` is authored Env), so a merge made under them would land wrong and be caught only by
-# the post-merge check, after `main` has moved. Both paths ask this BEFORE the merge instead.
+# Names the GIT_AUTHOR_* / GIT_COMMITTER_* variable(s) set in the environment, or fails when
+# none are. These OVERRIDE a `-c user.*` pair (measured 2026-09-07: `GIT_AUTHOR_NAME=Env git
+# -c user.name=Ozzy commit` is authored Env; #396: the committer pair does the same to the
+# committer line), so a merge made under them would land wrong and be caught only by the
+# post-merge check, after `main` has moved. Both paths ask this BEFORE the merge instead.
 env_identity_override() {
   local v set=""
-  for v in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL; do
+  for v in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do
     [[ -n "${!v:-}" ]] && set="${set:+$set, }$v"
   done
   [[ -n "$set" ]] && printf '%s' "$set"
@@ -354,7 +358,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  ⚠ $_OVERRIDE is set in the environment and would OVERRIDE that -c pair. The real"
     echo "    merge REFUSES before merging; unset it first."
   fi
-  echo "  then:  check the merge author is the roster developer, before any push"
+  echo "  then:  check the merge author AND committer are the roster developer, before any push"
   # ⚠ THE SAME REFSPEC THE REAL PUSH USES. This printed `git push origin $BASE` while the real
   # command is `origin "$BASE:$BASE"` — a dry run that describes a different command from the
   # one it previews is worse than no dry run at all, because it gets believed.
@@ -385,9 +389,10 @@ fi
 # ⚠ `--agent developer`, NOT THE ROSTER'S DEFAULT (#394). The header says "the developer" and
 # the merge is the developer's act; `default_agent` names the same entry today, and a script
 # that relied on that would go on saying "developer" the day the default changed.
-# ⚠ REFUSED BEFORE THE MERGE, not caught after it. `GIT_AUTHOR_*` overrides the `-c` pair, so
-# with it set the merge would land under the invoker's name and the check below would refuse
-# a commit already on `main` — an amend instruction where a refusal was available for free.
+# ⚠ REFUSED BEFORE THE MERGE, not caught after it. `GIT_AUTHOR_*` / `GIT_COMMITTER_*` override
+# the `-c` pair, so with either set the merge would land under the invoker's name and the check
+# below would refuse a commit already on `main` — an amend instruction where a refusal was
+# available for free.
 if _OVERRIDE="$(env_identity_override)"; then
   die "$_OVERRIDE is set in the environment, and it OVERRIDES the roster identity this merge
      is authored with. NOTHING WAS MERGED. A merge through this script is the developer's act
@@ -409,13 +414,19 @@ git -c user.name="$AGENT_NAME" -c user.email="$AGENT_EMAIL" \
 
 # ⚠ VERIFY, DO NOT ASSUME — and do it BEFORE the push, which is the only window where the
 # fix is free (DEVELOPER.md §1). The `-c` pair is a convention until something checks it.
+# ⚠ BOTH LINES (#396). GitHub renders "X authored and Y committed", so a committer line the
+# refusal above missed is still a merge under the invoker's name; an author-only check
+# passed exactly that and pushed it. `--amend --reset-author` under the `-c` pair resets both.
 _MERGE_AUTHOR="$(git log -1 --format='%an <%ae>')"
-[[ "$_MERGE_AUTHOR" == "$AGENT_NAME <$AGENT_EMAIL>" ]] \
-  || die "the merge landed but is authored '$_MERGE_AUTHOR', not '$AGENT_NAME <$AGENT_EMAIL>'.
+_MERGE_COMMITTER="$(git log -1 --format='%cn <%ce>')"
+[[ "$_MERGE_AUTHOR" == "$AGENT_NAME <$AGENT_EMAIL>" \
+   && "$_MERGE_COMMITTER" == "$AGENT_NAME <$AGENT_EMAIL>" ]] \
+  || die "the merge landed but is authored '$_MERGE_AUTHOR' and committed by
+     '$_MERGE_COMMITTER', not '$AGENT_NAME <$AGENT_EMAIL>' on both lines.
      IT IS NOT PUSHED. Fix it while that is still true:
        git -c user.name=\"$AGENT_NAME\" -c user.email=\"$AGENT_EMAIL\" commit --amend --reset-author"
 
-echo "merged $BRANCH into $BASE (authored $_MERGE_AUTHOR)"
+echo "merged $BRANCH into $BASE (authored and committed $_MERGE_AUTHOR)"
 
 if [[ "$PUSH" -eq 1 ]]; then
   # ⚠ EXPLICIT REFSPEC. `push.default=upstream` is set in this repo, so a bare `git push` from
