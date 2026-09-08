@@ -358,6 +358,17 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
     echo "  ⚠ $_OVERRIDE is set in the environment and would OVERRIDE that -c pair. The real"
     echo "    merge REFUSES before merging; unset it first."
   fi
+  # ⚠ THE SAME ANSWER THE REAL MERGE GIVES FOR A NO-OP (#398), previewed rather than
+  # refused: a dry run still reports the gate's verdict, and then says where the real run
+  # would stop. rc 128 is a ref that does not resolve — named, because the merge below
+  # would refuse there too, and a preview of a merge that cannot happen is the #393 defect.
+  if git merge-base --is-ancestor "$BRANCH" "$BASE" 2>/dev/null; then
+    echo "  ⚠ nothing to merge: '$BRANCH' is already contained in '$BASE'. The real merge"
+    echo "    REFUSES at that point, with nothing merged and nothing to amend."
+  elif [[ $? -ne 1 ]]; then
+    echo "  ⚠ '$BRANCH' or '$BASE' does not resolve as a ref here. The real merge REFUSES at"
+    echo "    that point, with nothing merged."
+  fi
   echo "  then:  check the merge author AND committer are the roster developer, before any push"
   # ⚠ THE SAME REFSPEC THE REAL PUSH USES. This printed `git push origin $BASE` while the real
   # command is `origin "$BASE:$BASE"` — a dry run that describes a different command from the
@@ -372,6 +383,26 @@ fi
 [[ -z "$(git status --porcelain)" ]] \
   || die "working tree is dirty. Commit or stash first — a merge would carry edits that were
      never reviewed, which is precisely what the gate above exists to prevent."
+
+# ⚠ NOTHING TO MERGE IS ITS OWN REFUSAL (#398), and it sits HERE for the reason the dirty-tree
+# check does: a no-op is a reason not to MERGE, not a reason to refuse to ANSWER, so the dry
+# run above still reports the gate's verdict and previews this refusal instead of making it.
+# `merge --no-ff` of a branch already contained in $BASE prints "Already up to date." and
+# creates NO commit, rc 0 — and the post-merge identity check below then read $BASE's
+# EXISTING tip, said "the merge landed", and printed `--amend --reset-author` against a
+# commit that is already on `main` and already pushed. Right refusal, wrong instruction, and
+# the instruction rewrites `main`; this repo has no branch protection to stop it. A re-run
+# after a `--no-push` merge, or a second run after a successful one, produced it every time.
+# Explicit rc handling: `--is-ancestor` is 0/1 for the answer and 128 when a ref is missing,
+# and a missing ref is not "not merged".
+if git merge-base --is-ancestor "$BRANCH" "$BASE" 2>/dev/null; then
+  die "nothing to merge: '$BRANCH' is already contained in '$BASE' — every commit on it is
+     already reachable from $BASE's tip ($(git rev-parse --short "$BASE")). NOTHING WAS MERGED,
+     and there is nothing to amend."
+elif [[ $? -ne 1 ]]; then
+  die "cannot tell whether '$BRANCH' is already in '$BASE': \`git merge-base --is-ancestor\`
+     failed. Do both refs exist? NOTHING WAS MERGED."
+fi
 
 # ⚠ THE MERGE COMMIT NEEDS THE ROSTER'S IDENTITY, AND NOTHING ELSE SUPPLIES IT.
 # This repo's configured git identity is the OWNER's, deliberately, so that their own hand
@@ -409,8 +440,18 @@ eval "$AGENT_ENV"
      is the owner's."
 
 git checkout "$BASE"
+_BASE_BEFORE="$(git rev-parse HEAD)"
 git -c user.name="$AGENT_NAME" -c user.email="$AGENT_EMAIL" \
     merge --no-ff "$BRANCH" -m "merge $BRANCH"
+
+# ⚠ ONLY INSPECT A COMMIT THIS RUN CREATED (#398). The identity check below ends in an
+# `--amend --reset-author` instruction, and that instruction is only true of a commit that
+# is not yet on the remote. If HEAD did not move, the merge made nothing — the ancestor
+# check above should have refused already, and this is the guard for whatever it did not
+# foresee — so the commit at HEAD is $BASE's old tip, pushed, and not ours to rewrite.
+[[ "$(git rev-parse HEAD)" != "$_BASE_BEFORE" ]] \
+  || die "no merge commit was created: $BASE is still at $(git rev-parse --short HEAD). NOTHING
+     WAS MERGED, and there is nothing to amend — that commit was on $BASE before this ran."
 
 # ⚠ VERIFY, DO NOT ASSUME — and do it BEFORE the push, which is the only window where the
 # fix is free (DEVELOPER.md §1). The `-c` pair is a convention until something checks it.

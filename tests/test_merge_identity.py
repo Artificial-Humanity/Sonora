@@ -256,3 +256,65 @@ def test_git_identity_in_the_environment_does_override_the_c_pair(lane, tmp_path
         f"the environment did not override the -c pair on the {line} line (got {got!r}), so "
         "the up-front refusal is guarding against a mechanism that does not exist")
     assert rc != 0 and "--amend" in out, out
+
+
+def _at_mains_tip(lane):
+    """#398's input: the merge candidate is already contained in main, so `merge --no-ff`
+    prints `Already up to date.` and creates NO commit."""
+    _git(lane.work, "branch", "-f", "feature/x", "main")
+
+
+def test_an_already_merged_branch_is_refused_with_no_amend_instruction(lane):
+    """#398. With nothing to merge, the post-merge identity check read main's EXISTING tip —
+    the owner's seed commit — said "the merge landed", and printed `--amend --reset-author`
+    against a commit that is already on `main`. Right refusal, wrong instruction, and the
+    instruction rewrites `main`. It must refuse for the real reason, and `--amend` must never
+    print unless the script itself created the commit it is talking about."""
+    _at_mains_tip(lane)
+    rc, out, author = lane()
+    assert rc != 0, out
+    assert "nothing to merge" in out, out
+    assert "--amend" not in out, out
+    assert "the merge landed" not in out, out
+    assert "seed" in subprocess.run(["git", "log", "-1", "--format=%s"], cwd=str(lane.work),
+                                    capture_output=True, text=True).stdout, "main moved"
+    assert author == f"{REPO_IDENT[0]} <{REPO_IDENT[1]}>"
+
+
+def test_without_both_guards_the_named_case_reaches_the_amend_instruction(lane, tmp_path):
+    """The control for #398, on the finding's own input. Strip BOTH guards — the up-front
+    ancestor refusal and the HEAD-moved check — and the same harness must print the
+    misdirecting `--amend --reset-author` against main's untouched tip. Without this the
+    test above could pass because the harness never reached the merge at all."""
+    mutated = tmp_path / "merge_branch_mutated.sh"
+    src = open(SCRIPT, encoding="utf-8").read()
+    # the REAL refusal, not the dry-run preview of it four screens up, which shares the test
+    real = 'if git merge-base --is-ancestor "$BRANCH" "$BASE" 2>/dev/null; then\n  die "nothing to merge'
+    assert src.count(real) == 1, "the nothing-to-merge refusal moved — this control mutates nothing"
+    broken = src.replace(real, 'if false; then\n  die "nothing to merge')
+    moved = '[[ "$(git rev-parse HEAD)" != "$_BASE_BEFORE" ]] \\\n  || die'
+    assert src.count(moved) == 1, "the HEAD-moved guard moved — this control mutates nothing"
+    broken = broken.replace(moved, '[[ 1 ]] \\\n  || die')
+    mutated.write_text(broken)
+    mutated.chmod(0o755)
+
+    _at_mains_tip(lane)
+    rc, out, author = lane(str(mutated))
+    assert rc != 0
+    assert "--amend --reset-author" in out and "the merge landed" in out, out
+    assert "seed" in subprocess.run(["git", "log", "-1", "--format=%s"], cwd=str(lane.work),
+                                    capture_output=True, text=True).stdout
+
+
+def test_the_dry_run_previews_the_nothing_to_merge_refusal(lane):
+    """The refusal sits with the dirty-tree check, AFTER the dry-run block, for the reason
+    that check gives: a no-op is a reason not to MERGE, not a reason to refuse to ANSWER.
+    So the dry run still reports the gate's verdict — and must say where the real run would
+    stop, the way it does for a roster that did not resolve, not print a green preview."""
+    _at_mains_tip(lane)
+    rc, out, author = lane(SCRIPT, "--dry-run")
+    assert rc == 0, out
+    assert "nothing to merge" in out and "REFUSES" in out, out
+    assert "--amend" not in out, out
+    assert "seed" in subprocess.run(["git", "log", "-1", "--format=%s"], cwd=str(lane.work),
+                                    capture_output=True, text=True).stdout, "a dry run merged"
