@@ -77,8 +77,11 @@ _When these two disagree: `training-sources.md` wins on a source's **state**,
 | [direction-interface-brief.md](../docs/direction-interface-brief.md) | how Sonora receives direction (contract-v2 decision record; the reverse-conveyance design) |
 | [markup-schema-brief.md](../docs/markup-schema-brief.md) | SCM v0.1 — the ratified conveyance markup (sidecar-canonical, six tags) |
 | [casting-attribute-norms-brief.md](casting-attribute-norms-brief.md) | measured casting norms, cast sheet, identity-vs-portrayal |
+| [direction-contract-v3-proposal.md](direction-contract-v3-proposal.md) | the **proposed** v3 direction surface — ⚠ a PROPOSAL, nothing in it is ratified or built. Written before rung 2 trained so the surface is decided ahead of Phase 1S, and subordinate to `director_skills/sonora.md`'s rule: a field that cannot be verified after the render does not belong in the contract |
 
-_All four are **design records**, not build status. ⚠ The delivery channel they describe
+_The first four are **design records**, not build status, and the fifth is an unratified
+proposal. ⚠ This sentence said "all four" while the table held four, and adding a row is what
+made it false — the shape a table's own summary sentence always has. ⚠ The delivery channel they describe
 **SHIPPED in the model core on 2026-08-07** (`vat_dim` 8, `matcha/delivery.py`); the **EXPORT**
 half is what remains — [STATE.md](STATE.md). Said "not implemented" until 2026-08-22 (#283)._
 
@@ -105,6 +108,8 @@ yet scheduled**", so it fails the ratified test its three siblings pass._
 | [matcha-siblings-study.md](matcha-siblings-study.md) | the standing comparison bench (StableTTS, RapFlow, CosyVoice, Baichuan…) — check it before designing any component blind |
 | [training-operations.md](training-operations.md) | the **runbook** — runs to date, launch/stop/resume, checkpoint settings, watchers, gates, footguns, registry conventions |
 | [local-vs-runpod-decision.md](local-vs-runpod-decision.md) | the measure-before-renting instrumentation |
+| [data-mirrors.md](data-mirrors.md) | **code on `/data`** — what is backed, what legitimately lives only there, and the drift that actually bit. The audit behind AGENTS.md §6's "execute from the repo" |
+| [quality-mechanisms-plan.md](quality-mechanisms-plan.md) | what else to build for safety and quality, **ranked by this repo's own measured defect history** rather than by general practice — doc-vs-code disagreement was the largest single class |
 
 _The DiT spike is described in **three** places by design: `model-decisions.md` says what
 it is, `matcha-siblings-study.md` says what public code already solved, and

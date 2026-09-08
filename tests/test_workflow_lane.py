@@ -342,6 +342,48 @@ def test_every_tracker_write_surface_is_actually_guarded():
         assert site in ISSUE_SRC, "a tracker write surface is no longer guarded: %s" % site
 
 
+def test_the_read_path_redacts_the_cycle_abort_token():
+    """⚠ #364 — `redact` and every call site was watched by NOTHING.
+
+    `refuse_abort_token` stops the NEXT record carrying the literal. `redact` is the only
+    mitigation for the records filed BEFORE it existed, which are live and unrepairable —
+    `issue.py` has no rename or edit subcommand. So it is the whole defence on the read side,
+    and it had no test at all: mutation-measured by the reviewer, deleting the call in
+    `show_row` left the full suite green while the same harness went red on the write guard.
+
+    Exercised, not grepped, for the reason `_issue_module` gives.
+    """
+    m = _issue_module()
+    token = m.ABORT_TOKEN
+    out = m.redact("closing this: %s, see the note" % token)
+    assert token not in out, "the token survived redaction"
+    assert "#361" in out, (
+        "the replacement must NAME what was removed — a title with the text silently gone "
+        "reads as though it were written that way")
+    # ⚠ THE MARKER MUST NOT ITSELF BE GREPPABLE AS THE TOKEN, or redaction re-arms the trap
+    # one layer along: `review_cycle.sh` greps the summary, and the summary quotes this.
+    assert token not in m.redact(token) and token not in "[cycle-abort token, redacted]"
+    assert m.redact("ordinary prose") == "ordinary prose"
+    assert m.redact(None) == "", "a missing field must not raise on the read path"
+
+
+def test_the_list_row_a_reviewer_actually_reads_is_redacted():
+    """The call site, because a redaction nothing calls is decoration.
+
+    `show_row` is what `issue.py list` prints, and REVIEWER.md's documented reroute is a
+    `list` — so this is the sanctioned read command, not an unusual keystroke. Driving the
+    real function beats pinning the call as a substring: a substring passes on a call that is
+    present and unreachable, which is the shape this branch filed three times.
+    """
+    m = _issue_module()
+    token = m.ABORT_TOKEN
+    row = m.show_row({"number": 355, "state": "closed", "severity": "low",
+                      "agent_passes": 3, "title": "a finding that says %s here" % token})
+    assert token not in row, "the token reaches a reviewer through the documented read path"
+    assert "355" in row, "the row no longer carries the issue number it is about"
+    assert "redacted" in row, "the reader is not told anything was removed"
+
+
 def test_no_tracker_write_survives_a_refused_comment():
     """⚠⚠ #362 — THE GUARD FIRED AFTER THE WRITE IT EXISTS TO PREVENT.
 

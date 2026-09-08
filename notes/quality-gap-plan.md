@@ -749,17 +749,29 @@ shipped.
 that matters.** The median is 141 clips/speaker and holds. But **21 new speakers have exactly
 one kept clip**, and per-speaker z gives those a combo of **exactly 0.0** — the degenerate
 label that forced Emilia onto the global anchor, indistinguishable from a genuine
-at-speaker-mean one. Bounded by control: **exactly 21 clips of the 303,638 SCORED are 0.0**,
-i.e. the degenerate population is precisely the one-clip speakers and nothing else, 0.007% of
-the add.
+at-speaker-mean one. Bounded by control: **exactly 21 of the 303,628 clips `derive_vat_corpus` KEPT
+pre-exclusion are 0.0**, i.e. the degenerate population is precisely the one-clip speakers and
+nothing else. ⚠ **The denominator is the KEPT set, not the SCORED one** (#378) — this read
+*"21 of the 303,638 SCORED"*, which pairs a count that is a property of `derive_vat_corpus`'s
+per-speaker z with the population of the EIV pass, a different filter named ten lines above.
+Labelling the number without fixing which population it counts over left the halves still
+crossed.
 
 ⚠ **THE v7 CONFIG SAYS 22 OF 303,627 AND BOTH ARE RIGHT — THE POPULATIONS DIFFER** (#378).
-This paragraph measures the corpus **as scored**, before the ear exclusion; the config
-measures it **as built**, after. Removing one clip of a two-clip speaker left its survivor a
-one-clip speaker, so the null-vector population went 21 → 22 while the row count went
-303,628 → 303,627. Neither number was labelled, which is how two correct measurements read as
-a contradiction — the same defect as #372 and #377, ten lines apart, and the reason every
-count in this section now names its population. 26 speakers have ≤2 clips (z fixed at ±1 by arithmetic), and **66 have <10** — which is what `derive_vat_corpus` reports, because its own comparison is `< MIN_SPK_CLIPS`. ⚠ **71 is the ≤10 count** and this line gave it under a `<10` label (#377).
+This paragraph measures the corpus **as KEPT by `derive_vat_corpus`, before the ear
+exclusion**; the config measures it **as built**, after. ⚠ This said *"as scored"* six lines
+under a sentence saying the denominator is the kept set and NOT the scored one — one word,
+opposite senses, adjacent paragraphs (#378). Removing one clip of a two-clip speaker left its
+survivor a one-clip speaker, so the null-vector population went 21 → 22 while the row count
+went 303,628 → 303,627. Neither number was labelled, which is how two correct measurements
+read as a contradiction — the same defect as #372 and #377, ten lines apart, and the reason
+every count in this section now names its population. 26 speakers have ≤2 clips, and the
+split is **21 one-clip + 5 two-clip before the exclusion, 22 + 4 as built** — the same speaker
+crossing. ⚠ **A parenthetical here used to say "z fixed at ±1 by arithmetic", which is true
+only of the two-clip speakers** (#378): two clips give ±1, but a one-clip speaker's z is
+exactly 0.0, the degenerate case the paragraph above is entirely about. The ≤2 total is 26
+either side of the exclusion; only its split moves, and the first fix gave the as-built split
+under the pre-exclusion label. And **66 have <10** — which is what `derive_vat_corpus` reports, because its own comparison is `< MIN_SPK_CLIPS`. ⚠ **71 is the ≤10 count** and this line gave it under a `<10` label (#377).
 `derive_vat_corpus`'s `MIN_SPK_CLIPS` report prints this per run and **deliberately does not
 repair it** — changing labels is a corpus version bump and an owner call.
 
@@ -791,7 +803,7 @@ them was corrected and the other was not.
 | **`libritts_r_full_vat_v7`** | **336,546 tr / 10,349 val = 346,895** | **5,385** | **561.0** |
 
 **Against this document's own predictions:** rows ~345,600 → **346,895**; hours ~564 →
-**561.1**; speakers ~5,414 → **5,385**. The first two are close enough to call the estimates
+**561.0**; speakers ~5,414 → **5,385**. The first two are close enough to call the estimates
 good. The third is the 2,064-vs-2,059 correction above, and the derivations confirmed it
 without being told: clean_360 produced **899 = 904 − 5** and other_500 produced its full
 **1,160**, so all five zero-clip speakers were in one root, exactly as measured beforehand.

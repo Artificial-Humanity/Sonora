@@ -67,7 +67,8 @@
 # per run and deliberately does not repair it, because dropping or neutralising those clips
 # changes labels and changing labels is a corpus version bump and an owner call. Left in,
 # knowingly. This is the same failure that forced the Emilia half onto a global anchor, where
-# it was 756 one-clip speakers rather than 21.
+# it was 756 one-clip speakers rather than 22 (the as-built count this file gives above; 21 is
+# the pre-exclusion figure, and this line kept it when the paragraph moved to 22 — #378).
 #
 # ⚠ THE STRICTLY-GROWING RULE HOLDS BECAUSE THE SPEAKERS ARE DISJOINT, AND THAT WAS TESTED.
 # `eiv_merge_corpus` recomputes EVERY clip's combo by design, so adding clips to an existing

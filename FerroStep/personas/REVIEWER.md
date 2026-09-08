@@ -238,6 +238,23 @@ superuser-only; the MCP already holds the credential.
 **READ it with the `pocketbase` MCP tools** — `pb_record_list` and `pb_record_get`. Every
 query on this page is one of those, and none of them is restricted.
 
+⚠⚠ **AND THAT PATH DOES NOT REDACT THE CYCLE-ABORT TOKEN** (#365). Some records stored before
+the write guard existed carry it in `title` or `body`. `issue.py` blunts it on the way out;
+the MCP server reads PocketBase directly and never loads `issue.py`, so the queries on this
+page return those fields **verbatim** — and this is the PRIMARY read path, not the fallback.
+The token is what `review_cycle.sh` greps your summary for, so quoting such a record into a
+summary halts a clean cycle. The write guard cannot help: it stops the next record, not the
+ones already stored, and rewriting them was considered and refused (#361).
+
+* **Do not paste a stored `title` or `body` verbatim into a summary.** Describe the record
+  instead. #361 is its own proof that this is always possible.
+* **To read one safely, use the redacting path** — `FerroStep/workflow/scripts/issue.py show <n>`,
+  the same command §4 names below for a stale transport, or `issue.py list`, whose rows go
+  through the same `redact`. ⚠ This called `show` *"the only read here that redacts"* while
+  naming `list` three times as the reroute (#392). Both redact; the raw API does not.
+* ⚠ **Which records carry it is a LIVE fact.** Find them with a filter when you need to know;
+  a count written here would be a second copy that goes stale the next time one is filed.
+
 ⚠⚠ **WRITE IT WITH `FerroStep/workflow/scripts/issue.py`, NOT `pb_record_mutate`** (phase 2, owner
 directive 2026-08-24). `state`, `agent_passes`, `ferrostep_version`, `repo` and `branch_name`
 are **refereed fields**: FerroStep's guard refuses a direct **UPDATE** of any of them with a

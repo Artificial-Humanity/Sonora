@@ -9,7 +9,10 @@
 # only rung whose whole hypothesis is volume. So a flat holdout here is not neutral — it
 # is the falsification of the lever this phase has been building toward.
 #
-#   v7: 336,546 train / 10,349 val · 561.1 h · 5,385 speakers
+#   v7: 336,546 train / 10,349 val · 561.0 h · 5,385 speakers
+#     ⚠ 561.0, not 561.1 (#382). WHY is in configs/data/libritts_r_full_vat_v7.yaml, which
+#     owns the figure; it is not restated here, because a second copy of a corrected number
+#     is what left this file saying 561.1 after the correction landed in two others.
 #   v6 was  41,937 /  1,331    ·  80.6 h · 3,326 speakers
 #
 # PREDICTION, recorded before the run exists so this stays a test rather than a story:
