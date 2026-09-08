@@ -657,3 +657,34 @@ def test_a_tracked_top_level_file_is_not_called_a_directory(tmp_path):
     root = tree(tmp_path, {"notes/a.md": "x\n", "Prosodia": "not a directory\n"})
     assert "Prosodia" not in gate._tracked_top_dirs(root), (
         "a tracked top-level FILE is being listed as a directory")
+
+
+def test_the_notes_map_lists_every_note():
+    """`notes/README.md` says "One line per file". That is a claim about its own members.
+
+    ⚠ IT WAS FALSE, AND NOTHING COULD SEE IT. Three notes — `data-mirrors.md`,
+    `direction-contract-v3-proposal.md` and `quality-mechanisms-plan.md` — were absent from the
+    map while it asserted completeness, and `data-mirrors.md` is cited by name from AGENTS.md
+    §6 and §7. A reader looking for a subject in the index concluded the note did not exist.
+
+    ⚠ THE FAILURE IS ASYMMETRIC, WHICH IS WHY IT SURVIVED. A link to a file that does not exist
+    is caught by the link gate above. A file that nothing links to is invisible to it: there is
+    no broken reference to find, only a missing one. This is the direction the link gate cannot
+    look.
+
+    A map that states its own rule can be checked against its members. This does that.
+    """
+    notes = os.path.join(REPO, "notes")
+    with open(os.path.join(notes, "README.md"), encoding="utf-8") as fh:
+        listed = fh.read()
+    names = [n for n in sorted(os.listdir(notes)) if n.endswith(".md")]
+    missing = [n for n in names if n != "README.md" and "(%s)" % n not in listed]
+    assert not missing, (
+        "notes/README.md claims one line per file and does not list: %s. Add a line, or "
+        "delete the note — an unlisted note is one nobody finds by looking." % ", ".join(missing))
+
+    # ⚠ POSITIVE CONTROL, because an empty enumeration passes vacuously. If the glob ever
+    # stops matching — a layout change, a rename of the directory — this fails loudly instead
+    # of reporting a clean map it never looked at.
+    assert len(names) > 5, (
+        "the notes glob matched almost nothing; this guard was checking an empty set")

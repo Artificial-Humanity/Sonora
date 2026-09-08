@@ -267,7 +267,13 @@ pb_passes() {  # $1 = branch, $2 = repo slug -> SUM of agent_passes, or "unreach
   #
   # Nothing in this loop lowers `agent_passes` (only the owner resets, and the owner is not in
   # it), so across a single worker run this is monotonic: it rises iff the worker incremented.
-  python3 - "$1" <<'PY'
+  #
+  # ⚠⚠ BOTH ARGUMENTS GO TO THE HEREDOC (#391). This passed "$1" alone while the query read
+  # `sys.argv[2]` for the repo slug, so every call raised IndexError inside the `try`, printed
+  # `unreachable`, and the guard below SKIPPED ITSELF — sum and per-issue alike — on every
+  # pass since the repo scope was added. Found by the first test to run this function rather
+  # than a fixture shaped like its output.
+  python3 - "$1" "$2" <<'PY'
 import json, os, socket, sys, urllib.parse, urllib.request
 socket.setdefaulttimeout(15)
 try:
@@ -290,15 +296,52 @@ try:
                            % (sys.argv[2].replace('"', ""), sys.argv[1].replace('"', "")))
     # ⚠ perPage is 500, not the API default of 10 — a truncated page silently under-sums and
     # the guard then sees a stall that never happened.
-    r = call("/api/collections/issues/records?perPage=500&skipTotal=false&fields=agent_passes"
-             "&filter=" + q, token=tok)
+    #
+    # ⚠⚠ `fields` MUST NAME EVERY COLUMN THE ROW BELOW PRINTS (#391). PocketBase honours the
+    # projection: with `fields=agent_passes` every item came back as `{"agent_passes": N}` and
+    # nothing else (measured against the live store, 2026-09-07), so the per-issue guard read
+    # `None\tN\t` for every issue — number and state absent — and could never match. The sum
+    # still worked, because field 2 was intact, which is why nothing looked wrong. The test
+    # for this runs the real function against a server that projects the way PocketBase does.
+    r = call("/api/collections/issues/records?perPage=500&skipTotal=false"
+             "&fields=number,agent_passes,state&filter=" + q, token=tok)
     items = r.get("items") or []
     if r.get("totalItems", 0) > len(items):
         raise RuntimeError("paged: %d of %d" % (len(items), r["totalItems"]))
-    print(sum(int(i.get("agent_passes") or 0) for i in items))
+    for i in items:
+        print("%s\t%s\t%s" % (i.get("number"), int(i.get("agent_passes") or 0),
+                               i.get("state") or ""))
 except Exception:
     print("unreachable")
 PY
+}
+
+# The sum the stall guard has always compared, DERIVED from the snapshot above rather
+# than fetched again. Two queries a pass apart can disagree about more than the worker did.
+snap_sum() {
+  [[ "$1" == "unreachable" ]] && { printf 'unreachable'; return; }
+  awk -F"\t" '{n+=$2} END {print n+0}' <<<"$1"
+}
+
+# ⚠⚠ PER-ISSUE, BECAUSE THE SUM CANNOT SEE A PARTIAL SKIP (#379; owner 2026-09-06,
+# "Tighten the driver, not the contract"). `sonora-lane.json` spends `agent_passes` on the
+# `open -> open` take alone, so `open -> review` arrives FREE and the cap binds only when
+# the worker chooses to take first. The sum guard below catches a worker that did nothing
+# at all. It does NOT catch one that takes some issues and skips the take on others,
+# because the sum still rises — the case Janis observed live: 369 and 372 advanced while
+# 373 and 374 reached `review` at zero, and this driver saw a healthy pass.
+#
+# ⚠ THE POPULATION IS THE TRANSITION, NOT THE STATE. Only issues that went `open ->
+# review` during THIS pass are required to have advanced:
+#   * one already at `review` beforehand did its spending on an earlier pass;
+#   * `open -> escalated` spends nothing by design and must not be demanded here;
+#   * `open -> disputed` spends `disputes`, a different counter — a rebuttal must not cost
+#     a fix pass, or the cheap move is always to comply.
+unspent_reviews() {  # $1 = before snapshot, $2 = after snapshot -> offending numbers
+  awk -F"\t" '
+    NR==FNR { st[$1]=$3; pa[$1]=$2; next }
+    $3=="review" && st[$1]=="open" && $2+0 <= pa[$1]+0 { print $1 }
+  ' <(printf '%s\n' "$1") <(printf '%s\n' "$2")
 }
 
 # ⚠ RESOLVED ONCE, HERE, and read by everything below — the convergence filter and the
@@ -500,7 +543,8 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   # --- fix pass ------------------------------------------------------------
   check_stop "fix pass $review"
   say "fix pass $review — spawning worker (git push denied)"
-  BEFORE_SUM="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
+  BEFORE_SNAP="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
+  BEFORE_SUM="$(snap_sum "$BEFORE_SNAP")"
 
   WORKER_BRIEF="## This fix pass
 
@@ -571,8 +615,18 @@ $WORKER_BRIEF"
   #
   # Both readings now come from the SAME call on the SAME branch, so the comparison is between
   # like and like — and a stall is `unchanged`, not `equal to some unrelated number`.
-  AFTER_SUM="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
+  AFTER_SNAP="$(pb_passes "$BRANCH" "$REPO_SLUG_FILTER")"
+  AFTER_SUM="$(snap_sum "$AFTER_SNAP")"
   if [[ "$AFTER_SUM" != "unreachable" && "$BEFORE_SUM" != "unreachable" ]]; then
+    # The per-issue check runs FIRST: it is strictly more specific than the sum, and a
+    # run that trips both should be reported by the one that names the issues.
+    UNSPENT="$(unspent_reviews "$BEFORE_SNAP" "$AFTER_SNAP")"
+    if [[ -n "$UNSPENT" ]]; then
+      say "issue(s) reached 'review' without spending a fix pass: $(tr '\n' ' ' <<<"$UNSPENT")
+          The take is what meters the cap and 'open -> review' does not, so those issues
+          are uncapped. Stopping rather than looping (#379)."
+      exit 5
+    fi
     if (( AFTER_SUM == BEFORE_SUM )); then
       say "worker did not advance agent_passes on any issue (sum stayed at $BEFORE_SUM) —
           stopping rather than looping. Check the worker's output above."
@@ -585,6 +639,11 @@ $WORKER_BRIEF"
       say "agent_passes fell ($BEFORE_SUM -> $AFTER_SUM) — an issue was re-armed mid-cycle.
           That is the owner's dial, not a fault. Continuing."
     fi
+  else
+    # ⚠ SAY SO. This branch was taken on EVERY pass while pb_passes was broken (#391) and
+    # nothing in the output distinguished "guard skipped" from "guard satisfied".
+    say "tracker unreachable around the worker run — the fix-pass guard could not be applied
+          this pass. That is a skipped check, not a passed one."
   fi
 done
 
