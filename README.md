@@ -63,7 +63,7 @@ Training is structured in sequential phases to isolate complexity:
 * **Process:**
   1. Convert with the split-graph recipe (`convert_final.py` for the 22.05 kHz baseline, `convert_vat.py` for 24 kHz/multi-speaker/VAT). `python -m matcha.onnx.export` is the Plan B path, not the default.
   2. Validate per-graph parity (corr ≈ 1.0) and end-to-end waveform parity against torch, then that the graphs load and synthesize in the target runtime.
-* **Status:** verified at parity on Phase 0 and on the de-risk checkpoint. The gate suite **refuses** on failure (since F-C1, 2026-08-06 — it *reported* rather than refused until then, which is a gate that cannot fail). ⚠ Valence/tension have still never been driven nonzero through a converted graph — see [`notes/todo.md`](notes/todo.md) §2 before trusting it.
+* **Status:** verified at parity on Phase 0 and on the de-risk checkpoint. The gate suite **refuses** on failure (since F-C1, 2026-08-06 — it *reported* rather than refused until then, which is a gate that cannot fail). ⚠ Valence/tension have still never been driven nonzero through a converted graph — see `notes/todo.md` (private) §2 before trusting it.
 
 ### Phase 3: Directability (VAT Conditioning)
 * **Goal:** condition on `(valence, energy, tension)` — energy occupies the arousal slot — via zero-init FiLM in the text encoder and flow decoder.
@@ -83,7 +83,7 @@ Training is structured in sequential phases to isolate complexity:
 ## 🧭 Where the engineering notes live
 
 This README is the setup guide. The internal record — architecture canon, current state,
-what runs next — is in [`notes/`](notes/). Start at [`docs/STATE.md`](docs/STATE.md).
+what runs next — is in `notes/` (private). Start at [`docs/STATE.md`](docs/STATE.md).
 Agent/developer entry point: [`AGENTS.md`](AGENTS.md).
 
 ---

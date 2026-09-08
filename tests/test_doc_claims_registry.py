@@ -26,9 +26,28 @@ it was fitted to.
 import importlib.util
 import json
 import os
+import pathlib
 import re
 
 import pytest
+
+# ⚠ NOTES ARE PRIVATE AS OF 2026-09-08 — a guard that reads one must SAY SO when it cannot.
+# `notes/` is a gitignored symlink to the umbrella Notes repo, so a public clone does not have
+# it. These assertions are cross-document: they check a PUBLIC statement and a PRIVATE one
+# agree, and half of that pair is unreachable without the private repo.
+#
+# ⚠ SKIP, NOT PASS, AND THE DISTINCTION IS THE WHOLE POINT. A check that reports clean when its
+# input is missing is the silent-disarm mode AGENTS.md §5b is written about. A skip prints its
+# id and its reason in the run output — the repo already relies on that distinction for the
+# container-side gates, where `skipped` is visible and `deselected` was not (#317).
+def notes_text_or_skip(rel):
+    import pytest
+    p = pathlib.Path(REPO) / "notes" / rel
+    if not p.exists():
+        pytest.skip(f"notes/{rel} is not present: notes/ is the private Notes repo (2026-09-08), "
+                    f"so this cross-document check has only its public half here")
+    return p.read_text(encoding="utf-8")
+
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GATE = os.path.join(REPO, "scripts", "gates", "test_doc_claims.py")
@@ -425,6 +444,27 @@ def test_with_nothing_on_disk_every_fact_is_named_rather_than_quietly_dropped(ca
 
 # --- the registry as a whole ----------------------------------------------------------
 
+# ⚠ THE ANTI-VACUITY GUARDS BELOW NEED THE WHOLE DOCUMENT CORPUS, AND HALF OF IT IS PRIVATE.
+# Since 2026-09-08 `notes/` is a gitignored symlink to the umbrella Notes repo. Two registry
+# entries — the teacher-bank text floor and the Emilia keeps exemption — are stated only in
+# documents that live there, so in a public clone they match nothing.
+#
+# ⚠ THAT IS NOT THE FAILURE THESE GUARDS EXIST TO CATCH. They exist to catch a fact whose
+# documents stopped stating it — "a fact no document states is a fact nobody is checking".
+# With the documents absent, a zero match cannot be told apart from a private one, so the
+# guard has no evidence either way and says so instead of guessing.
+#
+# ⚠ SKIP, NOT PASS. The reason and the id are printed; a green run on a missing corpus is the
+# silent-disarm mode AGENTS.md §5b names, and it is exactly what this file guards against.
+# ⚠ COST, STATED: those two entries are enforced only where the private notes are present.
+def _needs_the_private_notes():
+    import os, pytest
+    if not os.path.isdir(os.path.join(REPO, "notes")):
+        pytest.skip("notes/ is the private Notes repo (2026-09-08); the registry's document "
+                    "corpus is incomplete here, so a fact matching nothing is unexplained "
+                    "rather than stale — affects the teacher-bank text floor and the Emilia "
+                    "keeps exemption")
+
 def test_every_fact_recognises_at_least_one_live_statement():
     """A fact no document states is a fact nobody is checking.
 
@@ -432,6 +472,7 @@ def test_every_fact_recognises_at_least_one_live_statement():
     into a phrasing no pattern knows. If this fails, coverage was lost — find the reworded
     sentence and either restore the idiom or teach the entry the new one.
     """
+    _needs_the_private_notes()
     for fact in gate.FACTS:
         hits = 0
         for path in gate.docs():
@@ -452,6 +493,7 @@ def test_every_pattern_carries_exactly_one_capture_group():
 
 def test_every_exemption_is_still_earning_its_place():
     """An exemption whose line is gone is a hiding place waiting for a new tenant."""
+    _needs_the_private_notes()
     for fact in gate.FACTS:
         for needle in fact["exempt"]:
             found = any(needle in line
@@ -512,9 +554,10 @@ def test_the_live_delivery_mix_floor_statement_is_still_read():
     switched off.
     """
     name = "QC speech floor (qc_gate.SPEECH_MIN_SECONDS)"
-    path = os.path.join(REPO, "notes", "delivery-mix-campaign.md")
+    text = notes_text_or_skip("delivery-mix-campaign.md")
     idiom = re.compile(r"\b[\d.]+\s*s\b[^.]{0,40}?\bfloor\b", re.I)
-    with open(path, encoding="utf-8") as fh:
+    import io
+    with io.StringIO(text) as fh:
         stated = [(n, ln) for n, ln in enumerate(fh, 1) if idiom.search(ln)]
     assert stated, (
         "notes/delivery-mix-campaign.md no longer states the QC floor in a recognisable "

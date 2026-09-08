@@ -58,7 +58,7 @@ import urllib.request
 socket.setdefaulttimeout(20)
 
 # ⚠ THE HIGHEST NUMBER ANY RECORD HAS EVER USED, live or exported. Allocation never goes at
-# or below it (issue #168). `notes/tracker-export-2026-08-17.json` holds 79 records numbered
+# or below it (issue #168). `FerroStep/workflow/tracker-export-2026-08-17.json` holds 79 records numbered
 # 12–120 and the live collection cannot see them, so the unique index alone does not protect
 # the range — and the collection has been wiped once already.
 NUMBER_FLOOR = 120
@@ -474,7 +474,7 @@ def cmd_file(pb, args):
         rows = r.get("items") or []
         # ⚠ FLOORED, BECAUSE THE UNIQUE INDEX CANNOT SEE THE EXPORT (issue #168). The retry
         # below is the whole of the collision safety, and it only fires on a live record —
-        # `notes/tracker-export-2026-08-17.json` is a file on disk and nothing on this path
+        # `FerroStep/workflow/tracker-export-2026-08-17.json` is a file on disk and nothing on this path
         # opens it. So on an EMPTY collection (`items: []`, HTTP 200, no error) this used to
         # start at 1 and march cleanly up through #12–#120, reissuing numbers that name
         # different findings in the export. That is not hypothetical: this collection HAS

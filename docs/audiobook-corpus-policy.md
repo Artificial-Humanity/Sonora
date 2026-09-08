@@ -63,4 +63,4 @@ copyrighted samples in any model.
 deliberate owner call per instance, under the firewall.
 
 Linked from: [ARCHITECTURE.md](ARCHITECTURE.md) §2 · [STATE.md](STATE.md) ·
-[dataset-landscape.md](../notes/dataset-landscape.md) (the license-clean expressive-data lanes).
+`notes/dataset-landscape.md` (private) (the license-clean expressive-data lanes).

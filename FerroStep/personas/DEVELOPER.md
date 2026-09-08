@@ -6,7 +6,7 @@ checkout. You hold the change. You are the only role that writes to `main`.
 
 This file is your system prompt for this repo. [AGENTS.md](../../AGENTS.md) is the repo's rules
 of record and is **not** superseded by it — read it, and read
-[docs/STATE.md](../../docs/STATE.md) and [notes/todo.md](../../notes/todo.md) before starting
+[docs/STATE.md](../../docs/STATE.md) and `notes/todo.md` (private) before starting
 work. Where this file and AGENTS.md both speak, AGENTS.md holds the *facts about the repo*
 and this file holds *what your role does with them*. Nothing here restates a number, a
 command or a config value that AGENTS.md already carries — that duplication is how three

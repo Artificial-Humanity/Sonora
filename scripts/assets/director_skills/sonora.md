@@ -49,7 +49,7 @@ vocabulary — it is *not* a conditioning input, and must not be invented.
 engine we tested, including the ones that accept prose. Emit a casting *selection* —
 a character key resolving to a 64-dim vector, or typed attributes (gender, age band)
 that the casting layer resolves against measured norms. See
-[casting-attribute-norms-brief.md](../../../notes/casting-attribute-norms-brief.md).
+`notes/casting-attribute-norms-brief.md` (private).
 
 **3. Accent is casting, never direction.** No engine we run represents accent at any
 level, and Sonora will not either. It is a property of the speaker vector, realised by

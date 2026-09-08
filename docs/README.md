@@ -55,9 +55,9 @@ _These are **design and policy records, not build status.** ⚠ The delivery cha
 
 [STATE.md](STATE.md) — what is true now — lives HERE as of 2026-09-08; it is the snapshot
 every arriving agent is told to read, not a working plan. `notes/` holds what is in flight:
-[quality-gap-plan.md](../notes/quality-gap-plan.md) (what happens next),
-[todo.md](../notes/todo.md), the campaign records, the research, the runbook
-([training-operations.md](../notes/training-operations.md)), and the whole `high-ambition-*`
+`notes/quality-gap-plan.md` (private) (what happens next),
+`notes/todo.md` (private), the campaign records, the research, the runbook
+(`notes/training-operations.md` (private)), and the whole `high-ambition-*`
 series. ⚠ That directory's index was retired with `notes/README.md` on the same day — it was a
 hand-maintained copy of a directory listing and it had drifted.
 

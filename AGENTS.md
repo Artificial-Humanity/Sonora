@@ -3,13 +3,16 @@
 This is the entry point for any agent or developer working on Project Sonora's training
 codebase. This is an independent GitHub repo (the PyTorch training pipeline that produces the
 actor model artifacts published to the `Sonora/huggingface` sibling checkout). Internal engineering notes —
-architecture, current state, open decisions — live in [notes/](notes/). ⚠ **That directory had a
-hand-maintained index, `notes/README.md`, and it was retired 2026-09-08**: it was a second copy of
+architecture, current state, open decisions — live in `notes/` (**private**, 2026-09-08: the
+umbrella `Notes` repo, reachable here as a gitignored symlink). ⚠ **Named, not linked** — a public
+clone has no `notes/`, so a link would render as a path a reader cannot follow. `docs/` is the
+prose this repo carries. ⚠ **That directory also had a hand-maintained index, `notes/README.md`,
+retired the same day**: it was a second copy of
 the directory listing, it had drifted (three files were missing from it), and every convention it
 carried is stated in `docs/README.md`, in § File Naming Conventions below, or in
 `scripts/gates/test_doc_links.py` itself. Before starting work, read
 [docs/STATE.md](docs/STATE.md) for the current state of the project and
-[notes/todo.md](notes/todo.md) for the open work.
+`notes/todo.md` (private) for the open work.
 
 ---
 
@@ -46,7 +49,7 @@ carried is stated in `docs/README.md`, in § File Naming Conventions below, or i
 
 ## Integration Dependencies
 
-* **Deployed code is a copy; the repo is the source** — see §6 and [notes/data-mirrors.md](notes/data-mirrors.md).
+* **Deployed code is a copy; the repo is the source** — see §6 and `notes/data-mirrors.md` (private).
 * This repo is a standalone PyTorch training repository for building, fine-tuning, and
   exporting voice actor models (Matcha-TTS). It is consumed by Project Prosodia
   (`ProsodiaActor`) via exported artifacts promoted into the sibling **`Sonora/huggingface`**
@@ -589,7 +592,7 @@ how `qc_verdict.py` was named in a `synth_bank.sh` comment for a month and never
 its name implies** — datasets, checkpoints, model artifacts, venvs, training logs, service
 runtime state, vendor checkouts. A byte-copy of our source under `/data` is something to
 *remove*, not to manage. The full inventory, what is legitimately untracked, and the audit
-behind this rule are in [notes/data-mirrors.md](notes/data-mirrors.md).
+behind this rule are in `notes/data-mirrors.md` (private).
 
 * **When a tool writes its outputs next to its own source** — the usual reason a `/data`
   copy exists at all — give it an artifact-root variable defaulting to the script's own

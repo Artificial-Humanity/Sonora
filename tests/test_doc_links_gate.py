@@ -265,13 +265,27 @@ def test_the_high_ambition_series_did_not_move():
     """⚠ Prosodia links to these BY NAME across repo boundaries; moving them breaks links no
     checker in this repo would ever see. `docs/README.md` states the constraint and the
     measurement backed it: the rejected 16-file draft would have broken 21 inbound links."""
-    for name in ("high-ambition-index.md", "high-ambition-1-matcha-actor.md",
-                 "high-ambition-2-dramatic-reader.md",
-                 "high-ambition-6-audience-conveyance-stt.md",
-                 "high-ambition-7-singing.md"):
-        assert os.path.isfile(os.path.join(REPO, "notes", name)), name
+    names = ("high-ambition-index.md", "high-ambition-1-matcha-actor.md",
+             "high-ambition-2-dramatic-reader.md",
+             "high-ambition-6-audience-conveyance-stt.md",
+             "high-ambition-7-singing.md")
+
+    # ⚠ THE HALF THAT STILL WORKS WITHOUT THE PRIVATE REPO RUNS UNCONDITIONALLY. Whether these
+    # moved INTO docs/ is answerable from a public clone alone, and it is the direction that
+    # would actually break Prosodia's citations, so it is not skipped with the other half.
+    for name in names:
         assert not os.path.isfile(os.path.join(REPO, "docs", name)), (
             f"{name} moved to docs/ — Prosodia cites it by name and nothing here would notice")
+
+    # ⚠ The presence half needs notes/, which is the private Notes repo since 2026-09-08.
+    # Skipped with a reason rather than passed: a check that reports clean on a missing input
+    # is the silent-disarm mode AGENTS.md §5b names.
+    if not os.path.isdir(os.path.join(REPO, "notes")):
+        import pytest
+        pytest.skip("notes/ is the private Notes repo (2026-09-08); the presence half of this "
+                    "cross-repo constraint cannot be checked from a public clone")
+    for name in names:
+        assert os.path.isfile(os.path.join(REPO, "notes", name)), name
 
 
 # --- doc paths built in CODE, which no link checker can see -----------------------------
@@ -575,9 +589,10 @@ def test_the_live_citation_count_holds():
     # private Notes repo. This half exists to tell "the regex broke" apart from "the documents
     # went away", and both halves had to move together — leaving this one at 35 would have
     # reported a regex failure for a migration.
-    assert examined + len(skipped) >= 20, (
-        f"only {examined + len(skipped)} citation(s) were FOUND at all (21 measured on "
-        f"2026-09-08) — suspect the regex before believing the citations went away.")
+    assert examined + len(skipped) >= 11, (
+        f"only {examined + len(skipped)} citation(s) were FOUND at all (12 measured on "
+        f"2026-09-08, AFTER the de-linking) — suspect the regex before believing the "
+        f"citations went away.")
 
 
 def test_main_does_not_fail_a_tree_that_simply_has_no_citations(tmp_path):

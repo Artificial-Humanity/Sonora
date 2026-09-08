@@ -55,7 +55,7 @@ Every graph converts GPU-clean (per-graph tflite-vs-torch corr **1.000000**; end
 ⚠ **`build_matcha.py` is the 22.05 kHz Phase-0 lane.** The 24 kHz / multi-speaker / VAT
 converter is `convert_vat.py`, **here, in this directory** — it was migrated in on
 2026-08-04 and this sentence claimed otherwise until 2026-08-06. Before trusting either,
-read [notes/todo.md](../../notes/todo.md) §2: the gate suite prints PASS/FAIL and **exits 0
+read `notes/todo.md` (private) §2: the gate suite prints PASS/FAIL and **exits 0
 regardless**, and valence/tension have never been driven nonzero through a converted graph.
 
 ## Provenance, and which copy is authoritative

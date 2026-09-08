@@ -29,7 +29,7 @@ against it must work against any tier unchanged.
 _v1→v2 (owner call, 2026-07-30): added the **Delivery** channel. The delivery axis proved to be
 a real orthogonal mode dimension during the teacher campaign (an engine can pass narration at
 94% and fail dialogue at 54%), the corpus is deliberately balanced on it (50/30/8/6/6, see
-[delivery-mix-campaign.md](../notes/delivery-mix-campaign.md)), and every certified clip now carries the
+`notes/delivery-mix-campaign.md` (private)), and every certified clip now carries the
 label. Also pinned in the same call: **register stays Director-side** (the 47-label lexicon
 compiles to V/A/T + delivery + text; the Actor never sees a register id), and tempo/loudness
 remain host-side per the exploit-before-train measurement — training owns pitch + phonation._
@@ -85,7 +85,7 @@ untried lever is new clips. ⚠⚠ **BUT DISTINCTNESS IS NOT THE LEVER, MEASURED
 Almost every labelled speaker id in v7 carries exactly one lane, so delivery and speaker
 identity are very nearly the same fact, and a bank built the same way reproduces the confound
 at any size. Derive it with `scripts/tools/measure_delivery_confound.py`; the remediation
-design is [delivery-lane-remediation.md](../notes/delivery-lane-remediation.md).
+design is `notes/delivery-lane-remediation.md` (private).
 ⚠ **That measurement ANSWERS the listener note** *"these do almost sound like different
 voices"*, filed here as a possible FiLM/speaker entanglement wanting its own test — the corpus
 taught it. Whether the FiLM path entangles them **as well** is what the crossed bank separates.
@@ -126,7 +126,7 @@ test. But that failure is currently diagnosed as a **corpus-label limit rather t
 architectural one**, so the question is gated on Phase 1: if volume moves valence, it is
 answered; if not, the representation becomes the suspect. Shape if it is ever taken:
 append as channels 8+ on the same zero-init FiLM path, never reorder. Reasoning and the
-gate: [todo.md § 3](../notes/todo.md).
+gate: `notes/todo.md` (private).
 
 Contract changes bump the version and require an owner call.
 
@@ -170,7 +170,7 @@ Contract changes bump the version and require an owner call.
 
 ## 4. Training operations
 
-Full runbook: [training-operations.md](../notes/training-operations.md). Pinned:
+Full runbook: `notes/training-operations.md` (private). Pinned:
 
 * One trainer on the GPU at a time; profile-gated compose services. **Deploy is explicit** —
   GitOps was retired 2026-07-22, so a push to main deploys nothing; use

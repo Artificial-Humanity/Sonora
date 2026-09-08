@@ -48,7 +48,12 @@ SOURCE_DIRS = ["scripts", "scripts/lib", "scripts/gates", "scripts/tools", "scri
                "scripts/assets", "scripts/assets/director_skills", "configs",
                "matcha", "matcha/models", "matcha/utils", "tests", "FerroStep",
                "FerroStep/personas", "FerroStep/workflow", "FerroStep/workflow/scripts",
-               "audition/app", "notes"]
+               "audition/app"]
+# ⚠ `notes` LEFT THIS LIST 2026-09-08 and its absence is the point. The list names
+# directories where a NEW file must not be silently ignored; `notes` is now a gitignored
+# symlink to the private Notes repo, so it is DELIBERATELY ignored and probing it would
+# assert the opposite of what the repo means. It is also absent from a fresh clone, which
+# made the probe fail on its own existence check.
 
 # ⚠ ONE PROBE PER EXTENSION, because a rule can be extension-specific. `*.onnx`, `*.cover`
 # and `*.py,cover` are all live in this .gitignore, so "a new .py file is safe here" says

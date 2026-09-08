@@ -775,7 +775,7 @@ def test_issue_numbers_are_floored_against_the_export():
     """⚠ THE UNIQUE INDEX CANNOT SEE A FILE ON DISK (issue #168).
 
     `cmd_file`'s six-attempt retry is the whole of its collision safety, and it only fires on
-    a LIVE record. `notes/tracker-export-2026-08-17.json` holds 79 records numbered 12–120;
+    a LIVE record. `FerroStep/workflow/tracker-export-2026-08-17.json` holds 79 records numbered 12–120;
     nothing on the allocation path opens it. So on an empty collection — `items: []`, HTTP
     200, no error, no warning — allocation started at 1 and marched cleanly up through the
     reserved band, reissuing numbers that name different findings in the export.
@@ -796,7 +796,7 @@ def test_issue_numbers_are_floored_against_the_export():
     # The file is tracked, so its absence is a fault to report, not a reason to check less.
     import json
 
-    export = REPO / "notes" / "tracker-export-2026-08-17.json"
+    export = REPO / "FerroStep" / "workflow" / "tracker-export-2026-08-17.json"
     assert export.exists(), (
         f"{export.name} is missing — it is tracked, and without it NUMBER_FLOOR cannot be "
         f"checked against anything. This test would otherwise pass while proving nothing.")
