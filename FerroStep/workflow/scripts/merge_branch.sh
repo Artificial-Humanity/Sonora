@@ -338,6 +338,30 @@ echo "merge_branch.sh: '$BRANCH' clears the merge floor (MERGE_SEVERITY_FLOOR=$_
 echo "  ⚠ this proves nothing AT OR ABOVE THE FLOOR is outstanding — NOT that no finding is,
     and NOT that a review covered $(git rev-parse --short HEAD)."
 
+# What the reader DOES after "nothing to merge" (#399). The refusal below names a re-run after
+# a `--no-push` merge as its usual trigger, and that reader came back FOR the push: the merge
+# that cleared the gate is sitting on local $BASE, unpushed, possibly a session later. A
+# message that reports the state and stops leaves two wrong readings open — "already landed"
+# (it is local only) and "merge differently" (the hand merge the header forbids). So say
+# whether $BASE is ahead of origin/$BASE and, if it is, name the push — the SAME refspec the
+# push below uses. That is not a bypass: the gate is on the merge, not the push (header).
+# Silent when origin/$BASE does not resolve (no remote — the test harness): a count against a
+# ref that is not there is not a count. "As last fetched" because origin/$BASE is a local
+# reading of the remote, and nothing here fetches. Defined HERE, below the gate, because it
+# echoes the push refspec and `test_the_gate_runs_before_any_git_write` reads the source in
+# order — a definition above the gate is indistinguishable from a push above it to a grep.
+unpushed_hint() {
+  local n
+  git rev-parse --verify -q "origin/$BASE" >/dev/null 2>&1 || return 0
+  n="$(git rev-list --count "origin/$BASE..$BASE")"
+  if [[ "$n" -gt 0 ]]; then
+    echo "$BASE is $n commit(s) ahead of origin/$BASE as last fetched — a merge that already"
+    echo "     cleared the gate is local only. Push it:  git push origin $BASE:$BASE"
+  else
+    echo "$BASE is not ahead of origin/$BASE as last fetched; nothing is waiting to be pushed."
+  fi
+}
+
 if [[ "$DRY_RUN" -eq 1 ]]; then
   # ⚠ THE SAME COMMAND THE REAL MERGE RUNS, `-c` PAIR INCLUDED (#393). This printed a bare
   # `git merge --no-ff` for the whole of the commit that added the pair below — the command
@@ -365,6 +389,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   if git merge-base --is-ancestor "$BRANCH" "$BASE" 2>/dev/null; then
     echo "  ⚠ nothing to merge: '$BRANCH' is already contained in '$BASE'. The real merge"
     echo "    REFUSES at that point, with nothing merged and nothing to amend."
+    unpushed_hint | sed 's/^/    /'
   elif [[ $? -ne 1 ]]; then
     echo "  ⚠ '$BRANCH' or '$BASE' does not resolve as a ref here. The real merge REFUSES at"
     echo "    that point, with nothing merged."
@@ -398,7 +423,7 @@ fi
 if git merge-base --is-ancestor "$BRANCH" "$BASE" 2>/dev/null; then
   die "nothing to merge: '$BRANCH' is already contained in '$BASE' — every commit on it is
      already reachable from $BASE's tip ($(git rev-parse --short "$BASE")). NOTHING WAS MERGED,
-     and there is nothing to amend."
+     and there is nothing to amend. $(unpushed_hint)"
 elif [[ $? -ne 1 ]]; then
   die "cannot tell whether '$BRANCH' is already in '$BASE': \`git merge-base --is-ancestor\`
      failed. Do both refs exist? NOTHING WAS MERGED."
@@ -476,5 +501,7 @@ if [[ "$PUSH" -eq 1 ]]; then
   git push origin "$BASE:$BASE"
   echo "pushed $BASE"
 else
-  echo "⚠ NOT PUSHED (--no-push). Nothing is on the remote until you push."
+  # ⚠ NAME THE PUSH (#399), here as well as in the "nothing to merge" refusal a re-run
+  # produces: this is where the reader is first told, and the refusal is what they see later.
+  echo "⚠ NOT PUSHED (--no-push). Nothing is on the remote until you push:  git push origin $BASE:$BASE"
 fi

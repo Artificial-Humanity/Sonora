@@ -318,3 +318,60 @@ def test_the_dry_run_previews_the_nothing_to_merge_refusal(lane):
     assert "--amend" not in out, out
     assert "seed" in subprocess.run(["git", "log", "-1", "--format=%s"], cwd=str(lane.work),
                                     capture_output=True, text=True).stdout, "a dry run merged"
+
+
+def _origin_main_at(lane, ref):
+    """A remote-tracking `origin/main` pointing at `ref`, written directly. The fixture has no
+    remote and needs none: the script reads the ref, not the network."""
+    sha = _git(lane.work, "rev-parse", ref).stdout.strip()
+    _git(lane.work, "update-ref", "refs/remotes/origin/main", sha)
+    return sha
+
+
+def test_the_nothing_to_merge_refusal_names_the_push_after_a_no_push_merge(lane):
+    """#399. The refusal's own comment names a re-run after a `--no-push` merge as its usual
+    trigger, and that reader came back FOR the push: the merge already cleared the gate and
+    sits on local main, unpushed. A message that reports the state and stops leaves two wrong
+    readings open — "already landed" (it is local only) and "merge differently" (the hand
+    merge the header forbids). It must say main is ahead of origin/main and name the push."""
+    _origin_main_at(lane, "main")
+    rc, out, author = lane()                      # the --no-push merge that cleared the gate
+    assert rc == 0 and "NOT PUSHED" in out, out
+    assert author == f"{ROSTER_IDENT[0]} <{ROSTER_IDENT[1]}>"
+    assert "git push origin main:main" in out, out   # the --no-push notice names it too
+
+    # 2, not 1: `--no-ff` puts the feature commit AND the merge commit ahead of origin/main,
+    # which is the same count `git status` would report.
+    rc, out, _ = lane()                           # the re-run, for the push
+    assert rc != 0 and "nothing to merge" in out, out
+    assert "--amend" not in out, out
+    assert "2 commit(s) ahead of origin/main" in out, out
+    assert "git push origin main:main" in out, out
+
+    rc, out, _ = lane(SCRIPT, "--dry-run")        # the preview says the same
+    assert rc == 0 and "nothing to merge" in out, out
+    assert "2 commit(s) ahead of origin/main" in out and "git push origin main:main" in out, out
+
+
+def test_the_nothing_to_merge_refusal_says_nothing_waits_when_main_is_pushed(lane):
+    """The refusal's OTHER named trigger, a second run after a successful (pushed) merge: main
+    is not ahead of origin/main, so pointing at a push would send the reader to push nothing.
+    It must say nothing is waiting, and must not print the push command."""
+    _at_mains_tip(lane)
+    _origin_main_at(lane, "main")
+    rc, out, _ = lane()
+    assert rc != 0 and "nothing to merge" in out, out
+    assert "not ahead of origin/main" in out, out
+    assert "git push" not in out, out
+
+
+def test_the_nothing_to_merge_refusal_is_silent_about_the_push_without_a_remote(lane):
+    """No `origin/main` (this harness, or a checkout with no remote): a count against a ref
+    that does not resolve is not a count, so the refusal says nothing about pushing at all
+    rather than guessing."""
+    _at_mains_tip(lane)
+    assert subprocess.run(["git", "rev-parse", "--verify", "-q", "origin/main"], cwd=str(lane.work),
+                          capture_output=True).returncode != 0, "the fixture grew a remote"
+    rc, out, _ = lane()
+    assert rc != 0 and "nothing to merge" in out, out
+    assert "origin/main" not in out and "git push" not in out, out
