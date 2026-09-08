@@ -223,7 +223,10 @@ def test_the_scan_is_every_tracked_markdown_except_workflow():
     scanned = set(gate.repo_markdown(REPO))
     # ⚠ `notes/README.md` was in this list until 2026-09-08 and is retired — the sample is
     # of files the scan must REACH, so a retired file left here asserts a permanent failure.
-    for rel in ("docs/README.md", "docs/ARCHITECTURE.md", "docs/STATE.md",
+    # ⚠ `docs/STATE.md` was here for part of the same day and is gone for the other reason:
+    # not retired but PRIVATE, back in `notes/`. A gitignored file is untracked, and this
+    # scan reads the index — so naming it here would assert a failure no commit can fix.
+    for rel in ("docs/README.md", "docs/ARCHITECTURE.md",
                 # the four that the old PROSE_DIRS set never opened — #260 lived in the last
                 "README-Matcha.md", "audition/README.md", "scripts/README.md",
                 "scripts/teacher_audition/README.md"):
@@ -575,24 +578,30 @@ def test_the_live_citation_count_holds():
     measured 2026-08-21.
     """
     _dangling, examined, skipped = gate.section_citations(REPO)
-    # ⚠ 30 -> 10 on 2026-09-08. `notes/` moved to the private Notes repo and is gitignored,
-    # so its markdown is no longer tracked and the scan cannot reach it — the citations did
-    # not stop being checked, they stopped being IN this repo. Re-derived (11 examined), not
+    # ⚠ 30 -> 10 -> 5, both steps on 2026-09-08, and BOTH are the same cause: markdown
+    # leaving this repo for the private Notes one, where the scan (which reads the index)
+    # cannot follow it. First `notes/` itself, then `STATE.md`, which spent part of that day
+    # in `docs/` before the owner sent it back. The citations did not stop being checked,
+    # they stopped being IN this repo. Re-derived each time (11 examined, then 6), never
     # lowered to fit; the floor sits one under so adding a document cannot fail it.
     # ⚠ The point of the floor is unchanged and it still bites: a partial blinding inside
     # what remains is what this catches, and that population is now docs/ and the root.
-    assert examined >= 10, (
-        f"only {examined} §N citation(s) are read in this repo, from the 11 measured on "
+    assert examined >= 5, (
+        f"only {examined} §N citation(s) are read in this repo, from the 6 measured on "
         f"2026-09-08. Either SECTION_CITE stopped matching or the scanned set shrank — "
         f"re-derive this floor deliberately rather than lowering it to fit.")
-    # ⚠ 35 -> 20 on 2026-09-08, same cause as the floor above: notes/ left this repo for the
-    # private Notes repo. This half exists to tell "the regex broke" apart from "the documents
-    # went away", and both halves had to move together — leaving this one at 35 would have
-    # reported a regex failure for a migration.
-    assert examined + len(skipped) >= 11, (
-        f"only {examined + len(skipped)} citation(s) were FOUND at all (12 measured on "
-        f"2026-09-08, AFTER the de-linking) — suspect the regex before believing the "
-        f"citations went away.")
+    # ⚠ 35 -> 20 -> 11 -> 6, same causes and the same day. This half exists to tell "the
+    # regex broke" apart from "the documents went away", so it only does its job while it
+    # tracks the other floor — and it has already failed to once: `c0740e5` set it to 20 and
+    # `33cc2e4` re-derived the assert to 11 while leaving this comment reading `35 -> 20`
+    # (#401), which sends the next person re-deriving it hunting for a floor that never
+    # landed. When one of these two moves, MOVE BOTH, and move the prose with them.
+    # ⚠ The 11 -> 6 step is arithmetic, not a guess: `docs/STATE.md` carried exactly 5 of
+    # them (4x AGENTS.md, 1x ARCHITECTURE.md) and `skipped` was unchanged at 1.
+    assert examined + len(skipped) >= 6, (
+        f"only {examined + len(skipped)} citation(s) were FOUND at all (7 measured on "
+        f"2026-09-08, AFTER STATE.md went back to notes/) — suspect the regex before "
+        f"believing the citations went away.")
 
 
 def test_main_does_not_fail_a_tree_that_simply_has_no_citations(tmp_path):

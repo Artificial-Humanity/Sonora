@@ -11,7 +11,7 @@ retired the same day**: it was a second copy of
 the directory listing, it had drifted (three files were missing from it), and every convention it
 carried is stated in `docs/README.md`, in § File Naming Conventions below, or in
 `scripts/gates/test_doc_links.py` itself. Before starting work, read
-[docs/STATE.md](docs/STATE.md) for the current state of the project and
+`notes/STATE.md` (private) for the current state of the project and
 `notes/todo.md` (private) for the open work.
 
 ---
@@ -359,7 +359,7 @@ the simple version that holds until then. Do not build tooling on its shape.
   information that already exists in two authoritative places, and the copy is the one that
   goes stale. This repo has already paid for doc-vs-artifact drift repeatedly.
 * **What genuinely does not fit in a commit or a PR belongs in `notes/`** as a durable
-  document about the *current* state of something (`docs/STATE.md`, a design note), never as
+  document about the *current* state of something (`notes/STATE.md`, a design note), never as
   a dated log of past events. If you catch yourself writing "on 2026-08-11 we changed X",
   that belongs in the commit that changed X.
 
@@ -434,7 +434,7 @@ same hour twice.
     instance of it, and the claim was made by measuring on a tree that predated the config
     scan.
   * ⚠ **The same-line rule — real, and the reason mode 2 looked instantiated:**
-    `docs/STATE.md` already stated v5's 2,500 speakers, but `scope` is
+    `notes/STATE.md` already stated v5's 2,500 speakers, but `scope` is
     matched **per line** and the scope token sat on the line above, so the fact never matched
     there. **Check that a fact's scope and its number are on the SAME LINE.**
   * ✅ **This class is now ENFORCED IN CODE, not by vigilance.** #62 added

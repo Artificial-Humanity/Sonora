@@ -84,7 +84,7 @@ def assert_exportable_here(matcha):
             f"refusing to export: this checkpoint carries {vat_dim} VAT channels and this "
             "exporter builds no input node for them — the graph would render neutral "
             "speech forever and nothing downstream would notice. Use "
-            "scripts/litert_export/convert_vat.py (see docs/STATE.md)."
+            "scripts/litert_export/convert_vat.py (see notes/STATE.md)."
         )
 
 

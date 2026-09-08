@@ -13,7 +13,7 @@ making an error the structure invited.
 **The test for admission:** does the file state a rule other work must conform to, or does it
 record state, progress, research, or a plan? A runbook listing runs-to-date is a record and
 belongs in `notes/`. A ratified contract is a rule and belongs here. **Being important is not
-the test** — `docs/STATE.md` and `notes/training-sources.md` are load-bearing and are still
+the test** — `notes/STATE.md` and `notes/training-sources.md` are load-bearing and are still
 records.
 
 ⚠ **Deliberately small.** Prosodia's canon directory holds four files. A `docs/` that grows to
@@ -48,13 +48,15 @@ Inherited from `notes/README.md` (retired 2026-09-08), and they apply to both di
 _These are **design and policy records, not build status.** ⚠ The delivery channel that
 `vat-channels.md` and `direction-interface-brief.md` describe **SHIPPED in the model core on
 2026-08-07** — a five-wide one-hot block, `vat_dim` 8, `matcha/delivery.py`
-([STATE.md](STATE.md)). **The EXPORT half is what is still open.** This paragraph said
+(`notes/STATE.md` (private)). **The EXPORT half is what is still open.** This paragraph said
 "not implemented" until 2026-08-22 (#283), in a file created after the channel shipped._
 
 ## Where the rest is
 
-[STATE.md](STATE.md) — what is true now — lives HERE as of 2026-09-08; it is the snapshot
-every arriving agent is told to read, not a working plan. `notes/` holds what is in flight:
+`notes/` holds what is in flight, starting with `notes/STATE.md` (private) — what is true
+now, the snapshot every arriving agent is told to read. It briefly lived here on 2026-09-08
+and went back the same day: it records state rather than stating a rule, so it fails this
+directory's own test for admission. Alongside it:
 `notes/quality-gap-plan.md` (private) (what happens next),
 `notes/todo.md` (private), the campaign records, the research, the runbook
 (`notes/training-operations.md` (private)), and the whole `high-ambition-*`

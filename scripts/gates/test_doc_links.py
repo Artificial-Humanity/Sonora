@@ -25,8 +25,12 @@ below cannot match one — but that is a property of the pattern, and
 WHAT IT DOES NOT COVER — read this before trusting a pass
 ---------------------------------------------------------
 * ⚠ **THE FILE SET — read this first, because it is what a green run is scoped to.** Both
-  halves scan `repo_markdown()`: every TRACKED `.md` except `FerroStep/`. That is 50 of the
-  repo's 53 today. It was `notes/`+`docs/`+`workflow/`+3 root files — 38 of 53 — while this
+  halves scan `repo_markdown()`: every TRACKED `.md` except `FerroStep/`. That is 26 of the
+  repo's 29 today — it read 50 of 53 until 2026-09-08, when `notes/` became a gitignored
+  symlink to the private Notes repo and 24 files stopped being tracked here. ⚠ THAT IS A
+  SMALLER SCAN, NOT A CLEANER ONE, and the count is in the present tense on purpose: it was
+  left reading "50 of 53 today" through the migration itself. It was
+  `notes/`+`docs/`+`workflow/`+3 root files — 38 of 53 — while this
   banner said "every relative link this repo owns resolves", and **7 dead links were living
   in one of the 15 files it never opened** (#261). Untracked markdown is deliberately not
   read: a scan that reports on files no clone has is the working-tree-vs-index confusion
@@ -144,11 +148,20 @@ EXTERNAL = ("http://", "https://", "mailto:", "file://", "#")
 # FerroStep/workflow/config.env, which already solved this problem for the reviewer.
 # ⚠ CANDIDATES, NOT REQUIREMENTS. Each one that is absent is printed and skipped.
 SIBLING_ENV = "SONORA_SIBLING_REPOS"
+# ⚠ `Notes` IS A SIBLING BECAUSE THIS REPO'S OWN PROSE MOVED INTO IT (2026-09-08). `notes/`
+# is a gitignored symlink to `Notes/Sonora`, so every file under it is untracked here and the
+# scan above — which reads the index — cannot see one. `STATE.md` lives there and links back
+# into this repo six times; without this entry those links are checked by nothing, in either
+# repo, which is the silent-blinding shape this gate exists to refuse.
+# ⚠ PARTIAL, AND KNOWINGLY SO: `INBOUND` only recognises a tail under `notes/` or `docs/`, so
+# STATE.md's links to `AGENTS.md` and to `configs/experiment/*.yaml` are still unchecked.
 SIBLING_DEFAULTS = (
     "../Prosodia",
     "~/Projects/Artificial-Humanity/Prosodia",
     "../AI-Lab-AMD",
     "~/Projects/Artificial-Humanity/AI-Lab-AMD",
+    "../../Notes",
+    "~/Projects/Artificial-Humanity/Notes",
 )
 
 # What a sibling's link into this repo looks like once the checkout-dependent prefix is

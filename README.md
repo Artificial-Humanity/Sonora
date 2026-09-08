@@ -83,7 +83,7 @@ Training is structured in sequential phases to isolate complexity:
 ## 🧭 Where the engineering notes live
 
 This README is the setup guide. The internal record — architecture canon, current state,
-what runs next — is in `notes/` (private). Start at [`docs/STATE.md`](docs/STATE.md).
+what runs next — is in `notes/` (private). Start at `notes/STATE.md` (private).
 Agent/developer entry point: [`AGENTS.md`](AGENTS.md).
 
 ---

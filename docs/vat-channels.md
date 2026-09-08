@@ -73,7 +73,7 @@ The VAT fine-tune trains on LibriTTS-R (multi-speaker), so `n_spks > 1` speaker-
 configuration comes along in the same run — a deliberate slice of milestone 4 pulled forward.
 
 Linked from: [next-steps §B](../../../Prosodia/notes/next-steps.md) (VAT-conditioning item),
-[STATE roadmap §3](STATE.md), `notes/high-ambition-1-matcha-actor.md` (private).
+`notes/STATE.md` roadmap §3 (private), `notes/high-ambition-1-matcha-actor.md` (private).
 
 
 ---
@@ -170,7 +170,7 @@ Caveat recorded: d'≈0.9 = noisy-but-directionally-right labels, the regime the
 already proved workable; Emilia tails remain the depth fix.
 
 Linked from: `notes/dataset-landscape.md` (private) (the thesis this executes) ·
-[STATE.md](STATE.md).
+`notes/STATE.md` (private).
 
 
 ---
@@ -291,4 +291,4 @@ it did not** — no T-specific regression on the never-trained holdout, CI strad
 has this section's valence FAIL been retested: v5's new material is delivery-blank and
 nobody has heard a clip of it. State in `notes/training-sources.md` (private).
 
-Linked from: **§2 above** · [STATE.md](STATE.md).
+Linked from: **§2 above** · `notes/STATE.md` (private).
