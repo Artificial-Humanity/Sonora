@@ -192,6 +192,6 @@ Example with cast + quote (book-dialogue shape):
 ```
 
 Cross-refs: [direction-interface-brief.md](direction-interface-brief.md) (pipeline, model
-choices, notation store) · [synthesis-pipeline.md](../notes/synthesis-pipeline.md) (register vocabulary)
-· [book-prose-lane.md § Part 1 — Operations](../notes/book-prose-lane.md) (director-pass) ·
-[high-ambition-1-matcha-actor.md](../notes/high-ambition-1-matcha-actor.md) (contract-lock).
+choices, notation store) · `notes/synthesis-pipeline.md` (private) (register vocabulary)
+· `notes/book-prose-lane.md` (private) (director-pass) ·
+`notes/high-ambition-1-matcha-actor.md` (private) (contract-lock).

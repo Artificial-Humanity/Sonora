@@ -174,7 +174,7 @@ def test_convergence_is_scoped_to_the_branch_under_review():
 
     ⚠ This docstring cited "the migrated GitHub backlog … on `github-issues-fixes`" until
     2026-08-19. Those records are not in the live tracker (it holds nothing below #90); they
-    are in `notes/tracker-export-2026-08-17.json`. The property under test is unchanged —
+    are in `FerroStep/workflow/tracker-export-2026-08-17.json`. The property under test is unchanged —
     only the example was stale. ⚠ It was one of FOUR copies, not three: `FerroStep/personas/REVIEWER.md`
     carried it twice — the retraction was added beside one and the other survived another two
     passes (issue #163). Counting the copies before claiming completeness is the lesson.

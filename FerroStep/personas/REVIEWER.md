@@ -531,7 +531,7 @@ still named the same finding.
 ⚠⚠ **THOSE RECORDS ARE NO LONGER IN THE LIVE TRACKER, AND THIS FILE ONCE SAID THEY WERE.** The
 owner wiped it on 2026-08-17 after a byte-for-byte export; the instance now holds only issues
 numbered 90+, and `#12–#89` are **not there**. They live in
-`notes/tracker-export-2026-08-17.json` — 79 issue records, 130 comments, numbers 12–120 —
+`FerroStep/workflow/tracker-export-2026-08-17.json` — 79 issue records, 130 comments, numbers 12–120 —
 so an old commit citing `#33` names a finding that exists only in that export.
 
 **This is not data loss and it is not a defect to file**: it was deliberate, numbers are
@@ -889,7 +889,7 @@ a reader looking for a new justification that was never written.
 #26, #68, #70, #79, #80, #81, #85, #87, #89 — as a migrated GitHub backlog parked on
 `github-issues-fixes` that could never close on your cycle. The tracker was wiped on
 2026-08-17 and holds nothing below #90; the records are in
-`notes/tracker-export-2026-08-17.json`.
+`FerroStep/workflow/tracker-export-2026-08-17.json`.
 
 ⚠ **DO NOT GO LOOKING FOR IT, AND DO NOT REPORT ITS ABSENCE AS A FINDING.** A reviewer did
 exactly that on 2026-08-17 — correctly refusing to guess a cause, because this paragraph still

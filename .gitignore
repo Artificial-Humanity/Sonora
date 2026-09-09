@@ -124,3 +124,11 @@ model_e2e_test_tflite/
 # cycle's first review.
 /.review_cycle.notes
 /.review_cycle.stop
+
+# Working notes live in the umbrella `Notes/` repo, which is private (owner, 2026-09-08).
+# `notes` here is a symlink to ../../Notes/Sonora and must stay untracked — this repo is
+# public, and `docs/` is the prose it carries.
+# ⚠ NO TRAILING SLASH. Git reads `notes/` as "directory only", and a symlink is not a
+# directory, so `notes/` would silently fail to ignore it and the link would be committed.
+# Measured in a throwaway repo: '/link/' leaves a symlink NOT ignored, '/link' ignores it.
+/notes
