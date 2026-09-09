@@ -240,9 +240,14 @@ def main():
         if hit is None:
             die("%s matches no declared dataset. The licence wall would refuse this corpus "
                 "at load; declare it in configs/data_licenses.yaml first." % p)
-        if hit[1] == "nc":
-            die("%s -> %s (%s) is NON-COMMERCIAL. NC data is de-risk-only and must not "
-                "enter a corpus." % (p, hit[0], hit[2]))
+        # ⚠ #412. This tested `== "nc"` and the `nc` class was retired on 2026-09-09, so
+        # the branch could not fire on any declared dataset: a blocked `--base`/`--add`
+        # passed the pre-flight and was refused by `license_check` at the END, after the
+        # whole build. Same shape as `enforce`: anything not `permissive` is refused.
+        if hit[1] != "permissive":
+            die("%s -> %s (%s) is NOT PERMISSIVE. The corpus bar is unrestricted open "
+                "redistribution and there is no override — the `nc` class and "
+                "SONORA_LICENSE_WALL=derisk were retired 2026-09-09." % (p, hit[0], hit[2]))
 
     base = read_corpus(args.base)
     base_ns = namespaces(base["speakers"])

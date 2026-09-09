@@ -196,9 +196,15 @@ def main():
             raise SystemExit(
                 f"ABORT: {p} matches no declared dataset. The licence wall would refuse "
                 f"this corpus at load; declare it in configs/data_licenses.yaml first.")
-        if hit[1] == "nc":
-            raise SystemExit(f"ABORT: {p} -> {hit[0]} ({hit[2]}) is NON-COMMERCIAL. "
-                             f"NC data is de-risk-only and must not enter a corpus.")
+        # ⚠ #412. This tested `== "nc"`, and the `nc` class was retired on 2026-09-09 —
+        # so the branch could not fire on any declared dataset and a blocked `--base` was
+        # refused only by `license_check` at the END, after the run it exists to spare.
+        # Same shape as `enforce`: anything that is not `permissive` is refused.
+        if hit[1] != "permissive":
+            raise SystemExit(
+                f"ABORT: {p} -> {hit[0]} ({hit[2]}) is NOT PERMISSIVE. The corpus bar is "
+                f"unrestricted open redistribution and there is no override — the `nc` "
+                f"class and SONORA_LICENSE_WALL=derisk were retired 2026-09-09.")
 
     # The anchor is derived from the corpus we are merging INTO, so the two halves land on
     # one scale. Pointing it at a different corpus than --base would label Emilia against a

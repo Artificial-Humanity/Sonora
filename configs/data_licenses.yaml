@@ -32,8 +32,14 @@
 # Agreement-walled datasets (click-through / "by downloading you agree" terms,
 # e.g. EmoV-DB) are FULLY EXCLUDED: never downloaded, never ingested, never declared here.
 #
-# dirs are matched case-insensitively as exact path components of the filelist
-# path and of every audio path inside the filelist.
+# dirs are matched case-insensitively against the path components of the filelist
+# path and of every audio path inside the filelist. A component matches a declared
+# name exactly, OR by the NAME half of a Hugging Face cache spelling: `org___name`
+# (datasets cache) and `datasets--org--name` / `models--org--name` (hub cache), so
+# `expresso` reaches `ylacombe___expresso`. The org half is never offered — matching
+# it would let a publisher's whole namespace inherit one entry's class — and there is
+# no prefix or substring matching, so `emilia_kept` still cannot collide with `emilia`.
+# The splitting lives in `_candidates` in matcha/data/license_wall.py.
 
 datasets:
   ljspeech:

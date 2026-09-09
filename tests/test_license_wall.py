@@ -141,8 +141,13 @@ def test_NO_environment_value_can_permit_blocked_data(tmp_path, monkeypatch, val
     """
     monkeypatch.setenv("SONORA_LICENSE_WALL", value)
     fl = _filelist(tmp_path, "/data/datasets/expresso")
-    with pytest.raises(wall.LicenseWallError):
+    with pytest.raises(wall.LicenseWallError) as e:
         wall.enforce([fl])
+    # ⚠ #414. Which BRANCH, per this file's own docstring: "the wall raised" would also be
+    # true if `expresso` fell out of the manifest and was refused as undeclared.
+    msg = str(e.value)
+    assert "non-permissive" in msg and "expresso" in msg, msg
+    assert "undeclared" not in msg, f"refused as UNDECLARED, not as blocked: {msg}"
 
 
 def test_enforce_takes_no_mode_argument():
@@ -164,7 +169,7 @@ def test_the_nc_class_is_gone_and_stays_gone():
     with open(wall._MANIFEST_PATH, encoding="utf-8") as f:
         entries = yaml.safe_load(f)["datasets"]
     classes = {e["class"] for e in entries.values()}
-    assert "nc" == "nc" and "nc" not in classes, (
+    assert "nc" not in classes, (
         f"the `nc` class is back in data_licenses.yaml: {sorted(classes)}. It was retired "
         f"with the Expresso ruling; a non-permissive dataset is `blocked`.")
     assert classes <= {"permissive", "blocked"}, f"undeclared class kind: {sorted(classes)}"
