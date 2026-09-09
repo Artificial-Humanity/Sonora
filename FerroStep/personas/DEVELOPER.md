@@ -227,8 +227,10 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
     a second branch at the same tip and review from there. Follow it and one range's
     findings sit under two `branch_name`s, the gate sees whichever branch you merge from,
     and the other half lands on `main` open. The "two populations mix" hazard it guarded
-    against does not exist: since #407 retired the per-tip RID, `branch_name` IS the git
-    branch and the gate depends on every finding for the range being under it. There is no
+    against does not exist: since the branch became the unit (`dcc4c1e`, 2026-08-17 —
+    `review_id` became `branch_name`), `branch_name` IS the git branch and the gate depends
+    on every finding for the range being under it. #407 did not retire anything; it
+    re-anchored the driver's sed and left a `RID` variable name behind. There is no
     `issue.py` subcommand that moves an issue between branches, so a split cannot be undone
     from here either.
   * ⚠ **NONE of these three** overrides the abort in AGENTS.md §1: a review that did not
