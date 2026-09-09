@@ -188,13 +188,16 @@ def main():
     # Asked early because the answer does not change and finding out afterwards costs the
     # whole run. An undeclared `--out` is the likely miss: the wall classifies the filelist's
     # own directory, so a new corpus dir needs a manifest entry even though it holds no audio.
-    # ⚠⚠ IT IS NOT "THE SAME QUESTION ASKED EARLY", WHICH IS WHAT THIS SAID (#417). For
-    # `--base` and the donor wavs it is the ONLY classification of the directory NAME:
-    # `license_check` at the end reads the written filelists, whose audio paths are the
-    # copied-in permissive ones and whose own directory is `--out`. A donor whose name is
-    # blocked while its audio is permissive is seen HERE or nowhere. ⚠ Unlike the libritts
-    # tool there is no subprocess harness over this path, so nothing here goes red if it is
-    # removed — treat that as a reason for care, not as evidence it is redundant.
+    # ⚠⚠ WHAT THE END CHECK REACHES DIFFERS PER ITEM, AND THIS HAS NOW BEEN WRONG TWICE
+    # (#417, #419). `license_check` classifies the written filelists and the dirname of
+    # every audio path in them. `KEPT_24K/wavs` IS reached that way — every emilia row's
+    # path is built by `_emilia_wav` — so for the donor wavs this is the same question asked
+    # early. `--out` is reached too, as the filelists' own directory. `--base` is NOT: its
+    # rows are re-emitted verbatim from `_base_rows` and their audio lives under LibriTTS_R,
+    # so this loop is the ONLY classification of the `--base` directory NAME. A `--base`
+    # whose name is blocked while its audio is permissive is seen HERE or nowhere. ⚠ Unlike
+    # the libritts tool there is no subprocess harness over this path, so nothing here goes
+    # red if it is removed — treat that as a reason for care, not as evidence it is redundant.
     for p in (args.out, args.base, os.path.join(KEPT_24K, "wavs")):
         hit = classify_path(p)
         if hit is None:
