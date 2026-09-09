@@ -167,7 +167,12 @@ SIBLING_DEFAULTS = (
 
 # What a sibling's link into this repo looks like once the checkout-dependent prefix is
 # discarded: everything from the last `notes/` or `docs/` segment onward.
-INBOUND = re.compile(r"/Sonora/.*?/((?:notes|docs)/[^)\s]+\.md)")
+# ⚠ THE GAP IS `[^)\s]*?`, NOT `.*?` (#405). A bare `.*?` is lazy but not stopped by `)`, so
+# it ran from a `/Sonora/` in one link into the `docs/` of the NEXT link on the line — a
+# foreign `docs/c.md` after `(../../Sonora/github/AGENTS.md)` was counted as inbound, and
+# resolved or not on the strength of whether this repo happened to have a file by that name.
+# Confining the gap to link-target characters keeps a match inside one `(...)`.
+INBOUND = re.compile(r"/Sonora/[^)\s]*?/((?:notes|docs)/[^)\s]+\.md)")
 
 
 # ⚠ A `§N` CITATION IS NOT A LINK, AND THAT IS THE WHOLE PROBLEM. Every one of the 19 this

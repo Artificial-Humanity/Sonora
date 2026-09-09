@@ -195,12 +195,15 @@ def test_an_inbound_scan_that_matches_nothing_says_so(tmp_path):
     root = tree(tmp_path / "repo", {"docs/c.md": "hi\n"})
     sib = tmp_path / "Prosodia"
     sib.mkdir()
-    # ⚠ ONE LINK PER LINE. `INBOUND`'s lazy `.*?` is not stopped by `)`, so a Sonora link and
-    # a foreign `docs/` link on the SAME line match as one — pre-existing, and not this test's
-    # subject; it is what a positive count on this input would be measuring instead.
-    (sib / "s.md").write_text("[a](../../Sonora/github/AGENTS.md)\n[b](../../Elsewhere/docs/c.md)\n",
+    # ⚠ BOTH LINKS ON ONE LINE, DELIBERATELY (#405). Until 2026-09-09 `INBOUND`'s gap was a
+    # bare `.*?`, which `)` does not stop, so a Sonora link followed by a foreign `docs/` link
+    # on the SAME line matched as one inbound link — `docs/c.md` here, counted as examined
+    # and, because the root happens to have it, silently resolved. This input is that case,
+    # and the count it must report is zero.
+    (sib / "s.md").write_text("[a](../../Sonora/github/AGENTS.md) [b](../../Elsewhere/docs/c.md)\n",
                               encoding="utf-8")
-    assert gate.inbound_dangling(str(sib), root) == ([], 0)
+    assert gate.inbound_dangling(str(sib), root) == ([], 0), (
+        "a foreign docs/ link on the same line as a /Sonora/ mention was counted as inbound")
 
 
 # --- absence is a skip, never a pass ---------------------------------------------------
