@@ -231,8 +231,14 @@ def main():
     # ⚠ #293. The same pre-flight `merge_emilia_corpus` runs, and for the reason its own
     # comment gives: the wall classifies the FILELIST'S OWN DIRECTORY, so a new corpus dir
     # needs a manifest entry even though it holds no audio. Asked early because the answer
-    # does not change and finding out at load time costs the whole build. The authoritative
-    # check is `license_check` on the written filelists at the end.
+    # does not change and finding out at load time costs the whole build.
+    # ⚠⚠ AND IT IS NOT MERELY EARLY — FOR `--base` AND `--add` IT IS THE ONLY CHECK (#417).
+    # `license_check` at the end reads the WRITTEN filelists: their audio paths are the
+    # copied-in permissive ones and their own directory is `--out`, so a donor directory's
+    # NAME is never classified there. Measured on the #412 fix: with the old condition
+    # restored, a blocked `--add` donor made this tool exit 0. `license_check` covers `--out`
+    # and the audio paths; these three lines are the sole classification of the donor names.
+    # Do not simplify this away as a duplicate of the end check — it is not one.
     from matcha.data.license_wall import classify_path
     from matcha.data.license_wall import enforce as license_check
     for p in (args.out, args.base, *args.add):

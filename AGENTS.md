@@ -370,9 +370,18 @@ the simple version that holds until then. Do not build tooling on its shape.
   * **`.gitmessage` is the template — for a HUMAN committing interactively.**
     * ⚠ **IT DOES NOTHING FOR AN AGENT.** `commit.template` applies only to an *interactive*
       `git commit`; `-m` and `-F` bypass it, and every commit a session makes here uses `-F`.
-      **An agent must put the `Co-Authored-By` trailer in the message text itself** — CLAUDE.md
-      requires it, and nothing supplies it automatically. Measured: a commit written with `-F`
-      while `commit.template` was set came back with zero trailers.
+      Measured: a commit written with `-F` while `commit.template` was set came back with
+      zero trailers. That is the point worth keeping — **the template is inert for an agent**.
+      ⚠ **THIS BULLET USED TO ADD "an agent must put the `Co-Authored-By` trailer in the
+      message text itself — CLAUDE.md requires it". IT DOES NOT** (checked 2026-09-09:
+      `CLAUDE.md` contains no mention of a trailer, and the last 8 commits on `main` carry
+      none). Owner, 2026-09-09: **Sonora commits carry NO co-author trailer** — the developer
+      is the author, which is `FerroStep/personas/DEVELOPER.md`'s standing rule and now this
+      file's too.
+      ⚠ A requirement that cites a source the source does not contain is the exact shape that
+      let a trailer ride for eight commits from a file that had been deleted. It was found
+      this time because a harness instruction asked for the trailer and the two rules had to
+      be read against each other; nothing in the repo compares them.
     * **To enable it for interactive use:** `git config --worktree commit.template .gitmessage`.
       ⚠ **`--worktree`, not `--local`.** `--local` writes the SHARED config, and a template path
       that does not resolve in another worktree makes an interactive `git commit` **fatal**

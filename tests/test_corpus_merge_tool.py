@@ -478,7 +478,9 @@ def test_the_licence_preflight_refuses_a_BLOCKED_donor(world):
     assert r.returncode != 0
     out = r.stdout + r.stderr
     assert "is NOT PERMISSIVE" in out, out
-    assert "expresso" in out, out
+    # ⚠ the arrow form (#418): the donor PATH contains "expresso" and both refusal branches
+    # print it, so the bare word cannot distinguish "named the dataset" from "quoted the path".
+    assert "-> expresso (" in out, out
     assert "matches no declared dataset" not in out, "refused as UNDECLARED, not as blocked"
     assert not world["out"].exists(), "a licence refusal is a PRE-flight; it must write nothing"
 

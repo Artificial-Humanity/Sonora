@@ -185,11 +185,16 @@ def main():
     from matcha.text.op_g2p import OpenPhonemizerG2P
 
     # Pre-flight the provenance of everything this will touch, BEFORE ~13k phonemizations.
-    # The authoritative check is `license_check` on the written filelists at the end; this
-    # is the same question asked early, because the answer does not change and finding out
-    # afterwards costs the whole run. An undeclared `--out` is the likely miss: the wall
-    # classifies the filelist's own directory, so a new corpus dir needs a manifest entry
-    # even though it holds no audio.
+    # Asked early because the answer does not change and finding out afterwards costs the
+    # whole run. An undeclared `--out` is the likely miss: the wall classifies the filelist's
+    # own directory, so a new corpus dir needs a manifest entry even though it holds no audio.
+    # ⚠⚠ IT IS NOT "THE SAME QUESTION ASKED EARLY", WHICH IS WHAT THIS SAID (#417). For
+    # `--base` and the donor wavs it is the ONLY classification of the directory NAME:
+    # `license_check` at the end reads the written filelists, whose audio paths are the
+    # copied-in permissive ones and whose own directory is `--out`. A donor whose name is
+    # blocked while its audio is permissive is seen HERE or nowhere. ⚠ Unlike the libritts
+    # tool there is no subprocess harness over this path, so nothing here goes red if it is
+    # removed — treat that as a reason for care, not as evidence it is redundant.
     for p in (args.out, args.base, os.path.join(KEPT_24K, "wavs")):
         hit = classify_path(p)
         if hit is None:

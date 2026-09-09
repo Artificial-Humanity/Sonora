@@ -107,7 +107,11 @@ def test_a_blocked_dataset_is_refused_AS_BLOCKED_naming_the_dataset(tmp_path):
         wall.enforce([fl])
     msg = str(e.value)
     assert "non-permissive" in msg, msg
-    assert "expresso" in msg, "the refusal does not name the dataset"
+    # ⚠ `"-> expresso ("`, NOT `"expresso"` (#418). The offending PATH contains the word and
+    # BOTH branches print the path, so the bare form is true whichever fired — a clause that
+    # cannot fail, in the one file whose docstring makes "what it named" the standard. The
+    # arrow is the format `f"{p} -> {name} ({lic})"` uses to name the DATASET.
+    assert "-> expresso (" in msg, "the refusal does not name the dataset"
     # ⚠ NOT the undeclared branch — that is the bug this file was written about.
     assert "undeclared" not in msg, (
         "blocked data refused as UNDECLARED: classify_path is not matching the entry, so "
@@ -146,7 +150,8 @@ def test_NO_environment_value_can_permit_blocked_data(tmp_path, monkeypatch, val
     # ⚠ #414. Which BRANCH, per this file's own docstring: "the wall raised" would also be
     # true if `expresso` fell out of the manifest and was refused as undeclared.
     msg = str(e.value)
-    assert "non-permissive" in msg and "expresso" in msg, msg
+    # ⚠ the naming clause is the arrow form, not the bare word — see #418 above.
+    assert "non-permissive" in msg and "-> expresso (" in msg, msg
     assert "undeclared" not in msg, f"refused as UNDECLARED, not as blocked: {msg}"
 
 
