@@ -151,10 +151,11 @@ SIBLING_ENV = "SONORA_SIBLING_REPOS"
 # ⚠ `Notes` IS A SIBLING BECAUSE THIS REPO'S OWN PROSE MOVED INTO IT (2026-09-08). `notes/`
 # is a gitignored symlink to `Notes/Sonora`, so every file under it is untracked here and the
 # scan above — which reads the index — cannot see one. `STATE.md` lives there and links back
-# into this repo six times; without this entry those links are checked by nothing, in either
-# repo, which is the silent-blinding shape this gate exists to refuse.
-# ⚠ PARTIAL, AND KNOWINGLY SO: `INBOUND` only recognises a tail under `notes/` or `docs/`, so
-# STATE.md's links to `AGENTS.md` and to `configs/experiment/*.yaml` are still unchecked.
+# into this repo nine times (measured 2026-09-08); without this entry those links are checked
+# by nothing, in either repo, which is the silent-blinding shape this gate exists to refuse.
+# ⚠ PARTIAL, AND KNOWINGLY SO: `INBOUND` only recognises a tail under `notes/` or `docs/`,
+# which reaches 7 of those 9; STATE.md's links to `AGENTS.md` and to
+# `configs/experiment/*.yaml` are the other 2, and they are still unchecked.
 SIBLING_DEFAULTS = (
     "../Prosodia",
     "~/Projects/Artificial-Humanity/Prosodia",
