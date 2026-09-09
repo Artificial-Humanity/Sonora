@@ -160,8 +160,9 @@ def test_an_inbound_link_is_matched_on_its_tail_not_its_prefix(tmp_path):
     (sib / "s.md").write_text(
         "[a](../../Sonora/github/notes/x.md) [b](../../Sonora/anywhere/notes/gone.md)\n",
         encoding="utf-8")
-    bad = gate.inbound_dangling(str(sib), root)
+    bad, examined = gate.inbound_dangling(str(sib), root)
     assert [t for _r, _n, t in bad] == ["notes/gone.md"]
+    assert examined == 2, "both links match the tail pattern; only one is dead"
 
 
 def test_an_inbound_link_into_docs_is_checked_too(tmp_path):
@@ -177,14 +178,29 @@ def test_an_inbound_link_into_docs_is_checked_too(tmp_path):
     sib.mkdir()
 
     (sib / "broken.md").write_text("[a](../../Sonora/x/docs/gone.md)\n", encoding="utf-8")
-    bad = gate.inbound_dangling(str(sib), root)
+    bad, _examined = gate.inbound_dangling(str(sib), root)
     assert [t for _r, _n, t in bad] == ["docs/gone.md"], (
         "a dead inbound link into docs/ was not reported — the inbound pattern has stopped "
         "recognising the directory the split created")
 
     (sib / "broken.md").unlink()
     (sib / "ok.md").write_text("[a](../../Sonora/x/docs/c.md)\n", encoding="utf-8")
-    assert gate.inbound_dangling(str(sib), root) == []
+    assert gate.inbound_dangling(str(sib), root) == ([], 1)
+
+
+def test_an_inbound_scan_that_matches_nothing_says_so(tmp_path):
+    """⚠ `[]` IS TWO DIFFERENT ANSWERS (#404): every link resolves, or no link was recognised.
+    The examined count is the only thing that separates them, so a sibling whose links are
+    all in a shape `INBOUND` does not match must report zero examined — not a clean pass."""
+    root = tree(tmp_path / "repo", {"docs/c.md": "hi\n"})
+    sib = tmp_path / "Prosodia"
+    sib.mkdir()
+    # ⚠ ONE LINK PER LINE. `INBOUND`'s lazy `.*?` is not stopped by `)`, so a Sonora link and
+    # a foreign `docs/` link on the SAME line match as one — pre-existing, and not this test's
+    # subject; it is what a positive count on this input would be measuring instead.
+    (sib / "s.md").write_text("[a](../../Sonora/github/AGENTS.md)\n[b](../../Elsewhere/docs/c.md)\n",
+                              encoding="utf-8")
+    assert gate.inbound_dangling(str(sib), root) == ([], 0)
 
 
 # --- absence is a skip, never a pass ---------------------------------------------------
@@ -289,6 +305,46 @@ def test_the_high_ambition_series_did_not_move():
                     "cross-repo constraint cannot be checked from a public clone")
     for name in names:
         assert os.path.isfile(os.path.join(REPO, "notes", name)), name
+
+
+def test_the_notes_sibling_is_actually_scanned_for_state_md_links(tmp_path):
+    """⚠ THE ENTRY `365cddb` ADDED IS JUSTIFIED BY STATE.md's LINKS BACK INTO THIS REPO, and
+    until #404 nothing showed the scan SAW them: the inbound line printed only the unresolved
+    count, so "0 do not resolve" was the same line whether `INBOUND` matched them or matched
+    nothing. This pins the found-count to the file, in both directions.
+
+    The expected count is derived by a SEPARATE instrument — a literal grep of STATE.md for
+    `../../Sonora/github/{docs,notes}/….md` — not by `INBOUND`, so a regex edit that stops
+    matching cannot also lower the expectation. Skipped, with a reason, when the private
+    Notes checkout is absent: a pass on a missing input is the silent-disarm mode."""
+    import re
+    notes = next((p for _w, p in gate.sibling_paths()
+                  if p is not None and os.path.basename(p) == "Notes"), None)
+    if notes is None:
+        pytest.skip("no Notes checkout on this machine; STATE.md's inbound links cannot be "
+                    "counted from a public clone")
+    state = os.path.join(notes, "Sonora", "STATE.md")
+    assert os.path.isfile(state), "Notes/Sonora/STATE.md is where STATE.md went on 2026-09-08"
+    with open(state, encoding="utf-8") as fh:
+        text = fh.read()
+    expected = sorted(re.findall(r"\.\./\.\./Sonora/github/((?:docs|notes)/[^)\s]+\.md)", text))
+    assert expected, "STATE.md no longer links into docs/ or notes/ — the comment above " \
+                     "SIBLING_DEFAULTS is stale and this ratchet has nothing to pin"
+
+    # RED direction first: against an empty root every one of them must be reported dead.
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    bad, examined = gate.inbound_dangling(notes, str(empty))
+    seen = sorted(t for r, _n, t in bad if r == os.path.join("Sonora", "STATE.md"))
+    assert seen == expected, (
+        "INBOUND does not match what a plain grep of STATE.md finds — the scan has gone "
+        f"quiet on the entry it was added for:\n  grep:    {expected}\n  INBOUND: {seen}")
+    assert examined >= len(expected)
+
+    # Then GREEN: against this repo those same links resolve, and the count is unchanged.
+    bad, examined_live = gate.inbound_dangling(notes, REPO)
+    assert [t for r, _n, t in bad if r == os.path.join("Sonora", "STATE.md")] == [], bad
+    assert examined_live == examined, "the found-count must not depend on what resolves"
 
 
 # --- doc paths built in CODE, which no link checker can see -----------------------------

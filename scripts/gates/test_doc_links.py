@@ -340,13 +340,19 @@ def sibling_paths():
 
 
 def inbound_dangling(sibling_root, root=REPO):
-    """A sibling's links INTO this repo that this repo can no longer satisfy.
+    """-> (bad, examined): a sibling's links INTO this repo that this repo can no longer
+    satisfy, and how many such links the scan matched at all.
 
     Compares the repo-relative TAIL only — see the module docstring on why the prefix is not
     checkable. Scans the sibling's whole tree rather than its prose directories, because its
     layout is its own business and may not match ours.
+
+    ⚠ `examined` IS NOT DECORATION (#404). `bad` alone reads `[]` both when every inbound link
+    resolves and when `INBOUND` has stopped matching the sibling's links altogether — a
+    rename, a rewritten prefix, a regex edit — which is a guard going quiet without going
+    red. The count is what lets the report, and the suite, tell those apart.
     """
-    bad = []
+    bad, examined = [], 0
     for dirpath, dirnames, names in os.walk(sibling_root):
         dirnames[:] = [d for d in dirnames
                        if d not in (".git", "target", "node_modules", ".venv")]
@@ -361,9 +367,10 @@ def inbound_dangling(sibling_root, root=REPO):
                 continue
             for lineno, line in enumerate(lines, 1):
                 for tail in INBOUND.findall(line):
+                    examined += 1
                     if not os.path.exists(os.path.join(root, tail)):
                         bad.append((os.path.relpath(path, sibling_root), lineno, tail))
-    return bad
+    return bad, examined
 
 
 def main():
@@ -514,11 +521,14 @@ def main():
     # gate warns about at length — "a check nobody can turn green is a check everybody learns
     # to ignore, and it goes on ignoring the fork it was built to catch". So it is loud, it is
     # counted, and it does not fail.
+    # ⚠ BOTH COUNTS, LIKE THE OUTBOUND LINE ABOVE (#404). "0 do not resolve" printed alone was
+    # the same line whether the scan matched 38 links or none, so the one mode that stays
+    # silent — the sibling present, `INBOUND` no longer matching its links — was invisible.
     reported = 0
     for name, path in sorted(found.items()):
-        inbound = inbound_dangling(path)
+        inbound, examined = inbound_dangling(path)
         reported += len(inbound)
-        print(f"  <- {name}: {len(inbound)} link(s) INTO this repo do not resolve "
+        print(f"  <- {name}: {examined} inbound link(s), {len(inbound)} unresolved "
               f"(reported, not failed — they are {name}'s files to fix)")
         for rel, lineno, tail in inbound:
             print(f"       {rel}:{lineno} -> {tail}")
