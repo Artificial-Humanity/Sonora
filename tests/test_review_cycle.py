@@ -923,8 +923,9 @@ def test_the_OLD_pattern_returns_NOTHING_on_real_output():
     nothing about the defect they were written for.
     """
     real = _launcher_output("sonora/state-to-docs")
-    def sed(expr):
-        p = subprocess.run(["sed", "-n", expr], input=real, capture_output=True,
+    full = _launcher_output("x", full=True)
+    def sed(expr, text=real):
+        p = subprocess.run(["sed", "-n", expr], input=text, capture_output=True,
                            text=True, timeout=30)
         return p.stdout.splitlines()[:1]
     # as shipped before #407 — wrong keyword AND no slash in the class
@@ -933,9 +934,13 @@ def test_the_OLD_pattern_returns_NOTHING_on_real_output():
     assert sed(r's/.*as branch \([0-9a-zA-Z._-]*\),.*/\1/p') == []
     # both corrected: the sentence parse CAN work — and is still not what we use, because the
     # `--full` path has no `as branch` at all
-    assert sed(r's/.*as branch \([0-9a-zA-Z._/-]*\),.*/\1/p') == ["sonora/state-to-docs"]
-    assert sed(r's/.*as branch \([0-9a-zA-Z._/-]*\),.*/\1/p') != _extract_rid(
-        _launcher_output("x", full=True)), "the sentence parse cannot cover --full; the key can"
+    fixed = r's/.*as branch \([0-9a-zA-Z._/-]*\),.*/\1/p'
+    assert sed(fixed) == ["sonora/state-to-docs"]
+    # ⚠ THE SAME sed OVER THE SAME `--full` OUTPUT the key sed is then run over. The first
+    # version compared the range parse with the key parse of a DIFFERENT input, so two
+    # different branch names were unequal under any pattern at all (#409) — `cat` passed it.
+    assert sed(fixed, full) == [], "the sentence parse must find nothing on --full output"
+    assert _extract_rid(full) == ["x"], "the key can cover --full; the sentence parse cannot"
 
 
 def test_an_empty_branch_list_would_have_reached_the_worker_brief():
