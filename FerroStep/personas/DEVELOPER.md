@@ -214,7 +214,25 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
     push; folding this case into "nothing was filed" is how real findings end up orphaned
     under an id nobody reads again.
   * **If some were filed**, address them as findings. The unread part of the range is still
-    unreviewed, so re-run with a **distinct** `--branch-name` to cover it.
+    unreviewed, so **re-run `request_review.sh` on the SAME branch** to cover it. Nothing
+    refuses the re-run: the reviewed-tip marker is written only when a review completes, so
+    a partial pass leaves none. The new findings join the old under the one `branch_name`
+    the merge gate reads — and that is the point, because `merge_branch.sh` queries the
+    CURRENT branch's name and no other.
+    ⚠ **THIS SAID "RE-RUN UNDER A DISTINCT BRANCH NAME", AND THAT WAS BACKWARDS** (#408).
+    Two versions of this bullet sent the reader the wrong way: the first named a
+    `--branch-name` flag that `request_review.sh` does not have (it derives the name from
+    `git rev-parse --abbrev-ref HEAD`; run `--help` for the flags it does take, and it
+    refuses any other). The second, written on finding that out, said to `git checkout -b`
+    a second branch at the same tip and review from there. Follow it and one range's
+    findings sit under two `branch_name`s, the gate sees whichever branch you merge from,
+    and the other half lands on `main` open. The "two populations mix" hazard it guarded
+    against does not exist: since the branch became the unit (`dcc4c1e`, 2026-08-17 —
+    `review_id` became `branch_name`), `branch_name` IS the git branch and the gate depends
+    on every finding for the range being under it. #407 did not retire anything; it
+    re-anchored the driver's sed and left a `RID` variable name behind. There is no
+    `issue.py` subcommand that moves an issue between branches, so a split cannot be undone
+    from here either.
   * ⚠ **NONE of these three** overrides the abort in AGENTS.md §1: a review that did not
     complete is not a "must not land" finding being cleared. (This said *"Neither case"*
     while sitting under three bullets — a two-place word against three options, which leaves

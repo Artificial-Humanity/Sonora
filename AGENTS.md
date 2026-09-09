@@ -14,6 +14,23 @@ carried is stated in `docs/README.md`, in § File Naming Conventions below, or i
 `notes/STATE.md` (private) for the current state of the project and
 `notes/todo.md` (private) for the open work.
 
+⚠ **THE SYMLINK DOES NOT SURVIVE A CHECKOUT ACROSS THE MIGRATION, AND NOTHING TELLS YOU.**
+`notes/` was tracked until 2026-09-08 and is gitignored after it, so any `checkout`, `merge`
+or `bisect` that crosses that boundary rewrites the path. Measured in a throwaway repo
+2026-09-09, both directions:
+
+* Going **back** (to a commit where `notes/` was tracked), git **replaces the symlink with a
+  real directory** and restores the tracked files.
+* Coming **forward** again, it deletes those files and the directory with them — and **does
+  not restore the symlink**. `notes/` is then simply absent.
+* ⚠ `git status` is **clean** at every step, because `/notes` is ignored. There is no warning
+  and no diff. It happened for real on the merge that landed the migration.
+
+✅ **Git never writes THROUGH the symlink** — verified in the same test: the private repo's
+files were untouched in both directions. So this costs you the link, never the notes.
+**Recreate it with `ln -s ../../Notes/Sonora notes` and carry on**; if a suite suddenly
+reports the private-notes skips on a machine that has the Notes repo, this is why.
+
 ---
 
 ## Core Stack Matrix
@@ -245,6 +262,17 @@ the simple version that holds until then. Do not build tooling on its shape.
   and twice from owner instructions arriving mid-cycle. ⚠ **Commits that arrive after the review
   are a NEW CYCLE, not a third lap** — the cap forbids re-reviewing the same range, not
   reviewing new work.
+* **LAND WHEN GREEN RATHER THAN ACCUMULATING** (owner, 2026-09-09). Review cost scales with
+  the range, and the range only grows — the bullet above measures it growing on every cycle
+  so far. A branch that keeps collecting work turns one review into a long one, and a long
+  one is the one that dies partway: a review killed mid-range leaves some findings filed and
+  the rest of the range unread, which costs a whole extra cycle to recover. Both reviews that
+  died on 2026-09-08 died that way.
+  ⚠ **Deliberately no number.** A commit count would be gamed or read as a gate, and it is
+  not one — the unit is *one coherent change*, which is sometimes five commits and sometimes
+  one. The failure to avoid is a branch that stays open because nothing forced it shut.
+  ⚠ This is a working convention, **not a mechanism**, and the bullet below about rules
+  without enforcement applies to it exactly.
 * ⚠ **A rule in this file is not an enforcement mechanism, and this loop has no mechanism at
   all** — no trigger, no check, no artifact. A push that skipped the review is
   indistinguishable afterwards from one that did not. The project has learned the general
