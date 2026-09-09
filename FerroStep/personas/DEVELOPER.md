@@ -214,7 +214,16 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
     push; folding this case into "nothing was filed" is how real findings end up orphaned
     under an id nobody reads again.
   * **If some were filed**, address them as findings. The unread part of the range is still
-    unreviewed, so re-run with a **distinct** `--branch-name` to cover it.
+    unreviewed, so re-run under a **distinct branch name** to cover it — and note that a
+    partial pass's findings sit under the SAME name the next pass would use, so the two
+    populations mix if you do not.
+    ⚠ **THERE IS NO `--branch-name` FLAG, AND THIS SAID THERE WAS** (found 2026-09-09, while
+    following this very bullet after a session-limit kill). `request_review.sh` derives the
+    name from `git rev-parse --abbrev-ref HEAD`; it takes `--range`, `--pass` and `--notes`,
+    and refuses an unknown argument. The way to get a distinct name is to **give the commits
+    a distinct branch** — `git checkout -b <name>` at the same tip — and review from there.
+    A persona that names a flag the tool does not have is a stop, not a detour: you cannot
+    follow it, and the recovery it describes is the one you need at the worst moment.
   * ⚠ **NONE of these three** overrides the abort in AGENTS.md §1: a review that did not
     complete is not a "must not land" finding being cleared. (This said *"Neither case"*
     while sitting under three bullets — a two-place word against three options, which leaves

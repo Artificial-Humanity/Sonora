@@ -447,7 +447,18 @@ for (( review=1; review<=MAX_REVIEWS; review++ )); do
   printf '%s\n' "$OUT"
   LAST_SUMMARY="$OUT"
 
-  RID="$(sed -n 's/.*as branch_name \([0-9a-zA-Z._-]*\),.*/\1/p' <<< "$OUT" | head -1 || true)"
+  # ⚠⚠ READS THE CONTRACT LINE, NOT THE PROSE (#407). This parsed the human sentence
+  # "…as branch_name X," for the whole life of the lane and matched NOTHING, for two
+  # independent reasons: request_review.sh prints "as branch X" (no `_name`), and the old
+  # character class `[0-9a-zA-Z._-]` had no `/`, so `sonora/…` could not match even once the
+  # keyword was right. Fixing either alone still yields empty — measured.
+  # ⚠ THE COST WAS NOT COSMETIC. `REVIEW_TIPS` feeds the worker brief below, so every fix
+  # pass was told "issues under branch_name(s) ``" — an empty list — and the run summary
+  # always said `reviews run: 0  (none)` three lines under "CONVERGED after review 4".
+  # ⚠ Every symptom was a MISSING string, never a wrong one: an empty list still renders a
+  # grammatical sentence and a zero still prints. Nothing could go red. That is why the
+  # emitter now prints a keyed line and `tests/test_review_cycle.py` pins BOTH sides.
+  RID="$(sed -n 's/^request_review\.sh: branch_name=\(.*\)$/\1/p' <<< "$OUT" | head -1 || true)"
   [[ -n "$RID" ]] && REVIEW_TIPS+=("$RID")
 
   # ⚠ CHECKED BEFORE THE EXIT CODE. A review can complete cleanly (rc 0) and still be telling

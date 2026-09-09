@@ -1019,6 +1019,15 @@ cleanup() { rm -f "$MCP_CONF"; }
 trap cleanup EXIT INT TERM
 pb_helper config "$MCP_CONF" || die "could not extract the pocketbase MCP config from ~/.claude.json"
 
+# ⚠⚠ THE MACHINE-READABLE CONTRACT LINE. `review_cycle.sh` reads the branch from HERE, and
+# from nothing else. It is a separate line on purpose: it used to parse the human sentence
+# below, and that failed silently for the whole life of the lane (#407) — twice over. The
+# sentence says "as branch X" while the parser wanted "as branch_name X", AND the `--full`
+# branch below says "branch X" with no "as" at all, so NEITHER wording could ever match.
+# ⚠ The value is unquoted and unpadded, one per line, and the key is exact. If you change
+# this line, `tests/test_review_cycle.py` fails — that coupling is the point. NEVER fold it
+# into a human-facing sentence again: a prose edit is not supposed to break a driver.
+echo "request_review.sh: branch_name=$BRANCH" >&2
 if [[ "$FULL" -eq 1 ]]; then
   echo "request_review.sh: FULL code review of the whole codebase, branch $BRANCH, pass $PASS." >&2
 else

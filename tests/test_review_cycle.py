@@ -828,3 +828,121 @@ def test_the_per_issue_guard_sees_number_and_state_in_what_the_query_returns(tmp
     before = "369\t1\topen\n372\t0\topen\n373\t0\topen\n374\t0\topen"
     _, unspent = _run_helpers(before, p.stdout.rstrip("\n"))
     assert unspent == ["373", "374"], unspent
+
+
+# --- the branch_name contract between the two scripts (#407) -----------------------------
+#
+# ⚠⚠ THIS IS A CONTRACT BETWEEN TWO FILES, AND ONLY A TEST CAN HOLD IT. The driver reads the
+# branch out of the reviewer launcher's output. For the whole life of the lane it read a
+# HUMAN SENTENCE, and matched nothing — for two independent reasons, either of which alone
+# was fatal:
+#   1. it grepped `as branch_name X,` while the launcher printed `as branch X,`; and
+#   2. its character class `[0-9a-zA-Z._-]` had no `/`, so `sonora/…` could not match even
+#      with the keyword corrected.
+# There is a third: the `--full` path printed a THIRD wording (`branch X,` with no `as`), so
+# no single sentence pattern could have covered both call paths.
+#
+# ⚠ EVERY SYMPTOM WAS A MISSING STRING, NEVER A WRONG ONE — an empty branch list still renders
+# a grammatical brief, and `reviews run: 0` still prints. Nothing could go red, which is why
+# it survived. The launcher now emits a keyed line and these tests pin BOTH ends of it.
+
+REQUEST_REVIEW = REPO / "FerroStep" / "workflow" / "scripts" / "request_review.sh"
+REQUEST_SOURCE = REQUEST_REVIEW.read_text(encoding="utf-8")
+
+CONTRACT_KEY = "request_review.sh: branch_name="
+
+
+def test_the_launcher_emits_the_contract_line_unconditionally():
+    """It must be emitted on ONE line outside any `if`, so both call paths carry it.
+
+    The `--full` and range paths print different sentences; that difference is exactly what
+    made a sentence-based parse unfixable. The contract line sits ABOVE the branch.
+    """
+    emit = 'echo "%s$BRANCH" >&2' % CONTRACT_KEY
+    assert emit in REQUEST_SOURCE, (
+        "request_review.sh no longer emits the branch_name contract line verbatim")
+    # ⚠ UNINDENTED = outside every `if`. Checked this way rather than by splitting on the
+    # FULL guard, because `if [[ "$FULL" -eq 1 ]]; then` appears twice in this script and
+    # splitting on the first one tests the wrong half of the file (it did, on the first
+    # draft of this test, and passed the wrong thing).
+    assert any(ln == emit for ln in REQUEST_SOURCE.splitlines()), (
+        "the contract line is indented, so it sits INSIDE a conditional — one call path now "
+        "emits no branch at all, which is the #407 shape returning")
+
+
+def test_the_driver_reads_that_key_and_not_the_prose():
+    """The driver's pattern must be anchored on the contract key.
+
+    ⚠ If this fails because someone 'tidied' the parse back into the human sentence, that is
+    the regression, not the test.
+    """
+    m = re.search(r'RID="\$\(sed -n \'(.*?)\' <<< "\$OUT"', SOURCE)
+    assert m, "could not find the RID sed in review_cycle.sh — the shape changed"
+    expr = m.group(1)
+    assert "^request_review\\.sh: branch_name=" in expr, (
+        f"the RID sed is not anchored on the contract key: {expr!r}")
+    # ⚠ ASSERTED ON THE EXPRESSION, NOT THE WHOLE FILE. The comment above that sed explains
+    # the #407 defect and necessarily QUOTES the old `as branch_name` wording, so a
+    # file-wide `not in` fails on the documentation of the bug it is guarding against.
+    assert "as branch_name" not in expr, (
+        "review_cycle.sh is parsing the human sentence again (#407)")
+
+
+def _extract_rid(text):
+    """Run the driver's REAL sed, lifted from the script, over `text`."""
+    m = re.search(r'RID="\$\(sed -n \'(.*?)\' <<< "\$OUT" \| head -1', SOURCE)
+    assert m, "could not lift the RID sed out of review_cycle.sh — the shape changed"
+    p = subprocess.run(["sed", "-n", m.group(1)], input=text,
+                       capture_output=True, text=True, timeout=30)
+    assert p.returncode == 0, p.stderr
+    return p.stdout.splitlines()[:1]
+
+
+def _launcher_output(branch, full=False):
+    """What request_review.sh actually prints, contract line plus its human sentence."""
+    sentence = (f"request_review.sh: FULL code review of the whole codebase, branch {branch}, pass 1."
+                if full else
+                f"request_review.sh: reviewing origin/main..HEAD (3 commit(s)) as branch {branch}, pass 1.")
+    return f"{CONTRACT_KEY}{branch}\n{sentence}\nrequest_review.sh: this blocks until the review completes.\n"
+
+
+@pytest.mark.parametrize("branch", ["sonora/state-to-docs", "main", "a/b/c", "fix_1.2-x"])
+def test_the_sed_extracts_a_branch_with_slashes(branch):
+    """⚠ THE `/` IS THE POINT. Every branch in this repo has one."""
+    assert _extract_rid(_launcher_output(branch)) == [branch]
+
+
+def test_it_extracts_from_the_full_review_path_too():
+    assert _extract_rid(_launcher_output("review-2026-09-09", full=True)) == ["review-2026-09-09"]
+
+
+def test_the_OLD_pattern_returns_NOTHING_on_real_output():
+    """The mutation control: prove the bug was real and that fixing ONE half was not enough.
+
+    ⚠ Without this, the tests above pass against a pattern that was never broken, and prove
+    nothing about the defect they were written for.
+    """
+    real = _launcher_output("sonora/state-to-docs")
+    def sed(expr):
+        p = subprocess.run(["sed", "-n", expr], input=real, capture_output=True,
+                           text=True, timeout=30)
+        return p.stdout.splitlines()[:1]
+    # as shipped before #407 — wrong keyword AND no slash in the class
+    assert sed(r's/.*as branch_name \([0-9a-zA-Z._-]*\),.*/\1/p') == []
+    # keyword corrected, class still slashless — STILL empty, which is why one fix was not a fix
+    assert sed(r's/.*as branch \([0-9a-zA-Z._-]*\),.*/\1/p') == []
+    # both corrected: the sentence parse CAN work — and is still not what we use, because the
+    # `--full` path has no `as branch` at all
+    assert sed(r's/.*as branch \([0-9a-zA-Z._/-]*\),.*/\1/p') == ["sonora/state-to-docs"]
+    assert sed(r's/.*as branch \([0-9a-zA-Z._/-]*\),.*/\1/p') != _extract_rid(
+        _launcher_output("x", full=True)), "the sentence parse cannot cover --full; the key can"
+
+
+def test_an_empty_branch_list_would_have_reached_the_worker_brief():
+    """Why this was not cosmetic: REVIEW_TIPS feeds the worker's instructions.
+
+    Pins the coupling, so a future edit that drops the branch from the brief has to say so.
+    """
+    assert 'branch_name(s) \\`$(IFS=,; echo "${REVIEW_TIPS[*]}")\\`' in SOURCE, (
+        "the worker brief no longer names REVIEW_TIPS — if that is deliberate, this test is "
+        "the place to record why the driver still collects it")
