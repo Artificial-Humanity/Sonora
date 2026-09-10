@@ -82,6 +82,16 @@ class BaseLightningClass(LightningModule, ABC):
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         self.ckpt_loaded_epoch = checkpoint["epoch"]  # pylint: disable=attribute-defined-outside-init
+        # The corpora of every earlier stage, so a warm-started descendant still names the
+        # data its donor was trained on when the publish wall reads it at export (#421).
+        from matcha.data.license_wall import lineage_filelists
+
+        self.sonora_lineage = lineage_filelists(checkpoint)  # pylint: disable=attribute-defined-outside-init
+
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        from matcha.data.license_wall import LINEAGE_KEY
+
+        checkpoint[LINEAGE_KEY] = list(getattr(self, "sonora_lineage", []))
 
     def training_step(self, batch: Any, batch_idx: int):
         loss_dict = self.get_losses(batch)

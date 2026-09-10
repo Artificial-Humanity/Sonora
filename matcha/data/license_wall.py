@@ -46,33 +46,74 @@ _MANIFEST_PATH = os.path.join(
 _manifest_cache = None
 _publish_cache = None
 
+# The keys an entry may carry. ⚠ CHECKED AT LOAD (#422): `publish` is read with a default of
+# `allowed`, so before this a misspelled key — `publsh:`, `publish_policy:`, a mis-indented
+# `publish:` — disarmed the wall with no error, no warning and no failing test. The VALUE side
+# always failed closed (`!= "allowed"` refuses `forbiden`); the KEY side is what fails open,
+# and the whole guard rests on one future entry being spelled right.
+_ENTRY_KEYS = {"dirs", "license", "class", "publish", "publish_reason"}
+_PUBLISH_VALUES = {"allowed", "forbidden"}
+
+# Top-level checkpoint key carrying the filelists of every EARLIER training stage. Written by
+# `on_save_checkpoint`, read back by `on_load_checkpoint` and by `lineage_filelists` (#421).
+LINEAGE_KEY = "sonora_lineage"
+
 
 class LicenseWallError(RuntimeError):
     pass
 
 
+def _read_manifest():
+    with open(_MANIFEST_PATH, encoding="utf-8") as f:
+        raw = yaml.safe_load(f)["datasets"]
+    for name, entry in raw.items():
+        unknown = set(entry) - _ENTRY_KEYS
+        if unknown:
+            raise LicenseWallError(
+                f"data_licenses.yaml: entry {name!r} has unknown key(s) {sorted(unknown)}; "
+                f"the keys are {sorted(_ENTRY_KEYS)}. A misspelled `publish:` would read "
+                "as `allowed` and disarm the publish wall, so this is refused at load."
+            )
+        policy = entry.get("publish", "allowed")
+        if policy not in _PUBLISH_VALUES:
+            raise LicenseWallError(
+                f"data_licenses.yaml: entry {name!r} has publish: {policy!r}; it must be "
+                f"one of {sorted(_PUBLISH_VALUES)}."
+            )
+    return raw
+
+
 def _manifest():
     global _manifest_cache
     if _manifest_cache is None:
-        with open(_MANIFEST_PATH, encoding="utf-8") as f:
-            raw = yaml.safe_load(f)["datasets"]
         _manifest_cache = {}
-        for name, entry in raw.items():
+        for name, entry in _read_manifest().items():
             for d in entry["dirs"]:
                 _manifest_cache[d.lower()] = (name, entry["class"], entry["license"])
-        # ⚠ SEPARATE MAP, SEPARATE AXIS. `publish` is orthogonal to `class` and must not be
-        # folded into it: the crossed delivery bank is CC-BY-4.0 and genuinely `permissive`
-        # — the licence is satisfied — while shipping a model trained on it is forbidden for
-        # a reason licences do not speak to (owner ruling 12, 2026-09-09: ~20 cloned real
-        # LibriTTS-R voices at tens of clips each). Encoding "do not publish" as a licence
-        # class would make the manifest state something false about the licence.
-        global _publish_cache
+    return _manifest_cache
+
+
+def _publish():
+    """The `publish` map, built on its own (#424): it used to be filled only inside
+    `_manifest()`'s cold-cache branch, so a test that injected `_manifest_cache` alone left
+    this one `None` and `refuse_unpublishable` died with an AttributeError instead of either
+    answer. Each map now fills itself from the yaml when it is missing.
+
+    ⚠ SEPARATE MAP, SEPARATE AXIS. `publish` is orthogonal to `class` and must not be
+    folded into it: the crossed delivery bank is CC-BY-4.0 and genuinely `permissive`
+    — the licence is satisfied — while shipping a model trained on it is forbidden for
+    a reason licences do not speak to (owner ruling 12, 2026-09-09: ~20 cloned real
+    LibriTTS-R voices at tens of clips each). Encoding "do not publish" as a licence
+    class would make the manifest state something false about the licence.
+    """
+    global _publish_cache
+    if _publish_cache is None:
         _publish_cache = {}
-        for name, entry in raw.items():
+        for name, entry in _read_manifest().items():
             policy = entry.get("publish", "allowed")
             for d in entry["dirs"]:
                 _publish_cache[d.lower()] = (name, policy, entry.get("publish_reason", ""))
-    return _manifest_cache
+    return _publish_cache
 
 
 def _candidates(component):
@@ -102,15 +143,23 @@ def _candidates(component):
         yield parts[2]
 
 
-def classify_path(path):
-    """Returns (dataset_name, class, license) or None if no component matches."""
-    table = _manifest()
+def _lookup(path, table):
     for component in os.path.normpath(path).split(os.sep):
         for name in _candidates(component):
             hit = table.get(name.lower())
             if hit:
                 return hit
     return None
+
+
+def classify_path(path):
+    """Returns (dataset_name, class, license) or None if no component matches."""
+    return _lookup(path, _manifest())
+
+
+def publish_policy(path):
+    """Returns (dataset_name, publish, publish_reason) or None if no component matches."""
+    return _lookup(path, _publish())
 
 
 def enforce(filelist_paths):
@@ -185,7 +234,7 @@ def enforce(filelist_paths):
 
 
 def lineage_filelists(ckpt):
-    """The corpus filelists a Lightning checkpoint was trained on.
+    """Every corpus filelist a Lightning checkpoint descends from.
 
     ⚠ VERIFIED AGAINST A REAL CHECKPOINT (2026-09-09), not inferred from the Lightning docs:
     `datamodule_hyper_parameters` really is written, and really does carry these two keys.
@@ -195,33 +244,64 @@ def lineage_filelists(ckpt):
     `data/libritts_r_full_vat_v7/{train_op,val_op}.txt`: repo-relative corpus directories,
     exactly what `classify_path` wants.
 
-    ⚠ A checkpoint with no datamodule hparams yields NOTHING, and the caller must treat that
-    as "unknown lineage", never as "clean".
+    ⚠ THOSE KEYS NAME THE LAST STAGE ONLY (#421). This lineage is warm-started stage over
+    stage, and `make_warmstart.py` writes the init with no datamodule attached, so the
+    donor's corpus did not travel: a fine-tune of a bank-trained checkpoint exported with
+    only the fine-tune corpus in view, while the ~20 cloned voices sat in its weights. The
+    ancestors now ride under `LINEAGE_KEY`: `make_warmstart.py` sets it from the donor, and
+    the module's `on_load_checkpoint`/`on_save_checkpoint` carry it through every later
+    save. Ruling 12 reads "nothing trained on it ever ships", and a descendant WAS trained
+    on it — at an earlier stage — so the ancestors count.
+
+    ⚠ A checkpoint with no datamodule hparams and no lineage key yields NOTHING, and the
+    caller must treat that as "unknown lineage", never as "clean".
     """
     dm = ckpt.get("datamodule_hyper_parameters") or {}
-    return [dm[k] for k in ("train_filelist_path", "valid_filelist_path")
-            if dm.get(k)]
+    own = [dm[k] for k in ("train_filelist_path", "valid_filelist_path") if dm.get(k)]
+    out = []
+    for p in [*(ckpt.get(LINEAGE_KEY) or []), *own]:
+        if p not in out:
+            out.append(p)
+    return out
 
 
-def refuse_unpublishable(filelist_paths, what="this artifact"):
+def refuse_unpublishable(filelist_paths, what="this artifact", root=None):
     """Refuse to export/publish an artifact whose corpus is marked `publish: forbidden`.
 
     Takes the filelists rather than the checkpoint so it can be exercised without torch.
+
+    ⚠ THE AUDIO INSIDE THE FILELIST IS CLASSIFIED TOO, exactly as `enforce` does (#420).
+    Every corpus since v5 is a filelists-only directory under `merged_vat_corpora` whose
+    audio lives elsewhere; that is how the expressive bank joined, and it is how a crossed
+    bank would join. Walking the filelist PATH alone let that configuration through — the
+    guard fired only on a corpus trained from its own directory, which this lineage has
+    never done. So each filelist is opened and every audio directory in it is looked up on
+    its own components.
+
+    A filelist that cannot be read — repo-relative paths are resolved against `root` — is
+    RETURNED, not treated as clean: its path components are still checked, its audio is
+    not, and the caller must say so. Returns the list of filelists it could not open.
     """
-    _manifest()
-    bad = []
+    bad, unread = [], []
     for p in filelist_paths:
-        for component in os.path.normpath(p).split(os.sep):
-            for nm in _candidates(component):
-                hit = _publish_cache.get(nm.lower())
-                if hit and hit[1] != "allowed":
-                    bad.append((p, hit[0], hit[1], hit[2]))
-                    break
-            else:
-                continue
-            break
+        checked = [p]
+        resolved = p if root is None or os.path.isabs(p) else os.path.join(root, p)
+        try:
+            with open(resolved, encoding="utf-8") as f:
+                seen = set()
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        seen.add(os.path.dirname(line.split("|")[0]))
+            checked.extend(sorted(seen))
+        except OSError:
+            unread.append(p)
+        for q in checked:
+            hit = publish_policy(q)
+            if hit and hit[1] != "allowed":
+                bad.append((q, hit[0], hit[1], hit[2]))
     if bad:
-        detail = "; ".join(f"{p} -> {name} (publish: {policy})" for p, name, policy, _ in bad)
+        detail = "; ".join(f"{p} -> {name} (publish: {policy})" for p, name, policy, _ in bad[:5])
         reason = next((r for *_, r in bad if r), "")
         raise LicenseWallError(
             f"Publish wall: {what} was trained on a corpus that must not ship: {detail}. "
@@ -231,6 +311,9 @@ def refuse_unpublishable(filelist_paths, what="this artifact"):
             "decision recorded in configs/data_licenses.yaml, not a run setting, and there "
             "is no override flag."
         )
+    return unread
+
+
 # The clean-holdout wall, as a gate rather than a naming convention (TR-M3).
 #
 # `data/libritts_r_holdout_devclean/README.md` said it plainly: "the wall will not stop a

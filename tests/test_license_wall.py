@@ -30,8 +30,10 @@ wall = pytest.importorskip("matcha.data.license_wall")
 def _clean_manifest_cache():
     """Each test sees the real manifest, freshly read."""
     wall._manifest_cache = None
+    wall._publish_cache = None
     yield
     wall._manifest_cache = None
+    wall._publish_cache = None
 
 
 # --- classify_path: the HF-cache spellings ------------------------------------------------
@@ -286,3 +288,133 @@ def test_the_export_path_calls_the_publish_wall():
     # before the graph is built, not after
     assert src.index("refuse_unpublishable") < src.index('hp = ck["hyper_parameters"]'), (
         "the publish wall runs after the checkpoint is unpacked; refuse before doing work")
+
+
+# --- #420: the realistic shape is a filelists-only corpus whose AUDIO is the bank ----------
+
+def _merged_publish_manifest(monkeypatch):
+    """A v8 built the way v5-v7 were: its dir appended to `merged_vat_corpora` (allowed), its
+    audio living under the bank's own directory (forbidden)."""
+    monkeypatch.setattr(wall, "_manifest_cache", {
+        "libritts_r_full_vat_v8": ("merged_vat_corpora", "permissive", "CC-BY-4.0"),
+        "crossed_bank_v8": ("crossed_bank_v8", "permissive", "CC-BY-4.0"),
+        "ordinary_corpus": ("ordinary_corpus", "permissive", "CC-BY-4.0"),
+    })
+    monkeypatch.setattr(wall, "_publish_cache", {
+        "libritts_r_full_vat_v8": ("merged_vat_corpora", "allowed", ""),
+        "crossed_bank_v8": ("crossed_bank_v8", "forbidden", "Diagnostic only (owner ruling 12)."),
+        "ordinary_corpus": ("ordinary_corpus", "allowed", ""),
+    })
+
+
+def _merged_filelist(tmp_path, audio_dir):
+    d = tmp_path / "data" / "libritts_r_full_vat_v8"
+    d.mkdir(parents=True)
+    fl = d / "train_op.txt"
+    fl.write_text(f"{audio_dir}/a.wav|1|x|0\n{audio_dir}/b.wav|1|y|0\n", encoding="utf-8")
+    return fl
+
+
+def test_a_merged_corpus_whose_AUDIO_is_forbidden_refuses(tmp_path, monkeypatch):
+    """⚠ THE CASE #420 NAMED. The filelist path classifies as allowed; only the audio rows
+    name the bank. The old wall walked the path alone and passed this."""
+    _merged_publish_manifest(monkeypatch)
+    fl = _merged_filelist(tmp_path, "/data/crossed_bank_v8/wavs")
+    with pytest.raises(wall.LicenseWallError) as e:
+        wall.refuse_unpublishable([str(fl)])
+    assert "-> crossed_bank_v8 (publish: forbidden)" in str(e.value), str(e.value)
+
+
+def test_a_merged_corpus_whose_audio_is_all_publishable_passes(tmp_path, monkeypatch):
+    _merged_publish_manifest(monkeypatch)
+    fl = _merged_filelist(tmp_path, "/data/ordinary_corpus/wavs")
+    assert wall.refuse_unpublishable([str(fl)]) == []
+
+
+def test_a_repo_relative_filelist_resolves_against_root(tmp_path, monkeypatch):
+    """The export runs from the LiteRT work dir, so without `root` nothing would open."""
+    _merged_publish_manifest(monkeypatch)
+    _merged_filelist(tmp_path, "/data/crossed_bank_v8/wavs")
+    rel = "data/libritts_r_full_vat_v8/train_op.txt"
+    with pytest.raises(wall.LicenseWallError):
+        wall.refuse_unpublishable([rel], root=str(tmp_path))
+    # and WITHOUT root it cannot open the file: reported as unread, not passed as clean
+    assert wall.refuse_unpublishable([rel]) == [rel]
+
+
+def test_an_unreadable_filelist_still_checks_its_own_path(monkeypatch):
+    _merged_publish_manifest(monkeypatch)
+    with pytest.raises(wall.LicenseWallError):
+        wall.refuse_unpublishable(["data/crossed_bank_v8/train_op.txt"])
+
+
+# --- #422: a misspelled key must be a load error, not a silent `allowed` ------------------
+
+def _manifest_file(tmp_path, monkeypatch, entry_body):
+    p = tmp_path / "data_licenses.yaml"
+    p.write_text("datasets:\n  bank:\n" + entry_body, encoding="utf-8")
+    monkeypatch.setattr(wall, "_MANIFEST_PATH", str(p))
+    return p
+
+
+def test_a_misspelled_publish_KEY_refuses_at_load(tmp_path, monkeypatch):
+    _manifest_file(tmp_path, monkeypatch,
+                   "    dirs: [bank]\n    license: L\n    class: permissive\n    publsh: forbidden\n")
+    with pytest.raises(wall.LicenseWallError) as e:
+        wall.refuse_unpublishable(["data/bank/t.txt"])
+    assert "publsh" in str(e.value)
+
+
+def test_a_misspelled_publish_VALUE_refuses_at_load(tmp_path, monkeypatch):
+    _manifest_file(tmp_path, monkeypatch,
+                   "    dirs: [bank]\n    license: L\n    class: permissive\n    publish: forbiden\n")
+    with pytest.raises(wall.LicenseWallError) as e:
+        wall.classify_path("data/bank/t.txt")
+    assert "forbiden" in str(e.value)
+
+
+def test_a_correctly_spelled_forbidden_entry_loads_and_fires(tmp_path, monkeypatch):
+    """Positive control for the two above: the validator must let a RIGHT entry through."""
+    _manifest_file(tmp_path, monkeypatch,
+                   "    dirs: [bank]\n    license: L\n    class: permissive\n    publish: forbidden\n")
+    with pytest.raises(wall.LicenseWallError) as e:
+        wall.refuse_unpublishable(["data/bank/t.txt"])
+    assert "publish: forbidden" in str(e.value)
+
+
+def test_the_live_manifest_passes_the_key_and_value_validation():
+    assert wall._manifest() and wall._publish()
+
+
+# --- #424: the two maps fill themselves independently --------------------------------------
+
+def test_injecting_only_the_licence_map_does_not_break_the_publish_wall(monkeypatch):
+    monkeypatch.setattr(wall, "_manifest_cache",
+                        {"weirdcorpus": ("weirdcorpus", "probably_fine", "Some-License")})
+    assert wall._publish_cache is None
+    # no AttributeError, no refusal; the (nonexistent) filelist is reported unread
+    assert wall.refuse_unpublishable(["data/weirdcorpus/t.txt"]) == ["data/weirdcorpus/t.txt"]
+
+
+# --- #421: ancestors ride in the checkpoint ------------------------------------------------
+
+def test_lineage_includes_the_donor_stages(monkeypatch):
+    ck = {wall.LINEAGE_KEY: ["data/crossed_bank_v8/train_op.txt"],
+          "datamodule_hyper_parameters": {
+              "train_filelist_path": "data/libritts_r_full_vat_v7/train_op.txt"}}
+    assert wall.lineage_filelists(ck) == ["data/crossed_bank_v8/train_op.txt",
+                                          "data/libritts_r_full_vat_v7/train_op.txt"]
+    _merged_publish_manifest(monkeypatch)
+    with pytest.raises(wall.LicenseWallError):
+        wall.refuse_unpublishable(wall.lineage_filelists(ck))
+
+
+def test_the_warm_start_and_the_module_carry_the_lineage():
+    """Source-level, because there is no torch on this host: the init must be given the
+    donor lineage, and every later save must write it back out."""
+    root = pathlib.Path(wall._MANIFEST_PATH).parent.parent
+    ws = (root / "scripts" / "lib" / "make_warmstart.py").read_text(encoding="utf-8")
+    assert "model.sonora_lineage = lineage_filelists(donor)" in ws
+    mod = (root / "matcha" / "models" / "baselightningmodule.py").read_text(encoding="utf-8")
+    assert "def on_save_checkpoint" in mod and "checkpoint[LINEAGE_KEY]" in mod
+    assert "self.sonora_lineage = lineage_filelists(checkpoint)" in mod

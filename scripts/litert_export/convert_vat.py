@@ -225,8 +225,16 @@ def load_ckpt():
     # ⚠ A checkpoint with no `datamodule_hyper_parameters` yields an EMPTY lineage, which is
     # "unknown", not "clean". It passes, deliberately: pre-wall checkpoints exist and
     # refusing them buys nothing, since anything trained since the wall must be declared.
+    # ⚠ `root=SONORA`: the lineage paths are repo-relative and run.sh cds to the work dir, so
+    # without it no filelist would open and the AUDIO half of the check (#420) would never
+    # run. A filelist that still cannot be read is UNKNOWN on that half, and is said so.
     from matcha.data.license_wall import lineage_filelists, refuse_unpublishable
-    refuse_unpublishable(lineage_filelists(ck), what=f"the checkpoint at {CKPT}")
+    unread = refuse_unpublishable(lineage_filelists(ck), what=f"the checkpoint at {CKPT}",
+                                  root=SONORA)
+    for p in unread:
+        print(f"!! publish wall: could not open {p} under SONORA_REPO — its audio paths were "
+              "NOT classified. Lineage UNKNOWN on that half; this is not a clean result.",
+              file=sys.stderr)
     hp = ck["hyper_parameters"]
     stats = hp["data_statistics"]
     sd = ck["state_dict"]
