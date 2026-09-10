@@ -44,6 +44,7 @@ _MANIFEST_PATH = os.path.join(
 )
 
 _manifest_cache = None
+_publish_cache = None
 
 
 class LicenseWallError(RuntimeError):
@@ -59,6 +60,18 @@ def _manifest():
         for name, entry in raw.items():
             for d in entry["dirs"]:
                 _manifest_cache[d.lower()] = (name, entry["class"], entry["license"])
+        # ⚠ SEPARATE MAP, SEPARATE AXIS. `publish` is orthogonal to `class` and must not be
+        # folded into it: the crossed delivery bank is CC-BY-4.0 and genuinely `permissive`
+        # — the licence is satisfied — while shipping a model trained on it is forbidden for
+        # a reason licences do not speak to (owner ruling 12, 2026-09-09: ~20 cloned real
+        # LibriTTS-R voices at tens of clips each). Encoding "do not publish" as a licence
+        # class would make the manifest state something false about the licence.
+        global _publish_cache
+        _publish_cache = {}
+        for name, entry in raw.items():
+            policy = entry.get("publish", "allowed")
+            for d in entry["dirs"]:
+                _publish_cache[d.lower()] = (name, policy, entry.get("publish_reason", ""))
     return _manifest_cache
 
 
@@ -146,6 +159,78 @@ def enforce(filelist_paths):
         )
 
 
+# --- the publish wall: a licence is not the only reason an artifact must not ship ---------
+#
+# Owner ruling 12, answered 2026-09-09. The crossed delivery bank exists to answer ONE
+# question — can delivery be separated from speaker identity — and nothing trained on it
+# ships. A positive result licenses a REBUILD of a publishable bank, not the publication of
+# this one. Publishing on attribution alone, and publishing behind an identifiability audit,
+# were both offered to the owner and refused.
+#
+# ⚠ HELD HERE RATHER THAN IN A NOTE, on this repo's standing lesson to prefer the shape that
+# BREAKS when an assumption expires. A rule written only in prose is one an agent reads in a
+# year if at all, and this one bites at exactly the moment a result is good and someone is
+# eager to ship — which is when prose loses.
+#
+# ⚠ WHAT ARMS IT FOR A CORPUS THAT DOES NOT EXIST YET. The bank has not been built, so no
+# entry names it today and this guard has nothing to fire on in the live manifest. It is
+# armed anyway, by the wall above: `enforce` REFUSES AN UNDECLARED CORPUS AT TRAINING TIME,
+# so the bank cannot be trained on until someone adds a manifest entry for it — and that is
+# the moment they choose `publish:`. The two guards close the loop on each other.
+#
+# ⚠ UNDECLARED IS ALLOWED HERE, DELIBERATELY, and that is the opposite of `enforce`'s
+# treatment. Measured 2026-09-09: `data/hi-fi_en-US_female/` and `data/filelists/` (VCTK)
+# classify as undeclared, and both predate the wall. Refusing them would break the export of
+# old checkpoints to buy no safety — anything trained SINCE the wall is necessarily declared.
+
+
+def lineage_filelists(ckpt):
+    """The corpus filelists a Lightning checkpoint was trained on.
+
+    ⚠ VERIFIED AGAINST A REAL CHECKPOINT (2026-09-09), not inferred from the Lightning docs:
+    `datamodule_hyper_parameters` really is written, and really does carry these two keys.
+    Read out of `vat7_finetune/.../checkpoint_epoch=000_step=0003505.ckpt` — a 263 MB file —
+    without torch, by unzipping `archive/data.pkl` and reading the literal strings, which is
+    also why nothing here had to be executed to check it. The values were
+    `data/libritts_r_full_vat_v7/{train_op,val_op}.txt`: repo-relative corpus directories,
+    exactly what `classify_path` wants.
+
+    ⚠ A checkpoint with no datamodule hparams yields NOTHING, and the caller must treat that
+    as "unknown lineage", never as "clean".
+    """
+    dm = ckpt.get("datamodule_hyper_parameters") or {}
+    return [dm[k] for k in ("train_filelist_path", "valid_filelist_path")
+            if dm.get(k)]
+
+
+def refuse_unpublishable(filelist_paths, what="this artifact"):
+    """Refuse to export/publish an artifact whose corpus is marked `publish: forbidden`.
+
+    Takes the filelists rather than the checkpoint so it can be exercised without torch.
+    """
+    _manifest()
+    bad = []
+    for p in filelist_paths:
+        for component in os.path.normpath(p).split(os.sep):
+            for nm in _candidates(component):
+                hit = _publish_cache.get(nm.lower())
+                if hit and hit[1] != "allowed":
+                    bad.append((p, hit[0], hit[1], hit[2]))
+                    break
+            else:
+                continue
+            break
+    if bad:
+        detail = "; ".join(f"{p} -> {name} (publish: {policy})" for p, name, policy, _ in bad)
+        reason = next((r for *_, r in bad if r), "")
+        raise LicenseWallError(
+            f"Publish wall: {what} was trained on a corpus that must not ship: {detail}. "
+            + (f"{reason.strip()} " if reason else "")
+            + "This is NOT a licence refusal — the corpus may be perfectly well licensed. "
+            "It is a restriction on shipping a model built from it. Changing it is an owner "
+            "decision recorded in configs/data_licenses.yaml, not a run setting, and there "
+            "is no override flag."
+        )
 # The clean-holdout wall, as a gate rather than a naming convention (TR-M3).
 #
 # `data/libritts_r_holdout_devclean/README.md` said it plainly: "the wall will not stop a

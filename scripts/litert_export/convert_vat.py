@@ -216,6 +216,17 @@ def detect_vat_dim(sd):
 
 def load_ckpt():
     ck = torch.load(CKPT, map_location="cpu", weights_only=False)
+    # ⚠ THE PUBLISH WALL, BEFORE ANY GRAPH IS BUILT. A licence is not the only reason an
+    # artifact must not ship: owner ruling 12 (2026-09-09) makes the crossed delivery bank
+    # diagnostic-only, so a checkpoint trained on it must not become a mobile artifact even
+    # though its corpus is CC-BY-4.0. Checked here because THIS is where a checkpoint becomes
+    # something shippable — the licence wall runs at training time and has nothing to say
+    # about export.
+    # ⚠ A checkpoint with no `datamodule_hyper_parameters` yields an EMPTY lineage, which is
+    # "unknown", not "clean". It passes, deliberately: pre-wall checkpoints exist and
+    # refusing them buys nothing, since anything trained since the wall must be declared.
+    from matcha.data.license_wall import lineage_filelists, refuse_unpublishable
+    refuse_unpublishable(lineage_filelists(ck), what=f"the checkpoint at {CKPT}")
     hp = ck["hyper_parameters"]
     stats = hp["data_statistics"]
     sd = ck["state_dict"]
