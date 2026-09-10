@@ -261,7 +261,12 @@ def lineage_filelists(ckpt):
     on it — at an earlier stage — so the ancestors count.
 
     ⚠ A checkpoint with no datamodule hparams and no lineage key yields NOTHING, and the
-    caller must treat that as "unknown lineage", never as "clean".
+    caller must treat that as "unknown lineage", never as "clean". This function stays
+    honest about what is RECORDED rather than converting the gap itself: an export has to
+    tell "nothing recorded at all" from "warm-started from something unrecorded", and
+    `lineage_gaps` gives those two different sentences. The conversion belongs at the point
+    a lineage is ADOPTED into a descendant, which is `carried_lineage` — used by
+    `make_warmstart.py` and by the module's `on_load_checkpoint` (#425).
     """
     dm = ckpt.get("datamodule_hyper_parameters") or {}
     own = [dm[k] for k in ("train_filelist_path", "valid_filelist_path") if dm.get(k)]

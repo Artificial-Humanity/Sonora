@@ -469,7 +469,9 @@ def test_the_warm_start_and_the_module_carry_the_lineage():
     assert "model.sonora_lineage = carried_lineage(donor)" in ws
     mod = (root / "matcha" / "models" / "baselightningmodule.py").read_text(encoding="utf-8")
     assert "def on_save_checkpoint" in mod and "checkpoint[LINEAGE_KEY]" in mod
-    assert "self.sonora_lineage = lineage_filelists(checkpoint)" in mod
+    # ⚠ `carried_lineage` on the LOAD side too, since #425. `make_warmstart.py` only WRITES an
+    # init; the lane starts a fine-tune with `ckpt_path=<init>`, so the init is adopted here.
+    assert "self.sonora_lineage = carried_lineage(checkpoint)" in mod
 
 
 # --- #425/#426: an UNKNOWN ancestry must survive the warm start it is discovered at --------
@@ -508,7 +510,7 @@ def test_the_unknown_marker_survives_a_warm_start_and_a_fine_tune(monkeypatch):
     the fine-tune added its own corpus, and the descendant read as a complete record."""
     _merged_publish_manifest(monkeypatch)
     init = _save(wall.carried_lineage({"state_dict": {}}))          # make_warmstart writes it
-    loaded = wall.lineage_filelists(init)                            # on_load_checkpoint
+    loaded = wall.carried_lineage(init)                              # on_load_checkpoint
     finetune = _save(loaded, corpus="data/libritts_r_full_vat_v8")   # on_save_checkpoint
 
     lineage = wall.lineage_filelists(finetune)
@@ -517,6 +519,44 @@ def test_the_unknown_marker_survives_a_warm_start_and_a_fine_tune(monkeypatch):
 
     gaps = wall.lineage_gaps(lineage, wall.refuse_unpublishable(lineage))
     assert any("warm-started from a pre-wall donor" in g for g in gaps), gaps
+
+
+# ⚠ THE INIT THAT ACTUALLY EXISTS, not the one make_warmstart would write today (#425 pass 2).
+# Measured 2026-09-10 by reading `archive/data.pkl` out of each zip, no torch: all eight
+# `*_init.ckpt` under /data/model-training/sonora/warmstart/ — derisk_energy, vat3, vat3c,
+# vat4, vat5, vat6, vat7, vat7r — contain neither `datamodule_hyper_parameters` nor
+# `sonora_lineage`. The probe has a positive control: `matcha_vctk.ckpt` and a real training
+# checkpoint both come back True for the hparams, so the eight Falses are a result and not a
+# broken probe. Those inits are what `ckpt_path=` hands to `on_load_checkpoint`.
+_AN_INIT_ON_DISK = {"epoch": 42, "global_step": 0, "state_dict": {}}
+
+
+def test_an_init_that_already_exists_on_disk_is_adopted_as_unknown():
+    """The load side of #425. Fixing only `make_warmstart.py` left every init already built
+    going through the old path, because the lane adopts an init through `ckpt_path=`."""
+    assert wall.lineage_filelists(_AN_INIT_ON_DISK) == [], (
+        "the fixture no longer matches what was measured on disk — re-probe before trusting "
+        "the test below, because it is the emptiness that makes this case the defect")
+    assert wall.carried_lineage(_AN_INIT_ON_DISK) == [wall.LINEAGE_UNKNOWN]
+
+
+def test_a_run_resumed_from_its_own_checkpoint_is_not_marked_unknown():
+    """The positive control for the load side: `on_load_checkpoint` also fires on an ordinary
+    auto-resume, and a run that recorded its corpus must NOT acquire the marker — or every
+    resumed run would report UNKNOWN and the signal would mean nothing."""
+    resumed = _save([], corpus="data/libritts_r_full_vat_v8")   # Lightning writes dm hparams
+    assert wall.carried_lineage(resumed) == ["data/libritts_r_full_vat_v8/train_op.txt",
+                                             "data/libritts_r_full_vat_v8/val_op.txt"]
+    assert wall.LINEAGE_UNKNOWN not in wall.carried_lineage(resumed)
+
+
+def test_the_two_doors_agree(monkeypatch):
+    """Adopting an on-disk init through the LOAD hook must reach the same descendant lineage
+    as one written by a fixed `make_warmstart`. The bug was the two doors disagreeing."""
+    _merged_publish_manifest(monkeypatch)
+    via_writer = _save(wall.carried_lineage({"state_dict": {}}))
+    via_loader = _save(wall.carried_lineage(_AN_INIT_ON_DISK))
+    assert wall.lineage_filelists(via_writer) == wall.lineage_filelists(via_loader)
 
 
 def test_the_marker_is_not_a_path_so_an_unaware_reader_still_fails_closed():
