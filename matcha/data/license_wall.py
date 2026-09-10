@@ -58,6 +58,13 @@ _PUBLISH_VALUES = {"allowed", "forbidden"}
 # `on_save_checkpoint`, read back by `on_load_checkpoint` and by `lineage_filelists` (#421).
 LINEAGE_KEY = "sonora_lineage"
 
+# The marker a warm start records when its donor's corpus was never written down (#425).
+# ⚠ DELIBERATELY NOT A PATH. It travels as an ordinary member of the lineage list, so every
+# carrier that already copies that list carries it for free — and a reader that has never
+# heard of it still fails CLOSED, because `refuse_unpublishable` cannot open it and returns
+# it as unread, which every caller already treats as "not a clean result".
+LINEAGE_UNKNOWN = "<UNKNOWN: pre-wall donor, ancestry unrecorded>"
+
 
 class LicenseWallError(RuntimeError):
     pass
@@ -263,6 +270,59 @@ def lineage_filelists(ckpt):
         if p not in out:
             out.append(p)
     return out
+
+
+def carried_lineage(donor):
+    """The lineage a warm-start init must record, given the donor checkpoint it starts from.
+
+    ⚠ AN UNRECORDED ANCESTRY MUST NOT TRAVEL AS AN EMPTY LIST (#425). `make_warmstart.py`
+    wrote `lineage_filelists(donor)` straight through, so a donor carrying neither
+    `datamodule_hyper_parameters` nor `LINEAGE_KEY` — a pre-wall checkpoint, whose corpus was
+    never written down — produced `sonora_lineage: []`. The fine-tune loaded that, saved its
+    OWN corpus beside it, and from there every descendant read as a complete record:
+    `check_publishable.py` printed the fine-tune corpus and exited 0 on "no `publish:
+    forbidden` corpus anywhere in the lineage", which is a claim about ancestry the record
+    could not support. The invariant stated in three docstrings — empty is UNKNOWN, never
+    clean — held for exactly one generation, because the UNKNOWN lived only in a print.
+
+    ⚠ A VALUE IN THE LIST, NOT A SECOND KEY BESIDE IT, and that is the whole design. See
+    `LINEAGE_UNKNOWN`: it fails closed for a reader that does not know about it, where a
+    boolean flag would fail open the first time someone forgot to check it.
+    """
+    return lineage_filelists(donor) or [LINEAGE_UNKNOWN]
+
+
+def lineage_gaps(lineage, unread=()):
+    """Every reason this lineage is not a complete record. Empty list = complete.
+
+    The callers print these and treat a non-empty list as "not a clean result":
+    `check_publishable.py` exits 2 on it, and the export prints it (#426). Before this, an
+    empty lineage produced NO message on the export path at all — `refuse_unpublishable([])`
+    returns `[]`, so the loop that reports unread filelists had nothing to print and the log
+    of a checkpoint with nothing to check was identical to one whose lineage was read and
+    cleared. AGENTS.md §5b: a tool's failure is easily mistaken for its negative result, so
+    assert the instrument ran before believing it.
+
+    `unread` is `refuse_unpublishable`'s return. `LINEAGE_UNKNOWN` lands in it as well — the
+    fail-closed property that makes the marker safe — so it is filtered out here and reported
+    once, from the lineage, in the wording that fits it rather than as a file that would not
+    open.
+    """
+    gaps = []
+    if not lineage:
+        gaps.append(
+            "lineage UNKNOWN: the checkpoint carries no datamodule hparams and no lineage "
+            "key (pre-wall?). Nothing was checked, so this is not a clean result.")
+    if LINEAGE_UNKNOWN in lineage:
+        gaps.append(
+            "lineage UNKNOWN for an ancestor: this was warm-started from a pre-wall donor "
+            "whose corpus was never recorded. The stages below it were checked; what the "
+            "donor trained on is unknown, so this is not a clean result.")
+    gaps.extend(
+        f"could not open {p}: its audio paths were NOT classified, so this filelist is "
+        "UNKNOWN on that half and this is not a clean result"
+        for p in unread if p != LINEAGE_UNKNOWN)
+    return gaps
 
 
 def refuse_unpublishable(filelist_paths, what="this artifact", root=None):

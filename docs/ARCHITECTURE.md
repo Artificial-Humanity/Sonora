@@ -229,8 +229,10 @@ dial there in the same phase, so outputs stay vettable by ear at the current fea
   statement, and the `publish` policy of every source beside it), `gate_history.jsonl`, eval
   report, audited samples, render/export metadata.
 * **Run the publish wall on the checkpoint before it is promoted** — the promotion is manual,
-  so no code runs here unless you run it:
-  `.venv/bin/python scripts/tools/check_publishable.py <ckpt>`. It refuses a checkpoint whose
+  so no code runs here unless you run it: `scripts/tools/check_publishable.py <ckpt>`, under an
+  interpreter that has torch. ⚠ **Not the repo `.venv`**, which deliberately has none (#428):
+  this line named it, and as spelled it died at `import torch`. The script's docstring names
+  the interpreter to use and says so itself if you get it wrong. It refuses a checkpoint whose
   lineage, donors included, names a `publish: forbidden` corpus, and it says when the lineage
   is UNKNOWN (a pre-wall checkpoint), which is not "clean". A clean licence statement does not
   answer this question; the wall does.

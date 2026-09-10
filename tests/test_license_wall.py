@@ -277,17 +277,54 @@ def test_a_checkpoint_with_no_lineage_yields_nothing_not_a_false_clean():
 
 # --- and the export path must actually CALL it (#391's lesson) -----------------------------
 
+_LINEAGE_READ = "lineage_filelists(ck)"
+_WALL_CALL = "refuse_unpublishable(lineage,"
+_UNPACK = 'hp = ck["hyper_parameters"]'
+
+
+def _wall_runs_before_unpack(src):
+    """True when the publish wall's CALL precedes the checkpoint unpack in `src`.
+
+    ⚠ INDEXED ON THE CALL, NOT THE NAME (#427). It was `src.index("refuse_unpublishable")`,
+    and `str.index` returns the FIRST occurrence — which in `convert_vat.py` is the local
+    `from … import` line one line above the call, not the call. So the assertion measured
+    where the IMPORT sat: moving the call below the unpack while leaving the import in place
+    kept it green, which is the one mutation its failure message names. Measured both ways in
+    `test_the_ordering_check_fires_when_the_call_moves` below.
+    """
+    return src.index(_WALL_CALL) < src.index(_UNPACK)
+
+
 def test_the_export_path_calls_the_publish_wall():
     """⚠ A GUARD NOTHING INVOKES IS NOT A GUARD. #391 shipped one that could never fire; the
     tests around it all passed because they exercised the function, never the call site.
     """
     src = (pathlib.Path(wall._MANIFEST_PATH).parent.parent
            / "scripts" / "litert_export" / "convert_vat.py").read_text(encoding="utf-8")
-    assert "refuse_unpublishable(lineage_filelists(ck)" in src, (
-        "convert_vat.py no longer calls the publish wall — the ruling is unenforced")
+    assert _LINEAGE_READ in src and _WALL_CALL in src, (
+        "convert_vat.py no longer calls the publish wall over the checkpoint's own lineage — "
+        "the ruling is unenforced")
     # before the graph is built, not after
-    assert src.index("refuse_unpublishable") < src.index('hp = ck["hyper_parameters"]'), (
+    assert _wall_runs_before_unpack(src), (
         "the publish wall runs after the checkpoint is unpacked; refuse before doing work")
+
+
+def test_the_ordering_check_fires_when_the_call_moves():
+    """The positive control for the assertion above: an empty result and a broken instrument
+    are indistinguishable, so prove this one can report dirty. The mutation is the finding's
+    own case — the call moved below the unpack, the import left where it was.
+    """
+    src = (pathlib.Path(wall._MANIFEST_PATH).parent.parent
+           / "scripts" / "litert_export" / "convert_vat.py").read_text(encoding="utf-8")
+    call_line = next(ln for ln in src.splitlines(keepends=True) if _WALL_CALL in ln)
+    unpack_line = next(ln for ln in src.splitlines(keepends=True) if _UNPACK in ln)
+    moved = src.replace(call_line, "").replace(unpack_line, unpack_line + call_line)
+
+    assert moved.index("refuse_unpublishable") < moved.index(_UNPACK), (
+        "the mutation is supposed to leave the IMPORT above the unpack — that is what made "
+        "the old name-indexed assertion unable to fire")
+    assert not _wall_runs_before_unpack(moved), (
+        "the ordering check passed a source whose wall call runs after the unpack")
 
 
 # --- #420: the realistic shape is a filelists-only corpus whose AUDIO is the bank ----------
@@ -332,13 +369,25 @@ def test_a_merged_corpus_whose_audio_is_all_publishable_passes(tmp_path, monkeyp
 
 
 def test_a_repo_relative_filelist_resolves_against_root(tmp_path, monkeypatch):
-    """The export runs from the LiteRT work dir, so without `root` nothing would open."""
+    """The export runs from the LiteRT work dir, so without `root` nothing would open.
+
+    ⚠ THE NO-ROOT HALF RUNS FROM AN EMPTY DIR, AND THAT IS THE POINT (#429). With `root=None`
+    the open is relative to the process cwd, which under pytest is the repo root — where
+    `data/` is the live corpus mount. So "cannot open it" was a property of the HOST (no
+    `libritts_r_full_vat_v8/` there yet), not of the test: the day a v8 is derived the file
+    opens, its audio is not in the injected cache, and the assertion flips to `[]`. Measured.
+    ⚠ Not `chdir(tmp_path)`, which the finding's remedy named: the fixture writes the
+    filelist THERE, so that cwd opens it and the call raises instead. Measured too.
+    """
     _merged_publish_manifest(monkeypatch)
     _merged_filelist(tmp_path, "/data/crossed_bank_v8/wavs")
     rel = "data/libritts_r_full_vat_v8/train_op.txt"
     with pytest.raises(wall.LicenseWallError):
         wall.refuse_unpublishable([rel], root=str(tmp_path))
     # and WITHOUT root it cannot open the file: reported as unread, not passed as clean
+    nowhere = tmp_path / "cwd-with-no-data-dir"
+    nowhere.mkdir()
+    monkeypatch.chdir(nowhere)
     assert wall.refuse_unpublishable([rel]) == [rel]
 
 
@@ -414,7 +463,103 @@ def test_the_warm_start_and_the_module_carry_the_lineage():
     donor lineage, and every later save must write it back out."""
     root = pathlib.Path(wall._MANIFEST_PATH).parent.parent
     ws = (root / "scripts" / "lib" / "make_warmstart.py").read_text(encoding="utf-8")
-    assert "model.sonora_lineage = lineage_filelists(donor)" in ws
+    # ⚠ `carried_lineage`, not `lineage_filelists`, since #425 — the difference is what a
+    # pre-wall donor writes, and it is exercised for real in the tests below rather than
+    # asserted as a string here.
+    assert "model.sonora_lineage = carried_lineage(donor)" in ws
     mod = (root / "matcha" / "models" / "baselightningmodule.py").read_text(encoding="utf-8")
     assert "def on_save_checkpoint" in mod and "checkpoint[LINEAGE_KEY]" in mod
     assert "self.sonora_lineage = lineage_filelists(checkpoint)" in mod
+
+
+# --- #425/#426: an UNKNOWN ancestry must survive the warm start it is discovered at --------
+#
+# The chain below is what the module's hooks do, written out as dicts because there is no
+# torch on this host: `on_save_checkpoint` writes `LINEAGE_KEY` from `self.sonora_lineage`,
+# and `on_load_checkpoint` sets `self.sonora_lineage` from `lineage_filelists(checkpoint)`.
+# `test_the_warm_start_and_the_module_carry_the_lineage` above pins that those two lines are
+# still the ones in the module; these exercise what they carry.
+
+def _save(lineage, corpus=None):
+    """One checkpoint written by the module's hooks: the lineage it holds, plus — for a real
+    training run — the datamodule hparams Lightning records for the stage itself."""
+    ck = {wall.LINEAGE_KEY: list(lineage)}
+    if corpus:
+        ck["datamodule_hyper_parameters"] = {"train_filelist_path": f"{corpus}/train_op.txt",
+                                             "valid_filelist_path": f"{corpus}/val_op.txt"}
+    return ck
+
+
+def test_a_pre_wall_donor_yields_the_unknown_marker_not_an_empty_list():
+    assert wall.carried_lineage({"state_dict": {}}) == [wall.LINEAGE_UNKNOWN]
+
+
+def test_a_donor_that_recorded_its_corpus_carries_no_marker():
+    """The positive control: the marker must appear ONLY for an unrecorded ancestry, or every
+    checkpoint in the current lineage would report UNKNOWN and the signal would be worthless."""
+    donor = _save([], corpus="data/ordinary_corpus")
+    assert wall.carried_lineage(donor) == ["data/ordinary_corpus/train_op.txt",
+                                           "data/ordinary_corpus/val_op.txt"]
+    assert wall.LINEAGE_UNKNOWN not in wall.carried_lineage(donor)
+
+
+def test_the_unknown_marker_survives_a_warm_start_and_a_fine_tune(monkeypatch):
+    """⚠ THE CASE #425 NAMED, end to end. Before this the donor's UNKNOWN was an empty list,
+    the fine-tune added its own corpus, and the descendant read as a complete record."""
+    _merged_publish_manifest(monkeypatch)
+    init = _save(wall.carried_lineage({"state_dict": {}}))          # make_warmstart writes it
+    loaded = wall.lineage_filelists(init)                            # on_load_checkpoint
+    finetune = _save(loaded, corpus="data/libritts_r_full_vat_v8")   # on_save_checkpoint
+
+    lineage = wall.lineage_filelists(finetune)
+    assert wall.LINEAGE_UNKNOWN in lineage, "the donor's UNKNOWN did not survive the warm start"
+    assert "data/libritts_r_full_vat_v8/train_op.txt" in lineage, "the fine-tune's own corpus"
+
+    gaps = wall.lineage_gaps(lineage, wall.refuse_unpublishable(lineage))
+    assert any("warm-started from a pre-wall donor" in g for g in gaps), gaps
+
+
+def test_the_marker_is_not_a_path_so_an_unaware_reader_still_fails_closed():
+    """The fail-closed property `carried_lineage` claims, measured rather than asserted in
+    prose: a caller that knows nothing about the marker gets it back as unread, which every
+    caller already treats as not-clean."""
+    assert wall.refuse_unpublishable([wall.LINEAGE_UNKNOWN]) == [wall.LINEAGE_UNKNOWN]
+    assert wall.publish_policy(wall.LINEAGE_UNKNOWN) is None
+
+
+def test_an_empty_lineage_is_a_reported_gap_not_a_silent_pass():
+    """#426: `refuse_unpublishable([])` returns `[]`, so the export's report loop had nothing
+    to print and a checkpoint with nothing to check logged exactly like a cleared one."""
+    assert wall.refuse_unpublishable([]) == []
+    gaps = wall.lineage_gaps([], [])
+    assert len(gaps) == 1 and "no datamodule hparams and no lineage key" in gaps[0], gaps
+
+
+def test_a_complete_lineage_reports_no_gaps(tmp_path, monkeypatch):
+    """The positive control for `lineage_gaps`: prove it can report clean, or 'no gaps' is
+    indistinguishable from a function that never reports anything."""
+    _merged_publish_manifest(monkeypatch)
+    fl = _merged_filelist(tmp_path, "/data/ordinary_corpus/wavs")
+    lineage = [str(fl)]
+    assert wall.lineage_gaps(lineage, wall.refuse_unpublishable(lineage)) == []
+
+
+def test_the_marker_is_reported_once_and_not_as_an_unopenable_file():
+    """It lands in `unread` by design, so `lineage_gaps` must not also report it as a file
+    that would not open — one condition, one message."""
+    lineage = [wall.LINEAGE_UNKNOWN, "data/ordinary_corpus/train_op.txt"]
+    unread = [wall.LINEAGE_UNKNOWN, "data/ordinary_corpus/train_op.txt"]
+    gaps = wall.lineage_gaps(lineage, unread)
+    assert sum("pre-wall donor" in g for g in gaps) == 1, gaps
+    assert not any(wall.LINEAGE_UNKNOWN in g and "could not open" in g for g in gaps), gaps
+    assert any("could not open data/ordinary_corpus/train_op.txt" in g for g in gaps), gaps
+
+
+def test_both_readers_use_the_shared_gap_report():
+    """#426 was one reader saying less than the other about the same condition. Source-level
+    for the two files that need torch to run."""
+    root = pathlib.Path(wall._MANIFEST_PATH).parent.parent
+    for rel in (("scripts", "litert_export", "convert_vat.py"),
+                ("scripts", "tools", "check_publishable.py")):
+        src = root.joinpath(*rel).read_text(encoding="utf-8")
+        assert "lineage_gaps(lineage, unread)" in src, rel

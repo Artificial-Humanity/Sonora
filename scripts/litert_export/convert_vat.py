@@ -228,13 +228,15 @@ def load_ckpt():
     # ⚠ `root=SONORA`: the lineage paths are repo-relative and run.sh cds to the work dir, so
     # without it no filelist would open and the AUDIO half of the check (#420) would never
     # run. A filelist that still cannot be read is UNKNOWN on that half, and is said so.
-    from matcha.data.license_wall import lineage_filelists, refuse_unpublishable
-    unread = refuse_unpublishable(lineage_filelists(ck), what=f"the checkpoint at {CKPT}",
-                                  root=SONORA)
-    for p in unread:
-        print(f"!! publish wall: could not open {p} under SONORA_REPO — its audio paths were "
-              "NOT classified. Lineage UNKNOWN on that half; this is not a clean result.",
-              file=sys.stderr)
+    # ⚠ EVERY UNKNOWN IS SAID OUT LOUD, not just the unread-filelist one (#426). An empty
+    # lineage produced no line at all, so the log of a checkpoint the wall had nothing to
+    # check on was identical to one whose lineage was read and cleared. `lineage_gaps` is
+    # the one definition of "not a clean result", shared with check_publishable.py.
+    from matcha.data.license_wall import lineage_filelists, lineage_gaps, refuse_unpublishable
+    lineage = lineage_filelists(ck)
+    unread = refuse_unpublishable(lineage, what=f"the checkpoint at {CKPT}", root=SONORA)
+    for note in lineage_gaps(lineage, unread):
+        print(f"!! publish wall: {note}", file=sys.stderr)
     hp = ck["hyper_parameters"]
     stats = hp["data_statistics"]
     sd = ck["state_dict"]

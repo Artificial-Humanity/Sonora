@@ -226,9 +226,13 @@ def main():
     # checkpoints still name what the donor was trained on when the publish wall reads them
     # at export. Without this the init carried no datamodule hparams and the lineage was one
     # stage deep (#421). An empty list is a pre-wall donor: lineage UNKNOWN, not clean.
-    from matcha.data.license_wall import lineage_filelists
-    model.sonora_lineage = lineage_filelists(donor)
-    print("lineage carried:", model.sonora_lineage or "(none — pre-wall donor, lineage UNKNOWN)")
+    from matcha.data.license_wall import LINEAGE_UNKNOWN, carried_lineage
+    model.sonora_lineage = carried_lineage(donor)
+    print("lineage carried:", model.sonora_lineage)
+    if LINEAGE_UNKNOWN in model.sonora_lineage:
+        print("   ^ pre-wall donor: its corpus was never recorded, and that marker rides in "
+              "the lineage\n     so the descendants say so too (#425). It used to be an empty "
+              "list, which one\n     warm start later was indistinguishable from a clean read.")
     # strict=False tolerates missing/unexpected KEYS but not shape mismatches
     # (the 109->247 speaker table) — drop mismatched tensors first.
     model_sd = model.state_dict()
