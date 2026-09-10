@@ -225,7 +225,10 @@ def main():
     # `on_save_checkpoint` when `trainer.save_checkpoint` runs below), so the fine-tune's
     # checkpoints still name what the donor was trained on when the publish wall reads them
     # at export. Without this the init carried no datamodule hparams and the lineage was one
-    # stage deep (#421). An empty list is a pre-wall donor: lineage UNKNOWN, not clean.
+    # stage deep (#421). A donor whose corpus was never recorded yields `[LINEAGE_UNKNOWN]`,
+    # never an empty list — an empty one is what this wrote until #425, and one warm start
+    # later it was indistinguishable from a lineage that had been read and cleared. The same
+    # conversion happens on the LOAD side, which is the door the lane actually uses.
     from matcha.data.license_wall import LINEAGE_UNKNOWN, carried_lineage
     model.sonora_lineage = carried_lineage(donor)
     print("lineage carried:", model.sonora_lineage)

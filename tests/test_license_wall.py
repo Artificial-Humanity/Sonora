@@ -478,9 +478,15 @@ def test_the_warm_start_and_the_module_carry_the_lineage():
 #
 # The chain below is what the module's hooks do, written out as dicts because there is no
 # torch on this host: `on_save_checkpoint` writes `LINEAGE_KEY` from `self.sonora_lineage`,
-# and `on_load_checkpoint` sets `self.sonora_lineage` from `lineage_filelists(checkpoint)`.
+# and `on_load_checkpoint` sets `self.sonora_lineage` from `carried_lineage(checkpoint)`.
 # `test_the_warm_start_and_the_module_carry_the_lineage` above pins that those two lines are
 # still the ones in the module; these exercise what they carry.
+#
+# ⚠ MODEL THE LOAD STEP WITH `carried_lineage`, NOT `lineage_filelists` (#430). This comment
+# said the latter for one commit, and it is the block a later test author copies to write the
+# next chain test — which is exactly how the pass-1 test for #425 modelled the load door as
+# `lineage_filelists`, missed that the door converts, and earned the reopen. The difference
+# only shows on a checkpoint with nothing recorded, which is the case that matters here.
 
 def _save(lineage, corpus=None):
     """One checkpoint written by the module's hooks: the lineage it holds, plus — for a real
