@@ -647,3 +647,73 @@ def test_a_flag_still_overrides_the_roster(run):
     rc, out = run("--range", "HEAD~1..HEAD", "--dry-run", "--model", "some-other", "--effort", "low")
     assert rc == 0, out
     assert "--model some-other --effort low" in out, out
+
+
+# --- the promotion-step grant (owner, 2026-09-10) -----------------------------------------
+
+def _config_env_value(key):
+    """One `KEY=value` out of config.env, which is plain by contract (its own header says so)."""
+    for line in (REPO / "FerroStep" / "workflow" / "config.env").read_text(
+            encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith(f"{key}=") and not line.startswith("#"):
+            return line.split("=", 1)[1].strip().strip('"')
+    return None
+
+
+def _run_sh_default_interpreter():
+    """The interpreter `scripts/litert_export/run.sh` composes, derived from that file.
+
+    ⚠ COMPOSED FROM ITS TWO LINES, NEVER TYPED HERE. Writing the joined path into this test
+    would make it the THIRD copy and the one that silently agrees with neither.
+    """
+    src = (REPO / "scripts" / "litert_export" / "run.sh").read_text(encoding="utf-8")
+    work = re.search(r'SONORA_LITERT_WORK:-([^}"]+)', src)
+    py = re.search(r'SONORA_LITERT_PY:-\$\{SONORA_LITERT_WORK\}([^}"]+)\}', src)
+    assert work and py, "run.sh no longer composes its interpreter the way this test reads it"
+    return work.group(1) + py.group(1)
+
+
+def test_the_promotion_interpreter_matches_the_export_lane_default():
+    """⚠ THE DRIFT PIN FOR A DELIBERATE SECOND COPY. `REVIEWER_TORCH_PY` in config.env and the
+    default `run.sh` composes are the same path in two files, which this repo's own §5b says is
+    a copy that goes stale. It is kept because the grant must be pasteable and `run.sh` is not a
+    route to `scripts/tools/`, so the answer is not "avoid the copy" but "make it break".
+    """
+    configured = _config_env_value("REVIEWER_TORCH_PY")
+    assert configured, "REVIEWER_TORCH_PY is missing from config.env — the grant cannot be built"
+    assert configured == _run_sh_default_interpreter(), (
+        f"config.env says {configured!r}, run.sh composes "
+        f"{_run_sh_default_interpreter()!r} — the two copies have drifted, so the reviewer is "
+        "granted an interpreter the export lane no longer uses")
+
+
+def test_the_promotion_step_grant_reaches_the_rendered_allowlist():
+    """⚠ A GRANT NOBODY EXERCISED IS INDISTINGUISHABLE FROM ONE THAT NEVER MATCHES (#239), so
+    this asserts on what the matcher actually receives rather than on the source line.
+
+    Skipped with its reason printed when the interpreter is absent, because the entry is
+    guarded on that and an unconditional assertion would fail on a host that legitimately has
+    no LiteRT harness. `test_the_promotion_step_grant_is_absent_without_an_interpreter` below
+    is the other half.
+    """
+    interp = _config_env_value("REVIEWER_TORCH_PY")
+    if not interp or not os.access(interp, os.X_OK):
+        pytest.skip(f"no executable interpreter at {interp!r} — the grant is guarded off here")
+    if not (REPO / "scripts" / "tools" / "check_publishable.py").exists():
+        pytest.skip("check_publishable.py is not in this tree — the grant is guarded off")
+    want = f"Bash({interp} scripts/tools/check_publishable.py:*)"
+    allow = _rendered_allowlist()
+    assert allow, "the rendered allowlist is empty — this test would pass vacuously"
+    assert want in allow, (
+        f"the promotion step is not granted; the reviewer is refused when it runs it. "
+        f"wanted {want!r}")
+
+
+def test_the_promotion_step_grant_names_the_script_not_the_bare_interpreter():
+    """The narrowing the owner made on 2026-08-20, applied to this entry: granting the
+    interpreter alone is arbitrary code execution under a new spelling."""
+    interp = _config_env_value("REVIEWER_TORCH_PY")
+    bad = [e for e in _rendered_allowlist()
+           if interp and interp in e and "check_publishable.py" not in e]
+    assert not bad, f"the torch interpreter is granted without naming a command: {bad}"

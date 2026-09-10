@@ -932,6 +932,31 @@ if [[ -n "$PYBIN" ]]; then
   fi
 fi
 
+# THE PROMOTION STEP, WHICH $PYBIN CANNOT RUN (owner, 2026-09-10).
+#
+# `scripts/tools/check_publishable.py` loads a checkpoint, so it needs torch, and the repo venv
+# deliberately has none (AGENTS.md §3 — the `test` dependency group excludes it). The effect was
+# one-sided verification: reviewing #428, Janis ran the tool under $PYBIN, got the new `exit 3`
+# and confirmed the REFUSAL path, then asked for the interpreter that would run the passing one
+# and was refused. **The publish wall's clean answer has never been executed by a reviewer.**
+#
+# ⚠ THE COMMAND, NOT THE INTERPRETER — the 2026-08-20 narrowing above applies here unchanged.
+# `Bash($REVIEWER_TORCH_PY:*)` would be arbitrary code execution under a new spelling, and the
+# ruling it would sidestep is the one that replaced `Bash($PYBIN:*)` with named commands.
+#
+# ⚠ IT ENDS ON A TOKEN BOUNDARY (#239). The last token before `:*` is the whole script path, so
+# this cannot join the class of entries that read as covered and never match.
+# `tests/test_request_review.py::test_no_allow_entry_ends_mid_token` checks that generally.
+#
+# ⚠ BOTH SIDES GUARDED, so the entry is absent rather than stale (#247, #255): the interpreter
+# must be executable AND the script must exist. A port of this lane into a repo with neither
+# adds nothing, which is the correct outcome — an entry naming an absent binary is a grant that
+# reads as given and can never fire.
+if [[ -n "${REVIEWER_TORCH_PY:-}" && -x "${REVIEWER_TORCH_PY:-}" \
+      && -f scripts/tools/check_publishable.py ]]; then
+  REVIEWER_ALLOW+=("Bash($REVIEWER_TORCH_PY scripts/tools/check_publishable.py:*)")
+fi
+
 # Explicit denials. Schema and instance administration are not a reviewer's business —
 # pb_collection_delete would drop the tracker itself.
 #
