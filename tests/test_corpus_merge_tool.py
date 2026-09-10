@@ -464,6 +464,27 @@ def test_the_licence_preflight_refuses_an_undeclared_donor(world):
     assert not world["out"].exists(), "a licence refusal is a PRE-flight; it must write nothing"
 
 
+def test_the_licence_preflight_refuses_a_BLOCKED_donor(world):
+    """⚠ #412. The pre-flight tested `hit[1] == "nc"`, and the `nc` class was retired on
+    2026-09-09 with both members moved to `blocked` — so the branch could not fire on any
+    declared dataset, and a blocked donor was refused only by `license_check` at the END.
+    Nothing went red: this refusal sat in UNCOVERED_REFUSALS. The donor is named `expresso`
+    because that is a REAL `blocked` entry in the manifest; the test therefore also pins
+    that `expresso` stays non-permissive, which is the ruling itself.
+    """
+    d, _, _ = _corpus(world["tmp"], "expresso", ["900", "901"], 60,
+                      world["tmp"] / "LibriTTS-R" / "wavs", "x")
+    r = run("--base", world["base"], "--add", d, "--out", world["out"])
+    assert r.returncode != 0
+    out = r.stdout + r.stderr
+    assert "is NOT PERMISSIVE" in out, out
+    # ⚠ the arrow form (#418): the donor PATH contains "expresso" and both refusal branches
+    # print it, so the bare word cannot distinguish "named the dataset" from "quoted the path".
+    assert "-> expresso (" in out, out
+    assert "matches no declared dataset" not in out, "refused as UNDECLARED, not as blocked"
+    assert not world["out"].exists(), "a licence refusal is a PRE-flight; it must write nothing"
+
+
 # ------------------------------------------------------------------- #335 — the refusal ledger
 #
 # ⚠⚠ WHAT THIS IS FOR: the module docstring above claimed every refusal was exercised, and it
@@ -492,6 +513,7 @@ COVERED_REFUSALS = {
         "test_out_equal_to_an_add_is_refused_even_under_force",
     "already holds": "test_populated_out_without_force_is_refused",
     "matches no declared dataset": "test_the_licence_preflight_refuses_an_undeclared_donor",
+    "is NOT PERMISSIVE": "test_the_licence_preflight_refuses_a_BLOCKED_donor",
     "base %s has no %s map": "test_base_without_the_libritts_namespace_refuses_cleanly",
     "are ALREADY in the base":
         "test_a_speaker_already_in_the_base_is_refused, test_a_speaker_shared_between_two_ADDS_is_refused",
@@ -507,7 +529,6 @@ UNCOVERED_REFUSALS = {
     "has no speakers.json": "base/add missing the map file",
     "two speakers on index": "donor's own map is already broken",
     "nothing to add": "no --add passed",
-    "is NON-COMMERCIAL": "the NC licence branch — the other half of the wall",
     "base n_spks=%s but its maps hold": "base counter disagrees with its map",
     "base index space is not contiguous": "base has a hole",
     "%s has no %s map — this script appends LibriTTS-lane": "the --add namespace check; #335 "

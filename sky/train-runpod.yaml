@@ -37,9 +37,10 @@ workdir: .                  # 9.4 MB. .gitignore already excludes /data and logs
 file_mounts:
   # Absolute path, deliberately identical to the host. Two things depend on it:
   #   1. train_op.txt stores ABSOLUTE wav paths (/data/model-training/datasets/...).
-  #   2. matcha/data/license_wall.py matches exact case-insensitive path
-  #      components against configs/data_licenses.yaml — rehosting this at, say,
-  #      /sky/data/audio would raise LicenseWallError for an unclassified path.
+  #   2. matcha/data/license_wall.py matches case-insensitive path components
+  #      (exactly, or by the name half of an HF-cache spelling) against
+  #      configs/data_licenses.yaml — rehosting this at, say, /sky/data/audio
+  #      would raise LicenseWallError for an unclassified path.
   # ~9 GB: slow on first launch, then cached on the cluster.
   /data/model-training/datasets/LibriTTS_R: /data/model-training/datasets/LibriTTS_R
 

@@ -1,13 +1,36 @@
 """The license wall: refuses to train on non-permissive or undeclared data.
 
-Enforces the permissive/commercial boundary of north star §8.2 in code, so
-CC-BY-NC sources (Expresso, original-subset Emilia) can never silently enter
-the production corpus. Every dataset reachable from a training filelist must
-be declared in configs/data_licenses.yaml.
+Enforces the corpus bar of the north star's Load-Bearing Constraints (§8) in code,
+so non-permissive sources
+(Expresso, original-subset Emilia) can never silently enter the production
+corpus. Every dataset reachable from a training filelist must be declared in
+configs/data_licenses.yaml.
 
-Escape hatch for §7 de-risk experiments: SONORA_LICENSE_WALL=derisk permits
-class-`nc` data with a loud banner — artifacts from such runs are tainted and
-must never be promoted to the registry. There is deliberately no "off".
+Two ways to fail, and they are different findings:
+  * `class: blocked` — declared, recognised, and refused. Names the dataset.
+  * undeclared       — no entry matches the path at all. Names the path.
+
+⚠⚠ THERE IS NO ESCAPE HATCH, AND THERE USED TO BE (removed 2026-09-09, owner).
+`SONORA_LICENSE_WALL=derisk` permitted class-`nc` data behind a taint banner.
+The `nc` class was retired the same day — the 2026-08-01 fully-Apache-2.0
+posture sets the bar at unrestricted open redistribution, which CC-BY-NC does
+not clear — so the hatch permitted nothing, and a dormant permission is the one
+route restricted material could take back into a lineage.
+
+⚠ THE CANON WAS RIGHT BEFORE THIS CODE WAS. The north star's §8 table has read
+"Corpus bar = unrestricted open redistribution — NC licences do not clear it"
+since 2026-08-20, while this module went on permitting NC data behind the hatch
+and citing "§8.2" — a section number that the 2026-08-20 rewrite removed. A
+stale citation is how a rule and its enforcement drift apart without either
+looking wrong: the doc could not be checked against the code because the code
+pointed at a doc section that no longer existed.
+
+⚠ THAT WAS THE *LICENCE* HATCH ONLY, and this docstring used to conflate two
+unrelated things by calling it "the §7 de-risk escape hatch". NORTH-STAR §7
+DE-RISK EXPERIMENTS ARE UNAFFECTED and continue exactly as before — the
+single-channel energy run, the identity-at-init playbook, all of it. They
+simply cannot be run on non-permissive data. If you came here from a §7
+reference looking for the flag, it was never yours: it gated licences.
 """
 
 import os
@@ -39,24 +62,53 @@ def _manifest():
     return _manifest_cache
 
 
+def _candidates(component):
+    """The names a single path component may be known by.
+
+    ⚠ HUGGING FACE CACHES RENAME THE DATASET, AND A DECLARATION THAT DOES NOT ACCOUNT FOR
+    IT IS DECORATIVE. Measured 2026-09-09: `expresso` was declared here for weeks while the
+    only copy on disk sat at `/data/huggingface/datasets/ylacombe___expresso`, whose
+    components are `huggingface`, `datasets`, `ylacombe___expresso` — none of them
+    `expresso`. `classify_path` returned None for every file in it.
+
+    ⚠ It still REFUSED that data, via the undeclared branch, so this was never a hole
+    through which NC audio could pass. It is worse in a quieter way: the entry looked like
+    it was doing something, and the refusal named a path instead of a dataset.
+
+    Both cache layouts, because they differ and both exist on this machine:
+      * datasets cache: `org___name`      (three underscores)
+      * hub cache:      `datasets--org--name` / `models--org--name`
+    Only the NAME half is offered — an org is not a dataset, and matching one would let a
+    publisher's whole namespace inherit one entry's class.
+    """
+    yield component
+    if "___" in component:
+        yield component.rsplit("___", 1)[-1]
+    parts = component.split("--")
+    if len(parts) == 3 and parts[0] in ("datasets", "models"):
+        yield parts[2]
+
+
 def classify_path(path):
     """Returns (dataset_name, class, license) or None if no component matches."""
     table = _manifest()
     for component in os.path.normpath(path).split(os.sep):
-        hit = table.get(component.lower())
-        if hit:
-            return hit
+        for name in _candidates(component):
+            hit = table.get(name.lower())
+            if hit:
+                return hit
     return None
 
 
 def enforce(filelist_paths):
     """Validates filelists + every audio path inside them against the manifest.
 
-    Raises LicenseWallError on class-`nc` data (unless SONORA_LICENSE_WALL=derisk)
-    and on paths that match no declared dataset.
+    Raises LicenseWallError on `class: blocked` data and on paths that match no declared
+    dataset. ⚠ There is no mode parameter and no environment variable: the `derisk` hatch
+    was removed 2026-09-09 with the `nc` class it existed to permit. See the module
+    docstring — §7 de-risk EXPERIMENTS are a different thing and are unaffected.
     """
-    mode = os.environ.get("SONORA_LICENSE_WALL", "enforce")
-    nc_hits, unknown = [], []
+    blocked_hits, unknown = [], []
     for filelist in filelist_paths:
         seen_dirs = set()
         rows = []
@@ -74,32 +126,24 @@ def enforce(filelist_paths):
             hit = classify_path(p)
             if hit is None:
                 unknown.append(p)
-            elif hit[1] == "nc":
-                nc_hits.append((p, hit[0], hit[2]))
+            elif hit[1] != "permissive":
+                blocked_hits.append((p, hit[0], hit[2]))
     if unknown:
         raise LicenseWallError(
             "License wall: undeclared dataset path(s) in training filelists — "
             f"declare them in configs/data_licenses.yaml first: {sorted(set(unknown))[:5]}"
         )
-    if nc_hits:
-        detail = "; ".join(f"{p} -> {name} ({lic})" for p, name, lic in nc_hits[:5])
-        if mode == "derisk":
-            banner = "=" * 76
-            print(
-                f"\n{banner}\n"
-                "LICENSE WALL — NON-COMMERCIAL DE-RISK RUN\n"
-                f"NC-licensed data in the corpus: {detail}\n"
-                "Checkpoints/exports from this run are TAINTED: de-risk use only,\n"
-                "never promote to the registry or any shipped artifact.\n"
-                f"{banner}\n",
-                flush=True,
-            )
-        else:
-            raise LicenseWallError(
-                f"License wall: NC-licensed data in training filelists: {detail}. "
-                "NC sources are de-risk-only (north star §8.2). For a de-risk "
-                "experiment set SONORA_LICENSE_WALL=derisk (taints the run)."
-            )
+    if blocked_hits:
+        detail = "; ".join(f"{p} -> {name} ({lic})" for p, name, lic in blocked_hits[:5])
+        raise LicenseWallError(
+            f"License wall: non-permissive data in training filelists: {detail}. "
+            "The corpus bar is UNRESTRICTED OPEN REDISTRIBUTION (north star § 8 "
+            "Load-Bearing Constraints, owner 2026-08-01, ruled again 2026-09-09). There is "
+            "no override: the `nc` class and "
+            "SONORA_LICENSE_WALL=derisk were both retired on 2026-09-09. If you believe "
+            "this dataset clears the bar, change its entry in configs/data_licenses.yaml "
+            "and say why in the commit — that is a licence decision, not a run setting."
+        )
 
 
 # The clean-holdout wall, as a gate rather than a naming convention (TR-M3).

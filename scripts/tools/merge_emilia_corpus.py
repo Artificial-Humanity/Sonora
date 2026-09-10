@@ -185,20 +185,34 @@ def main():
     from matcha.text.op_g2p import OpenPhonemizerG2P
 
     # Pre-flight the provenance of everything this will touch, BEFORE ~13k phonemizations.
-    # The authoritative check is `license_check` on the written filelists at the end; this
-    # is the same question asked early, because the answer does not change and finding out
-    # afterwards costs the whole run. An undeclared `--out` is the likely miss: the wall
-    # classifies the filelist's own directory, so a new corpus dir needs a manifest entry
-    # even though it holds no audio.
+    # Asked early because the answer does not change and finding out afterwards costs the
+    # whole run. An undeclared `--out` is the likely miss: the wall classifies the filelist's
+    # own directory, so a new corpus dir needs a manifest entry even though it holds no audio.
+    # ⚠⚠ WHAT THE END CHECK REACHES DIFFERS PER ITEM, AND THIS HAS NOW BEEN WRONG TWICE
+    # (#417, #419). `license_check` classifies the written filelists and the dirname of
+    # every audio path in them. `KEPT_24K/wavs` IS reached that way — every emilia row's
+    # path is built by `_emilia_wav` — so for the donor wavs this is the same question asked
+    # early. `--out` is reached too, as the filelists' own directory. `--base` is NOT: its
+    # rows are re-emitted verbatim from `_base_rows` and their audio lives under LibriTTS_R,
+    # so this loop is the ONLY classification of the `--base` directory NAME. A `--base`
+    # whose name is blocked while its audio is permissive is seen HERE or nowhere. ⚠ Unlike
+    # the libritts tool there is no subprocess harness over this path, so nothing here goes
+    # red if it is removed — treat that as a reason for care, not as evidence it is redundant.
     for p in (args.out, args.base, os.path.join(KEPT_24K, "wavs")):
         hit = classify_path(p)
         if hit is None:
             raise SystemExit(
                 f"ABORT: {p} matches no declared dataset. The licence wall would refuse "
                 f"this corpus at load; declare it in configs/data_licenses.yaml first.")
-        if hit[1] == "nc":
-            raise SystemExit(f"ABORT: {p} -> {hit[0]} ({hit[2]}) is NON-COMMERCIAL. "
-                             f"NC data is de-risk-only and must not enter a corpus.")
+        # ⚠ #412. This tested `== "nc"`, and the `nc` class was retired on 2026-09-09 —
+        # so the branch could not fire on any declared dataset and a blocked `--base` was
+        # refused only by `license_check` at the END, after the run it exists to spare.
+        # Same shape as `enforce`: anything that is not `permissive` is refused.
+        if hit[1] != "permissive":
+            raise SystemExit(
+                f"ABORT: {p} -> {hit[0]} ({hit[2]}) is NOT PERMISSIVE. The corpus bar is "
+                f"unrestricted open redistribution and there is no override — the `nc` "
+                f"class and SONORA_LICENSE_WALL=derisk were retired 2026-09-09.")
 
     # The anchor is derived from the corpus we are merging INTO, so the two halves land on
     # one scale. Pointing it at a different corpus than --base would label Emilia against a

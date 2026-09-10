@@ -1,4 +1,4 @@
-# License manifest for the training data wall (north star §8.2).
+# License manifest for the training data wall (north star § 8, Load-Bearing Constraints).
 #
 # Every dataset that can appear in a training filelist MUST be declared here;
 # matcha/data/license_wall.py refuses to train on paths it cannot classify.
@@ -7,19 +7,39 @@
 # notes/training-sources.md.
 #
 # class: permissive — allowed in the production corpus
-#        nc         — bare CC-BY-NC (no agreement executed). Owner ruling 2026-07-19
-#                     (notes/dataset-landscape.md, "NC licensing — the two-fence ruling"):
-#                     risk-accepted for training use; SONORA_LICENSE_WALL=derisk +
-#                     run-taint are retained as LINEAGE AUDIT (so any release can
-#                     disclose exactly what's in the weights), not as prohibition.
-#                     Ship/don't-ship NC lineage is a flagged promotion-time call.
+#        blocked    — declared so it is RECOGNISED, and refused unconditionally.
+#                     There is no mode, flag or environment variable that permits it.
+#
+# ⚠ THE `nc` CLASS WAS RETIRED 2026-09-09 (owner). It meant "bare CC-BY-NC,
+# risk-accepted for training use" under the 2026-07-19 two-fence ruling, which the
+# 2026-08-01 fully-Apache-2.0 posture SUPERSEDES: that posture sets the corpus bar at
+# unrestricted open redistribution and says explicitly it is stricter than the old
+# commercial test. CC-BY-NC does not clear it.
+#
+# ⚠⚠ RETIRED, NOT EMPTIED, AND THAT IS THE POINT. Both members became `blocked`; the
+# class name is gone so a future NC arrival cannot be filed under it and inherit a risk
+# acceptance that no longer exists. `SONORA_LICENSE_WALL=derisk` went with it — it
+# existed solely to permit class-`nc` data, so with none left it permitted nothing, and a
+# dormant permission is the one route restricted material could take back into a lineage.
+# ⚠ THAT IS THE *LICENCE* HATCH ONLY. North-star §7 DE-RISK EXPERIMENTS ARE UNAFFECTED
+# and continue — they simply cannot use non-permissive data. The two share a word and
+# nothing else; the wall's docstring used to conflate them.
+#
+# A `blocked` entry is still DECLARED on purpose: an undeclared path also refuses, but it
+# refuses as "undeclared", which reads as an oversight. Declared-and-blocked names the
+# dataset and the reason.
 #
 # Agreement-walled datasets (click-through / "by downloading you agree" terms,
-# e.g. EmoV-DB) are FULLY EXCLUDED by the same ruling: never downloaded, never
-# ingested, never declared here.
+# e.g. EmoV-DB) are FULLY EXCLUDED: never downloaded, never ingested, never declared here.
 #
-# dirs are matched case-insensitively as exact path components of the filelist
-# path and of every audio path inside the filelist.
+# dirs are matched case-insensitively against the path components of the filelist
+# path and of every audio path inside the filelist. A component matches a declared
+# name exactly, OR by the NAME half of a Hugging Face cache spelling: `org___name`
+# (datasets cache) and `datasets--org--name` / `models--org--name` (hub cache), so
+# `expresso` reaches `ylacombe___expresso`. The org half is never offered — matching
+# it would let a publisher's whole namespace inherit one entry's class — and there is
+# no prefix or substring matching, so `emilia_kept` still cannot collide with `emilia`.
+# The splitting lives in `_candidates` in matcha/data/license_wall.py.
 
 datasets:
   ljspeech:
@@ -163,19 +183,30 @@ datasets:
     license: CC0
     class: permissive
   expresso:
-    # UNRESOLVED, owner's call. The 2026-07-19 ruling that made this `nc` (risk-accepted)
-    # is arguably superseded by the 2026-08-01 no-patent / fully-Apache-2.0 posture, which
-    # sets the corpus bar at UNRESTRICTED OPEN REDISTRIBUTION and says explicitly that it
-    # is stricter than the old commercial test. CC-BY-NC does not clear that bar. Nothing
-    # has trained on it either way. See notes/training-sources.md, "The Expresso conflict".
-    # ⚠ STILL UNRESOLVED AS OF 2026-08-12, and do not read the missing fetcher as the answer:
-    # `scripts/download_expresso.py` was deleted that day under #26 step 2 as finished
-    # one-shot tooling, NOT as a licence ruling. The question above is still open; if it is
-    # ever answered yes, the fetcher is in git history.
+    # RESOLVED 2026-09-09 (owner): EXCLUDED. The 2026-08-01 fully-Apache-2.0 posture stands
+    # and the 2026-07-19/26 risk-accepted ruling is superseded — the bar is unrestricted
+    # open redistribution and CC-BY-NC does not clear it. A de-risk-only middle path was
+    # offered and refused, so this is outright. Nothing ever trained on it.
+    # See notes/training-sources.md, "The Expresso conflict", for the ruling in full.
+    # ⚠ The bytes were deleted the same day, from a THIRD copy that the 2026-08-29 sweep
+    # missed (the HF *datasets* cache, `ylacombe___expresso` — a different tree from the
+    # *hub* cache it did clear). Re-acquisition is recorded in notes/training-sources.md.
+    # ⚠⚠ `dirs` MATCHED NOTHING ON DISK FOR THE WHOLE TIME THIS WAS DECLARED: the real copy
+    # lived at `ylacombe___expresso`, and component matching was exact, so `expresso` never
+    # hit it. The wall still refused it — as UNDECLARED, via a different branch — but this
+    # declaration was decorative. `classify_path` now splits HF-cache names, so `expresso`
+    # matches both spellings. Excluded as a DESIGN REFERENCE is not implied: reading a
+    # taxonomy is not training on it.
     dirs: [expresso]
     license: CC-BY-NC-4.0
-    class: nc
+    class: blocked
   emilia_original:
+    # ⚠ BLOCKED 2026-09-09 with the `nc` class's retirement — same bar, same ruling. It was
+    # never on disk and never trained on; this is the class change reaching its second
+    # member, not a new finding about Emilia.
+    # ⚠ Component matching is EXACT and these two names are load-bearing: the YODAS keeps
+    # live under `emilia_kept` / `emilia_kept_24k`, which cannot collide with `emilia`.
+    # That separation is what keeps v5-v7 trainable while this entry is blocked.
     dirs: [emilia, Emilia]
     license: CC-BY-NC-4.0 (the original 101k-h Emilia subset; repo tag is misleading)
-    class: nc
+    class: blocked
