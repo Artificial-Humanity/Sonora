@@ -666,8 +666,16 @@ def _config_env_value(key):
 def _run_sh_default_interpreter():
     """The interpreter `scripts/litert_export/run.sh` composes, derived from that file.
 
-    ⚠ COMPOSED FROM ITS TWO LINES, NEVER TYPED HERE. Writing the joined path into this test
-    would make it the THIRD copy and the one that silently agrees with neither.
+    ⚠ COMPOSED FROM ITS TWO LINES, NEVER TYPED HERE. Writing the joined path in would add one
+    more place for it to live, and the one that agrees with none of the others.
+
+    ⚠ NO COUNT IS STATED HERE, DELIBERATELY, AND IT USED TO BE (#434). This said "the THIRD
+    copy" while its own caller said "a fourth copy" seven lines below — two numbers disagreeing
+    inside the docstrings of the pin that exists to keep these places in step, and the commit
+    that corrected the count everywhere else left this one behind. Correcting the number would
+    have re-armed the same trap: nothing can fail when a number in prose goes stale, and
+    AGENTS.md §5b says to derive counts rather than state them. `_INTERPRETER_COPIES` below is
+    the enumeration; read the length off it if you need one.
     """
     src = (REPO / "scripts" / "litert_export" / "run.sh").read_text(encoding="utf-8")
     work = re.search(r'SONORA_LITERT_WORK:-([^}"]+)', src)
@@ -684,24 +692,37 @@ def _check_publishable_docstring_interpreter():
     return m.group(1)
 
 
+# ⚠ THE ENUMERATION, not a sentence with a number in it (#434). Every place the interpreter
+# path is written out literally, and how to read each one back. `run.sh` is deliberately absent:
+# it OWNS the value, so it is what the others are compared against rather than one of them.
+_INTERPRETER_COPIES = {
+    "FerroStep/workflow/config.env (REVIEWER_TORCH_PY)":
+        lambda: _config_env_value("REVIEWER_TORCH_PY"),
+    "scripts/tools/check_publishable.py (docstring command)":
+        _check_publishable_docstring_interpreter,
+}
+
+
 def test_the_promotion_interpreter_matches_the_export_lane_default():
-    """⚠⚠ THE PATH IS IN THREE PLACES AND THIS PINNED TWO OF THEM (#434).
+    """⚠⚠ EVERY PLACE THE PATH IS SPELLED OUT, PINNED TO THE ONE THAT OWNS IT (#434).
 
-    `scripts/litert_export/run.sh` owns the default. `config.env` spells it out so the
-    reviewer's allowlist can name it, and `check_publishable.py`'s docstring spells it out so
-    the promoter's command is pasteable. Each of the latter two called itself one half of a
-    pair with run.sh and neither mentioned the other — so "change both" reached two of three,
-    and the third was the very line #428 was filed to fix.
+    `scripts/litert_export/run.sh` owns the default and composes it. The places in
+    `_INTERPRETER_COPIES` spell it out literally, each for a reason: `config.env` so the
+    reviewer's allowlist can name it, `check_publishable.py`'s docstring so the promoter's
+    command is pasteable. Each of them once described itself as one half of a pair with
+    `run.sh` and neither mentioned the other, so "change both" reached some of them and left
+    the rest naming an interpreter the export lane no longer used.
 
-    ⚠ COMPOSED FROM run.sh's OWN TWO LINES, NEVER TYPED HERE. Writing the joined path into
-    this test would make it a fourth copy, and the one that silently agrees with none.
+    ⚠ ADD A NEW PLACE TO `_INTERPRETER_COPIES`, NOT A SENTENCE SAYING HOW MANY THERE ARE. The
+    count is derived from that dict wherever one is needed; §5b's rule is that a number in
+    prose goes stale with nothing able to fail, and #434's residual was exactly that.
+
+    ⚠ COMPOSED FROM run.sh's OWN TWO LINES, NEVER TYPED HERE — that would add one more place,
+    and the one that agrees with none of the others.
     """
     want = _run_sh_default_interpreter()
-    places = {
-        "FerroStep/workflow/config.env (REVIEWER_TORCH_PY)": _config_env_value("REVIEWER_TORCH_PY"),
-        "scripts/tools/check_publishable.py (docstring command)":
-            _check_publishable_docstring_interpreter(),
-    }
+    places = {name: read() for name, read in _INTERPRETER_COPIES.items()}
+    assert places, "the enumeration is empty, so this test would pass over nothing"
     assert all(places.values()), f"a copy has gone missing, so nothing pins it: {places}"
     drifted = {k: v for k, v in places.items() if v != want}
     assert not drifted, (

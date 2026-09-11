@@ -24,14 +24,19 @@ the `test` dependency group, which excludes torch on purpose. So the §7 checkli
 have torch are the LiteRT harness venv (6.6 GB, living with the data) and the training
 container.
 
-⚠⚠ THAT PATH EXISTS IN THREE PLACES, NOT TWO, AND THIS LINE SAID "second copy / change both"
-(#434). `scripts/litert_export/run.sh` OWNS the default — it composes it from
-`SONORA_LITERT_WORK` — and two files then spell it out: this docstring, so the command is
-pasteable rather than a shape the reader has to complete, and `REVIEWER_TORCH_PY` in
-`FerroStep/workflow/config.env`, so the reviewer's allowlist can name it. Each of the two
-described itself as one half of a pair with `run.sh` and neither mentioned the other, so
-"change both" sent a reader to two of the three and left this line naming an interpreter the
-export lane no longer used — re-creating, on this exact line, the defect #428 closed.
+⚠⚠ THIS LINE SAID "a deliberate second copy / change both", AND THE PAIR WAS NOT A PAIR (#434).
+`scripts/litert_export/run.sh` OWNS the default — it composes it from `SONORA_LITERT_WORK` —
+and more than one file then spells it out: this docstring, so the command is pasteable rather
+than a shape the reader has to complete, and `REVIEWER_TORCH_PY` in
+`FerroStep/workflow/config.env`, so the reviewer's allowlist can name it. Each described itself
+as one half of a pair with `run.sh` and neither mentioned the other, so "change both" reached
+some of them and left this line naming an interpreter the export lane no longer used —
+re-creating, on this exact line, the defect #428 closed.
+
+⚠ NO COUNT IS GIVEN HERE ON PURPOSE. An earlier fix wrote "THREE PLACES", which is a number in
+prose that nothing can fail on when it stops being true — §5b's rule, and #434's own residual.
+The places are enumerated in `_INTERPRETER_COPIES` in the test named below; derive a count from
+that if one is wanted.
 
 **All three are now pinned to `run.sh` by
 `tests/test_request_review.py::test_the_promotion_interpreter_matches_the_export_lane_default`**,
@@ -72,9 +77,22 @@ def main():
     # reading the status. Caught here rather than in the caller because the exit code is this
     # tool's whole interface: §7 is a hand checklist, and the only machine-readable thing it
     # produces is the number.
+    # ⚠⚠ `Exception`, NOT A TUPLE OF TYPES, AND THE TUPLE WAS THE DEFECT (#436). The first fix
+    # here listed `(OSError, RuntimeError, EOFError, ValueError)`, which is a hand-kept
+    # enumeration over an open-ended set — the #247 shape, one layer down. Measured under the
+    # granted interpreter: a file that exists but is not a checkpoint raises
+    # `_pickle.UnpicklingError` (PickleError -> Exception), which that tuple does not name, so it
+    # escaped and the process exited 1 — the code this tool documents as REFUSED. A truncated
+    # checkpoint raises RuntimeError and a directory IsADirectoryError, both of which it did
+    # catch, which is why the hole looked closed.
+    #
+    # The classification is "the load failed", not "the load failed with one of these types", so
+    # the handler says that. Its blast radius is exactly one statement — `torch.load` and nothing
+    # else is inside the `try` — and `BaseException` is deliberately not caught, so a
+    # KeyboardInterrupt still interrupts.
     try:
         ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
-    except (OSError, RuntimeError, EOFError, ValueError) as exc:
+    except Exception as exc:  # pylint: disable=broad-except
         print(f"!! cannot run: could not read the checkpoint {args.ckpt}: "
               f"{type(exc).__name__}: {exc}. This is NOT a publish refusal — the wall never "
               "ran. Check the path.", file=sys.stderr)
