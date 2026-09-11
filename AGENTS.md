@@ -254,8 +254,12 @@ the simple version that holds until then. Do not build tooling on its shape.
     **Check any new setting against every checkout that exists, and use `--worktree` for
     anything that names a path** — but only after reading the next bullet, because `--worktree`
     does not currently do what its name says. ⚠ That instruction said "both checkouts" while
-    this bullet said there is one, and the one-worktree fact was stated twice in the same bullet
-    in two different wordings (#443, #444). Both are now said once, here.
+    this bullet said there is one (#443), and the one-worktree fact was then stated twice in this
+    bullet in two wordings (#444). ⚠ **The first fix for #444 deleted one restatement and added a
+    sentence claiming the fact was now "said once" — while a sub-bullet still carried it in
+    full.** A claim about deduplication, itself untrue, inside the paragraph being deduplicated.
+    The restatement is gone, and no sentence here asserts how many times anything is said, for
+    the same reason `_INTERPRETER_COPIES` exists: prose cannot check itself.
     * ⚠⚠ **`extensions.worktreeConfig` IS NOT ENABLED, AND `--worktree` THEREFORE DOES THE EXACT
       THING THIS BULLET WARNS AGAINST.** Measured 2026-09-11 in a throwaway repo with the
       extension off: `git config --worktree commit.template .gitmessage` **exits 0**, writes to
@@ -268,10 +272,6 @@ the simple version that holds until then. Do not build tooling on its shape.
       day. That was a claim about behaviour made without running it, and it was the more
       dangerous spelling of the error: "it fails" makes a reader try something else, while the
       truth is that it succeeds and quietly writes the wrong file.
-    * ⚠ **The two-worktree premise also moved.** `/data/repos/Sonora` carries no `.git` since
-      2026-08-29 — the authority is `AI-Lab-AMD/scripts/deploy.sh` and the workspace
-      `AGENTS.md` §2, **not** this file's §2, which is about training and troubleshooting. So
-      the shared-config hazard is currently theoretical for that reason.
   * ⚠⚠ **`git push` IS NOT THE WHOLE COMMAND from a branch whose name differs from its
     upstream — it REFUSES.** This bullet asserted the opposite in bold, and was true only while
     `push.default=upstream` was set (above). Re-measured 2026-09-11 in a throwaway clone:
