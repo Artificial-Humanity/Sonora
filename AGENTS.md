@@ -243,16 +243,19 @@ the simple version that holds until then. Do not build tooling on its shape.
       so these sentences were read as descriptions of a configured repo for as long as they
       stood. Check the setting before relying on it, exactly as §5b says of any documented
       number.
-  * ⚠ **`git config --local` WRITES THE SHARED CONFIG, WHICH EVERY WORKTREE READS.** This repo
-    **had two** — this one and `/data/repos/Sonora` — so a setting made here changed git's
-    behaviour in a checkout you were not looking at. ⚠ **It has ONE today**: that path stopped
-    being a git checkout on 2026-08-29, so the hazard is latent rather than live. The bullet is
-    kept because it returns the moment a second worktree exists, and because what it taught is
-    still true of `--local`. "One committer, therefore harmless" is not the test:
-    `commit.template` was set `--local` and pointed at a `.gitmessage` that does not exist in the
-    other worktree, which makes an interactive `git commit` **fatal** there — it refuses and
-    creates nothing. **Check any new setting against both checkouts, and use `--worktree` for
-    anything that names a path.**
+  * ⚠ **`git config --local` WRITES THE SHARED CONFIG, WHICH EVERY WORKTREE READS.** ⚠ **This
+    repo has ONE worktree today** — `/data/repos/Sonora` stopped being a git checkout on
+    2026-08-29 (`AI-Lab-AMD/scripts/deploy.sh`, and the workspace `AGENTS.md` §2, **not** this
+    file's §2) — so the hazard below is latent rather than live. It is kept because it returns
+    the moment a second worktree exists, and because what it taught is still true of `--local`.
+    "One committer, therefore harmless" is not the test: `commit.template` was set `--local` and
+    pointed at a `.gitmessage` that did not exist in the other worktree, which made an
+    interactive `git commit` **fatal** there — it refused and created nothing.
+    **Check any new setting against every checkout that exists, and use `--worktree` for
+    anything that names a path** — but only after reading the next bullet, because `--worktree`
+    does not currently do what its name says. ⚠ That instruction said "both checkouts" while
+    this bullet said there is one, and the one-worktree fact was stated twice in the same bullet
+    in two different wordings (#443, #444). Both are now said once, here.
     * ⚠⚠ **`extensions.worktreeConfig` IS NOT ENABLED, AND `--worktree` THEREFORE DOES THE EXACT
       THING THIS BULLET WARNS AGAINST.** Measured 2026-09-11 in a throwaway repo with the
       extension off: `git config --worktree commit.template .gitmessage` **exits 0**, writes to
@@ -268,14 +271,21 @@ the simple version that holds until then. Do not build tooling on its shape.
     * ⚠ **The two-worktree premise also moved.** `/data/repos/Sonora` carries no `.git` since
       2026-08-29 — the authority is `AI-Lab-AMD/scripts/deploy.sh` and the workspace
       `AGENTS.md` §2, **not** this file's §2, which is about training and troubleshooting. So
-      this repo has ONE worktree today and the shared-config hazard is currently theoretical;
-      it is kept because it returns the moment a second one exists.
+      the shared-config hazard is currently theoretical for that reason.
   * ⚠⚠ **`git push` IS NOT THE WHOLE COMMAND from a branch whose name differs from its
     upstream — it REFUSES.** This bullet asserted the opposite in bold, and was true only while
     `push.default=upstream` was set (above). Re-measured 2026-09-11 in a throwaway clone:
     *"fatal: The upstream branch of your current branch does not match the name of your current
-    branch."* Name both ends — `git push origin <branch>:main` — or push from a branch that
-    matches, as `merge_branch.sh` does.
+    branch."*
+    ⚠⚠ **DO NOT WORK AROUND IT, AND THIS BULLET TOLD YOU TO.** Until 2026-09-11 it said to
+    "name both ends — `git push origin <branch>:main`". **That command reaches `main`**, and
+    reproduced here it did: an unreviewed commit on a scratch branch went
+    `093cf40..a23f28a  sonora/scratch -> main` in one step. It bypasses the refusal the
+    sub-bullet below calls the only thing standing there, AND `merge_branch.sh`'s severity
+    gate — the remedy defeating the guard, written one line above the sentence praising it.
+    **Work reaches `main` through `FerroStep/workflow/scripts/merge_branch.sh` and nothing
+    else.** If what you want is the branch on `origin` rather than on `main`, push it under its
+    own name (`git push origin <branch>:<branch>`, or `-u` once).
     * ⚠ **THAT REFUSAL IS A GUARD, AND IT IS CURRENTLY THE ONLY THING BETWEEN A SCRATCH BRANCH
       AND `main`** (owner, 2026-09-11, declining to re-set `push.default`). This bullet used to
       mourn it: it called `simple` "the default this replaced" and described losing the refusal
@@ -428,8 +438,12 @@ the simple version that holds until then. Do not build tooling on its shape.
       let a trailer ride for eight commits from a file that had been deleted. It was found
       this time because a harness instruction asked for the trailer and the two rules had to
       be read against each other; nothing in the repo compares them.
-    * **To enable it for interactive use:** `git config --worktree commit.template .gitmessage`.
-      ⚠⚠ **THAT COMMAND DOES NOT FAIL — IT SILENTLY DOES THE WRONG THING.**
+    * **To enable it for interactive use** — ⚠ **read this whole bullet before running
+      anything; the command comes after its precondition on purpose (#445).** The precondition
+      is `git config extensions.worktreeConfig true`. Then, and only then:
+      `git config --worktree commit.template .gitmessage`.
+      ⚠⚠ **WITHOUT THE PRECONDITION THAT COMMAND DOES NOT FAIL — IT SILENTLY DOES THE WRONG
+      THING.**
       `extensions.worktreeConfig` is not enabled here, and with it off `git config --worktree`
       **exits 0 and writes `.git/config`**, the shared config, creating no `config.worktree`
       (measured 2026-09-11 in a throwaway repo). **Enable the extension first
