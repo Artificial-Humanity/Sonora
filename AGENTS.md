@@ -223,28 +223,84 @@ the simple version that holds until then. Do not build tooling on its shape.
   hook, and CI runs *after* a push rather than gating one. The abort above is the only thing
   in front of `main`, which is why it is a rule and not a preference.
 * **One session commits to this repo** (owner, 2026-08-13), so `main` does not move under you
-  and divergence is not an ordinary event. The repo is configured to match:
-  `push.default=upstream` and `pull.rebase=false`.
-  * ⚠ **`git config --local` WRITES THE SHARED CONFIG, WHICH EVERY WORKTREE READS.** This repo
-    has two — this one and `/data/repos/Sonora` — so a setting made here changes git's behaviour
-    in a checkout you are not looking at. "One committer, therefore harmless" is not the test:
-    `commit.template` was set `--local` and pointed at a `.gitmessage` that does not exist in the
-    other worktree, which makes an interactive `git commit` **fatal** there — it refuses and
-    creates nothing. **Check any new setting against both checkouts, and use `--worktree` for
-    anything that names a path.** `extensions.worktreeConfig` is enabled, so `--worktree` works.
-  * **`git push` is the whole command.** No `HEAD:main`, no `-u`. Verified against this
-    worktree, whose branch name differs from `main`.
-    * ⚠ **AND IT COST A GUARD, which is worth knowing before you cut a branch.** `simple` — the
-      default this replaced — *refuses* to push a branch whose name differs from its upstream,
-      and that refusal is the same `'simple'` fatal blamed for breaking `@{push}`. It was doing
-      two jobs and only one of them was in the way. Measured: with `upstream`,
-      `git checkout -b scratch origin/main` inherits `origin/main`, and a bare `git push` from
-      that scratch branch reports `scratch -> main`.
+  and divergence is not an ordinary event. **`pull.rebase=false` is set** (`--local`, and it
+  was re-set on 2026-09-11 — see below).
+  * ⚠⚠ **THIS SAID `push.default=upstream` AND `pull.rebase=false` WERE BOTH CONFIGURED, AND
+    NEITHER WAS SET AT ANY LEVEL** (measured 2026-09-11, with a positive control proving the
+    reader worked). The two errors point in opposite directions and only one was repaired:
+    * **`pull.rebase` was absent, which is the state the bullet below warns about.** That bullet
+      credits the setting with standing between a worker and git's `git config pull.rebase true`
+      hint; the setting was not there, so nothing did. It is set now. ⚠ It is **local config**,
+      so it does not travel with a clone and a fresh checkout starts without it — which is
+      presumably how it went missing. Anyone cloning this repo must set it themselves.
+    * **`push.default` is deliberately LEFT UNSET** (owner, 2026-09-11), so git's default
+      `simple` applies. The bullet below reads it as a guard that was traded away; it was not,
+      because the trade never happened. `simple` **refuses** to push a branch whose name differs
+      from its upstream, and on a repo with no branch protection that refusal is worth more than
+      the convenience `upstream` buys. **Setting it to `upstream` to match the old prose would
+      make a bare `git push` from a scratch branch reach `main`.**
+    * ⚠ **A CONFIG CLAIM IN PROSE IS NOT A CONFIG.** Nothing compares this file to `git config`,
+      so these sentences were read as descriptions of a configured repo for as long as they
+      stood. Check the setting before relying on it, exactly as §5b says of any documented
+      number.
+  * ⚠ **`git config --local` WRITES THE SHARED CONFIG, WHICH EVERY WORKTREE READS.** ⚠ **This
+    repo has ONE worktree today** — `/data/repos/Sonora` stopped being a git checkout on
+    2026-08-29 (`AI-Lab-AMD/scripts/deploy.sh`, and the workspace `AGENTS.md` §2, **not** this
+    file's §2) — so the hazard below is latent rather than live. It is kept because it returns
+    the moment a second worktree exists, and because what it taught is still true of `--local`.
+    "One committer, therefore harmless" is not the test: `commit.template` was set `--local` and
+    pointed at a `.gitmessage` that did not exist in the other worktree, which made an
+    interactive `git commit` **fatal** there — it refused and created nothing.
+    **Check any new setting against every checkout that exists, and use `--worktree` for
+    anything that names a path** — but only after reading the next bullet, because `--worktree`
+    does not currently do what its name says. ⚠ That instruction said "both checkouts" while
+    this bullet said there is one, and the one-worktree fact was stated twice in the same bullet
+    in two different wordings (#443, #444). Both are now said once, here.
+    * ⚠⚠ **`extensions.worktreeConfig` IS NOT ENABLED, AND `--worktree` THEREFORE DOES THE EXACT
+      THING THIS BULLET WARNS AGAINST.** Measured 2026-09-11 in a throwaway repo with the
+      extension off: `git config --worktree commit.template .gitmessage` **exits 0**, writes to
+      **`.git/config`** — the shared config — and creates no `config.worktree` at all. It does
+      not error and it does not warn. So the instruction *use `--worktree` for anything that
+      names a path* silently produces the `--local` outcome it exists to avoid.
+      **Enable the extension first (`git config extensions.worktreeConfig true`) or the
+      instruction is worse than useless.**
+      ⚠ This paragraph said the command *errors*, from 2026-09-11 until it was corrected the same
+      day. That was a claim about behaviour made without running it, and it was the more
+      dangerous spelling of the error: "it fails" makes a reader try something else, while the
+      truth is that it succeeds and quietly writes the wrong file.
+    * ⚠ **The two-worktree premise also moved.** `/data/repos/Sonora` carries no `.git` since
+      2026-08-29 — the authority is `AI-Lab-AMD/scripts/deploy.sh` and the workspace
+      `AGENTS.md` §2, **not** this file's §2, which is about training and troubleshooting. So
+      the shared-config hazard is currently theoretical for that reason.
+  * ⚠⚠ **`git push` IS NOT THE WHOLE COMMAND from a branch whose name differs from its
+    upstream — it REFUSES.** This bullet asserted the opposite in bold, and was true only while
+    `push.default=upstream` was set (above). Re-measured 2026-09-11 in a throwaway clone:
+    *"fatal: The upstream branch of your current branch does not match the name of your current
+    branch."*
+    ⚠⚠ **DO NOT WORK AROUND IT, AND THIS BULLET TOLD YOU TO.** Until 2026-09-11 it said to
+    "name both ends — `git push origin <branch>:main`". **That command reaches `main`**, and
+    reproduced here it did: an unreviewed commit on a scratch branch went
+    `093cf40..a23f28a  sonora/scratch -> main` in one step. It bypasses the refusal the
+    sub-bullet below calls the only thing standing there, AND `merge_branch.sh`'s severity
+    gate — the remedy defeating the guard, written one line above the sentence praising it.
+    **Work reaches `main` through `FerroStep/workflow/scripts/merge_branch.sh` and nothing
+    else.** If what you want is the branch on `origin` rather than on `main`, push it under its
+    own name (`git push origin <branch>:<branch>`, or `-u` once).
+    * ⚠ **THAT REFUSAL IS A GUARD, AND IT IS CURRENTLY THE ONLY THING BETWEEN A SCRATCH BRANCH
+      AND `main`** (owner, 2026-09-11, declining to re-set `push.default`). This bullet used to
+      mourn it: it called `simple` "the default this replaced" and described losing the refusal
+      as the price of `upstream`. **The price was never paid** — the setting is gone, so `simple`
+      is what is in force and nothing replaced it. Re-setting `push.default=upstream` to match
+      the old prose would spend the guard for a convenience, on a repo with no branch
+      protection.
     * **So cut scratch branches from a LOCAL ref, not from `origin/main`** — measured to fail
       safely with `no upstream branch`, which is the refusal you want.
-  * **`origin/main..HEAD` is the range**, and `@{push}..HEAD` also resolves now — `push.default`
-    was what broke it (`fatal: cannot resolve 'simple' push to a single destination`). Prefer
-    `origin/main..HEAD`: it is correct under any config.
+  * **`origin/main..HEAD` is the range.** ⚠ **`@{push}..HEAD` does NOT resolve** — this said it
+    "also resolves now", which was true only while `push.default=upstream` was set. Re-measured
+    2026-09-11 under the current config: `fatal: cannot resolve 'simple' push to a single
+    destination`, the very error this bullet quotes as the thing that used to happen. Use
+    `origin/main..HEAD`, which is correct under any config and is why the preference was stated
+    that way in the first place.
   * ⚠ **IF `main` EVER HAS MOVED, MERGE — NEVER REBASE.** A rebase **rewrites your local
     commits**, so the reviewed SHAs cease to exist and the cycle silently ends. `pull.rebase` is
     set to `false`, so a bare `git pull` merges (verified: exit 0, local commit survives as a
@@ -382,8 +438,21 @@ the simple version that holds until then. Do not build tooling on its shape.
       let a trailer ride for eight commits from a file that had been deleted. It was found
       this time because a harness instruction asked for the trailer and the two rules had to
       be read against each other; nothing in the repo compares them.
-    * **To enable it for interactive use:** `git config --worktree commit.template .gitmessage`.
-      ⚠ **`--worktree`, not `--local`.** `--local` writes the SHARED config, and a template path
+    * **To enable it for interactive use** — ⚠ **read this whole bullet before running
+      anything; the command comes after its precondition on purpose (#445).** The precondition
+      is `git config extensions.worktreeConfig true`. Then, and only then:
+      `git config --worktree commit.template .gitmessage`.
+      ⚠⚠ **WITHOUT THE PRECONDITION THAT COMMAND DOES NOT FAIL — IT SILENTLY DOES THE WRONG
+      THING.**
+      `extensions.worktreeConfig` is not enabled here, and with it off `git config --worktree`
+      **exits 0 and writes `.git/config`**, the shared config, creating no `config.worktree`
+      (measured 2026-09-11 in a throwaway repo). **Enable the extension first
+      (`git config extensions.worktreeConfig true`), or this instruction hands you the `--local`
+      outcome it exists to avoid.** ⚠ This paragraph said the command *fails*, which is the more
+      dangerous error: "it fails" sends a reader elsewhere, while the truth is that it succeeds
+      and writes the wrong file.
+      ⚠ **`--worktree`, not `--local`** — once the extension is on. `--local` writes the SHARED
+      config, and a template path
       that does not resolve in another worktree makes an interactive `git commit` **fatal**
       there — it refuses the commit and creates nothing. That is not hypothetical: it happened
       to `/data/repos/Sonora` for one cycle, from exactly this setting.
@@ -425,11 +494,21 @@ the simple version that holds until then. Do not build tooling on its shape.
   review**.
   * ⚠ **THIS IS A JUDGEMENT THE WORKER MAKES ABOUT ITS OWN CHANGE**, before it asks for
     anything — nothing checks it. When in doubt on a mixed diff, request the review.
-* ⚠ **THE `workflow/` LANE ITSELF IS OUTSIDE REVIEW SPEND** (owner, 2026-08-24; recorded
-  here at the reviewer's request, after two passes in which the instruction reached it only
-  as a relayed claim). Review findings are not spent on `FerroStep/workflow/` or its machinery — the
-  lane is being replaced by FerroStep. A reviewer with a workflow concern puts it in the
-  summary for the owner, never the tracker.
+* ⚠⚠ **THE `workflow/` HOLD EXPIRED ON 2026-08-27, AND THIS BULLET OUTLIVED IT BY TWO WEEKS.**
+  What stood here was the 2026-08-24 instruction *do not spend review findings on `workflow/`*,
+  stated as a standing rule. **It was a purpose-limited hold** — do not spend findings on a lane
+  about to be replaced — **and its purpose ended the day FerroStep became the management tool.**
+  The live rule is [FerroStep/personas/REVIEWER.md](FerroStep/personas/REVIEWER.md) § *Workflow
+  findings go to FerroStep* (owner, 2026-08-27): findings about this lane's machinery are FILED,
+  with `--repo Artificial-Humanity/FerroStep` when FerroStep could act on them, and the owner
+  expects that share to be the larger one. The test is a question — *could FerroStep act on this,
+  and would acting improve it?* — not a list, and not "where would the fix land".
+  * ⚠ **THE CONDITION WAS NEVER WRITTEN BESIDE THE RULE, WHICH IS WHY IT OUTLIVED IT.**
+    REVIEWER.md records two agents turning the hold into a standing prohibition for exactly that
+    reason. **A third did so on 2026-09-11** — this file was cited, in good faith, in a
+    developer's notes telling a reviewer not to file against the lane; the reviewer checked its
+    own persona, applied the current rule, and said so. **When you write a rule that depends on a
+    condition, write the condition next to it**, or the rule becomes permanent by default.
 * ⚠ **Periodic wholesale review is a different altitude, and the one-shot move SETTLED HALF OF
   THIS** (raised 2026-08-13, half-resolved 2026-08-14). The owner keeps a floating reviewer
   session for reading the codebase and the product direction as a whole, on its own cadence:
@@ -648,8 +727,9 @@ authoritative in every case.**
   unreviewed.** If that edit is the one you want, commit it in the repo and redeploy; do not
   let the copy become the record.
 * **Deploy explicitly.** Committing deploys nothing (GitOps retired 2026-07-22). Service
-  stacks go through `AI-Lab-AMD/scripts/deploy.sh`; the training clone at `/data/repos/Sonora`
-  through `deploy.sh training-code`.
+  stacks go through `AI-Lab-AMD/scripts/deploy.sh`; the training **deployment** at
+  `/data/repos/Sonora` through `deploy.sh training-code`. ⚠ This said "the training clone"; it
+  has not been a clone since 2026-08-29 (§7's table, and `deploy.sh`'s own header).
 * **Adding a tool that will run from `/data`? Add it to `MIRRORS` in
   [tests/test_data_mirrors.py](tests/test_data_mirrors.py) in the same commit.** That gate
   compares every tracked file against its deployed copy and fails on any difference. It is the
@@ -685,7 +765,7 @@ because it is box tooling, but it deploys from whichever repo owns the code:
 | target | source | command |
 |---|---|---|
 | `audition` → `/data/services/audition/app` | **this repo**, `audition/` | `deploy.sh audition` |
-| `training-code` → `/data/repos/Sonora` | **this repo** (ff-pull; a real checkout) | `deploy.sh training-code` |
+| `training-code` → `/data/repos/Sonora` | **this repo** (rsync; ⚠ **NOT a checkout since 2026-08-29** — it carries no `.git`, so the "ff-pull" this cell claimed cannot happen) | `deploy.sh training-code` |
 | `dashboard` → `/data/services/dashboard` | `AI-Lab-AMD/dashboard` | `deploy.sh dashboard` |
 | `stack` → the compose services | `AI-Lab-AMD` | `deploy.sh stack` |
 
@@ -859,8 +939,9 @@ dirty one, correctly, so it is not available as a diagnostic mid-edit.
 stamp rewrite, no container restart. So running a deploy at the outset of any work costs
 nothing and requires no judgement about whether it is needed; that is the point, because a
 deploy that always restarted a live rating app made the safe habit the expensive one.
-`training-code` (`git pull --ff-only`) and `stack` (`compose up -d`) were already idempotent
-by construction.
+`training-code` (an **rsync** whitelist copy since 2026-08-29 — this said `git pull --ff-only`,
+which that target has had no `.git` to do since) and `stack` (`compose up -d`) were already
+idempotent by construction.
 
 ⚠ **`stack` REFUSES during a training run**, because `up -d` restarts manually-stopped
 services and would put every inference engine back on the GPU under a live run — the

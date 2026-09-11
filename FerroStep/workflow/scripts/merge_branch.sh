@@ -495,9 +495,17 @@ _MERGE_COMMITTER="$(git log -1 --format='%cn <%ce>')"
 echo "merged $BRANCH into $BASE (authored and committed $_MERGE_AUTHOR)"
 
 if [[ "$PUSH" -eq 1 ]]; then
-  # ⚠ EXPLICIT REFSPEC. `push.default=upstream` is set in this repo, so a bare `git push` from
-  # a branch that inherited `origin/main` as its upstream sends it to main regardless of its
-  # own name. Naming both ends means what lands is what this script just merged and gated.
+  # ⚠ EXPLICIT REFSPEC. Naming both ends means what lands is what this script just merged
+  # and gated, rather than whatever a bare push would resolve to.
+  #
+  # `push.default` is NOT set in this repo today (measured 2026-09-11), so git's default
+  # `simple` applies and REFUSES a push from a branch whose name differs from its upstream. ⚠
+  # Keep this guard anyway, and the reason is stronger than the one that used to be here:
+  # `push.default=upstream` WAS set, it is local config, and local config does not travel —
+  # the 2026-08-17 tracker export predicted exactly this on four issues ("a fresh clone gets
+  # push.default=simple ... every one of these traps returns intact") and that is what
+  # happened. A guard that depends on reading the config is one the config can revoke
+  # silently; this one is correct under either setting.
   git push origin "$BASE:$BASE"
   echo "pushed $BASE"
 else
