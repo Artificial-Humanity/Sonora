@@ -20,6 +20,7 @@ something raised.
 
 import os
 import pathlib
+import subprocess
 
 import pytest
 
@@ -609,3 +610,52 @@ def test_both_readers_use_the_shared_gap_report():
                 ("scripts", "tools", "check_publishable.py")):
         src = root.joinpath(*rel).read_text(encoding="utf-8")
         assert "lineage_gaps(lineage, unread)" in src, rel
+
+
+# --- the promotion tool's exit codes, which are its whole machine-readable interface -------
+
+def _torch_interpreter():
+    """The interpreter config.env grants the reviewer, when it exists on this host."""
+    cfg = (pathlib.Path(wall._MANIFEST_PATH).parent.parent
+           / "FerroStep" / "workflow" / "config.env").read_text(encoding="utf-8")
+    for line in cfg.splitlines():
+        if line.startswith("REVIEWER_TORCH_PY="):
+            p = line.split("=", 1)[1].strip()
+            return p if p and os.access(p, os.X_OK) else None
+    return None
+
+
+def test_an_unreadable_checkpoint_is_could_not_run_not_refused():
+    """⚠ A LOAD FAILURE EXITED 1, THE CODE THE DOCSTRING ASSIGNS TO "refused".
+
+    `torch.load` raised through `main()`, so a mistyped path produced a traceback and status 1 —
+    the same answer as the wall refusing an artifact that must not ship. §7 is a hand checklist
+    whose only machine-readable output is this number, so the two cases have to differ.
+
+    Runs the real tool, because the defect was in what the PROCESS exits with, and a source-level
+    assertion about a try/except cannot see that. Skipped with its reason printed where no
+    interpreter with torch exists — the repo venv deliberately has none.
+    """
+    py = _torch_interpreter()
+    if not py:
+        pytest.skip("no interpreter with torch on this host (REVIEWER_TORCH_PY absent)")
+    repo = pathlib.Path(wall._MANIFEST_PATH).parent.parent
+    tool = repo / "scripts" / "tools" / "check_publishable.py"
+
+    missing = subprocess.run([py, str(tool), "/no/such/checkpoint.ckpt"],
+                             cwd=str(repo), capture_output=True, text=True, timeout=300)
+    assert missing.returncode == 3, (
+        f"an unreadable checkpoint exited {missing.returncode}; 1 means REFUSED and 3 means it "
+        f"could not run. stderr: {missing.stderr[-400:]}")
+    assert "NOT a publish refusal" in missing.stderr, missing.stderr
+
+    # ⚠ THE CONTROL: prove the tool still reaches a real verdict, or `3` above could just mean
+    # the tool is broken for every input and the assertion passes on a corpse.
+    ckpt = pathlib.Path("/data/model-training/sonora/warmstart/vat7_init.ckpt")
+    if not ckpt.exists():
+        pytest.skip("no warmstart init on this host to use as the positive control")
+    real = subprocess.run([py, str(tool), str(ckpt)],
+                          cwd=str(repo), capture_output=True, text=True, timeout=300)
+    assert real.returncode == 2, (
+        f"the control checkpoint exited {real.returncode}, expected 2 (lineage UNKNOWN) — so the "
+        f"3 above is not attributable to the missing path. stderr: {real.stderr[-400:]}")

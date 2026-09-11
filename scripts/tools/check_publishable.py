@@ -4,7 +4,15 @@
 The LiteRT export calls the wall itself; the registry promotion is a hand process with no
 code on it, so this is the runnable form of the §7 checklist item. Exit 0 = every filelist
 in the lineage was opened and nothing in it is `publish: forbidden`; 1 = refused; 2 = the
-lineage is UNKNOWN or partly unread, which is not a clean result; 3 = it could not run.
+lineage is UNKNOWN or partly unread, which is not a clean result; 3 = it could not run — no
+torch, or the checkpoint could not be read.
+
+⚠ A CHECKPOINT THAT WILL NOT LOAD USED TO EXIT 1, WHICH THIS DOCSTRING ASSIGNS TO "refused".
+`torch.load` raised through `main()`, so a mistyped path produced a traceback and status 1 —
+indistinguishable, to anything reading the exit code, from the wall refusing an artifact that
+must not ship. That is the wrong direction to be wrong in: a typo read as a refusal is
+survivable, a refusal read as a typo is not, and a promoter scripting this could not tell
+them apart either way.
 
     "${SONORA_LITERT_PY:-/data/toolchain/litert-conversion/.venv/bin/python}" \
         scripts/tools/check_publishable.py /path/to/checkpoint.ckpt
@@ -16,10 +24,22 @@ the `test` dependency group, which excludes torch on purpose. So the §7 checkli
 have torch are the LiteRT harness venv (6.6 GB, living with the data) and the training
 container.
 
-⚠ The default above is a deliberate second copy of the one `scripts/litert_export/run.sh`
-resolves, so that this command is pasteable rather than a shape the reader has to complete;
-change one, change both. `run.sh` is not a route to this script — it runs its own directory
-only. The guarded import in `main()` says the same thing at the moment it fails, because a
+⚠⚠ THAT PATH EXISTS IN THREE PLACES, NOT TWO, AND THIS LINE SAID "second copy / change both"
+(#434). `scripts/litert_export/run.sh` OWNS the default — it composes it from
+`SONORA_LITERT_WORK` — and two files then spell it out: this docstring, so the command is
+pasteable rather than a shape the reader has to complete, and `REVIEWER_TORCH_PY` in
+`FerroStep/workflow/config.env`, so the reviewer's allowlist can name it. Each of the two
+described itself as one half of a pair with `run.sh` and neither mentioned the other, so
+"change both" sent a reader to two of the three and left this line naming an interpreter the
+export lane no longer used — re-creating, on this exact line, the defect #428 closed.
+
+**All three are now pinned to `run.sh` by
+`tests/test_request_review.py::test_the_promotion_interpreter_matches_the_export_lane_default`**,
+which composes run.sh's value from its own two lines and compares both spellings against it.
+Change `run.sh` and that test names whichever copy did not follow. Do not re-describe this as
+one of a pair.
+
+The guarded import in `main()` says the interpreter part at the moment it fails, because a
 corrected sentence four lines above a still-wrong command leaves the defect where people
 paste from.
 """
@@ -46,7 +66,19 @@ def main():
         return 3
     from matcha.data.license_wall import (LicenseWallError, lineage_filelists, lineage_gaps,
                                           refuse_unpublishable)
-    ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
+    # ⚠ A LOAD FAILURE IS "COULD NOT RUN", NOT "REFUSED". Unguarded, `torch.load` raised
+    # through and the process exited 1 — the code this tool documents as a publish refusal — so
+    # a mistyped path and an artifact that must not ship were the same answer to anything
+    # reading the status. Caught here rather than in the caller because the exit code is this
+    # tool's whole interface: §7 is a hand checklist, and the only machine-readable thing it
+    # produces is the number.
+    try:
+        ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
+    except (OSError, RuntimeError, EOFError, ValueError) as exc:
+        print(f"!! cannot run: could not read the checkpoint {args.ckpt}: "
+              f"{type(exc).__name__}: {exc}. This is NOT a publish refusal — the wall never "
+              "ran. Check the path.", file=sys.stderr)
+        return 3
     lineage = lineage_filelists(ck)
     if lineage:
         print("lineage:")

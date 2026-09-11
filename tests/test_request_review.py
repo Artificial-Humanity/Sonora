@@ -381,7 +381,7 @@ def test_the_sibling_repos_are_offered_read_only_and_never_writable():
         assert t in _array("REVIEWER_DENY")
 
 
-def _rendered_allowlist():
+def _rendered_allowlist(script=None):
     """The allowlist AS THE MATCHER WILL SEE IT — parsed from `--dry-run`, not from source.
 
     ⚠⚠ THIS REPLACED A SOURCE SCAN THAT WAS BLIND TO EVERY GATE PATH (#245). The scan read the
@@ -407,7 +407,9 @@ def _rendered_allowlist():
     # state. `--full` needs no commits ahead of main (the launcher says so in the very refusal
     # this produced), and `REVIEWER_ALLOW` is built from PYBIN and the gates directory with no
     # reference to RANGE, so the rendered list is identical either way.
-    r = subprocess.run([str(SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
+    # `script` lets a COPIED lane be rendered through the same parser (the negative-branch
+    # test below). One parser, two callers: a second ad-hoc scan is how #245 happened.
+    r = subprocess.run([str(script or SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
                        cwd=REPO, capture_output=True, text=True)
     assert r.returncode == 0, f"--dry-run failed, so this test proves nothing: {r.stderr}"
     for line in r.stdout.splitlines():
@@ -674,18 +676,37 @@ def _run_sh_default_interpreter():
     return work.group(1) + py.group(1)
 
 
+def _check_publishable_docstring_interpreter():
+    """The path spelled out in the promoter's pasteable command, read from its docstring."""
+    src = (REPO / "scripts" / "tools" / "check_publishable.py").read_text(encoding="utf-8")
+    m = re.search(r'SONORA_LITERT_PY:-([^}"]+)\}', src)
+    assert m, "check_publishable.py no longer spells the interpreter the way this test reads it"
+    return m.group(1)
+
+
 def test_the_promotion_interpreter_matches_the_export_lane_default():
-    """⚠ THE DRIFT PIN FOR A DELIBERATE SECOND COPY. `REVIEWER_TORCH_PY` in config.env and the
-    default `run.sh` composes are the same path in two files, which this repo's own §5b says is
-    a copy that goes stale. It is kept because the grant must be pasteable and `run.sh` is not a
-    route to `scripts/tools/`, so the answer is not "avoid the copy" but "make it break".
+    """⚠⚠ THE PATH IS IN THREE PLACES AND THIS PINNED TWO OF THEM (#434).
+
+    `scripts/litert_export/run.sh` owns the default. `config.env` spells it out so the
+    reviewer's allowlist can name it, and `check_publishable.py`'s docstring spells it out so
+    the promoter's command is pasteable. Each of the latter two called itself one half of a
+    pair with run.sh and neither mentioned the other — so "change both" reached two of three,
+    and the third was the very line #428 was filed to fix.
+
+    ⚠ COMPOSED FROM run.sh's OWN TWO LINES, NEVER TYPED HERE. Writing the joined path into
+    this test would make it a fourth copy, and the one that silently agrees with none.
     """
-    configured = _config_env_value("REVIEWER_TORCH_PY")
-    assert configured, "REVIEWER_TORCH_PY is missing from config.env — the grant cannot be built"
-    assert configured == _run_sh_default_interpreter(), (
-        f"config.env says {configured!r}, run.sh composes "
-        f"{_run_sh_default_interpreter()!r} — the two copies have drifted, so the reviewer is "
-        "granted an interpreter the export lane no longer uses")
+    want = _run_sh_default_interpreter()
+    places = {
+        "FerroStep/workflow/config.env (REVIEWER_TORCH_PY)": _config_env_value("REVIEWER_TORCH_PY"),
+        "scripts/tools/check_publishable.py (docstring command)":
+            _check_publishable_docstring_interpreter(),
+    }
+    assert all(places.values()), f"a copy has gone missing, so nothing pins it: {places}"
+    drifted = {k: v for k, v in places.items() if v != want}
+    assert not drifted, (
+        f"run.sh composes {want!r}; these disagree, so the reviewer or the promoter is pointed "
+        f"at an interpreter the export lane no longer uses: {drifted}")
 
 
 def test_the_promotion_step_grant_reaches_the_rendered_allowlist():
@@ -717,3 +738,49 @@ def test_the_promotion_step_grant_names_the_script_not_the_bare_interpreter():
     bad = [e for e in _rendered_allowlist()
            if interp and interp in e and "check_publishable.py" not in e]
     assert not bad, f"the torch interpreter is granted without naming a command: {bad}"
+
+
+def test_the_promotion_step_grant_is_absent_without_an_interpreter(tmp_path):
+    """⚠ THE GUARD'S NEGATIVE BRANCH — named in the docstring above and, until #434's sibling
+    #433, not written. The commit's own comment says the absent branch is the point ("a ported
+    lane adds nothing rather than a stale entry"), and it was the half that had only been
+    reasoned about.
+
+    ⚠ IT NEEDS A COPIED LANE, not an environment variable. `request_review.sh` sources
+    `config.env` AFTER the environment, so `REVIEWER_TORCH_PY=/nonexistent` on the command line
+    is overwritten before the guard runs and the entry renders anyway — measured, by the
+    reviewer, when it tried to check this branch. That is config.env's contract working as
+    designed, and it means the only honest route is a lane whose config differs.
+
+    ⚠ THE CONTROL IS THAT SOMETHING ELSE STILL RENDERS. Asserting only an absence would pass
+    against a copied script that failed outright and printed no allowlist at all — the green
+    negative over data that was never there (#245).
+    """
+    lane = tmp_path / "workflow"
+    shutil.copytree(REPO / "FerroStep" / "workflow", lane)
+    cfg = lane / "config.env"
+    original = cfg.read_text(encoding="utf-8")
+
+    def render(value):
+        cfg.write_text(
+            re.sub(r"^REVIEWER_TORCH_PY=.*$", f"REVIEWER_TORCH_PY={value}",
+                   original, flags=re.M),
+            encoding="utf-8")
+        return _rendered_allowlist(lane / "scripts" / "request_review.sh")
+
+    for value, label in (("", "empty"), ("/nonexistent/python", "a path that is not executable")):
+        allow = render(value)
+        assert any("-m pytest" in e for e in allow), (
+            f"the copied lane rendered no allowlist at all with {label}, so the absence below "
+            f"would prove nothing: {allow}")
+        granted = [e for e in allow if "check_publishable.py" in e]
+        assert not granted, (
+            f"the grant was rendered with REVIEWER_TORCH_PY {label} — a ported lane would carry "
+            f"an entry naming an interpreter it does not have, which reads as covered and can "
+            f"never match: {granted}")
+
+    real = _config_env_value("REVIEWER_TORCH_PY")
+    if real and os.access(real, os.X_OK):
+        assert any("check_publishable.py" in e for e in render(real)), (
+            "the same copied lane does NOT render the entry with a valid interpreter, so the "
+            "absences above are not attributable to the guard")
