@@ -244,8 +244,11 @@ the simple version that holds until then. Do not build tooling on its shape.
       stood. Check the setting before relying on it, exactly as §5b says of any documented
       number.
   * ⚠ **`git config --local` WRITES THE SHARED CONFIG, WHICH EVERY WORKTREE READS.** This repo
-    has two — this one and `/data/repos/Sonora` — so a setting made here changes git's behaviour
-    in a checkout you are not looking at. "One committer, therefore harmless" is not the test:
+    **had two** — this one and `/data/repos/Sonora` — so a setting made here changed git's
+    behaviour in a checkout you were not looking at. ⚠ **It has ONE today**: that path stopped
+    being a git checkout on 2026-08-29, so the hazard is latent rather than live. The bullet is
+    kept because it returns the moment a second worktree exists, and because what it taught is
+    still true of `--local`. "One committer, therefore harmless" is not the test:
     `commit.template` was set `--local` and pointed at a `.gitmessage` that does not exist in the
     other worktree, which makes an interactive `git commit` **fatal** there — it refuses and
     creates nothing. **Check any new setting against both checkouts, and use `--worktree` for
@@ -267,18 +270,19 @@ the simple version that holds until then. Do not build tooling on its shape.
       `AGENTS.md` §2, **not** this file's §2, which is about training and troubleshooting. So
       this repo has ONE worktree today and the shared-config hazard is currently theoretical;
       it is kept because it returns the moment a second one exists.
-  * **`git push` is the whole command.** No `HEAD:main`, no `-u`. Verified against this
-    worktree, whose branch name differs from `main`.
-    * ⚠⚠ **THIS PARAGRAPH DESCRIBES A CONFIGURATION THIS REPO NO LONGER HAS.** It was written
-      when `push.default=upstream` was set, and called `simple` "the default this replaced" —
-      but the setting is gone (above), so `simple` is what is in force and nothing replaced it.
-      **`git push` is therefore NOT the whole command from a branch whose name differs from its
-      upstream: it refuses.** Measured 2026-09-11 in a throwaway clone, on a branch tracking a
-      differently-named upstream: *"fatal: The upstream branch of your current branch does not
-      match the name of your current branch."*
-      ⚠ **That refusal is a guard, and it is currently the only thing between a scratch branch
-      and `main`** (owner, 2026-09-11, declining to re-set `push.default`). The paragraph used to
-      mourn it as the price of `upstream`; the price was never paid.
+  * ⚠⚠ **`git push` IS NOT THE WHOLE COMMAND from a branch whose name differs from its
+    upstream — it REFUSES.** This bullet asserted the opposite in bold, and was true only while
+    `push.default=upstream` was set (above). Re-measured 2026-09-11 in a throwaway clone:
+    *"fatal: The upstream branch of your current branch does not match the name of your current
+    branch."* Name both ends — `git push origin <branch>:main` — or push from a branch that
+    matches, as `merge_branch.sh` does.
+    * ⚠ **THAT REFUSAL IS A GUARD, AND IT IS CURRENTLY THE ONLY THING BETWEEN A SCRATCH BRANCH
+      AND `main`** (owner, 2026-09-11, declining to re-set `push.default`). This bullet used to
+      mourn it: it called `simple` "the default this replaced" and described losing the refusal
+      as the price of `upstream`. **The price was never paid** — the setting is gone, so `simple`
+      is what is in force and nothing replaced it. Re-setting `push.default=upstream` to match
+      the old prose would spend the guard for a convenience, on a repo with no branch
+      protection.
     * **So cut scratch branches from a LOCAL ref, not from `origin/main`** — measured to fail
       safely with `no upstream branch`, which is the refusal you want.
   * **`origin/main..HEAD` is the range.** ⚠ **`@{push}..HEAD` does NOT resolve** — this said it
@@ -425,10 +429,16 @@ the simple version that holds until then. Do not build tooling on its shape.
       this time because a harness instruction asked for the trailer and the two rules had to
       be read against each other; nothing in the repo compares them.
     * **To enable it for interactive use:** `git config --worktree commit.template .gitmessage`.
-      ⚠ **That command fails today**: `extensions.worktreeConfig` is not enabled (measured
-      2026-09-11, §1). Enable it first, or use `--local` and accept the hazard the next bullet
-      describes. The instruction was written as if it would work.
-      ⚠ **`--worktree`, not `--local`.** `--local` writes the SHARED config, and a template path
+      ⚠⚠ **THAT COMMAND DOES NOT FAIL — IT SILENTLY DOES THE WRONG THING.**
+      `extensions.worktreeConfig` is not enabled here, and with it off `git config --worktree`
+      **exits 0 and writes `.git/config`**, the shared config, creating no `config.worktree`
+      (measured 2026-09-11 in a throwaway repo). **Enable the extension first
+      (`git config extensions.worktreeConfig true`), or this instruction hands you the `--local`
+      outcome it exists to avoid.** ⚠ This paragraph said the command *fails*, which is the more
+      dangerous error: "it fails" sends a reader elsewhere, while the truth is that it succeeds
+      and writes the wrong file.
+      ⚠ **`--worktree`, not `--local`** — once the extension is on. `--local` writes the SHARED
+      config, and a template path
       that does not resolve in another worktree makes an interactive `git commit` **fatal**
       there — it refuses the commit and creates nothing. That is not hypothetical: it happened
       to `/data/repos/Sonora` for one cycle, from exactly this setting.
@@ -703,8 +713,9 @@ authoritative in every case.**
   unreviewed.** If that edit is the one you want, commit it in the repo and redeploy; do not
   let the copy become the record.
 * **Deploy explicitly.** Committing deploys nothing (GitOps retired 2026-07-22). Service
-  stacks go through `AI-Lab-AMD/scripts/deploy.sh`; the training clone at `/data/repos/Sonora`
-  through `deploy.sh training-code`.
+  stacks go through `AI-Lab-AMD/scripts/deploy.sh`; the training **deployment** at
+  `/data/repos/Sonora` through `deploy.sh training-code`. ⚠ This said "the training clone"; it
+  has not been a clone since 2026-08-29 (§7's table, and `deploy.sh`'s own header).
 * **Adding a tool that will run from `/data`? Add it to `MIRRORS` in
   [tests/test_data_mirrors.py](tests/test_data_mirrors.py) in the same commit.** That gate
   compares every tracked file against its deployed copy and fails on any difference. It is the
