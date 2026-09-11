@@ -33,16 +33,18 @@ as one half of a pair with `run.sh` and neither mentioned the other, so "change 
 some of them and left this line naming an interpreter the export lane no longer used —
 re-creating, on this exact line, the defect #428 closed.
 
-⚠ NO COUNT IS GIVEN HERE ON PURPOSE. An earlier fix wrote "THREE PLACES", which is a number in
-prose that nothing can fail on when it stops being true — §5b's rule, and #434's own residual.
-The places are enumerated in `_INTERPRETER_COPIES` in the test named below; derive a count from
-that if one is wanted.
+⚠ NO SIZE IS STATED HERE — NOT "three", NOT "both", NOT "all of them" (#434, three passes).
+Every sentence that said how many places hold this path was correct when written and unable to
+fail afterwards: "a deliberate second copy", then "THREE PLACES", then — four lines below the
+sentence removing it — "All three are now pinned". A number in prose is not a mechanism.
 
-**All three are now pinned to `run.sh` by
-`tests/test_request_review.py::test_the_promotion_interpreter_matches_the_export_lane_default`**,
-which composes run.sh's value from its own two lines and compares both spellings against it.
-Change `run.sh` and that test names whichever copy did not follow. Do not re-describe this as
-one of a pair.
+The mechanism is `_INTERPRETER_COPIES` in
+`tests/test_request_review.py`: every place that spells the path out is enrolled there and
+compared against `run.sh`, and
+`test_every_literal_copy_of_the_interpreter_is_enrolled_in_the_pin` scans the tracked tree for
+the literal and fails on any file not enrolled. So the enumeration is complete by construction,
+and nothing here needs to count. Change `run.sh` and the pin names whichever copy did not
+follow; add a copy without enrolling it and the completeness test says so.
 
 The guarded import in `main()` says the interpreter part at the moment it fails, because a
 corrected sentence four lines above a still-wrong command leaves the defect where people
@@ -93,9 +95,16 @@ def main():
     try:
         ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     except Exception as exc:  # pylint: disable=broad-except
+        # ⚠ THE INSTRUCTION, NOT ONLY THE CLASSIFICATION (#437, AGENTS.md §5). This said
+        # "Check the path.", which is right for a missing path and wrong for the three other
+        # causes that reach here — a garbage file, a truncated one, a directory. The exception
+        # type is the only thing that knows which, so the message points at it instead of
+        # guessing, and the classification it carries is the part that must not be lost.
         print(f"!! cannot run: could not read the checkpoint {args.ckpt}: "
               f"{type(exc).__name__}: {exc}. This is NOT a publish refusal — the wall never "
-              "ran. Check the path.", file=sys.stderr)
+              "ran, so this says nothing about whether the artifact may ship. The exception "
+              "above is what distinguishes a wrong path from a file that is not a loadable "
+              "checkpoint.", file=sys.stderr)
         return 3
     lineage = lineage_filelists(ck)
     if lineage:

@@ -692,15 +692,54 @@ def _check_publishable_docstring_interpreter():
     return m.group(1)
 
 
-# ⚠ THE ENUMERATION, not a sentence with a number in it (#434). Every place the interpreter
-# path is written out literally, and how to read each one back. `run.sh` is deliberately absent:
-# it OWNS the value, so it is what the others are compared against rather than one of them.
+# ⚠ THE ENUMERATION, not a sentence with a number in it (#434). Keyed by PATH so the
+# completeness test below can compare it against what is actually on disk. `run.sh` is
+# deliberately absent: it OWNS the value and composes it, so it is what the others are compared
+# against rather than one of them — and it does not contain the joined literal at all.
 _INTERPRETER_COPIES = {
-    "FerroStep/workflow/config.env (REVIEWER_TORCH_PY)":
-        lambda: _config_env_value("REVIEWER_TORCH_PY"),
-    "scripts/tools/check_publishable.py (docstring command)":
-        _check_publishable_docstring_interpreter,
+    "FerroStep/workflow/config.env":
+        ("REVIEWER_TORCH_PY", lambda: _config_env_value("REVIEWER_TORCH_PY")),
+    "scripts/tools/check_publishable.py":
+        ("the docstring command", _check_publishable_docstring_interpreter),
 }
+
+
+def _tracked_files_naming_the_interpreter():
+    """Every tracked file that contains the composed interpreter path as a literal string."""
+    r = subprocess.run(["git", "grep", "-l", "-F", _run_sh_default_interpreter()],
+                       cwd=REPO, capture_output=True, text=True)
+    # ⚠ `git grep` exits 1 for "no matches", which is not a failure here — but 2+ is, and
+    # treating every non-zero as "nothing found" is the instrument-failure-read-as-a-negative
+    # shape AGENTS.md §5b tabulates.
+    assert r.returncode in (0, 1), f"git grep failed ({r.returncode}): {r.stderr}"
+    return {line for line in r.stdout.split() if line}
+
+
+def test_every_literal_copy_of_the_interpreter_is_enrolled_in_the_pin():
+    """⚠⚠ THE PIN CHECKS WHAT IT IS TOLD ABOUT, SO THE ENUMERATION HAS TO BE COMPLETE (#434).
+
+    Three passes of this issue were spent on prose that said how many places hold this path —
+    "second copy", "THREE PLACES", "ALL THREE" — each correct when written and none of them able
+    to fail afterwards. A number in a sentence is not a mechanism; this is. With the enumeration
+    provably complete, no sentence needs to state a size, which is why they are all gone.
+
+    Same shape as `test_doc_claims_registry`'s "a fact no document states is a fact nobody is
+    checking", and the same remedy: assert on the registry rather than re-running a sweep by
+    hand. The sweeps are what failed — three of them, each keyed on the previous wording rather
+    than on the claim.
+
+    ⚠ A HIT IN THIS TEST FILE IS NOT FIXED BY ENROLLING IT. The rule is that the path is never
+    typed here; it is composed from `run.sh`. Delete it instead.
+    """
+    found = _tracked_files_naming_the_interpreter()
+    assert found, (
+        "no tracked file contains the interpreter literal, so this test would pass over "
+        "nothing — either the scan broke or run.sh stopped composing what the copies spell")
+    missing = sorted(found - set(_INTERPRETER_COPIES))
+    assert not missing, (
+        "these tracked files spell out the interpreter path but are not in "
+        f"_INTERPRETER_COPIES, so nothing pins them to run.sh: {missing}. Add each one (with a "
+        "reader), or delete the literal if the file should be composing it instead")
 
 
 def test_the_promotion_interpreter_matches_the_export_lane_default():
@@ -721,7 +760,8 @@ def test_the_promotion_interpreter_matches_the_export_lane_default():
     and the one that agrees with none of the others.
     """
     want = _run_sh_default_interpreter()
-    places = {name: read() for name, read in _INTERPRETER_COPIES.items()}
+    places = {f"{path} ({what})": read()
+              for path, (what, read) in _INTERPRETER_COPIES.items()}
     assert places, "the enumeration is empty, so this test would pass over nothing"
     assert all(places.values()), f"a copy has gone missing, so nothing pins it: {places}"
     drifted = {k: v for k, v in places.items() if v != want}
