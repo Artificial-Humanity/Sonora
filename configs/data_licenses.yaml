@@ -29,6 +29,23 @@
 # refuses as "undeclared", which reads as an oversight. Declared-and-blocked names the
 # dataset and the reason.
 #
+# publish: allowed (default, omit it) — a model trained on this may ship
+#          forbidden                  — it may NOT, whatever its licence says
+#          publish_reason: <text>     — printed in the refusal; say WHOSE decision and when
+#
+# ⚠⚠ `publish` IS ORTHOGONAL TO `class` AND MUST NOT BE FOLDED INTO IT. A corpus can be
+# perfectly licensed and still be one nothing may ship from. The case this exists for is the
+# crossed delivery bank (owner ruling 12, 2026-09-09): it is CC-BY-4.0, genuinely
+# `permissive`, and shipping a model trained on it is forbidden because it holds ~20 cloned
+# REAL LibriTTS-R voices at tens of clips each — a question about voice identity, which a
+# licence does not speak to. Writing that as a licence class would make this file state
+# something false about the licence.
+#
+# ⚠ The bank does not exist yet, so no entry carries `publish:` today. It is armed anyway:
+# `enforce` refuses an UNDECLARED corpus at training time, so the bank cannot be trained on
+# until someone writes its entry here — which is the moment they must choose. Enforced by
+# `matcha/data/license_wall.refuse_unpublishable`, called from the export path.
+#
 # Agreement-walled datasets (click-through / "by downloading you agree" terms,
 # e.g. EmoV-DB) are FULLY EXCLUDED: never downloaded, never ingested, never declared here.
 #

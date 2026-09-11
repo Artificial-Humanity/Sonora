@@ -16,7 +16,13 @@ review (E-M1/F-H2/T8) flagged them as the migration's blast radius:
 A guard nobody has seen fail is a guess. This drives each one with the wrong width and
 asserts on the error, so the assertions are known-good BEFORE anything relies on them.
 
-Run:  .venv/bin/python scripts/gates/test_vat_dim_seams.py
+Run:  python scripts/gates/test_vat_dim_seams.py   — IN THE ROCm TRAINING CONTAINER.
+
+⚠ NOT `.venv/bin/python`, which this line said until #428's sweep reached it. This gate
+imports torch and the repo venv deliberately has none (AGENTS.md §3 — the `test` dependency
+group excludes it), so the command as spelled died at `import torch` on the checkout it was
+written from. It is container-side by design, which is also why `tests/test_gate_scripts.py`
+lists it in `TORCH_ONLY` and skips it with the reason printed rather than running it here.
 """
 import atexit
 import os

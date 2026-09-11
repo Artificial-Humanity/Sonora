@@ -137,6 +137,12 @@ Contract changes bump the version and require an owner call.
   in writing per source; record in the promotion README. Personally-acquired media never enters
   the public lineage; analysis/benchmark use and the private-lineage firewall are governed by
   [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (2026-07-17).
+* **Publish wall (a second axis, not a licence):** a corpus can be perfectly licensed and still
+  be one nothing trained on it may ship — `publish: forbidden` in `configs/data_licenses.yaml`
+  (owner ruling 12, 2026-09-09: the crossed delivery bank is diagnostic only). The licence wall
+  runs at training time; the publish wall runs where a checkpoint becomes an artifact — the §6
+  export and the §7 promotion — over the checkpoint's whole lineage, warm-start donors included,
+  classifying the audio inside each filelist and not just the filelist's path.
 * **Filelist format:** `path|spk|phonemes|v,a,t`, pre-phonemized (`scripts/tools/phonemize_filelist.py`)
   so training images need no G2P stack. Filelists are derived data: regenerable by script, never
   the source of truth.
@@ -220,7 +226,16 @@ dial there in the same phase, so outputs stay vettable by ear at the current fea
 
 * Promote the **audited, gated** checkpoint (not the latest) to `Sonora/huggingface/<name>/` with:
   README (provenance: training run, stop signal, criterion + numbers, human-audit date, license
-  statement), `gate_history.jsonl`, eval report, audited samples, render/export metadata.
+  statement, and the `publish` policy of every source beside it), `gate_history.jsonl`, eval
+  report, audited samples, render/export metadata.
+* **Run the publish wall on the checkpoint before it is promoted** — the promotion is manual,
+  so no code runs here unless you run it: `scripts/tools/check_publishable.py <ckpt>`, under an
+  interpreter that has torch. ⚠ **Not the repo `.venv`**, which deliberately has none (#428):
+  this line named it, and as spelled it died at `import torch`. The script's docstring names
+  the interpreter to use and says so itself if you get it wrong. It refuses a checkpoint whose
+  lineage, donors included, names a `publish: forbidden` corpus, and it says when the lineage
+  is UNKNOWN (a pre-wall checkpoint), which is not "clean". A clean licence statement does not
+  answer this question; the wall does.
 * Publish to HF (`artificial-humanity/Sonora`) on owner call only.
 * Tier naming: ⚠ **the lineage name is not this file's to declare — read it off
   [model-decisions.md § The size ladder](model-decisions.md)** at the moment you publish.
