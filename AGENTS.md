@@ -223,15 +223,38 @@ the simple version that holds until then. Do not build tooling on its shape.
   hook, and CI runs *after* a push rather than gating one. The abort above is the only thing
   in front of `main`, which is why it is a rule and not a preference.
 * **One session commits to this repo** (owner, 2026-08-13), so `main` does not move under you
-  and divergence is not an ordinary event. The repo is configured to match:
-  `push.default=upstream` and `pull.rebase=false`.
+  and divergence is not an ordinary event. **`pull.rebase=false` is set** (`--local`, and it
+  was re-set on 2026-09-11 — see below).
+  * ⚠⚠ **THIS SAID `push.default=upstream` AND `pull.rebase=false` WERE BOTH CONFIGURED, AND
+    NEITHER WAS SET AT ANY LEVEL** (measured 2026-09-11, with a positive control proving the
+    reader worked). The two errors point in opposite directions and only one was repaired:
+    * **`pull.rebase` was absent, which is the state the bullet below warns about.** That bullet
+      credits the setting with standing between a worker and git's `git config pull.rebase true`
+      hint; the setting was not there, so nothing did. It is set now. ⚠ It is **local config**,
+      so it does not travel with a clone and a fresh checkout starts without it — which is
+      presumably how it went missing. Anyone cloning this repo must set it themselves.
+    * **`push.default` is deliberately LEFT UNSET** (owner, 2026-09-11), so git's default
+      `simple` applies. The bullet below reads it as a guard that was traded away; it was not,
+      because the trade never happened. `simple` **refuses** to push a branch whose name differs
+      from its upstream, and on a repo with no branch protection that refusal is worth more than
+      the convenience `upstream` buys. **Setting it to `upstream` to match the old prose would
+      make a bare `git push` from a scratch branch reach `main`.**
+    * ⚠ **A CONFIG CLAIM IN PROSE IS NOT A CONFIG.** Nothing compares this file to `git config`,
+      so these sentences were read as descriptions of a configured repo for as long as they
+      stood. Check the setting before relying on it, exactly as §5b says of any documented
+      number.
   * ⚠ **`git config --local` WRITES THE SHARED CONFIG, WHICH EVERY WORKTREE READS.** This repo
     has two — this one and `/data/repos/Sonora` — so a setting made here changes git's behaviour
     in a checkout you are not looking at. "One committer, therefore harmless" is not the test:
     `commit.template` was set `--local` and pointed at a `.gitmessage` that does not exist in the
     other worktree, which makes an interactive `git commit` **fatal** there — it refuses and
     creates nothing. **Check any new setting against both checkouts, and use `--worktree` for
-    anything that names a path.** `extensions.worktreeConfig` is enabled, so `--worktree` works.
+    anything that names a path.** ⚠ **`extensions.worktreeConfig` is NOT enabled** (measured
+    2026-09-11; this said it was), so `git config --worktree` **errors** rather than working.
+    Enable it before using `--worktree`, or accept that `--local` is the only level available.
+    ⚠ The premise above also moved: `/data/repos/Sonora` stopped being a git checkout on
+    2026-08-29 (§2), so this repo has ONE worktree today and the shared-config hazard is
+    currently theoretical. It is kept because the hazard returns the moment a second one exists.
   * **`git push` is the whole command.** No `HEAD:main`, no `-u`. Verified against this
     worktree, whose branch name differs from `main`.
     * ⚠ **AND IT COST A GUARD, which is worth knowing before you cut a branch.** `simple` — the
@@ -383,6 +406,9 @@ the simple version that holds until then. Do not build tooling on its shape.
       this time because a harness instruction asked for the trailer and the two rules had to
       be read against each other; nothing in the repo compares them.
     * **To enable it for interactive use:** `git config --worktree commit.template .gitmessage`.
+      ⚠ **That command fails today**: `extensions.worktreeConfig` is not enabled (measured
+      2026-09-11, §1). Enable it first, or use `--local` and accept the hazard the next bullet
+      describes. The instruction was written as if it would work.
       ⚠ **`--worktree`, not `--local`.** `--local` writes the SHARED config, and a template path
       that does not resolve in another worktree makes an interactive `git commit` **fatal**
       there — it refuses the commit and creates nothing. That is not hypothetical: it happened
@@ -425,11 +451,21 @@ the simple version that holds until then. Do not build tooling on its shape.
   review**.
   * ⚠ **THIS IS A JUDGEMENT THE WORKER MAKES ABOUT ITS OWN CHANGE**, before it asks for
     anything — nothing checks it. When in doubt on a mixed diff, request the review.
-* ⚠ **THE `workflow/` LANE ITSELF IS OUTSIDE REVIEW SPEND** (owner, 2026-08-24; recorded
-  here at the reviewer's request, after two passes in which the instruction reached it only
-  as a relayed claim). Review findings are not spent on `FerroStep/workflow/` or its machinery — the
-  lane is being replaced by FerroStep. A reviewer with a workflow concern puts it in the
-  summary for the owner, never the tracker.
+* ⚠⚠ **THE `workflow/` HOLD EXPIRED ON 2026-08-27, AND THIS BULLET OUTLIVED IT BY TWO WEEKS.**
+  What stood here was the 2026-08-24 instruction *do not spend review findings on `workflow/`*,
+  stated as a standing rule. **It was a purpose-limited hold** — do not spend findings on a lane
+  about to be replaced — **and its purpose ended the day FerroStep became the management tool.**
+  The live rule is [FerroStep/personas/REVIEWER.md](FerroStep/personas/REVIEWER.md) § *Workflow
+  findings go to FerroStep* (owner, 2026-08-27): findings about this lane's machinery are FILED,
+  with `--repo Artificial-Humanity/FerroStep` when FerroStep could act on them, and the owner
+  expects that share to be the larger one. The test is a question — *could FerroStep act on this,
+  and would acting improve it?* — not a list, and not "where would the fix land".
+  * ⚠ **THE CONDITION WAS NEVER WRITTEN BESIDE THE RULE, WHICH IS WHY IT OUTLIVED IT.**
+    REVIEWER.md records two agents turning the hold into a standing prohibition for exactly that
+    reason. **A third did so on 2026-09-11** — this file was cited, in good faith, in a
+    developer's notes telling a reviewer not to file against the lane; the reviewer checked its
+    own persona, applied the current rule, and said so. **When you write a rule that depends on a
+    condition, write the condition next to it**, or the rule becomes permanent by default.
 * ⚠ **Periodic wholesale review is a different altitude, and the one-shot move SETTLED HALF OF
   THIS** (raised 2026-08-13, half-resolved 2026-08-14). The owner keeps a floating reviewer
   session for reading the codebase and the product direction as a whole, on its own cadence:
