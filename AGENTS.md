@@ -249,25 +249,44 @@ the simple version that holds until then. Do not build tooling on its shape.
     `commit.template` was set `--local` and pointed at a `.gitmessage` that does not exist in the
     other worktree, which makes an interactive `git commit` **fatal** there — it refuses and
     creates nothing. **Check any new setting against both checkouts, and use `--worktree` for
-    anything that names a path.** ⚠ **`extensions.worktreeConfig` is NOT enabled** (measured
-    2026-09-11; this said it was), so `git config --worktree` **errors** rather than working.
-    Enable it before using `--worktree`, or accept that `--local` is the only level available.
-    ⚠ The premise above also moved: `/data/repos/Sonora` stopped being a git checkout on
-    2026-08-29 (§2), so this repo has ONE worktree today and the shared-config hazard is
-    currently theoretical. It is kept because the hazard returns the moment a second one exists.
+    anything that names a path.**
+    * ⚠⚠ **`extensions.worktreeConfig` IS NOT ENABLED, AND `--worktree` THEREFORE DOES THE EXACT
+      THING THIS BULLET WARNS AGAINST.** Measured 2026-09-11 in a throwaway repo with the
+      extension off: `git config --worktree commit.template .gitmessage` **exits 0**, writes to
+      **`.git/config`** — the shared config — and creates no `config.worktree` at all. It does
+      not error and it does not warn. So the instruction *use `--worktree` for anything that
+      names a path* silently produces the `--local` outcome it exists to avoid.
+      **Enable the extension first (`git config extensions.worktreeConfig true`) or the
+      instruction is worse than useless.**
+      ⚠ This paragraph said the command *errors*, from 2026-09-11 until it was corrected the same
+      day. That was a claim about behaviour made without running it, and it was the more
+      dangerous spelling of the error: "it fails" makes a reader try something else, while the
+      truth is that it succeeds and quietly writes the wrong file.
+    * ⚠ **The two-worktree premise also moved.** `/data/repos/Sonora` carries no `.git` since
+      2026-08-29 — the authority is `AI-Lab-AMD/scripts/deploy.sh` and the workspace
+      `AGENTS.md` §2, **not** this file's §2, which is about training and troubleshooting. So
+      this repo has ONE worktree today and the shared-config hazard is currently theoretical;
+      it is kept because it returns the moment a second one exists.
   * **`git push` is the whole command.** No `HEAD:main`, no `-u`. Verified against this
     worktree, whose branch name differs from `main`.
-    * ⚠ **AND IT COST A GUARD, which is worth knowing before you cut a branch.** `simple` — the
-      default this replaced — *refuses* to push a branch whose name differs from its upstream,
-      and that refusal is the same `'simple'` fatal blamed for breaking `@{push}`. It was doing
-      two jobs and only one of them was in the way. Measured: with `upstream`,
-      `git checkout -b scratch origin/main` inherits `origin/main`, and a bare `git push` from
-      that scratch branch reports `scratch -> main`.
+    * ⚠⚠ **THIS PARAGRAPH DESCRIBES A CONFIGURATION THIS REPO NO LONGER HAS.** It was written
+      when `push.default=upstream` was set, and called `simple` "the default this replaced" —
+      but the setting is gone (above), so `simple` is what is in force and nothing replaced it.
+      **`git push` is therefore NOT the whole command from a branch whose name differs from its
+      upstream: it refuses.** Measured 2026-09-11 in a throwaway clone, on a branch tracking a
+      differently-named upstream: *"fatal: The upstream branch of your current branch does not
+      match the name of your current branch."*
+      ⚠ **That refusal is a guard, and it is currently the only thing between a scratch branch
+      and `main`** (owner, 2026-09-11, declining to re-set `push.default`). The paragraph used to
+      mourn it as the price of `upstream`; the price was never paid.
     * **So cut scratch branches from a LOCAL ref, not from `origin/main`** — measured to fail
       safely with `no upstream branch`, which is the refusal you want.
-  * **`origin/main..HEAD` is the range**, and `@{push}..HEAD` also resolves now — `push.default`
-    was what broke it (`fatal: cannot resolve 'simple' push to a single destination`). Prefer
-    `origin/main..HEAD`: it is correct under any config.
+  * **`origin/main..HEAD` is the range.** ⚠ **`@{push}..HEAD` does NOT resolve** — this said it
+    "also resolves now", which was true only while `push.default=upstream` was set. Re-measured
+    2026-09-11 under the current config: `fatal: cannot resolve 'simple' push to a single
+    destination`, the very error this bullet quotes as the thing that used to happen. Use
+    `origin/main..HEAD`, which is correct under any config and is why the preference was stated
+    that way in the first place.
   * ⚠ **IF `main` EVER HAS MOVED, MERGE — NEVER REBASE.** A rebase **rewrites your local
     commits**, so the reviewed SHAs cease to exist and the cycle silently ends. `pull.rebase` is
     set to `false`, so a bare `git pull` merges (verified: exit 0, local commit survives as a
@@ -721,7 +740,7 @@ because it is box tooling, but it deploys from whichever repo owns the code:
 | target | source | command |
 |---|---|---|
 | `audition` → `/data/services/audition/app` | **this repo**, `audition/` | `deploy.sh audition` |
-| `training-code` → `/data/repos/Sonora` | **this repo** (ff-pull; a real checkout) | `deploy.sh training-code` |
+| `training-code` → `/data/repos/Sonora` | **this repo** (rsync; ⚠ **NOT a checkout since 2026-08-29** — it carries no `.git`, so the "ff-pull" this cell claimed cannot happen) | `deploy.sh training-code` |
 | `dashboard` → `/data/services/dashboard` | `AI-Lab-AMD/dashboard` | `deploy.sh dashboard` |
 | `stack` → the compose services | `AI-Lab-AMD` | `deploy.sh stack` |
 
@@ -895,8 +914,9 @@ dirty one, correctly, so it is not available as a diagnostic mid-edit.
 stamp rewrite, no container restart. So running a deploy at the outset of any work costs
 nothing and requires no judgement about whether it is needed; that is the point, because a
 deploy that always restarted a live rating app made the safe habit the expensive one.
-`training-code` (`git pull --ff-only`) and `stack` (`compose up -d`) were already idempotent
-by construction.
+`training-code` (an **rsync** whitelist copy since 2026-08-29 — this said `git pull --ff-only`,
+which that target has had no `.git` to do since) and `stack` (`compose up -d`) were already
+idempotent by construction.
 
 ⚠ **`stack` REFUSES during a training run**, because `up -d` restarts manually-stopped
 services and would put every inference engine back on the GPU under a live run — the

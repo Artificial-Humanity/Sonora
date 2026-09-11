@@ -111,9 +111,17 @@ def test_the_gate_runs_before_any_git_write():
 
 
 def test_the_push_names_both_ends_of_the_refspec():
-    """⚠ `push.default=upstream` is set in this repo, so a bare `git push` from a branch that
-    inherited `origin/main` as its upstream sends it to main whatever the branch is called.
-    Naming both ends means what lands is what was just merged and gated."""
+    """⚠ Naming both ends means what lands is what was just merged and gated.
+
+    `push.default` is NOT set in this repo today (measured 2026-09-11), so git's default
+    `simple` applies and REFUSES a push from a branch whose name differs from its upstream. ⚠
+    Keep this guard anyway, and the reason is stronger than the one that used to be here:
+    `push.default=upstream` WAS set, it is local config, and local config does not travel —
+    the 2026-08-17 tracker export predicted exactly this on four issues ("a fresh clone gets
+    push.default=simple ... every one of these traps returns intact") and that is what
+    happened. A guard that depends on reading the config is one the config can revoke
+    silently; this one is correct under either setting.
+    """
     m = re.search(r"git push \S+ (\S+)", MERGE_CODE)
     assert m and ":" in m.group(1), "the push must use an explicit src:dst refspec"
 
@@ -559,9 +567,18 @@ LAUNCHER = (REPO / "FerroStep" / "workflow" / "scripts" / "request_review.sh").r
 
 
 def test_full_review_cuts_a_dated_branch_with_no_upstream():
-    """⚠ `--no-track` is not optional here. `push.default=upstream` is set in this repo, so a
-    branch inheriting `origin/main` sends a bare `git push` straight to main whatever it is
-    called — measured. A review branch is the last thing that should have that property."""
+    """⚠ `--no-track` is not optional. A review branch is the last thing that should inherit
+    `origin/main` as its upstream.
+
+    `push.default` is NOT set in this repo today (measured 2026-09-11), so git's default
+    `simple` applies and REFUSES a push from a branch whose name differs from its upstream. ⚠
+    Keep this guard anyway, and the reason is stronger than the one that used to be here:
+    `push.default=upstream` WAS set, it is local config, and local config does not travel —
+    the 2026-08-17 tracker export predicted exactly this on four issues ("a fresh clone gets
+    push.default=simple ... every one of these traps returns intact") and that is what
+    happened. A guard that depends on reading the config is one the config can revoke
+    silently; this one is correct under either setting.
+    """
     assert 'BRANCH="review-$DATE"' in FULL_CODE
     assert "--no-track" in FULL_CODE
     assert 'date +%F' in FULL_CODE
