@@ -381,7 +381,7 @@ def test_the_sibling_repos_are_offered_read_only_and_never_writable():
         assert t in _array("REVIEWER_DENY")
 
 
-def _rendered_allowlist():
+def _rendered_allowlist(script=None):
     """The allowlist AS THE MATCHER WILL SEE IT — parsed from `--dry-run`, not from source.
 
     ⚠⚠ THIS REPLACED A SOURCE SCAN THAT WAS BLIND TO EVERY GATE PATH (#245). The scan read the
@@ -407,7 +407,9 @@ def _rendered_allowlist():
     # state. `--full` needs no commits ahead of main (the launcher says so in the very refusal
     # this produced), and `REVIEWER_ALLOW` is built from PYBIN and the gates directory with no
     # reference to RANGE, so the rendered list is identical either way.
-    r = subprocess.run([str(SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
+    # `script` lets a COPIED lane be rendered through the same parser (the negative-branch
+    # test below). One parser, two callers: a second ad-hoc scan is how #245 happened.
+    r = subprocess.run([str(script or SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
                        cwd=REPO, capture_output=True, text=True)
     assert r.returncode == 0, f"--dry-run failed, so this test proves nothing: {r.stderr}"
     for line in r.stdout.splitlines():
@@ -647,3 +649,199 @@ def test_a_flag_still_overrides_the_roster(run):
     rc, out = run("--range", "HEAD~1..HEAD", "--dry-run", "--model", "some-other", "--effort", "low")
     assert rc == 0, out
     assert "--model some-other --effort low" in out, out
+
+
+# --- the promotion-step grant (owner, 2026-09-10) -----------------------------------------
+
+def _config_env_value(key):
+    """One `KEY=value` out of config.env, which is plain by contract (its own header says so)."""
+    for line in (REPO / "FerroStep" / "workflow" / "config.env").read_text(
+            encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith(f"{key}=") and not line.startswith("#"):
+            return line.split("=", 1)[1].strip().strip('"')
+    return None
+
+
+def _run_sh_default_interpreter():
+    """The interpreter `scripts/litert_export/run.sh` composes, derived from that file.
+
+    ⚠ COMPOSED FROM ITS TWO LINES, NEVER TYPED HERE. Writing the joined path in would add one
+    more place for it to live, and the one that agrees with none of the others.
+
+    ⚠ NO COUNT IS STATED HERE, DELIBERATELY, AND IT USED TO BE (#434). This said "the THIRD
+    copy" while its own caller said "a fourth copy" seven lines below — two numbers disagreeing
+    inside the docstrings of the pin that exists to keep these places in step, and the commit
+    that corrected the count everywhere else left this one behind. Correcting the number would
+    have re-armed the same trap: nothing can fail when a number in prose goes stale, and
+    AGENTS.md §5b says to derive counts rather than state them. `_INTERPRETER_COPIES` below is
+    the enumeration; read the length off it if you need one.
+    """
+    src = (REPO / "scripts" / "litert_export" / "run.sh").read_text(encoding="utf-8")
+    work = re.search(r'SONORA_LITERT_WORK:-([^}"]+)', src)
+    py = re.search(r'SONORA_LITERT_PY:-\$\{SONORA_LITERT_WORK\}([^}"]+)\}', src)
+    assert work and py, "run.sh no longer composes its interpreter the way this test reads it"
+    return work.group(1) + py.group(1)
+
+
+def _check_publishable_docstring_interpreter():
+    """The path spelled out in the promoter's pasteable command, read from its docstring."""
+    src = (REPO / "scripts" / "tools" / "check_publishable.py").read_text(encoding="utf-8")
+    m = re.search(r'SONORA_LITERT_PY:-([^}"]+)\}', src)
+    assert m, "check_publishable.py no longer spells the interpreter the way this test reads it"
+    return m.group(1)
+
+
+# ⚠ THE ENUMERATION, not a sentence with a number in it (#434). Keyed by PATH so the
+# completeness test below can compare it against what is actually on disk. `run.sh` is
+# deliberately absent: it OWNS the value and composes it, so it is what the others are compared
+# against rather than one of them — and it does not contain the joined literal at all.
+_INTERPRETER_COPIES = {
+    "FerroStep/workflow/config.env":
+        ("REVIEWER_TORCH_PY", lambda: _config_env_value("REVIEWER_TORCH_PY")),
+    "scripts/tools/check_publishable.py":
+        ("the docstring command", _check_publishable_docstring_interpreter),
+}
+
+
+def _tracked_files_naming_the_interpreter():
+    """Every tracked file that contains the composed interpreter path as a literal string."""
+    r = subprocess.run(["git", "grep", "-l", "-F", _run_sh_default_interpreter()],
+                       cwd=REPO, capture_output=True, text=True)
+    # ⚠ `git grep` exits 1 for "no matches", which is not a failure here — but 2+ is, and
+    # treating every non-zero as "nothing found" is the instrument-failure-read-as-a-negative
+    # shape AGENTS.md §5b tabulates.
+    assert r.returncode in (0, 1), f"git grep failed ({r.returncode}): {r.stderr}"
+    return {line for line in r.stdout.split() if line}
+
+
+def test_every_literal_copy_of_the_interpreter_is_enrolled_in_the_pin():
+    """⚠⚠ THE PIN CHECKS WHAT IT IS TOLD ABOUT, SO THE ENUMERATION HAS TO BE COMPLETE (#434).
+
+    Three passes of this issue were spent on prose that said how many places hold this path —
+    "second copy", "THREE PLACES", "ALL THREE" — each correct when written and none of them able
+    to fail afterwards. A number in a sentence is not a mechanism; this is. With the enumeration
+    provably complete, no sentence needs to state a size, which is why they are all gone.
+
+    Same shape as `test_doc_claims_registry`'s "a fact no document states is a fact nobody is
+    checking", and the same remedy: assert on the registry rather than re-running a sweep by
+    hand. The sweeps are what failed — three of them, each keyed on the previous wording rather
+    than on the claim.
+
+    ⚠ A HIT IN THIS TEST FILE IS NOT FIXED BY ENROLLING IT. The rule is that the path is never
+    typed here; it is composed from `run.sh`. Delete it instead.
+    """
+    found = _tracked_files_naming_the_interpreter()
+    assert found, (
+        "no tracked file contains the interpreter literal, so this test would pass over "
+        "nothing — either the scan broke or run.sh stopped composing what the copies spell")
+    missing = sorted(found - set(_INTERPRETER_COPIES))
+    assert not missing, (
+        "these tracked files spell out the interpreter path but are not in "
+        f"_INTERPRETER_COPIES, so nothing pins them to run.sh: {missing}. Add each one (with a "
+        "reader), or delete the literal if the file should be composing it instead")
+
+
+def test_the_promotion_interpreter_matches_the_export_lane_default():
+    """⚠⚠ EVERY PLACE THE PATH IS SPELLED OUT, PINNED TO THE ONE THAT OWNS IT (#434).
+
+    `scripts/litert_export/run.sh` owns the default and composes it. The places in
+    `_INTERPRETER_COPIES` spell it out literally, each for a reason: `config.env` so the
+    reviewer's allowlist can name it, `check_publishable.py`'s docstring so the promoter's
+    command is pasteable. Each of them once described itself as one half of a pair with
+    `run.sh` and neither mentioned the other, so "change both" reached some of them and left
+    the rest naming an interpreter the export lane no longer used.
+
+    ⚠ ADD A NEW PLACE TO `_INTERPRETER_COPIES`, NOT A SENTENCE SAYING HOW MANY THERE ARE. The
+    count is derived from that dict wherever one is needed; §5b's rule is that a number in
+    prose goes stale with nothing able to fail, and #434's residual was exactly that.
+
+    ⚠ COMPOSED FROM run.sh's OWN TWO LINES, NEVER TYPED HERE — that would add one more place,
+    and the one that agrees with none of the others.
+    """
+    want = _run_sh_default_interpreter()
+    places = {f"{path} ({what})": read()
+              for path, (what, read) in _INTERPRETER_COPIES.items()}
+    assert places, "the enumeration is empty, so this test would pass over nothing"
+    assert all(places.values()), f"a copy has gone missing, so nothing pins it: {places}"
+    drifted = {k: v for k, v in places.items() if v != want}
+    assert not drifted, (
+        f"run.sh composes {want!r}; these disagree, so the reviewer or the promoter is pointed "
+        f"at an interpreter the export lane no longer uses: {drifted}")
+
+
+def test_the_promotion_step_grant_reaches_the_rendered_allowlist():
+    """⚠ A GRANT NOBODY EXERCISED IS INDISTINGUISHABLE FROM ONE THAT NEVER MATCHES (#239), so
+    this asserts on what the matcher actually receives rather than on the source line.
+
+    Skipped with its reason printed when the interpreter is absent, because the entry is
+    guarded on that and an unconditional assertion would fail on a host that legitimately has
+    no LiteRT harness. `test_the_promotion_step_grant_is_absent_without_an_interpreter` below
+    is the other half.
+    """
+    interp = _config_env_value("REVIEWER_TORCH_PY")
+    if not interp or not os.access(interp, os.X_OK):
+        pytest.skip(f"no executable interpreter at {interp!r} — the grant is guarded off here")
+    if not (REPO / "scripts" / "tools" / "check_publishable.py").exists():
+        pytest.skip("check_publishable.py is not in this tree — the grant is guarded off")
+    want = f"Bash({interp} scripts/tools/check_publishable.py:*)"
+    allow = _rendered_allowlist()
+    assert allow, "the rendered allowlist is empty — this test would pass vacuously"
+    assert want in allow, (
+        f"the promotion step is not granted; the reviewer is refused when it runs it. "
+        f"wanted {want!r}")
+
+
+def test_the_promotion_step_grant_names_the_script_not_the_bare_interpreter():
+    """The narrowing the owner made on 2026-08-20, applied to this entry: granting the
+    interpreter alone is arbitrary code execution under a new spelling."""
+    interp = _config_env_value("REVIEWER_TORCH_PY")
+    bad = [e for e in _rendered_allowlist()
+           if interp and interp in e and "check_publishable.py" not in e]
+    assert not bad, f"the torch interpreter is granted without naming a command: {bad}"
+
+
+def test_the_promotion_step_grant_is_absent_without_an_interpreter(tmp_path):
+    """⚠ THE GUARD'S NEGATIVE BRANCH — named in the docstring above and, until #434's sibling
+    #433, not written. The commit's own comment says the absent branch is the point ("a ported
+    lane adds nothing rather than a stale entry"), and it was the half that had only been
+    reasoned about.
+
+    ⚠ IT NEEDS A COPIED LANE, not an environment variable. `request_review.sh` sources
+    `config.env` AFTER the environment, so `REVIEWER_TORCH_PY=/nonexistent` on the command line
+    is overwritten before the guard runs and the entry renders anyway — measured, by the
+    reviewer, when it tried to check this branch. That is config.env's contract working as
+    designed, and it means the only honest route is a lane whose config differs.
+
+    ⚠ THE CONTROL IS THAT SOMETHING ELSE STILL RENDERS. Asserting only an absence would pass
+    against a copied script that failed outright and printed no allowlist at all — the green
+    negative over data that was never there (#245).
+    """
+    lane = tmp_path / "workflow"
+    shutil.copytree(REPO / "FerroStep" / "workflow", lane)
+    cfg = lane / "config.env"
+    original = cfg.read_text(encoding="utf-8")
+
+    def render(value):
+        cfg.write_text(
+            re.sub(r"^REVIEWER_TORCH_PY=.*$", f"REVIEWER_TORCH_PY={value}",
+                   original, flags=re.M),
+            encoding="utf-8")
+        return _rendered_allowlist(lane / "scripts" / "request_review.sh")
+
+    for value, label in (("", "empty"), ("/nonexistent/python", "a path that is not executable")):
+        allow = render(value)
+        assert any("-m pytest" in e for e in allow), (
+            f"the copied lane rendered no allowlist at all with {label}, so the absence below "
+            f"would prove nothing: {allow}")
+        granted = [e for e in allow if "check_publishable.py" in e]
+        assert not granted, (
+            f"the grant was rendered with REVIEWER_TORCH_PY {label} — a ported lane would carry "
+            f"an entry naming an interpreter it does not have, which reads as covered and can "
+            f"never match: {granted}")
+
+    real = _config_env_value("REVIEWER_TORCH_PY")
+    if real and os.access(real, os.X_OK):
+        assert any("check_publishable.py" in e for e in render(real)), (
+            "the same copied lane does NOT render the entry with a valid interpreter, so the "
+            "absences above are not attributable to the guard")

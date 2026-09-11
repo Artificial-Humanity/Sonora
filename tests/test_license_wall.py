@@ -20,6 +20,8 @@ something raised.
 
 import os
 import pathlib
+import subprocess
+import tempfile
 
 import pytest
 
@@ -609,3 +611,76 @@ def test_both_readers_use_the_shared_gap_report():
                 ("scripts", "tools", "check_publishable.py")):
         src = root.joinpath(*rel).read_text(encoding="utf-8")
         assert "lineage_gaps(lineage, unread)" in src, rel
+
+
+# --- the promotion tool's exit codes, which are its whole machine-readable interface -------
+
+def _torch_interpreter():
+    """The interpreter config.env grants the reviewer, when it exists on this host."""
+    cfg = (pathlib.Path(wall._MANIFEST_PATH).parent.parent
+           / "FerroStep" / "workflow" / "config.env").read_text(encoding="utf-8")
+    for line in cfg.splitlines():
+        if line.startswith("REVIEWER_TORCH_PY="):
+            p = line.split("=", 1)[1].strip()
+            return p if p and os.access(p, os.X_OK) else None
+    return None
+
+
+def test_an_unreadable_checkpoint_is_could_not_run_not_refused():
+    """⚠ A LOAD FAILURE EXITED 1, THE CODE THE DOCSTRING ASSIGNS TO "refused".
+
+    `torch.load` raised through `main()`, so a bad path produced a traceback and status 1 — the
+    same answer as the wall refusing an artifact that must not ship. §7 is a hand checklist whose
+    only machine-readable output is this number, so the two cases have to differ.
+
+    ⚠⚠ EVERY SHAPE OF UNREADABLE, NOT JUST A MISSING PATH (#436). The first version of this test
+    covered only `/no/such.ckpt`, so the handler could have been narrowed back to a tuple of
+    types and stayed green — and the tuple it replaced genuinely missed one: measured under the
+    granted interpreter, a file that exists but is not a checkpoint raises
+    `_pickle.UnpicklingError`, which escaped and exited 1. The other three were caught, which is
+    exactly why the hole read as closed. Each row below is a DIFFERENT exception type reaching
+    the same handler:
+
+        garbage text file  -> UnpicklingError (PickleError, NOT an OSError)
+        truncated zip      -> RuntimeError
+        a directory        -> IsADirectoryError (OSError)
+        missing path       -> FileNotFoundError (OSError)
+
+    Runs the real tool, because the defect is in what the PROCESS exits with and no assertion
+    about an `except` clause can see that. Skipped with its reason printed where no interpreter
+    with torch exists — the repo venv deliberately has none.
+    """
+    py = _torch_interpreter()
+    if not py:
+        pytest.skip("no interpreter with torch on this host (REVIEWER_TORCH_PY absent)")
+    repo = pathlib.Path(wall._MANIFEST_PATH).parent.parent
+    tool = repo / "scripts" / "tools" / "check_publishable.py"
+    donor = pathlib.Path("/data/model-training/sonora/warmstart/vat7_init.ckpt")
+    if not donor.exists():
+        pytest.skip("no warmstart init on this host: no control, and no bytes to truncate")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp = pathlib.Path(tmp)
+        (tmp / "garbage.ckpt").write_text("not a checkpoint at all\n", encoding="utf-8")
+        (tmp / "truncated.ckpt").write_bytes(donor.read_bytes()[:200])
+        cases = {
+            "garbage text file": tmp / "garbage.ckpt",
+            "truncated checkpoint": tmp / "truncated.ckpt",
+            "a directory": tmp,
+            "missing path": tmp / "no" / "such.ckpt",
+        }
+        for label, path in cases.items():
+            r = subprocess.run([py, str(tool), str(path)], cwd=str(repo),
+                               capture_output=True, text=True, timeout=300)
+            assert r.returncode == 3, (
+                f"{label} exited {r.returncode}; 1 means REFUSED and 3 means it could not run, "
+                f"so this input is reported as a publish refusal. stderr: {r.stderr[-400:]}")
+            assert "NOT a publish refusal" in r.stderr, f"{label}: {r.stderr[-300:]}"
+
+    # ⚠ THE CONTROL: prove the tool still reaches a real verdict, or every 3 above could mean it
+    # is broken for all inputs and the assertions pass on a corpse.
+    real = subprocess.run([py, str(tool), str(donor)], cwd=str(repo),
+                          capture_output=True, text=True, timeout=300)
+    assert real.returncode == 2, (
+        f"the control checkpoint exited {real.returncode}, expected 2 (lineage UNKNOWN) — so the "
+        f"3s above are not attributable to the inputs. stderr: {real.stderr[-400:]}")
