@@ -170,14 +170,19 @@ def test_no_first_party_import_is_optional():
         if err is None:
             imported.append(name)
         elif (err[0] == "ModuleNotFoundError" and err[1]
-              and not _is_ours(err[1].split(".")[0])
-              and err[1].split(".")[0] not in {n.split(".")[0] for n in _importorskip_targets()
-                                               if _is_ours(n)}):
-            # ⚠ TESTED ON THE TOP-LEVEL PACKAGE, NOT THE FULL DOTTED NAME (#446). With the
-            # anchors in place a missing SUBMODULE reports `e.name` as the whole path —
-            # measured: `matcha.data.does_not_exist`. `_is_ours` on that finds no file, so a
-            # renamed in-repo module was EXCUSED as though torch were missing. The top level
-            # (`matcha`) is ours, so it is now `broken`, which is what a rename should be.
+              and err[1].split(".")[0] in _EXTERNAL_OPTIONALS):
+            # ⚠⚠ EXCUSED ONLY BY THE NAMED LIST, NEVER BY "not ours" (#446, second reopen).
+            # Testing `not _is_ours(e.name)` fails for a BARE name: rename
+            # `scripts/lib/schemas.py` and `_is_ours('schemas')` goes False, so the three files
+            # that import it were excused exactly as though torch were missing — and they would
+            # have skipped in silence. `_is_ours` cannot answer this, because the question is
+            # "may this legitimately be absent", and a file that has been deleted looks
+            # identical to a dependency that was never installed.
+            #
+            # So `_EXTERNAL_OPTIONALS` is now the single definition of "may be absent", read
+            # here and by `test_every_target_names_something_that_exists`. That also settles the
+            # derivation question I raised: the list is not derivable, but it need only exist
+            # ONCE.
             excused.append(f"{name} (needs {err[1]})")
         else:
             broken.append(f"{name} -> {err[0]} {err[1]!r}")

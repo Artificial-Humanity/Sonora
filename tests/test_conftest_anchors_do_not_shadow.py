@@ -11,8 +11,12 @@ and the reviewer reproduced that: the shadowed module imports perfectly well —
 wrong one, which no import check can see. A claim that a guard covers something it does not is
 worse than no guard, because it stops anyone building the real one. **This file is the real one.**
 
-Measured 2026-09-13 at the time of writing: 117 bucket modules, zero collisions in any of the
-four populations below.
+⚠ THE POPULATIONS ARE WHAT THIS FILE CAN SEE, WHICH IS NOT EVERYTHING IMPORTABLE. It compares
+bucket basenames against other buckets, the stdlib (source and builtins), site-packages
+(packages, namespace packages and top-level `.so`) and the repo root (packages and loose `.py`).
+It does NOT see platform-absent stdlib names, or anything a `.pth` adds at runtime. The first
+version claimed four populations while missing namespace packages, extension modules and the
+root's loose modules (#448) — so the limit is stated here rather than implied away.
 """
 import pathlib
 import sys
@@ -24,16 +28,19 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 def _bucket_modules():
     """{basename: [bucket, ...]} for every module `conftest.py` puts on `sys.path`.
 
-    ⚠ Derived by the SAME rule conftest uses. A second expression of "which directories are
-    anchored" would be the copy that drifts, and this guard would then be checking a population
-    the suite does not actually import from.
+    ⚠ THE DIRECTORIES COME FROM `conftest._anchors()` ITSELF (#449). This used to re-express
+    conftest's rule — glob `scripts/*`, skip `__pycache__`, require a `.py` — under a docstring
+    saying a second expression "would be the copy that drifts". It was that copy. If conftest
+    starts anchoring a seventh directory, this now follows without being edited; before, it
+    would have gone on checking six and passed.
     """
+    import conftest                                  # already imported by pytest; same object
     out = {}
-    scripts = REPO / "scripts"
-    for d in sorted(scripts.iterdir()) if scripts.is_dir() else []:
-        if d.is_dir() and d.name != "__pycache__" and any(d.glob("*.py")):
-            for f in d.glob("*.py"):
-                out.setdefault(f.stem, []).append(d.name)
+    for d in conftest._anchors():
+        if d == REPO:
+            continue
+        for f in pathlib.Path(d).glob("*.py"):
+            out.setdefault(f.stem, []).append(pathlib.Path(d).name)
     return out
 
 
@@ -45,15 +52,35 @@ def _stdlib_names():
 
 
 def _site_packages_names():
+    """Top-level importable names in site-packages.
+
+    ⚠ NAMESPACE PACKAGES AND EXTENSION MODULES COUNT (#448). The first version required an
+    `__init__.py`, so it could not see `google` — a namespace package here — and a bucket module
+    named `google.py` would have shadowed it, breaking `google.protobuf` and with it
+    `ai_edge_litert`, while both guards stayed green. Compiled top-level modules (`.so`) were
+    invisible for the same reason.
+    """
     sp = pathlib.Path(sysconfig.get_paths()["purelib"])
     if not sp.is_dir():
         return set()
-    return ({p.stem for p in sp.glob("*.py")}
-            | {d.name for d in sp.iterdir() if d.is_dir() and (d / "__init__.py").exists()})
+    names = {p.stem for p in sp.glob("*.py")}
+    names |= {p.name.split(".")[0] for p in sp.glob("*.so")}
+    for d in sp.iterdir():
+        if d.is_dir() and d.name != "__pycache__" and not d.name.endswith((".dist-info", ".data")):
+            names.add(d.name)                        # packages AND namespace packages
+    return names
 
 
 def _repo_top_level():
-    return {d.name for d in REPO.iterdir() if d.is_dir() and (d / "__init__.py").exists()}
+    """Top-level importable names at the repo root — packages AND loose modules.
+
+    ⚠ THE LOOSE MODULES WERE MISSING (#448). Buckets are anchored AHEAD of the repo root, so a
+    bucket module named `vocalizer` would shadow this repo's own `vocalizer.py`. Measured: the
+    root holds `conftest`, `setup` and `vocalizer`, none of which the package-only scan saw.
+    """
+    names = {d.name for d in REPO.iterdir() if d.is_dir() and (d / "__init__.py").exists()}
+    names |= {p.stem for p in REPO.glob("*.py")}
+    return names
 
 
 def test_the_populations_are_non_empty():
