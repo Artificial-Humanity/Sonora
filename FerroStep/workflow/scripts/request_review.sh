@@ -632,11 +632,24 @@ if (( ${#SIBLINGS[@]} )); then
   # infrastructure repo" in prose while the grant came from config — so a second sibling would
   # have been readable and undescribed, which is the same unreachable-affordance defect as a
   # described path that is not readable, pointing the other way.
+  # ⚠⚠ THE LABEL IS THE LAST TWO COMPONENTS, NOT `basename`, AND IT IS NOT CALLED A "repo"
+  # (#453). Resolving candidates physically (#451) made one entry land on `…/Notes/Sonora`,
+  # whose basename is `Sonora` — so the brief told the reviewer that "the **Sonora** repo" was
+  # NOT part of its review range, while it was reviewing Sonora. A heading saying "sibling
+  # repos" was wrong about it too: it is a directory inside one, not a repo.
+  # ⚠ The consequence is what makes this worth code rather than a nit: a reviewer acting on
+  # that sentence skips the repo it was sent to review. Two components disambiguate every entry
+  # without special-casing any of them, which a basename plus an exception for one name would
+  # not — that exception is the thing that goes stale when a fourth directory is added.
   _SIB_LIST=""
-  for _s in "${SIBLINGS[@]}"; do _SIB_LIST+="
-* \`$_s\` — the **$(basename "$_s")** repo"; done
+  for _s in "${SIBLINGS[@]}"; do
+    _SIB_LABEL="$(basename "$(dirname "$_s")")/$(basename "$_s")"
+    _SIB_LIST+="
+* \`$_s\` — **$_SIB_LABEL**"
+  done
+  unset _SIB_LABEL
   BRIEF+="
-### Sibling repos you can read
+### Directories you can read — none of them are your review range
 $_SIB_LIST
 
 Some mechanisms this repo *describes* are *implemented* in one of those. ⚠ The
