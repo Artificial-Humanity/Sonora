@@ -51,12 +51,58 @@ def _importorskip_targets():
 
 
 def _is_ours(name):
-    """True when `name` resolves to a file in this repo rather than to a dependency."""
+    """True when `name` resolves to a file in this repo rather than to a dependency.
+
+    ⚠ THIS ANSWERS "IS THERE A FILE", NOT "IS THIS OURS" (#446). A first-party module that was
+    RENAMED resolves to no file, so it classifies as external and is never probed — the guard
+    narrows its own population silently, which is the vacuous pass it exists to prevent, one
+    level up. `_EXTERNAL_OPTIONALS` below is what closes that: a target that is neither a file
+    here nor a named dependency is a target naming nothing, and that is the rename symptom.
+    """
     parts = name.split(".")
     if (REPO.joinpath(*parts).with_suffix(".py").exists()
             or REPO.joinpath(*parts, "__init__.py").exists()):
         return True
     return bool(list(REPO.glob(f"scripts/*/{parts[0]}.py")))
+
+
+# ⚠ A CLOSED LIST, DELIBERATELY, and the one place in this file that is not derived from disk.
+# It cannot be derived: `pyproject.toml` declares torch, matplotlib, numpy, soundfile and pysbd,
+# but NOT `ai_edge_litert` (the LiteRT harness, installed with the data) or `pyloudnorm` —
+# measured, so "declared as a dependency" would flag two legitimate externals as missing.
+# Adding a name here is therefore a deliberate act with a reason beside it, which is the
+# property that makes a hand list acceptable where a globbed one is not.
+_EXTERNAL_OPTIONALS = {
+    "torch": "the repo venv deliberately excludes it (AGENTS.md §3)",
+    "matplotlib": "same, and only `matcha.cli` needs it",
+    "numpy": "declared, but optional for the tests that guard on it",
+    "soundfile": "declared; audio-only paths",
+    "pysbd": "declared; sentence splitting in the book lane",
+    "pyloudnorm": "undeclared; loudness measurement",
+    "ai_edge_litert": "undeclared; the LiteRT harness venv lives with the data",
+}
+
+
+def test_every_target_names_something_that_exists():
+    """⚠ A RENAMED IN-REPO MODULE WOULD OTHERWISE LEAVE THE POPULATION SILENTLY (#446).
+
+    `_is_ours` asks whether a FILE exists. Rename `matcha/data/license_wall.py` and the target
+    stops being "ours", stops being probed, and the test that `importorskip`s it skips forever —
+    with this guard still green, because the thing it would have checked is no longer in its
+    population. Measured: `_is_ours('matcha.data.license_wall_MOVED')` is False.
+
+    So every target must be one of two things: a file in this repo, or a name on
+    `_EXTERNAL_OPTIONALS` with a stated reason. Anything else names nothing.
+    """
+    targets = _importorskip_targets()
+    assert targets, "no targets found — this test would pass over nothing"
+    orphans = sorted(n for n in targets
+                     if not _is_ours(n) and n.split(".")[0] not in _EXTERNAL_OPTIONALS)
+    assert not orphans, (
+        "these `importorskip` targets are neither a file in this repo nor a named external "
+        f"optional, so they name nothing and their tests skip forever: {orphans}. If one was "
+        "renamed, fix the target; if it is a new dependency, add it to _EXTERNAL_OPTIONALS "
+        "with the reason it may legitimately be absent")
 
 
 def test_the_enumeration_and_the_classifier_both_work():
@@ -123,9 +169,15 @@ def test_no_first_party_import_is_optional():
         err = _probe_import_in_a_clean_interpreter(name)
         if err is None:
             imported.append(name)
-        elif err[0] == "ModuleNotFoundError" and err[1] and not _is_ours(err[1]):
-            # ⚠ `e.name` is what was actually missing, which is not always the module being
-            # imported. That distinction is the whole discriminator.
+        elif (err[0] == "ModuleNotFoundError" and err[1]
+              and not _is_ours(err[1].split(".")[0])
+              and err[1].split(".")[0] not in {n.split(".")[0] for n in _importorskip_targets()
+                                               if _is_ours(n)}):
+            # ⚠ TESTED ON THE TOP-LEVEL PACKAGE, NOT THE FULL DOTTED NAME (#446). With the
+            # anchors in place a missing SUBMODULE reports `e.name` as the whole path —
+            # measured: `matcha.data.does_not_exist`. `_is_ours` on that finds no file, so a
+            # renamed in-repo module was EXCUSED as though torch were missing. The top level
+            # (`matcha`) is ours, so it is now `broken`, which is what a rename should be.
             excused.append(f"{name} (needs {err[1]})")
         else:
             broken.append(f"{name} -> {err[0]} {err[1]!r}")

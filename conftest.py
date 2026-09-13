@@ -41,9 +41,14 @@ def _anchors():
     scripts = _ROOT / "scripts"
     if scripts.is_dir():
         # Bare-name imports (`synth_common`, `qc_verdict`, …) resolve from their bucket.
-        # ⚠ Verified 2026-09-11: no basename collides across buckets, so a flat path is
-        # unambiguous. If that stops being true, two buckets will shadow each other here
-        # silently — the guard test is what would surface it.
+        # ⚠⚠ THESE GO AHEAD OF THE REPO ROOT, THE STDLIB AND site-packages, so a bucket module
+        # named for any of them wins for the whole session. `tests/test_conftest_anchors_do_not_
+        # shadow.py` is what checks that, across all four populations.
+        # ⚠ This comment used to say the IMPORT guard would surface a collision. It does not,
+        # and the reviewer reproduced that (#447): a shadowed module imports perfectly well — it
+        # is just the wrong one, which no import check can see. Crediting a guard that does not
+        # cover something is worse than having no guard, because it stops the real one being
+        # written.
         for d in sorted(scripts.iterdir()):
             if d.is_dir() and d.name != "__pycache__" and any(d.glob("*.py")):
                 yield d
