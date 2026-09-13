@@ -479,7 +479,15 @@ for _cand in "${_cands[@]}"; do
   _cand="${_cand/#\~/$HOME}"
   [[ "$_cand" == /* ]] || _cand="$REPO_ROOT/$_cand"
   [[ -d "$_cand" ]] || continue
-  _abs="$(cd "$_cand" && pwd)"
+  # ⚠⚠ `pwd -P`, PHYSICAL, NOT LOGICAL (#451). `cd X && pwd` reports the path you arrived by,
+  # so a candidate that is a SYMLINK was granted under its link path — measured: `notes`
+  # rendered as `…/github/notes`, and the harness then fenced Bash out of the real directory it
+  # points at, `…/Notes/Sonora`. The entry read as granted and delivered nothing, which is
+  # #239's shape arriving through a different door. Only the `notes` candidate changes: the
+  # three sibling checkouts resolve identically either way (measured).
+  # ⚠ It also makes the de-duplication below true to its own comment — two candidates reaching
+  # one directory by different links now collapse, which "resolved path" always claimed.
+  _abs="$(cd "$_cand" && pwd -P)"
   # ⚠ A STRING MEMBERSHIP TEST, NOT AN INNER LOOP. The de-dup was a `for … break` nested
   # inside this one, and a guard asserting "the candidate loop does not break" then could not
   # tell the two loops apart — it went red on correct code. Two loops in one block is a

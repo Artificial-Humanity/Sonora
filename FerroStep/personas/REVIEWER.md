@@ -80,6 +80,10 @@ summary — there is no third place, and no later opportunity.
       believe FerroStep.**
     * Concretely added the same day, because you reported each of them refused: the read-only
       `git config` verbs, `git worktree list`, and the notes directory as an `--add-dir`.
+      ⚠ That last one widens **Bash** specifically. The file tools already followed
+      `notes/` from the working directory; Bash was fenced out of the directory the symlink
+      points at, and the grant only reaches it because the candidate is resolved physically
+      (#451). If `ls notes` still refuses, say so — that is the grant not delivering.
 
   * ⚠ **YOU CAN RUN THE DOC-CLAIMS GATE. Use this exact spelling:**
 
