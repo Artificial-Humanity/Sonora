@@ -218,8 +218,8 @@ def load_ckpt():
     ck = torch.load(CKPT, map_location="cpu", weights_only=False)
     # ⚠ THE PUBLISH WALL, BEFORE ANY GRAPH IS BUILT. A licence is not the only reason an
     # artifact must not ship: a checkpoint whose lineage holds a `publish: forbidden` corpus
-    # must not become a mobile artifact however clean its licences are. The standing case is
-    # the `docs/audiobook-corpus-policy.md` firewall. (⚠ This cited the crossed delivery bank
+    # must not become a mobile artifact however clean its licences are. No corpus carries
+    # `publish:` today; the check is armed for one not yet declared. (⚠ This cited the crossed delivery bank
     # under owner ruling 12 of 2026-09-09; the owner revised that on 2026-09-10 and the bank
     # is publishable. The check is unchanged — only the example was retired.)
     # Checked here because THIS is where a checkpoint becomes

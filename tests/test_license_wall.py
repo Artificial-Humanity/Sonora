@@ -200,14 +200,18 @@ def test_anything_not_permissive_fails_closed(tmp_path, monkeypatch):
 #
 # A licence is not the only reason an artifact must not ship, so `publish` is a separate axis
 # from `class` — folding it in would make the manifest state something false about the licence.
-# The standing case is the private-lineage firewall in `docs/audiobook-corpus-policy.md`:
-# nothing leaves the machine, and a private branch never warm-starts into the public lineage.
+# ⚠ The firewall in `docs/audiobook-corpus-policy.md` has the same shape and is NOT reachable
+# through this axis (#473) — that corpus is `class: blocked` and `enforce` refuses it at
+# training time, one wall earlier. `private_audiobook_v1` below is a FIXTURE NAME standing in
+# for some future corpus, not a claim that such a corpus can get here.
 #
 # ⚠⚠ THESE FIXTURES USED TO BE THE CROSSED DELIVERY BANK, AND THAT EXAMPLE IS RETIRED.
 # Owner ruling 12 answered 2026-09-09 that the bank was diagnostic only; the owner REVISED it
-# on 2026-09-10 and the bank is PUBLISHABLE. A test asserting `private_audiobook_v1` is
+# on 2026-09-10 and the bank is PUBLISHABLE. A test asserting `crossed_bank_v8` is
 # `publish: forbidden` teaches a reader the opposite of the live ruling, which is why the
 # fixture corpus was renamed rather than left alone. Nothing about the guard changed.
+# (#474: this sentence said `private_audiobook_v1` — the NEW name — because the rename that
+# it exists to explain was done with a blanket replace that rewrote the explanation too.)
 #
 # ⚠ NO LIVE MANIFEST ENTRY IS `publish: forbidden` TODAY, so these tests inject the policy.
 # That is the honest way to test a guard whose corpus has not been built — and the

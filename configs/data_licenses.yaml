@@ -37,19 +37,24 @@
 # perfectly licensed and still be one nothing may ship from. Writing that as a licence class
 # would make this file state something false about the licence.
 #
-# The standing user is the private-lineage firewall in `docs/audiobook-corpus-policy.md`:
-# nothing leaves the machine, and a private branch never warm-starts into the public lineage.
-# Those rules are described there as absolute and had no code behind them before this axis.
+# ⚠ The private-lineage firewall in `docs/audiobook-corpus-policy.md` has the same SHAPE and
+# is NOT reachable through this axis (#473): that policy also says a purchase licenses
+# listening and not training, so such a corpus is `class: blocked` and the licence wall
+# refuses it at training time, before any publish check runs. Reaching this axis with one
+# would mean declaring it `permissive`, which is false. The firewall is enforced one wall
+# earlier and harder.
 #
 # ⚠ THE CROSSED DELIVERY BANK WAS THE ORIGINAL CASE AND IS NO LONGER ONE. Owner ruling 12
 # answered 2026-09-09 that the bank was diagnostic only; the owner REVISED it on 2026-09-10
 # and the bank is publishable. This comment stated the retired answer as current. Nothing was
 # unbuilt by the revision — the bank is simply not marked `publish: forbidden`.
 #
-# ⚠ The bank does not exist yet, so no entry carries `publish:` today. It is armed anyway:
-# `enforce` refuses an UNDECLARED corpus at training time, so the bank cannot be trained on
-# until someone writes its entry here — which is the moment they must choose. Enforced by
+# ⚠ NO entry carries `publish:` today — not the crossed bank, which became publishable on
+# 2026-09-10, and not anything else. The axis is armed anyway: `enforce` refuses an UNDECLARED
+# corpus at training time, so nothing new can be trained on until someone writes its entry
+# here — which is the moment they must choose. Enforced by
 # `matcha/data/license_wall.refuse_unpublishable`, called from the export path.
+# (#475: this said "the bank" and armed the wall for a corpus that no longer needs it.)
 #
 # Agreement-walled datasets (click-through / "by downloading you agree" terms,
 # e.g. EmoV-DB) are FULLY EXCLUDED: never downloaded, never ingested, never declared here.

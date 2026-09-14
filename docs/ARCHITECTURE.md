@@ -139,9 +139,10 @@ Contract changes bump the version and require an owner call.
   [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (2026-07-17).
 * **Publish wall (a second axis, not a licence):** a corpus can be perfectly licensed and still
   be one nothing trained on it may ship — `publish: forbidden` in `configs/data_licenses.yaml`
-  — the standing case is the private-lineage firewall in
-  [audiobook-corpus-policy.md](audiobook-corpus-policy.md), whose absolute rules had no code
-  behind them before this axis existed. (⚠ This named the crossed delivery bank as
+  — no entry carries `publish:` today, and the axis is armed for a corpus not yet declared.
+  ⚠ The firewall in [audiobook-corpus-policy.md](audiobook-corpus-policy.md) has the same
+  shape but is NOT reachable here: that corpus is `class: blocked`, so the licence wall
+  refuses it at training time, one wall earlier (#473). (⚠ This named the crossed delivery bank as
   `diagnostic only` per owner ruling 12 of 2026-09-09. The owner revised that on 2026-09-10:
   the bank is publishable. The mechanism is unchanged; only the example retired.) The licence wall
   runs at training time; the publish wall runs where a checkpoint becomes an artifact — the §6

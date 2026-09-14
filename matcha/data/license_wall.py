@@ -111,10 +111,11 @@ def _publish():
     on it may ship, for a reason licences do not speak to. Encoding "do not publish" as a
     licence class would make the manifest state something false about the licence.
 
-    The standing user is the private-lineage firewall in `docs/audiobook-corpus-policy.md`,
-    whose rules are absolute and had no code behind them before this axis existed: nothing
-    leaves the machine, and a private branch never warm-starts into the public lineage.
-    That is `publish: forbidden` plus warm-start lineage propagation (#421).
+    The reasoning stands on its own and does not need an example: a licence says what may be
+    redistributed, not whose voice is in the recording. ⚠ NO ENTRY CARRIES `publish:` TODAY.
+    The axis is armed for a corpus that does not exist yet, which is deliberate — see the
+    publish-wall block below for what arms it, and for why the audiobook firewall is NOT the
+    replacement case it looks like (#473).
     """
     global _publish_cache
     if _publish_cache is None:
@@ -231,9 +232,8 @@ def enforce(filelist_paths):
 #
 # ⚠ NOTHING HERE WAS UNBUILT, WHICH IS WHY THE REVISION IS EASY TO MISS. The `publish` axis,
 # `refuse_unpublishable` and the export and promotion call sites are unchanged. What changed
-# is only that the bank is not marked `publish: forbidden` — and the mechanism has a STRONGER
-# standing user than the one it was built for: the `docs/audiobook-corpus-policy.md` firewall,
-# whose rules are described as absolute and had no code behind them at all.
+# is only that the bank is not marked `publish: forbidden`. The axis now waits on a corpus
+# that does not exist yet, and that is the honest description of it.
 #
 # ⚠ ONE CONSIDERATION IS RECORDED RATHER THAN SETTLED, per the owner. The argument against
 # relaxing was that non-commercial intent has no bearing on likeness: a freely distributed
@@ -247,11 +247,30 @@ def enforce(filelist_paths):
 # year if at all, and this one bites at exactly the moment a result is good and someone is
 # eager to ship — which is when prose loses.
 #
-# ⚠ WHAT ARMS IT FOR A CORPUS THAT DOES NOT EXIST YET. The bank has not been built, so no
-# entry names it today and this guard has nothing to fire on in the live manifest. It is
-# armed anyway, by the wall above: `enforce` REFUSES AN UNDECLARED CORPUS AT TRAINING TIME,
-# so the bank cannot be trained on until someone adds a manifest entry for it — and that is
-# the moment they choose `publish:`. The two guards close the loop on each other.
+# ⚠ WHAT ARMS IT FOR A CORPUS THAT DOES NOT EXIST YET. No entry in the live manifest carries
+# `publish:` at all, so this guard has nothing to fire on today. It is armed anyway, by the
+# wall above: `enforce` REFUSES AN UNDECLARED CORPUS AT TRAINING TIME, so nothing new can be
+# trained on until someone adds a manifest entry for it — and that is the moment they choose
+# `publish:`. The two guards close the loop on each other.
+#
+# ⚠ THIS SAID "THE BANK" THROUGHOUT AND STILL ARMED THE WALL FOR IT (#475). The crossed
+# delivery bank became publishable on 2026-09-10; it is no longer the corpus this waits for.
+# What the paragraph describes is true of ANY corpus not yet declared, which is what it now
+# says. It survived the sweep for the retired ruling because it never names ruling 12 —
+# keying a sweep on the WORDING rather than on the CLAIM, one more time.
+#
+# ⚠⚠ THE AUDIOBOOK FIREWALL IS NOT A USER OF THIS AXIS, AND SAYING SO WAS WRONG (#473).
+# `docs/audiobook-corpus-policy.md` describes rules with the same SHAPE — "never published",
+# "never merged into the public lineage" — and an earlier version of this comment named it as
+# the standing case. It cannot be. That policy also says a purchase licenses listening and not
+# training, so such a corpus can only be `class: blocked`, and `enforce` refuses a
+# non-permissive class at TRAINING time with no override since the `derisk` hatch was retired
+# on 2026-09-09. The lineage therefore never reaches the publish wall at all.
+#
+# ⚠ AND THAT IS A TRAP, NOT A GAP. The only way to reach this axis with such a corpus is to
+# declare it `permissive`, which would be false, and which is exactly what the "separate map,
+# separate axis" rule above exists to forbid. Do not wire the firewall to `publish:` — the
+# firewall is enforced one wall earlier, and it is enforced harder there.
 #
 # ⚠ UNDECLARED IS ALLOWED HERE, DELIBERATELY, and that is the opposite of `enforce`'s
 # treatment. Measured 2026-09-09: `data/hi-fi_en-US_female/` and `data/filelists/` (VCTK)
@@ -278,9 +297,9 @@ def lineage_filelists(ckpt):
     the module's `on_load_checkpoint`/`on_save_checkpoint` carry it through every later
     save. The rule the gap breaks is "a descendant WAS trained on this — at an earlier stage
     — so the ancestors count", and it holds for whatever is marked `publish: forbidden`. It
-    was written when the crossed bank was the example; ruling 12 was relaxed on 2026-09-10 and
-    the bank is publishable, but the lineage requirement is the firewall's too and is not
-    specific to either corpus.
+    was written when the crossed bank was the example, and ruling 12 was relaxed on 2026-09-10
+    so the bank no longer is one; the requirement was never specific to that corpus, and the
+    lineage gap it closes is real for any corpus that ever carries the mark.
 
     ⚠ A checkpoint with no datamodule hparams and no lineage key yields NOTHING, and the
     caller must treat that as "unknown lineage", never as "clean". This function stays
