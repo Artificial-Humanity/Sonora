@@ -386,7 +386,7 @@ def _skip_if_unbuildable(cmd, rc, out):
 
     Deliberately a skip rather than a failure: this file's job is the author gate, and an
     invocation this builder cannot express is a gap in the builder, not evidence about the
-    guard. It is safe to skip precisely because `test_the_refusal_detector_discriminates`
+    guard. It is safe to skip precisely because `test_every_read_gets_past_the_author_gate`
     refuses to let the whole population go quiet — a skip that spread to everything would take
     the floors down with it.
     """
@@ -486,10 +486,15 @@ def test_every_read_gets_past_the_author_gate(probe):
 
     ⚠ EVERY read, not merely one, and THAT is the part #466 was filed about. This asked only
     that SOME read pass, which the pure queries satisfy on their own — so the loss of ONE write
-    primitive was invisible. Move the `--store` literals out of `_direct_write` into a helper
-    and `take` and `rescope` reclassify as reads; the parametrised write test stops running
-    over them, this control still passed on `list`, and the file dropped 25 -> 23 passed with
-    nothing red. Checking every read closes it from the other side, and does not depend on
+    primitive was invisible. ⚠ THE MUTATION THAT SHOWS IT IS IN `issue.py`, NOT IN THIS FILE:
+    hoist `"ferrostep"` and `"--store"` out of `ferrostep_move` and `ferrostep_rescope` into
+    module constants, an ordinary refactor, and no function body carries the literals for
+    `_direct_write` to find. (#468: this said "out of `_direct_write` into a helper", naming
+    the classifier instead of what it reads. Hoisting the classifier's own literal reclassifies
+    nothing — measured, 25 passed — so the sentence described a mutation with no effect and
+    would have sent the next reader to the wrong file.) `take` and `rescope` then reclassify as
+    reads; the parametrised write test stops running over them, this control still passed on
+    `list`, and the file dropped 25 -> 23 passed with nothing red. Checking every read closes it from the other side, and does not depend on
     which primitive died: a write the classifier has lost is now a "read" that refuses on the
     author line, and it is named here.
 
