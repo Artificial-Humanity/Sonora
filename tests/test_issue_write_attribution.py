@@ -386,9 +386,19 @@ def _skip_if_unbuildable(cmd, rc, out):
 
     Deliberately a skip rather than a failure: this file's job is the author gate, and an
     invocation this builder cannot express is a gap in the builder, not evidence about the
-    guard. It is safe to skip precisely because `test_every_read_gets_past_the_author_gate`
-    refuses to let the whole population go quiet — a skip that spread to everything would take
-    the floors down with it.
+    guard. What makes that safe is that each population has its OWN floor asserting it was
+    reached — `test_every_write_subcommand_was_actually_probed` for the writes,
+    `test_every_read_gets_past_the_author_gate` for the reads. A skip that spread across
+    either one takes that floor down with it.
+
+    ⚠ IT CITED THE READ FLOOR ALONE, AND THAT WAS THE WRONG POPULATION (#469). The read floor
+    is `assert got_past` over `READ_SUBCOMMANDS`, and the writes are what this file exists to
+    assert about. The gap was not theoretical: skips originate in the invocation BUILDER, and
+    `list`/`escalated` are the two subcommands that need no arguments at all, so a builder
+    fault takes out every write and leaves exactly the reads that hold the cited floor up.
+    Measured on b67fad7, with `INVOCATIONS` emptied for the writes: 5 passed, 20 SKIPPED,
+    exit 0 — every "a writing subcommand refuses without an author" assertion drained, and
+    the file green. The write floor below is what now goes red on that.
     """
     if rc == 2 or ("usage: issue.py" in out and "error:" in out):
         pytest.skip("could not build an invocation `%s` accepts from its own usage line, so "
@@ -429,6 +439,39 @@ def test_the_derivations_all_parsed_something_two_sided():
     assert READ_SUBCOMMANDS, (
         "every subcommand classified as a write — the classifier is over-broad (did PB.__init__ "
         "get counted?), and 'writes refuse' is now satisfied by a module that refuses everything")
+
+
+def test_every_write_subcommand_was_actually_probed(probe):
+    """⚠ ASSERT THE INSTRUMENT RAN. The write-side floor `_skip_if_unbuildable` rests on (#469).
+
+    `test_a_writing_subcommand_refuses_without_an_author` is parametrised, so it cannot see its
+    own siblings: every one of its cases can skip and the file still reports green, because a
+    skip is not a failure and no single case knows the others went quiet. This is the test that
+    knows. It is separate and unparametrised for exactly the reason the read control is.
+
+    Strict on purpose — it demands that NONE of them skipped, not that some survived. A write
+    subcommand this file cannot build an invocation for is a write subcommand whose author gate
+    is untested, and "at least one write was probed" would still pass with nine of ten holes
+    open. The skip stays a skip so the rest of the file keeps reporting; this names the hole.
+
+    It asserts nothing about WHAT the probes said. That is the parametrised test's job, per
+    subcommand, with a better message. This one only says they ran.
+    """
+    assert WRITE_SUBCOMMANDS, (
+        "no subcommand is classified as a write, so this floor is iterating over nothing — "
+        "see test_the_derivations_all_parsed_something_two_sided for what collapsed")
+    unbuildable = {}
+    for cmd in WRITE_SUBCOMMANDS:
+        rc, out = probe(cmd)
+        if rc == 2 or ("usage: issue.py" in out and "error:" in out):
+            unbuildable[cmd] = out.strip()
+    assert not unbuildable, (
+        "argparse refused the invocation this file built for %d of the %d writing "
+        "subcommand(s): %s. Each one SKIPS rather than fails, so the author gate goes "
+        "unasserted for it while the file still reports green. The fault is in the invocation "
+        "builder (`_required_tokens` / `_invocation` reading the usage line), not in the guard "
+        "— but it is a hole in the guard's coverage until it is fixed. Details: %s"
+        % (len(unbuildable), len(WRITE_SUBCOMMANDS), sorted(unbuildable), unbuildable))
 
 
 # --------------------------------------------------------------- the guard, run
