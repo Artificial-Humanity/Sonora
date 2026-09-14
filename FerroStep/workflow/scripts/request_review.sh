@@ -136,6 +136,20 @@ AGENT_ENV="$(ferrostep agent-env --agent reviewer --roster "$REPO_ROOT/FerroStep
 eval "$AGENT_ENV"
 PERSONA="${AGENT_PERSONA:-}"
 [[ -n "$PERSONA" ]] || die "agent-env emitted no AGENT_PERSONA for the reviewer"
+
+# ⚠⚠ THE REVIEWER RAN WITH NO SPEND CEILING AT ALL UNTIL 2026-09-07. review_cycle.sh puts
+# `--max-budget-usd` on the WORKER's claude call and nothing put one on this one — the longer,
+# whole-diff call was the unbounded half, while the driver's --help called its flag a ceiling
+# "PER claude call".
+# ⚠ UNLIKE model/effort, `agent-env` DOES emit this: `budget_usd` is a key the roster crate
+# models (FerroStep 6c64051), so it arrives in the eval above and needs no second reader.
+# ⚠ ABSENT IS THE WHOLE MEANING OF NO CEILING — a deployment that sets nothing keeps behaving
+# exactly as it did, so this cannot impose a limit nobody asked for. An unspendable value is
+# refused by the resolver, not folded into "absent".
+BUDGET_ARGS=()
+if [[ -n "${AGENT_BUDGET_USD:-}" ]]; then
+  BUDGET_ARGS=(--max-budget-usd "$AGENT_BUDGET_USD")
+fi
 [[ -r "$PERSONA" ]] || die "reviewer persona not readable at $PERSONA"
 # ⚠ THE MODEL AND EFFORT RESOLVE FROM THE SAME ROSTER ENTRY (owner, 2026-09-02) — they were
 # `MODEL="opus"` / `EFFORT="xhigh"` here AND in review_cycle.sh, two copies of one setting.
@@ -1002,8 +1016,18 @@ fi
 # REVIEWER_DENY, and deny beats allow — so these entries would have read as granted and never
 # matched, which is #239's shape. What keeps the write forms out is the allowlist itself: this
 # launcher passes no --permission-mode, so anything unnamed is refused.
+# ⚠ `ferrostep` READ SUBCOMMANDS ONLY, NEVER THE BARE BINARY. It also carries `move`, `file`,
+# `rescope`, `grade` and `notify`, every one of which writes to the ledger — so `Bash(ferrostep:*)`
+# would hand the reviewer the developer's whole surface. `--version`, `agent-env` and `explain`
+# read: a stamp, the roster, and a workflow definition.
+# ⚠ ADDED BECAUSE THE REVIEWER ASKED AND WAS REFUSED (#463's pass). It reported that
+# `ferrostep --version` and `ferrostep agent-env --roster FerroStep/config.yaml` would have let it
+# verify the central claim of the range it was reviewing — that the INSTALLED binary emits
+# `AGENT_BUDGET_USD` — and it had to take the developer's word instead. Under the owner's
+# 2026-09-13 entitlement that refusal is a gap, not a boundary.
 for _ro in "git config --get" "git config --get-all" "git config --get-regexp" \
-           "git config --list" "git worktree list"; do
+           "git config --list" "git worktree list" \
+           "ferrostep --version" "ferrostep agent-env" "ferrostep explain"; do
   REVIEWER_ALLOW+=("Bash($_ro:*)")
 done
 unset _ro
@@ -1073,6 +1097,14 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   printf '  --system-prompt-file %q \\\n' "$PERSONA"
   printf '  --append-system-prompt <the brief above> \\\n'
   printf '  --model %q --effort %q   (no --permission-mode: allowlist-only) \\\n' "$MODEL" "$EFFORT"
+  # ⚠ PREVIEWED BECAUSE IT IS PASSED. #393 was exactly this defect in merge_branch.sh: a dry
+  # run that describes a different command from the one it runs is worse than none, because it
+  # gets believed. When there is no ceiling the preview says so rather than staying silent.
+  if [[ ${#BUDGET_ARGS[@]} -gt 0 ]]; then
+    printf '  --max-budget-usd %q \\\n' "$AGENT_BUDGET_USD"
+  else
+    printf '  (no --max-budget-usd: the roster sets no budget_usd for the reviewer) \\\n'
+  fi
   printf '  --tools %q \\\n' "$REVIEWER_TOOLS"
   printf '  --allowedTools'; printf ' %q' "${REVIEWER_ALLOW[@]}"; printf ' \\\n'
   printf '  --disallowedTools'; printf ' %q' "${REVIEWER_DENY[@]}"; printf ' \\\n'
@@ -1122,6 +1154,7 @@ claude -p "$PROMPT" \
   --disallowedTools "${REVIEWER_DENY[@]}" \
   --strict-mcp-config \
   --mcp-config "$MCP_CONF" \
+  ${BUDGET_ARGS[@]+"${BUDGET_ARGS[@]}"} \
   ${ADD_DIR_ARGS[@]+"${ADD_DIR_ARGS[@]}"}
 STATUS=$?
 set -e

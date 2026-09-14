@@ -21,3 +21,9 @@ agents:
     # a default would be the second copy of this setting, and it would win silently.
     model: claude-fable-5-1
     effort: medium      # the claude CLI's ladder: low | medium | high | xhigh | max
+    # ⚠ NO SPEND CEILING, DELIBERATELY (owner, 2026-09-07). `budget_usd` is a roster key
+    # FerroStep models and `ferrostep agent-env` EMITS (as AGENT_BUDGET_USD, unlike model and
+    # effort above), and request_review.sh passes it as --max-budget-usd when it is present.
+    # Absent is the whole meaning of no ceiling, so leaving it out is a setting, not an
+    # omission — the owner chose to run uncapped for now. Add `budget_usd: <n>` to cap a
+    # single reviewer run; 0 is refused at resolve rather than read as absent.

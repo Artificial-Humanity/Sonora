@@ -19,7 +19,11 @@
 # loop with push rights would be the only thing standing between a bad afternoon and
 # production. Converge here; a human pushes.
 #
-# ⚠ IT SPENDS MONEY UNATTENDED. Every `claude -p` call carries --max-budget-usd, and the run
+# ⚠ IT SPENDS MONEY UNATTENDED. The WORKER's `claude -p` call carries --max-budget-usd; the
+# REVIEWER's carries one only when the roster sets `budget_usd` for it, and today it does
+# not — so the longer call, reading the whole diff, is the uncapped one. This said "every
+# `claude -p` call" until 2026-09-14 (#463), which is the same false claim --help carried
+# and which was corrected there alone. The run
 # has a hard review ceiling. Read --help before the first real run.
 #
 # Stop it at any time by creating the stop file (default `.review_cycle.stop` in the repo
@@ -54,7 +58,12 @@ review_cycle.sh — run the review loop to convergence. NEVER PUSHES.
                       ceiling + 1 — agent_passes.max in FerroStep/workflow/sonora-lane.json)
                       That sum is what the fix-pass cap requires: the review that finds
                       an issue, then one after each fix pass.
-  --max-usd <N>       Spend ceiling PER claude call.    (default: 5)
+  --max-usd <N>       Spend ceiling for the WORKER's claude call. (default: 5)
+                      ⚠ NOT "per claude call", which this said until 2026-09-07: the
+                      REVIEWER's call is request_review.sh's, and its ceiling is the
+                      roster's `budget_usd` for that agent (FerroStep/config.yaml).
+                      Until that key existed the reviewer ran with no ceiling at all
+                      while this line claimed one covered it.
   --model / --effort  The WORKER's only.      (default: claude-fable-5-1 / high)
                       The reviewer's are its roster entry in FerroStep/config.yaml; this driver
                       does not forward them to request_review.sh and never did.
@@ -395,7 +404,12 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "range        : $RANGE"
   echo "developer    : $DEVELOPER"
   echo "max reviews  : $MAX_REVIEWS   (the definition's fix-pass ceiling + 1)"
-  echo "spend ceiling: \$$MAX_USD per claude call"
+  # ⚠ A RUNNABLE FORM, so it is corrected here and not only in --help (#463). It printed "per
+  # claude call", which is the claim the reviewer's uncapped call disproves — and a wrong
+  # sentence in --dry-run output is read by someone deciding whether to start a paid run.
+  echo "spend ceiling: \$$MAX_USD for the WORKER's claude call"
+  echo "               the REVIEWER's comes from the roster's budget_usd (FerroStep/config.yaml);"
+  echo "               unset there means that call is UNCAPPED"
   echo "model/effort : $MODEL / $EFFORT"
   echo "stop file    : $STOPFILE"
   echo "converged when: $OPEN_FILTER  -> 0   (currently: $(pb "$OPEN_FILTER"))"
