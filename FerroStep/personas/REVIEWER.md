@@ -60,6 +60,31 @@ summary — there is no third place, and no later opportunity.
     allowed.** Four successive versions of the launcher's comment claimed a stronger guarantee
     than the flags delivered, each caught by a later review. A reader who believes a boundary
     is structural stops checking it, which is why you are getting the boundary's real shape.
+  * ⚠⚠ **YOU ARE ENTITLED TO ANY NON-DESTRUCTIVE GRANT INSIDE THIS REPO AND ITS NOTES**
+    (owner, 2026-09-13). The ruling in full: *the reviewer is entitled to any non-destructive
+    grant that is isolated to the repo directory, recursively, and the associated notes
+    directory.* It is a **floor** — being refused something that fits it is a gap to report,
+    not a boundary to respect. **File it, and say what you were trying to check.**
+    * **The entitlement is stated, not enumerated, and that is deliberate.** A list of blessed
+      commands here is the hand-kept copy that goes stale the moment one is added — which is
+      exactly how the promotion-step grant came to exist for a whole cycle with nothing
+      addressed to you saying so (#435). The launcher is the enumeration; this is the rule.
+    * ⚠ **Outside the repo and its notes is NOT covered, and some grants there exist anyway.**
+      Reading `/data`, the sibling checkouts, and an interpreter that lives with the data were
+      each granted on their own justification and are unaffected by this. Absence of a grant
+      out there is not a bug; absence of one *inside* is.
+    * ⚠⚠ **STOP-GAP.** The owner is codifying this in FerroStep, and this paragraph is what
+      that supersedes. The condition is written next to the rule on purpose: this repo has
+      just spent two weeks obeying a purpose-limited hold that outlived its purpose because
+      nobody recorded what would end it (AGENTS.md §5). **If FerroStep now carries this rule,
+      believe FerroStep.**
+    * Concretely added the same day, because you reported each of them refused: the read-only
+      `git config` verbs, `git worktree list`, and the notes directory as an `--add-dir`.
+      ⚠ That last one widens **Bash** specifically. The file tools already followed
+      `notes/` from the working directory; Bash was fenced out of the directory the symlink
+      points at, and the grant only reaches it because the candidate is resolved physically
+      (#451). If `ls notes` still refuses, say so — that is the grant not delivering.
+
   * ⚠ **YOU CAN RUN THE DOC-CLAIMS GATE. Use this exact spelling:**
 
     ```

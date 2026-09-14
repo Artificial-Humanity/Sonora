@@ -845,3 +845,53 @@ def test_the_promotion_step_grant_is_absent_without_an_interpreter(tmp_path):
         assert any("check_publishable.py" in e for e in render(real)), (
             "the same copied lane does NOT render the entry with a valid interpreter, so the "
             "absences above are not attributable to the guard")
+
+
+def test_every_granted_directory_is_a_physical_path():
+    """⚠ A SYMLINKED GRANT READS AS GIVEN AND DELIVERS NOTHING (#451).
+
+    `SIBLING_REPO_CANDIDATES` gained `notes`, which is a symlink out of the repo. The launcher
+    resolved candidates with `cd X && pwd` — the path you arrived BY — so the grant named
+    `…/github/notes` while the harness fenced Bash out of the directory it points at. The entry
+    was present, the reviewer was still refused, and only the reviewer trying it found out.
+
+    This asserts on what `--dry-run` renders, not on the source, because the defect was in a
+    resolved VALUE rather than in a line of code.
+    """
+    rendered = []
+    out = subprocess.run([str(SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
+                         cwd=REPO, capture_output=True, text=True)
+    assert out.returncode == 0, f"--dry-run failed, so this proves nothing: {out.stderr[-400:]}"
+    toks = shlex.split(out.stdout.replace("\\\n", " "))
+    for i, t in enumerate(toks):
+        if t == "--add-dir" and i + 1 < len(toks):
+            rendered.append(toks[i + 1])
+    assert rendered, "no --add-dir rendered, so this test would pass over nothing"
+    unresolved = [d for d in rendered if os.path.realpath(d) != d]
+    assert not unresolved, (
+        "these granted directories are not physical paths, so the harness fences the reviewer "
+        f"out of what they actually point at while the entry reads as granted: {unresolved}")
+
+
+def test_no_granted_directory_is_labelled_by_basename_alone():
+    """⚠ A ONE-WORD LABEL TOLD THE REVIEWER ITS OWN REPO WAS OUT OF RANGE (#453).
+
+    Resolving candidates physically (#451) made one entry land on `…/Notes/Sonora`, whose
+    basename is `Sonora`. The brief listed it under a heading saying these are NOT part of your
+    review range — so it named the repo under review as something to skip. The classification
+    was right and the label beside it was wrong, which is AGENTS.md §5's shape and the one this
+    repo pays most for.
+
+    ⚠ Asserted as "at least two components", not as "never the string Sonora". A name-specific
+    check passes for every OTHER directory whose basename collides, and goes stale the moment
+    the candidate list changes — the same hand-list defect as #247.
+    """
+    out = subprocess.run([str(SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
+                         cwd=REPO, capture_output=True, text=True)
+    assert out.returncode == 0, f"--dry-run failed, so this proves nothing: {out.stderr[-400:]}"
+    labels = re.findall(r"^\* `[^`]+` — \*\*([^*]+)\*\*$", out.stdout, flags=re.M)
+    assert labels, "no granted directories were listed, so this test would pass over nothing"
+    flat = [lab for lab in labels if "/" not in lab]
+    assert not flat, (
+        "these granted directories are labelled by basename alone, so one of them can silently "
+        f"name the repo under review and read as excluded from it: {flat}")

@@ -479,7 +479,15 @@ for _cand in "${_cands[@]}"; do
   _cand="${_cand/#\~/$HOME}"
   [[ "$_cand" == /* ]] || _cand="$REPO_ROOT/$_cand"
   [[ -d "$_cand" ]] || continue
-  _abs="$(cd "$_cand" && pwd)"
+  # ⚠⚠ `pwd -P`, PHYSICAL, NOT LOGICAL (#451). `cd X && pwd` reports the path you arrived by,
+  # so a candidate that is a SYMLINK was granted under its link path — measured: `notes`
+  # rendered as `…/github/notes`, and the harness then fenced Bash out of the real directory it
+  # points at, `…/Notes/Sonora`. The entry read as granted and delivered nothing, which is
+  # #239's shape arriving through a different door. Only the `notes` candidate changes: the
+  # three sibling checkouts resolve identically either way (measured).
+  # ⚠ It also makes the de-duplication below true to its own comment — two candidates reaching
+  # one directory by different links now collapse, which "resolved path" always claimed.
+  _abs="$(cd "$_cand" && pwd -P)"
   # ⚠ A STRING MEMBERSHIP TEST, NOT AN INNER LOOP. The de-dup was a `for … break` nested
   # inside this one, and a guard asserting "the candidate loop does not break" then could not
   # tell the two loops apart — it went red on correct code. Two loops in one block is a
@@ -624,11 +632,24 @@ if (( ${#SIBLINGS[@]} )); then
   # infrastructure repo" in prose while the grant came from config — so a second sibling would
   # have been readable and undescribed, which is the same unreachable-affordance defect as a
   # described path that is not readable, pointing the other way.
+  # ⚠⚠ THE LABEL IS THE LAST TWO COMPONENTS, NOT `basename`, AND IT IS NOT CALLED A "repo"
+  # (#453). Resolving candidates physically (#451) made one entry land on `…/Notes/Sonora`,
+  # whose basename is `Sonora` — so the brief told the reviewer that "the **Sonora** repo" was
+  # NOT part of its review range, while it was reviewing Sonora. A heading saying "sibling
+  # repos" was wrong about it too: it is a directory inside one, not a repo.
+  # ⚠ The consequence is what makes this worth code rather than a nit: a reviewer acting on
+  # that sentence skips the repo it was sent to review. Two components disambiguate every entry
+  # without special-casing any of them, which a basename plus an exception for one name would
+  # not — that exception is the thing that goes stale when a fourth directory is added.
   _SIB_LIST=""
-  for _s in "${SIBLINGS[@]}"; do _SIB_LIST+="
-* \`$_s\` — the **$(basename "$_s")** repo"; done
+  for _s in "${SIBLINGS[@]}"; do
+    _SIB_LABEL="$(basename "$(dirname "$_s")")/$(basename "$_s")"
+    _SIB_LIST+="
+* \`$_s\` — **$_SIB_LABEL**"
+  done
+  unset _SIB_LABEL
   BRIEF+="
-### Sibling repos you can read
+### Directories you can read — none of them are your review range
 $_SIB_LIST
 
 Some mechanisms this repo *describes* are *implemented* in one of those. ⚠ The
@@ -957,6 +978,36 @@ if [[ -n "${REVIEWER_TORCH_PY:-}" && -x "${REVIEWER_TORCH_PY:-}" \
   REVIEWER_ALLOW+=("Bash($REVIEWER_TORCH_PY scripts/tools/check_publishable.py:*)")
 fi
 
+# ⚠⚠ STOP-GAP, AND ITS EXPIRY IS WRITTEN HERE ON PURPOSE (owner, 2026-09-13). The ruling: *the
+# reviewer is entitled to any non-destructive grant that is isolated to the repo directory,
+# recursively, and the associated notes directory*, read as a FLOOR — never refuse within it,
+# revoke nothing already granted beyond it. **The owner is codifying this in FerroStep; when
+# that lands, this block is what it replaces.** The condition is recorded beside the rule
+# because this repo has just paid for the opposite: a purpose-limited hold from 2026-08-24 was
+# read as standing policy by three agents over two weeks, because nobody wrote down what would
+# end it (AGENTS.md §5).
+#
+# ⚠ READ VERBS ONLY, AND GIT ITSELF ENFORCES THAT. `git config` writes as well as reads, so the
+# grant names the reading forms. Measured 2026-09-13, with a control: `--get`, `--get-all`,
+# `--get-regexp` and `--list` each REFUSE to be combined with `--add`, `--unset` or
+# `--replace-all` — *"options '--add' and '--list' cannot be used together"*, exit 129. So this
+# cannot be escalated into a write by appending a flag, which is a property of git and not of
+# the entry shape. A `--show-origin` prefix would NOT have that property, which is why the verb
+# is the first token: modifiers may follow it (`--get-all --show-origin KEY` works, measured).
+#
+# ⚠ EACH SPELLING NEEDS ITS OWN ENTRY (#101, from the deny side): `--get` does not match
+# `--get-all`, because the matcher tokenises on whitespace.
+#
+# ⚠ THE TWO BLANKET DENIES HAD TO GO. `Bash(git config:*)` and `Bash(git worktree:*)` were in
+# REVIEWER_DENY, and deny beats allow — so these entries would have read as granted and never
+# matched, which is #239's shape. What keeps the write forms out is the allowlist itself: this
+# launcher passes no --permission-mode, so anything unnamed is refused.
+for _ro in "git config --get" "git config --get-all" "git config --get-regexp" \
+           "git config --list" "git worktree list"; do
+  REVIEWER_ALLOW+=("Bash($_ro:*)")
+done
+unset _ro
+
 # Explicit denials. Schema and instance administration are not a reviewer's business —
 # pb_collection_delete would drop the tracker itself.
 #
@@ -995,7 +1046,7 @@ REVIEWER_DENY=(
   # Writing verbs.
   "Bash(git push:*)" "Bash(git commit:*)" "Bash(git reset:*)" "Bash(git checkout:*)"
   "Bash(git rebase:*)" "Bash(git merge:*)" "Bash(git clean:*)" "Bash(git stash:*)"
-  "Bash(git config:*)" "Bash(git tag:*)" "Bash(git branch:*)" "Bash(git worktree:*)"
+  "Bash(git tag:*)" "Bash(git branch:*)"
   "Bash(git apply:*)" "Bash(git am:*)" "Bash(git restore:*)" "Bash(git switch:*)"
   "Bash(git rm:*)" "Bash(git mv:*)" "Bash(git add:*)" "Bash(git cherry-pick:*)"
   "Bash(git revert:*)" "Bash(git filter-branch:*)" "Bash(git update-ref:*)"
