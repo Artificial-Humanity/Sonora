@@ -400,10 +400,17 @@ def test_the_derivations_all_parsed_something_two_sided():
     """⚠ The empty-enumeration trap, and here it would be invisible three separate ways.
 
     If `--help` stopped advertising choices, if the binding readers stopped matching, or if
-    the write classifier stopped recognising a primitive, the parametrised tests below would
-    run over an empty list and this file would report green having probed nothing. Worse than
-    empty is ONE-SIDED: a classifier that calls everything a write makes the refusal assertion
-    trivially true, and one that calls everything a read makes it vacuous.
+    the write classifier stopped recognising ANY of its primitives, the parametrised tests
+    below would run over an empty list and this file would report green having probed nothing.
+    Worse than empty is ONE-SIDED: a classifier that calls everything a write makes the refusal
+    assertion trivially true, and one that calls everything a read makes it vacuous.
+
+    ⚠ These floors are TOTAL-COLLAPSE floors, and #466 is the reason that is now written down.
+    The loss of ONE primitive while the other still classifies something leaves
+    `WRITE_SUBCOMMANDS` non-empty, so nothing here fires — the reclassified subcommands simply
+    stop being probed as writes. `test_every_read_gets_past_the_author_gate` is what catches
+    that case, by requiring the read side to AGREE WITH THE MODULE rather than merely to be
+    non-empty.
 
     No counts are stated. Every number here is derived from the module in the same run, and a
     remembered count is the thing that rots (#330's four attempts, one directory over).
@@ -466,16 +473,30 @@ def test_no_probe_reached_the_tracker(cmd, probe):
         "did instead is unknown:\n%s" % (cmd, out.strip()))
 
 
-def test_the_refusal_detector_discriminates(probe):
-    """⚠ POSITIVE CONTROL. Without this, a module that refused EVERY subcommand on the author
-    line — or one whose refusals all happened to contain the phrase — would satisfy the test
-    above for reasons that have nothing to do with the guard, and a `READ_ONLY_COMMANDS` that
-    had been emptied would read as a pass.
+def test_every_read_gets_past_the_author_gate(probe):
+    """⚠ POSITIVE CONTROL, and the other half of the agreement with `READ_ONLY_COMMANDS`.
 
-    So: something classified as a read must get PAST the author gate and die at the credential
-    wall instead. That is one observation proving three things at once — the probes really run,
-    the two refusals are distinguishable, and the author line is a decision rather than an
-    unconditional refusal.
+    Without it, a module that refused EVERY subcommand on the author line — or one whose
+    refusals all happened to contain the phrase — would satisfy the test above for reasons that
+    have nothing to do with the guard, and a `READ_ONLY_COMMANDS` that had been emptied would
+    read as a pass. So something classified as a read must get PAST the author gate and die at
+    the credential wall instead: one observation proving three things at once — the probes
+    really run, the two refusals are distinguishable, and the author line is a decision rather
+    than an unconditional refusal.
+
+    ⚠ EVERY read, not merely one, and THAT is the part #466 was filed about. This asked only
+    that SOME read pass, which the pure queries satisfy on their own — so the loss of ONE write
+    primitive was invisible. Move the `--store` literals out of `_direct_write` into a helper
+    and `take` and `rescope` reclassify as reads; the parametrised write test stops running
+    over them, this control still passed on `list`, and the file dropped 25 -> 23 passed with
+    nothing red. Checking every read closes it from the other side, and does not depend on
+    which primitive died: a write the classifier has lost is now a "read" that refuses on the
+    author line, and it is named here.
+
+    The direction matters. `test_a_writing_subcommand_refuses_without_an_author` catches a
+    subcommand added to `READ_ONLY_COMMANDS` while its handler still writes. This catches the
+    mirror — the classifier, not the module, being the side that stopped seeing the write —
+    and neither test can report the other's failure.
     """
     got_past = {}
     for cmd in READ_SUBCOMMANDS:
@@ -485,9 +506,16 @@ def test_the_refusal_detector_discriminates(probe):
         got_past[cmd] = out
     assert got_past, ("no read subcommand could be probed at all, so every assertion in this "
                       "file is standing on skipped work")
-    passed_the_gate = {c: o for c, o in got_past.items()
-                       if AUTHOR_REFUSAL not in o and CREDENTIAL_REFUSAL in o}
-    assert passed_the_gate, (
-        "every probed read refused on the author line too, so 'writes refuse' is being "
-        "satisfied by a module that refuses everything and this file measures nothing. "
-        "Probed: %s" % {c: o.strip() for c, o in got_past.items()})
+    refused_on_the_author_line = {c: o.strip() for c, o in got_past.items()
+                                  if AUTHOR_REFUSAL in o}
+    assert not refused_on_the_author_line, (
+        "this file classified %s as read-only, but `issue.py` refused them on the author line "
+        "— so the module treats them as writes and the two sides disagree. Either the handler "
+        "gained a write that `_direct_write` cannot see, or one of its mutating primitives has "
+        "stopped matching and the write test above is no longer running over these, or "
+        "`READ_ONLY_COMMANDS` lost a member it should still have. Probed: %s"
+        % (sorted(refused_on_the_author_line), refused_on_the_author_line))
+    assert all(CREDENTIAL_REFUSAL in o for o in got_past.values()), (
+        "a read passed the author gate and then stopped somewhere other than the credential "
+        "wall, so what this file observed about it is unknown: %s"
+        % {c: o.strip() for c, o in got_past.items() if CREDENTIAL_REFUSAL not in o})
