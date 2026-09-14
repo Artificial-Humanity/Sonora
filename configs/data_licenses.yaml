@@ -34,12 +34,17 @@
 #          publish_reason: <text>     — printed in the refusal; say WHOSE decision and when
 #
 # ⚠⚠ `publish` IS ORTHOGONAL TO `class` AND MUST NOT BE FOLDED INTO IT. A corpus can be
-# perfectly licensed and still be one nothing may ship from. The case this exists for is the
-# crossed delivery bank (owner ruling 12, 2026-09-09): it is CC-BY-4.0, genuinely
-# `permissive`, and shipping a model trained on it is forbidden because it holds ~20 cloned
-# REAL LibriTTS-R voices at tens of clips each — a question about voice identity, which a
-# licence does not speak to. Writing that as a licence class would make this file state
-# something false about the licence.
+# perfectly licensed and still be one nothing may ship from. Writing that as a licence class
+# would make this file state something false about the licence.
+#
+# The standing user is the private-lineage firewall in `docs/audiobook-corpus-policy.md`:
+# nothing leaves the machine, and a private branch never warm-starts into the public lineage.
+# Those rules are described there as absolute and had no code behind them before this axis.
+#
+# ⚠ THE CROSSED DELIVERY BANK WAS THE ORIGINAL CASE AND IS NO LONGER ONE. Owner ruling 12
+# answered 2026-09-09 that the bank was diagnostic only; the owner REVISED it on 2026-09-10
+# and the bank is publishable. This comment stated the retired answer as current. Nothing was
+# unbuilt by the revision — the bank is simply not marked `publish: forbidden`.
 #
 # ⚠ The bank does not exist yet, so no entry carries `publish:` today. It is armed anyway:
 # `enforce` refuses an UNDECLARED corpus at training time, so the bank cannot be trained on

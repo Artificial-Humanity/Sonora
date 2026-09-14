@@ -217,9 +217,12 @@ def detect_vat_dim(sd):
 def load_ckpt():
     ck = torch.load(CKPT, map_location="cpu", weights_only=False)
     # ⚠ THE PUBLISH WALL, BEFORE ANY GRAPH IS BUILT. A licence is not the only reason an
-    # artifact must not ship: owner ruling 12 (2026-09-09) makes the crossed delivery bank
-    # diagnostic-only, so a checkpoint trained on it must not become a mobile artifact even
-    # though its corpus is CC-BY-4.0. Checked here because THIS is where a checkpoint becomes
+    # artifact must not ship: a checkpoint whose lineage holds a `publish: forbidden` corpus
+    # must not become a mobile artifact however clean its licences are. The standing case is
+    # the `docs/audiobook-corpus-policy.md` firewall. (⚠ This cited the crossed delivery bank
+    # under owner ruling 12 of 2026-09-09; the owner revised that on 2026-09-10 and the bank
+    # is publishable. The check is unchanged — only the example was retired.)
+    # Checked here because THIS is where a checkpoint becomes
     # something shippable — the licence wall runs at training time and has nothing to say
     # about export.
     # ⚠ A checkpoint with no `datamodule_hyper_parameters` yields an EMPTY lineage, which is

@@ -107,11 +107,14 @@ def _publish():
     answer. Each map now fills itself from the yaml when it is missing.
 
     ⚠ SEPARATE MAP, SEPARATE AXIS. `publish` is orthogonal to `class` and must not be
-    folded into it: the crossed delivery bank is CC-BY-4.0 and genuinely `permissive`
-    — the licence is satisfied — while shipping a model trained on it is forbidden for
-    a reason licences do not speak to (owner ruling 12, 2026-09-09: ~20 cloned real
-    LibriTTS-R voices at tens of clips each). Encoding "do not publish" as a licence
-    class would make the manifest state something false about the licence.
+    folded into it. A corpus can be perfectly licensed and still be one nothing trained
+    on it may ship, for a reason licences do not speak to. Encoding "do not publish" as a
+    licence class would make the manifest state something false about the licence.
+
+    The standing user is the private-lineage firewall in `docs/audiobook-corpus-policy.md`,
+    whose rules are absolute and had no code behind them before this axis existed: nothing
+    leaves the machine, and a private branch never warm-starts into the public lineage.
+    That is `publish: forbidden` plus warm-start lineage propagation (#421).
     """
     global _publish_cache
     if _publish_cache is None:
@@ -217,11 +220,27 @@ def enforce(filelist_paths):
 
 # --- the publish wall: a licence is not the only reason an artifact must not ship ---------
 #
-# Owner ruling 12, answered 2026-09-09. The crossed delivery bank exists to answer ONE
-# question — can delivery be separated from speaker identity — and nothing trained on it
-# ships. A positive result licenses a REBUILD of a publishable bank, not the publication of
-# this one. Publishing on attribution alone, and publishing behind an identifiability audit,
-# were both offered to the owner and refused.
+# ⚠⚠ THE CROSSED DELIVERY BANK IS NOT WHAT THIS GUARDS ANY MORE, AND THAT REVERSED.
+# Owner ruling 12 was answered 2026-09-09 as "diagnostic only — nothing trained on the bank
+# ships", and this block stated that as current for the life of the wall. The owner REVISED
+# it on 2026-09-10: the bank is PUBLISHABLE and models trained on it may ship. They revisited
+# on two grounds — the restriction was never a licence matter (the bank is CC-BY-4.0 and the
+# licence is satisfied), and diagnostic-only was stricter than their standing position on
+# cloning real people, which is "not forbidden and not off the table, just not a focus".
+# Diagnostic-only had hardened that into a prohibition.
+#
+# ⚠ NOTHING HERE WAS UNBUILT, WHICH IS WHY THE REVISION IS EASY TO MISS. The `publish` axis,
+# `refuse_unpublishable` and the export and promotion call sites are unchanged. What changed
+# is only that the bank is not marked `publish: forbidden` — and the mechanism has a STRONGER
+# standing user than the one it was built for: the `docs/audiobook-corpus-policy.md` firewall,
+# whose rules are described as absolute and had no code behind them at all.
+#
+# ⚠ ONE CONSIDERATION IS RECORDED RATHER THAN SETTLED, per the owner. The argument against
+# relaxing was that non-commercial intent has no bearing on likeness: a freely distributed
+# model reproducing ~20 identifiable LibriVox volunteers is arguably MORE exposed than a
+# private one, and consent to a CC-BY recording is not consent to a voice clone. Copyright
+# and likeness are separate regimes. The owner's call stands; this is here so the trade is
+# legible if it is ever revisited, not to relitigate it.
 #
 # ⚠ HELD HERE RATHER THAN IN A NOTE, on this repo's standing lesson to prefer the shape that
 # BREAKS when an assumption expires. A rule written only in prose is one an agent reads in a
@@ -257,8 +276,11 @@ def lineage_filelists(ckpt):
     only the fine-tune corpus in view, while the ~20 cloned voices sat in its weights. The
     ancestors now ride under `LINEAGE_KEY`: `make_warmstart.py` sets it from the donor, and
     the module's `on_load_checkpoint`/`on_save_checkpoint` carry it through every later
-    save. Ruling 12 reads "nothing trained on it ever ships", and a descendant WAS trained
-    on it — at an earlier stage — so the ancestors count.
+    save. The rule the gap breaks is "a descendant WAS trained on this — at an earlier stage
+    — so the ancestors count", and it holds for whatever is marked `publish: forbidden`. It
+    was written when the crossed bank was the example; ruling 12 was relaxed on 2026-09-10 and
+    the bank is publishable, but the lineage requirement is the firewall's too and is not
+    specific to either corpus.
 
     ⚠ A checkpoint with no datamodule hparams and no lineage key yields NOTHING, and the
     caller must treat that as "unknown lineage", never as "clean". This function stays
