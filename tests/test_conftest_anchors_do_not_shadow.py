@@ -118,3 +118,51 @@ def test_the_collision_check_can_fail():
     fake["synth_common"] = ["lib", "tools"]
     assert set(fake) & _stdlib_names(), "the checker cannot see a stdlib collision"
     assert [k for k, v in fake.items() if len(v) > 1], "the checker cannot see a duplicate"
+
+
+def test_the_widened_scans_still_see_what_a_narrow_one_misses():
+    """⚠ THE WIDENINGS HAD NO REGRESSION CONTROL, SO REVERTING THEM STAYED GREEN (#450).
+
+    #448 widened two scans: site-packages gained namespace packages and top-level `.so`
+    modules, and the repo scan gained loose `.py` files at the root. Because there are zero
+    collisions today, a NARROWED scan finds none either — reverting all three left this file at
+    3 passed.
+
+    ⚠ EACH WIDENING IS CHECKED SEPARATELY (#458). A single strict-superset assertion passed
+    when only ONE was reverted, because the others still made the wide set larger — so the
+    guard written for #450 caught the case I happened to mutate and not the case someone is
+    likelier to cause. Its diagnostic was dead as well: `narrow - wide` is empty whenever the
+    superset holds, so the message could never name anything.
+
+    ⚠ Checked as CONTAINMENT of a kind, never by naming `google` or `vocalizer`: a
+    name-specific check pins this venv's contents and this repo's root listing and goes stale
+    when either changes — #449 again. A kind the host has no instance of is skipped, and the
+    count of kinds actually exercised is asserted rather than left to look like coverage.
+    """
+    sp = pathlib.Path(sysconfig.get_paths()["purelib"])
+    wide_site, wide_repo = _site_packages_names(), _repo_top_level()
+
+    kinds = {
+        "namespace packages in site-packages": (
+            {d.name for d in sp.iterdir()
+             if d.is_dir() and d.name != "__pycache__"
+             and not d.name.endswith((".dist-info", ".data"))
+             and not (d / "__init__.py").exists()},
+            wide_site),
+        "top-level extension modules (.so) in site-packages": (
+            {f.name.split(".")[0] for f in sp.glob("*.so")}, wide_site),
+        "loose .py modules at the repo root": (
+            {f.stem for f in REPO.glob("*.py")}, wide_repo),
+    }
+    exercised = 0
+    for what, (population, scanned) in kinds.items():
+        if not population:
+            continue                      # this host has no instance of that kind
+        exercised += 1
+        missing = sorted(population - scanned)
+        assert not missing, (
+            f"the scan no longer sees {what}, so a bucket module named for one of these would "
+            f"shadow it silently and nothing would say so: {missing}")
+    assert exercised >= 2, (
+        f"only {exercised} of the three widenings had anything to check on this host, so this "
+        "test is mostly vacuous here — say so rather than reading it as coverage")
