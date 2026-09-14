@@ -80,6 +80,10 @@ _EXTERNAL_OPTIONALS = {
     "pysbd": "declared; sentence splitting in the book lane",
     "pyloudnorm": "undeclared; loudness measurement",
     "ai_edge_litert": "undeclared; the LiteRT harness venv lives with the data",
+    "pyarrow": "declared in the `dataprep` EXTRA, not in `dependencies` — nothing on the "
+               "training or inference path reads parquet, so a container legitimately has "
+               "no pyarrow and `convert_hifi_tts` is a workstation tool",
+    "pyarrow.parquet": "same package; the submodule is the actual import site",
 }
 
 

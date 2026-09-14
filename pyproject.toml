@@ -98,6 +98,14 @@ espeak = ["phonemizer"]
 # code path they never take.
 download = ["gdown", "wget"]
 onnx = ["onnxruntime"]
+# Reading the HF parquet corpora, which carry their audio INSIDE the table rather than
+# beside it. `scripts/tools/convert_hifi_tts.py` is the only importer today. Optional
+# because nothing on the training or inference path reads parquet — a converted corpus is
+# a wav tree, and the conversion runs once per corpus on a workstation, not in a container.
+# ⚠ Apache-2.0, checked from the installed metadata rather than assumed
+# (`License-Expression: Apache-2.0`, pyarrow 25.0.1). The dependency bar here is the
+# no-patent posture's, not pip's.
+dataprep = ["pyarrow"]
 # The Sonora Vocalizer (vocalizer.py) — the standing vetting surface.
 vocalizer = ["gradio", "fastapi", "uvicorn", "starlette"]
 # The `app` extra (`gradio==3.43.2`, for matcha/app.py) was REMOVED 2026-08-07 with the

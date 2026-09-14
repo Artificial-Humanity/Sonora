@@ -179,6 +179,48 @@ datasets:
     license: CC-BY-4.0 (ours — teacher renders we produced + LibriVox public-domain
       recordings; published as CC-BY-4.0 on HF)
     class: permissive
+  hifi_tts:
+    # Hi-Fi TTS v1 (NVIDIA, LibriVox-sourced), rung 4. `Hi-Fi-TTS` is the HF parquet tree as
+    # downloaded — 40 GB, audio inside the parquet, 44.1 kHz FLAC. `hifi_tts_24k` is the
+    # converted tree training reads, written by `scripts/tools/convert_hifi_tts.py` in the
+    # LibriTTS-R layout at 24 kHz, because `derive_vat_corpus` REFUSES anything not already
+    # SAMPLE_RATE rather than resampling it. Both are declared: the wall gates on the PATH,
+    # so a run that reached the parquet tree would otherwise refuse as undeclared — the
+    # right outcome for the wrong reason, which is how a real defect gets read as a wall hit.
+    # MEASURED 2026-09-14: 291.7 h, 10 speakers, 323,978 rows across all splits.
+    #
+    # ⚠ FOUR OF ITS TEN READERS ARE ALSO IN LibriTTS-R, AND THEY ARE THE SAME PEOPLE. Both
+    # corpora are LibriVox-derived and carry LibriVox reader ids, so 92 (Cori Samuel), 6097
+    # (Phil Benson), 6670 (Mike Pelton) and 8051 (Maria Kasper) each mean one person across
+    # the two. That is a MERGE problem, not a licence problem — the licence is the same
+    # CC-BY-4.0 either way — recorded here because this file is what gets read when a new
+    # corpus dir appears.
+    #
+    # ⚠⚠ AND AT LEAST TWO SHARE ACTUAL RECORDINGS. An exact-transcript probe over the same
+    # reader found 22 utterances present in both corpora, all inside two pairs: reader 6670's
+    # LibriTTS-R chapter 296083 IS Hi-Fi TTS book 8274, and reader 8051's chapter 118101 IS
+    # book 7670. The v8 merge must dedup at BOOK level — utterance matching only catches
+    # clips whose segmentation happens to align, and Hi-Fi TTS cuts much shorter (median
+    # 2.74 s), so the true overlap is larger than the 22 that matched.
+    # ⚠ The holdout is NOT affected: none of the ten appears in `LibriTTS_R/dev-clean`,
+    # checked against both holdout filelists with a positive control before any conversion.
+    dirs: [Hi-Fi-TTS, hifi_tts_24k]
+    license: CC-BY-4.0
+    class: permissive
+  vctk:
+    # CSTR VCTK Corpus 0.92, CC-BY-4.0 (verified 2026-07-19). Declared ahead of use so the
+    # wall does not refuse it as undeclared when it finally arrives.
+    #
+    # ⚠⚠ THE COPY ON DISK IS A TRUNCATED DOWNLOAD AND CANNOT BE EXTRACTED. Measured
+    # 2026-09-14: `VCTK-Corpus-0.92.zip` is 4,569,705,048 bytes against the dataset card's own
+    # `download_size: 11747302977` — 38.9% of the file. `file(1)` reports "Zip archive data"
+    # because the first local header is intact, and that is what makes it deceptive; there is
+    # no End-Of-Central-Directory record at the tail, so `zipfile` refuses it outright. The
+    # notes called it "unextracted" and the plan counted its 44 h as low-hanging fruit needing
+    # only an `unzip`. It needs an 11.75 GB re-fetch first.
+    dirs: [VCTK, vctk, vctk_24k]
+    license: CC-BY-4.0
+    class: permissive
   parler_libritts_r_annotated:
     dirs: [parler-tts, libritts-r-filtered-speaker-descriptions]
     license: CC-BY-4.0 (annotations over LibriTTS-R)
