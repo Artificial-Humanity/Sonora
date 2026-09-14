@@ -562,6 +562,20 @@ def test_every_read_gets_past_the_author_gate(probe):
     really run, the two refusals are distinguishable, and the author line is a decision rather
     than an unconditional refusal.
 
+    ⚠ EVERY read, in two senses, and it took two findings to get both. Every read must be
+    PROBED — a skipped one is asserted about by nobody (#471, the mirror of the write floor
+    #469 added). And every read that was probed must PASS the gate (#466). Neither holds
+    without the other, because a check not run and a check that passed are the same green.
+    Each sense is argued at its own assertion below, where the reader can see the code it is
+    about.
+
+    ⚠ THE SENTENCE THAT SAID WHERE THOSE ARGUMENTS WERE HAS BEEN REMOVED (#472). It read "the
+    first sentence below is about the second sense; the paragraph after it, about the first",
+    and the second half named nothing that existed — that rationale is a code comment further
+    down, not a docstring paragraph. A docstring that describes its own LAYOUT is false the
+    first time anything is inserted, and the finding arrived in the same review as the commit
+    that wrote it. Cite the finding number, not the position.
+
     ⚠ EVERY read, not merely one, and THAT is the part #466 was filed about. This asked only
     that SOME read pass, which the pure queries satisfy on their own — so the loss of ONE write
     primitive was invisible. ⚠ THE MUTATION THAT SHOWS IT IS IN `issue.py`, NOT IN THIS FILE:
@@ -581,12 +595,33 @@ def test_every_read_gets_past_the_author_gate(probe):
     mirror — the classifier, not the module, being the side that stopped seeing the write —
     and neither test can report the other's failure.
     """
-    got_past = {}
+    assert READ_SUBCOMMANDS, (
+        "every subcommand is classified as a write, so this control is iterating over nothing "
+        "— see test_the_derivations_all_parsed_something_two_sided for what collapsed")
+    got_past, skipped = {}, {}
     for cmd in READ_SUBCOMMANDS:
         rc, out = probe(cmd)
-        if _would_be_skipped(cmd, rc, out) is not None:
+        reason = _would_be_skipped(cmd, rc, out)
+        if reason is not None:
+            skipped[cmd] = reason
             continue
         got_past[cmd] = out
+    # ⚠ #471: this dropped a skipped read with a bare `continue` and then asserted only that
+    # `got_past` was non-empty — "at least one read ran", under a docstring that says EVERY.
+    # `list` and `escalated` need no arguments, so they hold a non-empty floor up no matter
+    # what the builder does to the rest, and a read it could not express was never checked for
+    # agreement with `READ_ONLY_COMMANDS` at all. Measured on e9e1208 with the helper skipping
+    # `show`: 25 passed, 1 skipped, exit 0, nothing naming the hole. The write population got
+    # this floor in #469 and the read population did not, so a skip was red on one side of the
+    # file and invisible on the other — and it is the read side that catches a write primitive
+    # the classifier has LOST (#466), which is the reason every read has to actually run.
+    assert not skipped, (
+        "`_skip_if_unbuildable` takes %d of the %d read-only subcommand(s) out of the run: %s. "
+        "Each is then never checked for agreement with `READ_ONLY_COMMANDS`, so a write the "
+        "classifier has stopped seeing could be sitting in this population unexamined. The "
+        "fault is in the instrument, not the guard, but it is a hole in the guard's coverage "
+        "until it is fixed. Reasons: %s"
+        % (len(skipped), len(READ_SUBCOMMANDS), sorted(skipped), skipped))
     assert got_past, ("no read subcommand could be probed at all, so every assertion in this "
                       "file is standing on skipped work")
     refused_on_the_author_line = {c: o.strip() for c, o in got_past.items()
