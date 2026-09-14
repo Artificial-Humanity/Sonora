@@ -1016,8 +1016,18 @@ fi
 # REVIEWER_DENY, and deny beats allow — so these entries would have read as granted and never
 # matched, which is #239's shape. What keeps the write forms out is the allowlist itself: this
 # launcher passes no --permission-mode, so anything unnamed is refused.
+# ⚠ `ferrostep` READ SUBCOMMANDS ONLY, NEVER THE BARE BINARY. It also carries `move`, `file`,
+# `rescope`, `grade` and `notify`, every one of which writes to the ledger — so `Bash(ferrostep:*)`
+# would hand the reviewer the developer's whole surface. `--version`, `agent-env` and `explain`
+# read: a stamp, the roster, and a workflow definition.
+# ⚠ ADDED BECAUSE THE REVIEWER ASKED AND WAS REFUSED (#463's pass). It reported that
+# `ferrostep --version` and `ferrostep agent-env --roster FerroStep/config.yaml` would have let it
+# verify the central claim of the range it was reviewing — that the INSTALLED binary emits
+# `AGENTS_BUDGET_USD` — and it had to take the developer's word instead. Under the owner's
+# 2026-09-13 entitlement that refusal is a gap, not a boundary.
 for _ro in "git config --get" "git config --get-all" "git config --get-regexp" \
-           "git config --list" "git worktree list"; do
+           "git config --list" "git worktree list" \
+           "ferrostep --version" "ferrostep agent-env" "ferrostep explain"; do
   REVIEWER_ALLOW+=("Bash($_ro:*)")
 done
 unset _ro

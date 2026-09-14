@@ -136,7 +136,9 @@ FerroStep/workflow/scripts/full_review.sh   # the whole-codebase sweep, when the
 `review_cycle.sh` runs Steps 1–4 unattended, in a loop: request the review, take the findings,
 fix them, request the next pass. It stops on its own at `agent_passes.max + 1` reviews — the
 same ceiling Step 4 describes, derived from the same [sonora-lane.json](../workflow/sonora-lane.json)
-rather than a second copy of the number. It has a stop file, a per-call spend ceiling, and a
+rather than a second copy of the number. It has a stop file, a spend ceiling on the WORKER it
+spawns — ⚠ **not** "per call": the reviewer's call is capped only if the roster sets
+`budget_usd`, and it does not today (#463) — and a
 stall guard. ⚠ **It never pushes** — `git push` is denied to the worker it spawns and the
 driver does not push either, so a human still lands the branch.
 
