@@ -915,7 +915,9 @@ def _shadowed(allow, deny):
             pd = _command_prefix(d)
             if pd is None or pd == pa:
                 continue
-            if pa == pd or pa.startswith(pd + " "):
+            # `pa == pd` cannot reach here — identical entries are skipped above — so the
+            # test is the prefix alone. It read as covering the equal case and could not.
+            if pa.startswith(pd + " "):
                 out.append((a, d))
     return out
 

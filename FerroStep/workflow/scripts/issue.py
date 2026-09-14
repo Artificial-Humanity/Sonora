@@ -154,6 +154,11 @@ OPEN_STATES = ("open", "review", "escalated")
 # routing, not rules: legality, notes and the counter are the engine's refusals now.
 # `escalated -> open` has no subcommand on purpose: only the owner's decision releases an
 # escalation, and a server-side hook performs it.
+# ⚠ THE READS, and everything else is a write (#459). Deliberately the small, stable side of
+# the pair: reads are `list`, `show` and the `escalated` report, and nothing about this lane
+# suggests that set grows. Anything absent here needs an author.
+READ_ONLY_COMMANDS = {"list", "show", "escalated"}
+
 ROLE_FOR = {
     "review": ("developer", "review"),
     "dispute": ("developer", "disputed"),
@@ -932,6 +937,11 @@ def cmd_rescope(pb, args):
         sets.append(("repo", args.to_repo))
     if not sets:
         die("nothing to set: give --branch and/or --to-repo.")
+    # ⚠ THE ABORT TOKEN MUST NOT ENTER THE TRACKER THROUGH A NEW DOOR EITHER (#460, the #362
+    # shape). Every other note-bearing write calls this; a rescope note reaches the same
+    # records and the same reviewer summaries, so omitting it here would have re-opened the
+    # trap on the one surface nobody had audited yet.
+    refuse_abort_token(args.note or "", "note")
     for number in args.numbers:
         rec = pb.find(args, number)
         before = rec.get("branch_name")
@@ -1065,9 +1075,15 @@ def main():
     # here by hand. Every transition subcommand is a write by construction, so it is read out
     # of `ROLE_FOR` and a new state can no longer arrive unattributed. The three that remain
     # written out are the ones that write something OTHER than a state.
-    if not args.author and args.cmd in (set(ROLE_FOR) | {"file", "comment", "grade"}):
+    # ⚠⚠ INVERTED TO FAIL CLOSED (#459). This listed the writes, so a write added later was
+    # unattributed until someone remembered to enrol it — and `rescope` was exactly that, added
+    # in the commit whose own comment says "the three that remain written out are the ones that
+    # write something OTHER than a state". A list of writes gets longer; the list of READS does
+    # not, and a new subcommand that forgets to declare itself now requires an author rather
+    # than silently landing in the ledger as the bare role.
+    if not args.author and args.cmd not in READ_ONLY_COMMANDS:
         die("--author is required for writes (Janis or Ozzy), or set $ISSUE_AUTHOR. "
-            "An unattributed comment cannot be answered.")
+            "An unattributed write cannot be answered or attributed.")
     args.fn(PB(), args)
 
 
