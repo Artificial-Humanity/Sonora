@@ -405,6 +405,34 @@ def _skip_if_unbuildable(cmd, rc, out):
                     "the author check was never reached; argparse said:\n%s" % (cmd, out.strip()))
 
 
+def _would_be_skipped(cmd, rc, out):
+    """What `_skip_if_unbuildable` DOES with this probe, as a string, or None if it lets it run.
+
+    ⚠ THE FLOORS CALL THIS RATHER THAN RE-TESTING THE PREDICATE, AND THAT IS THE POINT (#470).
+    Both floors below used to carry their own copy of `rc == 2 or ("usage: issue.py" in out
+    and "error:" in out)`, so the predicate existed three times with nothing tying the copies
+    together — and a floor that re-derives "was this skipped?" does not know what was skipped,
+    it knows what its own copy predicts. Widen the helper alone (the plausible edit when
+    argparse changes its refusal shape) and every write probe skipped while the floor, still
+    holding the old predicate, found nothing missing and passed: measured 6 passed, 20 skipped,
+    exit 0. That is #469 again, reached by one unmirrored edit.
+
+    Asking the helper is stronger than sharing a predicate with it, which is what the finding
+    proposed. A shared predicate ties the three copies together but still assumes the helper
+    decides by consulting it; this observes the decision, so it holds even if the helper is
+    replaced outright or grows a reason to skip that is not a predicate at all.
+
+    The catch is narrow on purpose — `pytest.skip.Exception` only. Anything else the helper
+    raises is a fault in the helper and propagates, because a floor that swallowed it would be
+    reporting on an instrument that crashed.
+    """
+    try:
+        _skip_if_unbuildable(cmd, rc, out)
+    except pytest.skip.Exception as exc:
+        return str(exc) or "skipped, with no reason given"
+    return None
+
+
 # --------------------------------------------------------------- floors, before any claim
 def test_the_derivations_all_parsed_something_two_sided():
     """⚠ The empty-enumeration trap, and here it would be invisible three separate ways.
@@ -447,7 +475,10 @@ def test_every_write_subcommand_was_actually_probed(probe):
     `test_a_writing_subcommand_refuses_without_an_author` is parametrised, so it cannot see its
     own siblings: every one of its cases can skip and the file still reports green, because a
     skip is not a failure and no single case knows the others went quiet. This is the test that
-    knows. It is separate and unparametrised for exactly the reason the read control is.
+    knows, and it knows by ASKING `_skip_if_unbuildable` what it does with each probe rather
+    than by re-testing a copy of its predicate (#470 — the copy was the third in the file, and
+    a helper widened without it left this passing while every write skipped). It is separate
+    and unparametrised for exactly the reason the read control is.
 
     Strict on purpose — it demands that NONE of them skipped, not that some survived. A write
     subcommand this file cannot build an invocation for is a write subcommand whose author gate
@@ -463,14 +494,18 @@ def test_every_write_subcommand_was_actually_probed(probe):
     unbuildable = {}
     for cmd in WRITE_SUBCOMMANDS:
         rc, out = probe(cmd)
-        if rc == 2 or ("usage: issue.py" in out and "error:" in out):
-            unbuildable[cmd] = out.strip()
+        skipped = _would_be_skipped(cmd, rc, out)
+        if skipped is not None:
+            unbuildable[cmd] = skipped
     assert not unbuildable, (
-        "argparse refused the invocation this file built for %d of the %d writing "
-        "subcommand(s): %s. Each one SKIPS rather than fails, so the author gate goes "
-        "unasserted for it while the file still reports green. The fault is in the invocation "
-        "builder (`_required_tokens` / `_invocation` reading the usage line), not in the guard "
-        "— but it is a hole in the guard's coverage until it is fixed. Details: %s"
+        "`_skip_if_unbuildable` takes %d of the %d writing subcommand(s) out of the run: %s. "
+        "Each one SKIPS rather than fails, so the author gate goes unasserted for it while the "
+        "file still reports green. The usual cause is the invocation builder "
+        "(`_required_tokens` / `_invocation` reading the usage line) failing to express an "
+        "argument shape — a fault in the instrument rather than in the guard, but a hole in "
+        "the guard's coverage until it is fixed. ⚠ This reports what the HELPER DID, not what "
+        "a copy of its predicate predicts, so the reason need not be argparse at all (#470). "
+        "Reasons: %s"
         % (len(unbuildable), len(WRITE_SUBCOMMANDS), sorted(unbuildable), unbuildable))
 
 
@@ -549,7 +584,7 @@ def test_every_read_gets_past_the_author_gate(probe):
     got_past = {}
     for cmd in READ_SUBCOMMANDS:
         rc, out = probe(cmd)
-        if rc == 2 or ("usage: issue.py" in out and "error:" in out):
+        if _would_be_skipped(cmd, rc, out) is not None:
             continue
         got_past[cmd] = out
     assert got_past, ("no read subcommand could be probed at all, so every assertion in this "
