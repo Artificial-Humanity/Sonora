@@ -108,10 +108,40 @@ def test_git_dash_c_is_NOT_denied_to_the_worker():
     assert not any(d.startswith("Bash(git -c") for d in _array("WORKER_DENY"))
 
 
-def test_every_claude_call_carries_a_spend_ceiling():
-    """It spends money unattended; an uncapped call is the whole hazard."""
-    for m in re.finditer(r"^\s*claude -p .*?(?=\n\s*\w+=\$\?|\n\s*set -e)", SOURCE, re.S | re.M):
-        assert "--max-budget-usd" in m.group(0), "an unattended claude call with no ceiling"
+def test_the_workers_claude_call_carries_a_spend_ceiling():
+    """It spends money unattended; an uncapped call is the whole hazard.
+
+    ⚠⚠ THIS WAS `test_every_claude_call_carries_a_spend_ceiling`, AND THAT NAME WAS THE LAST
+    SURVIVING COPY OF A RETRACTED CLAIM (#464). The lane used to say every `claude -p` call in
+    it carried `--max-budget-usd`. It does not, and the exception is the expensive one: the
+    REVIEWER is launched by `FerroStep/workflow/scripts/request_review.sh`, whose call is
+    capped only when the roster sets `budget_usd` for that agent — which `FerroStep/config.yaml`
+    deliberately does not today (owner, 2026-09-07: absent is the setting, not an omission).
+    The script comments, `--help` and `DEVELOPER.md` §3 were all corrected when that was found
+    (#463); the name here was not. A test name is read as a statement about the lane by
+    everyone who greps for one, and this one outranked the corrections in every such search.
+
+    What is asserted is what is true: the WORKER — the unattended half that edits and commits,
+    launched from THIS file — is capped. The reviewer's half is pinned in
+    `tests/test_request_review.py`, where the property is that a ceiling the roster sets
+    reaches the call and an absent one refuses nothing, NOT that one exists.
+    """
+    calls = re.findall(r"^\s*claude -p .*?(?=\n\s*\w+=\$\?|\n\s*set -e)", SOURCE, re.S | re.M)
+    # ⚠ POSITIVE CONTROL, and not a formality: the loop below asserts a NEGATIVE ("no uncapped
+    # call"), which an empty scan satisfies in silence. The pattern is anchored on the status
+    # capture that FOLLOWS the call, so a reformatting that moves `WRC=$?` empties it — the
+    # same green-over-nothing shape as #245.
+    assert calls, "no claude invocation found — this guard is scanning nothing"
+    # ⚠ AND THE POPULATION MUST STILL CONTAIN THE CALL THIS TEST IS NAMED FOR. Identified by
+    # the deny list only the worker is launched with, rather than by position or by count: a
+    # second call added here would be covered by the loop, but a scan that no longer reaches
+    # the worker's would leave the name claiming cover it does not have.
+    assert any("WORKER_DENY" in c for c in calls), (
+        "no scanned call passes ${WORKER_DENY[@]}, so the worker's call is not in the "
+        "population this test checks")
+    for c in calls:
+        assert "--max-budget-usd" in c, (
+            "an unattended claude call with no ceiling:\n" + c[:400])
 
 
 def test_the_review_ceiling_derives_from_the_definition():

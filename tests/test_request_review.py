@@ -39,6 +39,7 @@ without Claude Code installed. The empty `HOME` makes the tracker lookup fail cl
 the network and independent of whether PocketBase is up.
 """
 
+import json
 import os
 import re
 import shlex
@@ -1025,9 +1026,241 @@ def test_a_symlinked_candidate_is_granted_by_its_physical_path(tmp_path):
     granted = [toks[i + 1] for i, t in enumerate(toks) if t == "--add-dir" and i + 1 < len(toks)]
 
     assert granted, "the copied lane granted nothing, so the assertion below proves nothing"
-    assert str(target) in granted, (
+    # ⚠ THE POSITIVE HALF COMPARES REALPATHS (#457). `target` comes from `tmp_path` while the
+    # launcher renders the PHYSICAL path this test exists to demand, so comparing the two
+    # spellings asserts that the temp base is physical as much as anything about the launcher.
+    # Where the base is a link the two disagree for a reason that has nothing to do with the
+    # code under test, and a security test false-reds on a machine whose only sin is a
+    # symlinked `/tmp` (macOS: `/tmp` -> `/private/tmp`). Realpathing both sides makes the
+    # assertion say what it means: the SAME DIRECTORY, however each side spells the way there.
+    #
+    # ⚠⚠ BUT #457's STATED TRIGGER DOES NOT REPRODUCE ON THE PINNED pytest, AND THE ISSUE SAID
+    # IT WOULD. MEASURED 2026-09-14 against pytest 9.1.1: `_pytest/tmpdir.py::getbasetemp`
+    # calls `.resolve()` on BOTH paths it can return — the `--basetemp` it was given and the
+    # `tempfile.gettempdir()` root it derives — so `tmp_path` is already physical even when the
+    # base is a link. Run under `--basetemp=<a symlink>`, the pre-fix assertion PASSED. So this
+    # is not a live false-red being fixed; what is being removed is a dependence on a pytest
+    # implementation detail that has moved before (pytest #4427 is that code choosing
+    # `abspath` over `resolve` for a platform difference) and that nothing here would notice
+    # moving again. Do not re-derive the macOS claim from this comment: it was not measured on
+    # macOS, and on this pytest it is false.
+    physical = [os.path.realpath(g) for g in granted]
+    assert os.path.realpath(target) in physical, (
         f"the symlinked candidate was granted as something other than its physical target — "
         f"granted {granted}, expected {target}")
+    # ⚠⚠ AND THE NEGATIVE HALF MUST NOT BE REALPATHED, WHICH IS WHY THEY ARE WRITTEN
+    # DIFFERENTLY. `os.path.realpath(link)` IS `target` — that is what a symlink is — so
+    # resolving this side would compare the physical path with itself and the assertion could
+    # never fail, whatever the launcher printed. The defect is a grant SPELLED as the link
+    # (`cd X && pwd`, the path you arrived by), which is a property of the literal string the
+    # launcher rendered: `granted` is checked unresolved, on purpose.
+    # That split is also why the assertion above no longer distinguishes a link-grant from a
+    # target-grant on a symlinked temp base — under the defect both realpath to the same
+    # directory. It is this line that catches it there, and it is the only one that can.
     assert str(link) not in granted, (
         "the candidate was granted by its LINK path, which is what left the reviewer fenced "
         "out of the directory it points at (#451)")
+
+
+# --------------------------------------------------------------------------- #
+# the reviewer's spend ceiling — OPTIONAL BY DESIGN (#464)
+# --------------------------------------------------------------------------- #
+# ⚠⚠ THE REVIEWER RAN WITH NO CEILING AT ALL UNTIL 2026-09-07, AND NOTHING HERE SAW IT.
+# `review_cycle.sh` put `--max-budget-usd` on the WORKER's call; this launcher — the longer,
+# whole-diff call — passed none, while the driver's own `--help` called its flag a ceiling
+# "per claude call". The fix (`BUDGET_ARGS`, built from the roster's `budget_usd`, which
+# `ferrostep agent-env` emits) landed untested at all three of its points: the build, the
+# call site, and the `--dry-run` preview of it.
+#
+# ⚠ WHAT IS PINNED IS NOT "THERE IS A CEILING". The roster deliberately sets none today
+# (`FerroStep/config.yaml`, owner 2026-09-07 — absent IS the setting), so a test demanding one
+# would freeze a decision the owner has not made and would go red against the correct
+# deployment. The property is the PLUMBING, in both directions: a ceiling the roster sets
+# reaches the real argv, an absent one yields no flag and no refusal, and the preview agrees
+# with the call either way — #393 is what a dry run that describes a different command costs,
+# and a preview is believed precisely because nobody re-derives it.
+
+
+def _budget_lane(tmp_path, budget=None):
+    """A whole ported repo — `FerroStep/` inside a git repo — with the reviewer's `budget_usd`
+    set or absent.
+
+    ⚠ THE WHOLE FOLDER, NOT JUST `workflow/`, and that is forced. The ROSTER is the input these
+    tests vary, and the launcher reads it from `$REPO_ROOT/FerroStep/config.yaml`, where
+    `REPO_ROOT` is `git rev-parse --show-toplevel` — not a path relative to the script. The
+    copied-lane trick the tests above use (copy `workflow/`, run it with `cwd=REPO`) therefore
+    goes on reading THIS repo's roster no matter what is written into the copy, so it cannot
+    reach the one value under test.
+    """
+    root = tmp_path / "ported"
+    shutil.copytree(REPO / "FerroStep", root / "FerroStep")
+
+    cfg = root / "FerroStep" / "workflow" / "config.env"
+    # ⚠⚠ THE SELF-CHECK IS DISARMED, AND NOT FOR SPEED: a REAL launch `eval`s `SELF_REVIEW_CMD`
+    # before it spends a review, and in this repo that command is the whole pytest suite. Left
+    # armed, this fixture would run the suite from inside the suite (here it would merely die,
+    # since the ported repo has neither `.venv` nor `tests/` — a failure whose cause reads as
+    # nothing to do with budgets).
+    cfg.write_text(re.sub(r"^SELF_REVIEW_AT=.*$", "SELF_REVIEW_AT=none",
+                          cfg.read_text(encoding="utf-8"), flags=re.M), encoding="utf-8")
+
+    if budget is not None:
+        roster = root / "FerroStep" / "config.yaml"
+        text, n = re.subn(r"^(  reviewer:\n)", r"\g<1>    budget_usd: %s\n" % budget,
+                          roster.read_text(encoding="utf-8"), count=1, flags=re.M)
+        # ⚠ THE EDIT IS VERIFIED. A roster restructure would otherwise leave this fixture
+        # writing NOTHING, and the ceiling test would then be exercising the ABSENT case under
+        # a name that says the opposite — green, and asserting the reverse of what it claims.
+        assert n == 1, "the reviewer entry is not shaped the way this fixture edits it"
+        roster.write_text(text, encoding="utf-8")
+
+    # An `origin` remote rather than a REPO_SLUG line, for the reason
+    # `tests/test_review_cycle.py::_ported_lane` gives: `config.env` ships the slug EMPTY and
+    # the launcher derives it, so hardcoding one leaves the half that actually runs unexercised.
+    subprocess.run(["git", "init", "-q", "."], cwd=root, check=True)
+    subprocess.run(["git", "remote", "add", "origin",
+                    "git@github.com:Example-Org/ported-lane.git"], cwd=root, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t",
+                    "commit", "-q", "-m", "init"], cwd=root, check=True)
+    return root
+
+
+def _launch(root, *args):
+    """Run the ported launcher and return `(rc, output, argv)` — argv being EXACTLY what it
+    handed `claude`, recorded by a stub.
+
+    ⚠⚠ WHAT KEEPS A PAID, UNATTENDED REVIEW OUT OF THIS TEST IS THE STUB ON `PATH`, AND
+    NOTHING ELSE. `tests/test_review_cycle.py::_real_startup` had to write that down after its
+    own docstring credited a `HOME` redirect (#253); this helper is the same hazard one script
+    along, because unlike every other behavioural test in this file it is NOT stopped by
+    `--dry-run` or by a guard — it runs the launcher to the end on purpose.
+    ⚠ The stub exits 0 rather than the fixture's 97: this call is the thing under test, so a
+    non-zero would make the launcher report a failed review and mask it.
+    ⚠ Argv is recorded NUL-SEPARATED. The brief is one argument containing dozens of newlines,
+    so a line-per-argument record cannot be split back into arguments at all.
+    """
+    bindir = root.parent / "bin"
+    bindir.mkdir(exist_ok=True)
+    sink = root.parent / "argv"
+    stub = bindir / "claude"
+    stub.write_text('#!/bin/sh\n: > "$ARGV_SINK"\n'
+                    'for a in "$@"; do printf \'%s\\0\' "$a" >> "$ARGV_SINK"; done\nexit 0\n')
+    stub.chmod(0o755)
+
+    home = root.parent / "home"
+    home.mkdir(exist_ok=True)
+    # The launcher lifts the PocketBase credential out of `~/.claude.json` and refuses without
+    # one, so an empty HOME (what the module fixture uses) never reaches the call. The URL is a
+    # dead loopback port on purpose: the tracker is then UNREACHABLE, which the launcher warns
+    # about and continues past, and this test files nothing and touches no network.
+    (home / ".claude.json").write_text(json.dumps({"mcpServers": {"pocketbase": {
+        "env": {"PB_URL": "http://127.0.0.1:1", "PB_EMAIL": "e", "PB_PASSWORD": "p"}}}}))
+
+    if sink.exists():
+        sink.unlink()
+    env = dict(os.environ)
+    env["PATH"] = f"{bindir}:{env['PATH']}"
+    env["HOME"] = str(home)
+    env["ARGV_SINK"] = str(sink)
+    p = subprocess.run([str(root / "FerroStep" / "workflow" / "scripts" / "request_review.sh"),
+                        *args],
+                       cwd=str(root), env=env, capture_output=True, text=True, timeout=300)
+    argv = sink.read_text(encoding="utf-8").split("\0")[:-1] if sink.exists() else []
+    return p.returncode, p.stdout + p.stderr, argv
+
+
+def _previewed_ceiling(text):
+    """What `--dry-run` SAYS about the ceiling: the value, or None where it says there is none.
+
+    ⚠ SILENCE RAISES RATHER THAN READING AS None. A preview that mentions the ceiling nowhere
+    is the #393 defect itself — the reader is left to assume, and the natural assumption is
+    that the command shown is the command run. Folding that into "no ceiling" would make this
+    helper agree with the bug in the one case it exists to catch.
+    """
+    for line in text.splitlines():
+        s = line.strip().rstrip("\\").strip()
+        if s.startswith("--max-budget-usd"):
+            return s.split(None, 1)[1]
+        if "no --max-budget-usd" in s:
+            return None
+    raise AssertionError(
+        "the dry run says nothing at all about the spend ceiling, so a reader cannot tell "
+        "the capped case from the uncapped one and will assume the command shown is complete")
+
+
+def test_a_roster_ceiling_reaches_the_real_claude_call_and_the_preview_of_it(tmp_path):
+    """⚠ THE CALL SITE AND THE PREVIEW ARE TWO DIFFERENT BLOCKS, so both are checked here.
+
+    The launcher builds `BUDGET_ARGS` once and spends it twice: `${BUDGET_ARGS[@]+…}` on the
+    real `claude -p`, and a separate `printf` in the `--dry-run` branch. Nothing tied them
+    together, which is exactly how `merge_branch.sh` came to advertise a command it did not
+    run (#393).
+
+    ⚠ ASSERTED ON THE ARGV THE LAUNCHER ACTUALLY PASSED, not on the source and not on the
+    preview alone — the lesson `_rendered_allowlist` records for the allowlist, applied to the
+    one argument that decides what a run can spend. Only the argv can see an entry lost to a
+    quoting or `set -u` mistake in the array expansion.
+    """
+    # ⚠ AN ODD VALUE. A round one could be produced by something other than this roster key —
+    # a default, a fallback, a coincidence — and the point is that THIS setting arrived.
+    root = _budget_lane(tmp_path, budget="3.77")
+    rc, out, argv = _launch(root, "--full", "--developer", "Ozzy")
+    assert rc == 0, f"the ported lane did not complete: {out[-800:]}"
+    # ⚠ POSITIVE CONTROL FIRST: every assertion below reads `argv`, and an empty capture — a
+    # stub that never ran, a launcher that exited at a guard — satisfies "the value is right"
+    # vacuously in the one direction that matters.
+    assert "-p" in argv, f"no claude launch was captured at all, so this proves nothing: {argv}"
+    assert "--max-budget-usd" in argv, (
+        "the roster sets budget_usd and the reviewer was launched without a ceiling anyway — "
+        f"the uncapped state the flag was added to end: {argv}")
+    passed = argv[argv.index("--max-budget-usd") + 1]
+    assert passed == "3.77", f"the ceiling passed is not the one the roster set: {passed!r}"
+
+    drc, dout, _ = _launch(root, "--full", "--dry-run", "--developer", "Ozzy")
+    assert drc == 0, f"the dry run refused: {dout[-800:]}"
+    assert _previewed_ceiling(dout) == passed, (
+        "the dry run advertises a different ceiling from the one the real call carries; a "
+        "preview that disagrees with its command is worse than none, because it is believed")
+
+
+def test_no_roster_budget_means_no_flag_and_no_refusal(tmp_path):
+    """⚠⚠ ABSENT IS THE WHOLE MEANING OF NO CEILING (`FerroStep/config.yaml`, owner 2026-09-07),
+    which makes this the half that is easy to break by "improving" the other one.
+
+    A deployment that sets nothing must keep behaving exactly as it did: no flag, and above
+    all no refusal — a launcher that died without a budget would impose a limit nobody asked
+    for on every ported lane, and the failure would arrive as an unrelated-looking startup
+    error. Running to the call site rather than reading it is what makes that checkable: an
+    empty `BUDGET_ARGS` that reaches `claude` as an empty STRING, or aborts the shell, is
+    invisible to any scan of the source and fatal at the one moment it happens.
+
+    ⚠ IT IS NOT A TEST OF THE `${BUDGET_ARGS[@]+…}` GUARD, and an earlier draft of this
+    docstring said it was. MEASURED on this host (bash 5.3.9): the bare `"${BUDGET_ARGS[@]}"`
+    form does NOT abort on an empty array under `set -u` — bash stopped treating that as unset
+    in 4.4 — so swapping the guarded expansion for the plain one leaves this test green. The
+    guard still earns its place for a lane ported to an older bash; this is simply not the
+    instrument that would catch its removal, and saying otherwise would be a claim about a
+    mutation nobody ran.
+
+    ⚠ AND THE PREVIEW MUST SAY SO RATHER THAN GO QUIET. Printing nothing here renders a command
+    that looks complete and is not capped, which is how the uncapped reviewer survived reading.
+    """
+    root = _budget_lane(tmp_path)
+    rc, out, argv = _launch(root, "--full", "--developer", "Ozzy")
+    assert rc == 0, (
+        "a roster with no budget_usd REFUSED the launch; absent is a setting, not an omission, "
+        f"and every lane that sets nothing is now broken: {out[-800:]}")
+    # ⚠ POSITIVE CONTROL ON A NEGATIVE. "No --max-budget-usd in argv" is satisfied by an empty
+    # capture, which is precisely what a launcher that never reached the call would leave.
+    assert "-p" in argv and "--system-prompt-file" in argv, (
+        f"no claude launch was captured, so the absence asserted below proves nothing: {argv}")
+    assert "--max-budget-usd" not in argv, (
+        "a ceiling was passed although the roster sets none — the reviewer is now capped at a "
+        f"number nobody chose: {argv}")
+
+    drc, dout, _ = _launch(root, "--full", "--dry-run", "--developer", "Ozzy")
+    assert drc == 0, f"the dry run refused: {dout[-800:]}"
+    assert _previewed_ceiling(dout) is None, (
+        "the dry run previews a ceiling the real call does not carry — the #393 shape, with "
+        "the preview claiming the safer of the two states")

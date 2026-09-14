@@ -944,9 +944,17 @@ def cmd_rescope(pb, args):
     refuse_abort_token(args.note or "", "note")
     for number in args.numbers:
         rec = pb.find(args, number)
-        before = rec.get("branch_name")
+        # ⚠ REPORT THE LABELS THAT MOVED, READ OFF `sets` (#462). This printed
+        # `#N: <branch_name> -> <args.branch or branch_name>`, so a `--to-repo`-only rescope
+        # showed the one field that did NOT change and never mentioned the one that did — the
+        # move read as a no-op, or as the wrong flag having applied. The record's unit of work
+        # is the whole tuple, which is what the engine warns about when only one label is set,
+        # so the line has to name each label rather than assume the branch is what moved.
+        before = {label: rec.get(label) for label, _ in sets}
         ferrostep_rescope(pb, rec, "developer", sets, args.note, args.author)
-        print("#%s: %s -> %s" % (number, before, args.branch or before))
+        moved = ", ".join("%s: %s -> %s" % (label, before.get(label) or "(unset)", value)
+                          for label, value in sets)
+        print("#%s: %s" % (number, moved))
 
 
 def cmd_comment(pb, args):
