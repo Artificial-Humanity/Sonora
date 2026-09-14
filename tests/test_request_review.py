@@ -895,3 +895,117 @@ def test_no_granted_directory_is_labelled_by_basename_alone():
     assert not flat, (
         "these granted directories are labelled by basename alone, so one of them can silently "
         f"name the repo under review and read as excluded from it: {flat}")
+
+
+def _command_prefix(entry):
+    """`Bash(git config --get:*)` -> `git config --get`. None for anything else."""
+    if not entry.startswith("Bash(") or not entry.endswith(":*)"):
+        return None
+    return entry[len("Bash("):-len(":*)")]
+
+
+def _shadowed(allow, deny):
+    """Allow entries a deny entry swallows, because deny beats allow in the matcher."""
+    out = []
+    for a in allow:
+        pa = _command_prefix(a)
+        if pa is None:
+            continue
+        for d in deny:
+            pd = _command_prefix(d)
+            if pd is None or pd == pa:
+                continue
+            if pa == pd or pa.startswith(pd + " "):
+                out.append((a, d))
+    return out
+
+
+def test_no_deny_entry_silently_swallows_an_allow_entry():
+    """⚠⚠ DENY BEATS ALLOW, SO A BROAD DENY KILLS A NARROW GRANT WITH THE SUITE GREEN (#452).
+
+    Granting the read-only `git config` verbs required removing `Bash(git config:*)` from
+    `REVIEWER_DENY`, because a deny that prefixes an allow wins and the grant would have read as
+    given and never matched — #239's shape. Restoring that deny would silently disarm all five
+    grants, and nothing tested it: `rg "git config" tests/` was empty when the reviewer looked.
+
+    ⚠ ASSERTED AS A GENERAL RELATION, NOT A LIST OF THE FIVE ENTRIES. Naming them here is the
+    hand-list that goes stale when a sixth is added, and it would not catch the same mistake
+    made against a different grant. This catches any deny/allow pair with that shape.
+    """
+    allow, deny = _rendered_allowlist(), _array("REVIEWER_DENY")
+    assert allow and deny, "one of the lists is empty, so this test would pass over nothing"
+    bad = _shadowed(allow, deny)
+    assert not bad, (
+        "these allow entries are swallowed by a broader deny, so they read as granted and can "
+        f"never match: {bad}")
+
+
+def test_the_shadow_relation_can_fire():
+    """The positive control. The test above asserts a NEGATIVE over two live lists, which an
+    empty parse or a broken prefix rule satisfies in silence."""
+    assert _shadowed(["Bash(git config --get:*)"], ["Bash(git config:*)"]), \
+        "the relation cannot see a broad deny swallowing a narrow allow"
+    assert not _shadowed(["Bash(git config --get:*)"], ["Bash(git push:*)"]), \
+        "the relation reports unrelated entries as shadowed"
+    assert not _shadowed(["Bash(git config --get:*)"], ["Bash(git config --get:*)"]), \
+        "an identical pair is not a shadow; it is the same entry named twice"
+
+
+def test_every_read_only_grant_the_source_intends_actually_renders():
+    """The launcher builds the read-only grants from a `for` list. Derived from that list, so
+    what it catches is the gap between INTENT and what the matcher receives.
+
+    ⚠ IT DOES NOT FREEZE THE LIST, AND THAT IS DELIBERATE. Measured: dropping one entry from the
+    loop leaves this green, because both sides shrink together. Removing a grant is a DECISION —
+    the owner's entitlement ruling is a floor, not a fixed set — so a test that blocked it would
+    be pinning a choice rather than catching a defect. The floor below only catches a broken
+    parse, not a deliberate removal, and says so rather than implying otherwise.
+    """
+    m = re.search(r'for _ro in ((?:"[^"]+"\s*\\?\s*)+); do', SOURCE)
+    assert m, "the read-only grant loop is no longer shaped the way this test reads it"
+    intended = re.findall(r'"([^"]+)"', m.group(1))
+    assert len(intended) >= 4, f"only {len(intended)} read-only grants parsed; the scan is broken"
+    allow = _rendered_allowlist()
+    missing = [f"Bash({i}:*)" for i in intended if f"Bash({i}:*)" not in allow]
+    assert not missing, (
+        f"the script builds these grants and the matcher never receives them: {missing}")
+
+
+def test_a_symlinked_candidate_is_granted_by_its_physical_path(tmp_path):
+    """⚠ THE GUARD ABOVE ONLY EXERCISES ITS CASE WHERE THE `notes` SYMLINK EXISTS (#454).
+
+    `notes` is gitignored, so in a worktree or a fresh clone the candidate is skipped, the two
+    real siblings pass trivially, and the `cd && pwd` mutation stays green. The guard for #451
+    was therefore environment-dependent — the exact shape #451 itself was about, reappearing in
+    its own fix.
+
+    This builds the case instead of hoping the host supplies it: a copied lane whose config
+    names a symlink, run against this repo. It needs no `notes`, no sibling checkouts, and
+    nothing gitignored.
+    """
+    lane = tmp_path / "workflow"
+    shutil.copytree(REPO / "FerroStep" / "workflow", lane)
+    target = tmp_path / "real_target"
+    target.mkdir()
+    link = tmp_path / "linked_candidate"
+    link.symlink_to(target, target_is_directory=True)
+
+    cfg = lane / "config.env"
+    cfg.write_text(re.sub(r"^SIBLING_REPO_CANDIDATES=.*$",
+                          f"SIBLING_REPO_CANDIDATES={link}", cfg.read_text(encoding="utf-8"),
+                          flags=re.M), encoding="utf-8")
+
+    out = subprocess.run([str(lane / "scripts" / "request_review.sh"),
+                          "--full", "--dry-run", "--developer", "Ozzy"],
+                         cwd=REPO, capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, f"the copied lane failed: {out.stderr[-400:]}"
+    toks = shlex.split(out.stdout.replace("\\\n", " "))
+    granted = [toks[i + 1] for i, t in enumerate(toks) if t == "--add-dir" and i + 1 < len(toks)]
+
+    assert granted, "the copied lane granted nothing, so the assertion below proves nothing"
+    assert str(target) in granted, (
+        f"the symlinked candidate was granted as something other than its physical target — "
+        f"granted {granted}, expected {target}")
+    assert str(link) not in granted, (
+        "the candidate was granted by its LINK path, which is what left the reviewer fenced "
+        "out of the directory it points at (#451)")

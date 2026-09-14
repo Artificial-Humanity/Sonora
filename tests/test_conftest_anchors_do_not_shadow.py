@@ -118,3 +118,34 @@ def test_the_collision_check_can_fail():
     fake["synth_common"] = ["lib", "tools"]
     assert set(fake) & _stdlib_names(), "the checker cannot see a stdlib collision"
     assert [k for k, v in fake.items() if len(v) > 1], "the checker cannot see a duplicate"
+
+
+def test_the_widened_scans_still_see_what_a_narrow_one_misses():
+    """⚠ THE WIDENINGS HAD NO REGRESSION CONTROL, SO REVERTING THEM STAYED GREEN (#450).
+
+    #448 widened two scans: site-packages gained namespace packages and top-level `.so`
+    modules, and the repo scan gained loose `.py` files at the root. Because there are zero
+    collisions today, a NARROWED scan finds none either — the reviewer measured that reverting
+    all three left this file at 3 passed. The widenings guarded the tree; nothing guarded the
+    widenings.
+
+    ⚠ ASSERTED AS A STRICT SUPERSET, NOT BY NAMING `google` OR `vocalizer`. A name-specific
+    check pins this venv's contents and this repo's root listing, and goes stale the moment
+    either changes — the #247 hand-list defect, which is what #449 was. The narrow form is
+    computed here only to be the thing the real scan must exceed; it is not a second expression
+    of the scan's rule, because the scan is never asked to agree with it — only to contain it.
+    """
+    sp = pathlib.Path(sysconfig.get_paths()["purelib"])
+    narrow_site = ({p.stem for p in sp.glob("*.py")}
+                   | {d.name for d in sp.iterdir() if d.is_dir() and (d / "__init__.py").exists()})
+    narrow_repo = {d.name for d in REPO.iterdir() if d.is_dir() and (d / "__init__.py").exists()}
+
+    wide_site, wide_repo = _site_packages_names(), _repo_top_level()
+    assert narrow_site and narrow_repo, "the narrow scans found nothing, so neither comparison means anything"
+    assert wide_site > narrow_site, (
+        "the site-packages scan no longer sees more than packages-with-__init__ — namespace "
+        "packages and top-level .so modules have gone missing from it, and a bucket module "
+        f"named for one of them would shadow it silently (#448). missing: {narrow_site - wide_site or 'narrowed'}")
+    assert wide_repo > narrow_repo, (
+        "the repo scan no longer sees the root's loose .py modules, so a bucket module named "
+        "`vocalizer` or `setup` would shadow this repo's own and nothing would say so")
