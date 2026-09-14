@@ -196,27 +196,36 @@ def test_anything_not_permissive_fails_closed(tmp_path, monkeypatch):
     assert "non-permissive" in str(e.value)
 
 
-# --- the publish wall (owner ruling 12, 2026-09-09) ---------------------------------------
+# --- the publish wall ---------------------------------------------------------------------
 #
-# A licence is not the only reason an artifact must not ship. The crossed delivery bank is
-# CC-BY-4.0 and genuinely `permissive`; publishing a model trained on it is forbidden because
-# it holds ~20 cloned REAL LibriTTS-R voices. Licence and voice identity are different
-# questions, so `publish` is a separate axis from `class` — folding it in would make the
-# manifest state something false about the licence.
+# A licence is not the only reason an artifact must not ship, so `publish` is a separate axis
+# from `class` — folding it in would make the manifest state something false about the licence.
+# ⚠ The firewall in `docs/audiobook-corpus-policy.md` has the same shape and is NOT reachable
+# through this axis (#473) — that corpus is `class: blocked` and `enforce` refuses it at
+# training time, one wall earlier. `private_audiobook_v1` below is a FIXTURE NAME standing in
+# for some future corpus, not a claim that such a corpus can get here.
 #
-# ⚠ THE BANK DOES NOT EXIST YET, so nothing in the LIVE manifest is `publish: forbidden` and
-# these tests inject the policy. That is the honest way to test a guard for a corpus that has
-# not been built — and the alternative, shipping the mechanism untested until the bank
-# arrives, is how #391 shipped a guard that could not fire.
+# ⚠⚠ THESE FIXTURES USED TO BE THE CROSSED DELIVERY BANK, AND THAT EXAMPLE IS RETIRED.
+# Owner ruling 12 answered 2026-09-09 that the bank was diagnostic only; the owner REVISED it
+# on 2026-09-10 and the bank is PUBLISHABLE. A test asserting `crossed_bank_v8` is
+# `publish: forbidden` teaches a reader the opposite of the live ruling, which is why the
+# fixture corpus was renamed rather than left alone. Nothing about the guard changed.
+# (#474: this sentence said `private_audiobook_v1` — the NEW name — because the rename that
+# it exists to explain was done with a blanket replace that rewrote the explanation too.)
+#
+# ⚠ NO LIVE MANIFEST ENTRY IS `publish: forbidden` TODAY, so these tests inject the policy.
+# That is the honest way to test a guard whose corpus has not been built — and the
+# alternative, shipping the mechanism untested until one arrives, is how #391 shipped a guard
+# that could not fire.
 
-def _publish_manifest(monkeypatch, policy, reason="Diagnostic only (owner ruling 12)."):
+def _publish_manifest(monkeypatch, policy, reason="Private lineage: nothing trained on it leaves the machine."):
     """Inject a corpus carrying `policy` and a permissive neighbour, bypassing the yaml."""
     monkeypatch.setattr(wall, "_manifest_cache", {
-        "crossed_bank_v8": ("crossed_bank_v8", "permissive", "CC-BY-4.0"),
+        "private_audiobook_v1": ("private_audiobook_v1", "permissive", "CC-BY-4.0"),
         "ordinary_corpus": ("ordinary_corpus", "permissive", "CC-BY-4.0"),
     })
     monkeypatch.setattr(wall, "_publish_cache", {
-        "crossed_bank_v8": ("crossed_bank_v8", policy, reason),
+        "private_audiobook_v1": ("private_audiobook_v1", policy, reason),
         "ordinary_corpus": ("ordinary_corpus", "allowed", ""),
     })
 
@@ -224,10 +233,10 @@ def _publish_manifest(monkeypatch, policy, reason="Diagnostic only (owner ruling
 def test_a_corpus_marked_publish_forbidden_refuses_at_export(monkeypatch):
     _publish_manifest(monkeypatch, "forbidden")
     with pytest.raises(wall.LicenseWallError) as e:
-        wall.refuse_unpublishable(["data/crossed_bank_v8/train_op.txt"], what="the ckpt")
+        wall.refuse_unpublishable(["data/private_audiobook_v1/train_op.txt"], what="the ckpt")
     msg = str(e.value)
-    assert "-> crossed_bank_v8 (publish: forbidden)" in msg, msg
-    assert "Diagnostic only" in msg, "the recorded reason is not surfaced to the operator"
+    assert "-> private_audiobook_v1 (publish: forbidden)" in msg, msg
+    assert "Private lineage" in msg, "the recorded reason is not surfaced to the operator"
     # ⚠ IT MUST NOT READ AS A LICENCE PROBLEM. An operator who thinks this is a licence
     # refusal goes looking at the licence, finds it clean, and concludes the wall is broken.
     assert "NOT a licence refusal" in msg, msg
@@ -249,9 +258,9 @@ def test_publish_is_orthogonal_to_licence_class(monkeypatch):
     licence — and still must not ship. If these two ever collapse into one field, this fails.
     """
     _publish_manifest(monkeypatch, "forbidden")
-    assert wall.classify_path("data/crossed_bank_v8/x.txt")[1] == "permissive"
+    assert wall.classify_path("data/private_audiobook_v1/x.txt")[1] == "permissive"
     with pytest.raises(wall.LicenseWallError):
-        wall.refuse_unpublishable(["data/crossed_bank_v8/train_op.txt"])
+        wall.refuse_unpublishable(["data/private_audiobook_v1/train_op.txt"])
 
 
 # --- lineage extraction, against the shape a real checkpoint actually has ------------------
@@ -336,12 +345,12 @@ def _merged_publish_manifest(monkeypatch):
     audio living under the bank's own directory (forbidden)."""
     monkeypatch.setattr(wall, "_manifest_cache", {
         "libritts_r_full_vat_v8": ("merged_vat_corpora", "permissive", "CC-BY-4.0"),
-        "crossed_bank_v8": ("crossed_bank_v8", "permissive", "CC-BY-4.0"),
+        "private_audiobook_v1": ("private_audiobook_v1", "permissive", "CC-BY-4.0"),
         "ordinary_corpus": ("ordinary_corpus", "permissive", "CC-BY-4.0"),
     })
     monkeypatch.setattr(wall, "_publish_cache", {
         "libritts_r_full_vat_v8": ("merged_vat_corpora", "allowed", ""),
-        "crossed_bank_v8": ("crossed_bank_v8", "forbidden", "Diagnostic only (owner ruling 12)."),
+        "private_audiobook_v1": ("private_audiobook_v1", "forbidden", "Private lineage: nothing trained on it leaves the machine."),
         "ordinary_corpus": ("ordinary_corpus", "allowed", ""),
     })
 
@@ -358,10 +367,10 @@ def test_a_merged_corpus_whose_AUDIO_is_forbidden_refuses(tmp_path, monkeypatch)
     """⚠ THE CASE #420 NAMED. The filelist path classifies as allowed; only the audio rows
     name the bank. The old wall walked the path alone and passed this."""
     _merged_publish_manifest(monkeypatch)
-    fl = _merged_filelist(tmp_path, "/data/crossed_bank_v8/wavs")
+    fl = _merged_filelist(tmp_path, "/data/private_audiobook_v1/wavs")
     with pytest.raises(wall.LicenseWallError) as e:
         wall.refuse_unpublishable([str(fl)])
-    assert "-> crossed_bank_v8 (publish: forbidden)" in str(e.value), str(e.value)
+    assert "-> private_audiobook_v1 (publish: forbidden)" in str(e.value), str(e.value)
 
 
 def test_a_merged_corpus_whose_audio_is_all_publishable_passes(tmp_path, monkeypatch):
@@ -382,7 +391,7 @@ def test_a_repo_relative_filelist_resolves_against_root(tmp_path, monkeypatch):
     filelist THERE, so that cwd opens it and the call raises instead. Measured too.
     """
     _merged_publish_manifest(monkeypatch)
-    _merged_filelist(tmp_path, "/data/crossed_bank_v8/wavs")
+    _merged_filelist(tmp_path, "/data/private_audiobook_v1/wavs")
     rel = "data/libritts_r_full_vat_v8/train_op.txt"
     with pytest.raises(wall.LicenseWallError):
         wall.refuse_unpublishable([rel], root=str(tmp_path))
@@ -396,7 +405,7 @@ def test_a_repo_relative_filelist_resolves_against_root(tmp_path, monkeypatch):
 def test_an_unreadable_filelist_still_checks_its_own_path(monkeypatch):
     _merged_publish_manifest(monkeypatch)
     with pytest.raises(wall.LicenseWallError):
-        wall.refuse_unpublishable(["data/crossed_bank_v8/train_op.txt"])
+        wall.refuse_unpublishable(["data/private_audiobook_v1/train_op.txt"])
 
 
 # --- #422: a misspelled key must be a load error, not a silent `allowed` ------------------
@@ -450,10 +459,10 @@ def test_injecting_only_the_licence_map_does_not_break_the_publish_wall(monkeypa
 # --- #421: ancestors ride in the checkpoint ------------------------------------------------
 
 def test_lineage_includes_the_donor_stages(monkeypatch):
-    ck = {wall.LINEAGE_KEY: ["data/crossed_bank_v8/train_op.txt"],
+    ck = {wall.LINEAGE_KEY: ["data/private_audiobook_v1/train_op.txt"],
           "datamodule_hyper_parameters": {
               "train_filelist_path": "data/libritts_r_full_vat_v7/train_op.txt"}}
-    assert wall.lineage_filelists(ck) == ["data/crossed_bank_v8/train_op.txt",
+    assert wall.lineage_filelists(ck) == ["data/private_audiobook_v1/train_op.txt",
                                           "data/libritts_r_full_vat_v7/train_op.txt"]
     _merged_publish_manifest(monkeypatch)
     with pytest.raises(wall.LicenseWallError):
