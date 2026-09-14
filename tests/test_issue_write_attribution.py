@@ -563,11 +563,18 @@ def test_every_read_gets_past_the_author_gate(probe):
     than an unconditional refusal.
 
     ⚠ EVERY read, in two senses, and it took two findings to get both. Every read must be
-    PROBED — a skipped one is asserted about by nobody, which is #471, and the mirror of the
-    write floor #469 added. And every read that was probed must PASS the gate, which is #466.
-    The first sentence below is about the second sense; the paragraph after it, about the
-    first. Neither holds without the other, because a check not run and a check that passed
-    are the same green.
+    PROBED — a skipped one is asserted about by nobody (#471, the mirror of the write floor
+    #469 added). And every read that was probed must PASS the gate (#466). Neither holds
+    without the other, because a check not run and a check that passed are the same green.
+    Each sense is argued at its own assertion below, where the reader can see the code it is
+    about.
+
+    ⚠ THE SENTENCE THAT SAID WHERE THOSE ARGUMENTS WERE HAS BEEN REMOVED (#472). It read "the
+    first sentence below is about the second sense; the paragraph after it, about the first",
+    and the second half named nothing that existed — that rationale is a code comment further
+    down, not a docstring paragraph. A docstring that describes its own LAYOUT is false the
+    first time anything is inserted, and the finding arrived in the same review as the commit
+    that wrote it. Cite the finding number, not the position.
 
     ⚠ EVERY read, not merely one, and THAT is the part #466 was filed about. This asked only
     that SOME read pass, which the pure queries satisfy on their own — so the loss of ONE write
