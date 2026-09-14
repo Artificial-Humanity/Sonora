@@ -230,9 +230,25 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
     against does not exist: since the branch became the unit (`dcc4c1e`, 2026-08-17 —
     `review_id` became `branch_name`), `branch_name` IS the git branch and the gate depends
     on every finding for the range being under it. #407 did not retire anything; it
-    re-anchored the driver's sed and left a `RID` variable name behind. There is no
-    `issue.py` subcommand that moves an issue between branches, so a split cannot be undone
-    from here either.
+    re-anchored the driver's sed and left a `RID` variable name behind.
+      ⚠⚠ **THIS SAID A SPLIT "CANNOT BE UNDONE FROM HERE", AND IT WAS FALSE FOR WEEKS**
+      (#455). True of `issue.py`, which had no such subcommand; false of the lane.
+      [sonora-lane.json](../workflow/sonora-lane.json) declares a `branch_name` **rescope** for
+      the `developer` role with a mandatory note, and the installed `ferrostep` carries the
+      operation. **A missing wrapper was read as a missing capability**, by me among others.
+      There is one now:
+
+      ```bash
+      FerroStep/workflow/scripts/issue.py rescope N --branch <branch> --note 'why'
+      ```
+
+      ⚠ **What believing the false version cost:** a finding fixed on a follow-up branch kept
+      the `branch_name` of the merged branch it was filed against, so the merge gate and the
+      next reviewer's query both saw nothing. Two issues sat in `review` for days, reachable
+      only by being named in prose to the reviewer.
+      ⚠ **A CLOSED record cannot be rescoped and the engine says why** — *"a finished record's
+      scope is the unit of work it was resolved against"*. So this fixes the next split, never
+      a past one: rescope when you move the work, not afterwards.
   * ⚠ **NONE of these three** overrides the abort in AGENTS.md §1: a review that did not
     complete is not a "must not land" finding being cleared. (This said *"Neither case"*
     while sitting under three bullets — a two-place word against three options, which leaves

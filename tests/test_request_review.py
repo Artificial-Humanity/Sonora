@@ -920,6 +920,26 @@ def _shadowed(allow, deny):
     return out
 
 
+def _rendered_denylist():
+    """The deny list AS THE MATCHER WILL SEE IT, parsed from `--dry-run`.
+
+    ⚠ `_array("REVIEWER_DENY")` reads the array LITERAL and is blind to any `+=` append — which
+    is #245 exactly, the defect that replaced a source scan with this rendering for the allow
+    side. The shadow check below compared a rendered allow list against a source-scanned deny
+    list; no append exists today, so it was latent, but a deny added by append would have been
+    invisible to the one guard written to catch a deny swallowing a grant (#456).
+    """
+    r = subprocess.run([str(SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
+                       cwd=REPO, capture_output=True, text=True)
+    assert r.returncode == 0, f"--dry-run failed, so this test proves nothing: {r.stderr}"
+    for line in r.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("--disallowedTools"):
+            body = stripped.removeprefix("--disallowedTools").rstrip()
+            return shlex.split(body.removesuffix("\\"))
+    raise AssertionError("--dry-run printed no --disallowedTools line")
+
+
 def test_no_deny_entry_silently_swallows_an_allow_entry():
     """⚠⚠ DENY BEATS ALLOW, SO A BROAD DENY KILLS A NARROW GRANT WITH THE SUITE GREEN (#452).
 
@@ -932,7 +952,7 @@ def test_no_deny_entry_silently_swallows_an_allow_entry():
     hand-list that goes stale when a sixth is added, and it would not catch the same mistake
     made against a different grant. This catches any deny/allow pair with that shape.
     """
-    allow, deny = _rendered_allowlist(), _array("REVIEWER_DENY")
+    allow, deny = _rendered_allowlist(), _rendered_denylist()
     assert allow and deny, "one of the lists is empty, so this test would pass over nothing"
     bad = _shadowed(allow, deny)
     assert not bad, (

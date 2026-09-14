@@ -508,6 +508,53 @@ def cmd_file(pb, args):
 FERROSTEP_TIMEOUT = 60
 
 
+def ferrostep_rescope(pb, rec, role, sets, note, actor):
+    """Move a record to a different unit of work, refereed like any other write.
+
+    ⚠⚠ THIS EXISTS BECAUSE THE DOCS SAID IT DID NOT (#455). DEVELOPER.md stated flatly that no
+    subcommand moves an issue between branches. That was true OF issue.py and false of the lane:
+    `sonora-lane.json` has declared a `branch_name` rescope for the `developer` role, with a
+    mandatory note, for as long as the engine has refereed this lane — and the installed
+    `ferrostep` carries the operation. The gap was a missing wrapper, read for weeks as a
+    missing capability.
+
+    ⚠ WHAT IT COST, so nobody restores the belief: findings fixed on a follow-up branch stayed
+    stamped with the merged branch they were filed against, so the merge gate and the next
+    reviewer's query both saw nothing. Two issues sat in `review` for days with no reviewer able
+    to reach them, and each had to be named by number in prose to get resolved at all.
+
+    The token is the session this module already authenticated — no second auth, same as
+    `ferrostep_move`. A refusal is the product: the engine names the rule and what would satisfy
+    it, so its output is printed verbatim.
+    """
+    import subprocess
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    cmd = ["ferrostep", "rescope",
+           "--workflow", os.path.join(root, "workflow", "sonora-lane.json"),
+           "--store", "pocketbase:" + pb.base,
+           "--map", os.path.join(root, "workflow", "issues.map.json"),
+           "--record", rec["id"], "--role", role, "--actor", actor or role]
+    for label, value in sets:
+        cmd += ["--set", "%s=%s" % (label, value)]
+    if (note or "").strip():
+        cmd += ["--note", note.strip()]
+    env = dict(os.environ, FERROSTEP_POCKETBASE_TOKEN=pb.tok)
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, env=env,
+                           timeout=FERROSTEP_TIMEOUT)
+    except FileNotFoundError:
+        die("the `ferrostep` binary is not on PATH; rescope is the engine's, not this module's.")
+    except subprocess.TimeoutExpired:
+        die("ferrostep rescope timed out after %ds. ⚠ UNREACHABLE IS NOT REFUSED: the record\n"
+            "     may or may not have moved -- read it before retrying." % FERROSTEP_TIMEOUT)
+    if p.returncode != 0:
+        die("the referee refused the rescope of #%s:\n%s"
+            % (rec.get("number"), (p.stderr or p.stdout or "(no output)").strip()))
+    out = (p.stdout or "").strip()
+    if out:
+        print(out)
+
+
 def ferrostep_move(pb, rec, role, to_state, note, actor):
     """One state move, refereed by the engine against FerroStep/workflow/sonora-lane.json.
 
@@ -876,6 +923,22 @@ def cmd_grade(pb, args):
     print("#%d graded: %s -> %s" % (args.number, was or "UNGRADED", new_sev))
 
 
+def cmd_rescope(pb, args):
+    """Restamp one or more issues onto the branch actually carrying their fix."""
+    sets = []
+    if args.branch:
+        sets.append(("branch_name", args.branch))
+    if args.to_repo:
+        sets.append(("repo", args.to_repo))
+    if not sets:
+        die("nothing to set: give --branch and/or --to-repo.")
+    for number in args.numbers:
+        rec = pb.find(args, number)
+        before = rec.get("branch_name")
+        ferrostep_rescope(pb, rec, "developer", sets, args.note, args.author)
+        print("#%s: %s -> %s" % (number, before, args.branch or before))
+
+
 def cmd_comment(pb, args):
     rec = pb.find(args, args.number)
     pb.add_comment(args, rec, args.text, args.author)
@@ -974,6 +1037,16 @@ def main():
     s.add_argument("--comment", default="", help="why. The engine refuses a dispute without "
                    "one -- `requires_note` on the transition, not a check in this module")
     s.set_defaults(fn=cmd_dispute)
+
+    s = add("rescope"); s.add_argument("numbers", type=int, nargs="+")
+    s.add_argument("--branch", help="the branch_name to restamp onto — normally the branch "
+                                    "whose commit actually carries the fix")
+    s.add_argument("--to-repo", help="move the issue to another repo's scope")
+    # ⚠ NOT `required=True` on the note: the lane declares `requires_note` on this rescope, so
+    # the ENGINE refuses a missing one and says so. A second check here would be the copy that
+    # disagrees with the definition the day someone relaxes it.
+    s.add_argument("--note", help="why the unit of work changed; the lane requires it")
+    s.set_defaults(fn=cmd_rescope)
 
     s = add("comment"); s.add_argument("number", type=int)
     s.add_argument("--text", required=True); s.set_defaults(fn=cmd_comment)
