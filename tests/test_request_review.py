@@ -381,7 +381,7 @@ def test_the_sibling_repos_are_offered_read_only_and_never_writable():
         assert t in _array("REVIEWER_DENY")
 
 
-def _rendered_allowlist():
+def _rendered_allowlist(script=None):
     """The allowlist AS THE MATCHER WILL SEE IT — parsed from `--dry-run`, not from source.
 
     ⚠⚠ THIS REPLACED A SOURCE SCAN THAT WAS BLIND TO EVERY GATE PATH (#245). The scan read the
@@ -407,7 +407,9 @@ def _rendered_allowlist():
     # state. `--full` needs no commits ahead of main (the launcher says so in the very refusal
     # this produced), and `REVIEWER_ALLOW` is built from PYBIN and the gates directory with no
     # reference to RANGE, so the rendered list is identical either way.
-    r = subprocess.run([str(SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
+    # `script` lets a COPIED lane be rendered through the same parser (the negative-branch
+    # test below). One parser, two callers: a second ad-hoc scan is how #245 happened.
+    r = subprocess.run([str(script or SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
                        cwd=REPO, capture_output=True, text=True)
     assert r.returncode == 0, f"--dry-run failed, so this test proves nothing: {r.stderr}"
     for line in r.stdout.splitlines():
@@ -647,3 +649,385 @@ def test_a_flag_still_overrides_the_roster(run):
     rc, out = run("--range", "HEAD~1..HEAD", "--dry-run", "--model", "some-other", "--effort", "low")
     assert rc == 0, out
     assert "--model some-other --effort low" in out, out
+
+
+# --- the promotion-step grant (owner, 2026-09-10) -----------------------------------------
+
+def _config_env_value(key):
+    """One `KEY=value` out of config.env, which is plain by contract (its own header says so)."""
+    for line in (REPO / "FerroStep" / "workflow" / "config.env").read_text(
+            encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith(f"{key}=") and not line.startswith("#"):
+            return line.split("=", 1)[1].strip().strip('"')
+    return None
+
+
+def _run_sh_default_interpreter():
+    """The interpreter `scripts/litert_export/run.sh` composes, derived from that file.
+
+    ⚠ COMPOSED FROM ITS TWO LINES, NEVER TYPED HERE. Writing the joined path in would add one
+    more place for it to live, and the one that agrees with none of the others.
+
+    ⚠ NO COUNT IS STATED HERE, DELIBERATELY, AND IT USED TO BE (#434). This said "the THIRD
+    copy" while its own caller said "a fourth copy" seven lines below — two numbers disagreeing
+    inside the docstrings of the pin that exists to keep these places in step, and the commit
+    that corrected the count everywhere else left this one behind. Correcting the number would
+    have re-armed the same trap: nothing can fail when a number in prose goes stale, and
+    AGENTS.md §5b says to derive counts rather than state them. `_INTERPRETER_COPIES` below is
+    the enumeration; read the length off it if you need one.
+    """
+    src = (REPO / "scripts" / "litert_export" / "run.sh").read_text(encoding="utf-8")
+    work = re.search(r'SONORA_LITERT_WORK:-([^}"]+)', src)
+    py = re.search(r'SONORA_LITERT_PY:-\$\{SONORA_LITERT_WORK\}([^}"]+)\}', src)
+    assert work and py, "run.sh no longer composes its interpreter the way this test reads it"
+    return work.group(1) + py.group(1)
+
+
+def _check_publishable_docstring_interpreter():
+    """The path spelled out in the promoter's pasteable command, read from its docstring."""
+    src = (REPO / "scripts" / "tools" / "check_publishable.py").read_text(encoding="utf-8")
+    m = re.search(r'SONORA_LITERT_PY:-([^}"]+)\}', src)
+    assert m, "check_publishable.py no longer spells the interpreter the way this test reads it"
+    return m.group(1)
+
+
+# ⚠ THE ENUMERATION, not a sentence with a number in it (#434). Keyed by PATH so the
+# completeness test below can compare it against what is actually on disk. `run.sh` is
+# deliberately absent: it OWNS the value and composes it, so it is what the others are compared
+# against rather than one of them — and it does not contain the joined literal at all.
+_INTERPRETER_COPIES = {
+    "FerroStep/workflow/config.env":
+        ("REVIEWER_TORCH_PY", lambda: _config_env_value("REVIEWER_TORCH_PY")),
+    "scripts/tools/check_publishable.py":
+        ("the docstring command", _check_publishable_docstring_interpreter),
+}
+
+
+def _tracked_files_naming_the_interpreter():
+    """Every tracked file that contains the composed interpreter path as a literal string."""
+    r = subprocess.run(["git", "grep", "-l", "-F", _run_sh_default_interpreter()],
+                       cwd=REPO, capture_output=True, text=True)
+    # ⚠ `git grep` exits 1 for "no matches", which is not a failure here — but 2+ is, and
+    # treating every non-zero as "nothing found" is the instrument-failure-read-as-a-negative
+    # shape AGENTS.md §5b tabulates.
+    assert r.returncode in (0, 1), f"git grep failed ({r.returncode}): {r.stderr}"
+    return {line for line in r.stdout.split() if line}
+
+
+def test_every_literal_copy_of_the_interpreter_is_enrolled_in_the_pin():
+    """⚠⚠ THE PIN CHECKS WHAT IT IS TOLD ABOUT, SO THE ENUMERATION HAS TO BE COMPLETE (#434).
+
+    Three passes of this issue were spent on prose that said how many places hold this path —
+    "second copy", "THREE PLACES", "ALL THREE" — each correct when written and none of them able
+    to fail afterwards. A number in a sentence is not a mechanism; this is. With the enumeration
+    provably complete, no sentence needs to state a size, which is why they are all gone.
+
+    Same shape as `test_doc_claims_registry`'s "a fact no document states is a fact nobody is
+    checking", and the same remedy: assert on the registry rather than re-running a sweep by
+    hand. The sweeps are what failed — three of them, each keyed on the previous wording rather
+    than on the claim.
+
+    ⚠ A HIT IN THIS TEST FILE IS NOT FIXED BY ENROLLING IT. The rule is that the path is never
+    typed here; it is composed from `run.sh`. Delete it instead.
+    """
+    found = _tracked_files_naming_the_interpreter()
+    assert found, (
+        "no tracked file contains the interpreter literal, so this test would pass over "
+        "nothing — either the scan broke or run.sh stopped composing what the copies spell")
+    missing = sorted(found - set(_INTERPRETER_COPIES))
+    assert not missing, (
+        "these tracked files spell out the interpreter path but are not in "
+        f"_INTERPRETER_COPIES, so nothing pins them to run.sh: {missing}. Add each one (with a "
+        "reader), or delete the literal if the file should be composing it instead")
+
+
+def test_the_promotion_interpreter_matches_the_export_lane_default():
+    """⚠⚠ EVERY PLACE THE PATH IS SPELLED OUT, PINNED TO THE ONE THAT OWNS IT (#434).
+
+    `scripts/litert_export/run.sh` owns the default and composes it. The places in
+    `_INTERPRETER_COPIES` spell it out literally, each for a reason: `config.env` so the
+    reviewer's allowlist can name it, `check_publishable.py`'s docstring so the promoter's
+    command is pasteable. Each of them once described itself as one half of a pair with
+    `run.sh` and neither mentioned the other, so "change both" reached some of them and left
+    the rest naming an interpreter the export lane no longer used.
+
+    ⚠ ADD A NEW PLACE TO `_INTERPRETER_COPIES`, NOT A SENTENCE SAYING HOW MANY THERE ARE. The
+    count is derived from that dict wherever one is needed; §5b's rule is that a number in
+    prose goes stale with nothing able to fail, and #434's residual was exactly that.
+
+    ⚠ COMPOSED FROM run.sh's OWN TWO LINES, NEVER TYPED HERE — that would add one more place,
+    and the one that agrees with none of the others.
+    """
+    want = _run_sh_default_interpreter()
+    places = {f"{path} ({what})": read()
+              for path, (what, read) in _INTERPRETER_COPIES.items()}
+    assert places, "the enumeration is empty, so this test would pass over nothing"
+    assert all(places.values()), f"a copy has gone missing, so nothing pins it: {places}"
+    drifted = {k: v for k, v in places.items() if v != want}
+    assert not drifted, (
+        f"run.sh composes {want!r}; these disagree, so the reviewer or the promoter is pointed "
+        f"at an interpreter the export lane no longer uses: {drifted}")
+
+
+def test_the_promotion_step_grant_reaches_the_rendered_allowlist():
+    """⚠ A GRANT NOBODY EXERCISED IS INDISTINGUISHABLE FROM ONE THAT NEVER MATCHES (#239), so
+    this asserts on what the matcher actually receives rather than on the source line.
+
+    Skipped with its reason printed when the interpreter is absent, because the entry is
+    guarded on that and an unconditional assertion would fail on a host that legitimately has
+    no LiteRT harness. `test_the_promotion_step_grant_is_absent_without_an_interpreter` below
+    is the other half.
+    """
+    interp = _config_env_value("REVIEWER_TORCH_PY")
+    if not interp or not os.access(interp, os.X_OK):
+        pytest.skip(f"no executable interpreter at {interp!r} — the grant is guarded off here")
+    if not (REPO / "scripts" / "tools" / "check_publishable.py").exists():
+        pytest.skip("check_publishable.py is not in this tree — the grant is guarded off")
+    want = f"Bash({interp} scripts/tools/check_publishable.py:*)"
+    allow = _rendered_allowlist()
+    assert allow, "the rendered allowlist is empty — this test would pass vacuously"
+    assert want in allow, (
+        f"the promotion step is not granted; the reviewer is refused when it runs it. "
+        f"wanted {want!r}")
+
+
+def test_the_promotion_step_grant_names_the_script_not_the_bare_interpreter():
+    """The narrowing the owner made on 2026-08-20, applied to this entry: granting the
+    interpreter alone is arbitrary code execution under a new spelling."""
+    interp = _config_env_value("REVIEWER_TORCH_PY")
+    bad = [e for e in _rendered_allowlist()
+           if interp and interp in e and "check_publishable.py" not in e]
+    assert not bad, f"the torch interpreter is granted without naming a command: {bad}"
+
+
+def test_the_promotion_step_grant_is_absent_without_an_interpreter(tmp_path):
+    """⚠ THE GUARD'S NEGATIVE BRANCH — named in the docstring above and, until #434's sibling
+    #433, not written. The commit's own comment says the absent branch is the point ("a ported
+    lane adds nothing rather than a stale entry"), and it was the half that had only been
+    reasoned about.
+
+    ⚠ IT NEEDS A COPIED LANE, not an environment variable. `request_review.sh` sources
+    `config.env` AFTER the environment, so `REVIEWER_TORCH_PY=/nonexistent` on the command line
+    is overwritten before the guard runs and the entry renders anyway — measured, by the
+    reviewer, when it tried to check this branch. That is config.env's contract working as
+    designed, and it means the only honest route is a lane whose config differs.
+
+    ⚠ THE CONTROL IS THAT SOMETHING ELSE STILL RENDERS. Asserting only an absence would pass
+    against a copied script that failed outright and printed no allowlist at all — the green
+    negative over data that was never there (#245).
+    """
+    lane = tmp_path / "workflow"
+    shutil.copytree(REPO / "FerroStep" / "workflow", lane)
+    cfg = lane / "config.env"
+    original = cfg.read_text(encoding="utf-8")
+
+    def render(value):
+        cfg.write_text(
+            re.sub(r"^REVIEWER_TORCH_PY=.*$", f"REVIEWER_TORCH_PY={value}",
+                   original, flags=re.M),
+            encoding="utf-8")
+        return _rendered_allowlist(lane / "scripts" / "request_review.sh")
+
+    for value, label in (("", "empty"), ("/nonexistent/python", "a path that is not executable")):
+        allow = render(value)
+        assert any("-m pytest" in e for e in allow), (
+            f"the copied lane rendered no allowlist at all with {label}, so the absence below "
+            f"would prove nothing: {allow}")
+        granted = [e for e in allow if "check_publishable.py" in e]
+        assert not granted, (
+            f"the grant was rendered with REVIEWER_TORCH_PY {label} — a ported lane would carry "
+            f"an entry naming an interpreter it does not have, which reads as covered and can "
+            f"never match: {granted}")
+
+    real = _config_env_value("REVIEWER_TORCH_PY")
+    if real and os.access(real, os.X_OK):
+        assert any("check_publishable.py" in e for e in render(real)), (
+            "the same copied lane does NOT render the entry with a valid interpreter, so the "
+            "absences above are not attributable to the guard")
+
+
+def test_every_granted_directory_is_a_physical_path():
+    """⚠ A SYMLINKED GRANT READS AS GIVEN AND DELIVERS NOTHING (#451).
+
+    `SIBLING_REPO_CANDIDATES` gained `notes`, which is a symlink out of the repo. The launcher
+    resolved candidates with `cd X && pwd` — the path you arrived BY — so the grant named
+    `…/github/notes` while the harness fenced Bash out of the directory it points at. The entry
+    was present, the reviewer was still refused, and only the reviewer trying it found out.
+
+    This asserts on what `--dry-run` renders, not on the source, because the defect was in a
+    resolved VALUE rather than in a line of code.
+    """
+    rendered = []
+    out = subprocess.run([str(SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
+                         cwd=REPO, capture_output=True, text=True)
+    assert out.returncode == 0, f"--dry-run failed, so this proves nothing: {out.stderr[-400:]}"
+    toks = shlex.split(out.stdout.replace("\\\n", " "))
+    for i, t in enumerate(toks):
+        if t == "--add-dir" and i + 1 < len(toks):
+            rendered.append(toks[i + 1])
+    assert rendered, "no --add-dir rendered, so this test would pass over nothing"
+    unresolved = [d for d in rendered if os.path.realpath(d) != d]
+    assert not unresolved, (
+        "these granted directories are not physical paths, so the harness fences the reviewer "
+        f"out of what they actually point at while the entry reads as granted: {unresolved}")
+
+
+def test_no_granted_directory_is_labelled_by_basename_alone():
+    """⚠ A ONE-WORD LABEL TOLD THE REVIEWER ITS OWN REPO WAS OUT OF RANGE (#453).
+
+    Resolving candidates physically (#451) made one entry land on `…/Notes/Sonora`, whose
+    basename is `Sonora`. The brief listed it under a heading saying these are NOT part of your
+    review range — so it named the repo under review as something to skip. The classification
+    was right and the label beside it was wrong, which is AGENTS.md §5's shape and the one this
+    repo pays most for.
+
+    ⚠ Asserted as "at least two components", not as "never the string Sonora". A name-specific
+    check passes for every OTHER directory whose basename collides, and goes stale the moment
+    the candidate list changes — the same hand-list defect as #247.
+    """
+    out = subprocess.run([str(SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
+                         cwd=REPO, capture_output=True, text=True)
+    assert out.returncode == 0, f"--dry-run failed, so this proves nothing: {out.stderr[-400:]}"
+    labels = re.findall(r"^\* `[^`]+` — \*\*([^*]+)\*\*$", out.stdout, flags=re.M)
+    assert labels, "no granted directories were listed, so this test would pass over nothing"
+    flat = [lab for lab in labels if "/" not in lab]
+    assert not flat, (
+        "these granted directories are labelled by basename alone, so one of them can silently "
+        f"name the repo under review and read as excluded from it: {flat}")
+
+
+def _command_prefix(entry):
+    """`Bash(git config --get:*)` -> `git config --get`. None for anything else."""
+    if not entry.startswith("Bash(") or not entry.endswith(":*)"):
+        return None
+    return entry[len("Bash("):-len(":*)")]
+
+
+def _shadowed(allow, deny):
+    """Allow entries a deny entry swallows, because deny beats allow in the matcher."""
+    out = []
+    for a in allow:
+        pa = _command_prefix(a)
+        if pa is None:
+            continue
+        for d in deny:
+            pd = _command_prefix(d)
+            if pd is None or pd == pa:
+                continue
+            # `pa == pd` cannot reach here — identical entries are skipped above — so the
+            # test is the prefix alone. It read as covering the equal case and could not.
+            if pa.startswith(pd + " "):
+                out.append((a, d))
+    return out
+
+
+def _rendered_denylist():
+    """The deny list AS THE MATCHER WILL SEE IT, parsed from `--dry-run`.
+
+    ⚠ `_array("REVIEWER_DENY")` reads the array LITERAL and is blind to any `+=` append — which
+    is #245 exactly, the defect that replaced a source scan with this rendering for the allow
+    side. The shadow check below compared a rendered allow list against a source-scanned deny
+    list; no append exists today, so it was latent, but a deny added by append would have been
+    invisible to the one guard written to catch a deny swallowing a grant (#456).
+    """
+    r = subprocess.run([str(SCRIPT), "--full", "--dry-run", "--developer", "Ozzy"],
+                       cwd=REPO, capture_output=True, text=True)
+    assert r.returncode == 0, f"--dry-run failed, so this test proves nothing: {r.stderr}"
+    for line in r.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("--disallowedTools"):
+            body = stripped.removeprefix("--disallowedTools").rstrip()
+            return shlex.split(body.removesuffix("\\"))
+    raise AssertionError("--dry-run printed no --disallowedTools line")
+
+
+def test_no_deny_entry_silently_swallows_an_allow_entry():
+    """⚠⚠ DENY BEATS ALLOW, SO A BROAD DENY KILLS A NARROW GRANT WITH THE SUITE GREEN (#452).
+
+    Granting the read-only `git config` verbs required removing `Bash(git config:*)` from
+    `REVIEWER_DENY`, because a deny that prefixes an allow wins and the grant would have read as
+    given and never matched — #239's shape. Restoring that deny would silently disarm all five
+    grants, and nothing tested it: `rg "git config" tests/` was empty when the reviewer looked.
+
+    ⚠ ASSERTED AS A GENERAL RELATION, NOT A LIST OF THE FIVE ENTRIES. Naming them here is the
+    hand-list that goes stale when a sixth is added, and it would not catch the same mistake
+    made against a different grant. This catches any deny/allow pair with that shape.
+    """
+    allow, deny = _rendered_allowlist(), _rendered_denylist()
+    assert allow and deny, "one of the lists is empty, so this test would pass over nothing"
+    bad = _shadowed(allow, deny)
+    assert not bad, (
+        "these allow entries are swallowed by a broader deny, so they read as granted and can "
+        f"never match: {bad}")
+
+
+def test_the_shadow_relation_can_fire():
+    """The positive control. The test above asserts a NEGATIVE over two live lists, which an
+    empty parse or a broken prefix rule satisfies in silence."""
+    assert _shadowed(["Bash(git config --get:*)"], ["Bash(git config:*)"]), \
+        "the relation cannot see a broad deny swallowing a narrow allow"
+    assert not _shadowed(["Bash(git config --get:*)"], ["Bash(git push:*)"]), \
+        "the relation reports unrelated entries as shadowed"
+    assert not _shadowed(["Bash(git config --get:*)"], ["Bash(git config --get:*)"]), \
+        "an identical pair is not a shadow; it is the same entry named twice"
+
+
+def test_every_read_only_grant_the_source_intends_actually_renders():
+    """The launcher builds the read-only grants from a `for` list. Derived from that list, so
+    what it catches is the gap between INTENT and what the matcher receives.
+
+    ⚠ IT DOES NOT FREEZE THE LIST, AND THAT IS DELIBERATE. Measured: dropping one entry from the
+    loop leaves this green, because both sides shrink together. Removing a grant is a DECISION —
+    the owner's entitlement ruling is a floor, not a fixed set — so a test that blocked it would
+    be pinning a choice rather than catching a defect. The floor below only catches a broken
+    parse, not a deliberate removal, and says so rather than implying otherwise.
+    """
+    m = re.search(r'for _ro in ((?:"[^"]+"\s*\\?\s*)+); do', SOURCE)
+    assert m, "the read-only grant loop is no longer shaped the way this test reads it"
+    intended = re.findall(r'"([^"]+)"', m.group(1))
+    assert len(intended) >= 4, f"only {len(intended)} read-only grants parsed; the scan is broken"
+    allow = _rendered_allowlist()
+    missing = [f"Bash({i}:*)" for i in intended if f"Bash({i}:*)" not in allow]
+    assert not missing, (
+        f"the script builds these grants and the matcher never receives them: {missing}")
+
+
+def test_a_symlinked_candidate_is_granted_by_its_physical_path(tmp_path):
+    """⚠ THE GUARD ABOVE ONLY EXERCISES ITS CASE WHERE THE `notes` SYMLINK EXISTS (#454).
+
+    `notes` is gitignored, so in a worktree or a fresh clone the candidate is skipped, the two
+    real siblings pass trivially, and the `cd && pwd` mutation stays green. The guard for #451
+    was therefore environment-dependent — the exact shape #451 itself was about, reappearing in
+    its own fix.
+
+    This builds the case instead of hoping the host supplies it: a copied lane whose config
+    names a symlink, run against this repo. It needs no `notes`, no sibling checkouts, and
+    nothing gitignored.
+    """
+    lane = tmp_path / "workflow"
+    shutil.copytree(REPO / "FerroStep" / "workflow", lane)
+    target = tmp_path / "real_target"
+    target.mkdir()
+    link = tmp_path / "linked_candidate"
+    link.symlink_to(target, target_is_directory=True)
+
+    cfg = lane / "config.env"
+    cfg.write_text(re.sub(r"^SIBLING_REPO_CANDIDATES=.*$",
+                          f"SIBLING_REPO_CANDIDATES={link}", cfg.read_text(encoding="utf-8"),
+                          flags=re.M), encoding="utf-8")
+
+    out = subprocess.run([str(lane / "scripts" / "request_review.sh"),
+                          "--full", "--dry-run", "--developer", "Ozzy"],
+                         cwd=REPO, capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, f"the copied lane failed: {out.stderr[-400:]}"
+    toks = shlex.split(out.stdout.replace("\\\n", " "))
+    granted = [toks[i + 1] for i, t in enumerate(toks) if t == "--add-dir" and i + 1 < len(toks)]
+
+    assert granted, "the copied lane granted nothing, so the assertion below proves nothing"
+    assert str(target) in granted, (
+        f"the symlinked candidate was granted as something other than its physical target — "
+        f"granted {granted}, expected {target}")
+    assert str(link) not in granted, (
+        "the candidate was granted by its LINK path, which is what left the reviewer fenced "
+        "out of the directory it points at (#451)")

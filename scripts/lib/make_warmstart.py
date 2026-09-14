@@ -221,6 +221,21 @@ def main():
                 "--donor-speakers to start the table fresh.")
 
     donor = torch.load(args.donor, map_location="cpu", weights_only=False)
+    # The donor's corpora ride into the init under `LINEAGE_KEY` (written by the module's
+    # `on_save_checkpoint` when `trainer.save_checkpoint` runs below), so the fine-tune's
+    # checkpoints still name what the donor was trained on when the publish wall reads them
+    # at export. Without this the init carried no datamodule hparams and the lineage was one
+    # stage deep (#421). A donor whose corpus was never recorded yields `[LINEAGE_UNKNOWN]`,
+    # never an empty list — an empty one is what this wrote until #425, and one warm start
+    # later it was indistinguishable from a lineage that had been read and cleared. The same
+    # conversion happens on the LOAD side, which is the door the lane actually uses.
+    from matcha.data.license_wall import LINEAGE_UNKNOWN, carried_lineage
+    model.sonora_lineage = carried_lineage(donor)
+    print("lineage carried:", model.sonora_lineage)
+    if LINEAGE_UNKNOWN in model.sonora_lineage:
+        print("   ^ pre-wall donor: its corpus was never recorded, and that marker rides in "
+              "the lineage\n     so the descendants say so too (#425). It used to be an empty "
+              "list, which one\n     warm start later was indistinguishable from a clean read.")
     # strict=False tolerates missing/unexpected KEYS but not shape mismatches
     # (the 109->247 speaker table) — drop mismatched tensors first.
     model_sd = model.state_dict()

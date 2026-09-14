@@ -22,6 +22,24 @@ import sys
 import pytest
 from scripts_layout import SCRIPTS  # noqa: E402
 
+# ⚠ NOTES ARE PRIVATE AS OF 2026-09-08 — a guard that reads one must SAY SO when it cannot.
+# `notes/` is a gitignored symlink to the umbrella Notes repo, so a public clone does not have
+# it. These assertions are cross-document: they check a PUBLIC statement and a PRIVATE one
+# agree, and half of that pair is unreachable without the private repo.
+#
+# ⚠ SKIP, NOT PASS, AND THE DISTINCTION IS THE WHOLE POINT. A check that reports clean when its
+# input is missing is the silent-disarm mode AGENTS.md §5b is written about. A skip prints its
+# id and its reason in the run output — the repo already relies on that distinction for the
+# container-side gates, where `skipped` is visible and `deselected` was not (#317).
+def notes_text_or_skip(rel):
+    import pytest
+    p = pathlib.Path(REPO) / "notes" / rel
+    if not p.exists():
+        pytest.skip(f"notes/{rel} is not present: notes/ is the private Notes repo (2026-09-08), "
+                    f"so this cross-document check has only its public half here")
+    return p.read_text(encoding="utf-8")
+
+
 REPO = pathlib.Path(__file__).resolve().parent.parent
 SCRIPTS.on_path()
 delivery = pytest.importorskip("matcha.delivery")
@@ -670,7 +688,7 @@ def test_the_open_emotion_block_decision_is_recorded_where_it_would_be_made():
     assert "categorical EMOTION block is an open question" in arch
     assert "gated on Phase 1" in arch
 
-    todo = (REPO / "notes" / "todo.md").read_text(encoding="utf-8")
+    todo = notes_text_or_skip("todo.md")
     assert "The categorical emotion block — OPEN DECISION" in todo
     assert "Gate on Phase 1" in todo
 
@@ -684,7 +702,7 @@ def test_the_recorded_gate_names_the_evidence_it_waits_on():
     FAILED its standing test, and that failure is currently diagnosed as a corpus-label
     limit rather than an architectural one; Phase 1 is the experiment that separates them.
     Spiking before that read would confound a data problem with a representation one."""
-    todo = " ".join((REPO / "notes" / "todo.md").read_text(encoding="utf-8").split())
+    todo = " ".join(notes_text_or_skip("todo.md").split())
     assert "corpus-label limit, not architectural" in todo
     assert "sob and a laugh have similar energy" in todo
     assert "1,189 labelled keeps; an 8-way emotion block starts at zero" in todo

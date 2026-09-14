@@ -13,7 +13,7 @@ _Established by the Phase 0 (baseline-ljspeech-22k) and §7 de-risk (derisk-ener
 8-wide to `ep019` (2026-08-08/09).
 ⚠ **The EXPORT lane is deliberately still 3-wide**: `convert_vat.py` refuses a wider
 checkpoint on purpose, because a mobile host told nothing about the last five channels being
-categorical will interpolate them ([STATE.md](../notes/STATE.md) § The delivery channel).
+categorical will interpolate them (`notes/STATE.md` (private) § The delivery channel).
 Shipped on the training side is
 not shipped on the device.
 The seam assertions that make the width safe are proven to fire (`scripts/gates/test_vat_dim_seams.py`).
@@ -29,7 +29,7 @@ against it must work against any tier unchanged.
 _v1→v2 (owner call, 2026-07-30): added the **Delivery** channel. The delivery axis proved to be
 a real orthogonal mode dimension during the teacher campaign (an engine can pass narration at
 94% and fail dialogue at 54%), the corpus is deliberately balanced on it (50/30/8/6/6, see
-[delivery-mix-campaign.md](../notes/delivery-mix-campaign.md)), and every certified clip now carries the
+`notes/delivery-mix-campaign.md` (private)), and every certified clip now carries the
 label. Also pinned in the same call: **register stays Director-side** (the 47-label lexicon
 compiles to V/A/T + delivery + text; the Actor never sees a register id), and tempo/loudness
 remain host-side per the exploit-before-train measurement — training owns pitch + phonation._
@@ -85,7 +85,7 @@ untried lever is new clips. ⚠⚠ **BUT DISTINCTNESS IS NOT THE LEVER, MEASURED
 Almost every labelled speaker id in v7 carries exactly one lane, so delivery and speaker
 identity are very nearly the same fact, and a bank built the same way reproduces the confound
 at any size. Derive it with `scripts/tools/measure_delivery_confound.py`; the remediation
-design is [delivery-lane-remediation.md](../notes/delivery-lane-remediation.md).
+design is `notes/delivery-lane-remediation.md` (private).
 ⚠ **That measurement ANSWERS the listener note** *"these do almost sound like different
 voices"*, filed here as a possible FiLM/speaker entanglement wanting its own test — the corpus
 taught it. Whether the FiLM path entangles them **as well** is what the crossed bank separates.
@@ -126,7 +126,7 @@ test. But that failure is currently diagnosed as a **corpus-label limit rather t
 architectural one**, so the question is gated on Phase 1: if volume moves valence, it is
 answered; if not, the representation becomes the suspect. Shape if it is ever taken:
 append as channels 8+ on the same zero-init FiLM path, never reorder. Reasoning and the
-gate: [todo.md § 3](../notes/todo.md).
+gate: `notes/todo.md` (private).
 
 Contract changes bump the version and require an owner call.
 
@@ -137,6 +137,12 @@ Contract changes bump the version and require an owner call.
   in writing per source; record in the promotion README. Personally-acquired media never enters
   the public lineage; analysis/benchmark use and the private-lineage firewall are governed by
   [audiobook-corpus-policy.md](audiobook-corpus-policy.md) (2026-07-17).
+* **Publish wall (a second axis, not a licence):** a corpus can be perfectly licensed and still
+  be one nothing trained on it may ship — `publish: forbidden` in `configs/data_licenses.yaml`
+  (owner ruling 12, 2026-09-09: the crossed delivery bank is diagnostic only). The licence wall
+  runs at training time; the publish wall runs where a checkpoint becomes an artifact — the §6
+  export and the §7 promotion — over the checkpoint's whole lineage, warm-start donors included,
+  classifying the audio inside each filelist and not just the filelist's path.
 * **Filelist format:** `path|spk|phonemes|v,a,t`, pre-phonemized (`scripts/tools/phonemize_filelist.py`)
   so training images need no G2P stack. Filelists are derived data: regenerable by script, never
   the source of truth.
@@ -170,7 +176,7 @@ Contract changes bump the version and require an owner call.
 
 ## 4. Training operations
 
-Full runbook: [training-operations.md](../notes/training-operations.md). Pinned:
+Full runbook: `notes/training-operations.md` (private). Pinned:
 
 * One trainer on the GPU at a time; profile-gated compose services. **Deploy is explicit** —
   GitOps was retired 2026-07-22, so a push to main deploys nothing; use
@@ -220,7 +226,16 @@ dial there in the same phase, so outputs stay vettable by ear at the current fea
 
 * Promote the **audited, gated** checkpoint (not the latest) to `Sonora/huggingface/<name>/` with:
   README (provenance: training run, stop signal, criterion + numbers, human-audit date, license
-  statement), `gate_history.jsonl`, eval report, audited samples, render/export metadata.
+  statement, and the `publish` policy of every source beside it), `gate_history.jsonl`, eval
+  report, audited samples, render/export metadata.
+* **Run the publish wall on the checkpoint before it is promoted** — the promotion is manual,
+  so no code runs here unless you run it: `scripts/tools/check_publishable.py <ckpt>`, under an
+  interpreter that has torch. ⚠ **Not the repo `.venv`**, which deliberately has none (#428):
+  this line named it, and as spelled it died at `import torch`. The script's docstring names
+  the interpreter to use and says so itself if you get it wrong. It refuses a checkpoint whose
+  lineage, donors included, names a `publish: forbidden` corpus, and it says when the lineage
+  is UNKNOWN (a pre-wall checkpoint), which is not "clean". A clean licence statement does not
+  answer this question; the wall does.
 * Publish to HF (`artificial-humanity/Sonora`) on owner call only.
 * Tier naming: ⚠ **the lineage name is not this file's to declare — read it off
   [model-decisions.md § The size ladder](model-decisions.md)** at the moment you publish.

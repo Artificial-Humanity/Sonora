@@ -21,7 +21,7 @@ absorb everything authoritative-feeling is the flat `notes/` directory again wit
 
 ## Rules for this directory
 
-Inherited from `notes/README.md`, and they apply to both:
+Inherited from `notes/README.md` (retired 2026-09-08), and they apply to both directories:
 
 * **Each file owns its subject.** When two disagree, the one named as SSOT wins — and for the
   subjects below, that is the file in this directory.
@@ -48,16 +48,20 @@ Inherited from `notes/README.md`, and they apply to both:
 _These are **design and policy records, not build status.** ⚠ The delivery channel that
 `vat-channels.md` and `direction-interface-brief.md` describe **SHIPPED in the model core on
 2026-08-07** — a five-wide one-hot block, `vat_dim` 8, `matcha/delivery.py`
-([STATE.md](../notes/STATE.md)). **The EXPORT half is what is still open.** This paragraph said
+(`notes/STATE.md` (private)). **The EXPORT half is what is still open.** This paragraph said
 "not implemented" until 2026-08-22 (#283), in a file created after the channel shipped._
 
 ## Where the rest is
 
-`notes/` holds everything in flight: [STATE.md](../notes/STATE.md) (what is true now),
-[quality-gap-plan.md](../notes/quality-gap-plan.md) (what happens next),
-[todo.md](../notes/todo.md), the campaign records, the research, the runbook
-([training-operations.md](../notes/training-operations.md)), and the whole `high-ambition-*`
-series. Start at [notes/README.md](../notes/README.md).
+`notes/` holds what is in flight, starting with `notes/STATE.md` (private) — what is true
+now, the snapshot every arriving agent is told to read. It briefly lived here on 2026-09-08
+and went back the same day: it records state rather than stating a rule, so it fails this
+directory's own test for admission. Alongside it:
+`notes/quality-gap-plan.md` (private) (what happens next),
+`notes/todo.md` (private), the campaign records, the research, the runbook
+(`notes/training-operations.md` (private)), and the whole `high-ambition-*`
+series. ⚠ That directory's index was retired with `notes/README.md` on the same day — it was a
+hand-maintained copy of a directory listing and it had drifted.
 
 ⚠ **The `high-ambition-N` series stays in `notes/` and must not move.** It is a **cross-repo**
 series — goals 3 and 4 live in `Prosodia/notes` — and Prosodia links back to these files **by

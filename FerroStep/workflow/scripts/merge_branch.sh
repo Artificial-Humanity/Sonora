@@ -20,6 +20,25 @@
 # so this check is no longer one guard among several, it is the guard. The repo has no branch
 # protection and force-push is unblocked (AGENTS.md §1).
 #
+# ⚠ THE MERGE COMMIT IS AUTHORED AS THE ROSTER'S DEVELOPER, WHOEVER RUNS THIS SCRIPT (#394).
+# DEVELOPER.md §1 leaves the repo's configured identity as the owner's so their HAND commits
+# stay theirs; a merge through this script is not a hand commit, it is the lane's act, and
+# it is the one thing that reaches `main` on its own. There is deliberately no path through
+# here that lands a merge under the invoker's name — on EITHER line. `GIT_AUTHOR_*` in the
+# environment OVERRIDES a `-c` pair (measured 2026-09-07), and `GIT_COMMITTER_*` overrides
+# the committer line the same way (measured 2026-09-08, #396: `-c user.name="Roster Dev"`
+# merged, committer `Committer Person`). Both pairs are refused before the merge rather
+# than caught after it, and both lines are checked before the push. The first version
+# refused the author pair only and checked the author line only, while claiming "no path".
+#
+# ⚠⚠ THIS SCRIPT IS FOR AGENTS. THE OWNER DOES NOT RUN IT (owner, 2026-09-07, deciding #394).
+# That is why there is no opt-in and no --as-invoker flag: there is no case to serve. ⚠ And
+# do NOT reintroduce "merge by hand if the commit is meant to be yours" as the escape — an
+# earlier wording said exactly that, and a bare `git merge` SKIPS the severity floor, the
+# server-side tracker re-read and the explicit push refspec. This repo has no branch
+# protection and force-push is unblocked, so that advice traded the only guard in front of
+# `main` for a name in an author field.
+#
 # Replaces `changeset.sh merge`. The changeset record is retired: a branch already has an
 # identity and its issues already carry its state.
 #
@@ -62,6 +81,19 @@ while [[ $# -gt 0 ]]; do
 done
 
 die() { echo "merge_branch.sh: $*" >&2; exit 1; }
+
+# Names the GIT_AUTHOR_* / GIT_COMMITTER_* variable(s) set in the environment, or fails when
+# none are. These OVERRIDE a `-c user.*` pair (measured 2026-09-07: `GIT_AUTHOR_NAME=Env git
+# -c user.name=Ozzy commit` is authored Env; #396: the committer pair does the same to the
+# committer line), so a merge made under them would land wrong and be caught only by the
+# post-merge check, after `main` has moved. Both paths ask this BEFORE the merge instead.
+env_identity_override() {
+  local v set=""
+  for v in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL; do
+    [[ -n "${!v:-}" ]] && set="${set:+$set, }$v"
+  done
+  [[ -n "$set" ]] && printf '%s' "$set"
+}
 
 command -v python3 >/dev/null 2>&1 || die "python3 is not on PATH."
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || die "not inside a git repository."
@@ -306,8 +338,63 @@ echo "merge_branch.sh: '$BRANCH' clears the merge floor (MERGE_SEVERITY_FLOOR=$_
 echo "  ⚠ this proves nothing AT OR ABOVE THE FLOOR is outstanding — NOT that no finding is,
     and NOT that a review covered $(git rev-parse --short HEAD)."
 
+# What the reader DOES after "nothing to merge" (#399). The refusal below names a re-run after
+# a `--no-push` merge as its usual trigger, and that reader came back FOR the push: the merge
+# that cleared the gate is sitting on local $BASE, unpushed, possibly a session later. A
+# message that reports the state and stops leaves two wrong readings open — "already landed"
+# (it is local only) and "merge differently" (the hand merge the header forbids). So say
+# whether $BASE is ahead of origin/$BASE and, if it is, name the push — the SAME refspec the
+# push below uses. That is not a bypass: the gate is on the merge, not the push (header).
+# Silent when origin/$BASE does not resolve (no remote — the test harness): a count against a
+# ref that is not there is not a count. "As last fetched" because origin/$BASE is a local
+# reading of the remote, and nothing here fetches. Defined HERE, below the gate, because it
+# echoes the push refspec and `test_the_gate_runs_before_any_git_write` reads the source in
+# order — a definition above the gate is indistinguishable from a push above it to a grep.
+unpushed_hint() {
+  local n
+  git rev-parse --verify -q "origin/$BASE" >/dev/null 2>&1 || return 0
+  n="$(git rev-list --count "origin/$BASE..$BASE")"
+  if [[ "$n" -gt 0 ]]; then
+    echo "$BASE is $n commit(s) ahead of origin/$BASE as last fetched — a merge that already"
+    echo "     cleared the gate is local only. Push it:  git push origin $BASE:$BASE"
+  else
+    echo "$BASE is not ahead of origin/$BASE as last fetched; nothing is waiting to be pushed."
+  fi
+}
+
 if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "  would: git checkout $BASE && git merge --no-ff $BRANCH"
+  # ⚠ THE SAME COMMAND THE REAL MERGE RUNS, `-c` PAIR INCLUDED (#393). This printed a bare
+  # `git merge --no-ff` for the whole of the commit that added the pair below — the command
+  # the script ran BEFORE it, the one that authored merges on `main` as the owner — four
+  # lines above a comment arguing that a preview of a different command is worse than none.
+  # The roster is ASKED here, not required: a dry run still answers on a box with no roster
+  # (the reason the real resolution sits after this block), and it says so, because that
+  # refusal is exactly where the real merge would stop.
+  if _DRY_ENV="$(ferrostep agent-env --agent developer --roster "$REPO_ROOT/FerroStep/config.yaml" 2>/dev/null)" \
+     && eval "$_DRY_ENV" && [[ -n "${AGENT_NAME:-}" && -n "${AGENT_EMAIL:-}" ]]; then
+    echo "  would: git checkout $BASE && git -c user.name=\"$AGENT_NAME\" -c user.email=\"$AGENT_EMAIL\" merge --no-ff $BRANCH"
+  else
+    echo "  would: git checkout $BASE && git -c user.name=<roster developer> -c user.email=<roster developer> merge --no-ff $BRANCH"
+    echo "  ⚠ the roster did NOT resolve here (ferrostep agent-env --agent developer). The real"
+    echo "    merge REFUSES at that point, with nothing merged."
+  fi
+  if _OVERRIDE="$(env_identity_override)"; then
+    echo "  ⚠ $_OVERRIDE is set in the environment and would OVERRIDE that -c pair. The real"
+    echo "    merge REFUSES before merging; unset it first."
+  fi
+  # ⚠ THE SAME ANSWER THE REAL MERGE GIVES FOR A NO-OP (#398), previewed rather than
+  # refused: a dry run still reports the gate's verdict, and then says where the real run
+  # would stop. rc 128 is a ref that does not resolve — named, because the merge below
+  # would refuse there too, and a preview of a merge that cannot happen is the #393 defect.
+  if git merge-base --is-ancestor "$BRANCH" "$BASE" 2>/dev/null; then
+    echo "  ⚠ nothing to merge: '$BRANCH' is already contained in '$BASE'. The real merge"
+    echo "    REFUSES at that point, with nothing merged and nothing to amend."
+    unpushed_hint | sed 's/^/    /'
+  elif [[ $? -ne 1 ]]; then
+    echo "  ⚠ '$BRANCH' or '$BASE' does not resolve as a ref here. The real merge REFUSES at"
+    echo "    that point, with nothing merged."
+  fi
+  echo "  then:  check the merge author AND committer are the roster developer, before any push"
   # ⚠ THE SAME REFSPEC THE REAL PUSH USES. This printed `git push origin $BASE` while the real
   # command is `origin "$BASE:$BASE"` — a dry run that describes a different command from the
   # one it previews is worse than no dry run at all, because it gets believed.
@@ -322,16 +409,107 @@ fi
   || die "working tree is dirty. Commit or stash first — a merge would carry edits that were
      never reviewed, which is precisely what the gate above exists to prevent."
 
+# ⚠ NOTHING TO MERGE IS ITS OWN REFUSAL (#398), and it sits HERE for the reason the dirty-tree
+# check does: a no-op is a reason not to MERGE, not a reason to refuse to ANSWER, so the dry
+# run above still reports the gate's verdict and previews this refusal instead of making it.
+# `merge --no-ff` of a branch already contained in $BASE prints "Already up to date." and
+# creates NO commit, rc 0 — and the post-merge identity check below then read $BASE's
+# EXISTING tip, said "the merge landed", and printed `--amend --reset-author` against a
+# commit that is already on `main` and already pushed. Right refusal, wrong instruction, and
+# the instruction rewrites `main`; this repo has no branch protection to stop it. A re-run
+# after a `--no-push` merge, or a second run after a successful one, produced it every time.
+# Explicit rc handling: `--is-ancestor` is 0/1 for the answer and 128 when a ref is missing,
+# and a missing ref is not "not merged".
+if git merge-base --is-ancestor "$BRANCH" "$BASE" 2>/dev/null; then
+  die "nothing to merge: '$BRANCH' is already contained in '$BASE' — every commit on it is
+     already reachable from $BASE's tip ($(git rev-parse --short "$BASE")). NOTHING WAS MERGED,
+     and there is nothing to amend. $(unpushed_hint)"
+elif [[ $? -ne 1 ]]; then
+  die "cannot tell whether '$BRANCH' is already in '$BASE': \`git merge-base --is-ancestor\`
+     failed. Do both refs exist? NOTHING WAS MERGED."
+fi
+
+# ⚠ THE MERGE COMMIT NEEDS THE ROSTER'S IDENTITY, AND NOTHING ELSE SUPPLIES IT.
+# This repo's configured git identity is the OWNER's, deliberately, so that their own hand
+# commits stay theirs — which means a merge made WITHOUT the `-c` pair below does not error.
+# It lands under their name, silently. That is not hypothetical: merge commits on `main` are
+# authored as the owner from exactly this gap, and this is the one script in the repo that
+# reaches `main` on its own. DEVELOPER.md §1 states the rule for a hand commit; the script
+# that automates the merge was not obeying it.
+# ⚠ ASSIGNMENT THEN CHECK, never `eval "$(ferrostep agent-env)"` in one step — eval's status
+# is the emitted text's status, a refusal emits nothing, and `eval ""` is 0 (measured
+# 2026-08-24). request_review.sh resolves the reviewer the same way, three lines apart.
+# ⚠ RESOLVED HERE rather than beside the gate, for the reason the dirty-tree check states
+# above it: a roster refusal is a reason not to MERGE, not a reason to refuse to ANSWER what
+# the gate found. `--dry-run` still reports its verdict on a box with no roster.
+# ⚠ `--agent developer`, NOT THE ROSTER'S DEFAULT (#394). The header says "the developer" and
+# the merge is the developer's act; `default_agent` names the same entry today, and a script
+# that relied on that would go on saying "developer" the day the default changed.
+# ⚠ REFUSED BEFORE THE MERGE, not caught after it. `GIT_AUTHOR_*` / `GIT_COMMITTER_*` override
+# the `-c` pair, so with either set the merge would land under the invoker's name and the check
+# below would refuse a commit already on `main` — an amend instruction where a refusal was
+# available for free.
+if _OVERRIDE="$(env_identity_override)"; then
+  die "$_OVERRIDE is set in the environment, and it OVERRIDES the roster identity this merge
+     is authored with. NOTHING WAS MERGED. A merge through this script is the developer's act
+     and this script is for agents (header above) — so unset it and re-run. ⚠ Do not reach for
+     a hand merge instead: it skips the severity floor and the tracker re-check this performs."
+fi
+AGENT_ENV="$(ferrostep agent-env --agent developer --roster "$REPO_ROOT/FerroStep/config.yaml")" \
+  || die "cannot resolve the developer from the roster: \`ferrostep agent-env\` refused, and
+     its stderr is above. NOTHING WAS MERGED."
+eval "$AGENT_ENV"
+[[ -n "${AGENT_NAME:-}" && -n "${AGENT_EMAIL:-}" ]] \
+  || die "the roster emitted no AGENT_NAME/AGENT_EMAIL for the developer. NOTHING WAS
+     MERGED — a merge without them would land under this repo's configured identity, which
+     is the owner's."
+
 git checkout "$BASE"
-git merge --no-ff "$BRANCH" -m "merge $BRANCH"
-echo "merged $BRANCH into $BASE"
+_BASE_BEFORE="$(git rev-parse HEAD)"
+git -c user.name="$AGENT_NAME" -c user.email="$AGENT_EMAIL" \
+    merge --no-ff "$BRANCH" -m "merge $BRANCH"
+
+# ⚠ ONLY INSPECT A COMMIT THIS RUN CREATED (#398). The identity check below ends in an
+# `--amend --reset-author` instruction, and that instruction is only true of a commit that
+# is not yet on the remote. If HEAD did not move, the merge made nothing — the ancestor
+# check above should have refused already, and this is the guard for whatever it did not
+# foresee — so the commit at HEAD is $BASE's old tip, pushed, and not ours to rewrite.
+[[ "$(git rev-parse HEAD)" != "$_BASE_BEFORE" ]] \
+  || die "no merge commit was created: $BASE is still at $(git rev-parse --short HEAD). NOTHING
+     WAS MERGED, and there is nothing to amend — that commit was on $BASE before this ran."
+
+# ⚠ VERIFY, DO NOT ASSUME — and do it BEFORE the push, which is the only window where the
+# fix is free (DEVELOPER.md §1). The `-c` pair is a convention until something checks it.
+# ⚠ BOTH LINES (#396). GitHub renders "X authored and Y committed", so a committer line the
+# refusal above missed is still a merge under the invoker's name; an author-only check
+# passed exactly that and pushed it. `--amend --reset-author` under the `-c` pair resets both.
+_MERGE_AUTHOR="$(git log -1 --format='%an <%ae>')"
+_MERGE_COMMITTER="$(git log -1 --format='%cn <%ce>')"
+[[ "$_MERGE_AUTHOR" == "$AGENT_NAME <$AGENT_EMAIL>" \
+   && "$_MERGE_COMMITTER" == "$AGENT_NAME <$AGENT_EMAIL>" ]] \
+  || die "the merge landed but is authored '$_MERGE_AUTHOR' and committed by
+     '$_MERGE_COMMITTER', not '$AGENT_NAME <$AGENT_EMAIL>' on both lines.
+     IT IS NOT PUSHED. Fix it while that is still true:
+       git -c user.name=\"$AGENT_NAME\" -c user.email=\"$AGENT_EMAIL\" commit --amend --reset-author"
+
+echo "merged $BRANCH into $BASE (authored and committed $_MERGE_AUTHOR)"
 
 if [[ "$PUSH" -eq 1 ]]; then
-  # ⚠ EXPLICIT REFSPEC. `push.default=upstream` is set in this repo, so a bare `git push` from
-  # a branch that inherited `origin/main` as its upstream sends it to main regardless of its
-  # own name. Naming both ends means what lands is what this script just merged and gated.
+  # ⚠ EXPLICIT REFSPEC. Naming both ends means what lands is what this script just merged
+  # and gated, rather than whatever a bare push would resolve to.
+  #
+  # `push.default` is NOT set in this repo today (measured 2026-09-11), so git's default
+  # `simple` applies and REFUSES a push from a branch whose name differs from its upstream. ⚠
+  # Keep this guard anyway, and the reason is stronger than the one that used to be here:
+  # `push.default=upstream` WAS set, it is local config, and local config does not travel —
+  # the 2026-08-17 tracker export predicted exactly this on four issues ("a fresh clone gets
+  # push.default=simple ... every one of these traps returns intact") and that is what
+  # happened. A guard that depends on reading the config is one the config can revoke
+  # silently; this one is correct under either setting.
   git push origin "$BASE:$BASE"
   echo "pushed $BASE"
 else
-  echo "⚠ NOT PUSHED (--no-push). Nothing is on the remote until you push."
+  # ⚠ NAME THE PUSH (#399), here as well as in the "nothing to merge" refusal a re-run
+  # produces: this is where the reader is first told, and the refusal is what they see later.
+  echo "⚠ NOT PUSHED (--no-push). Nothing is on the remote until you push:  git push origin $BASE:$BASE"
 fi

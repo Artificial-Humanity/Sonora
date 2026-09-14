@@ -5,7 +5,7 @@
 > file is kept because what it documents — the interface — stays true whether or not the engine
 > is in use, and reinstating it means reading this first. Before any revival also clear the
 > `synth_vibevoice.py` traps (B-M6/M7, B-L4). ⚠ **Those are no longer in
-> [todo.md](../../../notes/todo.md)**, and this line cited a §6 that file has never had:
+> `notes/todo.md` (private)**, and this line cited a §6 that file has never had:
 > `B-M6` landed in the 2026-08-07 sweep (`fdcbf77`), and `B-M7`/`B-L4` were never listed
 > there at all. Read them out of git history, which is where todo.md says landed items go.
 

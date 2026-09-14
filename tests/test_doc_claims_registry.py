@@ -26,9 +26,28 @@ it was fitted to.
 import importlib.util
 import json
 import os
+import pathlib
 import re
 
 import pytest
+
+# ⚠ NOTES ARE PRIVATE AS OF 2026-09-08 — a guard that reads one must SAY SO when it cannot.
+# `notes/` is a gitignored symlink to the umbrella Notes repo, so a public clone does not have
+# it. These assertions are cross-document: they check a PUBLIC statement and a PRIVATE one
+# agree, and half of that pair is unreachable without the private repo.
+#
+# ⚠ SKIP, NOT PASS, AND THE DISTINCTION IS THE WHOLE POINT. A check that reports clean when its
+# input is missing is the silent-disarm mode AGENTS.md §5b is written about. A skip prints its
+# id and its reason in the run output — the repo already relies on that distinction for the
+# container-side gates, where `skipped` is visible and `deselected` was not (#317).
+def notes_text_or_skip(rel):
+    import pytest
+    p = pathlib.Path(REPO) / "notes" / rel
+    if not p.exists():
+        pytest.skip(f"notes/{rel} is not present: notes/ is the private Notes repo (2026-09-08), "
+                    f"so this cross-document check has only its public half here")
+    return p.read_text(encoding="utf-8")
+
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GATE = os.path.join(REPO, "scripts", "gates", "test_doc_claims.py")
@@ -196,8 +215,8 @@ def test_a_line_with_no_corpus_marker_is_seen_by_nothing_and_that_is_the_deal():
 def test_the_live_state_md_still_names_the_corpus_on_its_digit_line():
     """Guards the document half of #48's fix, which the registry half depends on."""
     idiom = re.compile(r"(?<![\d,])\d[\d,]* of the [\d,]+ (?:rows )?dropped on digits")
-    with open(os.path.join(REPO, "notes", "STATE.md"), encoding="utf-8") as fh:
-        stated = [(n, ln) for n, ln in enumerate(fh, 1) if idiom.search(ln)]
+    text = notes_text_or_skip("STATE.md")
+    stated = [(n, ln) for n, ln in enumerate(text.splitlines(), 1) if idiom.search(ln)]
     assert stated, "notes/STATE.md no longer states the v6 digit drop in a checked idiom"
     for lineno, line in stated:
         assert captures(V6_DIGITS, line), (
@@ -425,22 +444,105 @@ def test_with_nothing_on_disk_every_fact_is_named_rather_than_quietly_dropped(ca
 
 # --- the registry as a whole ----------------------------------------------------------
 
-def test_every_fact_recognises_at_least_one_live_statement():
+# ⚠ THE ANTI-VACUITY GUARDS BELOW NEED THE WHOLE DOCUMENT CORPUS, AND MOST OF IT IS PRIVATE.
+# Since 2026-09-08 `notes/` is a gitignored symlink to the umbrella Notes repo, so a public
+# clone — and CI, the only automated run this repo has — sees `gate.docs()` as 35 files
+# rather than 59.
+#
+# ⚠ THAT IS NOT THE FAILURE THESE GUARDS EXIST TO CATCH. They exist to catch a fact whose
+# documents stopped stating it — "a fact no document states is a fact nobody is checking".
+# With the documents absent, a zero match cannot be told apart from a private one, so the
+# guard has no evidence either way and says so instead of guessing.
+#
+# ⚠⚠ PER FACT, NOT PER TEST (#400). The first version of this called one `pytest.skip()` at
+# the TOP of each guard, which threw away every fact that IS publicly checkable to explain
+# the few that are not: in CI the anti-vacuity direction ran for **0 of 19 facts and 0 of 6
+# exemptions**. Parametrising moves the decision to where the evidence is — a fact with a
+# public statement is verified in a public clone exactly as it always was, and only a
+# genuinely unverifiable one skips, under its own id.
+#
+# ⚠ COST, MEASURED 2026-09-08 on the tree where `STATE.md` went back to `notes/` — and note
+# it MOVED with the file. With `docs/STATE.md` in the public tree it was 5 facts and 3
+# exemptions; STATE.md carried six more, so the split is now:
+#   * facts with NO public statement: **11 of 19** — the teacher-bank text floor, v5
+#     TRAIN/VAL/TOTAL rows, Emilia keeps / TRAIN rows / candidates / digit drops, v6 append
+#     staged, v4 TOTAL rows, holdout clips.
+#   * exemptions with no public line: **3 of 6** — Emilia keeps x2, v6 append rows kept.
+# The remaining 8 facts and 3 exemptions are checked everywhere. Do not restate these counts
+# elsewhere; they are printed by the skips themselves, one id at a time.
+_NOTES_PRESENT = os.path.isdir(os.path.join(REPO, "notes"))
+
+_PRIVATE_CORPUS = ("notes/ is the private Notes repo (2026-09-08) and this entry is stated "
+                   "only in documents that live there, so a zero match here is unexplained "
+                   "rather than stale")
+
+
+@pytest.mark.parametrize("fact", gate.FACTS, ids=[f["name"] for f in gate.FACTS])
+def test_every_fact_recognises_at_least_one_live_statement(fact):
     """A fact no document states is a fact nobody is checking.
 
     This is the silent-miss direction: the registry can go on passing while the prose drifts
     into a phrasing no pattern knows. If this fails, coverage was lost — find the reworded
     sentence and either restore the idiom or teach the entry the new one.
     """
-    for fact in gate.FACTS:
-        hits = 0
-        for path in gate.docs():
-            with open(path, encoding="utf-8") as fh:
-                for line in fh:
-                    hits += len(captures(fact["name"], line))
-        assert hits, (
-            f"{fact['name']} matches nothing in the notes — either the documents stopped "
-            f"stating it, or they restated it in a phrasing this entry cannot read")
+    hits = 0
+    for path in gate.docs():
+        with open(path, encoding="utf-8") as fh:
+            for line in fh:
+                hits += len(captures(fact["name"], line))
+    if not hits and not _NOTES_PRESENT:
+        pytest.skip(_PRIVATE_CORPUS)
+    assert hits, (
+        f"{fact['name']} matches nothing in the notes — either the documents stopped "
+        f"stating it, or they restated it in a phrasing this entry cannot read")
+
+
+def _public_docs():
+    """`gate.docs()` minus anything under the private `notes/` symlink."""
+    private = os.path.join(REPO, "notes") + os.sep
+    return [d for d in gate.docs() if not d.startswith(private)]
+
+
+def test_the_public_half_of_the_anti_vacuity_guard_has_not_gone_quiet():
+    """⚠ THE PER-FACT SKIP HAS EXACTLY ONE HOLE, AND THIS IS IT.
+
+    Without `notes/`, a fact with zero hits skips — and that is the honest answer, because a
+    zero cannot be told apart from a private statement. But it is the same answer whether the
+    entry was ALWAYS private or whether its public sentence was reworded yesterday. So the
+    8 facts a public clone really does check could drift to 0, one at a time, and CI would
+    report a longer skip list and a green run: #400's complaint, one level down, reintroduced
+    by its own remedy.
+
+    This is the population floor that closes it. It is deliberately an equality-grade ratchet
+    rather than a floor set one under: the whole point is that LOSING one bites. Re-derive it
+    when the number legitimately moves, and say why in the commit.
+
+    ⚠ It runs everywhere — it filters `notes/` out by path rather than asking whether the
+    directory exists — so the host run and the CI run check the same number. A guard about
+    public coverage that only ran where the private half is present would be checking the
+    one machine the answer does not matter on.
+    """
+    public = _public_docs()
+    checkable = [f["name"] for f in gate.FACTS
+                 if any(captures(f["name"], line)
+                        for path in public
+                        for line in open(path, encoding="utf-8"))]
+    exempt_public = [(f["name"], needle) for f in gate.FACTS for needle in f["exempt"]
+                     if any(needle in line
+                            for path in public
+                            for line in open(path, encoding="utf-8"))]
+    # Measured 2026-09-08, on the tree where STATE.md went back to `notes/`: 35 public
+    # documents, 8 of 19 facts and 3 of 6 exemptions stated publicly. It was 14 and 3 while
+    # `docs/STATE.md` existed — that file was six facts' only public home.
+    assert len(checkable) >= 8, (
+        f"only {len(checkable)} of {len(gate.FACTS)} facts are stated in a PUBLIC document "
+        f"({len(public)} scanned), down from the 8 measured on 2026-09-08: "
+        f"{sorted(checkable)}. A public statement was reworded or moved into notes/, and "
+        f"the per-fact guard reports that as a SKIP, not a failure — which is why this "
+        f"counts them. Re-derive deliberately; do not lower it to fit.")
+    assert len(exempt_public) >= 3, (
+        f"only {len(exempt_public)} of 6 exemptions have a public line, down from 3 measured "
+        f"on 2026-09-08: {sorted(exempt_public)}")
 
 
 def test_every_pattern_carries_exactly_one_capture_group():
@@ -450,15 +552,20 @@ def test_every_pattern_carries_exactly_one_capture_group():
                 f"{fact['name']}: {pat!r} — main() reads group(1) and nothing else")
 
 
-def test_every_exemption_is_still_earning_its_place():
+_EXEMPTIONS = [(f, needle) for f in gate.FACTS for needle in f["exempt"]]
+
+
+@pytest.mark.parametrize("fact,needle", _EXEMPTIONS,
+                         ids=[f"{f['name']} :: {n}" for f, n in _EXEMPTIONS])
+def test_every_exemption_is_still_earning_its_place(fact, needle):
     """An exemption whose line is gone is a hiding place waiting for a new tenant."""
-    for fact in gate.FACTS:
-        for needle in fact["exempt"]:
-            found = any(needle in line
-                        for path in gate.docs()
-                        for line in open(path, encoding="utf-8"))
-            assert found, (
-                f"{fact['name']} exempts {needle!r}, which no document contains any more")
+    found = any(needle in line
+                for path in gate.docs()
+                for line in open(path, encoding="utf-8"))
+    if not found and not _NOTES_PRESENT:
+        pytest.skip(_PRIVATE_CORPUS)
+    assert found, (
+        f"{fact['name']} exempts {needle!r}, which no document contains any more")
 
 
 # --- the QC-floor fact's scope alternatives (#258) ---------------------------------------
@@ -512,9 +619,10 @@ def test_the_live_delivery_mix_floor_statement_is_still_read():
     switched off.
     """
     name = "QC speech floor (qc_gate.SPEECH_MIN_SECONDS)"
-    path = os.path.join(REPO, "notes", "delivery-mix-campaign.md")
+    text = notes_text_or_skip("delivery-mix-campaign.md")
     idiom = re.compile(r"\b[\d.]+\s*s\b[^.]{0,40}?\bfloor\b", re.I)
-    with open(path, encoding="utf-8") as fh:
+    import io
+    with io.StringIO(text) as fh:
         stated = [(n, ln) for n, ln in enumerate(fh, 1) if idiom.search(ln)]
     assert stated, (
         "notes/delivery-mix-campaign.md no longer states the QC floor in a recognisable "

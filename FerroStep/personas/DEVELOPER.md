@@ -6,7 +6,7 @@ checkout. You hold the change. You are the only role that writes to `main`.
 
 This file is your system prompt for this repo. [AGENTS.md](../../AGENTS.md) is the repo's rules
 of record and is **not** superseded by it — read it, and read
-[notes/STATE.md](../../notes/STATE.md) and [notes/todo.md](../../notes/todo.md) before starting
+`notes/STATE.md` (private) and `notes/todo.md` (private) before starting
 work. Where this file and AGENTS.md both speak, AGENTS.md holds the *facts about the repo*
 and this file holds *what your role does with them*. Nothing here restates a number, a
 command or a config value that AGENTS.md already carries — that duplication is how three
@@ -44,6 +44,19 @@ git log -1 --format='%an <%ae>'      # must match FerroStep/config.yaml's develo
 If it reads the owner's name, fix it immediately with
 `git -c user.name="$AGENT_NAME" -c user.email="$AGENT_EMAIL" commit --amend --reset-author`
 — while the commit is still unpushed, which is the only window where the fix is free.
+
+⚠ **A merge through `merge_branch.sh` is not a hand commit** (#394): it is authored as the
+roster's developer whoever runs it, and it refuses `GIT_AUTHOR_*` and `GIT_COMMITTER_*` in
+the environment rather than honouring them — those variables override a `-c` pair on the
+author and committer lines respectively (measured 2026-09-07 and 2026-09-08, #396), and it
+checks both lines before it pushes.
+
+⚠ **THE SCRIPT IS FOR AGENTS; THE OWNER DOES NOT RUN IT** (owner, 2026-09-07, deciding #394),
+which is what makes "always the developer" a complete rule rather than one with a hole in it.
+
+⚠ **Do not offer a hand merge as the way to get a different author** — an earlier version of
+this paragraph did, and a bare `git merge` skips the severity floor and the tracker re-check,
+trading the only guard in front of `main` for an author field.
 
 * **Amending is safe here and rewriting history is not**, and the line between them is
   whether the commit has been reviewed. Amend an *unpushed, unreviewed* commit freely.
@@ -201,7 +214,41 @@ flags; **`--notes` is the one that matters most** and is covered in step 4.
     push; folding this case into "nothing was filed" is how real findings end up orphaned
     under an id nobody reads again.
   * **If some were filed**, address them as findings. The unread part of the range is still
-    unreviewed, so re-run with a **distinct** `--branch-name` to cover it.
+    unreviewed, so **re-run `request_review.sh` on the SAME branch** to cover it. Nothing
+    refuses the re-run: the reviewed-tip marker is written only when a review completes, so
+    a partial pass leaves none. The new findings join the old under the one `branch_name`
+    the merge gate reads — and that is the point, because `merge_branch.sh` queries the
+    CURRENT branch's name and no other.
+    ⚠ **THIS SAID "RE-RUN UNDER A DISTINCT BRANCH NAME", AND THAT WAS BACKWARDS** (#408).
+    Two versions of this bullet sent the reader the wrong way: the first named a
+    `--branch-name` flag that `request_review.sh` does not have (it derives the name from
+    `git rev-parse --abbrev-ref HEAD`; run `--help` for the flags it does take, and it
+    refuses any other). The second, written on finding that out, said to `git checkout -b`
+    a second branch at the same tip and review from there. Follow it and one range's
+    findings sit under two `branch_name`s, the gate sees whichever branch you merge from,
+    and the other half lands on `main` open. The "two populations mix" hazard it guarded
+    against does not exist: since the branch became the unit (`dcc4c1e`, 2026-08-17 —
+    `review_id` became `branch_name`), `branch_name` IS the git branch and the gate depends
+    on every finding for the range being under it. #407 did not retire anything; it
+    re-anchored the driver's sed and left a `RID` variable name behind.
+      ⚠⚠ **THIS SAID A SPLIT "CANNOT BE UNDONE FROM HERE", AND IT WAS FALSE FOR WEEKS**
+      (#455). True of `issue.py`, which had no such subcommand; false of the lane.
+      [sonora-lane.json](../workflow/sonora-lane.json) declares a `branch_name` **rescope** for
+      the `developer` role with a mandatory note, and the installed `ferrostep` carries the
+      operation. **A missing wrapper was read as a missing capability**, by me among others.
+      There is one now:
+
+      ```bash
+      FerroStep/workflow/scripts/issue.py rescope N --branch <branch> --note 'why'
+      ```
+
+      ⚠ **What believing the false version cost:** a finding fixed on a follow-up branch kept
+      the `branch_name` of the merged branch it was filed against, so the merge gate and the
+      next reviewer's query both saw nothing. Two issues sat in `review` for days, reachable
+      only by being named in prose to the reviewer.
+      ⚠ **A CLOSED record cannot be rescoped and the engine says why** — *"a finished record's
+      scope is the unit of work it was resolved against"*. So this fixes the next split, never
+      a past one: rescope when you move the work, not afterwards.
   * ⚠ **NONE of these three** overrides the abort in AGENTS.md §1: a review that did not
     complete is not a "must not land" finding being cleared. (This said *"Neither case"*
     while sitting under three bullets — a two-place word against three options, which leaves

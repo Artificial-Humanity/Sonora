@@ -216,6 +216,27 @@ def detect_vat_dim(sd):
 
 def load_ckpt():
     ck = torch.load(CKPT, map_location="cpu", weights_only=False)
+    # ⚠ THE PUBLISH WALL, BEFORE ANY GRAPH IS BUILT. A licence is not the only reason an
+    # artifact must not ship: owner ruling 12 (2026-09-09) makes the crossed delivery bank
+    # diagnostic-only, so a checkpoint trained on it must not become a mobile artifact even
+    # though its corpus is CC-BY-4.0. Checked here because THIS is where a checkpoint becomes
+    # something shippable — the licence wall runs at training time and has nothing to say
+    # about export.
+    # ⚠ A checkpoint with no `datamodule_hyper_parameters` yields an EMPTY lineage, which is
+    # "unknown", not "clean". It passes, deliberately: pre-wall checkpoints exist and
+    # refusing them buys nothing, since anything trained since the wall must be declared.
+    # ⚠ `root=SONORA`: the lineage paths are repo-relative and run.sh cds to the work dir, so
+    # without it no filelist would open and the AUDIO half of the check (#420) would never
+    # run. A filelist that still cannot be read is UNKNOWN on that half, and is said so.
+    # ⚠ EVERY UNKNOWN IS SAID OUT LOUD, not just the unread-filelist one (#426). An empty
+    # lineage produced no line at all, so the log of a checkpoint the wall had nothing to
+    # check on was identical to one whose lineage was read and cleared. `lineage_gaps` is
+    # the one definition of "not a clean result", shared with check_publishable.py.
+    from matcha.data.license_wall import lineage_filelists, lineage_gaps, refuse_unpublishable
+    lineage = lineage_filelists(ck)
+    unread = refuse_unpublishable(lineage, what=f"the checkpoint at {CKPT}", root=SONORA)
+    for note in lineage_gaps(lineage, unread):
+        print(f"!! publish wall: {note}", file=sys.stderr)
     hp = ck["hyper_parameters"]
     stats = hp["data_statistics"]
     sd = ck["state_dict"]

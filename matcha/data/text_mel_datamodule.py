@@ -116,8 +116,8 @@ class TextMelDataModule(LightningDataModule):
         """
         # load and split datasets only if not loaded already
 
-        # The license wall (north star §8.2): every dataset in the filelists
-        # must be declared permissive in configs/data_licenses.yaml.
+        # The license wall (north star § 8, Load-Bearing Constraints): every dataset in
+        # the filelists must be declared permissive in configs/data_licenses.yaml.
         enforce_license_wall(
             [self.hparams.train_filelist_path, self.hparams.valid_filelist_path]
         )

@@ -62,7 +62,7 @@ def tree(tmp_path, files):
 def test_a_double_bracket_memory_slug_is_not_a_link():
     """⚠ THE ONE RULE THIS GATE INHERITS RATHER THAN INVENTS.
 
-    `notes/README.md` is the only place it is written down: `[[double-bracket]]` names point at
+    `docs/README.md` is where it is written down: `[[double-bracket]]` names point at
     the agent's persistent memory and are deliberately unresolvable. A checker that flagged
     them would report dozens of "failures" that are all correct, and be turned off within a
     day. They contain no `](`, so the pattern cannot match one — but that is a PROPERTY of the
@@ -160,8 +160,9 @@ def test_an_inbound_link_is_matched_on_its_tail_not_its_prefix(tmp_path):
     (sib / "s.md").write_text(
         "[a](../../Sonora/github/notes/x.md) [b](../../Sonora/anywhere/notes/gone.md)\n",
         encoding="utf-8")
-    bad = gate.inbound_dangling(str(sib), root)
+    bad, examined = gate.inbound_dangling(str(sib), root)
     assert [t for _r, _n, t in bad] == ["notes/gone.md"]
+    assert examined == 2, "both links match the tail pattern; only one is dead"
 
 
 def test_an_inbound_link_into_docs_is_checked_too(tmp_path):
@@ -177,14 +178,32 @@ def test_an_inbound_link_into_docs_is_checked_too(tmp_path):
     sib.mkdir()
 
     (sib / "broken.md").write_text("[a](../../Sonora/x/docs/gone.md)\n", encoding="utf-8")
-    bad = gate.inbound_dangling(str(sib), root)
+    bad, _examined = gate.inbound_dangling(str(sib), root)
     assert [t for _r, _n, t in bad] == ["docs/gone.md"], (
         "a dead inbound link into docs/ was not reported — the inbound pattern has stopped "
         "recognising the directory the split created")
 
     (sib / "broken.md").unlink()
     (sib / "ok.md").write_text("[a](../../Sonora/x/docs/c.md)\n", encoding="utf-8")
-    assert gate.inbound_dangling(str(sib), root) == []
+    assert gate.inbound_dangling(str(sib), root) == ([], 1)
+
+
+def test_an_inbound_scan_that_matches_nothing_says_so(tmp_path):
+    """⚠ `[]` IS TWO DIFFERENT ANSWERS (#404): every link resolves, or no link was recognised.
+    The examined count is the only thing that separates them, so a sibling whose links are
+    all in a shape `INBOUND` does not match must report zero examined — not a clean pass."""
+    root = tree(tmp_path / "repo", {"docs/c.md": "hi\n"})
+    sib = tmp_path / "Prosodia"
+    sib.mkdir()
+    # ⚠ BOTH LINKS ON ONE LINE, DELIBERATELY (#405). Until 2026-09-09 `INBOUND`'s gap was a
+    # bare `.*?`, which `)` does not stop, so a Sonora link followed by a foreign `docs/` link
+    # on the SAME line matched as one inbound link — `docs/c.md` here, counted as examined
+    # and, because the root happens to have it, silently resolved. This input is that case,
+    # and the count it must report is zero.
+    (sib / "s.md").write_text("[a](../../Sonora/github/AGENTS.md) [b](../../Elsewhere/docs/c.md)\n",
+                              encoding="utf-8")
+    assert gate.inbound_dangling(str(sib), root) == ([], 0), (
+        "a foreign docs/ link on the same line as a /Sonora/ mention was counted as inbound")
 
 
 # --- absence is a skip, never a pass ---------------------------------------------------
@@ -221,7 +240,12 @@ def test_the_scan_is_every_tracked_markdown_except_workflow():
     a Sonora merge.
     """
     scanned = set(gate.repo_markdown(REPO))
-    for rel in ("notes/README.md", "docs/README.md", "docs/ARCHITECTURE.md", "notes/STATE.md",
+    # ⚠ `notes/README.md` was in this list until 2026-09-08 and is retired — the sample is
+    # of files the scan must REACH, so a retired file left here asserts a permanent failure.
+    # ⚠ `docs/STATE.md` was here for part of the same day and is gone for the other reason:
+    # not retired but PRIVATE, back in `notes/`. A gitignored file is untracked, and this
+    # scan reads the index — so naming it here would assert a failure no commit can fix.
+    for rel in ("docs/README.md", "docs/ARCHITECTURE.md",
                 # the four that the old PROSE_DIRS set never opened — #260 lived in the last
                 "README-Matcha.md", "audition/README.md", "scripts/README.md",
                 "scripts/teacher_audition/README.md"):
@@ -261,15 +285,69 @@ def test_the_canon_landed_where_the_plan_said(rel):
 
 def test_the_high_ambition_series_did_not_move():
     """⚠ Prosodia links to these BY NAME across repo boundaries; moving them breaks links no
-    checker in this repo would ever see. `notes/README.md` states the constraint and the
+    checker in this repo would ever see. `docs/README.md` states the constraint and the
     measurement backed it: the rejected 16-file draft would have broken 21 inbound links."""
-    for name in ("high-ambition-index.md", "high-ambition-1-matcha-actor.md",
-                 "high-ambition-2-dramatic-reader.md",
-                 "high-ambition-6-audience-conveyance-stt.md",
-                 "high-ambition-7-singing.md"):
-        assert os.path.isfile(os.path.join(REPO, "notes", name)), name
+    names = ("high-ambition-index.md", "high-ambition-1-matcha-actor.md",
+             "high-ambition-2-dramatic-reader.md",
+             "high-ambition-6-audience-conveyance-stt.md",
+             "high-ambition-7-singing.md")
+
+    # ⚠ THE HALF THAT STILL WORKS WITHOUT THE PRIVATE REPO RUNS UNCONDITIONALLY. Whether these
+    # moved INTO docs/ is answerable from a public clone alone, and it is the direction that
+    # would actually break Prosodia's citations, so it is not skipped with the other half.
+    for name in names:
         assert not os.path.isfile(os.path.join(REPO, "docs", name)), (
             f"{name} moved to docs/ — Prosodia cites it by name and nothing here would notice")
+
+    # ⚠ The presence half needs notes/, which is the private Notes repo since 2026-09-08.
+    # Skipped with a reason rather than passed: a check that reports clean on a missing input
+    # is the silent-disarm mode AGENTS.md §5b names.
+    if not os.path.isdir(os.path.join(REPO, "notes")):
+        import pytest
+        pytest.skip("notes/ is the private Notes repo (2026-09-08); the presence half of this "
+                    "cross-repo constraint cannot be checked from a public clone")
+    for name in names:
+        assert os.path.isfile(os.path.join(REPO, "notes", name)), name
+
+
+def test_the_notes_sibling_is_actually_scanned_for_state_md_links(tmp_path):
+    """⚠ THE ENTRY `365cddb` ADDED IS JUSTIFIED BY STATE.md's LINKS BACK INTO THIS REPO, and
+    until #404 nothing showed the scan SAW them: the inbound line printed only the unresolved
+    count, so "0 do not resolve" was the same line whether `INBOUND` matched them or matched
+    nothing. This pins the found-count to the file, in both directions.
+
+    The expected count is derived by a SEPARATE instrument — a literal grep of STATE.md for
+    `../../Sonora/github/{docs,notes}/….md` — not by `INBOUND`, so a regex edit that stops
+    matching cannot also lower the expectation. Skipped, with a reason, when the private
+    Notes checkout is absent: a pass on a missing input is the silent-disarm mode."""
+    import re
+    notes = next((p for _w, p in gate.sibling_paths()
+                  if p is not None and os.path.basename(p) == "Notes"), None)
+    if notes is None:
+        pytest.skip("no Notes checkout on this machine; STATE.md's inbound links cannot be "
+                    "counted from a public clone")
+    state = os.path.join(notes, "Sonora", "STATE.md")
+    assert os.path.isfile(state), "Notes/Sonora/STATE.md is where STATE.md went on 2026-09-08"
+    with open(state, encoding="utf-8") as fh:
+        text = fh.read()
+    expected = sorted(re.findall(r"\.\./\.\./Sonora/github/((?:docs|notes)/[^)\s]+\.md)", text))
+    assert expected, "STATE.md no longer links into docs/ or notes/ — the comment above " \
+                     "SIBLING_DEFAULTS is stale and this ratchet has nothing to pin"
+
+    # RED direction first: against an empty root every one of them must be reported dead.
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    bad, examined = gate.inbound_dangling(notes, str(empty))
+    seen = sorted(t for r, _n, t in bad if r == os.path.join("Sonora", "STATE.md"))
+    assert seen == expected, (
+        "INBOUND does not match what a plain grep of STATE.md finds — the scan has gone "
+        f"quiet on the entry it was added for:\n  grep:    {expected}\n  INBOUND: {seen}")
+    assert examined >= len(expected)
+
+    # Then GREEN: against this repo those same links resolve, and the count is unchanged.
+    bad, examined_live = gate.inbound_dangling(notes, REPO)
+    assert [t for r, _n, t in bad if r == os.path.join("Sonora", "STATE.md")] == [], bad
+    assert examined_live == examined, "the found-count must not depend on what resolves"
 
 
 # --- doc paths built in CODE, which no link checker can see -----------------------------
@@ -559,13 +637,30 @@ def test_the_live_citation_count_holds():
     measured 2026-08-21.
     """
     _dangling, examined, skipped = gate.section_citations(REPO)
-    assert examined >= 30, (
-        f"only {examined} §N citation(s) are read in this repo, from the 37 measured on "
-        f"2026-08-21. Either SECTION_CITE stopped matching or the scanned set shrank — "
+    # ⚠ 30 -> 10 -> 5, both steps on 2026-09-08, and BOTH are the same cause: markdown
+    # leaving this repo for the private Notes one, where the scan (which reads the index)
+    # cannot follow it. First `notes/` itself, then `STATE.md`, which spent part of that day
+    # in `docs/` before the owner sent it back. The citations did not stop being checked,
+    # they stopped being IN this repo. Re-derived each time (11 examined, then 6), never
+    # lowered to fit; the floor sits one under so adding a document cannot fail it.
+    # ⚠ The point of the floor is unchanged and it still bites: a partial blinding inside
+    # what remains is what this catches, and that population is now docs/ and the root.
+    assert examined >= 5, (
+        f"only {examined} §N citation(s) are read in this repo, from the 6 measured on "
+        f"2026-09-08. Either SECTION_CITE stopped matching or the scanned set shrank — "
         f"re-derive this floor deliberately rather than lowering it to fit.")
-    assert examined + len(skipped) >= 35, (
-        f"only {examined + len(skipped)} citation(s) were FOUND at all (42 measured) — "
-        f"suspect the regex before believing the citations went away.")
+    # ⚠ 35 -> 20 -> 11 -> 6, same causes and the same day. This half exists to tell "the
+    # regex broke" apart from "the documents went away", so it only does its job while it
+    # tracks the other floor — and it has already failed to once: `c0740e5` set it to 20 and
+    # `33cc2e4` re-derived the assert to 11 while leaving this comment reading `35 -> 20`
+    # (#401), which sends the next person re-deriving it hunting for a floor that never
+    # landed. When one of these two moves, MOVE BOTH, and move the prose with them.
+    # ⚠ The 11 -> 6 step is arithmetic, not a guess: `docs/STATE.md` carried exactly 5 of
+    # them (4x AGENTS.md, 1x ARCHITECTURE.md) and `skipped` was unchanged at 1.
+    assert examined + len(skipped) >= 6, (
+        f"only {examined + len(skipped)} citation(s) were FOUND at all (7 measured on "
+        f"2026-09-08, AFTER STATE.md went back to notes/) — suspect the regex before "
+        f"believing the citations went away.")
 
 
 def test_main_does_not_fail_a_tree_that_simply_has_no_citations(tmp_path):

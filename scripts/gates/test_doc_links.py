@@ -17,7 +17,7 @@ A checker that only looked at Sonora's own outbound links would have reported a 
 the day that number was 10, which is the definition of a check pointed away from the failure.
 
 ⚠ `[[double-bracket]]` NAMES ARE NOT LINKS. They are the agent's persistent-memory slugs and
-are deliberately unresolvable; `notes/README.md` is the only place that rule is written down,
+are deliberately unresolvable; `docs/README.md` is where that rule is written down,
 which makes it part of this file's specification. They contain no `](`, so the link pattern
 below cannot match one — but that is a property of the pattern, and
 `tests/test_doc_links_gate.py` asserts it rather than trusting it.
@@ -25,8 +25,12 @@ below cannot match one — but that is a property of the pattern, and
 WHAT IT DOES NOT COVER — read this before trusting a pass
 ---------------------------------------------------------
 * ⚠ **THE FILE SET — read this first, because it is what a green run is scoped to.** Both
-  halves scan `repo_markdown()`: every TRACKED `.md` except `FerroStep/`. That is 50 of the
-  repo's 53 today. It was `notes/`+`docs/`+`workflow/`+3 root files — 38 of 53 — while this
+  halves scan `repo_markdown()`: every TRACKED `.md` except `FerroStep/`. That is 26 of the
+  repo's 29 today — it read 50 of 53 until 2026-09-08, when `notes/` became a gitignored
+  symlink to the private Notes repo and 24 files stopped being tracked here. ⚠ THAT IS A
+  SMALLER SCAN, NOT A CLEANER ONE, and the count is in the present tense on purpose: it was
+  left reading "50 of 53 today" through the migration itself. It was
+  `notes/`+`docs/`+`workflow/`+3 root files — 38 of 53 — while this
   banner said "every relative link this repo owns resolves", and **7 dead links were living
   in one of the 15 files it never opened** (#261). Untracked markdown is deliberately not
   read: a scan that reports on files no clone has is the working-tree-vs-index confusion
@@ -144,16 +148,31 @@ EXTERNAL = ("http://", "https://", "mailto:", "file://", "#")
 # FerroStep/workflow/config.env, which already solved this problem for the reviewer.
 # ⚠ CANDIDATES, NOT REQUIREMENTS. Each one that is absent is printed and skipped.
 SIBLING_ENV = "SONORA_SIBLING_REPOS"
+# ⚠ `Notes` IS A SIBLING BECAUSE THIS REPO'S OWN PROSE MOVED INTO IT (2026-09-08). `notes/`
+# is a gitignored symlink to `Notes/Sonora`, so every file under it is untracked here and the
+# scan above — which reads the index — cannot see one. `STATE.md` lives there and links back
+# into this repo nine times (measured 2026-09-08); without this entry those links are checked
+# by nothing, in either repo, which is the silent-blinding shape this gate exists to refuse.
+# ⚠ PARTIAL, AND KNOWINGLY SO: `INBOUND` only recognises a tail under `notes/` or `docs/`,
+# which reaches 7 of those 9; STATE.md's links to `AGENTS.md` and to
+# `configs/experiment/*.yaml` are the other 2, and they are still unchecked.
 SIBLING_DEFAULTS = (
     "../Prosodia",
     "~/Projects/Artificial-Humanity/Prosodia",
     "../AI-Lab-AMD",
     "~/Projects/Artificial-Humanity/AI-Lab-AMD",
+    "../../Notes",
+    "~/Projects/Artificial-Humanity/Notes",
 )
 
 # What a sibling's link into this repo looks like once the checkout-dependent prefix is
 # discarded: everything from the last `notes/` or `docs/` segment onward.
-INBOUND = re.compile(r"/Sonora/.*?/((?:notes|docs)/[^)\s]+\.md)")
+# ⚠ THE GAP IS `[^)\s]*?`, NOT `.*?` (#405). A bare `.*?` is lazy but not stopped by `)`, so
+# it ran from a `/Sonora/` in one link into the `docs/` of the NEXT link on the line — a
+# foreign `docs/c.md` after `(../../Sonora/github/AGENTS.md)` was counted as inbound, and
+# resolved or not on the strength of whether this repo happened to have a file by that name.
+# Confining the gap to link-target characters keeps a match inside one `(...)`.
+INBOUND = re.compile(r"/Sonora/[^)\s]*?/((?:notes|docs)/[^)\s]+\.md)")
 
 
 # ⚠ A `§N` CITATION IS NOT A LINK, AND THAT IS THE WHOLE PROBLEM. Every one of the 19 this
@@ -326,13 +345,19 @@ def sibling_paths():
 
 
 def inbound_dangling(sibling_root, root=REPO):
-    """A sibling's links INTO this repo that this repo can no longer satisfy.
+    """-> (bad, examined): a sibling's links INTO this repo that this repo can no longer
+    satisfy, and how many such links the scan matched at all.
 
     Compares the repo-relative TAIL only — see the module docstring on why the prefix is not
     checkable. Scans the sibling's whole tree rather than its prose directories, because its
     layout is its own business and may not match ours.
+
+    ⚠ `examined` IS NOT DECORATION (#404). `bad` alone reads `[]` both when every inbound link
+    resolves and when `INBOUND` has stopped matching the sibling's links altogether — a
+    rename, a rewritten prefix, a regex edit — which is a guard going quiet without going
+    red. The count is what lets the report, and the suite, tell those apart.
     """
-    bad = []
+    bad, examined = [], 0
     for dirpath, dirnames, names in os.walk(sibling_root):
         dirnames[:] = [d for d in dirnames
                        if d not in (".git", "target", "node_modules", ".venv")]
@@ -347,9 +372,10 @@ def inbound_dangling(sibling_root, root=REPO):
                 continue
             for lineno, line in enumerate(lines, 1):
                 for tail in INBOUND.findall(line):
+                    examined += 1
                     if not os.path.exists(os.path.join(root, tail)):
                         bad.append((os.path.relpath(path, sibling_root), lineno, tail))
-    return bad
+    return bad, examined
 
 
 def main():
@@ -500,11 +526,14 @@ def main():
     # gate warns about at length — "a check nobody can turn green is a check everybody learns
     # to ignore, and it goes on ignoring the fork it was built to catch". So it is loud, it is
     # counted, and it does not fail.
+    # ⚠ BOTH COUNTS, LIKE THE OUTBOUND LINE ABOVE (#404). "0 do not resolve" printed alone was
+    # the same line whether the scan matched 38 links or none, so the one mode that stays
+    # silent — the sibling present, `INBOUND` no longer matching its links — was invisible.
     reported = 0
     for name, path in sorted(found.items()):
-        inbound = inbound_dangling(path)
+        inbound, examined = inbound_dangling(path)
         reported += len(inbound)
-        print(f"  <- {name}: {len(inbound)} link(s) INTO this repo do not resolve "
+        print(f"  <- {name}: {examined} inbound link(s), {len(inbound)} unresolved "
               f"(reported, not failed — they are {name}'s files to fix)")
         for rel, lineno, tail in inbound:
             print(f"       {rel}:{lineno} -> {tail}")

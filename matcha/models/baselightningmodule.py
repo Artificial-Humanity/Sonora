@@ -82,6 +82,31 @@ class BaseLightningClass(LightningModule, ABC):
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         self.ckpt_loaded_epoch = checkpoint["epoch"]  # pylint: disable=attribute-defined-outside-init
+        # The corpora of every earlier stage, so a warm-started descendant still names the
+        # data its donor was trained on when the publish wall reads it at export (#421).
+        #
+        # ⚠ `carried_lineage`, NOT `lineage_filelists` — THIS IS THE DOOR THE LANE USES (#425).
+        # The lane starts a fine-tune with `ckpt_path=<init>` (AI-Lab-AMD/docker-compose.yml
+        # symlinks `$SONORA_WARMSTART` to `resume.ckpt`), so the init arrives HERE, not through
+        # `make_warmstart.py`, which only wrote it. Fixing the writer alone left every init that
+        # already exists on disk going through the old path: measured 2026-09-10, all 8
+        # `*_init.ckpt` in /data/model-training/sonora/warmstart/ carry neither
+        # `datamodule_hyper_parameters` nor `LINEAGE_KEY`, so this line returned `[]`, the run
+        # saved `[]` plus its own corpus, and every descendant read as a fully known lineage.
+        #
+        # The two functions differ only when the result would be empty, so a resume mid-run
+        # (that checkpoint has datamodule hparams) and a fresh run (this hook never fires) are
+        # both unchanged. `lineage_filelists` itself stays honest and keeps returning what is
+        # recorded — an export needs to tell "nothing recorded at all" from "warm-started from
+        # something unrecorded", and `lineage_gaps` reports those as different sentences.
+        from matcha.data.license_wall import carried_lineage
+
+        self.sonora_lineage = carried_lineage(checkpoint)  # pylint: disable=attribute-defined-outside-init
+
+    def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        from matcha.data.license_wall import LINEAGE_KEY
+
+        checkpoint[LINEAGE_KEY] = list(getattr(self, "sonora_lineage", []))
 
     def training_step(self, batch: Any, batch_idx: int):
         loss_dict = self.get_losses(batch)

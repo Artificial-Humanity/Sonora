@@ -71,9 +71,17 @@ if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
   [[ "$DRY_RUN" -eq 1 ]] || git checkout "$BRANCH"
 else
   echo "full_review.sh: cutting '$BRANCH' from $BASE_REF."
-  # ⚠ --no-track, ALWAYS. `push.default=upstream` is set here, so a branch that inherits
-  # `origin/main` as its upstream sends a bare `git push` straight to main whatever it is
-  # called — measured. A review branch is the last thing that should have that property.
+  # ⚠ --no-track, ALWAYS. A review branch is the last thing that should inherit
+  # `origin/main` as its upstream.
+  #
+  # `push.default` is NOT set in this repo today (measured 2026-09-11), so git's default
+  # `simple` applies and REFUSES a push from a branch whose name differs from its upstream. ⚠
+  # Keep this guard anyway, and the reason is stronger than the one that used to be here:
+  # `push.default=upstream` WAS set, it is local config, and local config does not travel —
+  # the 2026-08-17 tracker export predicted exactly this on four issues ("a fresh clone gets
+  # push.default=simple ... every one of these traps returns intact") and that is what
+  # happened. A guard that depends on reading the config is one the config can revoke
+  # silently; this one is correct under either setting.
   [[ "$DRY_RUN" -eq 1 ]] || git checkout --no-track -b "$BRANCH" "$BASE_REF"
 fi
 

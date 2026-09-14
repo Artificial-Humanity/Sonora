@@ -60,6 +60,31 @@ summary — there is no third place, and no later opportunity.
     allowed.** Four successive versions of the launcher's comment claimed a stronger guarantee
     than the flags delivered, each caught by a later review. A reader who believes a boundary
     is structural stops checking it, which is why you are getting the boundary's real shape.
+  * ⚠⚠ **YOU ARE ENTITLED TO ANY NON-DESTRUCTIVE GRANT INSIDE THIS REPO AND ITS NOTES**
+    (owner, 2026-09-13). The ruling in full: *the reviewer is entitled to any non-destructive
+    grant that is isolated to the repo directory, recursively, and the associated notes
+    directory.* It is a **floor** — being refused something that fits it is a gap to report,
+    not a boundary to respect. **File it, and say what you were trying to check.**
+    * **The entitlement is stated, not enumerated, and that is deliberate.** A list of blessed
+      commands here is the hand-kept copy that goes stale the moment one is added — which is
+      exactly how the promotion-step grant came to exist for a whole cycle with nothing
+      addressed to you saying so (#435). The launcher is the enumeration; this is the rule.
+    * ⚠ **Outside the repo and its notes is NOT covered, and some grants there exist anyway.**
+      Reading `/data`, the sibling checkouts, and an interpreter that lives with the data were
+      each granted on their own justification and are unaffected by this. Absence of a grant
+      out there is not a bug; absence of one *inside* is.
+    * ⚠⚠ **STOP-GAP.** The owner is codifying this in FerroStep, and this paragraph is what
+      that supersedes. The condition is written next to the rule on purpose: this repo has
+      just spent two weeks obeying a purpose-limited hold that outlived its purpose because
+      nobody recorded what would end it (AGENTS.md §5). **If FerroStep now carries this rule,
+      believe FerroStep.**
+    * Concretely added the same day, because you reported each of them refused: the read-only
+      `git config` verbs, `git worktree list`, and the notes directory as an `--add-dir`.
+      ⚠ That last one widens **Bash** specifically. The file tools already followed
+      `notes/` from the working directory; Bash was fenced out of the directory the symlink
+      points at, and the grant only reaches it because the candidate is resolved physically
+      (#451). If `ls notes` still refuses, say so — that is the grant not delivering.
+
   * ⚠ **YOU CAN RUN THE DOC-CLAIMS GATE. Use this exact spelling:**
 
     ```
@@ -237,6 +262,23 @@ superuser-only; the MCP already holds the credential.
 
 **READ it with the `pocketbase` MCP tools** — `pb_record_list` and `pb_record_get`. Every
 query on this page is one of those, and none of them is restricted.
+
+⚠⚠ **AND THAT PATH DOES NOT REDACT THE CYCLE-ABORT TOKEN** (#365). Some records stored before
+the write guard existed carry it in `title` or `body`. `issue.py` blunts it on the way out;
+the MCP server reads PocketBase directly and never loads `issue.py`, so the queries on this
+page return those fields **verbatim** — and this is the PRIMARY read path, not the fallback.
+The token is what `review_cycle.sh` greps your summary for, so quoting such a record into a
+summary halts a clean cycle. The write guard cannot help: it stops the next record, not the
+ones already stored, and rewriting them was considered and refused (#361).
+
+* **Do not paste a stored `title` or `body` verbatim into a summary.** Describe the record
+  instead. #361 is its own proof that this is always possible.
+* **To read one safely, use the redacting path** — `FerroStep/workflow/scripts/issue.py show <n>`,
+  the same command §4 names below for a stale transport, or `issue.py list`, whose rows go
+  through the same `redact`. ⚠ This called `show` *"the only read here that redacts"* while
+  naming `list` three times as the reroute (#392). Both redact; the raw API does not.
+* ⚠ **Which records carry it is a LIVE fact.** Find them with a filter when you need to know;
+  a count written here would be a second copy that goes stale the next time one is filed.
 
 ⚠⚠ **WRITE IT WITH `FerroStep/workflow/scripts/issue.py`, NOT `pb_record_mutate`** (phase 2, owner
 directive 2026-08-24). `state`, `agent_passes`, `ferrostep_version`, `repo` and `branch_name`
@@ -514,7 +556,7 @@ still named the same finding.
 ⚠⚠ **THOSE RECORDS ARE NO LONGER IN THE LIVE TRACKER, AND THIS FILE ONCE SAID THEY WERE.** The
 owner wiped it on 2026-08-17 after a byte-for-byte export; the instance now holds only issues
 numbered 90+, and `#12–#89` are **not there**. They live in
-`notes/tracker-export-2026-08-17.json` — 79 issue records, 130 comments, numbers 12–120 —
+`FerroStep/workflow/tracker-export-2026-08-17.json` — 79 issue records, 130 comments, numbers 12–120 —
 so an old commit citing `#33` names a finding that exists only in that export.
 
 **This is not data loss and it is not a defect to file**: it was deliberate, numbers are
@@ -872,7 +914,7 @@ a reader looking for a new justification that was never written.
 #26, #68, #70, #79, #80, #81, #85, #87, #89 — as a migrated GitHub backlog parked on
 `github-issues-fixes` that could never close on your cycle. The tracker was wiped on
 2026-08-17 and holds nothing below #90; the records are in
-`notes/tracker-export-2026-08-17.json`.
+`FerroStep/workflow/tracker-export-2026-08-17.json`.
 
 ⚠ **DO NOT GO LOOKING FOR IT, AND DO NOT REPORT ITS ABSENCE AS A FINDING.** A reviewer did
 exactly that on 2026-08-17 — correctly refusing to guess a cause, because this paragraph still

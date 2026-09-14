@@ -104,14 +104,24 @@ def test_the_gate_states_what_it_does_not_prove():
 
 def test_the_gate_runs_before_any_git_write():
     """A stale local view must not be able to authorise a merge."""
-    for op in ("git checkout", "git merge --no-ff", "git push"):
+    # `merge --no-ff`, not `git merge --no-ff`: the real merge carries a `-c` pair between the
+    # two words (9056233), and so does the dry-run preview of it (#393).
+    for op in ("git checkout", "merge --no-ff", "git push"):
         assert MERGE_CODE.index("UNSETTLED=") < MERGE_CODE.index(op), op
 
 
 def test_the_push_names_both_ends_of_the_refspec():
-    """⚠ `push.default=upstream` is set in this repo, so a bare `git push` from a branch that
-    inherited `origin/main` as its upstream sends it to main whatever the branch is called.
-    Naming both ends means what lands is what was just merged and gated."""
+    """⚠ Naming both ends means what lands is what was just merged and gated.
+
+    `push.default` is NOT set in this repo today (measured 2026-09-11), so git's default
+    `simple` applies and REFUSES a push from a branch whose name differs from its upstream. ⚠
+    Keep this guard anyway, and the reason is stronger than the one that used to be here:
+    `push.default=upstream` WAS set, it is local config, and local config does not travel —
+    the 2026-08-17 tracker export predicted exactly this on four issues ("a fresh clone gets
+    push.default=simple ... every one of these traps returns intact") and that is what
+    happened. A guard that depends on reading the config is one the config can revoke
+    silently; this one is correct under either setting.
+    """
     m = re.search(r"git push \S+ (\S+)", MERGE_CODE)
     assert m and ":" in m.group(1), "the push must use an explicit src:dst refspec"
 
@@ -342,6 +352,48 @@ def test_every_tracker_write_surface_is_actually_guarded():
         assert site in ISSUE_SRC, "a tracker write surface is no longer guarded: %s" % site
 
 
+def test_the_read_path_redacts_the_cycle_abort_token():
+    """⚠ #364 — `redact` and every call site was watched by NOTHING.
+
+    `refuse_abort_token` stops the NEXT record carrying the literal. `redact` is the only
+    mitigation for the records filed BEFORE it existed, which are live and unrepairable —
+    `issue.py` has no rename or edit subcommand. So it is the whole defence on the read side,
+    and it had no test at all: mutation-measured by the reviewer, deleting the call in
+    `show_row` left the full suite green while the same harness went red on the write guard.
+
+    Exercised, not grepped, for the reason `_issue_module` gives.
+    """
+    m = _issue_module()
+    token = m.ABORT_TOKEN
+    out = m.redact("closing this: %s, see the note" % token)
+    assert token not in out, "the token survived redaction"
+    assert "#361" in out, (
+        "the replacement must NAME what was removed — a title with the text silently gone "
+        "reads as though it were written that way")
+    # ⚠ THE MARKER MUST NOT ITSELF BE GREPPABLE AS THE TOKEN, or redaction re-arms the trap
+    # one layer along: `review_cycle.sh` greps the summary, and the summary quotes this.
+    assert token not in m.redact(token) and token not in "[cycle-abort token, redacted]"
+    assert m.redact("ordinary prose") == "ordinary prose"
+    assert m.redact(None) == "", "a missing field must not raise on the read path"
+
+
+def test_the_list_row_a_reviewer_actually_reads_is_redacted():
+    """The call site, because a redaction nothing calls is decoration.
+
+    `show_row` is what `issue.py list` prints, and REVIEWER.md's documented reroute is a
+    `list` — so this is the sanctioned read command, not an unusual keystroke. Driving the
+    real function beats pinning the call as a substring: a substring passes on a call that is
+    present and unreachable, which is the shape this branch filed three times.
+    """
+    m = _issue_module()
+    token = m.ABORT_TOKEN
+    row = m.show_row({"number": 355, "state": "closed", "severity": "low",
+                      "agent_passes": 3, "title": "a finding that says %s here" % token})
+    assert token not in row, "the token reaches a reviewer through the documented read path"
+    assert "355" in row, "the row no longer carries the issue number it is about"
+    assert "redacted" in row, "the reader is not told anything was removed"
+
+
 def test_no_tracker_write_survives_a_refused_comment():
     """⚠⚠ #362 — THE GUARD FIRED AFTER THE WRITE IT EXISTS TO PREVENT.
 
@@ -515,9 +567,18 @@ LAUNCHER = (REPO / "FerroStep" / "workflow" / "scripts" / "request_review.sh").r
 
 
 def test_full_review_cuts_a_dated_branch_with_no_upstream():
-    """⚠ `--no-track` is not optional here. `push.default=upstream` is set in this repo, so a
-    branch inheriting `origin/main` sends a bare `git push` straight to main whatever it is
-    called — measured. A review branch is the last thing that should have that property."""
+    """⚠ `--no-track` is not optional. A review branch is the last thing that should inherit
+    `origin/main` as its upstream.
+
+    `push.default` is NOT set in this repo today (measured 2026-09-11), so git's default
+    `simple` applies and REFUSES a push from a branch whose name differs from its upstream. ⚠
+    Keep this guard anyway, and the reason is stronger than the one that used to be here:
+    `push.default=upstream` WAS set, it is local config, and local config does not travel —
+    the 2026-08-17 tracker export predicted exactly this on four issues ("a fresh clone gets
+    push.default=simple ... every one of these traps returns intact") and that is what
+    happened. A guard that depends on reading the config is one the config can revoke
+    silently; this one is correct under either setting.
+    """
     assert 'BRANCH="review-$DATE"' in FULL_CODE
     assert "--no-track" in FULL_CODE
     assert 'date +%F' in FULL_CODE
@@ -731,7 +792,7 @@ def test_issue_numbers_are_floored_against_the_export():
     """⚠ THE UNIQUE INDEX CANNOT SEE A FILE ON DISK (issue #168).
 
     `cmd_file`'s six-attempt retry is the whole of its collision safety, and it only fires on
-    a LIVE record. `notes/tracker-export-2026-08-17.json` holds 79 records numbered 12–120;
+    a LIVE record. `FerroStep/workflow/tracker-export-2026-08-17.json` holds 79 records numbered 12–120;
     nothing on the allocation path opens it. So on an empty collection — `items: []`, HTTP
     200, no error, no warning — allocation started at 1 and marched cleanly up through the
     reserved band, reissuing numbers that name different findings in the export.
@@ -752,7 +813,7 @@ def test_issue_numbers_are_floored_against_the_export():
     # The file is tracked, so its absence is a fault to report, not a reason to check less.
     import json
 
-    export = REPO / "notes" / "tracker-export-2026-08-17.json"
+    export = REPO / "FerroStep" / "workflow" / "tracker-export-2026-08-17.json"
     assert export.exists(), (
         f"{export.name} is missing — it is tracked, and without it NUMBER_FLOOR cannot be "
         f"checked against anything. This test would otherwise pass while proving nothing.")
