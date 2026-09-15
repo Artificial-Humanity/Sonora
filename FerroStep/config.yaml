@@ -15,7 +15,9 @@ agents:
     email: janis@artificialhumanity.io
     persona: personas/REVIEWER.md
     # How Janis is LAUNCHED — the ONE place it is set (owner, 2026-09-02). Read by
-    # workflow/scripts/request_review.sh through workflow/scripts/roster_launch.py, NOT by
+    # ⚠ INERT SINCE 2026-09-15 — the launcher and roster_launch.py were deleted with the
+    # review cycle, so nothing reads these keys. Kept with the depiction in personas/.
+    # It was read by request_review.sh through roster_launch.py, NOT by
     # `ferrostep agent-env`, which tolerates keys it does not know and ignores them.
     # Both keys are REQUIRED: a missing one is a refusal, never a script-side default —
     # a default would be the second copy of this setting, and it would win silently.

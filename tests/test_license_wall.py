@@ -624,15 +624,24 @@ def test_both_readers_use_the_shared_gap_report():
 
 # --- the promotion tool's exit codes, which are its whole machine-readable interface -------
 
+# The repo venv has no torch (AGENTS.md §3), so the exit-code tests below need a torch-capable
+# interpreter from somewhere else or they cannot run at all.
+#
+# ⚠ THIS USED TO READ `REVIEWER_TORCH_PY` FROM `FerroStep/workflow/config.env`, WHICH WAS
+# DELETED WITH THE REVIEW CYCLE (2026-09-15). That key existed to grant the reviewer an
+# interpreter that could open a checkpoint; with no reviewer there is no config to read, so
+# the path moved to an environment variable with the same default it always had.
+#
+# ⚠ Returning None makes the dependent tests SKIP, not pass. That is deliberate and it is
+# also the risk: a skip is invisible in a green run. If these ever need to be load-bearing on
+# a given host, set the variable there rather than assuming the default resolves.
+TORCH_PY_DEFAULT = "/data/toolchain/litert-conversion/.venv/bin/python"
+
+
 def _torch_interpreter():
-    """The interpreter config.env grants the reviewer, when it exists on this host."""
-    cfg = (pathlib.Path(wall._MANIFEST_PATH).parent.parent
-           / "FerroStep" / "workflow" / "config.env").read_text(encoding="utf-8")
-    for line in cfg.splitlines():
-        if line.startswith("REVIEWER_TORCH_PY="):
-            p = line.split("=", 1)[1].strip()
-            return p if p and os.access(p, os.X_OK) else None
-    return None
+    """A torch-capable interpreter, or None if this host has none."""
+    p = os.environ.get("SONORA_TORCH_PY", TORCH_PY_DEFAULT).strip()
+    return p if p and os.access(p, os.X_OK) else None
 
 
 def test_an_unreadable_checkpoint_is_could_not_run_not_refused():

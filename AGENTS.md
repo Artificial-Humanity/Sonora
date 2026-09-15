@@ -101,22 +101,25 @@ stated in `docs/README.md`, in this section, or in `scripts/gates/test_doc_links
 
 ### 1. Commit Hygiene
 
-**THE LOOP** (owner, 2026-08-13; respecified in full 2026-08-17). Work happens on a **branch**,
-is reviewed by a one-shot reviewer process, and merges to `main` only once every issue on it is
-closed.
+**HOW WORK LANDS** (owner, 2026-08-13; the review loop it described was REMOVED 2026-09-15).
+Work happens on a **branch** and merges to `main` when the developer judges it ready.
 
-⚠⚠ **[FerroStep/workflow/WORKFLOW.md](FerroStep/workflow/WORKFLOW.md) IS THE MAP OF THE LOOP AND IT OUTRANKS THIS
-SECTION.** It holds the state machine, both roles' steps, and the four rulings of 2026-08-17
-that **reversed** what this file used to enforce: escalation moved to the worker, escalation
-now blocks the merge, the changeset record is retired, and `state: review` exists. Read it
-first. What follows is the contract *between* the roles, not either role's procedure.
+⚠⚠ **THERE IS NO REVIEW CYCLE AND NO MERGE GATE.** Until 2026-09-15 a branch was read by a
+one-shot reviewer process, findings went to a tracker, and `merge_branch.sh` refused to merge
+a branch carrying a finding at or above a severity floor. The owner removed all of it that
+day, pending a larger revamp — `FerroStep/workflow/` is gone entirely, along with the 316
+tests that guarded it. [FerroStep/personas/DEVELOPER.md](FerroStep/personas/DEVELOPER.md) §3
+records what went and what it cost.
 
-⚠ **`FerroStep/workflow/` IS A PORTABLE LANE, NOT PART OF THIS REPO'S SUBJECT MATTER** (owner,
-2026-08-17). It is meant to be copied whole into another repo, which is why the paragraph above
-is a pointer and not a summary: **a summary here becomes a second copy that the port leaves
-behind — still authoritative-looking, and now wrong.** The procedure is
-`FerroStep/workflow/WORKFLOW.md`, "Porting this lane": a copy, two lines in `CLAUDE.md`, and a glance at
-`FerroStep/workflow/config.env`. Nothing in this section should need editing to move the lane.
+⚠ **Do not reconstruct any of it from this file.** The scripts were deleted on purpose. This
+repo has watched a deleted file go on being obeyed from a summary for eight commits, which is
+the exact failure this warning exists to prevent.
+
+⚠ **`FerroStep/workflow/` NO LONGER EXISTS HERE** (removed 2026-09-15). It was a portable
+lane, meant to be copied whole into another repo, which is why this section pointed at it
+rather than summarising it — a summary becomes a second copy that a port leaves behind, still
+authoritative-looking and now wrong. **That reasoning is why there is so little to delete from
+this file**, and it is worth keeping for whatever replaces the lane.
 
 ⚠ **YOUR ROLE HAS A SYSTEM PROMPT, AND IT IS WHERE THE PROCEDURE NOW LIVES** (owner,
 2026-08-14):
@@ -124,7 +127,7 @@ behind — still authoritative-looking, and now wrong.** The procedure is
 | role | roster title | system prompt |
 |---|---|---|
 | **Developer** | `developer` — the roster's `default_agent` | [FerroStep/personas/DEVELOPER.md](FerroStep/personas/DEVELOPER.md) |
-| **Reviewer** | `reviewer` | [FerroStep/personas/REVIEWER.md](FerroStep/personas/REVIEWER.md) |
+| **Reviewer** | `reviewer` | [FerroStep/personas/REVIEWER.md](FerroStep/personas/REVIEWER.md) — ⚠ a DEPICTION since 2026-09-15; nothing loads it |
 
 ⚠ **Names and emails are deliberately NOT restated here.** They live in
 [config.yaml](FerroStep/config.yaml) — the FerroStep roster, the ONE place identities are set
@@ -154,62 +157,11 @@ file that *is* loaded, and all it does is send you here and to your role's perso
   its own.** The old route — `--append-system-prompt-file FerroStep/personas/DEVELOPER.md` — still
   works and still survives `/clear`, but it is now redundant, and a persona that depends on
   someone remembering a flag is the failure this repo keeps re-learning.
-* **The reviewer is given `FerroStep/personas/REVIEWER.md` through `--system-prompt-file`** (the
-  replacing form), which is why that file is written to stand alone and this one is not.
-* ⚠⚠ **THE IMPORT REACHES THE REVIEWER TOO, AND THAT IS THE COST OF THE ABOVE.**
-  `--system-prompt-file` replaces the *default assistant prompt*; it does **not** suppress
-  `CLAUDE.md`, and imports ride along with it (both measured 2026-08-17). **So Janis is handed
-  Ozzy's full persona on every run** — a competing role telling it to commit, to increment
-  `agent_passes`, and to fix rather than report.
-  * **The precedence rule is the whole separation**, so it is stated at three points: the
-    import site in `CLAUDE.md`, `REVIEWER.md` §0 (with a table of the four conflicts that
-    matter), and last of all in the brief `request_review.sh` appends — last because recency
-    favours it there.
-  * ⚠ **Do not "fix" this by deleting the import.** The contamination is the price of the
-    default working with no flag, and the owner chose the default. A system prompt outranks
-    project memory, which is what makes the price payable.
-  * ⚠ **Do not resolve a role question from the invocation.** `CLAUDE_CODE_ENTRYPOINT` is
-    `cli` interactively and `sdk-cli` under `-p` (measured, with the inherited value stripped
-    so it is print mode setting it, not leakage) — but **Ozzy runs under `-p` too**, unattended
-    via `review_cycle.sh`. It distinguishes the *invocation*, never the *role*. It is a
-    falsifier for a confused session and nothing more; the role is decided at the call site.
-
-⚠ **The reviewer does not arrive holding this file.** `FerroStep/personas/REVIEWER.md` is passed to
-`claude -p` with `--system-prompt-file`, which **replaces** the default prompt outright. Janis
-gets `CLAUDE.md` auto-loaded (measured: that still happens even under `--system-prompt-file`)
-and so gets a *pointer* here — but a pointer is only followed if something makes it worth
-following. **So a rule added here and nowhere else reaches the reviewer at best by one
-optional hop.** Anything Janis must not miss belongs in the persona or in the brief that
-`request_review.sh` builds.
-
-1. **The developer commits**, then runs
-   `FerroStep/workflow/scripts/request_review.sh --range origin/main..HEAD --developer Ozzy`, naming **the whole
-   range it is about to push**.
-2. **The script blocks.** `Reviewer` reads the range and files issues straight into
-   PocketBase, each carrying the `branch_name` of the review that produced it.
-3. **The script returns**, printing the review and the `branch_name` it filed under. **There is
-   no tap-back** — the review has arrived when the script exits.
-4. **The developer takes each issue — the engine spends `agent_passes`, first, before any
-   work —**
-   then addresses them: fixing what is wrong, rebutting what is not, **in the issue's
-   comments**. Then runs the script again with `--pass N`.
-5. **`Reviewer` re-reviews and RESOLVES**: closes what is genuinely cleared, leaves open what
-   is not, files anything new under a **new** `branch_name`, and flags what needs the owner.
-
-**The loop's procedure is not here.** The state machine, both roles' steps, the
-three-fix-pass cap, escalation and the `user_decision` return path all live in
-[FerroStep/workflow/WORKFLOW.md](FerroStep/workflow/WORKFLOW.md), with each role's half in
-[FerroStep/personas/DEVELOPER.md](FerroStep/personas/DEVELOPER.md) and
-[FerroStep/personas/REVIEWER.md](FerroStep/personas/REVIEWER.md). **They were restated here until 2026-08-17 and
-the copy drifted from the original three times in one pull request** — including a role table
-that still assigned escalation to the reviewer a day after the owner moved it to the worker.
-One copy, in `FerroStep/workflow/`.
-
-**There is no report file at any point**: the tracker is the report.
-
-⚠ **THE LOOP HAS ONE EXIT THAT IS NOT A PUSH, and it is a human handoff.** If a finding is
+⚠ **The abort below is the one part of the old loop that survives**, because it was never
+about the loop — it is the owner's rule about what must not land.
+⚠ **THERE IS AN EXIT THAT IS NOT A PUSH, and it is a human handoff.** If a finding is
 that the change **should not land at all** — it corrupts data, it ships a known-broken
-training path, it cannot be safely reverted — the loop does not apply. **Do not push; take it
+training path, it cannot be safely reverted — your own judgement does not settle it. **Do not push; take it
 to the owner.** Filing an issue and pushing anyway is right for a defect that can live on
 `main` and be fixed later; it is wrong for one that cannot. Deliberately a judgement call and
 not a severity threshold: no automatic rule has ever separated legitimate repair from churn.
@@ -281,11 +233,14 @@ the simple version that holds until then. Do not build tooling on its shape.
     "name both ends — `git push origin <branch>:main`". **That command reaches `main`**, and
     reproduced here it did: an unreviewed commit on a scratch branch went
     `093cf40..a23f28a  sonora/scratch -> main` in one step. It bypasses the refusal the
-    sub-bullet below calls the only thing standing there, AND `merge_branch.sh`'s severity
-    gate — the remedy defeating the guard, written one line above the sentence praising it.
-    **Work reaches `main` through `FerroStep/workflow/scripts/merge_branch.sh` and nothing
-    else.** If what you want is the branch on `origin` rather than on `main`, push it under its
-    own name (`git push origin <branch>:<branch>`, or `-u` once).
+    sub-bullet below calls the only thing standing there — the remedy defeating the guard,
+    written one line above the sentence praising it.
+    ⚠⚠ **AND IT MATTERS MORE NOW THAN IT DID THEN.** That sentence used to continue "work
+    reaches `main` through `merge_branch.sh` and nothing else", and there was a severity gate
+    behind the refusal. **`merge_branch.sh` was removed on 2026-09-15 and there is no gate.**
+    So the `push.default=simple` refusal is no longer the first of two guards — it is the
+    only one left anywhere. If what you want is the branch on `origin` rather than on `main`,
+    push it under its own name (`git push origin <branch>:<branch>`, or `-u` once).
     * ⚠ **THAT REFUSAL IS A GUARD, AND IT IS CURRENTLY THE ONLY THING BETWEEN A SCRATCH BRANCH
       AND `main`** (owner, 2026-09-11, declining to re-set `push.default`). This bullet used to
       mourn it: it called `simple` "the default this replaced" and described losing the refusal
@@ -335,21 +290,13 @@ the simple version that holds until then. Do not build tooling on its shape.
   lesson expensively: `deploy.sh`'s "deploy only when a service change is intended" was a
   header comment for weeks, got ignored eleven hours into a live training run, and is now a
   hard refusal in code.
-* **The steps, the cap, escalation and `user_decision` are in
-  [FerroStep/workflow/WORKFLOW.md](FerroStep/workflow/WORKFLOW.md).** It is the map; this section is the contract
-  between the roles plus the repo facts both depend on.
-  * ⚠ **The rules are also MECHANISMS now, which is why restating them here is worse than
-    useless.** The FerroStep engine refuses an undeclared state move, a mandatory note that
-    is missing, and a take at the spent ceiling — all against `FerroStep/workflow/sonora-lane.json`,
-    the one copy of the state machine (phase 2 of the cutover, 2026-08-24; `issue.py` only
-    requests the moves);
-    `FerroStep/workflow/scripts/merge_branch.sh` refuses to merge a branch that carries a finding at or
-    above the **severity floor** — the threshold is `MERGE_SEVERITY_FLOOR` in
-    `FerroStep/workflow/config.env` and is deliberately not repeated here; anything below it rides to a
-    follow-up; ungraded findings and halted states block at any severity (owner, ratified
-    2026-08-19, built 2026-08-20 — WHICH states are halted is the definition's fact too).
-    A paraphrase in this file cannot refuse anything, and a reader who believes it over the
-    mechanism is being misled by the more authoritative-looking document.
+* ⚠ **THE MECHANISMS THIS SECTION DEFERRED TO ARE GONE** (2026-09-15). It used to say the
+  rules were also mechanisms — the engine refusing an undeclared state move, a missing
+  mandatory note or a take at the spent ceiling; `merge_branch.sh` refusing a branch over the
+  severity floor — and that restating them here was therefore worse than useless. **All of
+  that was removed with the review cycle.** The reasoning holds and is worth re-reading before
+  anything replaces it: a paraphrase in a document cannot refuse anything, and a reader who
+  believes the document over the mechanism is misled by the more authoritative-looking one.
 
 ### 2. Training & Troubleshooting Mandates
 
@@ -469,63 +416,35 @@ the simple version that holds until then. Do not build tooling on its shape.
   a dated log of past events. If you catch yourself writing "on 2026-08-11 we changed X",
   that belongs in the commit that changed X.
 
-### 5. Code Review Standards
+### 5. Reading Code — the standards, with no cycle behind them
 
-* **Review happens BEFORE THE PUSH, and §1 has the procedure** — commit, request a review of
-  the range you are about to push, one fix pass, one re-review, file the remainder, push.
-  §1 is a procedure and not a *mechanism*: nothing enforces it.
-* **A review is a report, not a fix pass.** This survives the retirement and applies to any
-  agent asked to review anything: the deliverable is the findings. Take on fixes only when
-  the owner explicitly asks, never as a rider on the review itself.
+⚠ **THE REVIEW CYCLE WAS REMOVED 2026-09-15** and most of this section went with it: when to
+request a review, what counts as in scope for one, the `workflow/` finding hold, and the open
+questions about a wholesale sweep. All of it described a procedure that no longer exists.
+
+**What survives is not procedure — it is how to read code, and it applies whenever anyone
+here reads any.**
+
+* **A review is a report, not a fix pass.** The deliverable is the findings. Take on fixes
+  only when the owner explicitly asks, never as a rider on the reading itself.
 * ⚠ **REVIEW THE INSTRUCTION, NOT ONLY THE CLASSIFICATION — they fail independently, and the
   second is where the defects hide.** Six instances across four rounds on 2026-08-11: in every
   one the code decided *correctly* and the instruction attached to it was wrong or impossible.
   A remedy naming a fix that cannot address the cause; a bucket telling the reader to "score
   them first" about clips already scored; a comment claiming an override the tool never had.
   * *"Is this line true?"* is easy to read for. *"What would someone DO on reading this line?"*
-    is a different question and almost never asked. Ask it of every message, comment, docstring
-    and suggested remedy — including the ones a review itself writes, since a `suggestion`
-    block is committed in one click and gets far less scrutiny than the finding it hangs off.
-* **Scope: code work only.** Source, configs and dependency manifests. Docs-only changes need
-  no review. ⚠ **With exceptions that are ALWAYS in scope regardless of extension:
-  `.claude/**`, `AGENTS.md`, `CLAUDE.md`.** `.claude/commands/*.md` is an executable prompt —
-  it tells an agent holding push rights what to run — so it is closer to a shell script than
-  to a README. The unqualified version of this sentence once let a change merge with **zero
-  review**.
-  * ⚠ **THIS IS A JUDGEMENT THE WORKER MAKES ABOUT ITS OWN CHANGE**, before it asks for
-    anything — nothing checks it. When in doubt on a mixed diff, request the review.
-* ⚠⚠ **THE `workflow/` HOLD EXPIRED ON 2026-08-27, AND THIS BULLET OUTLIVED IT BY TWO WEEKS.**
-  What stood here was the 2026-08-24 instruction *do not spend review findings on `workflow/`*,
-  stated as a standing rule. **It was a purpose-limited hold** — do not spend findings on a lane
-  about to be replaced — **and its purpose ended the day FerroStep became the management tool.**
-  The live rule is [FerroStep/personas/REVIEWER.md](FerroStep/personas/REVIEWER.md) § *Workflow
-  findings go to FerroStep* (owner, 2026-08-27): findings about this lane's machinery are FILED,
-  with `--repo Artificial-Humanity/FerroStep` when FerroStep could act on them, and the owner
-  expects that share to be the larger one. The test is a question — *could FerroStep act on this,
-  and would acting improve it?* — not a list, and not "where would the fix land".
-  * ⚠ **THE CONDITION WAS NEVER WRITTEN BESIDE THE RULE, WHICH IS WHY IT OUTLIVED IT.**
-    REVIEWER.md records two agents turning the hold into a standing prohibition for exactly that
-    reason. **A third did so on 2026-09-11** — this file was cited, in good faith, in a
-    developer's notes telling a reviewer not to file against the lane; the reviewer checked its
-    own persona, applied the current rule, and said so. **When you write a rule that depends on a
-    condition, write the condition next to it**, or the rule becomes permanent by default.
-* ⚠ **Periodic wholesale review is a different altitude, and the one-shot move SETTLED HALF OF
-  THIS** (raised 2026-08-13, half-resolved 2026-08-14). The owner keeps a floating reviewer
-  session for reading the codebase and the product direction as a whole, on its own cadence:
-  per-change review answers *"is this diff correct?"*, that one answers *"is this still
-  coherent?"*. The standing warning was that the two must not be collapsed, because per-diff
-  volume will always crowd out the wider read.
-  * **Resolved: they cannot now be the same thing.** Per-commit traffic goes to a `claude -p`
-    process that exits when the review does — it has no cadence, no memory, and no existence
-    between reviews, so it is structurally incapable of being the floating session. That
-    collapse is no longer available to make by accident.
-  * **Still open: where a wholesale review's output lands.** It is **not** the per-change
-    tracker as §1 uses it — that loop files issues scoped to one range under one `branch_name`,
-    and a wholesale read has neither. Ask before inventing a home for it.
-  * **Also still open: whether Janis's persona fits that altitude.**
-    [FerroStep/personas/REVIEWER.md](FerroStep/personas/REVIEWER.md) is written for a bounded range with a
-    `branch_name` to file under. A wholesale read has neither, and reusing the persona
-    unmodified would produce a per-diff review pointed at a whole codebase. Ask, do not assume.
+    is a different question and almost never asked. Ask it of every message, comment,
+    docstring and suggested remedy.
+* ⚠ **The single most common defect found on this repo was prose claiming more than the
+  executable statement beside it** — measured across the lane's whole life, and it outlived
+  the lane. Read the code, not the comment next to it.
+* **Reproduce before reporting, and positive-control every negative.** An empty result and a
+  broken instrument are indistinguishable; check that the check ran.
+
+⚠ **`.claude/**`, `AGENTS.md` and `CLAUDE.md` are code.** `.claude/commands/*.md` is an
+executable prompt — it tells an agent holding push rights what to run — so it is closer to a
+shell script than to a README. That was a review-scope rule; with no review to scope, it
+survives as a warning about what these files are.
 
 ### 5b. The doc-claims gate can stop enforcing WITHOUT going red
 
