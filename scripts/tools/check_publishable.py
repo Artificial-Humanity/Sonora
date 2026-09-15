@@ -38,12 +38,12 @@ Every sentence that said how many places hold this path was correct when written
 fail afterwards: "a deliberate second copy", then "THREE PLACES", then — four lines below the
 sentence removing it — "All three are now pinned". A number in prose is not a mechanism.
 
-The mechanism is `_INTERPRETER_COPIES` in
-`tests/test_request_review.py`: every place that spells the path out is enrolled there and
-compared against `run.sh`, and
-`test_every_literal_copy_of_the_interpreter_is_enrolled_in_the_pin` scans the tracked tree for
-the literal and fails on any file not enrolled. So the enumeration is complete by construction,
-and nothing here needs to count. Change `run.sh` and the pin names whichever copy did not
+⚠ THE MECHANISM IS GONE (2026-09-15). `_INTERPRETER_COPIES` lived in
+`tests/test_request_review.py`, which was deleted with the review lane. It enrolled every
+place that spells the interpreter path out, compared them against `run.sh`, and scanned the
+tracked tree for the literal so the enumeration was complete by construction. **Nothing
+enforces that now**, so the copies can drift apart silently — which is exactly the state the
+paragraph above describes as having been paid for once already. Change `run.sh` and the pin names whichever copy did not
 follow; add a copy without enrolling it and the completeness test says so.
 
 The guarded import in `main()` says the interpreter part at the moment it fails, because a

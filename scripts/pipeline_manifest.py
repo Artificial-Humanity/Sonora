@@ -177,33 +177,10 @@ NOT_ORCHESTRATORS = {
         "toolchain script outside this repo."
     ),
     # --- the review lane (FerroStep/workflow/), not the data pipeline -----------------------------
-    # ⚠ These live outside `scripts/` since 2026-08-17 and are declared here anyway, because
-    # the enumeration behind this gate is REPO-WIDE rather than `scripts/*.sh`. That widening
-    # (2026-08-12) was made when every shell happened to live under `scripts/`, so it changed
-    # no result and read as belt-and-braces. `FerroStep/workflow/` is the first thing to exercise it —
-    # leaving these undeclared would be exactly the exemption-by-construction it removed.
-    "FerroStep/workflow/scripts/request_review.sh": (
-        "Review lane: runs `claude -p` as Janis over a commit range, and blocks. Touches no "
-        "pipeline stage and writes no artifact under /data — its output is issues in the "
-        "tracker. See FerroStep/workflow/WORKFLOW.md §2."
-    ),
-    "FerroStep/workflow/scripts/review_cycle.sh": (
-        "Review lane: drives request_review.sh and a `claude -p` worker unattended until the "
-        "branch converges. ⚠ It NEVER pushes, and denies `git push` and `merge_branch.sh` to "
-        "the worker it spawns."
-    ),
-    "FerroStep/workflow/scripts/merge_branch.sh": (
-        "Review lane: the merge gate. Refuses to merge a branch into main unless it clears "
-        "the SEVERITY FLOOR set in FerroStep/workflow/config.env — at or above it blocks, below it rides "
-        "to a follow-up, ungraded and escalated block at any severity (owner 2026-08-19, "
-        "built 2026-08-20); then merges "
-        "and pushes. ⚠ The only thing in this repo that reaches `main` on its own — see "
-        "FerroStep/workflow/WORKFLOW.md §3."
-    ),
-    "FerroStep/workflow/scripts/full_review.sh": (
-        "Review lane: the periodic WHOLE-CODEBASE sweep. Cuts `review-YYYY-MM-DD` from main and "
-        "starts a review with no commit range, because per-change review is structurally blind "
-        "to what ACCUMULATED — the doc that stopped being true, the guard nobody runs, the file "
-        "nothing invokes. See FerroStep/workflow/WORKFLOW.md §2b."
-    ),
+    # ⚠ THE FOUR REVIEW-LANE ENTRIES WERE REMOVED 2026-09-15 with the scripts they declared
+    # (request_review.sh, review_cycle.sh, merge_branch.sh, full_review.sh). The note they
+    # carried is worth keeping without them: the enumeration behind this gate is REPO-WIDE
+    # rather than `scripts/*.sh`, and `FerroStep/workflow/` was the first thing to exercise
+    # that widening. If shell ever lands outside `scripts/` again, it gets declared here —
+    # leaving it undeclared is the exemption-by-construction the widening removed.
 }

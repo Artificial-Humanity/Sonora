@@ -15,23 +15,14 @@ path is stated here and configured there. Change one, change both.
 
 @FerroStep/personas/DEVELOPER.md
 
-⚠ **The one exception is the reviewer** — its persona resolves from the roster
-(`ferrostep agent-env --agent reviewer`) and is handed to `claude -p` only by
-`FerroStep/workflow/scripts/request_review.sh` as its `--system-prompt-file`. **If that file is
-your system prompt it outranks everything here**, and the import above is not addressed to you.
+**There is no exception any more, and there used to be one.** Until 2026-09-15 a reviewer
+persona was handed to a separate `claude -p` process, and this section carried a precedence
+rule because that process received Ozzy's persona too. The review cycle was removed by the
+owner that day — see [DEVELOPER.md](FerroStep/personas/DEVELOPER.md) §3 — so nothing launches
+a second role and the import above is addressed to you without qualification.
 
-MEASURED 2026-08-17: `--system-prompt-file` replaces the *default assistant prompt*; it does
-**not** suppress this file, and imports come with it. So Janis is handed Ozzy's persona whether
-or not that is wanted, and **the precedence rule is the only thing separating the two roles.**
-It is therefore stated at three points on purpose — here, in REVIEWER.md §0, and again in the
-brief the launcher appends at the call site.
-
-⚠ **Do not try to infer your role from how you were invoked.** `-p` is not the test: the
-developer runs under `-p` too, unattended, via `review_cycle.sh`. *(A signal does exist —
-`CLAUDE_CODE_ENTRYPOINT` is `cli` interactively and `sdk-cli` under `-p`. Keep it as a
-falsifier for a session that has become confused, never as the mechanism: it lives in the
-environment rather than in your context, so using it means choosing to go and look, which is
-the very step this import exists to remove.)*
+⚠ `FerroStep/personas/REVIEWER.md` still exists and is **a depiction, not a prompt.** Nothing
+loads it. Do not read it as instructions and do not reconstruct a review loop from it.
 
 ⚠ **If you are committing, you are the developer**, and the author line is not automatic:
 

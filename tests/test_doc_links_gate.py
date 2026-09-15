@@ -250,9 +250,13 @@ def test_the_scan_is_every_tracked_markdown_except_workflow():
                 "README-Matcha.md", "audition/README.md", "scripts/README.md",
                 "scripts/teacher_audition/README.md"):
         assert os.path.join(REPO, rel) in scanned, f"{rel} is not scanned"
-    for rel in ("FerroStep/workflow/WORKFLOW.md", "FerroStep/personas/REVIEWER.md", "FerroStep/personas/DEVELOPER.md"):
+    # ⚠ `FerroStep/workflow/WORKFLOW.md` was in this list until 2026-09-15 and the file no
+    # longer exists — the review lane was removed. The two personas remain as DEPICTIONS and
+    # must still stay out of Sonora's doc gates: they are FerroStep's files, not this repo's
+    # subject matter, and the original reason holds whether or not a lane consumes them.
+    for rel in ("FerroStep/personas/REVIEWER.md", "FerroStep/personas/DEVELOPER.md"):
         assert os.path.join(REPO, rel) not in scanned, (
-            f"{rel} IS scanned — the retired lane is back in a Sonora merge gate")
+            f"{rel} IS scanned — FerroStep's files are not Sonora's to gate on")
 
 
 def test_the_scan_reads_the_index_not_the_working_tree(tmp_path):
