@@ -77,9 +77,21 @@ _EXTERNAL_OPTIONALS = {
     "matplotlib": "same, and only `matcha.cli` needs it",
     "numpy": "declared, but optional for the tests that guard on it",
     "soundfile": "declared; audio-only paths",
+    "librosa": "declared, and heavy — it drags numba/llvmlite, so a lean container that "
+               "never resamples legitimately has no librosa",
     "pysbd": "declared; sentence splitting in the book lane",
     "pyloudnorm": "undeclared; loudness measurement",
     "ai_edge_litert": "undeclared; the LiteRT harness venv lives with the data",
+    # ⚠ TOP-LEVEL NAMES ONLY. Both lookups key on `name.split(".")[0]`, so a dotted entry
+    # here is DEAD — it matches nothing and silently covers nothing. `pyarrow.parquet` was
+    # listed beside this one until #478, with a reason saying the submodule "is the actual
+    # import site", which reads as though the entry were doing work. It was not: the
+    # `pyarrow` key already covers every `pyarrow.*` target. An unreachable entry with a
+    # confident reason is worse than no entry, because it answers the question a reader
+    # came here to ask.
+    "pyarrow": "declared in the `dataprep` EXTRA, not in `dependencies` — nothing on the "
+               "training or inference path reads parquet, so a container legitimately has "
+               "no pyarrow and `convert_hifi_tts` is a workstation tool",
 }
 
 
