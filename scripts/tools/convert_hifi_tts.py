@@ -128,7 +128,7 @@ def _dest(out, speaker, src_file, stem_suffix=".wav"):
 def _convert_shard(job):
     """One parquet shard -> wavs + texts. Returns counts and manifest rows.
 
-    Resumable the way `merge_expressive_registers._stage` is: an existing destination whose
+    Resumable the way `merge_expressive_registers._stage_24k` is: an existing destination whose
     samplerate and frame count already match is REUSED rather than re-decoded, so an
     interrupted run costs a stat per clip instead of a resample. The frame check is what
     makes that safe — a truncated file from a killed write has the wrong length and is
@@ -202,9 +202,11 @@ def _convert_shard(job):
             # soundfile infers the container from the EXTENSION — which here is `.tmp`.
             # Without this it raises `TypeError: No format specified and unable to get
             # format from file extension`, on every clip, measured 2026-09-14: a smoke run
-            # wrote 3,600 transcripts and 0 wavs. `scripts/tools/merge_expressive_registers.py`
-            # writes through the same `dst + ".tmp"` shape without a format and is the
-            # place to look if that ever needs restaging.
+            # wrote 3,600 transcripts and 0 wavs.
+            # ⚠ `scripts/tools/merge_expressive_registers._stage_24k` had the identical
+            # defect and it is FIXED (#476) — this comment said otherwise until #479, having
+            # gone stale in the same commit that repaired it. Kept as a pointer because the
+            # two writes share a shape worth recognising, not as an open defect.
             sf.write(wav + ".tmp", y, TARGET_SR, subtype="PCM_16", format="WAV")
             os.replace(wav + ".tmp", wav)
             n_written += 1

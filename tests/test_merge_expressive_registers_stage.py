@@ -62,14 +62,32 @@ def test_a_first_stage_actually_writes_a_24k_wav(source, tmp_path):
     assert not [f for f in os.listdir(os.path.dirname(dst)) if f.endswith(".tmp")], "a .tmp survived"
 
 
-def test_a_second_stage_reuses_it(source, tmp_path):
-    """⚠ POSITIVE CONTROL, and the reason #476 hid. This is the branch every run since the
-    corpus was built has taken, and it passes with or without the fix — so its value here is
-    to show that the test above is measuring the OTHER branch, not this one."""
+def test_a_second_stage_actually_reuses_rather_than_redecoding(source, tmp_path, monkeypatch):
+    """The reuse branch — the one every run since the corpus was built has taken (#476).
+
+    ⚠⚠ THIS DOCSTRING CLAIMED TWO THINGS THAT WERE BOTH FALSE (#480). It said the test
+    "passes with or without the fix", and it did not: its FIRST call is itself a first stage,
+    so it reaches the broken write and fails under the mutant — my own "2 failed" mutation
+    count said so and I wrote the opposite line above it. And it called itself a positive
+    control while asserting only `os.path.exists`, which a full re-decode satisfies exactly
+    as well as a reuse. **It could not fail for the reason it was there.**
+
+    So it now counts decodes. `librosa.load` is the only way audio is read on this path, and
+    the reuse branch must not call it at all on the second pass. That is the postcondition
+    the name claims, and unlike a file's existence it distinguishes reuse from re-doing the
+    work and arriving at the same bytes.
+    """
     stage = tmp_path / "stage"
-    M._stage_24k(source, str(stage))
+    M._stage_24k(source, str(stage))          # first stage — this one legitimately decodes
+
+    import librosa
+    calls = []
+    real = librosa.load
+    monkeypatch.setattr(librosa, "load", lambda *a, **k: (calls.append(a[:1]), real(*a, **k))[1])
+
     out, _ = M._stage_24k(source, str(stage))
     assert os.path.exists(out["clip_one"])
+    assert calls == [], "the second stage decoded %d clip(s); it should have reused" % len(calls)
 
 
 def test_a_dry_run_writes_nothing_but_still_plans(source, tmp_path):
