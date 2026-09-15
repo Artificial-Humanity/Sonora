@@ -46,13 +46,15 @@ RECURSIVE_BY_DESIGN = {
 # `matcha` outright is the worst case of all and was not probed.
 SOURCE_DIRS = ["scripts", "scripts/lib", "scripts/gates", "scripts/tools", "scripts/stages",
                "scripts/assets", "scripts/assets/director_skills", "configs",
-               "matcha", "matcha/models", "matcha/utils", "tests", "FerroStep",
-               # ⚠ `FerroStep/workflow` and `FerroStep/workflow/scripts` LEFT THIS LIST
-               # 2026-09-15 because the directories were deleted with the review cycle — not
-               # because they became exempt. `test_every_probed_directory_exists` is what
-               # caught it: a probe of a directory that does not exist proves nothing and
-               # passes anyway, which is the failure this whole file is about.
-               "FerroStep/personas",
+               "matcha", "matcha/models", "matcha/utils", "tests",
+               # ⚠ THE WHOLE `FerroStep/` FAMILY LEFT THIS LIST on 2026-09-15 — first
+               # `workflow/` and `workflow/scripts` when the review cycle was deleted, then
+               # `FerroStep` and `FerroStep/personas` when the rest was dismantled and the
+               # personas moved to `docs/personas/`. None of them became exempt; they stopped
+               # existing. `test_every_probed_directory_exists` is what caught each one: a
+               # probe of a directory that is not there proves nothing and passes anyway,
+               # which is the failure this whole file is about.
+               "docs", "docs/personas",
                "audition/app"]
 # ⚠ `notes` LEFT THIS LIST 2026-09-08 and its absence is the point. The list names
 # directories where a NEW file must not be silently ignored; `notes` is now a gitignored

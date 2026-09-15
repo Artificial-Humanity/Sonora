@@ -108,7 +108,7 @@ Work happens on a **branch** and merges to `main` when the developer judges it r
 one-shot reviewer process, findings went to a tracker, and `merge_branch.sh` refused to merge
 a branch carrying a finding at or above a severity floor. The owner removed all of it that
 day, pending a larger revamp — `FerroStep/workflow/` is gone entirely, along with the 316
-tests that guarded it. [FerroStep/personas/DEVELOPER.md](FerroStep/personas/DEVELOPER.md) §3
+tests that guarded it. [docs/personas/DEVELOPER.md](docs/personas/DEVELOPER.md) §3
 records what went and what it cost.
 
 ⚠ **Do not reconstruct any of it from this file.** The scripts were deleted on purpose. This
@@ -126,15 +126,15 @@ this file**, and it is worth keeping for whatever replaces the lane.
 
 | role | roster title | system prompt |
 |---|---|---|
-| **Developer** | `developer` — the roster's `default_agent` | [FerroStep/personas/DEVELOPER.md](FerroStep/personas/DEVELOPER.md) |
-| **Reviewer** | `reviewer` | [FerroStep/personas/REVIEWER.md](FerroStep/personas/REVIEWER.md) — ⚠ a DEPICTION since 2026-09-15; nothing loads it |
+| **Developer** | `developer` — the roster's `default_agent` | [docs/personas/DEVELOPER.md](docs/personas/DEVELOPER.md) |
+| **Reviewer** | `reviewer` | [docs/personas/REVIEWER.md](docs/personas/REVIEWER.md) — ⚠ a DEPICTION since 2026-09-15; nothing loads it |
 
 ⚠ **Names and emails are deliberately NOT restated here.** They live in
-[config.yaml](FerroStep/config.yaml) — the FerroStep roster, the ONE place identities are set
-(owner, 2026-08-24) — and resolve with `ferrostep agent-env [--agent <title>]`.
+[roster.yaml](roster.yaml) — the ONE place identities are set (owner, 2026-08-24) — and
+resolve with `.venv/bin/python scripts/agent_env.py [--agent <title>]`.
 
 **If you are the developer session for this repo, read
-[FerroStep/personas/DEVELOPER.md](FerroStep/personas/DEVELOPER.md) now and work as Ozzy.** It is your standing
+[docs/personas/DEVELOPER.md](docs/personas/DEVELOPER.md) now and work as Ozzy.** It is your standing
 brief and carries the steps below in the detail your role actually needs. This file keeps the
 *contract between* the roles — the loop, the cap, the abort, and the repo facts both sides
 depend on. It does not duplicate either role's procedure; that duplication is what drifted
@@ -154,7 +154,7 @@ file that *is* loaded, and all it does is send you here and to your role's perso
   `claude` in this repo comes up as Ozzy, because the import is inlined into the auto-loaded
   file rather than linked from it. Measured the same day: `@`-imports resolve, including from
   a subdirectory, and **a plain `claude -p` receives the imported content with no action of
-  its own.** The old route — `--append-system-prompt-file FerroStep/personas/DEVELOPER.md` — still
+  its own.** The old route — `--append-system-prompt-file docs/personas/DEVELOPER.md` — still
   works and still survives `/clear`, but it is now redundant, and a persona that depends on
   someone remembering a flag is the failure this repo keeps re-learning.
 ⚠ **The abort below is the one part of the old loop that survives**, because it was never
@@ -379,7 +379,7 @@ the simple version that holds until then. Do not build tooling on its shape.
       message text itself — CLAUDE.md requires it". IT DOES NOT** (checked 2026-09-09:
       `CLAUDE.md` contains no mention of a trailer, and the last 8 commits on `main` carry
       none). Owner, 2026-09-09: **Sonora commits carry NO co-author trailer** — the developer
-      is the author, which is `FerroStep/personas/DEVELOPER.md`'s standing rule and now this
+      is the author, which is `docs/personas/DEVELOPER.md`'s standing rule and now this
       file's too.
       ⚠ A requirement that cites a source the source does not contain is the exact shape that
       let a trailer ride for eight commits from a file that had been deleted. It was found

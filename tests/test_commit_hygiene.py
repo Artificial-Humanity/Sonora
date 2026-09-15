@@ -2,7 +2,7 @@
 
 WHY THIS FILE EXISTS (2026-08-18, issue #101)
 ---------------------------------------------
-Two rules in `FerroStep/personas/DEVELOPER.md` §1 had no enforcement:
+Two rules in `docs/personas/DEVELOPER.md` §1 had no enforcement:
 
   * commits are authored **Ozzy <ozzy@artificialhumanity.io>**, via the `-c` pair, because the
     repo's configured identity is deliberately the owner's — so a forgotten `-c` does not
@@ -51,20 +51,39 @@ import pytest
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _cfg(key, default):
-    """⚠ FROM `FerroStep/workflow/config.env`, NOT TYPED OUT HERE. `FerroStep/workflow/` is a portable lane meant
-    to be copied whole into another repo (AGENTS.md §1); an identity hardcoded in `tests/`
-    does not travel with it and becomes a second definition that drifts."""
-    try:
-        src = open(os.path.join(REPO, "FerroStep", "workflow", "config.env"), encoding="utf-8").read()
-    except OSError:
-        return default
-    m = re.search(r"^%s=(.*)$" % re.escape(key), src, re.M)
-    return m.group(1).split("#", 1)[0].strip() if m else default
+def _developer():
+    """The developer identity, FROM `roster.yaml`, never typed out here.
+
+    ⚠⚠ THIS USED TO READ `FerroStep/workflow/config.env` AND SILENTLY FALL BACK TO HARDCODED
+    VALUES when the file was missing. That fallback fired for real: the config was deleted
+    with the review cycle on 2026-09-15, these tests went on passing, and the "second
+    definition that drifts" the old docstring warned against became the ONLY definition —
+    still under a comment insisting it was not typed out here. A default that silently
+    replaces its own source is worse than no source, because the test keeps reporting green
+    while measuring something else.
+
+    So: no default. A roster this cannot read is a refusal, reported where it is used.
+    """
+    import yaml
+    path = os.path.join(REPO, "roster.yaml")
+    with open(path, encoding="utf-8") as f:
+        doc = yaml.safe_load(f)
+    entry = doc["agents"][doc["default_agent"]]
+    return entry["name"].strip(), entry["email"].strip()
 
 
-DEVELOPER = (_cfg("DEVELOPER_NAME", "Ozzy"), _cfg("DEVELOPER_EMAIL", "ozzy@artificialhumanity.io"))
-BASE_BRANCH = _cfg("BASE_BRANCH", "main")
+try:
+    DEVELOPER, ROSTER_ERROR = _developer(), None
+except Exception as e:                      # noqa: BLE001 — surfaced in the tests, not at import
+    # ⚠ NOT raised here. A module-scope raise is a COLLECTION error, and a collection error
+    # aborts the whole session rather than failing this file — which is how one unreadable
+    # file takes the suite down with it.
+    DEVELOPER, ROSTER_ERROR = None, "%s: %s" % (type(e).__name__, e)
+
+# ⚠ `main` is this repo's base branch and is not a roster fact — the roster holds identities.
+# It is written here because there is nowhere better since `config.env` went, and because it
+# has never varied. If it ever does, it needs a declared home rather than this line.
+BASE_BRANCH = "main"
 BAD_TRAILER = "Co-Authored-By: Ziggy"
 
 # ⚠ THE BOUNDARY, AND IT IS A COMMIT, NOT A DATE. Everything up to and including this SHA
@@ -163,6 +182,19 @@ def carries_bad_trailer(trailers, body):
         return True
     return any(re.fullmatch(r"Co-Authored-By:\s*Ziggy\s*<[^>]+>\s*", line, re.I)
                for line in body.splitlines())
+
+
+def test_the_roster_is_readable_and_this_file_is_not_guessing():
+    """⚠ FLOOR. Every identity assertion below rests on `roster.yaml` being readable.
+
+    The predecessor of this file read a config that had been deleted, caught the error, and
+    fell back to hardcoded values — so it kept passing while measuring its own defaults. This
+    is what stops that shape returning: if the roster cannot be read, the failure names the
+    roster instead of surfacing as a mystified identity mismatch twenty lines down.
+    """
+    assert ROSTER_ERROR is None, "roster.yaml could not be read: %s" % ROSTER_ERROR
+    assert DEVELOPER and all(DEVELOPER), "roster.yaml gave an empty developer identity: %r" % (DEVELOPER,)
+    assert "@" in DEVELOPER[1], "the developer email looks wrong: %r" % (DEVELOPER[1],)
 
 
 def test_no_commit_carries_the_ziggy_trailer():

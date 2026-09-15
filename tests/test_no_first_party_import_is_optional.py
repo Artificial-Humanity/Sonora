@@ -79,6 +79,8 @@ _EXTERNAL_OPTIONALS = {
     "soundfile": "declared; audio-only paths",
     "librosa": "declared, and heavy — it drags numba/llvmlite, so a lean container that "
                "never resamples legitimately has no librosa",
+    "yaml": "PyYAML — declared in `dependencies`, but the identity resolver and its test are "
+            "host-side tools and a minimal interpreter can legitimately lack it",
     "pysbd": "declared; sentence splitting in the book lane",
     "pyloudnorm": "undeclared; loudness measurement",
     "ai_edge_litert": "undeclared; the LiteRT harness venv lives with the data",

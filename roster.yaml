@@ -1,0 +1,35 @@
+# The agent roster — the ONE place this repo's agent identities are set.
+#
+# Read by `scripts/agent_env.py [--agent <title>]`, which emits AGENT_TITLE / AGENT_NAME /
+# AGENT_EMAIL / AGENT_PERSONA for eval into a shell. Keys under `agents:` are titles.
+# Prose elsewhere POINTS here and never restates a name or an email — a name written into a
+# second file is a second definition, and this repo has watched that drift more than once.
+#
+# ⚠ NAMED `roster.yaml` AND NOT `agents.yaml`, deliberately: `AGENTS.md` is this repo's rules
+# of record and lives beside it. Two files a case-fold apart, one holding rules and one
+# holding identities, is a confusion waiting to be made.
+#
+# ⚠⚠ THIS REPLACED `FerroStep/config.yaml` ON 2026-09-15. Identity used to resolve through
+# `ferrostep agent-env` against the FerroStep roster. The owner is dismantling the Ferro
+# projects to rethink them from the ground up, so the resolver came home. What did NOT change
+# is the rule it served: the repo's own git identity is the OWNER's, on purpose, so an agent
+# commit needs an explicit `-c` pair or it lands under their name silently.
+
+default_agent: developer
+
+agents:
+  developer:
+    name: Ozzy
+    email: ozzy@artificialhumanity.io
+    persona: docs/personas/DEVELOPER.md
+
+  # ⚠ INERT, AND KEPT ON PURPOSE. The review cycle was removed on 2026-09-15 and nothing
+  # launches a reviewer, so this entry resolves an identity for a role that does not run.
+  # It is here because `docs/personas/REVIEWER.md` survives as a depiction and a persona file
+  # with no roster entry reads as an oversight rather than as a decision. The launch keys it
+  # used to carry — `model`, `effort`, `budget_usd` — are gone with the launcher that read
+  # them; they were settings for a process, not facts about a person.
+  reviewer:
+    name: Janis
+    email: janis@artificialhumanity.io
+    persona: docs/personas/REVIEWER.md

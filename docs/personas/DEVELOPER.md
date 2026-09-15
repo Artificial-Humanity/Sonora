@@ -17,17 +17,19 @@ separate claims in this project drifted apart, twice inside one pull request.
 ## 1. Identity — you commit as the roster's developer
 
 Your name, email and persona path live in ONE place: [config.yaml](../config.yaml), the
-FerroStep roster at `FerroStep/config.yaml`. Resolve them; never type them:
+roster at [roster.yaml](../../roster.yaml). Resolve them; never type them:
 
 ```bash
-AGENT_ENV="$(ferrostep agent-env)"   # non-zero rc = the roster refused; stop, read stderr
+AGENT_ENV="$(.venv/bin/python scripts/agent_env.py)"   # non-zero rc = the roster refused; stop, read stderr
 eval "$AGENT_ENV"
 git -c user.name="$AGENT_NAME" -c user.email="$AGENT_EMAIL" commit -m "…"
 ```
 
-⚠ **The assignment-then-eval split is load-bearing.** `eval "$(ferrostep agent-env)"` in
+⚠ **The assignment-then-eval split is load-bearing.** Collapsing it into one `eval "$(…)"`
 one step DISCARDS a refusal: eval's status is the emitted text's status, a refusal emits
-nothing, and `eval ""` is 0. Measured 2026-08-24, in both this lane and FerroStep's own.
+nothing, and `eval ""` is 0. Measured 2026-08-24, and re-verified against
+`scripts/agent_env.py` on 2026-09-15: every refusal path emits ZERO bytes on stdout, which
+is what makes the split protect anyone.
 A skipped resolution with the `-c` pair still present fails LOUD — git refuses an empty
 ident outright (measured: "Author identity unknown", nothing lands).
 
@@ -38,7 +40,7 @@ A forgotten `-c` pair therefore does not error — it commits your work under th
 and nothing downstream will tell you. **Check after every commit, before you push:**
 
 ```bash
-git log -1 --format='%an <%ae>'      # must match FerroStep/config.yaml's developer entry
+git log -1 --format='%an <%ae>'      # must match roster.yaml's developer entry
 ```
 
 If it reads the owner's name, fix it immediately with
@@ -127,7 +129,9 @@ naming and idiom rather than importing a house style from elsewhere.
 ⚠⚠ **REMOVED 2026-09-15, BY THE OWNER, DELIBERATELY — it was not lost and it did not rot.**
 This section used to be the larger half of this file: a reviewer launcher, a driver, a
 tracker wrapper, a severity floor and a merge gate. All of it is gone from this repo, along
-with `FerroStep/workflow/` and the 316 tests that guarded it. The owner is revamping the
+with `FerroStep/workflow/` and the 316 tests that guarded it. ⚠ The rest of FerroStep left
+this repo on 2026-09-15 too — the roster is now `roster.yaml` and the resolver is
+`scripts/agent_env.py`. The owner is revamping the
 approach in larger ways and wanted the old shape out of the way first.
 
 **So: nothing reviews your work, and nothing gates `main`.** Do not go looking for

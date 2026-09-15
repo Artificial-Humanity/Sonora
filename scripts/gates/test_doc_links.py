@@ -25,7 +25,7 @@ below cannot match one — but that is a property of the pattern, and
 WHAT IT DOES NOT COVER — read this before trusting a pass
 ---------------------------------------------------------
 * ⚠ **THE FILE SET — read this first, because it is what a green run is scoped to.** Both
-  halves scan `repo_markdown()`: every TRACKED `.md` except `FerroStep/`. That is 26 of the
+  halves scan `repo_markdown()`: every TRACKED `.md` except `docs/personas/`. That is 26 of the
   repo's 29 today — it read 50 of 53 until 2026-09-08, when `notes/` became a gitignored
   symlink to the private Notes repo and 24 files stopped being tracked here. ⚠ THAT IS A
   SMALLER SCAN, NOT A CLEANER ONE, and the count is in the present tense on purpose: it was
@@ -78,7 +78,7 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 # the tuple still listed `workflow/`, which the owner excluded. A second scan set is a second
 # thing to keep in sync; this gate has now had three and been wrong about which was live.
 
-# ⚠⚠ THIS REPO'S SCAN IS EVERY TRACKED `.md`, MINUS `FerroStep/` — one set for BOTH halves.
+# ⚠⚠ THIS REPO'S SCAN IS EVERY TRACKED `.md`, MINUS `docs/personas/` — one set for BOTH halves.
 #
 # It was `PROSE_DIRS + ROOT_DOCS` for links and a different, wider set for `§N` citations, and
 # BOTH were wrong in the same direction. Measured (#261): the link half read **38 of the
@@ -93,18 +93,20 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 # that is exactly what the link half's blind spot then produced (#260). Two halves of one gate
 # disagreeing about which files exist is a second thing to keep in sync and nobody was.
 #
-# ⚠ `FerroStep/` IS EXCLUDED, both halves, by owner ruling 2026-08-21: the review lane is
+# ⚠ `docs/personas/` IS EXCLUDED, both halves, by owner ruling 2026-08-21: the review lane was
 # retired and this gate is scoped to Sonora's own code and docs. A dead link or a `§N` inside
 # `REVIEWER.md` is not a Sonora defect and must not fail a Sonora merge. The honest cost is
 # stated at `section_citations`: `CLAUDE.md:21` cites a `REVIEWER.md §0` that does not exist,
 # and this gate steps over it deliberately.
 #
 # ⚠ Widened from `FerroStep/workflow/` when the lane's deployment folder split the persona
-# docs into `FerroStep/personas/` (consolidation, 2026-09-03): the ruling was never about the
+# docs into `FerroStep/personas/` (consolidation, 2026-09-03), then FOLLOWED THEM to
+# `docs/personas/` when FerroStep was dismantled (2026-09-15). The path moved three times
+# and the exclusion moved with it each time, which is the point: the ruling was never about the
 # `workflow/` directory name, it was about the review lane's OWN documents, which now span
 # two subdirectories of one folder. A prefix match on the narrower name would have silently
 # started scanning REVIEWER.md and DEVELOPER.md the moment they moved.
-_SCAN_EXCLUDE = ("FerroStep/",)
+_SCAN_EXCLUDE = ("docs/personas/",)
 
 
 
@@ -144,8 +146,9 @@ LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)")
 EXTERNAL = ("http://", "https://", "mailto:", "file://", "#")
 
 # Sibling checkouts whose links point INTO this repo. Colon-separated, `~` allowed, relative
-# paths resolve from the repo root — the same shape as `SIBLING_REPO_CANDIDATES` in
-# FerroStep/workflow/config.env, which already solved this problem for the reviewer.
+# paths resolve from the repo root. ⚠ The shape was borrowed from `SIBLING_REPO_CANDIDATES`
+# in the review lane's config, which is gone (2026-09-15) — recorded because the convention
+# outlived its origin and the next person should not think this one invented it.
 # ⚠ CANDIDATES, NOT REQUIREMENTS. Each one that is absent is printed and skipped.
 SIBLING_ENV = "SONORA_SIBLING_REPOS"
 # ⚠ `Notes` IS A SIBLING BECAUSE THIS REPO'S OWN PROSE MOVED INTO IT (2026-09-08). `notes/`

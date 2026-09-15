@@ -235,7 +235,7 @@ def test_the_scan_is_every_tracked_markdown_except_workflow():
 
     ⚠ The set widened on 2026-08-21 (#261): it was `notes/`+`docs/`+`workflow/`+3 root files,
     38 of 53 tracked markdown files, and **7 dead links were living in one of the 15 it never
-    opened**. Both halves of the gate now scan `repo_markdown()`. `FerroStep/` is excluded by
+    opened**. Both halves of the gate now scan `repo_markdown()`. `docs/personas/` is excluded by
     owner ruling — the review lane is retired and a dead link in `REVIEWER.md` must not fail
     a Sonora merge.
     """
@@ -250,13 +250,14 @@ def test_the_scan_is_every_tracked_markdown_except_workflow():
                 "README-Matcha.md", "audition/README.md", "scripts/README.md",
                 "scripts/teacher_audition/README.md"):
         assert os.path.join(REPO, rel) in scanned, f"{rel} is not scanned"
-    # ⚠ `FerroStep/workflow/WORKFLOW.md` was in this list until 2026-09-15 and the file no
-    # longer exists — the review lane was removed. The two personas remain as DEPICTIONS and
-    # must still stay out of Sonora's doc gates: they are FerroStep's files, not this repo's
-    # subject matter, and the original reason holds whether or not a lane consumes them.
-    for rel in ("FerroStep/personas/REVIEWER.md", "FerroStep/personas/DEVELOPER.md"):
+    # ⚠ The personas MOVED to `docs/personas/` on 2026-09-15 when FerroStep was dismantled,
+    # and the exclusion moved with them — owner's ruling of 2026-08-21, re-affirmed at the
+    # move. They are agent-direction files, not Sonora's subject matter, and gating them would
+    # hold a Sonora merge on a link inside a persona. ⚠ `FerroStep/workflow/WORKFLOW.md` was
+    # in this list too; that file no longer exists at all.
+    for rel in ("docs/personas/REVIEWER.md", "docs/personas/DEVELOPER.md"):
         assert os.path.join(REPO, rel) not in scanned, (
-            f"{rel} IS scanned — FerroStep's files are not Sonora's to gate on")
+            f"{rel} IS scanned — persona files are not Sonora's to gate on")
 
 
 def test_the_scan_reads_the_index_not_the_working_tree(tmp_path):

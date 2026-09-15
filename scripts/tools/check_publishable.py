@@ -26,12 +26,16 @@ container.
 
 ⚠⚠ THIS LINE SAID "a deliberate second copy / change both", AND THE PAIR WAS NOT A PAIR (#434).
 `scripts/litert_export/run.sh` OWNS the default — it composes it from `SONORA_LITERT_WORK` —
-and more than one file then spells it out: this docstring, so the command is pasteable rather
-than a shape the reader has to complete, and `REVIEWER_TORCH_PY` in
-`FerroStep/workflow/config.env`, so the reviewer's allowlist can name it. Each described itself
-as one half of a pair with `run.sh` and neither mentioned the other, so "change both" reached
-some of them and left this line naming an interpreter the export lane no longer used —
-re-creating, on this exact line, the defect #428 closed.
+and more than one file then spelled it out: this docstring, so the command is pasteable
+rather than a shape the reader has to complete, and `REVIEWER_TORCH_PY` in the review lane's
+config. Each described itself as one half of a pair with `run.sh` and neither mentioned the
+other, so "change both" reached some of them and left this line naming an interpreter the
+export lane no longer used — re-creating, on this exact line, the defect #428 closed.
+
+⚠ THAT SECOND COPY IS GONE (2026-09-15, with the review lane), so this docstring and `run.sh`
+really are a pair now. The lesson is kept because it was general and cost two findings: a
+file calling itself "one half of a pair" without naming the other half cannot be maintained
+by a reader who only has one of them.
 
 ⚠ NO SIZE IS STATED HERE — NOT "three", NOT "both", NOT "all of them" (#434, three passes).
 Every sentence that said how many places hold this path was correct when written and unable to
