@@ -104,7 +104,7 @@ def _run(shard, out, force=False):
 def test_the_output_is_readable_by_derive_vat_corpus(shard, tmp_path):
     """The layout assertion, made against the REAL consumer rather than a copy of its rule."""
     out = tmp_path / "out"
-    _, written, _, failed, _ = _run(shard, out)
+    _, written, _, failed, _, _ = _run(shard, out)
     assert (written, failed) == (3, 0)
 
     from derive_vat_corpus import find_clips
@@ -169,7 +169,7 @@ def test_a_tmp_suffix_does_not_defeat_the_format_inference(shard, tmp_path):
     keeps holding if the write moves.
     """
     out = tmp_path / "out"
-    _, written, _, failed, rows = _run(shard, out)
+    _, written, _, failed, _, rows = _run(shard, out)
     assert failed == 0, "conversion failed: %s" % [r.get("error") for r in rows if r.get("error")]
     assert written == 3
     wavs = [os.path.join(dp, f) for dp, _, fs in os.walk(out) for f in fs if f.endswith(".wav")]
@@ -186,7 +186,7 @@ def test_a_tmp_suffix_does_not_defeat_the_format_inference(shard, tmp_path):
 def test_a_second_run_reuses_and_does_not_redecode(shard, tmp_path):
     out = tmp_path / "out"
     _run(shard, out)
-    _, written, reused, failed, _ = _run(shard, out)
+    _, written, reused, failed, _, _ = _run(shard, out)
     assert (written, reused, failed) == (0, 3, 0)
 
 
@@ -201,7 +201,7 @@ def test_a_truncated_wav_is_redone_and_only_that_one(shard, tmp_path):
                     for f in fs if f.endswith(".wav"))[0]
     with open(victim, "r+b") as f:
         f.truncate(200)
-    _, written, reused, failed, _ = _run(shard, out)
+    _, written, reused, failed, _, _ = _run(shard, out)
     assert (written, reused, failed) == (1, 2, 0), (
         "expected exactly the truncated clip to be redone; got written=%d reused=%d" % (written, reused))
     assert sf.info(victim).samplerate == 24000
@@ -212,5 +212,60 @@ def test_force_redoes_everything(shard, tmp_path):
     stopped writing at all would satisfy the reuse test by never producing anything new."""
     out = tmp_path / "out"
     _run(shard, out)
-    _, written, reused, failed, _ = _run(shard, out, force=True)
+    _, written, reused, failed, _, _ = _run(shard, out, force=True)
     assert (written, reused, failed) == (3, 0, 0)
+
+
+# --------------------------------------------------------------------------- #
+# #477 — a clip with no transcript must not be converted at all
+# --------------------------------------------------------------------------- #
+def test_a_clip_with_no_transcript_is_skipped_not_silently_orphaned(tmp_path):
+    """⚠ `find_clips` drops a wav whose sibling text is missing WITHOUT SAYING SO.
+
+    So writing the audio for an empty `text_normalized` produces a clip that counts as
+    converted, occupies disk, and then vanishes from the corpus with nothing in any log —
+    four lines under a comment warning about exactly that shape. The clip must be refused
+    here, counted, and marked in the manifest.
+
+    Latent on the real corpus: 0 of 323,978 rows have an empty text. That is why it is
+    tested rather than trusted — a defect nothing can currently trigger is one nothing will
+    report when something finally does.
+    """
+    data = tmp_path / "src" / "data"
+    data.mkdir(parents=True)
+    rows = [("6097", "audio/6097_clean/1/a_0001.flac", 1.0, "a real line"),
+            ("6097", "audio/6097_clean/1/b_0002.flac", 1.0, "   "),
+            ("8051", "audio/8051_other/2/c_0003.flac", 1.0, "")]
+    tbl = pa.table({
+        "speaker": pa.array([r[0] for r in rows]),
+        "file": pa.array([r[1] for r in rows]),
+        "duration": pa.array([r[2] for r in rows], type=pa.float32()),
+        "text_normalized": pa.array([r[3] for r in rows]),
+        "audio": pa.array([{"bytes": _flac(r[2]), "path": r[1].split("/")[-1]} for r in rows]),
+    })
+    shard = data / "train.clean-00000-of-00001-feedface.parquet"
+    pq.write_table(tbl, shard)
+
+    out = tmp_path / "out"
+    _, written, reused, failed, notext, manifest = C._convert_shard((str(shard), str(out), False, False))
+    assert (written, reused, failed, notext) == (1, 0, 0, 2), (
+        "written=%d reused=%d failed=%d no-text=%d — a blank transcript must not produce a clip"
+        % (written, reused, failed, notext))
+
+    wavs = [f for _, _, fs in os.walk(out) for f in fs if f.endswith(".wav")]
+    assert len(wavs) == 1, "an orphan wav was written for a row with no transcript: %s" % wavs
+
+    from derive_vat_corpus import find_clips
+    assert len(list(find_clips(str(out)))) == 1
+
+    skipped = [r for r in manifest if "skipped" in r]
+    assert len(skipped) == 2, "the manifest must say which rows were skipped and why"
+    assert all("text_normalized" in r["skipped"] for r in skipped)
+
+
+def test_a_populated_transcript_still_converts(tmp_path, shard):
+    """⚠ POSITIVE CONTROL for the test above. A `_convert_shard` that refused every row
+    would satisfy the skip assertion for reasons that have nothing to do with the text."""
+    out = tmp_path / "out"
+    _, written, _, failed, notext, _ = C._convert_shard((str(shard), str(out), False, False))
+    assert (written, failed, notext) == (3, 0, 0)

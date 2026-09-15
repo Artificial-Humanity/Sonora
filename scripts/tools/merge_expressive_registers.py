@@ -174,7 +174,13 @@ def _stage_24k(rows, stage_dir, force=False, dry_run=False):
             continue
         y, _ = librosa.load(r["wav"], sr=TARGET_SR, mono=True)
         tmp = dst + ".tmp"
-        sf.write(tmp, y, TARGET_SR, subtype="PCM_16")
+        # ⚠ `format="WAV"` IS REQUIRED HERE (#476). The write goes to `<stem>.wav.tmp` so the
+        # rename can be atomic, and soundfile infers the container from the EXTENSION — which
+        # is `.tmp`, not `.wav`. Without it every resample raises `TypeError: No format
+        # specified...`. That went unnoticed because all 832 staged wavs date from this
+        # file's own creation day: every run since has taken the reuse branch above and never
+        # reached this line. The bug is latent, not absent, and the next restage would hit it.
+        sf.write(tmp, y, TARGET_SR, subtype="PCM_16", format="WAV")
         os.replace(tmp, dst)
     verb = "would stage" if dry_run else "staged"
     written = "would write" if dry_run else "written"

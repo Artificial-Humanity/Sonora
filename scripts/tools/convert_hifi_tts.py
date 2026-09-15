@@ -140,7 +140,7 @@ def _convert_shard(job):
     import soundfile as sf
 
     librosa = None
-    n_written = n_reused = n_failed = 0
+    n_written = n_reused = n_failed = n_notext = 0
     rows = []
     t = pq.read_table(path, columns=["speaker", "file", "duration", "text_normalized", "audio"])
     speakers = t["speaker"].to_pylist()
@@ -159,18 +159,28 @@ def _convert_shard(job):
             "book": src_file.split("/")[2], "subset": subset,
             "source_duration": dur, "shard": shard, "source_file": src_file,
         })
+        # ⚠⚠ A CLIP WITH NO TRANSCRIPT IS NOT CONVERTED AT ALL (#477), and this is the whole
+        # reason the check is up here rather than beside the write. `find_clips` skips a wav
+        # whose sibling text is missing WITHOUT SAYING SO, so writing the audio anyway would
+        # produce a clip that counts as converted, occupies disk, and then vanishes from the
+        # corpus with nothing in any log. An earlier version of this function did exactly
+        # that — it guarded the TEXT write on a non-empty body and wrote the wav
+        # unconditionally, four lines under a comment warning about this precise shape.
+        # Measured: 0 of 323,978 real rows have an empty `text_normalized`, so this is latent
+        # rather than live. Latent is why it needs to be loud.
+        body = (text or "").strip()
+        if not body:
+            n_notext += 1
+            rows[-1]["skipped"] = "empty text_normalized — no transcript, so no clip"
+            continue
         if dry:
             continue
-        # ⚠ The text is written even when the wav is reused. `find_clips` skips a wav whose
-        # sibling text is missing, WITHOUT SAYING SO, so a half-written pair is a clip that
-        # vanishes from the corpus with nothing in any log. Cheap to rewrite, expensive to
-        # diagnose.
+        # The text is rewritten even when the wav is reused: a half-written pair costs one
+        # cheap write to repair and is expensive to diagnose.
         os.makedirs(os.path.dirname(wav), exist_ok=True)
-        body = (text or "").strip()
-        if body:
-            with open(txt + ".tmp", "w", encoding="utf-8") as f:
-                f.write(body + "\n")
-            os.replace(txt + ".tmp", txt)
+        with open(txt + ".tmp", "w", encoding="utf-8") as f:
+            f.write(body + "\n")
+        os.replace(txt + ".tmp", txt)
 
         expected = None
         if not force and os.path.exists(wav):
@@ -201,7 +211,7 @@ def _convert_shard(job):
         except Exception as e:                      # noqa: BLE001 — reported, never silent
             n_failed += 1
             rows[-1]["error"] = "%s: %s" % (type(e).__name__, e)
-    return shard, n_written, n_reused, n_failed, rows
+    return shard, n_written, n_reused, n_failed, n_notext, rows
 
 
 def main():
@@ -229,20 +239,22 @@ def main():
         os.makedirs(args.out, exist_ok=True)
 
     jobs = [(f, args.out, args.dry_run, args.force) for f in files]
-    written = reused = failed = 0
+    written = reused = failed = notext = 0
     manifest = []
     # Fork is safe here for the reason `derive_vat_corpus` documents: nothing on this path
     # touches the GPU, so the fork-after-GPU wedge on gfx1151 cannot apply.
     if args.workers > 1 and len(jobs) > 1:
         with mp.Pool(args.workers) as pool:
-            for shard, w, r, fl, rows in pool.imap_unordered(_convert_shard, jobs):
-                written += w; reused += r; failed += fl; manifest.extend(rows)
-                print("  %-52s +%-6d reused %-6d failed %d" % (shard, w, r, fl), flush=True)
+            for shard, w, r, fl, nt, rows in pool.imap_unordered(_convert_shard, jobs):
+                written += w; reused += r; failed += fl; notext += nt; manifest.extend(rows)
+                print("  %-52s +%-6d reused %-6d failed %-4d no-text %d"
+                      % (shard, w, r, fl, nt), flush=True)
     else:
         for job in jobs:
-            shard, w, r, fl, rows = _convert_shard(job)
-            written += w; reused += r; failed += fl; manifest.extend(rows)
-            print("  %-52s +%-6d reused %-6d failed %d" % (shard, w, r, fl), flush=True)
+            shard, w, r, fl, nt, rows = _convert_shard(job)
+            written += w; reused += r; failed += fl; notext += nt; manifest.extend(rows)
+            print("  %-52s +%-6d reused %-6d failed %-4d no-text %d"
+                  % (shard, w, r, fl, nt), flush=True)
 
     # ⚠ FLOOR ON THE POPULATION THAT MATTERS. A run that converted nothing and a run whose
     # shards were all empty are the same zero, and an empty corpus is the failure this whole
@@ -261,8 +273,14 @@ def main():
         print("manifest -> %s (%d rows)" % (mpath, len(manifest)))
 
     verb = "would convert" if args.dry_run else "converted"
-    print("%s %d clip(s) | %d written, %d reused, %d failed | %.1f source-hours | %d speakers: %s"
-          % (verb, len(manifest), written, reused, failed, hours, len(speakers), ",".join(speakers)))
+    print("%s %d clip(s) | %d written, %d reused, %d failed, %d skipped for no transcript "
+          "| %.1f source-hours | %d speakers: %s"
+          % (verb, len(manifest), written, reused, failed, notext, hours, len(speakers),
+             ",".join(speakers)))
+    if notext:
+        print("⚠ %d clip(s) had an empty `text_normalized` and were NOT converted — they carry "
+              "a `skipped` key in the manifest. `find_clips` would have dropped them silently."
+              % notext, file=sys.stderr)
     if failed:
         print("⚠ %d clip(s) FAILED — they are in the manifest with an `error` key." % failed,
               file=sys.stderr)
