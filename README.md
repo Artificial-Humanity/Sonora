@@ -1,95 +1,68 @@
 # Sonora — Expressive & Directable TTS Actor Training
 
-Sonora is a directable, castable, and mobile-friendly text-to-speech (TTS) actor training codebase. 
+Sonora is a training codebase for a directable, castable, mobile-friendly
+text-to-speech actor. It uses Matcha-TTS conditional flow-matching with affect,
+delivery and speaker conditioning. Prosodia consumes the exported actor artifacts.
 
-The model is built on top of the **Matcha-TTS** architecture (conditional flow-matching mel decoder solved with a few-step ODE + vocoder integration), augmented with custom emotion conditioning and continuous voice casting features.
+## Start here
 
----
+Read [AGENTS.md](AGENTS.md), [PERSONA.md](PERSONA.md) and [WORKFLOW.md](WORKFLOW.md)
+before changing the repo.
 
-## 🏛️ Storage Layout Recommendations
+* [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) defines the model contract, corpus
+  rules, validation gates and artifact promotion.
+* [docs/README.md](docs/README.md) indexes the binding design and policy documents.
+* [scripts/README.md](scripts/README.md) describes the script layout and pipeline.
+* `notes/STATE.md` and `notes/todo.md` contain current state and open work.
+  `notes/quality-gap-plan.md` defines sequencing; `notes/training-operations.md`
+  is the training runbook. These notes are private and are not included in public
+  clones. See `AGENTS.md` for the local symlink setup.
 
-When setting up for model training, it is recommended to use a high-speed storage volume for dataset caches and output checkpoints to optimize disk speed and minimize write wear on the primary system drive.
+## Workspace and storage
 
-### Recommended Workspace Structure
-* **Code Workspace:** The cloned repository folder.
-* **Large Asset Directory:** A dedicated folder or mount on a high-throughput SSD.
+* Edit code in `Sonora/github`, this repository.
+* Use the sibling `Sonora/huggingface` checkout for model artifacts and their registry.
+* Keep datasets, caches, checkpoints and training outputs on fast storage, separate
+  from source. Configure paths through [configs/paths/default.yaml](configs/paths/default.yaml)
+  and the run configuration; `data/` can be a symlink to dataset storage.
+* Treat `/data` source copies as deployment targets. Follow `AGENTS.md` §§6–7 for
+  source locations, deployment and drift checks.
 
-It is common practice to symlink the following folders in your repository to your fast storage drive:
-* `data/` -> (symlink to your dataset/preprocessing cache folder)
-* `outputs/` -> (symlink to your training runs/checkpoints folder)
+## Training environment
 
----
+Run training in a GPU-enabled Docker container. The lab's ROCm service is
+`sonora_training`, defined in the sibling `AI-Lab-AMD` repo. Use its compose
+configuration and the private training runbook for launches and checkpoint/resume
+settings.
 
-## 🐳 Containerized Training Environment
-
-To ensure stable package dependencies and leverage GPU/hardware acceleration (such as ROCm for AMD hardware or CUDA for NVIDIA hardware), training should be run inside a Docker container.
-
-### Example Container Launch (AMD ROCm)
-If training on an AMD GPU with ROCm support, you can launch a container with device mappings:
+Inside the container, navigate to the project root and install with uv:
 
 ```bash
-docker run -it --network=host \
-  --device=/dev/kfd --device=/dev/dri \
-  --group-add=video --ipc=host \
-  --shm-size 8G \
-  --security-opt seccomp=unconfined \
-  -v /path/to/projects:/projects \
-  -v /path/to/data:/data \
-  rocm/pytorch:latest
+uv pip install --no-build-isolation -e .
 ```
 
-### Installation
-Once inside the container:
-1. Navigate to the project folder. Since 2026-07-22 the workspace is flat: `Sonora/github` (this repo) sits alongside `Sonora/huggingface` (the model-registry checkout of `artificial-humanity/Sonora`). The GitHub repo itself is still named `Sonora`; there is no umbrella repo.
-2. Install project requirements with [uv](https://github.com/astral-sh/uv), this organization's standard for Python tooling:
-   ```bash
-   uv pip install --no-build-isolation -e .
-   ```
-   *(Note: `--no-build-isolation` is recommended when using pre-installed container PyTorch/NumPy dependencies to build Cython extensions.)*
-3. **No `espeak-ng` required.** Sonora phonemizes through the permissive `op_g2p` lane (OpenPhonemizer dictionary → DeepPhonemizer TFLite OOV fallback) against a locked 178-symbol IPA vocab, shared by training and runtime. espeak-ng (GPL-3.0) was removed from the training path on 2026-07-14 and is banned from the runtime path by the licence wall.
+Pre-install `Cython` if needed. `--no-build-isolation` reuses the container's
+PyTorch/NumPy dependencies. Follow `AGENTS.md` §3 for uv and interpreter selection.
 
----
+Phonemization uses `op_g2p`: OpenPhonemizer's dictionary with a DeepPhonemizer TFLite
+fallback for out-of-vocabulary words. Training and runtime share the locked IPA
+vocabulary. `espeak-ng` is not required and is prohibited in the runtime path.
 
-## 🔄 Phased Training Plan
+## Export and validation
 
-Training is structured in sequential phases to isolate complexity:
+Follow [scripts/litert_export/README.md](scripts/litert_export/README.md) for the
+split-graph LiteRT export: text encoder, decoder and vocoder, with the ODE loop on
+the host. Use `convert_final.py` for the 22.05 kHz baseline and `convert_vat.py` for
+the 24 kHz/multi-speaker/VAT lane. The ONNX/onnx2tf monolith is the fallback path.
 
-### Phase 1: Plain Fine-Tune
-* **Goal:** Fine-tune a base checkpoint on a single-speaker dataset (e.g., LJSpeech) to verify the toolchain and environment.
-* **Process:** Configure data configs, execute the training loop via `python matcha/train.py`, and inspect Tensorboard outputs under `outputs/`.
+Run the export gates, compare per-graph and end-to-end waveform parity against
+PyTorch, and verify that the target runtime loads the graphs and synthesizes audio.
+Check the converter's supported conditioning width and the current export gaps in
+`notes/STATE.md` and `notes/todo.md` before choosing a checkpoint. Do not infer
+support for a conditioning channel from training support alone.
 
-### Phase 2: Export & On-Device Validation
-* **Goal:** Confirm the split-graph `litert-torch` export (Plan A since 2026-07-12) produces GPU-clean `.tflite` graphs — three graphs (text encoder / decoder / vocoder) at fixed shapes with the ODE loop host-side. `torch → ONNX` + `onnx2tf` is the Plan B monolith. See [`scripts/litert_export/`](scripts/litert_export/).
-* **Process:**
-  1. Convert with the split-graph recipe (`convert_final.py` for the 22.05 kHz baseline, `convert_vat.py` for 24 kHz/multi-speaker/VAT). `python -m matcha.onnx.export` is the Plan B path, not the default.
-  2. Validate per-graph parity (corr ≈ 1.0) and end-to-end waveform parity against torch, then that the graphs load and synthesize in the target runtime.
-* **Status:** verified at parity on Phase 0 and on the de-risk checkpoint. The gate suite **refuses** on failure (since F-C1, 2026-08-06 — it *reported* rather than refused until then, which is a gate that cannot fail). ⚠ Valence/tension have still never been driven nonzero through a converted graph — see `notes/todo.md` (private) §2 before trusting it.
+## License and credits
 
-### Phase 3: Directability (VAT Conditioning)
-* **Goal:** condition on `(valence, energy, tension)` — energy occupies the arousal slot — via zero-init FiLM in the text encoder and flow decoder.
-* **Status: shipped.** The de-risk run validated the architecture on energy (rho ~ 1.000, 2026-07-16); the full 3-channel run (`vat3-24k`, 2026-07-22) landed energy PASS, tension near-pass, **valence FAIL** — a corpus-label limit, not an architectural one. `vat3c` (2026-08-06) re-ran the three channels on a phoneme-corrected corpus and changed nothing audible.
-* **Process:** Implement FiLM/AdaLN modulation on the text encoder + flow decoder, preprocess training data with VAT labels, and retrain.
-
-### Phase 4: Delivery — the 4th conditioning channel
-* **Goal:** one of `{Dialogue, Neutral, Documentary, Newscaster, Speech}` + `unknown`, embedded host-side onto the same zero-init FiLM path (Director↔Actor contract v2).
-* **Status:** **shipped on the training side** — `vat_dim` is **8** (three V/A/T channels plus a five-wide one-hot delivery block), and `vat5_finetune` trained 8-wide to `ep019` (2026-08-08/09). The expressive corpus that gives the delivery channel something to learn from is **merged into v6 and BUILT** (2026-08-10): **826 appended rows**, 816 of them delivery-labelled across four lanes, out of 1,004 eligible keeps (158 already in v5, 14 over-length, 6 dropped on digits). `Documentary` is retired into Neutral; `vat_dim` stays 8. No v6 run is queued yet. The export lane is deliberately still 3-wide. Seam assertions proven to fire (`scripts/gates/test_vat_dim_seams.py`).
-
-### Phase 5: Casting & Speaker Embedding Blends
-* **Goal:** Re-derive continuous voice casting spaces (e.g., age, masculinity, strain) in speaker-embedding space.
-* **Process:** Train speaker-embedding Look-Up Tables (LUTs) for anchor voices and map the casting grid to this space.
-
----
-
-## 🧭 Where the engineering notes live
-
-This README is the setup guide. The internal record — architecture canon, current state,
-what runs next — is in `notes/` (private). Start at `notes/STATE.md` (private).
-Agent/developer entry point: [`AGENTS.md`](AGENTS.md).
-
----
-
-## 📄 License & Credits
-
-Sonora is licensed under the **Apache License, Version 2.0**. 
-
-The project is built on the [Matcha-TTS](https://github.com/shivammehta25/Matcha-TTS) architecture (originally licensed under the MIT License). Attribution to the original creators can be found in the [NOTICE](NOTICE) file.
+Sonora is licensed under the Apache License, Version 2.0. It builds on
+[Matcha-TTS](https://github.com/shivammehta25/Matcha-TTS), licensed under MIT.
+See [NOTICE](NOTICE) for attribution.
