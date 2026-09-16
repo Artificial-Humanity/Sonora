@@ -25,11 +25,14 @@ below cannot match one — but that is a property of the pattern, and
 WHAT IT DOES NOT COVER — read this before trusting a pass
 ---------------------------------------------------------
 * ⚠ **THE FILE SET — read this first, because it is what a green run is scoped to.** Both
-  halves scan `repo_markdown()`: every TRACKED `.md` except `docs/personas/`. That is 26 of the
-  repo's 29 today — it read 50 of 53 until 2026-09-08, when `notes/` became a gitignored
-  symlink to the private Notes repo and 24 files stopped being tracked here. ⚠ THAT IS A
-  SMALLER SCAN, NOT A CLEANER ONE, and the count is in the present tense on purpose: it was
-  left reading "50 of 53 today" through the migration itself. It was
+  halves scan `repo_markdown()`: every TRACKED `.md` except `docs/personas/`.
+  ⚠⚠ **NO COUNT IS STATED HERE ANY MORE, AND THAT IS THE THIRD TIME THIS LINE WENT STALE.**
+  It read "50 of 53 today" through the 2026-09-08 `notes/` migration that made it wrong, was
+  corrected to "26 of 29", and went wrong again on 2026-09-15 when `WORKFLOW.md` was deleted —
+  in the very commit that updated the exclusion name on this same line and left the number
+  beside it. The run PRINTS what it scanned; read that instead. ⚠ THE SCAN IS
+  SMALLER THAN IT LOOKS, NOT CLEANER: `notes/` is a gitignored symlink to the private Notes
+  repo, so 24 files stopped being tracked here. It was
   `notes/`+`docs/`+`workflow/`+3 root files — 38 of 53 — while this
   banner said "every relative link this repo owns resolves", and **7 dead links were living
   in one of the 15 files it never opened** (#261). Untracked markdown is deliberately not
@@ -93,6 +96,12 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 # that is exactly what the link half's blind spot then produced (#260). Two halves of one gate
 # disagreeing about which files exist is a second thing to keep in sync and nobody was.
 #
+# ⚠ THE STATED COST OF THIS EXCLUSION IS NOW ZERO, and it used to be one citation. The comment
+# below named `CLAUDE.md`'s reference to `REVIEWER.md §0` as the price paid — a cross-file `§N`
+# nothing could check. That paragraph was deleted on 2026-09-15 and the gate's own output
+# confirms the change: it printed "0 of 1 citation(s) … the other 1 names a file outside the
+# scanned set" before, and "0 of 0" after. Nothing in the repo now cites a section inside an
+# excluded file. ⚠ That makes the exclusion cheaper, NOT safer — the files are still unread.
 # ⚠ `docs/personas/` IS EXCLUDED, both halves, by owner ruling 2026-08-21: the review lane was
 # retired and this gate is scoped to Sonora's own code and docs. A dead link or a `§N` inside
 # `REVIEWER.md` is not a Sonora defect and must not fail a Sonora merge. The honest cost is

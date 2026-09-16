@@ -19,6 +19,14 @@ records.
 ⚠ **Deliberately small.** Prosodia's canon directory holds four files. A `docs/` that grows to
 absorb everything authoritative-feeling is the flat `notes/` directory again with a new name.
 
+⚠ **`personas/` SITS OUTSIDE EVERYTHING THIS FILE DESCRIBES**, and that is deliberate rather
+than an oversight. `docs/personas/{DEVELOPER,REVIEWER}.md` arrived on 2026-09-15 when FerroStep
+was dismantled. They are agent-direction files, not policy: they are UPPERCASE against the
+lowercase-kebab rule below, they are not canon, they are not in the table, and they are
+excluded from this repo's doc gates by the owner's ruling of 2026-08-21 (`_SCAN_EXCLUDE` in
+`scripts/gates/test_doc_links.py`). **Nothing in `docs/` should be read as applying to them.**
+They live here because they had to live somewhere and `docs/` is where prose goes.
+
 ## Rules for this directory
 
 Inherited from `notes/README.md` (retired 2026-09-08), and they apply to both directories:

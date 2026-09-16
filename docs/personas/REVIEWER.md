@@ -61,8 +61,6 @@ The disposition is the part worth keeping, and it was earned rather than asserte
 
 ---
 
----
-
 ## 3. What is gone, so nobody looks for it
 
 Removed 2026-09-15 with the cycle: the filing procedure and tracker field reference, severity

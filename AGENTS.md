@@ -256,7 +256,9 @@ the simple version that holds until then. Do not build tooling on its shape.
     destination`, the very error this bullet quotes as the thing that used to happen. Use
     `origin/main..HEAD`, which is correct under any config and is why the preference was stated
     that way in the first place.
-  * ⚠ **IF `main` EVER HAS MOVED, MERGE — NEVER REBASE.** A rebase **rewrites your local
+  * ⚠ **IF `main` EVER HAS MOVED, MERGE — NEVER REBASE.** ⚠ Its stated reason used to be that
+    a rebase invalidates the SHAs a review filed against; that reason went with the review on
+    2026-09-15 and **the rule did not**. It stands on the older one: a rebase **rewrites your local
     commits**, so the reviewed SHAs cease to exist and the cycle silently ends. `pull.rebase` is
     set to `false`, so a bare `git pull` merges (verified: exit 0, local commit survives as a
     parent). ⚠ **Do not take git's advice here.** With `pull.rebase` unset, `git pull` is
@@ -265,28 +267,31 @@ the simple version that holds until then. Do not build tooling on its shape.
     setting is what stands between the worker and that hint.
   * If the tree holds the owner's uncommitted local edits, fetch and check ahead/behind rather
     than integrating anything.
-* ⚠ **REVIEW THE RANGE YOU ARE ABOUT TO PUSH, NOT ONLY THE LAST COMMIT** — step 2 says this,
-  and it is repeated here because the numbered list is what gets copied elsewhere. A push
-  carries every unpushed commit, so a review scoped to one SHA leaves the rest unread, and
-  commits made while a review is in flight land in that gap. Measured on every cycle this loop
-  has run so far: the range grew after the brief each time, twice from the worker's own commits
-  and twice from owner instructions arriving mid-cycle. ⚠ **Commits that arrive after the review
-  are a NEW CYCLE, not a third lap** — the cap forbids re-reviewing the same range, not
-  reviewing new work.
-* **LAND WHEN GREEN RATHER THAN ACCUMULATING** (owner, 2026-09-09). Review cost scales with
-  the range, and the range only grows — the bullet above measures it growing on every cycle
-  so far. A branch that keeps collecting work turns one review into a long one, and a long
-  one is the one that dies partway: a review killed mid-range leaves some findings filed and
-  the rest of the range unread, which costs a whole extra cycle to recover. Both reviews that
-  died on 2026-09-08 died that way.
+* ⚠⚠ **TWO REVIEW-PROCEDURE BULLETS STOOD HERE IN THE PRESENT TENSE UNTIL 2026-09-16**, and
+  both cited "step 2" of a numbered list deleted the day before. What they said was: review
+  the whole range you are about to push rather than the last commit, because a push carries
+  every unpushed commit and the range grew after the request on every cycle measured; and
+  commits arriving after a review are a new cycle rather than another lap.
+  **There is no review, so neither is an instruction any more.** The measurement survives and
+  is the reason to keep reading it: **a push carries every unpushed commit**, and people
+  reliably think about the last one. That is true with or without a reviewer.
+
+* **LAND WHEN GREEN RATHER THAN ACCUMULATING** (owner, 2026-09-09). ⚠ **The rule is the
+  owner's and stands; the reasoning printed under it was entirely about review cost, which no
+  longer exists.** It said review cost scales with the range, that a long review is the one
+  that dies partway, and that both reviews which died on 2026-09-08 died that way. That is now
+  history rather than a reason.
+  **What survives without a reviewer** is that a branch collecting unrelated work is harder to
+  reason about, harder to revert as a unit, and — since 2026-09-15, with no gate in front of
+  `main` — lands in one unexamined step rather than several.
   ⚠ **Deliberately no number.** A commit count would be gamed or read as a gate, and it is
   not one — the unit is *one coherent change*, which is sometimes five commits and sometimes
   one. The failure to avoid is a branch that stays open because nothing forced it shut.
   ⚠ This is a working convention, **not a mechanism**, and the bullet below about rules
   without enforcement applies to it exactly.
-* ⚠ **A rule in this file is not an enforcement mechanism, and this loop has no mechanism at
-  all** — no trigger, no check, no artifact. A push that skipped the review is
-  indistinguishable afterwards from one that did not. The project has learned the general
+* ⚠ **A rule in this file is not an enforcement mechanism** — and since 2026-09-15 there is
+  no mechanism anywhere in this repo's workflow: no trigger, no check, no gate, no artifact.
+  That used to be a warning about the review loop specifically. It is now simply the state. The project has learned the general
   lesson expensively: `deploy.sh`'s "deploy only when a service change is intended" was a
   header comment for weeks, got ignored eleven hours into a live training run, and is now a
   hard refusal in code.
@@ -359,7 +364,9 @@ the simple version that holds until then. Do not build tooling on its shape.
   for the same facts to drift. The record of a change is now, in order of authority:
   1. **the commit message** — WHY the previous state was wrong, not merely what moved;
   2. **`git log`** — which needs no maintenance to stay accurate;
-  3. **the issues filed out of a review** (§1 step 2) — which hold what a cycle could not
+  3. ⚠ **the issues filed out of a review** — HISTORICAL since 2026-09-15 (§1): Sonora no
+   longer writes to that tracker and there is no review to file from. The 182 records remain
+   in the shared store as history. What follows described it while it was live — which hold what a cycle could not
      settle, and are the only durable artifact the review loop produces. ⚠ **They are in
      PocketBase, not GitHub, as of 2026-08-13**, which makes this third authority the only
      one that does not travel with a `git clone`. The tracker is on ai-lab-0 and is
