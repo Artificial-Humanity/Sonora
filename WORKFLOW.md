@@ -34,5 +34,4 @@ re-establishes it with its reasoning intact — do not reconstruct it from git h
   `push.default=simple` refusal described in [AGENTS.md](AGENTS.md) is the only mechanical
   thing left anywhere near it.
 * **Commit identity is not automatic.** The repo's configured git identity is the owner's, on
-  purpose. `roster.yaml` and `scripts/agent_env.py` resolve the agent's, and
-  [docs/personas/DEVELOPER.md](docs/personas/DEVELOPER.md) §1 carries the command and the check.
+  purpose; [PERSONA.md](PERSONA.md) carries your name and co-author address.
