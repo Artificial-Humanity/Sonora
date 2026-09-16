@@ -1,5 +1,12 @@
 # AGENTS — Project Sonora (Training Repo)
 
+> ⚠⚠ **[workflow.md](workflow.md) IS HOW WORK GETS DONE HERE. READ IT AND FOLLOW IT.**
+> This file holds the repo's FACTS — the stack, the environment, the mandates, the measured
+> traps. `workflow.md` holds the PROCESS. The two were mixed together until 2026-09-16, and
+> the owner separated them so the process could be rebuilt without dragging the facts along.
+> ⚠ `workflow.md` is deliberately near-empty right now: the old rules were removed and none
+> were carried over. **An absent rule there is a decision not yet made, not permission.**
+
 This is the entry point for any agent or developer working on Project Sonora's training
 codebase. This is an independent GitHub repo (the PyTorch training pipeline that produces the
 actor model artifacts published to the `Sonora/huggingface` sibling checkout). Internal engineering notes —
@@ -99,39 +106,25 @@ stated in `docs/README.md`, in this section, or in `scripts/gates/test_doc_links
 
 ## System Operational Mandates
 
-### 1. Commit Hygiene
+### 1. Role loading and the git environment — facts, not workflow
 
-**HOW WORK LANDS** (owner, 2026-08-13; the review loop it described was REMOVED 2026-09-15).
-Work happens on a **branch** and merges to `main` when the developer judges it ready.
+**⚠⚠ THE WORKFLOW IS NOT HERE ANY MORE — IT IS [workflow.md](workflow.md), AND YOU FOLLOW
+THAT.** Branching, committing, landing, and whatever review or checking sits around them were
+stripped out of this file on 2026-09-16 by the owner, who is establishing the replacement
+next. **None of the old rules were carried over**, deliberately: `workflow.md` is empty on
+purpose, and its emptiness is a decision not yet made rather than permission.
 
-⚠⚠ **THERE IS NO REVIEW CYCLE AND NO MERGE GATE.** Until 2026-09-15 a branch was read by a
-one-shot reviewer process, findings went to a tracker, and `merge_branch.sh` refused to merge
-a branch carrying a finding at or above a severity floor. The owner removed all of it that
-day, pending a larger revamp — `FerroStep/workflow/` is gone entirely, along with the 316
-tests that guarded it. [docs/personas/DEVELOPER.md](docs/personas/DEVELOPER.md) §3
-records what went and what it cost.
+⚠ **What follows in this section is FACTS, not procedure** — how a session acquires its role,
+and what this repo's git configuration actually does when you run a command. They are here
+because they are measurements about this repo, and they hold whatever workflow the owner
+writes. If you find a rule about *how to work* below, it escaped the sweep and belongs in
+`workflow.md`.
 
-⚠ **Do not reconstruct any of it from this file.** The scripts were deleted on purpose. This
-repo has watched a deleted file go on being obeyed from a summary for eight commits, which is
-the exact failure this warning exists to prevent.
-
-⚠ **`FerroStep/workflow/` NO LONGER EXISTS HERE** (removed 2026-09-15). It was a portable
-lane, meant to be copied whole into another repo, which is why this section pointed at it
-rather than summarising it — a summary becomes a second copy that a port leaves behind, still
-authoritative-looking and now wrong. **That reasoning is why there is so little to delete from
-this file**, and it is worth keeping for whatever replaces the lane.
-
-⚠ **YOUR ROLE HAS A SYSTEM PROMPT, AND IT IS WHERE THE PROCEDURE NOW LIVES** (owner,
-2026-08-14):
-
-| role | roster title | system prompt |
-|---|---|---|
-| **Developer** | `developer` — the roster's `default_agent` | [docs/personas/DEVELOPER.md](docs/personas/DEVELOPER.md) |
-| **Reviewer** | `reviewer` | [docs/personas/REVIEWER.md](docs/personas/REVIEWER.md) — ⚠ a DEPICTION since 2026-09-15; nothing loads it |
-
-⚠ **Names and emails are deliberately NOT restated here.** They live in
-[roster.yaml](roster.yaml) — the ONE place identities are set (owner, 2026-08-24) — and
-resolve with `.venv/bin/python scripts/agent_env.py [--agent <title>]`.
+⚠ **REMOVED FROM THIS SECTION, so nobody hunts for it:** the branch-and-land procedure, the
+land-when-green convention, merge-never-rebase, the two review-range bullets, and the "a rule
+here is not a mechanism" warning. They are in git history at `1215cb7` and earlier. **Do not
+reconstruct them from memory** — a rule recalled without its measurement is one nobody can
+date or defend.
 
 **If you are the developer session for this repo, read
 [docs/personas/DEVELOPER.md](docs/personas/DEVELOPER.md) now and work as Ozzy.** It is your standing
@@ -168,6 +161,11 @@ not a severity threshold: no automatic rule has ever separated legitimate repair
 
 ⚠ **THIS IS INTERIM.** The owner is settling a more complete workflow architecture; this is
 the simple version that holds until then. Do not build tooling on its shape.
+
+#### The git environment — measured, and none of it is optional
+
+⚠ These are facts about what commands DO in this checkout. They constrain any workflow rather
+than being one.
 
 * ⚠ **NOTHING STANDS BETWEEN A SESSION AND `main`.** Measured 2026-08-13, not inferred:
   `gh api repos/:owner/:repo/branches/main/protection` returns **404 Branch not protected**.
@@ -256,53 +254,6 @@ the simple version that holds until then. Do not build tooling on its shape.
     destination`, the very error this bullet quotes as the thing that used to happen. Use
     `origin/main..HEAD`, which is correct under any config and is why the preference was stated
     that way in the first place.
-  * ⚠ **IF `main` EVER HAS MOVED, MERGE — NEVER REBASE.** ⚠ Its stated reason used to be that
-    a rebase invalidates the SHAs a review filed against; that reason went with the review on
-    2026-09-15 and **the rule did not**. It stands on the older one: a rebase **rewrites your local
-    commits**, so the reviewed SHAs cease to exist and the cycle silently ends. `pull.rebase` is
-    set to `false`, so a bare `git pull` merges (verified: exit 0, local commit survives as a
-    parent). ⚠ **Do not take git's advice here.** With `pull.rebase` unset, `git pull` is
-    *fatal* on diverged branches and offers `git config pull.rebase true` as one of three
-    equal-looking remedies — measured, and it would silently end every future cycle. The
-    setting is what stands between the worker and that hint.
-  * If the tree holds the owner's uncommitted local edits, fetch and check ahead/behind rather
-    than integrating anything.
-* ⚠⚠ **TWO REVIEW-PROCEDURE BULLETS STOOD HERE IN THE PRESENT TENSE UNTIL 2026-09-16**, and
-  both cited "step 2" of a numbered list deleted the day before. What they said was: review
-  the whole range you are about to push rather than the last commit, because a push carries
-  every unpushed commit and the range grew after the request on every cycle measured; and
-  commits arriving after a review are a new cycle rather than another lap.
-  **There is no review, so neither is an instruction any more.** The measurement survives and
-  is the reason to keep reading it: **a push carries every unpushed commit**, and people
-  reliably think about the last one. That is true with or without a reviewer.
-
-* **LAND WHEN GREEN RATHER THAN ACCUMULATING** (owner, 2026-09-09). ⚠ **The rule is the
-  owner's and stands; the reasoning printed under it was entirely about review cost, which no
-  longer exists.** It said review cost scales with the range, that a long review is the one
-  that dies partway, and that both reviews which died on 2026-09-08 died that way. That is now
-  history rather than a reason.
-  **What survives without a reviewer** is that a branch collecting unrelated work is harder to
-  reason about, harder to revert as a unit, and — since 2026-09-15, with no gate in front of
-  `main` — lands in one unexamined step rather than several.
-  ⚠ **Deliberately no number.** A commit count would be gamed or read as a gate, and it is
-  not one — the unit is *one coherent change*, which is sometimes five commits and sometimes
-  one. The failure to avoid is a branch that stays open because nothing forced it shut.
-  ⚠ This is a working convention, **not a mechanism**, and the bullet below about rules
-  without enforcement applies to it exactly.
-* ⚠ **A rule in this file is not an enforcement mechanism** — and since 2026-09-15 there is
-  no mechanism anywhere in this repo's workflow: no trigger, no check, no gate, no artifact.
-  That used to be a warning about the review loop specifically. It is now simply the state. The project has learned the general
-  lesson expensively: `deploy.sh`'s "deploy only when a service change is intended" was a
-  header comment for weeks, got ignored eleven hours into a live training run, and is now a
-  hard refusal in code.
-* ⚠ **THE MECHANISMS THIS SECTION DEFERRED TO ARE GONE** (2026-09-15). It used to say the
-  rules were also mechanisms — the engine refusing an undeclared state move, a missing
-  mandatory note or a take at the spent ceiling; `merge_branch.sh` refusing a branch over the
-  severity floor — and that restating them here was therefore worse than useless. **All of
-  that was removed with the review cycle.** The reasoning holds and is worth re-reading before
-  anything replaces it: a paraphrase in a document cannot refuse anything, and a reader who
-  believes the document over the mechanism is misled by the more authoritative-looking one.
-
 ### 2. Training & Troubleshooting Mandates
 
 * **Training Workspace**: Training runs inside the ROCm Docker container (named `sonora_training`), whose compose definition lives in the `AI-Lab-AMD` sibling repo.
@@ -357,101 +308,54 @@ the simple version that holds until then. Do not build tooling on its shape.
   uv's resolver speed materially shortens the recreate-reinstall cycle documented in this
   project's STATE ops notes.
 
-### 4. The Record of Change — git history
+### 4. The record of change — moved to [workflow.md](workflow.md)
 
-* **There is no changelog** (owner, 2026-08-11). `notes/CHANGELOG.md` was retired, along with
-  the review-document cycle that cross-referenced it, because both had become a third place
-  for the same facts to drift. The record of a change is now, in order of authority:
-  1. **the commit message** — WHY the previous state was wrong, not merely what moved;
-  2. **`git log`** — which needs no maintenance to stay accurate;
-  3. ⚠ **the issues filed out of a review** — HISTORICAL since 2026-09-15 (§1): Sonora no
-   longer writes to that tracker and there is no review to file from. The 182 records remain
-   in the shared store as history. What follows described it while it was live — which hold what a cycle could not
-     settle, and are the only durable artifact the review loop produces. ⚠ **They are in
-     PocketBase, not GitHub, as of 2026-08-13**, which makes this third authority the only
-     one that does not travel with a `git clone`. The tracker is on ai-lab-0 and is
-     backed up nightly with the rest of `/data`; a clone alone no longer carries it.
-* ⚠ **THE COMMIT MESSAGE IS THE ONLY PROSE THAT TRAVELS WITH A CHANGE.** The argument, the
-  alternatives rejected, and what was verified go there or they do not exist anywhere.
-  The tracker is not that place either — an issue records what is still WRONG, not why a
-  landed change is right.
-  * **`git commit -m "one line"` is insufficient by policy for any non-trivial change.** Stated
-    outright rather than left to inference from the paragraph above.
-  * **`.gitmessage` is the template — for a HUMAN committing interactively.**
-    * ⚠ **IT DOES NOTHING FOR AN AGENT.** `commit.template` applies only to an *interactive*
-      `git commit`; `-m` and `-F` bypass it, and every commit a session makes here uses `-F`.
-      Measured: a commit written with `-F` while `commit.template` was set came back with
-      zero trailers. That is the point worth keeping — **the template is inert for an agent**.
-      ⚠ **THIS BULLET USED TO ADD "an agent must put the `Co-Authored-By` trailer in the
-      message text itself — CLAUDE.md requires it". IT DOES NOT** (checked 2026-09-09:
-      `CLAUDE.md` contains no mention of a trailer, and the last 8 commits on `main` carry
-      none). Owner, 2026-09-09: **Sonora commits carry NO co-author trailer** — the developer
-      is the author, which is `docs/personas/DEVELOPER.md`'s standing rule and now this
-      file's too.
-      ⚠ A requirement that cites a source the source does not contain is the exact shape that
-      let a trailer ride for eight commits from a file that had been deleted. It was found
-      this time because a harness instruction asked for the trailer and the two rules had to
-      be read against each other; nothing in the repo compares them.
-    * **To enable it for interactive use** — ⚠ **read this whole bullet before running
-      anything; the command comes after its precondition on purpose (#445).** The precondition
-      is `git config extensions.worktreeConfig true`. Then, and only then:
-      `git config --worktree commit.template .gitmessage`.
-      ⚠⚠ **WITHOUT THE PRECONDITION THAT COMMAND DOES NOT FAIL — IT SILENTLY DOES THE WRONG
-      THING.**
-      `extensions.worktreeConfig` is not enabled here, and with it off `git config --worktree`
-      **exits 0 and writes `.git/config`**, the shared config, creating no `config.worktree`
-      (measured 2026-09-11 in a throwaway repo). **Enable the extension first
-      (`git config extensions.worktreeConfig true`), or this instruction hands you the `--local`
-      outcome it exists to avoid.** ⚠ This paragraph said the command *fails*, which is the more
-      dangerous error: "it fails" sends a reader elsewhere, while the truth is that it succeeds
-      and writes the wrong file.
-      ⚠ **`--worktree`, not `--local`** — once the extension is on. `--local` writes the SHARED
-      config, and a template path
-      that does not resolve in another worktree makes an interactive `git commit` **fatal**
-      there — it refuses the commit and creates nothing. That is not hypothetical: it happened
-      to `/data/repos/Sonora` for one cycle, from exactly this setting.
-    * ⚠ Local config,
-    so it does not travel with the repo and nothing enforces it; it prompts at the moment the
-    message is written, which is the only moment the prompt is useful.
-* ⚠ **Do not reintroduce a changelog, and do not resurrect it under another name** — a
-  `notes/changes-*.md`, a "release notes" file, a running summary in `STATE.md`. The failure
-  was structural, not cosmetic: a hand-maintained narrative of what changed is a copy of
-  information that already exists in two authoritative places, and the copy is the one that
-  goes stale. This repo has already paid for doc-vs-artifact drift repeatedly.
-* **What genuinely does not fit in a commit or a PR belongs in `notes/`** as a durable
-  document about the *current* state of something (`notes/STATE.md`, a design note), never as
-  a dated log of past events. If you catch yourself writing "on 2026-08-11 we changed X",
-  that belongs in the commit that changed X.
+⚠⚠ **WHAT A COMMIT MESSAGE MUST CONTAIN IS WORKFLOW, AND IT LEFT THIS FILE ON 2026-09-16.**
+This section ran to 66 lines: what a message owes a reader, why the previous state was wrong,
+the trailer rule, and how the history is the record. **None of it was migrated** — the owner
+is establishing the replacement in `workflow.md` and asked that no old rules be carried over.
 
-### 5. Reading Code — the standards, with no cycle behind them
+⚠ It is in git history at `1215cb7` and earlier. **Do not restore it from memory.**
 
-⚠ **THE REVIEW CYCLE WAS REMOVED 2026-09-15** and most of this section went with it: when to
-request a review, what counts as in scope for one, the `workflow/` finding hold, and the open
-questions about a wholesale sweep. All of it described a procedure that no longer exists.
+**One thing here is a FACT rather than a rule, so it stays**: this repo's git history is the
+only durable record of why a change was made. There is no tracker, no findings and no review
+artifact any more, so a commit message is the last place a reason can live. That is a property
+of the current state, not an instruction about length or form — `workflow.md` will say what
+form the owner wants.
 
-**What survives is not procedure — it is how to read code, and it applies whenever anyone
-here reads any.**
+### 5. Measured defect patterns in this repo
 
-* **A review is a report, not a fix pass.** The deliverable is the findings. Take on fixes
-  only when the owner explicitly asks, never as a rider on the reading itself.
-* ⚠ **REVIEW THE INSTRUCTION, NOT ONLY THE CLASSIFICATION — they fail independently, and the
-  second is where the defects hide.** Six instances across four rounds on 2026-08-11: in every
-  one the code decided *correctly* and the instruction attached to it was wrong or impossible.
-  A remedy naming a fix that cannot address the cause; a bucket telling the reader to "score
+⚠ **THIS WAS "CODE REVIEW STANDARDS" AND THE PROCESS PART IS GONE** (2026-09-16). When to
+request a review, what was in scope for one, and what a review owed as a deliverable are
+workflow — they belong in [workflow.md](workflow.md) if the owner re-establishes them, and
+they were NOT migrated.
+
+**What is left is not procedure. These are things that have actually gone wrong here, stated
+so the next person does not rediscover them**, and they apply to anyone reading or writing
+code in this repo whether or not anybody is reviewing it.
+
+* ⚠ **A CLASSIFICATION AND THE INSTRUCTION BESIDE IT FAIL INDEPENDENTLY, AND THE SECOND IS
+  WHERE THE DEFECTS HIDE.** Six instances across four rounds on 2026-08-11: in every one the
+  code decided *correctly* and the instruction attached to it was wrong or impossible. A
+  remedy naming a fix that could not address the cause; a bucket telling the reader to "score
   them first" about clips already scored; a comment claiming an override the tool never had.
-  * *"Is this line true?"* is easy to read for. *"What would someone DO on reading this line?"*
-    is a different question and almost never asked. Ask it of every message, comment,
+  * *"Is this line true?"* is easy to read for. *"What would someone DO on reading this
+    line?"* is a different question and almost never asked. Ask it of every message, comment,
     docstring and suggested remedy.
-* ⚠ **The single most common defect found on this repo was prose claiming more than the
-  executable statement beside it** — measured across the lane's whole life, and it outlived
-  the lane. Read the code, not the comment next to it.
-* **Reproduce before reporting, and positive-control every negative.** An empty result and a
-  broken instrument are indistinguishable; check that the check ran.
+* ⚠⚠ **PROSE CLAIMING MORE THAN THE EXECUTABLE STATEMENT BESIDE IT IS THE MOST COMMON DEFECT
+  THIS REPO HAS EVER PRODUCED** — measured across the review lane's whole life, and it
+  outlived the lane. **Read the code, not the comment next to it.**
+* ⚠ **AN EMPTY RESULT AND A BROKEN INSTRUMENT ARE INDISTINGUISHABLE.** Positive-control every
+  negative and check that the check ran. A guard that passes over an empty population reports
+  the same green as one that passed over a clean one.
+* ⚠ **A RULE IS NOT A MECHANISM.** A sentence in a document cannot refuse anything, and a
+  reader who believes the document over the code is misled by the more authoritative-looking
+  one. This repo has paid for that repeatedly, in both directions.
 
-⚠ **`.claude/**`, `AGENTS.md` and `CLAUDE.md` are code.** `.claude/commands/*.md` is an
-executable prompt — it tells an agent holding push rights what to run — so it is closer to a
-shell script than to a README. That was a review-scope rule; with no review to scope, it
-survives as a warning about what these files are.
+⚠ **`.claude/**`, `AGENTS.md`, `CLAUDE.md` and `workflow.md` ARE CODE.** `.claude/commands/*.md`
+is an executable prompt — it tells an agent holding push rights what to run — so it is closer
+to a shell script than to a README. That began as a review-scope rule; with no review to
+scope, it survives as a statement about what those files are.
 
 ### 5b. The doc-claims gate can stop enforcing WITHOUT going red
 
