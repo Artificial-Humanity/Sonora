@@ -23,7 +23,11 @@ import sys
 
 import pytest
 
-yaml = pytest.importorskip("yaml")
+# ⚠ A PLAIN IMPORT, NOT `importorskip`. `pyproject.toml` declares PyYAML as "CORE, NOT
+# TRANSITIVE, AND NOT OPTIONAL", and `tests/test_commit_hygiene.py` hard-fails without it.
+# Skipping here would have given two files two answers to the same missing dependency, and
+# the file that vanishes silently is this one — the eval-trap guard.
+import yaml
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "scripts" / "agent_env.py"

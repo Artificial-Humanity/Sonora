@@ -18,7 +18,10 @@ The layout is the answer to *"what is this file?"*. The enforcement is
 | **`teacher_audition/`** | **Provenance, not a lane.** Clips these rendered are still rated in `ratings.csv`, and its README is the per-engine interface record. See the standing note at the top of that README before proposing a deletion. | 14 py + 2 sh |
 | **`litert_export/`** | The on-device export lane. Self-contained, with its own `run.sh` dispatcher that takes the script name as `$1` — so static reachability cannot see it, which `pipeline_manifest.DYNAMIC_DISPATCH` declares rather than leaves as a mystery. | 12 py |
 
-Top level holds only `pipeline_manifest.py` (the declaration) and the three container
+Top level holds `pipeline_manifest.py` (the declaration), `agent_env.py` (the identity
+resolver — it lives here rather than in `tools/` because `CLAUDE.md` and the persona quote
+its path in a pasteable command, and moving it would edit four files to save none), and the
+three container
 helpers two of the orchestrators source.
 
 ## Imports: flat, from a repo-root anchor

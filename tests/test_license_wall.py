@@ -20,6 +20,7 @@ something raised.
 
 import os
 import pathlib
+import re
 import subprocess
 import tempfile
 
@@ -635,7 +636,64 @@ def test_both_readers_use_the_shared_gap_report():
 # ⚠ Returning None makes the dependent tests SKIP, not pass. That is deliberate and it is
 # also the risk: a skip is invisible in a green run. If these ever need to be load-bearing on
 # a given host, set the variable there rather than assuming the default resolves.
-TORCH_PY_DEFAULT = "/data/toolchain/litert-conversion/.venv/bin/python"
+# ⚠ DERIVED FROM `run.sh`, NOT COPIED. `scripts/litert_export/run.sh` OWNS this default — it
+# composes it from `SONORA_LITERT_WORK` — and #434 was three passes of prose claiming how many
+# copies existed, each correct when written and unable to fail afterwards. A literal here would
+# have been a fourth.
+REPO = pathlib.Path(__file__).resolve().parent.parent
+_RUN_SH = REPO / "scripts" / "litert_export" / "run.sh"
+
+
+def _default_torch_py():
+    src = _RUN_SH.read_text(encoding="utf-8")
+    work = re.search(r'SONORA_LITERT_WORK="\$\{SONORA_LITERT_WORK:-([^}"]+)\}"', src)
+    py = re.search(r'PY="\$\{SONORA_LITERT_PY:-\$\{SONORA_LITERT_WORK\}([^}"]+)\}"', src)
+    assert work and py, "run.sh no longer composes the interpreter path the way this derives it"
+    return work.group(1) + py.group(1)
+
+
+TORCH_PY_DEFAULT = _default_torch_py()
+
+# ⚠ `run.sh` IS THE SOURCE, NOT A COPY, and it is excluded from the comparison for a reason
+# worth stating: it never contains the literal. It composes the path from `SONORA_LITERT_WORK`,
+# so asserting "run.sh contains run.sh's value" fails on a correct file — measured, on the
+# first run of this test. The source is derived FROM; only the copies are compared TO it.
+_INTERPRETER_SOURCE = "scripts/litert_export/run.sh"
+
+# Every OTHER file allowed to spell the path out, and why.
+# ⚠ ENROLMENT IS NOT PERMISSION TO DRIFT — the test below compares each against `run.sh`.
+_INTERPRETER_COPIES = {
+    "scripts/tools/check_publishable.py": "a pasteable command in the docstring, so the reader "
+                                          "does not have to complete a shape",
+}
+
+
+def test_every_literal_copy_of_the_interpreter_is_enrolled():
+    """⚠ COMPLETENESS BY CONSTRUCTION, restored 2026-09-15 after the review lane took the
+    original with it. A number in prose is not a mechanism (#434); a scan is.
+
+    ⚠ The scan is over TRACKED files — an untracked scratch copy is not the repo's problem,
+    and including it would make this fail on anyone's working directory.
+    """
+    out = subprocess.run(["git", "grep", "-l", "litert-conversion/.venv/bin/python"],
+                         capture_output=True, text=True, cwd=str(REPO))
+    # rc 1 = no matches, which is itself a finding: the population cannot be empty.
+    found = {l.strip() for l in out.stdout.splitlines() if l.strip()}
+    found.discard("tests/test_license_wall.py")     # this file names it only in prose
+    assert found, "no file spells the interpreter path — the enrolment list guards nothing"
+    unenrolled = sorted(found - set(_INTERPRETER_COPIES) - {_INTERPRETER_SOURCE})
+    assert not unenrolled, (
+        "these files spell out the interpreter path and are not enrolled in "
+        "_INTERPRETER_COPIES, so nothing compares them against run.sh: %s" % unenrolled)
+
+
+def test_every_enrolled_copy_matches_run_sh():
+    """⚠ POSITIVE CONTROL for the enrolment: a list nobody compares is a list."""
+    for rel in _INTERPRETER_COPIES:
+        src = (REPO / rel).read_text(encoding="utf-8")
+        assert TORCH_PY_DEFAULT in src, (
+            "%s is enrolled but does not contain %r — run.sh changed and this copy did not "
+            "follow" % (rel, TORCH_PY_DEFAULT))
 
 
 def _torch_interpreter():

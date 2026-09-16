@@ -97,7 +97,21 @@ def emit(title, entry):
     # ⚠ Checked, not assumed. A roster pointing at a persona that has moved is exactly the
     # drift this file centralises identity to prevent, and the failure would otherwise surface
     # as an agent reading nothing rather than as a bad path.
-    if not (REPO / persona).is_file():
+    #
+    # ⚠⚠ THE PATH MUST BE REPO-RELATIVE, AND `REPO / persona` DOES NOT ENFORCE THAT.
+    # `pathlib` DISCARDS the left operand when the right is absolute, so `REPO / "/etc/passwd"`
+    # is `/etc/passwd` — it exists, `is_file()` is true, and a leading-slash typo in the roster
+    # resolved to a file outside the repo with rc=0. Measured 2026-09-15: it emitted
+    # `AGENT_PERSONA=/etc/hostname` and reported success. Rejected explicitly rather than
+    # relying on the join.
+    if os.path.isabs(persona):
+        die("the %r entry names persona %r as an ABSOLUTE path; roster personas are "
+            "repo-relative (a leading slash makes the repo root vanish)" % (title, persona))
+    resolved = (REPO / persona).resolve()
+    if not resolved.is_relative_to(REPO.resolve()):
+        die("the %r entry names persona %r, which resolves outside the repo (%s)"
+            % (title, persona, resolved))
+    if not resolved.is_file():
         die("the %r entry names persona %r, which is not a file under %s" % (title, persona, REPO))
     return "\n".join(
         "%s=%s" % (k, shlex.quote(str(v)))

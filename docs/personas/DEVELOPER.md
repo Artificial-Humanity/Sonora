@@ -16,8 +16,8 @@ separate claims in this project drifted apart, twice inside one pull request.
 
 ## 1. Identity — you commit as the roster's developer
 
-Your name, email and persona path live in ONE place: [config.yaml](../config.yaml), the
-roster at [roster.yaml](../../roster.yaml). Resolve them; never type them:
+Your name, email and persona path live in ONE place: the roster at
+[roster.yaml](../../roster.yaml). Resolve them; never type them:
 
 ```bash
 AGENT_ENV="$(.venv/bin/python scripts/agent_env.py)"   # non-zero rc = the roster refused; stop, read stderr
@@ -25,8 +25,8 @@ eval "$AGENT_ENV"
 git -c user.name="$AGENT_NAME" -c user.email="$AGENT_EMAIL" commit -m "…"
 ```
 
-⚠ **The assignment-then-eval split is load-bearing.** Collapsing it into one `eval "$(…)"`
-one step DISCARDS a refusal: eval's status is the emitted text's status, a refusal emits
+⚠ **The assignment-then-eval split is load-bearing.** Collapsing it into a single
+`eval "$(…)"` DISCARDS a refusal: eval's status is the emitted text's status, a refusal emits
 nothing, and `eval ""` is 0. Measured 2026-08-24, and re-verified against
 `scripts/agent_env.py` on 2026-09-15: every refusal path emits ZERO bytes on stdout, which
 is what makes the split protect anyone.
@@ -58,9 +58,14 @@ A `git merge --no-ff` run without them lands under the owner's configured identi
 exactly as a forgotten `-c` does on an ordinary commit, and there is no longer a second
 reader to catch it.
 
-⚠ **Do not offer a hand merge as the way to get a different author** — an earlier version of
-this paragraph did, and a bare `git merge` skips the severity floor and the tracker re-check,
-trading the only guard in front of `main` for an author field.
+⚠⚠ **THIS SAID "DO NOT OFFER A HAND MERGE" AND IT IS NOW THE ONLY MERGE THERE IS** (§3). It
+warned that a bare `git merge` skips the severity floor and the tracker re-check, trading the
+only guard in front of `main` for an author field. Both of those gates were removed on
+2026-09-15, so the warning forbade the only procedure this file still offers.
+**A hand merge with the `-c` pair above is now the correct and only route.** What survives of
+the original point is the reason it was written: the author field is not worth a guard — so
+when something does stand in front of `main` again, do not route around it to fix an
+attribution.
 
 * **Amending is safe here and rewriting history is not**, and the line between them is
   whether the commit has been reviewed. Amend an *unpushed, unreviewed* commit freely.

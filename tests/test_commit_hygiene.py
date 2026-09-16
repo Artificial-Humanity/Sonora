@@ -205,6 +205,16 @@ def test_no_commit_carries_the_ziggy_trailer():
         "inside Sonora — you are the author:\n" + "\n".join(bad))
 
 
+# ⚠ EVERYTHING BELOW THAT USES `DEVELOPER` IS SKIPPED WHEN THE ROSTER IS UNREADABLE, and
+# `test_the_roster_is_readable_and_this_file_is_not_guessing` above is deliberately NOT — so
+# the suite reports ONE failure naming the roster instead of four `TypeError: 'NoneType' is
+# not subscriptable` from tests that were never the cause. A skip beside an unconditional
+# failure is not a hidden result; it is the same result, said once.
+_needs_roster = pytest.mark.skipif(ROSTER_ERROR is not None,
+                                   reason="roster.yaml unreadable — see the floor test above")
+
+
+@_needs_roster
 def test_commits_are_authored_as_the_developer():
     bad = [f"  {_short(sha)}  {name} <{email}>" for sha, name, email, _t, _b in _commits()
            if (name, email) != DEVELOPER]
@@ -260,6 +270,12 @@ def _git(repo, *args, **kw):
 
 
 def _commit(repo, msg, who, n=[0]):
+    # ⚠ THE CHOKE POINT. Every fixture that builds a history passes an identity through here,
+    # so guarding the two call sites missed three tests that reached it by another route and
+    # died on `'NoneType' is not subscriptable` — a failure naming this line rather than the
+    # roster. Guard where the value is USED, not where you remember passing it.
+    if who is None or not all(who):
+        pytest.skip("roster.yaml unreadable — see the floor test; %s" % ROSTER_ERROR)
     n[0] += 1
     (repo / f"f{n[0]}.txt").write_text(msg, encoding="utf-8")
     _git(repo, "add", "-A")
@@ -406,6 +422,8 @@ def test_the_trailer_detection_actually_fires(tmp_path, shape, message, should_f
     _git(repo, "init", "-q", "-b", BASE_BRANCH)
     (repo / "f.txt").write_text(shape, encoding="utf-8")
     _git(repo, "add", "-A")
+    if ROSTER_ERROR is not None:
+        pytest.skip("roster.yaml unreadable — see the floor test; %s" % ROSTER_ERROR)
     _git(repo, "-c", f"user.name={DEVELOPER[0]}", "-c", f"user.email={DEVELOPER[1]}",
          "commit", "-q", "-m", message)
     trailers = _git(repo, "log", "-1", "--format=%(trailers)")
