@@ -35,8 +35,13 @@ Inherited from `notes/README.md` (retired 2026-09-08), and they apply to both di
   subjects below, that is the file in this directory.
 * **Superseded narrative is deleted, not archived.** Git history is the archive. (The
   `notes/archive/` directory was removed 2026-08-02 — see the warning below.)
-* **Filenames are `lowercase-kebab-case.md`**, except `ARCHITECTURE.md`, the one uppercase
-  anchor here. `notes/` keeps the other, `STATE.md`.
+* **Filenames are `lowercase-kebab-case.md`**, except `ARCHITECTURE.md` — the only uppercase
+  file DIRECTLY in `docs/`. `notes/` keeps `STATE.md`, the repo root keeps `WORKFLOW.md`, and
+  `docs/personas/` holds two more (see the warning at the top, which is why this sentence says
+  "directly in `docs/`" rather than "here").
+  * ⚠ **AN UPPERCASE NAME IS A SIGNAL: MUST READ** (owner, 2026-09-16). It is not decoration
+    and it is not seniority — the owner navigates by it. A new file earns capitals only if
+    reading it is genuinely required.
 * **`[[double-bracket]]` names are memory slugs, not repo files.** They point at the agent's
   persistent memory and will not resolve as links. `scripts/gates/test_doc_links.py` knows
   this and skips them; it is the only place the rule is enforced rather than stated.
