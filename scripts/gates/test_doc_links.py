@@ -25,7 +25,7 @@ below cannot match one — but that is a property of the pattern, and
 WHAT IT DOES NOT COVER — read this before trusting a pass
 ---------------------------------------------------------
 * ⚠ **THE FILE SET — read this first, because it is what a green run is scoped to.** Both
-  halves scan `repo_markdown()`: every TRACKED `.md` except `docs/personas/`.
+  halves scan `repo_markdown()`: every TRACKED `.md` except `PERSONA.md`.
   ⚠⚠ **NO COUNT IS STATED HERE ANY MORE, AND THAT IS THE THIRD TIME THIS LINE WENT STALE.**
   It read "50 of 53 today" through the 2026-09-08 `notes/` migration that made it wrong, was
   corrected to "26 of 29", and went wrong again on 2026-09-15 when `WORKFLOW.md` was deleted —
@@ -81,7 +81,7 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 # the tuple still listed `workflow/`, which the owner excluded. A second scan set is a second
 # thing to keep in sync; this gate has now had three and been wrong about which was live.
 
-# ⚠⚠ THIS REPO'S SCAN IS EVERY TRACKED `.md`, MINUS `docs/personas/` — one set for BOTH halves.
+# ⚠⚠ THIS REPO'S SCAN IS EVERY TRACKED `.md`, MINUS `PERSONA.md` — one set for BOTH halves.
 #
 # It was `PROSE_DIRS + ROOT_DOCS` for links and a different, wider set for `§N` citations, and
 # BOTH were wrong in the same direction. Measured (#261): the link half read **38 of the
@@ -102,20 +102,20 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 # confirms the change: it printed "0 of 1 citation(s) … the other 1 names a file outside the
 # scanned set" before, and "0 of 0" after. Nothing in the repo now cites a section inside an
 # excluded file. ⚠ That makes the exclusion cheaper, NOT safer — the files are still unread.
-# ⚠ `docs/personas/` IS EXCLUDED, both halves, by owner ruling 2026-08-21: the review lane was
-# retired and this gate is scoped to Sonora's own code and docs. A dead link or a `§N` inside
-# `REVIEWER.md` is not a Sonora defect and must not fail a Sonora merge. The honest cost is
-# stated at `section_citations`: `CLAUDE.md:21` cites a `REVIEWER.md §0` that does not exist,
-# and this gate steps over it deliberately.
+# ⚠ THE PERSONA IS EXCLUDED by owner ruling 2026-08-21: this gate is scoped to Sonora's own
+# code and docs, and a dead link or a `§N` inside an agent-direction file is not a Sonora defect
+# and must not fail a Sonora merge.
 #
-# ⚠ Widened from `FerroStep/workflow/` when the lane's deployment folder split the persona
-# docs into `FerroStep/personas/` (consolidation, 2026-09-03), then FOLLOWED THEM to
-# `docs/personas/` when FerroStep was dismantled (2026-09-15). The path moved three times
-# and the exclusion moved with it each time, which is the point: the ruling was never about the
-# `workflow/` directory name, it was about the review lane's OWN documents, which now span
-# two subdirectories of one folder. A prefix match on the narrower name would have silently
-# started scanning REVIEWER.md and DEVELOPER.md the moment they moved.
-_SCAN_EXCLUDE = ("docs/personas/",)
+# ⚠ THE EXCLUDED PATH HAS MOVED FOUR TIMES and the exclusion followed it each time — most
+# recently on 2026-09-16, when `docs/personas/` was removed and the developer persona became
+# `PERSONA.md` at the repo root. That is the point: the ruling was never about a directory name,
+# it was about the agent-direction document itself. A prefix match on whichever name was current
+# would have silently started scanning it the moment it moved.
+#
+# ⚠⚠ `PERSONA.md` SITS UNDER NO DIRECTORY PREFIX, so it has to be named outright. A repo-root
+# persona would otherwise fall back under this gate by omission — reversing the owner's ruling
+# without anybody deciding to. `tests/test_doc_links_gate.py` asserts it stays excluded.
+_SCAN_EXCLUDE = ("PERSONA.md",)
 
 
 

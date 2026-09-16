@@ -137,7 +137,7 @@ reconstruct them from memory** — a rule recalled without its measurement is on
 date or defend.
 
 **If you are the developer session for this repo, read
-[docs/personas/DEVELOPER.md](docs/personas/DEVELOPER.md) now and work as Ozzy.** It is your standing
+[PERSONA.md](PERSONA.md) now and work as Sonya.** It is your standing
 brief and carries the steps below in the detail your role actually needs. This file keeps the
 *contract between* the roles — the loop, the cap, the abort, and the repo facts both sides
 depend on. It does not duplicate either role's procedure; that duplication is what drifted
@@ -154,10 +154,10 @@ file that *is* loaded, and all it does is send you here and to your role's perso
   stopping it becoming a second copy of these rules that drifts from them.
 * ⚠ **THE DEVELOPER PERSONA NEEDS NO FLAG — `CLAUDE.md` `@import`s IT** (owner, 2026-08-17:
   *"I'm still not very keen on having to start claude code with a pre-prompt"*). A bare
-  `claude` in this repo comes up as Ozzy, because the import is inlined into the auto-loaded
+  `claude` in this repo comes up as Sonya, because the import is inlined into the auto-loaded
   file rather than linked from it. Measured the same day: `@`-imports resolve, including from
   a subdirectory, and **a plain `claude -p` receives the imported content with no action of
-  its own.** The old route — `--append-system-prompt-file docs/personas/DEVELOPER.md` — still
+  its own.** The old route — `--append-system-prompt-file PERSONA.md` — still
   works and still survives `/clear`, but it is now redundant, and a persona that depends on
   someone remembering a flag is the failure this repo keeps re-learning.
 ⚠ **The abort below is the one part of the old loop that survives**, because it was never
@@ -183,87 +183,42 @@ than being one.
   hook, and CI runs *after* a push rather than gating one. The abort above is the only thing
   in front of `main`, which is why it is a rule and not a preference.
 * **One session commits to this repo** (owner, 2026-08-13), so `main` does not move under you
-  and divergence is not an ordinary event. **`pull.rebase=false` is set** (`--local`, and it
-  was re-set on 2026-09-11 — see below).
-  * ⚠⚠ **THIS SAID `push.default=upstream` AND `pull.rebase=false` WERE BOTH CONFIGURED, AND
-    NEITHER WAS SET AT ANY LEVEL** (measured 2026-09-11, with a positive control proving the
-    reader worked). The two errors point in opposite directions and only one was repaired:
-    * **`pull.rebase` was absent, which is the state the bullet below warns about.** That bullet
-      credits the setting with standing between a worker and git's `git config pull.rebase true`
-      hint; the setting was not there, so nothing did. It is set now. ⚠ It is **local config**,
-      so it does not travel with a clone and a fresh checkout starts without it — which is
-      presumably how it went missing. Anyone cloning this repo must set it themselves.
-    * **`push.default` is deliberately LEFT UNSET** (owner, 2026-09-11), so git's default
-      `simple` applies. The bullet below reads it as a guard that was traded away; it was not,
-      because the trade never happened. `simple` **refuses** to push a branch whose name differs
-      from its upstream, and on a repo with no branch protection that refusal is worth more than
-      the convenience `upstream` buys. **Setting it to `upstream` to match the old prose would
-      make a bare `git push` from a scratch branch reach `main`.**
-    * ⚠ **A CONFIG CLAIM IN PROSE IS NOT A CONFIG.** Nothing compares this file to `git config`,
-      so these sentences were read as descriptions of a configured repo for as long as they
-      stood. Check the setting before relying on it, exactly as §5b says of any documented
-      number.
-  * ⚠ **`git config --local` WRITES THE SHARED CONFIG, WHICH EVERY WORKTREE READS.** ⚠ **This
-    repo has ONE worktree today** — `/data/repos/Sonora` stopped being a git checkout on
-    2026-08-29 (`AI-Lab-AMD/scripts/deploy.sh`, and the workspace `AGENTS.md` §2, **not** this
-    file's §2) — so the hazard below is latent rather than live. It is kept because it returns
-    the moment a second worktree exists, and because what it taught is still true of `--local`.
-    "One committer, therefore harmless" is not the test: `commit.template` was set `--local` and
-    pointed at a `.gitmessage` that did not exist in the other worktree, which made an
-    interactive `git commit` **fatal** there — it refused and created nothing.
-    **Check any new setting against every checkout that exists, and use `--worktree` for
-    anything that names a path** — but only after reading the next bullet, because `--worktree`
-    does not currently do what its name says. ⚠ That instruction said "both checkouts" while
-    this bullet said there is one (#443), and the one-worktree fact was then stated twice in this
-    bullet in two wordings (#444). ⚠ **The first fix for #444 deleted one restatement and added a
-    sentence claiming the fact was now "said once" — while a sub-bullet still carried it in
-    full.** A claim about deduplication, itself untrue, inside the paragraph being deduplicated.
-    The restatement is gone, and no sentence here asserts how many times anything is said, for
-    the same reason `_INTERPRETER_COPIES` exists: prose cannot check itself.
-    * ⚠⚠ **`extensions.worktreeConfig` IS NOT ENABLED, AND `--worktree` THEREFORE DOES THE EXACT
-      THING THIS BULLET WARNS AGAINST.** Measured 2026-09-11 in a throwaway repo with the
-      extension off: `git config --worktree commit.template .gitmessage` **exits 0**, writes to
-      **`.git/config`** — the shared config — and creates no `config.worktree` at all. It does
-      not error and it does not warn. So the instruction *use `--worktree` for anything that
-      names a path* silently produces the `--local` outcome it exists to avoid.
-      **Enable the extension first (`git config extensions.worktreeConfig true`) or the
-      instruction is worse than useless.**
-      ⚠ This paragraph said the command *errors*, from 2026-09-11 until it was corrected the same
-      day. That was a claim about behaviour made without running it, and it was the more
-      dangerous spelling of the error: "it fails" makes a reader try something else, while the
-      truth is that it succeeds and quietly writes the wrong file.
-  * ⚠⚠ **`git push` IS NOT THE WHOLE COMMAND from a branch whose name differs from its
-    upstream — it REFUSES.** This bullet asserted the opposite in bold, and was true only while
-    `push.default=upstream` was set (above). Re-measured 2026-09-11 in a throwaway clone:
-    *"fatal: The upstream branch of your current branch does not match the name of your current
-    branch."*
-    ⚠⚠ **DO NOT WORK AROUND IT, AND THIS BULLET TOLD YOU TO.** Until 2026-09-11 it said to
-    "name both ends — `git push origin <branch>:main`". **That command reaches `main`**, and
-    reproduced here it did: an unreviewed commit on a scratch branch went
-    `093cf40..a23f28a  sonora/scratch -> main` in one step. It bypasses the refusal the
-    sub-bullet below calls the only thing standing there — the remedy defeating the guard,
-    written one line above the sentence praising it.
-    ⚠⚠ **AND IT MATTERS MORE NOW THAN IT DID THEN.** That sentence used to continue "work
-    reaches `main` through `merge_branch.sh` and nothing else", and there was a severity gate
-    behind the refusal. **`merge_branch.sh` was removed on 2026-09-15 and there is no gate.**
-    So the `push.default=simple` refusal is no longer the first of two guards — it is the
-    only one left anywhere. If what you want is the branch on `origin` rather than on `main`,
-    push it under its own name (`git push origin <branch>:<branch>`, or `-u` once).
-    * ⚠ **THAT REFUSAL IS A GUARD, AND IT IS CURRENTLY THE ONLY THING BETWEEN A SCRATCH BRANCH
-      AND `main`** (owner, 2026-09-11, declining to re-set `push.default`). This bullet used to
-      mourn it: it called `simple` "the default this replaced" and described losing the refusal
-      as the price of `upstream`. **The price was never paid** — the setting is gone, so `simple`
-      is what is in force and nothing replaced it. Re-setting `push.default=upstream` to match
-      the old prose would spend the guard for a convenience, on a repo with no branch
-      protection.
-    * **So cut scratch branches from a LOCAL ref, not from `origin/main`** — measured to fail
-      safely with `no upstream branch`, which is the refusal you want.
-  * **`origin/main..HEAD` is the range.** ⚠ **`@{push}..HEAD` does NOT resolve** — this said it
-    "also resolves now", which was true only while `push.default=upstream` was set. Re-measured
-    2026-09-11 under the current config: `fatal: cannot resolve 'simple' push to a single
-    destination`, the very error this bullet quotes as the thing that used to happen. Use
-    `origin/main..HEAD`, which is correct under any config and is why the preference was stated
-    that way in the first place.
+  and divergence is not an ordinary event.
+* **`pull.rebase=false` is set** — `--local`, re-set 2026-09-11. ⚠ Local config does **not**
+  travel with a clone, so a fresh checkout starts without it. Set it yourself.
+* **`push.default` is deliberately LEFT UNSET** (owner, 2026-09-11, declining to re-set it), so
+  git's `simple` applies and **refuses** to push a branch whose name differs from its upstream.
+  ⚠⚠ **That refusal is currently the ONLY thing between a scratch branch and `main`** — the
+  severity gate that used to sit behind it was removed on 2026-09-15. Setting
+  `push.default=upstream` would spend the guard for a convenience, on a repo with no branch
+  protection.
+* ⚠⚠ **A CONFIG CLAIM IN PROSE IS NOT A CONFIG.** This file asserted that both settings above
+  were configured when **neither was set at any level** — measured 2026-09-11 with a positive
+  control proving the reader worked. Nothing compares this file to `git config`, so the
+  sentences were read as descriptions of a configured repo for as long as they stood. Check the
+  setting before relying on it, exactly as §5b says of any documented number.
+* ⚠⚠ **NEVER `git push origin <branch>:main`.** It names both ends and so bypasses the refusal
+  above. Reproduced here: an unreviewed commit on a scratch branch went
+  `093cf40..a23f28a  sonora/scratch -> main` in one step. To put a branch on `origin` under its
+  own name, `git push origin <branch>:<branch>` (or `-u` once).
+* **Cut scratch branches from a LOCAL ref, not from `origin/main`** — measured to fail safely
+  with `no upstream branch`, which is the refusal you want.
+* **`origin/main..HEAD` is the range.** ⚠ **`@{push}..HEAD` does NOT resolve** under `simple`:
+  `fatal: cannot resolve 'simple' push to a single destination` (measured 2026-09-11).
+  `origin/main..HEAD` is correct under any config.
+* ⚠ **`git config --local` WRITES THE SHARED CONFIG, WHICH EVERY WORKTREE READS.** This repo has
+  **one worktree today** — `/data/repos/Sonora` stopped being a git checkout on 2026-08-29
+  (`AI-Lab-AMD/scripts/deploy.sh`, and the **workspace** `AGENTS.md` §4 — not this file's) —
+  so the hazard is latent rather than live, and it returns the moment a second worktree exists.
+  "One committer, therefore harmless" is not the test: `commit.template` was set `--local`
+  pointing at a `.gitmessage` absent from the other worktree, which made an interactive
+  `git commit` **fatal** there — it refused and created nothing.
+  * ⚠⚠ **`--worktree` IS NOT THE FIX, BECAUSE `extensions.worktreeConfig` IS NOT ENABLED.**
+    Measured 2026-09-11 with the extension off: `git config --worktree commit.template
+    .gitmessage` **exits 0**, writes to **`.git/config`** — the shared config — and creates no
+    `config.worktree`. It does not error and it does not warn, so it silently produces the
+    `--local` outcome it exists to avoid. **Enable the extension first
+    (`git config extensions.worktreeConfig true`) or the instruction is worse than useless.**
 ### 2. Training & Troubleshooting Mandates
 
 * **Training Workspace**: Training runs inside the ROCm Docker container (named `sonora_training`), whose compose definition lives in the `AI-Lab-AMD` sibling repo.

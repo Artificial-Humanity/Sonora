@@ -2,44 +2,40 @@
 
 ⚠⚠ THIS FILE IS A SALVAGE, AND THE REASON MATTERS MORE THAN THE CONTENT. `tests/test_personas.py`
 was deleted on 2026-09-15 with the review cycle, correctly — most of it tested a reviewer
-process that no longer exists. Three of its thirteen tests were not about the lane at all, and
+process that no longer exists. Two of its thirteen tests were not about the lane at all, and
 they went with it:
 
   * `test_every_import_target_exists` — the `@import` in `CLAUDE.md` resolving
-  * `test_claude_md_does_not_import_the_reviewer_persona`
   * `test_every_markdown_table_run_carries_its_own_header_and_delimiter` — over `AGENTS.md`
-    and `CLAUDE.md` as much as over the personas
+    and `CLAUDE.md` as much as over the persona
 
 ⚠ AND THE FIRST ONE'S EXACT FAILURE WAS COMMITTED THE DAY AFTER IT WAS DELETED. That test's
 docstring said: *"Renaming or moving a persona file would disarm the default for every session
-in the repo, and the only symptom would be an agent that quietly is not Ozzy."* The very next
-commit moved `FerroStep/personas/DEVELOPER.md` to `docs/personas/DEVELOPER.md` and hand-edited
-the import. It happened to be correct. Nothing would have said so if it were not.
+in the repo, and the only symptom would be an agent that quietly is not the developer."* The
+very next commit moved the persona file and hand-edited the import. It happened to be correct.
+Nothing would have said so if it were not.
 
-⚠ These files are excluded from the doc-link gate by the owner's ruling of 2026-08-21
+⚠⚠ **THE IDENTITY HALF OF THIS FILE WENT ON 2026-09-16** (owner), with the roster file,
+its resolver script and `docs/personas/`. `test_the_import_and_the_roster_name_the_same_persona`
+and `test_every_roster_entry_resolves` guarded a second copy of the persona path that no longer
+exists, and `test_claude_md_does_not_import_the_reviewer_persona` guarded against importing a
+file that is gone. **Identity is now stated once, in `PERSONA.md`.** The import test below is
+what remains, and it is the load-bearing one: it is the only thing standing between a moved
+persona and a session that silently has no role.
+
+⚠ `PERSONA.md` is excluded from the doc-link gate by the owner's ruling of 2026-08-21
 (`_SCAN_EXCLUDE` in `scripts/gates/test_doc_links.py`), so nothing else in the repo reads a
-path inside them. That exclusion is why this file has to exist rather than being covered
+path inside it. That exclusion is why this file has to exist rather than being covered
 incidentally.
 """
 from __future__ import annotations
 
 import pathlib
 import re
-import subprocess
-import sys
-
-import pytest
-
-# ⚠ A PLAIN IMPORT, NOT `importorskip`. `pyproject.toml` declares PyYAML as "CORE, NOT
-# TRANSITIVE, AND NOT OPTIONAL", and `tests/test_commit_hygiene.py` hard-fails without it.
-# Skipping here would have given two files two answers to the same missing dependency, and
-# the file that vanishes silently is this one — the eval-trap guard.
-import yaml
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 CLAUDE_MD = (REPO / "CLAUDE.md").read_text(encoding="utf-8")
 IMPORT_RE = re.compile(r"^@(\S+)\s*$", re.M)
-ROSTER = REPO / "roster.yaml"
 
 
 # --------------------------------------------------------------------------- #
@@ -49,7 +45,7 @@ def test_every_import_target_exists():
     """⚠ A BROKEN `@import` FAILS SILENTLY — no error, no warning, just a session with no role.
 
     A green result indistinguishable from a correct one. The only symptom of a moved persona
-    is an agent that quietly is not Ozzy, in a repo where that agent then commits.
+    is an agent that quietly is not Sonya, in a repo where that agent then commits.
     """
     targets = IMPORT_RE.findall(CLAUDE_MD)
     assert targets, "CLAUDE.md imports nothing — the default role is unwired"
@@ -57,66 +53,16 @@ def test_every_import_target_exists():
         assert (REPO / t).is_file(), "CLAUDE.md imports a file that does not exist: %s" % t
 
 
-def test_the_import_and_the_roster_name_the_same_persona():
-    """⚠ CLAUDE.md calls its import path "the one deliberate second copy" of the roster's
-    `persona` value and says "change one, change both". That pair had no mechanism.
-
-    An `@import` cannot read YAML, so the duplication is unavoidable — which makes it exactly
-    the kind of pair that needs a test rather than an instruction. AGENTS.md's own rule is
-    that a rule without a mechanism is not enforcement.
-    """
-    doc = yaml.safe_load(ROSTER.read_text(encoding="utf-8"))
-    persona = doc["agents"][doc["default_agent"]]["persona"]
-    targets = IMPORT_RE.findall(CLAUDE_MD)
-    assert persona in targets, (
-        "CLAUDE.md imports %s but roster.yaml's default agent (%r) names %r — the two copies "
-        "have drifted, and the symptom is a session holding the wrong persona or none"
-        % (targets, doc["default_agent"], persona))
-
-
-def test_claude_md_does_not_import_the_reviewer_persona():
-    """Importing REVIEWER.md would hand every ordinary session a second, competing role.
-
-    ⚠ Kept although nothing launches a reviewer any more: the file still exists as a
-    depiction, the import is still a glob away from picking it up, and the cost of it
-    happening is a session that believes it must not write.
-    """
-    for t in IMPORT_RE.findall(CLAUDE_MD):
-        assert "REVIEWER" not in t.upper(), "CLAUDE.md imports the reviewer persona: %s" % t
-
-
-# --------------------------------------------------------------------------- #
-# the roster resolves for EVERY entry, not just the default
-# --------------------------------------------------------------------------- #
-def test_every_roster_entry_resolves():
-    """⚠ `tests/test_agent_env.py` only ever resolved the DEFAULT agent, so a broken
-    `reviewer` entry — a moved persona, a blank email — was invisible.
-
-    That is the same silent-disarm shape as the import above, one file over. Derived from the
-    roster rather than parametrised on a hand-written list, so a new entry is covered the day
-    it is added.
-    """
-    doc = yaml.safe_load(ROSTER.read_text(encoding="utf-8"))
-    titles = sorted(doc["agents"])
-    assert titles, "roster.yaml declares no agents"
-    for title in titles:
-        r = subprocess.run(
-            [sys.executable, str(REPO / "scripts" / "agent_env.py"), "--agent", title],
-            capture_output=True, text=True, cwd=str(REPO))
-        assert r.returncode == 0, "roster entry %r does not resolve:\n%s" % (title, r.stderr)
-        env = dict(l.split("=", 1) for l in r.stdout.strip().splitlines())
-        assert (REPO / env["AGENT_PERSONA"].strip("'\"")).is_file()
-
-
 # --------------------------------------------------------------------------- #
 # markdown tables — #353, #360, #363, and the population is now Sonora's own files
 # --------------------------------------------------------------------------- #
-# ⚠ `FerroStep/workflow/WORKFLOW.md` left this list when it was deleted; the personas moved.
-# What is left is mostly AGENTS.md and CLAUDE.md — the repo's rules of record — which is the
-# reason this guard had to be salvaged rather than dropped with the lane it sat beside.
+# ⚠ THIS LIST HAS LOST THREE ENTRIES, EACH BECAUSE THE FILE WENT — the review lane's own
+# WORKFLOW.md, then `docs/personas/{DEVELOPER,REVIEWER}.md` on 2026-09-16. What is left is the
+# repo's rules of record plus the persona, which is the reason this guard had to be salvaged
+# rather than dropped with the lane it sat beside. The anti-vacuity check below is what makes a
+# fourth disappearance fail loudly instead of silently shrinking the population.
 TABLE_MD = [
-    "docs/personas/REVIEWER.md",
-    "docs/personas/DEVELOPER.md",
+    "PERSONA.md",
     "AGENTS.md",
     "CLAUDE.md",
 ]

@@ -109,25 +109,11 @@ model_e2e_test_tflite/
 /utterance_001.wav
 *.onnx
 
-# ⚠⚠ review_cycle.sh WAS DELETED ON 2026-09-15 with the review lane, and everything below
-# this line describes a driver that no longer exists. The two entries are KEPT rather than
-# removed: they cost nothing, and a stale artifact from before the deletion would otherwise
-# show up in a dirty-tree check with no entry to hide it. Delete them once you are satisfied
-# no such file survives anywhere. Everything that follows is history.
-#
-# review_cycle.sh runtime files, ANCHORED so they match at the repo root and nowhere else.
-#
-# ⚠ The notes path IS built from `git rev-parse --show-toplevel` and is always here. The stop
-# file is NOT: `--stop-file <PATH>` takes any path, and the repo-root default applies only when
-# it is left empty (#250 — an earlier version of this comment claimed both were repo-root "by
-# construction", which was a false premise offered as the justification). Anchoring is still
-# right: a stop file placed elsewhere is the operator's own file in their own location, and
-# hiding every `.review_cycle.stop` anywhere in the tree is not this file's business.
-#
-# ⚠ The driver ALSO `rm -f`s the notes file at startup, and that is not redundant: porting
-# this lane copies `FerroStep/` alone, so a ported copy has no entry here. Ignoring keeps the
-# file out of the dirty-tree check; the `rm` keeps the last cycle's notes out of the next
-# cycle's first review.
+# ⚠⚠ review_cycle.sh WAS DELETED ON 2026-09-15 with the review lane. These two entries
+# describe a driver that no longer exists and are kept only so a stale artifact from before
+# the deletion cannot show up in a dirty-tree check with nothing to hide it. Verified
+# 2026-09-16: no such file exists anywhere in the tree, so they are safe to delete.
+# ANCHORED so they match at the repo root and nowhere else.
 /.review_cycle.notes
 /.review_cycle.stop
 

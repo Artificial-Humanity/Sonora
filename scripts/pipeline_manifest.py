@@ -176,11 +176,10 @@ NOT_ORCHESTRATORS = {
         "Preserved audition provenance — added for exactly that reason in 4e87241. Invokes a "
         "toolchain script outside this repo."
     ),
-    # --- the review lane (FerroStep/workflow/), not the data pipeline -----------------------------
-    # ⚠ THE FOUR REVIEW-LANE ENTRIES WERE REMOVED 2026-09-15 with the scripts they declared
-    # (request_review.sh, review_cycle.sh, merge_branch.sh, full_review.sh). The note they
-    # carried is worth keeping without them: the enumeration behind this gate is REPO-WIDE
-    # rather than `scripts/*.sh`, and `FerroStep/workflow/` was the first thing to exercise
-    # that widening. If shell ever lands outside `scripts/` again, it gets declared here —
-    # leaving it undeclared is the exemption-by-construction the widening removed.
+    # --- the review lane, not the data pipeline ---------------------------------------------------
+    # ⚠ THE FOUR REVIEW-LANE ENTRIES WERE REMOVED 2026-09-15 with the scripts they declared.
+    # The note they carried is worth keeping without them: the enumeration behind this gate is
+    # REPO-WIDE
+    # rather than `scripts/*.sh`. If shell ever lands outside `scripts/` again, it gets
+    # declared here — leaving it undeclared is the exemption-by-construction the gate removed.
 }

@@ -2,17 +2,24 @@
 
 WHY THIS FILE EXISTS (2026-08-18, issue #101)
 ---------------------------------------------
-Two rules in `docs/personas/DEVELOPER.md` §1 had no enforcement:
+Two rules in `PERSONA.md` §1 had no enforcement:
 
-  * commits are authored **Ozzy <ozzy@artificialhumanity.io>**, via the `-c` pair, because the
-    repo's configured identity is deliberately the owner's — so a forgotten `-c` does not
-    error, it silently commits an agent's work under a human's name;
-  * **no `Co-Authored-By: Ziggy` trailer** — you are the author, and a co-author trailer
-    naming a different agent misattributes the work.
+  * commits carry a **`Co-Authored-By:` trailer naming the agent**, because the author line is
+    the repo's configured identity — the owner's, deliberately — so a forgotten trailer does
+    not error, it silently produces a commit that credits nobody;
+  * **no commit is AUTHORED as the agent** — the author line stays the owner's, and re-authoring
+    to an agent misattributes a human's work.
+
+⚠⚠ **THESE TWO RULES INVERTED ON 2026-09-16** (owner), when the roster file and
+its resolver script were removed and `PERSONA.md` became the single identity source. Sonora
+used to do the opposite: the agent was the AUTHOR via a `-c` pair and a co-author trailer was
+forbidden as misattribution. **Both spellings are enforceable and only one is live** — the
+detection machinery below was built for the old rule and is reused unchanged, because what it
+measures (how git parses a trailer) does not depend on which direction the rule points.
 
 ⚠ **BOTH WERE BROKEN FOR EIGHT COMMITS AND NOTHING NOTICED.** The trailer came from a
 `CLAUDE.md` at the workspace root that had already been DELETED; an agent went on obeying it
-from a summary written before the deletion. A reviewer reading `DEVELOPER.md` caught it by
+from a summary written before the deletion. A reviewer reading `PERSONA.md` caught it by
 hand. That is the definition of a rule without a mechanism, and `AGENTS.md` §1 is explicit
 that a rule is not one.
 
@@ -24,15 +31,15 @@ and says plainly which ones it is not looking at — an exemption that cannot qu
 (issue #102). It checked every commit reachable from `HEAD` after the boundary, which is not
 "the agent's commits" — it is *everyone's*. Two consequences, both measured on 2026-08-18:
 
-  * `merge_branch.sh:162` runs `git merge --no-ff` with no `-c` pair, so the merge commit
+  * A `git merge --no-ff` runs with no `-c` pair, so the merge commit
     carries the configured identity. Performing that merge in a throwaway clone produced
     `fcff394 lmcfarlin <2363604+lmcfarlin@users.noreply.github.com>` and turned this file red
     on `main`. **The script that lands a branch was the thing that broke the suite.**
-  * The owner is 388 of 396 commits on `main` and hand-commits there regularly. DEVELOPER.md
+  * The owner is 388 of 396 commits on `main` and hand-commits there regularly. PERSONA.md
     §1 says the configured identity was left as theirs **deliberately**, so the guard
     forbade exactly what the repo permits on purpose.
 
-And the failure message told whoever saw it to re-author the commit as Ozzy. The likely
+And the failure message told whoever saw it to re-author the commit as Sonya. The likely
 reader was the owner, looking at their own work; a guard whose remedy misattributes a human's
 commits to an agent is worse than no guard, since #101 was about attribution being silently
 wrong and this made it loudly wrong in the other direction.
@@ -51,40 +58,52 @@ import pytest
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _developer():
-    """The developer identity, FROM `roster.yaml`, never typed out here.
+def _agent():
+    """The agent identity, FROM `PERSONA.md`, never typed out here.
 
-    ⚠⚠ THIS USED TO READ `FerroStep/workflow/config.env` AND SILENTLY FALL BACK TO HARDCODED
-    VALUES when the file was missing. That fallback fired for real: the config was deleted
-    with the review cycle on 2026-09-15, these tests went on passing, and the "second
-    definition that drifts" the old docstring warned against became the ONLY definition —
-    still under a comment insisting it was not typed out here. A default that silently
-    replaces its own source is worse than no source, because the test keeps reporting green
-    while measuring something else.
+    ⚠⚠ THIS HAS NOW READ THREE DIFFERENT SOURCES, AND THE FIRST ONE FAILED SILENTLY. It read
+    the review lane's `config.env` and fell back to hardcoded values when the file was missing;
+    that fallback fired for real when the config was deleted on 2026-09-15, these tests went on
+    passing, and the "second definition that drifts" the old docstring warned against became the
+    ONLY definition — still under a comment insisting it was not typed out here. It then read
+    a roster file, which was removed on 2026-09-16 with its resolver.
 
-    So: no default. A roster this cannot read is a refusal, reported where it is used.
+    **A default that silently replaces its own source is worse than no source**, because the test
+    keeps reporting green while measuring something else. So: no default, at any point. A
+    `PERSONA.md` this cannot parse is a refusal, reported where it is used.
+
+    ⚠ THE OWNER RENAMES THESE AGENTS DELIBERATELY AND OFTEN — the name is a mnemonic for the
+    project, not a stable key. That is exactly why it is parsed rather than typed: a rename is an
+    edit to one file, not a sweep.
     """
-    import yaml
-    path = os.path.join(REPO, "roster.yaml")
+    path = os.path.join(REPO, "PERSONA.md")
     with open(path, encoding="utf-8") as f:
-        doc = yaml.safe_load(f)
-    entry = doc["agents"][doc["default_agent"]]
-    return entry["name"].strip(), entry["email"].strip()
+        text = f.read()
+    name = re.search(r"^You are (.+?)\.\s*$", text, re.M)
+    email = re.search(r"co-authoring of git commits will be done as \"([^\"]+)\"", text, re.I)
+    if not name or not email:
+        raise ValueError(
+            "PERSONA.md does not state the agent's name and co-author address in the expected "
+            "form ('You are X.' / 'will be done as \"addr\"') — identity cannot be resolved")
+    return name.group(1).strip(), email.group(1).strip()
 
 
 try:
-    DEVELOPER, ROSTER_ERROR = _developer(), None
+    AGENT, PERSONA_ERROR = _agent(), None
 except Exception as e:                      # noqa: BLE001 — surfaced in the tests, not at import
     # ⚠ NOT raised here. A module-scope raise is a COLLECTION error, and a collection error
     # aborts the whole session rather than failing this file — which is how one unreadable
     # file takes the suite down with it.
-    DEVELOPER, ROSTER_ERROR = None, "%s: %s" % (type(e).__name__, e)
+    AGENT, PERSONA_ERROR = None, "%s: %s" % (type(e).__name__, e)
 
-# ⚠ `main` is this repo's base branch and is not a roster fact — the roster holds identities.
-# It is written here because there is nowhere better since `config.env` went, and because it
-# has never varied. If it ever does, it needs a declared home rather than this line.
+# ⚠ `main` is this repo's base branch and is not an identity fact. It is written here because
+# there is nowhere better since `config.env` went, and because it has never varied. If it ever
+# does, it needs a declared home rather than this line.
 BASE_BRANCH = "main"
-BAD_TRAILER = "Co-Authored-By: Ziggy"
+
+# ⚠ THE KEY, NOT THE WHOLE LINE. The name and address come from `PERSONA.md` above, so a rename
+# does not touch this file.
+TRAILER_KEY = "Co-Authored-By"
 
 # ⚠ THE BOUNDARY, AND IT IS A COMMIT, NOT A DATE. Everything up to and including this SHA
 # predates the owner's decision and is deliberately exempt. A date would drift with the
@@ -117,7 +136,7 @@ def _commits(repo=REPO, boundary=GRANDFATHERED_THROUGH):
     which is exactly why it survived: the cost lands on whoever writes the next caller.
 
     ⚠ `--no-merges`, and scoped to `BASE..HEAD` (issue #102). A merge commit is made by
-    `merge_branch.sh` without a `-c` pair and carries the configured identity, which is the
+    a hand merge without a `-c` pair and carries the configured identity, which is the
     owner's on purpose; and everything already on the base branch is history this guard was
     never given a mandate over. Empty when the boundary is not an ancestor — a branch cut
     from elsewhere is not evidence of anything."""
@@ -130,7 +149,7 @@ def _commits(repo=REPO, boundary=GRANDFATHERED_THROUGH):
         return []
     r = subprocess.run(
         # ⚠ `%(trailers)` AS WELL AS `%B` — git's own parse, not a substring of the body.
-        # See test_no_commit_carries_the_ziggy_trailer for why.
+        # See test_every_commit_carries_the_agent_trailer for why.
         ["git", "log", "--no-merges", f"{base}..HEAD", f"^{boundary}",
          "--format=%H%x1f%an%x1f%ae%x1f%(trailers)%x1f%B%x1e"],
         cwd=repo, capture_output=True, text=True)
@@ -154,83 +173,94 @@ def _short(sha):
     return sha[:9]
 
 
-def carries_bad_trailer(trailers, body):
-    """True if this commit carries the forbidden co-author line, by EITHER mechanism.
+def carries_agent_trailer(trailers, body, agent=None):
+    """True if this commit carries the agent's co-author line, by EITHER mechanism.
 
-    ⚠ TWO CHECKS, BECAUSE EACH ALONE HAS A MEASURED HOLE (#242).
-
-    `%(trailers)` is git's own parse and is the right primary: it excludes a mention of the
-    name in ordinary prose, which the old substring check flagged as a violation — that is
-    why the mechanism changed, and it was the correct change.
+    ⚠ TWO CHECKS, BECAUSE EACH ALONE HAS A MEASURED HOLE (#242), AND THE INVERSION MADE THE
+    SECOND ONE MATTER MORE. `%(trailers)` is git's own parse and is the right primary: it
+    excludes a mention of the name in ordinary prose.
 
     But git only parses a trailer block in the LAST paragraph. A commit whose message is
     `…trailer…` + blank line + one closing sentence carries the line verbatim and parses as
-    having no trailers at all. Measured over four shapes in a throwaway repo; that one is the
-    gap, and the old substring check caught it.
+    having no trailers at all. Measured over four shapes in a throwaway repo.
+
+    ⚠⚠ **UNDER THE OLD RULE THAT GAP LET A FORBIDDEN TRAILER THROUGH; UNDER THE CURRENT ONE IT
+    FAILS A COMMIT THAT IS CORRECT.** Same hole, opposite symptom — a developer who writes a
+    closing sentence after their trailer would be told they omitted it. The body check is what
+    prevents that, so it is not redundant in either direction.
 
     So: the parsed field, OR a LINE-ANCHORED match on the body. Line-anchored is what keeps
-    prose out — `Suite: 1429 passed` mentioning the name mid-sentence does not start a line
-    with `Co-Authored-By:`.
-    ⚠ THE SECOND CHECK MUST MATCH THE TRAILER'S SHAPE, NOT ITS WORDS. A first version used
-    `re.match(r"\s*Co-Authored-By:.*Ziggy", line)` and immediately flagged `6e89848` — whose
-    message QUOTES the trailer while explaining it, and whose prose wraps so that the phrase
-    begins a line. That is the defect `0afe042` removed, reintroduced by its own fix.
-
-    A real trailer is `Key: Name <address>` alone on its line. Prose is not, however it wraps.
+    prose out — a sentence mentioning the trailer mid-line does not start a line with
+    `Co-Authored-By:`.
+    ⚠ THE SECOND CHECK MATCHES THE TRAILER'S SHAPE, NOT ITS WORDS. A real trailer is
+    `Key: Name <address>` alone on its line. Prose is not, however it wraps.
     """
-    if BAD_TRAILER in trailers:
+    name, email = agent if agent else AGENT
+    if ("%s: %s <%s>" % (TRAILER_KEY, name, email)) in trailers:
         return True
-    return any(re.fullmatch(r"Co-Authored-By:\s*Ziggy\s*<[^>]+>\s*", line, re.I)
-               for line in body.splitlines())
+    pattern = r"%s:\s*%s\s*<%s>\s*" % (re.escape(TRAILER_KEY), re.escape(name), re.escape(email))
+    return any(re.fullmatch(pattern, line, re.I) for line in body.splitlines())
 
 
-def test_the_roster_is_readable_and_this_file_is_not_guessing():
-    """⚠ FLOOR. Every identity assertion below rests on `roster.yaml` being readable.
+def test_the_persona_is_readable_and_this_file_is_not_guessing():
+    """⚠ FLOOR. Every identity assertion below rests on `PERSONA.md` being parseable.
 
-    The predecessor of this file read a config that had been deleted, caught the error, and
-    fell back to hardcoded values — so it kept passing while measuring its own defaults. This
-    is what stops that shape returning: if the roster cannot be read, the failure names the
-    roster instead of surfacing as a mystified identity mismatch twenty lines down.
+    Two predecessors of this file read a source that had been deleted. The first caught the
+    error and fell back to hardcoded values, so it kept passing while measuring its own
+    defaults. This is what stops that shape returning: if the persona cannot be parsed, the
+    failure names the persona instead of surfacing as a mystified identity mismatch twenty
+    lines down.
     """
-    assert ROSTER_ERROR is None, "roster.yaml could not be read: %s" % ROSTER_ERROR
-    assert DEVELOPER and all(DEVELOPER), "roster.yaml gave an empty developer identity: %r" % (DEVELOPER,)
-    assert "@" in DEVELOPER[1], "the developer email looks wrong: %r" % (DEVELOPER[1],)
+    assert PERSONA_ERROR is None, "PERSONA.md could not be read: %s" % PERSONA_ERROR
+    assert AGENT and all(AGENT), "PERSONA.md gave an empty agent identity: %r" % (AGENT,)
+    assert "@" in AGENT[1], "the agent email looks wrong: %r" % (AGENT[1],)
 
 
-def test_no_commit_carries_the_ziggy_trailer():
-    bad = [f"  {_short(sha)}  {name}" for sha, name, _e, trailers, body in _commits()
-           if carries_bad_trailer(trailers, body)]
-    assert not bad, (
-        "commits carry a `Co-Authored-By: Ziggy` trailer, which DEVELOPER.md §1 rules out "
-        "inside Sonora — you are the author:\n" + "\n".join(bad))
-
-
-# ⚠ EVERYTHING BELOW THAT USES `DEVELOPER` IS SKIPPED WHEN THE ROSTER IS UNREADABLE, and
-# `test_the_roster_is_readable_and_this_file_is_not_guessing` above is deliberately NOT — so
-# the suite reports ONE failure naming the roster instead of four `TypeError: 'NoneType' is
+# ⚠ EVERYTHING BELOW THAT USES `AGENT` IS SKIPPED WHEN THE PERSONA IS UNPARSEABLE, and
+# `test_the_persona_is_readable_and_this_file_is_not_guessing` above is deliberately NOT — so
+# the suite reports ONE failure naming the persona instead of several `TypeError: 'NoneType' is
 # not subscriptable` from tests that were never the cause. A skip beside an unconditional
 # failure is not a hidden result; it is the same result, said once.
-_needs_roster = pytest.mark.skipif(ROSTER_ERROR is not None,
-                                   reason="roster.yaml unreadable — see the floor test above")
+_needs_persona = pytest.mark.skipif(PERSONA_ERROR is not None,
+                                    reason="PERSONA.md unparseable — see the floor test above")
 
 
-@_needs_roster
-def test_commits_are_authored_as_the_developer():
-    bad = [f"  {_short(sha)}  {name} <{email}>" for sha, name, email, _t, _b in _commits()
-           if (name, email) != DEVELOPER]
+@_needs_persona
+def test_every_commit_carries_the_agent_trailer():
+    """⚠ A FORGOTTEN TRAILER DOES NOT ERROR — it produces a normal-looking commit crediting
+    nobody, and nothing downstream says so. That silence is the whole reason this is a test."""
+    bad = [f"  {_short(sha)}  {name}" for sha, name, _e, trailers, body in _commits()
+           if not carries_agent_trailer(trailers, body)]
     assert not bad, (
-        "unmerged commits on this branch are not authored as the developer:\n"
-        + "\n".join(bad)
+        "unmerged commits on this branch carry no `%s: %s <%s>` trailer:\n"
+        % (TRAILER_KEY, AGENT[0], AGENT[1]) + "\n".join(bad)
         + "\n\n⚠ READ WHICH OF THESE TWO IT IS BEFORE ACTING.\n"
-        "  * An AGENT wrote them and forgot the `-c` pair. The repo's configured identity is "
-        f"the owner's on purpose, so nothing errors — the work just lands under their name. "
-        f"Recommit as:\n"
-        f"      git -c user.name={DEVELOPER[0]} -c user.email={DEVELOPER[1]} commit …\n"
-        "  * The OWNER hand-committed on an agent's branch. Then the authorship is correct "
-        "and MUST NOT be changed — DEVELOPER.md §1 leaves the configured identity theirs so "
-        "their own commits stay theirs. Move the commit to its own branch, or add its SHA to "
-        "an exemption here as a deliberate decision.\n"
-        "Do not re-author a human's commit as an agent to make this pass.")
+        "  * An AGENT wrote them and forgot the trailer. Add it while the commit is still "
+        "unpushed:\n"
+        f"      git commit --amend --no-edit --trailer \"{TRAILER_KEY}: {AGENT[0]} "
+        f"<{AGENT[1]}>\"\n"
+        "  * The OWNER hand-committed on an agent's branch. Then the absence is CORRECT and "
+        "must not be 'fixed' — their own commits are theirs alone. Move the commit to its own "
+        "branch, or add its SHA to an exemption here as a deliberate decision.\n"
+        "⚠ This guard cannot tell those two apart, and it is not trying to. Do not add an "
+        "agent trailer to a human's commit to make it pass.")
+
+
+@_needs_persona
+def test_no_commit_is_authored_as_the_agent():
+    """⚠ THE OLD CONVENTION'S HABIT, CAUGHT FROM THE OTHER SIDE.
+
+    Until 2026-09-16 the agent WAS the author here, via a `-c` pair. A session carrying that
+    habit — or an agent arriving from a sibling repo where it is still correct — re-authors a
+    commit to itself and the work stops being attributable to the owner. Nothing warns.
+    """
+    bad = [f"  {_short(sha)}  {name} <{email}>" for sha, name, email, _t, _b in _commits()
+           if (name, email) == AGENT]
+    assert not bad, (
+        "commits are AUTHORED as the agent, but the author line here stays the owner's and the "
+        "agent goes in a trailer:\n" + "\n".join(bad)
+        + "\n\nThis is the pre-2026-09-16 convention, or a habit carried from a sibling repo. "
+        "Re-author to the configured identity and add the trailer instead.")
 
 
 def test_the_grandfather_boundary_still_exists_and_is_named():
@@ -273,9 +303,9 @@ def _commit(repo, msg, who, n=[0]):
     # ⚠ THE CHOKE POINT. Every fixture that builds a history passes an identity through here,
     # so guarding the two call sites missed three tests that reached it by another route and
     # died on `'NoneType' is not subscriptable` — a failure naming this line rather than the
-    # roster. Guard where the value is USED, not where you remember passing it.
+    # persona. Guard where the value is USED, not where you remember passing it.
     if who is None or not all(who):
-        pytest.skip("roster.yaml unreadable — see the floor test; %s" % ROSTER_ERROR)
+        pytest.skip("PERSONA.md unparseable — see the floor test; %s" % PERSONA_ERROR)
     n[0] += 1
     (repo / f"f{n[0]}.txt").write_text(msg, encoding="utf-8")
     _git(repo, "add", "-A")
@@ -297,7 +327,7 @@ def landed_branch(tmp_path):
     exhibit has to create the condition.
 
     ⚠ Note the shape that does NOT work here, because it is the obvious one: landing the
-    branch onto base and checking from base. After `merge_branch.sh` merges, `base..HEAD`
+    branch onto base and checking from base. After a branch lands, `base..HEAD`
     on the branch is EMPTY — base contains everything the branch had — and on `main` the
     guard skips by design. The first version of this fixture did that and its own control
     test caught it.
@@ -309,9 +339,9 @@ def landed_branch(tmp_path):
     _git(repo, "branch", "work")
     owner_on_base = _commit(repo, "owner hand-commit on base", OWNER)
     _git(repo, "checkout", "-q", "work")
-    dev = _commit(repo, "agent work on the branch", DEVELOPER)
+    dev = _commit(repo, "agent work on the branch", AGENT)
     # Catching the branch up on base. `git merge` takes the CONFIGURED identity — no `-c`
-    # pair, exactly as merge_branch.sh:162 does — so this commit is owner-authored and sits
+    # pair, exactly as a hand merge does — so this commit is owner-authored and sits
     # squarely inside `base..HEAD`.
     _git(repo, "-c", f"user.name={OWNER[0]}", "-c", f"user.email={OWNER[1]}",
          "merge", "--no-ff", BASE_BRANCH, "-q", "-m", f"merge {BASE_BRANCH} into work")
@@ -325,7 +355,7 @@ def test_a_merge_commit_never_enters_the_range(landed_branch):
     shas = {sha for sha, _n, _e, _t, _b in _commits(landed_branch["repo"], landed_branch["boundary"])}
     assert landed_branch["merge"] not in shas, (
         "the merge commit is in the range, so the author check will fail on it — and it is "
-        "made by merge_branch.sh with the owner's configured identity, on purpose")
+        "made by a hand merge with the owner's configured identity, on purpose")
 
 
 def test_a_commit_already_on_the_base_branch_never_enters_the_range(landed_branch):
@@ -350,7 +380,7 @@ def test_the_range_excludes_what_it_is_not_a_guard_over():
 
     Two things must stay out of `_commits()`: anything already on the base branch, and merge
     commits. The first is history this guard has no mandate over; the second is made by
-    `merge_branch.sh` with the configured identity and would fail the moment a branch lands.
+    a hand merge with the configured identity, and would fail the moment a branch lands.
     """
     base = _base_ref()
     if base is None or _on_base_branch():
@@ -380,23 +410,28 @@ def test_the_range_excludes_what_it_is_not_a_guard_over():
         "the range includes a merge commit"
 
 
+_PROBE = ("Probe", "probe@artificialhumanity.io")
+_T = "%s: %s <%s>" % (TRAILER_KEY, _PROBE[0], _PROBE[1])
+
+
 @pytest.mark.parametrize("shape,message,should_fire,trailers_carry", [
     ("A — trailer as the last paragraph",
-     "fix: something\n\nCo-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n", True, True),
+     "fix: something\n\n%s\n" % _T, True, True),
+    # ⚠ B IS THE SHAPE `%(trailers)` ALONE MISSES, and since 2026-09-16 it is the one that
+    # would FAIL A CORRECT COMMIT rather than pass a forbidden one: a developer who writes a
+    # closing sentence after their trailer gets told they omitted it. The body branch is what
+    # keeps that from happening.
     ("B — trailer, then a closing sentence",
-     "fix: something\n\nCo-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n\n"
-     "And some closing prose here.\n", True, False),
-    # ⚠ C CARRIES THE LITERAL `Co-Authored-By: Ziggy` IN MID-SENTENCE PROSE, deliberately
-    # (#241). The earlier version wrote only "a Ziggy trailer", so `BAD_TRAILER in body` was
-    # False for it — and a revert of this guard to the old substring check stayed green on all
-    # four shapes. With the full phrase present but not alone on its line, the line-anchored
-    # match still returns False while a substring revert turns red, which is what C is for.
+     "fix: something\n\n%s\n\nAnd some closing prose here.\n" % _T, True, False),
+    # ⚠ C CARRIES THE LITERAL TRAILER TEXT IN MID-SENTENCE PROSE, deliberately (#241). A
+    # substring check would call this a trailer; the line-anchored match does not. With the full
+    # phrase present but not alone on its line, a revert to substring matching turns red here,
+    # which is what C is for.
     ("C — the phrase in prose only",
-     "fix: something\n\nThis explains why a Co-Authored-By: Ziggy trailer is forbidden.\n\n"
-     "Suite: 1429 passed.\n", False, False),
+     "fix: something\n\nThis explains why a %s trailer is used.\n\nSuite: 1429 passed.\n" % _T,
+     False, False),
     ("D — alongside another trailer",
-     "fix: something\n\nSigned-off-by: Someone <s@example.com>\n"
-     "Co-Authored-By: Ziggy <ziggy@artificialhumanity.io>\n", True, True),
+     "fix: something\n\nSigned-off-by: Someone <s@example.com>\n%s\n" % _T, True, True),
 ])
 def test_the_trailer_detection_actually_fires(tmp_path, shape, message, should_fire,
                                               trailers_carry):
@@ -404,7 +439,7 @@ def test_the_trailer_detection_actually_fires(tmp_path, shape, message, should_f
 
     `0afe042` moved this guard onto `%(trailers)` — an unvalidated git format field — and
     added no proof the field is ever non-empty. If it returned "" for every commit (an older
-    git, a typo in the format, a field reorder, a change to BAD_TRAILER's spelling) the guard
+    git, a typo in the format, a field reorder, a change to the trailer's spelling) the guard
     would pass green forever while checking nothing.
 
     That hazard is what this entire FILE is built around: three of its tests exist solely as
@@ -422,22 +457,23 @@ def test_the_trailer_detection_actually_fires(tmp_path, shape, message, should_f
     _git(repo, "init", "-q", "-b", BASE_BRANCH)
     (repo / "f.txt").write_text(shape, encoding="utf-8")
     _git(repo, "add", "-A")
-    if ROSTER_ERROR is not None:
-        pytest.skip("roster.yaml unreadable — see the floor test; %s" % ROSTER_ERROR)
-    _git(repo, "-c", f"user.name={DEVELOPER[0]}", "-c", f"user.email={DEVELOPER[1]}",
+    # ⚠ A SYNTHETIC PROBE IDENTITY, NOT THE LIVE ONE. This control measures how git parses a
+    # trailer, which does not depend on whose name is in it — and pinning it to `PERSONA.md`
+    # would make the owner's next rename edit a test that has nothing to do with identity.
+    _git(repo, "-c", "user.name=Probe", "-c", "user.email=probe@example.invalid",
          "commit", "-q", "-m", message)
     trailers = _git(repo, "log", "-1", "--format=%(trailers)")
     body = _git(repo, "log", "-1", "--format=%B")
 
     # ⚠⚠ THE TWO BRANCHES ARE PINNED SEPARATELY, AND THE COMBINED CALL IS NOT ENOUGH (#241).
-    # `carries_bad_trailer` is an OR, and the body regex alone returns the right answer for all
+    # `carries_agent_trailer` is an OR, and the body regex alone returns the right answer for all
     # four shapes — so forcing `trailers=""` changed NO result and the first version of this
     # control could not fail if `%(trailers)` broke, which is the whole of #241. The trailers
-    # branch is not redundant: `Co-Authored-By: Ziggy` with no `<address>` is caught by it and
-    # missed by the `<[^>]+>` regex, and that coverage could vanish with nothing going red.
-    assert (BAD_TRAILER in trailers) is trailers_carry, (
+    # branch is not redundant: a trailer with no `<address>` is caught by it and missed by the
+    # `<...>` regex, and that coverage could vanish with nothing going red.
+    assert (_T in trailers) is trailers_carry, (
         f"shape {shape}: `%(trailers)` did not parse as expected — got {trailers!r}. This is "
         "the field the guard's primary branch reads; if it is empty for every shape the guard "
         "is checking nothing.")
-    assert carries_bad_trailer(trailers, body) is should_fire, (
+    assert carries_agent_trailer(trailers, body, _PROBE) is should_fire, (
         f"shape {shape}: detection returned the wrong answer")

@@ -628,7 +628,7 @@ def test_both_readers_use_the_shared_gap_report():
 # The repo venv has no torch (AGENTS.md §3), so the exit-code tests below need a torch-capable
 # interpreter from somewhere else or they cannot run at all.
 #
-# ⚠ THIS USED TO READ `REVIEWER_TORCH_PY` FROM `FerroStep/workflow/config.env`, WHICH WAS
+# ⚠ THIS USED TO READ `REVIEWER_TORCH_PY` FROM THE REVIEW LANE'S `config.env`, WHICH WAS
 # DELETED WITH THE REVIEW CYCLE (2026-09-15). That key existed to grant the reviewer an
 # interpreter that could open a checkpoint; with no reviewer there is no config to read, so
 # the path moved to an environment variable with the same default it always had.

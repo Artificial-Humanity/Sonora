@@ -12,5 +12,13 @@
 #   * ⚠ traps and residuals a future reader needs, marked so they are skimmable
 #
 # `git commit -m "one line"` is insufficient by policy for anything non-trivial.
+#
+# ⚠ THE TRAILER BELOW IS A SECOND COPY OF THE NAME IN `PERSONA.md`, and a template cannot
+# read a file — so a rename has to touch both. PERSONA.md is the source; if the two disagree,
+# it wins and this line is the stale one. `tests/test_commit_hygiene.py` checks the commit,
+# not this template, so a stale name here fails at commit time rather than here.
+#
+# ⚠ This template is INERT unless `commit.template` is set, and it is not set today
+# (measured 2026-09-16). It named an agent that had stopped working here for some time.
 
-Co-Authored-By: Ziggy <ziggy@artificialhumanity.io>
+Co-Authored-By: Sonya <Sonya@artificialhumanity.io>
