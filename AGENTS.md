@@ -1,16 +1,5 @@
 # AGENTS — Project Sonora (Training Repo)
 
-> ⚠⚠ **[WORKFLOW.md](WORKFLOW.md) IS HOW WORK GETS DONE HERE. READ IT AND FOLLOW IT.**
-> This file holds the repo's FACTS — the stack, the environment, the mandates, the measured
-> traps. `WORKFLOW.md` holds the PROCESS. The two were mixed together until 2026-09-16, and
-> the owner separated them so the process could be rebuilt without dragging the facts along.
-> ⚠ **THIS IS INTERIM** (owner, 2026-09-16): `WORKFLOW.md` now holds the first, deliberately
-> simple general policy — branch, review, merge — shared verbatim across the workspace's other
-> repos. None of the old rules (branch-and-land procedure, land-when-green, merge-never-rebase)
-> were carried back into it; they are in git history at `1215cb7` and earlier, and staying
-> there is a decision, not an oversight. A gap between what this simple policy covers and what
-> this repo actually needs is expected, not an error to fix from memory.
-
 This is the entry point for any agent or developer working on Project Sonora's training
 codebase. This is an independent GitHub repo (the PyTorch training pipeline that produces the
 actor model artifacts published to the `Sonora/huggingface` sibling checkout). Internal engineering notes —
@@ -117,12 +106,8 @@ stated in `docs/README.md`, in this section, or in `scripts/gates/test_doc_links
 
 ### 1. Role loading and the git environment — facts, not workflow
 
-**⚠⚠ THE WORKFLOW IS NOT HERE ANY MORE — IT IS [WORKFLOW.md](WORKFLOW.md), AND YOU FOLLOW
-THAT.** Branching, committing, landing, and whatever review or checking sits around them were
-stripped out of this file on 2026-09-16 by the owner, who established the replacement the same
-day: a simple branch → review → merge policy, shared verbatim across the workspace's other
-repos. **None of the old repo-specific rules were carried back into it**, deliberately — they
-are in git history, not lost, and their absence there is a decision, not an oversight.
+⚠ **[WORKFLOW.md](WORKFLOW.md) IS HOW WORK GETS DONE HERE. READ IT AND FOLLOW IT.** 
+This file holds the repo's FACTS — the stack, the environment, the mandates, the measured traps. `WORKFLOW.md` holds the PROCESS.
 
 ⚠ **What follows in this section is FACTS, not procedure** — how a session acquires its role,
 and what this repo's git configuration actually does when you run a command. They are here
