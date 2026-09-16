@@ -3,7 +3,7 @@
 **[AGENTS.md](AGENTS.md) is this repo's rules of record. Read it before you do anything else.**
 It is not loaded for you — only this file is — so nothing else will put it in front of you.
 
-**[workflow.md](workflow.md) is how work gets done here. Read it and follow it.**
+**[WORKFLOW.md](WORKFLOW.md) is how work gets done here. Read it and follow it.**
 
 @docs/personas/DEVELOPER.md
 
@@ -12,7 +12,7 @@ It is not loaded for you — only this file is — so nothing else will put it i
 ⚠ **THIS FILE IS A PASSTHROUGH AND NOTHING ELSE** (owner, 2026-09-16). It used to carry role
 precedence, the commit-identity procedure, and an argument about how to infer your role from
 the invocation. All of that moved or went: the rules are in `AGENTS.md`, the workflow is in
-`workflow.md`, the procedure is in the persona above, and the identities are in `roster.yaml`.
+`WORKFLOW.md`, the procedure is in the persona above, and the identities are in `roster.yaml`.
 **Anything restated here becomes a second copy to drift.**
 
 ⚠ **The `@import` is the one line here that is not a pointer, and it has to be.** Claude Code

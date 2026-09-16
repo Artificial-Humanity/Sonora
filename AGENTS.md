@@ -1,10 +1,10 @@
 # AGENTS — Project Sonora (Training Repo)
 
-> ⚠⚠ **[workflow.md](workflow.md) IS HOW WORK GETS DONE HERE. READ IT AND FOLLOW IT.**
+> ⚠⚠ **[WORKFLOW.md](WORKFLOW.md) IS HOW WORK GETS DONE HERE. READ IT AND FOLLOW IT.**
 > This file holds the repo's FACTS — the stack, the environment, the mandates, the measured
-> traps. `workflow.md` holds the PROCESS. The two were mixed together until 2026-09-16, and
+> traps. `WORKFLOW.md` holds the PROCESS. The two were mixed together until 2026-09-16, and
 > the owner separated them so the process could be rebuilt without dragging the facts along.
-> ⚠ `workflow.md` is deliberately near-empty right now: the old rules were removed and none
+> ⚠ `WORKFLOW.md` is deliberately near-empty right now: the old rules were removed and none
 > were carried over. **An absent rule there is a decision not yet made, not permission.**
 
 This is the entry point for any agent or developer working on Project Sonora's training
@@ -89,7 +89,12 @@ Names must be predictable so links resolve on case-sensitive systems (Linux/CI) 
 case-insensitive macOS/Windows.
 
 * **Canonical root marker files → `UPPERCASE`** (`SCREAMING_SNAKE_CASE` if multi-word): `README.md`, `LICENSE`, `CONTRIBUTING.md`, `ROADMAP.md`, `AGENTS.md`. Keep this set small and curated.
-* **Top-level anchor docs → `UPPERCASE`, single word preferred:** `ARCHITECTURE.md`, `STATE.md`.
+* **Top-level anchor docs → `UPPERCASE`, single word preferred:** `ARCHITECTURE.md`,
+  `STATE.md`, `WORKFLOW.md`.
+  * ⚠ **THE CAPITALS ARE A SIGNAL, NOT A STYLE** (owner, 2026-09-16): an UPPERCASE name here
+    means **must read**. The owner uses it that way for their own navigation as much as for an
+    agent's, so a file that is merely important-looking does not earn it — and a file that IS
+    required reading should not be lowercase just because it is new.
 * **All other docs & notes → `lowercase-kebab-case.md`:** e.g. `open-decisions.md`, `code-review-findings.md`. This is the rule for everything in `notes/`.
 * **Source code → the language's own convention:** Rust `snake_case.rs`, Swift `PascalCase.swift`, Kotlin `PascalCase.kt`.
 * **Never** let case be the only difference between two paths, and always reference files with their exact case.
@@ -108,17 +113,17 @@ stated in `docs/README.md`, in this section, or in `scripts/gates/test_doc_links
 
 ### 1. Role loading and the git environment — facts, not workflow
 
-**⚠⚠ THE WORKFLOW IS NOT HERE ANY MORE — IT IS [workflow.md](workflow.md), AND YOU FOLLOW
+**⚠⚠ THE WORKFLOW IS NOT HERE ANY MORE — IT IS [WORKFLOW.md](WORKFLOW.md), AND YOU FOLLOW
 THAT.** Branching, committing, landing, and whatever review or checking sits around them were
 stripped out of this file on 2026-09-16 by the owner, who is establishing the replacement
-next. **None of the old rules were carried over**, deliberately: `workflow.md` is empty on
+next. **None of the old rules were carried over**, deliberately: `WORKFLOW.md` is empty on
 purpose, and its emptiness is a decision not yet made rather than permission.
 
 ⚠ **What follows in this section is FACTS, not procedure** — how a session acquires its role,
 and what this repo's git configuration actually does when you run a command. They are here
 because they are measurements about this repo, and they hold whatever workflow the owner
 writes. If you find a rule about *how to work* below, it escaped the sweep and belongs in
-`workflow.md`.
+`WORKFLOW.md`.
 
 ⚠ **REMOVED FROM THIS SECTION, so nobody hunts for it:** the branch-and-land procedure, the
 land-when-green convention, merge-never-rebase, the two review-range bullets, and the "a rule
@@ -308,26 +313,26 @@ than being one.
   uv's resolver speed materially shortens the recreate-reinstall cycle documented in this
   project's STATE ops notes.
 
-### 4. The record of change — moved to [workflow.md](workflow.md)
+### 4. The record of change — moved to [WORKFLOW.md](WORKFLOW.md)
 
 ⚠⚠ **WHAT A COMMIT MESSAGE MUST CONTAIN IS WORKFLOW, AND IT LEFT THIS FILE ON 2026-09-16.**
 This section ran to 66 lines: what a message owes a reader, why the previous state was wrong,
 the trailer rule, and how the history is the record. **None of it was migrated** — the owner
-is establishing the replacement in `workflow.md` and asked that no old rules be carried over.
+is establishing the replacement in `WORKFLOW.md` and asked that no old rules be carried over.
 
 ⚠ It is in git history at `1215cb7` and earlier. **Do not restore it from memory.**
 
 **One thing here is a FACT rather than a rule, so it stays**: this repo's git history is the
 only durable record of why a change was made. There is no tracker, no findings and no review
 artifact any more, so a commit message is the last place a reason can live. That is a property
-of the current state, not an instruction about length or form — `workflow.md` will say what
+of the current state, not an instruction about length or form — `WORKFLOW.md` will say what
 form the owner wants.
 
 ### 5. Measured defect patterns in this repo
 
 ⚠ **THIS WAS "CODE REVIEW STANDARDS" AND THE PROCESS PART IS GONE** (2026-09-16). When to
 request a review, what was in scope for one, and what a review owed as a deliverable are
-workflow — they belong in [workflow.md](workflow.md) if the owner re-establishes them, and
+workflow — they belong in [WORKFLOW.md](WORKFLOW.md) if the owner re-establishes them, and
 they were NOT migrated.
 
 **What is left is not procedure. These are things that have actually gone wrong here, stated
@@ -352,7 +357,7 @@ code in this repo whether or not anybody is reviewing it.
   reader who believes the document over the code is misled by the more authoritative-looking
   one. This repo has paid for that repeatedly, in both directions.
 
-⚠ **`.claude/**`, `AGENTS.md`, `CLAUDE.md` and `workflow.md` ARE CODE.** `.claude/commands/*.md`
+⚠ **`.claude/**`, `AGENTS.md`, `CLAUDE.md` and `WORKFLOW.md` ARE CODE.** `.claude/commands/*.md`
 is an executable prompt — it tells an agent holding push rights what to run — so it is closer
 to a shell script than to a README. That began as a review-scope rule; with no review to
 scope, it survives as a statement about what those files are.
