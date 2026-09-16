@@ -28,9 +28,11 @@ re-establishes it with its reasoning intact — do not reconstruct it from git h
 
 ## What is true right now, stated so nobody has to infer it
 
-* **Nothing gates `main` beyond the review cycle above.** There is no branch protection,
-  force-push is unblocked, and the merge gate that used to stand there was removed. The
+* **Nothing mechanically gates `main`.** There is no branch protection, force-push is
+  unblocked, and the merge gate that used to stand there was removed — the review cycle above
+  is what the owner asks you to follow, not something tooling enforces. The
   `push.default=simple` refusal described in [AGENTS.md](AGENTS.md) is the only mechanical
   thing left anywhere near it.
 * **Commit identity is not automatic.** The repo's configured git identity is the owner's, on
-  purpose; [PERSONA.md](PERSONA.md) carries your name and co-author address.
+  purpose. `roster.yaml` and `scripts/agent_env.py` resolve the agent's, and
+  [docs/personas/DEVELOPER.md](docs/personas/DEVELOPER.md) §1 carries the command and the check.
