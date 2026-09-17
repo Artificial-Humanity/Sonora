@@ -61,12 +61,32 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def _agent():
     """The agent identity, FROM `PERSONA.md`, never typed out here.
 
-    ⚠⚠ THIS HAS NOW READ THREE DIFFERENT SOURCES, AND THE FIRST ONE FAILED SILENTLY. It read
+    ⚠⚠ THIS HAS NOW READ FOUR DIFFERENT SOURCES, AND THE FIRST ONE FAILED SILENTLY. It read
     the review lane's `config.env` and fell back to hardcoded values when the file was missing;
     that fallback fired for real when the config was deleted on 2026-09-15, these tests went on
     passing, and the "second definition that drifts" the old docstring warned against became the
     ONLY definition — still under a comment insisting it was not typed out here. It then read
     a roster file, which was removed on 2026-09-16 with its resolver.
+
+    ⚠⚠ THE FOURTH IS THE TRAILER ITSELF, BECAUSE PARSING PROSE ABOUT IT BROKE `main`. Until
+    2026-09-17 this read two sentences — `You are Sonya.` and `Your co-authoring of git commits
+    will be done as "…"`. `c4840e4` rewrote `PERSONA.md` and neither sentence survived, so the
+    floor test below went red on `main` and every check under it SKIPPED. Nothing in that commit
+    was wrong; the guard had made a claim about WORDING rather than about identity.
+
+    So it now reads the `Co-authored-by:` line the persona spells out verbatim — the artifact a
+    commit has to carry. That is far more stable than a sentence about it, because rewording it
+    changes what the rule REQUIRES rather than merely how it is described. ⚠ It is not immune:
+    the anchor is sensitive to Markdown formatting too, and an indented, bolded or backticked
+    copy of the line REFUSES rather than matches. Refusing loudly is the intended failure — there
+    is no fallback here by design — but it is the same class of event that broke the old parse,
+    so `_parse_agent` below is tested against those shapes rather than trusted against them.
+
+    ⚠ The old regex had a second defect that a wording repair would have left live. Over a
+    persona whose opening line continues past the name, `You are (.+?)` up to a line-final period
+    returns the whole clause as the NAME — parsing cleanly, matching no trailer ever written.
+    (Measured 2026-09-17 against the persona of that date. The name is deliberately not quoted
+    here: these personas get renamed, and a quoted example rots into a false statement.)
 
     **A default that silently replaces its own source is worse than no source**, because the test
     keeps reporting green while measuring something else. So: no default, at any point. A
@@ -78,14 +98,38 @@ def _agent():
     """
     path = os.path.join(REPO, "PERSONA.md")
     with open(path, encoding="utf-8") as f:
-        text = f.read()
-    name = re.search(r"^You are (.+?)\.\s*$", text, re.M)
-    email = re.search(r"co-authoring of git commits will be done as \"([^\"]+)\"", text, re.I)
-    if not name or not email:
+        return _parse_agent(f.read())
+
+
+def _parse_agent(text):
+    """`(name, address)` from the persona's `Co-authored-by:` line. PURE, so it is testable.
+
+    ⚠ IT IS SPLIT OUT FOR EXACTLY ONE REASON: `_agent()` reads a fixed path, so the only input
+    the suite could ever hand it is a file that currently parses — and a guard whose refusal path
+    has no control is the shape AGENTS.md §5c is about. Everything else in this file is already
+    parameterised for that reason (`_commits(repo=…)`, `carries_agent_trailer(…, agent=…)`).
+    `test_the_persona_parse_refuses_what_it_should` is the control.
+    """
+    # The trailer alone on its line, which is what git parses and what a commit must carry.
+    # Line-anchored so a sentence mentioning the trailer mid-line is not mistaken for one.
+    # ⚠ `\r?$` rather than `$`: a CRLF line ending would otherwise leave `\r` inside the
+    # address, and the identity would differ from the commit's by one invisible byte.
+    hits = re.findall(r"^Co-authored-by:[ \t]*(.+?)[ \t]*<([^>]+)>[ \t]*\r?$",
+                      text, re.M | re.I)
+    if not hits:
         raise ValueError(
-            "PERSONA.md does not state the agent's name and co-author address in the expected "
-            "form ('You are X.' / 'will be done as \"addr\"') — identity cannot be resolved")
-    return name.group(1).strip(), email.group(1).strip()
+            "PERSONA.md states no `Co-authored-by: Name <address>` line — identity cannot be "
+            "resolved. That line is the agent's identity here; a persona without one leaves "
+            "every commit check below with nothing to compare against")
+    if len(hits) > 1:
+        # ⚠ NOT "take the first". A persona that documents a counterexample — an address NOT to
+        # use — puts a second line here, and first-match would adopt whichever came first in the
+        # file. Two candidates is an ambiguous document, and the refusal names both.
+        raise ValueError(
+            "PERSONA.md states %d `Co-authored-by:` lines and identity must be unambiguous: %s"
+            % (len(hits), ", ".join("%s <%s>" % h for h in hits)))
+    name, email = hits[0]
+    return name.strip(), email.strip()
 
 
 try:
@@ -194,12 +238,73 @@ def carries_agent_trailer(trailers, body, agent=None):
     `Co-Authored-By:`.
     ⚠ THE SECOND CHECK MATCHES THE TRAILER'S SHAPE, NOT ITS WORDS. A real trailer is
     `Key: Name <address>` alone on its line. Prose is not, however it wraps.
+
+    ⚠⚠ BOTH COMPARISONS ARE CASE-FOLDED ON THE KEY, AND THE FIRST ONE WAS NOT UNTIL 2026-09-17.
+    `TRAILER_KEY` is spelled `Co-Authored-By` and `PERSONA.md` spells the line it tells an agent
+    to copy `Co-authored-by`. Git treats trailer keys case-insensitively; a Python `in` does not.
+    So an agent copying the persona verbatim — which is now exactly what it is told to do —
+    produced commits where the branch this docstring calls "the right primary" never fired, and
+    every such commit passed on the body fallback alone. Measured on this branch's own HEAD.
+
+    ⚠ AN EARLIER VERSION OF THIS DOCSTRING GAVE A FALSE REASON FOR KEEPING THE FIRST CHECK: that
+    a trailer with no `<address>` is caught by it and missed by the regex. Both interpolate
+    `<%s>`, so `Co-Authored-By: Sonya` with no address is caught by NEITHER (measured). The real
+    and sufficient reason is the last-paragraph one above.
     """
     name, email = agent if agent else AGENT
-    if ("%s: %s <%s>" % (TRAILER_KEY, name, email)) in trailers:
+    # ⚠ `.lower()` on both sides, not on the key alone: the name and address are compared as
+    # written, and git itself does not case-fold those. This folds the whole comparison, which
+    # is deliberately the looser of the two — the body check below is already `re.I`.
+    if ("%s: %s <%s>" % (TRAILER_KEY, name, email)).lower() in trailers.lower():
         return True
     pattern = r"%s:\s*%s\s*<%s>\s*" % (re.escape(TRAILER_KEY), re.escape(name), re.escape(email))
     return any(re.fullmatch(pattern, line, re.I) for line in body.splitlines())
+
+
+# ⚠ THE CONTROL FOR THE PARSE, and the reason `_parse_agent` is a separate function at all.
+# `_agent()` reads one fixed path, so the only document the suite can hand it is one that
+# currently parses — which is a guard with no broken case, the shape AGENTS.md §5c refuses.
+# Every row below was RUN, not reasoned about; the ones that refuse are the point of the table.
+_GOOD = "Co-authored-by: Sonya <Sonya@artificialhumanity.io>"
+_PARSE_CASES = [
+    ("the canonical line", _GOOD, ("Sonya", "Sonya@artificialhumanity.io")),
+    ("the key in the other casing", "CO-AUTHORED-BY: A <a@b>", ("A", "a@b")),
+    ("a CRLF line ending leaves no \\r in the address", "Co-authored-by: A <a@b>\r\n", ("A", "a@b")),
+    ("prose around a real line is irrelevant", "text\n\n%s\n\nmore text" % _GOOD,
+     ("Sonya", "Sonya@artificialhumanity.io")),
+    ("no trailer line at all", "You are Sonya, and you co-author your commits.", None),
+    ("the phrase mid-line in prose", "Every commit has a Co-authored-by: A <a@b> trailer.", None),
+    ("line-initial but continued by prose", "Co-authored-by: A <a@b> is the required trailer.", None),
+    ("an indented copy", "    Co-authored-by: A <a@b>", None),
+    ("a bolded copy", "**Co-authored-by: A <a@b>**", None),
+    ("no address", "Co-authored-by: Sonya", None),
+    ("two candidates", "%s\nCo-authored-by: Other <other@example.com>" % _GOOD, None),
+]
+
+
+@pytest.mark.parametrize("label,text,expected", _PARSE_CASES,
+                         ids=[c[0] for c in _PARSE_CASES])
+def test_the_persona_parse_refuses_what_it_should(label, text, expected):
+    """⚠ A REFUSAL IS THE RESULT HERE, not an error to be tolerated.
+
+    Four of these refuse on FORMATTING rather than on wording — indented, bolded, address-less,
+    ambiguous. That is deliberate and it is the residual risk written down: a meaning-preserving
+    Markdown edit to `PERSONA.md` can still break identity resolution. It will do so LOUDLY, by
+    failing the floor test with the persona named, which is what the predecessor of this parse
+    did not do.
+    """
+    if expected is None:
+        with pytest.raises(ValueError):
+            _parse_agent(text)
+    else:
+        assert _parse_agent(text) == expected
+
+
+def test_the_two_candidate_refusal_names_both():
+    """A refusal that does not say WHICH two lines sends the reader to re-read the whole file."""
+    with pytest.raises(ValueError) as e:
+        _parse_agent("%s\nCo-authored-by: Other <other@example.com>" % _GOOD)
+    assert "Sonya@artificialhumanity.io" in str(e.value) and "other@example.com" in str(e.value)
 
 
 def test_the_persona_is_readable_and_this_file_is_not_guessing():
@@ -223,6 +328,32 @@ def test_the_persona_is_readable_and_this_file_is_not_guessing():
 # failure is not a hidden result; it is the same result, said once.
 _needs_persona = pytest.mark.skipif(PERSONA_ERROR is not None,
                                     reason="PERSONA.md unparseable — see the floor test above")
+
+
+@_needs_persona
+def test_the_commit_template_states_the_same_identity_as_the_persona():
+    """⚠ THE LAST UNGUARDED COPY OF THE IDENTITY IN THIS TREE, and `.gitmessage` says so itself:
+    *"a template cannot read a file — so a rename has to touch both."* True, and until now the
+    second copy was checked by nobody. It is guardable the moment identity is parsed from a
+    trailer line, because the template carries one too — so this compares the two trailers
+    rather than restating either.
+
+    ⚠ THE KEY IS COMPARED CASE-INSENSITIVELY and the name and address are not. Git folds trailer
+    keys and does not fold the rest, so this is the same tolerance `carries_agent_trailer` uses;
+    the template spells the key `Co-Authored-By` and the persona spells it `Co-authored-by`, and
+    both are correct.
+    """
+    path = os.path.join(REPO, ".gitmessage")
+    if not os.path.exists(path):        # the template is a local convenience, not a guarantee
+        pytest.skip(".gitmessage is not present in this checkout")
+    with open(path, encoding="utf-8") as f:
+        template = f.read()
+    assert _parse_agent(template) == AGENT, (
+        ".gitmessage states a different agent identity from PERSONA.md:\n"
+        "  .gitmessage: %r\n  PERSONA.md : %r\n"
+        "PERSONA.md is the source — a rename has to touch both, and this is the check that "
+        "says so at commit time rather than after the commit." % (_parse_agent(template), AGENT))
+
 
 
 @_needs_persona
