@@ -80,7 +80,15 @@ _EXTERNAL_OPTIONALS = {
     "librosa": "declared, and heavy — it drags numba/llvmlite, so a lean container that "
                "never resamples legitimately has no librosa",
     "pysbd": "declared; sentence splitting in the book lane",
-    "pyloudnorm": "undeclared; loudness measurement",
+    "pyloudnorm": "declared in the `test` GROUP only, never in `dependencies` — no container\n                   takes it and the earset tool it serves is a workstation tool",
+    # ⚠ ADDED 2026-09-17 after 35 days of red CI. `matcha/onnx/infer.py` imports
+    # onnxruntime, which is declared in the `onnx` EXTRA rather than in
+    # `dependencies` — the ONNX monolith is Plan B for the export lane and nothing
+    # on the training or inference path touches it. This entry was missing, so a
+    # clean interpreter (CI, or any container) reported the module as BROKEN when it
+    # is legitimately absent. The host venv has onnxruntime installed, which is
+    # exactly why nobody saw it locally.
+    "onnxruntime": "declared in the `onnx` EXTRA, not in `dependencies` — Plan B for\n                    the export lane, and no live path imports it",
     "ai_edge_litert": "undeclared; the LiteRT harness venv lives with the data",
     # ⚠ TOP-LEVEL NAMES ONLY. Both lookups key on `name.split(".")[0]`, so a dotted entry
     # here is DEAD — it matches nothing and silently covers nothing. `pyarrow.parquet` was

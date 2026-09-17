@@ -180,6 +180,15 @@ test = [
   "inflect",
   "fastapi",
   "pysbd",
+  # ⚠ NOT hygiene — it is 14 tests. `scripts/tools/build_manner_timbre_earset.py` imports
+  # pyloudnorm at module scope, and `tests/test_earset_tool.py` drives that tool as a
+  # subprocess, so without this every one of its cases fails on a ModuleNotFoundError
+  # rather than skipping. It did, on every CI run from 2026-08-13 to 2026-09-17. It is
+  # pure Python over numpy and scipy, both already here, so it costs the runner nothing.
+  # ⚠ It stays OUT of `[project.dependencies]`: no container takes it, and the earset tool
+  # is a workstation tool. `tests/test_no_first_party_import_is_optional._EXTERNAL_OPTIONALS`
+  # still excuses it for that reason, which is now "test group only" rather than "undeclared".
+  "pyloudnorm",
 ]
 
 [project.scripts]
