@@ -137,7 +137,12 @@ def main():
             "spk": it["spk"], "vat": it["vat"],
             "A": ear_bench.opaque(it["id"], a, args.salt),
             "B": ear_bench.opaque(it["id"], b, args.salt)})
-    bench.write("vat7r_vs_v7", SETS, served,
+    # ⚠ THE TEST NAME IS DERIVED FROM `--out`, NOT TYPED. It was the literal
+    # "vat7r_vs_v7" until 2026-09-17, so every later test rendered by this tool labelled
+    # itself with the name of the FIRST one — a verdict filed under a test that is not the
+    # test it was made on. The other two benches in this family still type theirs; theirs
+    # happen to match their output directory, which is the condition this removes.
+    bench.write(Path(args.out).name, SETS, served,
                 {"arms": arms, "pair": pair, "n_spks": n_spks, "vat_dim": vat_dim},
                 args.key_out)
     print(f"  blind pair: {pair[0]} vs {pair[1]}")
