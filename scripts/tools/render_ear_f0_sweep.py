@@ -96,6 +96,9 @@ def choose_pairs(f0, rng, n_pairs, min_rows):
 
     # Target gaps evenly across 0 .. span, so the null (gap ~ 0) is as well represented as
     # the extreme. Each target takes the closest available pair not already used.
+    if n_pairs < 4:
+        raise SystemExit("REFUSING: --pairs %d cannot carry both a control band and a "
+                         "sweep." % n_pairs)
     targets = [span * k / (n_pairs - 1) for k in range(n_pairs)]
     used, pairs = set(), []
     for t in targets:
@@ -116,6 +119,20 @@ def choose_pairs(f0, rng, n_pairs, min_rows):
         if f0[a]["f0"] > f0[b]["f0"]:
             a, b = b, a
         pairs.append((a, b, gap))
+    # ⚠ THE CONTROL BAND IS ASSERTED, NOT HOPED FOR. `best is None` used to `continue`
+    # with no count check, so a thin pool could return fewer pairs than asked and — worse —
+    # no near-zero-gap pair at all, leaving the null the docstring promises unpopulated
+    # while everything downstream still reported a result.
+    if len(pairs) < n_pairs:
+        raise SystemExit("REFUSING: asked for %d pairs and the pool yielded %d. The gap "
+                         "targets could not be met from %d speakers."
+                         % (n_pairs, len(pairs), len(spk)))
+    narrow = [p for p in pairs if p[2] < 25]
+    if len(narrow) < 2:
+        raise SystemExit("REFUSING: only %d pair(s) under a 25 Hz gap. Those are the "
+                         "control — two voices the hypothesis says should sound alike — "
+                         "and a sweep without them cannot distinguish a pitch effect from "
+                         "a voice-identity effect." % len(narrow))
     return pairs
 
 
@@ -143,6 +160,15 @@ def main():
                 raise SystemExit("REFUSING: speaker %d is outside this checkpoint's table "
                                  "of %d — it would render a different voice." % (s, n_spks))
 
+    # ⚠⚠ SHUFFLED BEFORE SERVING, AND THIS IS THE WHOLE POINT OF THE LINE.
+    # The first run of this bench appended one pair per ascending gap target and served
+    # them in that order: Spearman(serving position, gap) = +0.996. The headline result —
+    # +0.918 against gap size — was therefore numerically identical to +0.918 against ITEM
+    # POSITION, so fatigue, learning and expectation were not separable from pitch. The
+    # three control pairs were items 1-3 and the widest gaps were items 12-15. The
+    # docstring above claimed "the gaps live only in the key"; they lived in the order.
+    rng.shuffle(pairs)
+
     bench = ear_bench.Bench(args.out, args.salt, args.seed, lane_kind)
     served, truth = [], {}
     # ⚠ EXACTLY HALF THE PAIRS PUT THE LOW VOICE ON SIDE A. The tally is by PITCH, so a
@@ -157,8 +183,16 @@ def main():
         item = {"id": pair_key, "set": "sweep", "text": text,
                 "spk": "(blind)", "vat": [], "delivery_ui": "(blind)"}
         for side_key, spk in sides:
+            # ⚠ THE SIDE KEY IS THE SPEAKER, NOT THE LETTER. `ear_bench.opaque` hashes
+            # salt|pair_key|side_key, and the re-point guard in `Bench.write` compares
+            # (item["A"], item["B"]). With "A"/"B" as the side key those ids are a constant
+            # function of the pair index, so re-staging the same --out with different
+            # speakers produced identical ids and the guard could not fire. Keying on the
+            # speaker makes a changed assignment change the id, which is what the guard
+            # watches for. The sibling benches were already safe: they key on the arm and
+            # on the lane respectively.
             item[side_key] = bench.render(
-                pair_key, side_key, args.ckpt, text, spk, (0.0, 0.0, 0.0),
+                pair_key, "spk%d" % spk, args.ckpt, text, spk, (0.0, 0.0, 0.0),
                 delivery.DELIVERY_UNKNOWN, "spk%d" % spk)
         served.append(item)
         truth[pair_key] = {"low": low, "high": high, "gap_hz": round(gap, 1),

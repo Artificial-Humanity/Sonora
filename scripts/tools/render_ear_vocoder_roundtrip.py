@@ -30,9 +30,19 @@ data config, not from here, and `matcha.utils.audio.mel_spectrogram` is the same
 `text_mel_datamodule.get_mel` calls, with `center=False` as it uses. A probe that built
 its own mel would measure a pipeline that does not exist.
 
-⚠ IDENTICAL-CLIP PAIRS ARE THE INSTRUMENT CHECK. Two of the pairs serve the same audio on
-both sides. A listener who hears a difference there is not calibrated for the rest, and the
-result should be thrown out rather than explained.
+⚠⚠ THE CONTROL IS TWO-SIDED, BECAUSE ONE SIDE OF IT IS NOT A CONTROL. Identical-clip
+pairs catch only a FALSE POSITIVE — a listener hearing a difference where there is none.
+When the listener ties everything, an identical pair tying is ENTAILED, not evidence, and
+the first run of this bench tied 14 of 14 with nothing in the design able to show the
+instrument was working at all. That is the repo's "empty enumeration" class landing on the
+control itself.
+
+So `--positive` pairs serve the original against a clip put through the SAME round trip
+`--positive-depth` times. It is the identical distortion, compounded, so it needs no new
+artifact type and no synthetic buzz that might not resemble the real thing. The measured
+mel distance at depth 1 and at depth N is PRINTED, so what the ear was asked to detect is
+on the record rather than assumed. If the positive pairs tie too, the instrument is blind
+to this distortion class and the single-pass result means nothing either way.
 
 ⚠ LOUDNESS IS MATCHED AFTER THE ROUND TRIP. Vocoding changes level, and the louder side of
 a pair reads as the better one — the confound that already ran one verdict backwards here.
@@ -63,16 +73,23 @@ from lib import ear_bench                                     # noqa: E402
 from matcha.cli import load_vocoder_24k, to_waveform          # noqa: E402
 from matcha.utils.audio import mel_spectrogram                # noqa: E402
 
+# ⚠⚠ THE BRIEF IS DELIBERATELY UNPRIMED, AND THAT IS A CORRECTION.
+# The previous brief said "listen for the robotic quality you have described", named the
+# hum, and then counted the hums found. The owner raised it themselves, against a result
+# that was going their way: "I couldn't be entirely sure of any robotic hum. I began to
+# question if over-active listening out for it was influencing my ears." Naming the percept
+# and then measuring it is how an expectation becomes a finding. This brief names no
+# artifact, describes nothing to listen for, and does not say how many pairs differ.
 SETS = {
     "roundtrip": {
-        "title": "Which one has the machine in it?",
-        "ask": ("Two versions of the SAME recording of the same person. Ignore the voice, "
-                "ignore the words. Listen for the robotic quality you have described — the "
-                "buzz or hum under the voice, a sense of something reconstructed. Which "
-                "side has more of it? Some of these pairs are genuinely identical and "
-                "'no difference' is then the only right answer."),
-        "labels": {"A": "A has more of the hum", "same": "No difference",
-                   "B": "B has more of the hum"},
+        "title": "Do these two differ?",
+        "ask": ("Two versions of the same recording. Some pairs are identical and some are "
+                "not, and the proportion is not stated on purpose. Do not go looking for "
+                "any particular flaw — if you find yourself straining to justify a "
+                "difference, that is the answer to record as 'no difference'. Say which "
+                "side sounds altered ONLY when it is plain to you."),
+        "labels": {"A": "A sounds altered", "same": "No difference",
+                   "B": "B sounds altered"},
     },
 }
 
@@ -126,7 +143,13 @@ def main():
     ap.add_argument("--key-out", default=None)
     ap.add_argument("--pairs", type=int, default=12)
     ap.add_argument("--identical", type=int, default=2,
-                    help="pairs serving the SAME audio on both sides (instrument check)")
+                    help="pairs serving the SAME audio on both sides (false-positive check)")
+    ap.add_argument("--positive", type=int, default=2,
+                    help="pairs serving a KNOWN-WORSE clip (discrimination check)")
+    ap.add_argument("--positive-max-f0", type=float, default=130.0,
+                    help="positive controls are placed at or below this pitch")
+    ap.add_argument("--positive-depth", type=int, default=4,
+                    help="how many times to re-vocode the known-worse side")
     ap.add_argument("--min-rows", type=int, default=100)
     ap.add_argument("--min-seconds", type=float, default=4.0)
     ap.add_argument("--lufs", type=float, default=-23.0)
@@ -134,6 +157,11 @@ def main():
     ap.add_argument("--seed", type=int, default=1234)
     args = ap.parse_args()
 
+    if args.identical < 1 or args.positive < 1:
+        refuse("--identical %d --positive %d: this bench needs BOTH controls. Identical "
+               "pairs alone cannot tell a calibrated listener from one answering 'tie' by "
+               "default, which is exactly how the first run of this test produced a "
+               "vacuous pass." % (args.identical, args.positive))
     cfg = yaml.safe_load(Path(args.data_config).read_text())
     need = ("n_fft", "n_feats", "sample_rate", "hop_length", "win_length", "f_min", "f_max")
     missing = [k for k in need if k not in cfg]
@@ -169,6 +197,24 @@ def main():
         refuse("the vocoder is %d Hz and the config says %d" % (sr, cfg["sample_rate"]))
     meter_target = args.lufs
 
+    def mel_of(wav):
+        y = torch.from_numpy(np.asarray(wav, dtype="float32")).float().unsqueeze(0)
+        return mel_spectrogram(y, cfg["n_fft"], cfg["n_feats"], cfg["sample_rate"],
+                               cfg["hop_length"], cfg["win_length"], cfg["f_min"],
+                               cfg["f_max"], center=False)
+
+    def mel_distance(a, b):
+        """Mean |mel| difference, in units of the reference's own std.
+
+        The same normalisation the 2026-08-06 transparency figure used (mel L1 as a
+        fraction of mel_std), so the number printed here is comparable to the 10.2% that
+        has been quoted to rule the vocoder out.
+        """
+        ma, mb = mel_of(a), mel_of(b)
+        n = min(ma.shape[-1], mb.shape[-1])
+        ma, mb = ma[..., :n], mb[..., :n]
+        return float((ma - mb).abs().mean() / ma.std())
+
     def roundtrip(wav):
         y = torch.from_numpy(wav).float().unsqueeze(0)
         mel = mel_spectrogram(y, cfg["n_fft"], cfg["n_feats"], cfg["sample_rate"],
@@ -182,11 +228,26 @@ def main():
     clips.mkdir(parents=True, exist_ok=True)
 
     served, truth, key, limited = [], {}, {}, 0
-    plan = [(s, False) for s in chosen] + [(rng.choice(chosen), True)
-                                           for _ in range(args.identical)]
+    # ⚠ THE POSITIVE CONTROL MUST SIT WHERE THE ARTIFACT LIVES. The previous run let
+    # rng.choice place it and all three landed at 166-212 Hz — so the control asking "can
+    # you hear this distortion class?" was posed entirely in the register where the thing
+    # under investigation does not occur, and its failure was uninterpretable rather than
+    # informative.
+    low_pool = [s for s in chosen if f0[s]["f0"] <= args.positive_max_f0]
+    if len(low_pool) < 1:
+        refuse("no chosen speaker is at or below --positive-max-f0 %.0f Hz, so the positive "
+               "control would land in a register where the artifact is not expected — which "
+               "is what made the previous run's control uninterpretable" % args.positive_max_f0)
+    plan = ([(s, "vocoded") for s in chosen]
+            + [(rng.choice(chosen), "identical") for _ in range(args.identical)]
+            + [(rng.choice(low_pool), "positive") for _ in range(args.positive)])
     rng.shuffle(plan)
+    swaps = [True] * (len(plan) // 2) + [False] * (len(plan) - len(plan) // 2)
+    rng.shuffle(swaps)
+    mel_l1 = {"vocoded": [], "positive": []}
 
-    for i, (spk, same) in enumerate(plan):
+    for i, (spk, kind) in enumerate(plan):
+        same = kind == "identical"
         cand = [p for p in rows[spk] if sf.info(p).duration >= args.min_seconds]
         if not cand:
             refuse("speaker %d has no clip of at least %.1fs" % (spk, args.min_seconds))
@@ -198,12 +259,23 @@ def main():
             refuse("%s is %d Hz and the mel config is %d" % (src, xsr, cfg["sample_rate"]))
 
         orig, l1 = match_loudness(x, xsr, meter_target)
-        other, l2 = (match_loudness(x, xsr, meter_target) if same
-                     else match_loudness(roundtrip(x), xsr, meter_target))
+        if same:
+            other, l2 = match_loudness(x, xsr, meter_target)
+        else:
+            depth = args.positive_depth if kind == "positive" else 1
+            y = x
+            for _ in range(depth):
+                y = roundtrip(y)
+            other, l2 = match_loudness(y, xsr, meter_target)
+            mel_l1[kind].append(mel_distance(x, y))
         limited += int(l1) + int(l2)
 
         pair_key = "pair_%02d" % i
-        swap = rng.random() < 0.5
+        # ⚠ EXACTLY HALF EACH WAY. Every non-identical pair is (original, altered), so an
+        # unbalanced coin puts the altered condition on one side more often and a listener's
+        # side preference lands on it. The sibling benches already balance; this one used
+        # `rng.random() < 0.5` and with 12 pairs a 9-3 split had ~15% probability.
+        swap = swaps[i]
         sides = [("A", other, "vocoded" if not same else "original"),
                  ("B", orig, "original")]
         if swap:
@@ -218,10 +290,9 @@ def main():
             key[name] = {"label": label, "pair": pair_key, "side": side_key}
             item[side_key] = name
         served.append(item)
-        truth[pair_key] = {"spk": spk, "f0": f0[spk]["f0"], "identical": same,
-                           "source": src}
-        print("  %s  spk%-5d  %5.1f Hz  %s" % (pair_key, spk, f0[spk]["f0"],
-                                               "IDENTICAL (control)" if same else "vs vocoded"))
+        truth[pair_key] = {"spk": spk, "f0": f0[spk]["f0"], "kind": kind,
+                           "identical": same, "source": src}
+        print("  %s  spk%-5d  %5.1f Hz  %s" % (pair_key, spk, f0[spk]["f0"], kind))
 
     manifest = {"test": Path(args.out).name, "sample_rate": sr, "sets": SETS,
                 "items": served}
@@ -240,7 +311,28 @@ def main():
         except PermissionError:
             pass
 
-    print("\nSTAGED %d pairs (%d identical controls) -> %s" % (len(served), args.identical, args.out))
+    print("\n=== WHAT THE EAR IS BEING ASKED TO HEAR ===")
+    print("   (mel L1 as a fraction of mel std — the same units as the 2026-08-06")
+    print("    transparency figure of 10.2%, so these are directly comparable)")
+    for kind, vals in mel_l1.items():
+        if vals:
+            print("   %-9s depth %d   mean %.1f%%   range %.1f-%.1f%%"
+                  % (kind, args.positive_depth if kind == "positive" else 1,
+                     100*np.mean(vals), 100*min(vals), 100*max(vals)))
+    if mel_l1["vocoded"] and mel_l1["positive"]:
+        ratio = np.mean(mel_l1["positive"]) / max(np.mean(mel_l1["vocoded"]), 1e-9)
+        print("   the positive control is %.1fx the single-pass distortion" % ratio)
+        if ratio < 1.5:
+            print("   ⚠ THAT IS NOT MUCH LOUDER A SIGNAL. If the positive pairs tie, it may "
+                  "mean the control was too subtle rather than that the listener is blind — "
+                  "raise --positive-depth before concluding anything.")
+    frac = args.identical / float(len(served))
+    print("\nSTAGED %d pairs -> %s" % (len(served), args.out))
+    print("   %d single-pass  %d positive (<= %.0f Hz)  %d CATCH TRIALS (%.0f%%)"
+          % (len(chosen), args.positive, args.positive_max_f0, args.identical, 100*frac))
+    if frac < 0.25:
+        print("   ⚠ A catch-trial rate under 25%% cannot measure a false-alarm rate, and "
+              "without one a subtle detection cannot be told from an expectation.")
     print("KEY %s" % key_out)
     if limited:
         print("⚠ %d sides hit the peak ceiling before reaching %.1f LUFS" % (limited, args.lufs))
