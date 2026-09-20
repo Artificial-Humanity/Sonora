@@ -32,7 +32,7 @@ below, so this needs no GPU and contends with nothing.
       -v /data/model-training/sonora/data:/workspace/data \
       -v /data/models:/data/models:ro \
       -w /workspace -e DEBIAN_FRONTEND=noninteractive \
-      rocm/pytorch:latest bash -c '
+      "$SONORA_ROCM_IMAGE" bash -c '   # NEVER rocm/pytorch:latest — see below
         set -e
         apt-get update -qq && apt-get install -y -qq libsndfile1
         pip install -q uv
@@ -41,6 +41,18 @@ below, so this needs no GPU and contends with nothing.
         uv pip install -q --python /opt/venv/bin/python ai-edge-litert
         python3 scripts/tools/render_ear_<bench>.py …
       '
+
+⚠⚠ THE IMAGE IS THE PINNED DIGEST FROM `scripts/container_env.sh`
+(`rocm/pytorch@sha256:4449f856…`), and `source`ing that file is how you get it. This
+docstring said `rocm/pytorch:latest` until 2026-09-20. On that day the box re-pulled the
+tag, found upstream had re-pointed it to an NPI **nightly** (torch 2.13.0+rocm7.14.0, no
+`/opt/rocm`), and then retired the tag in favour of the named release — so `:latest`
+resolves to nothing locally and this command would have pulled the nightly back.
+⚠ numpy goes DOWN across that bump, 2.4.6 -> 2.2.6, and `monotonic_align` builds IN-PLACE
+in the checkout: an extension compiled under 2.4.6 and imported under 2.2.6 fails with a
+traceback that blames MatchaTTS. Every ear test in the 2026-09 hum investigation rendered
+on the pinned image, so a bench that quietly moved to the nightly would also not be
+comparable to any of them.
 
 ⚠ ALL FOUR DATA MOUNTS ARE LOAD-BEARING and three of them fail late rather than at
 import. `/data/models` holds the G2P dictionary, `ai-edge-litert` is the neural G2P

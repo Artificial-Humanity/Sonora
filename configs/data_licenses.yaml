@@ -135,9 +135,22 @@ datasets:
     # source and no path this entry did not already cover. Declared anyway, because the
     # wall classifies the corpus DIRECTORY as well as the audio, and an undeclared
     # directory is refused at load however familiar its contents are (#294).
+    #
+    # `pitch_error` (2026-09-20) is `build_pitch_error_filelist.py`'s output: a
+    # pitch-stratified, row-count-matched SUBSET of an existing corpus, staged so
+    # score_holdout.py can measure whether mel prediction error rises as speaker F0 falls.
+    # Filed HERE and not under `libritts_r` even though its first draw was 288/288
+    # LibriTTS-R, because the tool takes `--dataset ''` for a deliberately mixed draw and
+    # the directory name would then be a false statement about its contents — the same
+    # reasoning that put the merged corpora in their own entry. Every wav path inside is
+    # still classified on its own components, so a mixed draw is checked per source.
+    # ⚠ DECLARED IS NOT TRAINED-ON: like `libritts_r_holdout_devclean`, this exists to be
+    # SCORED. It is a subset of the training corpus by construction, so a run that consumed
+    # it would be training on clips it had already seen while believing otherwise.
     dirs: [libritts_r_emilia_vat_v5, libritts_r_emilia_expressive_vat_v6,
            libritts_r_full_vat_v7, libritts_r_full_vat_v7r,
-           _derived_train_clean_360, _derived_train_other_500]
+           _derived_train_clean_360, _derived_train_other_500,
+           pitch_error]
     license: CC-BY-4.0 (filelists only; each audio path is classified by its own source)
     class: permissive
   sonora_expressive_registers:
