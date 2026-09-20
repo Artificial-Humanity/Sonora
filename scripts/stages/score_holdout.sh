@@ -60,18 +60,9 @@ DEPS="einops conformer diffusers lightning hydra-core omegaconf rootutils rich m
 # shell's expansion at all. `docker run -e` carries it across the boundary untouched and
 # the inner `\$SONORA_ARGS` (escaped, so the HOST shell leaves it alone) expands it in the
 # container. Verified with an apostrophe, a double quote and spaces in one value.
-ARGS="$(printf '%q ' "$@")"
-
-echo "== score holdout =="
-docker run --rm $GPU -v /data:/data -v "$SONORA":/sonora \
-  -e SONORA_ARGS="$ARGS" "$IMG" bash -c "
-  pip install -q uv >/dev/null 2>&1;
-  uv pip install -q --python \"\$(which python)\" $DEPS >/dev/null 2>&1;
-  bash /sonora/scripts/container_as_ai_mgr.sh &&
-  mkdir -p /tmp/sonora && cp -a /sonora/setup.py /sonora/pyproject.toml /sonora/README.md \
-      /sonora/matcha /sonora/scripts /sonora/configs /tmp/sonora/ && chown -R ai-mgr /tmp/sonora &&
-  runuser -u ai-mgr -- bash -c 'umask 002; cd /tmp/sonora && \
-    python setup.py build_ext --inplace >/dev/null && \
-    export SONORA_REPO=/tmp/sonora PYTHONPATH=/tmp/sonora && \
-    eval python /tmp/sonora/scripts/stages/score_holdout.py \$SONORA_ARGS'" || {
-  echo "  !! score_holdout failed"; exit 1; }
+# ⚠ THE CONTAINER LIVES IN run_in_rocm.sh. This script was the only ROCm stage wrapper
+# until 2026-09-20; measure_synth_mel_error.py now needs the identical container, so the
+# docker invocation, the dependency pins, the image pin and the argument-quoting fix moved
+# there rather than being copied. This file stays because the usage above is the documented
+# entry point and because its name is what the notes reference.
+exec "$(dirname "$0")/run_in_rocm.sh" scripts/stages/score_holdout.py "$@"

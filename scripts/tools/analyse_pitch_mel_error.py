@@ -82,6 +82,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--key", required=True)
     ap.add_argument("--per-clip", required=True)
+    ap.add_argument("--synth-mel", default=None,
+                    help="measure_synth_mel_error.py's CSV; adds a `synth` term carrying "
+                         "the FREE-RUNNING generation error, which the teacher-forced "
+                         "terms cannot see")
     ap.add_argument("--perms", type=int, default=20000)
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--json-out", default=None)
@@ -107,6 +111,16 @@ def main():
                          "partial score silently reweights the bins."
                          % (len(missing), sorted(missing)[:3]))
 
+    synth = {}
+    if args.synth_mel:
+        with open(args.synth_mel, newline="", encoding="utf-8") as f:
+            synth = {r["clip"]: float(r["mel_l1"]) for r in csv.DictReader(f)}
+        if set(synth) != set(clips):
+            raise SystemExit("REFUSING: the synthesis CSV covers %d clips and the key %d, "
+                             "and they are not the same set. Both must come from one "
+                             "staging." % (len(synth), len(clips)))
+        TERMS.append("synth")
+
     rng = random.Random(args.seed)
     report = {"key": args.key, "per_clip": args.per_clip, "perms": args.perms,
               "checkpoints": {}}
@@ -118,7 +132,7 @@ def main():
                 continue
             spk = clips[r["clip"]]["spk"]
             for t in TERMS:
-                per_spk[spk][t].append(float(r[t]))
+                per_spk[spk][t].append(synth[r["clip"]] if t == "synth" else float(r[t]))
         spks = sorted(per_spk)
         f0 = [clips_f0(clips, s) for s in spks]
         nrows = [clips_rows(clips, s) for s in spks]
@@ -144,7 +158,8 @@ def main():
         for t in TERMS:
             loss = [statistics.mean(per_spk[s][t]) for s in spks]
             rho, p = permutation_p(f0, loss, rng, args.perms)
-            flag = "  <-- NEGATIVE CONTROL" if t == "dur" else ""
+            flag = {"dur": "  <-- NEGATIVE CONTROL",
+                    "synth": "  <-- FREE-RUNNING GENERATION"}.get(t, "")
             print("    %-6s rho %+0.3f   permutation p = %.4f%s" % (t, rho, p, flag))
             res[t] = {"rho_f0": round(rho, 4), "p_perm": round(p, 5)}
 
