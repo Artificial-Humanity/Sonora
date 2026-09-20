@@ -86,6 +86,11 @@ def main():
                     help="measure_synth_mel_error.py's CSV; adds a `synth` term carrying "
                          "the FREE-RUNNING generation error, which the teacher-forced "
                          "terms cannot see")
+    ap.add_argument("--harmonicity", default=None,
+                    help="measure_harmonicity.py's CSV; adds the signed HNR and jitter "
+                         "differences from the real recording")
+    ap.add_argument("--min-coverage", type=float, default=0.8,
+                    help="refuse if a joined CSV covers less than this fraction of the key")
     ap.add_argument("--perms", type=int, default=20000)
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--json-out", default=None)
@@ -121,6 +126,29 @@ def main():
                              "staging." % (len(synth), len(clips)))
         TERMS.append("synth")
 
+    # ⚠ A SUBSET IS ALLOWED HERE AND AN EXACT MATCH IS NOT REQUIRED, unlike --synth-mel.
+    # measure_harmonicity.py drops a clip when any of the three signals has no voiced
+    # frame, which is a legitimate outcome rather than a staging mismatch. But a quiet
+    # 30%-coverage join would reweight the bins without saying so, so the coverage is
+    # printed and floored.
+    harm = {}
+    if args.harmonicity:
+        with open(args.harmonicity, newline="", encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                harm[r["clip"]] = r
+        stray = set(harm) - set(clips)
+        if stray:
+            raise SystemExit("REFUSING: %d harmonicity clip(s) are not in the key, e.g. "
+                             "%s." % (len(stray), sorted(stray)[:3]))
+        cov = len(harm) / len(clips)
+        print("harmonicity covers %d of %d clips (%.0f%%)" % (len(harm), len(clips),
+                                                              100 * cov))
+        if cov < args.min_coverage:
+            raise SystemExit("REFUSING: coverage %.0f%% is below --min-coverage %.0f%%. "
+                             "The bins are no longer the matched sample that was staged."
+                             % (100 * cov, 100 * args.min_coverage))
+        TERMS.extend(["d_hnr_syn", "d_hnr_rt", "d_jitter_syn"])
+
     rng = random.Random(args.seed)
     report = {"key": args.key, "per_clip": args.per_clip, "perms": args.perms,
               "checkpoints": {}}
@@ -132,7 +160,13 @@ def main():
                 continue
             spk = clips[r["clip"]]["spk"]
             for t in TERMS:
-                per_spk[spk][t].append(synth[r["clip"]] if t == "synth" else float(r[t]))
+                if t == "synth":
+                    per_spk[spk][t].append(synth[r["clip"]])
+                elif t.startswith("d_"):
+                    if r["clip"] in harm:
+                        per_spk[spk][t].append(float(harm[r["clip"]][t]))
+                else:
+                    per_spk[spk][t].append(float(r[t]))
         spks = sorted(per_spk)
         f0 = [clips_f0(clips, s) for s in spks]
         nrows = [clips_rows(clips, s) for s in spks]
@@ -149,30 +183,40 @@ def main():
                                          for c in clips)]
             line = "    %5.1f-%5.1f Hz  %5d" % (edges[b], edges[b + 1], len(bs))
             for t in TERMS:
-                line += " %8.4f" % statistics.mean(
-                    [statistics.mean(per_spk[s][t]) for s in bs])
+                vals = [statistics.mean(per_spk[s][t]) for s in bs if per_spk[s][t]]
+                line += (" %8.4f" % statistics.mean(vals)) if vals else "        -"
             print(line)
 
         print("\n  Spearman over SPEAKER MEANS vs F0  (negative = worse at low pitch):")
         res = {}
         for t in TERMS:
-            loss = [statistics.mean(per_spk[s][t]) for s in spks]
-            rho, p = permutation_p(f0, loss, rng, args.perms)
+            keep = [s for s in spks if per_spk[s][t]]
+            if len(keep) < 8:
+                print("    %-6s SKIPPED: only %d speaker(s) have a value." % (t, len(keep)))
+                continue
+            loss = [statistics.mean(per_spk[s][t]) for s in keep]
+            f0k = [f0[spks.index(s)] for s in keep]
+            rho, p = permutation_p(f0k, loss, rng, args.perms)
             flag = {"dur": "  <-- NEGATIVE CONTROL",
-                    "synth": "  <-- FREE-RUNNING GENERATION"}.get(t, "")
-            print("    %-6s rho %+0.3f   permutation p = %.4f%s" % (t, rho, p, flag))
-            res[t] = {"rho_f0": round(rho, 4), "p_perm": round(p, 5)}
+                    "synth": "  <-- FREE-RUNNING GENERATION",
+                    "d_hnr_rt": "  <-- POSITIVE CONTROL (vocoder only)",
+                    "d_hnr_syn": "  <-- NEGATIVE rho = the ear's direction"}.get(t, "")
+            print("    %-12s rho %+0.3f   permutation p = %.4f%s" % (t, rho, p, flag))
+            res[t] = {"rho_f0": round(rho, 4), "p_perm": round(p, 5),
+                      "speakers": len(keep)}
 
         print("\n  confound checks (these should be near zero — the sample was matched):")
         for label, xs in (("rows", nrows), ("phonemes", nphon)):
             line = "    %-9s" % label
             for t in TERMS:
-                loss = [statistics.mean(per_spk[s][t]) for s in spks]
-                line += "  %s rho %+0.3f" % (t, spearman(xs, loss))
+                keep = [i for i, s in enumerate(spks) if per_spk[s][t]]
+                if len(keep) < 8:
+                    continue
+                loss = [statistics.mean(per_spk[spks[i]][t]) for i in keep]
+                rho = spearman([xs[i] for i in keep], loss)
+                line += "  %s rho %+0.3f" % (t, rho)
+                res.setdefault(t, {})["rho_%s" % label] = round(rho, 4)
             print(line)
-            for t in TERMS:
-                res[t]["rho_%s" % label] = round(
-                    spearman(xs, [statistics.mean(per_spk[s][t]) for s in spks]), 4)
         report["checkpoints"][ck] = {"speakers": len(spks), "terms": res}
 
     if args.json_out:
