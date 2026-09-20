@@ -82,7 +82,7 @@ def build_dataset(cfg, filelist):
 
 
 @torch.no_grad()
-def synth_error(model, batch, spk_override, n_timesteps, temperature):
+def synth_error(model, batch, spk_override, n_timesteps, temperature, n_bands=8):
     """Mean absolute error, in mel std units, between a generated mel and the true one.
 
     The alignment is MAS against the TRUE mel, exactly as `forward()` derives it, so the
@@ -151,7 +151,20 @@ def synth_error(model, batch, spk_override, n_timesteps, temperature):
     # model fail to reproduce?
     y_mean = (y * m).sum() / denom
     y_mad = float((torch.abs(y - y_mean) * m).sum() / denom)
-    return l1, y_mad
+
+    # ⚠⚠ PER-BAND ERROR, BECAUSE A SCALAR OVER 80 BINS CANNOT SEE A HUM. The whole-mel
+    # number rises with pitch (rho +0.865), which is the opposite of what five blind ear
+    # tests reported, and the most likely reason is that the two are not measuring the same
+    # thing. A buzz is a STRUCTURED error in a few low bins. Averaged against 80, it barely
+    # moves the mean, while diffuse high-frequency detail that no listener objects to moves
+    # it a great deal. Splitting the error by band lets the low bins answer separately.
+    err = (torch.abs(gen - y) * m).sum(dim=(0, 2)).squeeze()      # per mel bin
+    frames = m.sum()
+    n_feats = y.shape[1]
+    step = n_feats // n_bands
+    bands = [float(err[b * step:(b + 1) * step].sum() / (frames * step))
+             for b in range(n_bands)]
+    return l1, y_mad, bands
 
 
 def main():
@@ -163,6 +176,8 @@ def main():
     ap.add_argument("--timesteps", type=int, default=10)
     ap.add_argument("--temperature", type=float, default=0.667)
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--bands", type=int, default=8,
+                    help="split the mel error into this many equal bands of bins")
     ap.add_argument("--control-every", type=int, default=8,
                     help="run the wrong-speaker positive control on every Nth clip")
     ap.add_argument("--out", required=True)
@@ -191,23 +206,28 @@ def main():
         clip = os.path.basename(ds.filepaths_and_text[i][0])
         batch = collate([ds[i]])
         batch = {k: (v.to(device) if torch.is_tensor(v) else v) for k, v in batch.items()}
-        acc, mad = 0.0, 0.0
+        acc, mad, band_acc = 0.0, 0.0, []
         for s in range(args.samples):
             # Paired with score_holdout's scheme so the same clip sees the same noise
             # across runs and across checkpoints.
             torch.manual_seed(zlib.crc32(("%s|%d" % (clip, s)).encode()))
-            e, mad = synth_error(model, batch, None, args.timesteps, args.temperature)
+            e, mad, bands = synth_error(model, batch, None, args.timesteps,
+                                        args.temperature, args.bands)
             acc += e
+            band_acc = [a + b for a, b in zip(band_acc, bands)] if band_acc else list(bands)
         err = acc / args.samples
-        rows.append({"clip": clip, "mel_l1": round(err, 6), "y_mad": round(mad, 6),
-                     "mel_l1_rel": round(err / mad, 6) if mad else ""})
+        row = {"clip": clip, "mel_l1": round(err, 6), "y_mad": round(mad, 6),
+               "mel_l1_rel": round(err / mad, 6) if mad else ""}
+        for b, v in enumerate(band_acc):
+            row["band%d" % b] = round(v / args.samples, 6)
+        rows.append(row)
 
         if args.control_every and n % args.control_every == 0:
             true_spk = int(batch["spks"][0])
             wrong = (true_spk + cfg.data.n_spks // 2) % cfg.data.n_spks
             torch.manual_seed(zlib.crc32(("%s|0" % clip).encode()))
             ctrl_wrong.append(synth_error(model, batch, wrong, args.timesteps,
-                                          args.temperature)[0])
+                                          args.temperature, args.bands)[0])
             ctrl_true.append(err)
         if (n + 1) % 50 == 0:
             print("    %d/%d  %.2f clips/s" % (n + 1, len(idx),
@@ -233,10 +253,24 @@ def main():
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
     with open(args.out, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["clip", "mel_l1", "y_mad", "mel_l1_rel"])
+        fields = (["clip", "mel_l1", "y_mad", "mel_l1_rel"]
+                  + ["band%d" % b for b in range(args.bands)])
+        w = csv.DictWriter(f, fieldnames=fields)
         w.writeheader()
         w.writerows(rows)
+    # Band edges in Hz, so a column name maps to a frequency without re-deriving it.
+    try:
+        import librosa
+        f = librosa.mel_frequencies(n_mels=cfg.data.n_feats, fmin=cfg.data.f_min,
+                                    fmax=cfg.data.f_max)
+        step = cfg.data.n_feats // args.bands
+        band_hz = [[round(float(f[b * step]), 1),
+                    round(float(f[min(len(f) - 1, (b + 1) * step - 1)]), 1)]
+                   for b in range(args.bands)]
+    except Exception:
+        band_hz = None
     meta = {"filelist": args.filelist, "ckpt": args.ckpt, "clips": len(rows),
+            "bands": args.bands, "band_hz": band_hz,
             "samples": args.samples, "timesteps": args.timesteps,
             "temperature": args.temperature, "mean_mel_l1": round(mean_true, 6),
             "control_correct": round(sum(ctrl_true) / len(ctrl_true), 6),
