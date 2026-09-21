@@ -62,72 +62,10 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from lib.corpus_filelist import dataset_of, partition_of, read_corpus   # noqa: E402
 from matcha.delivery import VAT_DIM                              # noqa: E402
-
-
-def read_corpus(path, split):
-    """Rows verbatim, so phonemes, speaker id and VAT are exactly what training saw."""
-    names = {"train": ["train_op.txt"], "val": ["val_op.txt"],
-             "both": ["train_op.txt", "val_op.txt"]}[split]
-    rows = []
-    for name in names:
-        fp = Path(path) / name
-        if not fp.is_file():
-            raise SystemExit("REFUSING: no %s. --corpus must point at a corpus directory "
-                             "holding the filelists." % fp)
-        for lineno, line in enumerate(fp.read_text(encoding="utf-8").splitlines(), 1):
-            if not line.strip():
-                continue
-            parts = line.split("|")
-            if len(parts) != 4:
-                raise SystemExit("REFUSING: %s line %d states %d `|`-separated fields, "
-                                 "wanted 4." % (fp, lineno, len(parts)))
-            wav, spk, phon, vat = parts
-            width = len(vat.split(","))
-            if width != VAT_DIM:
-                raise SystemExit(
-                    "REFUSING: %s line %d carries a %d-wide conditioning vector and this "
-                    "checkout states VAT_DIM as %d. A filelist of the wrong width parses "
-                    "cleanly and means a DIFFERENT MODEL." % (fp, lineno, width, VAT_DIM))
-            try:
-                spk_i = int(spk)
-            except ValueError:
-                raise SystemExit("REFUSING: %s line %d speaker %r is not an index."
-                                 % (fp, lineno, spk))
-            rows.append((line, wav, spk_i, len(phon.split())))
-    if not rows:
-        raise SystemExit("REFUSING: 0 rows read. An empty sample reports a tidy zero "
-                         "gradient and looks exactly like a measurement.")
-    return rows
-
-
-def dataset_of(wav):
-    """The component under `datasets/` — `LibriTTS_R`, `emilia_kept_24k`, ..."""
-    parts = Path(wav).parts
-    try:
-        return parts[parts.index("datasets") + 1]
-    except (ValueError, IndexError):
-        return "(unkeyed)"
-
-
-def partition_of(wav, depth=2):
-    """`train-other-500` etc., taken below the dataset root the same way the balance tool does.
-
-    ⚠ Falls back to the DATASET NAME rather than a silent "(unkeyed)" for corpora that are
-    not LibriTTS-R. v7 holds three of them — 325,094 LibriTTS-R rows, 10,653
-    emilia_kept_24k and 799 expressive_registers_24k — and the first version of this
-    function keyed on `parts.index("LibriTTS_R")`, so an Emilia speaker drawn into a bin
-    would have been reported as "(unkeyed)" beside the partitions rather than as the
-    recording-condition confound it is.
-    """
-    ds = dataset_of(wav)
-    parts = Path(wav).parts
-    if ds != "LibriTTS_R":
-        return ds
-    i = parts.index("LibriTTS_R")
-    tail = parts[i + 1:i + 1 + depth - 1] or ("(root)",)
-    return "/".join(tail)
 
 
 def terciles(values):
@@ -169,7 +107,7 @@ def main():
 
     f0 = {int(k): v["f0"] for k, v in
           json.loads(Path(args.f0_json).read_text())["speakers"].items()}
-    rows = read_corpus(args.corpus, args.split)
+    rows = read_corpus(args.corpus, args.split, VAT_DIM)
     # ⚠⚠ ONE SOURCE DATASET BY DEFAULT. A corpus that merges LibriTTS-R with Emilia and the
     # expressive-registers bank mixes three recording chains, and "loss rises as pitch
     # falls" would be unreadable if the low bin happened to draw the noisier source. The
@@ -194,7 +132,7 @@ def main():
         rows = [r for r in rows if partition_of(r[1]) == args.partition]
         if not rows:
             seen = sorted({partition_of(r[1]) for r in rows} |
-                          {partition_of(r[1]) for r in read_corpus(args.corpus, args.split)})
+                          {partition_of(r[1]) for r in read_corpus(args.corpus, args.split, VAT_DIM)})
             raise SystemExit("REFUSING: --partition %r matched no row. Present: %s"
                              % (args.partition, ", ".join(seen)))
 

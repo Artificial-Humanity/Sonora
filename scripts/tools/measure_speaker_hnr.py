@@ -47,6 +47,7 @@ import soundfile as sf
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from lib import periodicity                                     # noqa: E402
+from lib.corpus_filelist import dataset_of, partition_of        # noqa: E402
 from matcha.delivery import VAT_DIM                             # noqa: E402
 
 
@@ -92,17 +93,6 @@ def self_test(args):
     print("   monotonic, spread %.2f dB  ✓\n" % spread)
 
 
-def partition_of(wav):
-    parts = Path(wav).parts
-    try:
-        return parts[parts.index("LibriTTS_R") + 1]
-    except (ValueError, IndexError):
-        try:
-            return parts[parts.index("datasets") + 1]
-        except (ValueError, IndexError):
-            return "(unkeyed)"
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", required=True)
@@ -137,7 +127,14 @@ def main():
             raise SystemExit("REFUSING: %s line %d is %d-wide and this checkout states "
                              "VAT_DIM as %d." % (fp, lineno, len(parts[3].split(",")),
                                                  VAT_DIM))
-        if args.dataset and partition_of(parts[0]) == "(unkeyed)":
+        # ⚠⚠ THIS TESTED THE WRONG THING until 2026-09-21. It read
+        # `partition_of(parts[0]) == "(unkeyed)"`, and `partition_of` returns the DATASET
+        # NAME for a non-LibriTTS row — so an Emilia row came back "emilia_kept_24k",
+        # never "(unkeyed)", and `--dataset LibriTTS_R` restricted nothing at all. The
+        # 1526-speaker survey of 2026-09-21 came out all-LibriTTS-R anyway, because
+        # Emilia's 10,653 rows spread too thinly for any of its speakers to clear
+        # --min-rows — by luck of the corpus, not by this line.
+        if args.dataset and dataset_of(parts[0]) != args.dataset:
             continue
         by_spk[int(parts[1])].append(parts[0])
 
