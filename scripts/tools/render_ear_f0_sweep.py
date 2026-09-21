@@ -52,14 +52,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import ear_bench                                     # noqa: E402
 from matcha import delivery                                   # noqa: E402
 
-# Neutral, mid-length, no proper nouns and no homographs the G2P is known to miss — the
-# clip must be about the voice, not about a word the front end gets wrong. `read` is
-# deliberately absent: it is unresolved past-simple residue (matcha/text/homographs.py).
-TEXTS = [
-    "The morning train was late again, and the platform filled slowly with people.",
-    "He put the box down on the table and waited for somebody else to speak first.",
-    "Everything we agreed to last winter still holds, as far as I am concerned.",
-]
+TEXTS = ear_bench.NEUTRAL_TEXTS
 
 SETS = {
     "sweep": {

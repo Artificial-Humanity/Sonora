@@ -90,6 +90,22 @@ TEMPERATURE = 0.667
 LENGTH_SCALE = 1.0
 GUIDANCE = 1.0
 
+# Neutral carrier sentences for any bench whose question is about the VOICE rather than
+# about the reading. Mid-length, no proper nouns, and no homograph the G2P is known to
+# miss — the clip has to be about the voice, not about a word the front end gets wrong.
+# `read` is deliberately absent: it is unresolved past-simple residue in
+# matcha/text/homographs.py.
+#
+# ⚠ ONE COPY. These lived in `render_ear_f0_sweep.py` and were about to be pasted into a
+# second bench. Two benches drifting apart on their carrier text would make their results
+# quietly incomparable, which is the same failure that duplicating the pitch estimator
+# nearly caused.
+NEUTRAL_TEXTS = [
+    "The morning train was late again, and the platform filled slowly with people.",
+    "He put the box down on the table and waited for somebody else to speak first.",
+    "Everything we agreed to last winter still holds, as far as I am concerned.",
+]
+
 
 def opaque(pair_key, side_key, salt):
     """The served filename. Carries no information about what the clip is."""
