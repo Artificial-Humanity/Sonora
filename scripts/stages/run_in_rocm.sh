@@ -40,6 +40,12 @@ IMG="$SONORA_ROCM_IMAGE"
 
 DEPS="einops conformer diffusers lightning hydra-core omegaconf rootutils rich matplotlib gdown wget librosa soundfile cython numpy pyyaml unidecode"
 
+# ⚠ PER-STAGE EXTRAS, so one stage's dependency does not become every stage's. The ear
+# benches need `ai-edge-litert` for the neural G2P fallback and nothing else here does;
+# adding it to DEPS would pull it into every holdout and mel measurement for no reason.
+# Set SONORA_EXTRA_DEPS="pkg pkg" to append for a single invocation.
+DEPS="$DEPS ${SONORA_EXTRA_DEPS:-}"
+
 # ⚠⚠ ARGS CROSS TWO SHELLS AND TRAVEL BY ENVIRONMENT, NOT BY INTERPOLATION. `$*` sat here
 # until 2026-09-20 and broke on the first argument containing an apostrophe —
 # `--scoring-trained-clips "the model's own embeddings"` produced `unexpected EOF while
@@ -55,20 +61,6 @@ DEPS="einops conformer diffusers lightning hydra-core omegaconf rootutils rich m
 # container. Verified with an apostrophe, a double quote and spaces in one value.
 ARGS="$(printf '%q ' "$@")"
 
-# ⚠⚠ ARGS CROSS TWO SHELLS AND TRAVEL BY ENVIRONMENT, NOT BY INTERPOLATION. `$*` sat in
-# score_holdout.sh until 2026-09-20 and broke on the first argument containing an
-# apostrophe — `--scoring-trained-clips "the model\'s own embeddings"` produced
-# `unexpected EOF while looking for matching \'` from inside the container, which reads as
-# a bug in the script rather than in the caller\'s quoting.
-#
-# ⚠ ESCAPING HARDER DOES NOT FIX IT. The inner layer is `runuser … bash -c \'…\'` —
-# SINGLE-quoted — and the outer shell expands the arguments while building that string, so
-# any `\'` in the value closes the quote no matter how many rounds of `printf %q` it has
-# been through. The value must not pass through the outer shell\'s expansion at all.
-# `docker run -e` carries it across the boundary untouched and the inner `\$SONORA_ARGS`
-# (escaped, so the HOST shell leaves it alone) expands it in the container. Verified with
-# an apostrophe, a double quote and spaces in one value.
-ARGS="$(printf '%q ' "$@")"
 
 echo "== rocm: $STAGE =="
 docker run --rm $GPU -v /data:/data -v "$SONORA":/sonora \
