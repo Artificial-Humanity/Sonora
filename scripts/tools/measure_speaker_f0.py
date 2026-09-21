@@ -63,6 +63,13 @@ for _p in (_SONORA_REPO,):
         _sys.path.insert(0, _p)
 
 import numpy as np  # noqa: E402
+
+# `scripts/` is on the path for `lib.periodicity`, the shared estimator. The repo root is
+# already inserted above for `matcha`; this adds the sibling directory, not a second copy.
+_SCRIPTS = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
+if _SCRIPTS not in _sys.path:
+    _sys.path.insert(0, _SCRIPTS)
+from lib import periodicity as periodicity_lib  # noqa: E402
 import soundfile as sf  # noqa: E402
 
 from matcha.delivery import VAT_DIM  # noqa: E402
@@ -79,25 +86,15 @@ def _empty(msg):
 
 
 def f0_frames(x, sr, fmin, fmax, rms_floor, periodicity):
-    """Per-frame F0 over the voiced frames only. Empty when nothing is voiced."""
-    w, hop = int(0.040 * sr), int(0.010 * sr)
-    lo, hi = int(sr / fmax), int(sr / fmin)
-    out = []
-    for s in range(0, len(x) - w, hop):
-        fr = x[s:s + w].astype(np.float64)
-        fr = fr - fr.mean()
-        if np.sqrt(np.mean(fr ** 2)) < rms_floor:
-            continue
-        ac = np.correlate(fr, fr, "full")[w - 1:]
-        ac = ac / (ac[0] or 1.0)
-        seg = ac[lo:hi]
-        if not len(seg):
-            continue
-        k = int(np.argmax(seg))
-        if seg[k] < periodicity:
-            continue
-        out.append(sr / (lo + k))
-    return np.asarray(out)
+    """Per-frame F0 over the voiced frames only. Empty when nothing is voiced.
+
+    ⚠ THE ESTIMATOR MOVED TO `scripts/lib/periodicity.py` and this is now a delegation.
+    `measure_harmonicity.py` needs the same voicing decision to build an HNR axis that is
+    comparable with this F0 axis, and it had a byte-identical copy of the loop. The
+    self-test below still runs on every invocation, so it now guards the shared code.
+    """
+    f0, _hnr = periodicity_lib.frames(x, sr, fmin, fmax, rms_floor, periodicity)
+    return f0
 
 
 def clip_f0(path, fmin, fmax, rms_floor, periodicity):

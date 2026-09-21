@@ -67,38 +67,22 @@ from matcha.data.license_wall import enforce  # noqa: E402
 from matcha.data.text_mel_datamodule import TextMelBatchCollate, TextMelDataset  # noqa: E402
 from matcha.utils.model import denormalize, fix_len_compatibility, sequence_mask  # noqa: E402
 
+sys.path.insert(0, os.path.join(os.environ.get("SONORA_REPO", "/sonora"), "scripts"))
+from lib import periodicity  # noqa: E402
 
-def hnr_frames(x, sr, fmin, fmax, rms_floor, periodicity):
+
+def hnr_frames(x, sr, fmin, fmax, rms_floor, periodicity_threshold):
     """Per-frame (HNR dB, F0 Hz) over voiced frames, from the normalised ACF peak.
 
-    Deliberately the SAME framing, window and voicing rule as
-    `scripts/tools/measure_speaker_f0.f0_frames` — 40 ms window, 10 ms hop, mean removed,
-    RMS floor, ACF peak searched between the period bounds. Two estimators disagreeing
-    about which frames are voiced would make the F0 axis and the HNR axis incomparable.
+    ⚠ THE ESTIMATOR IS `scripts/lib/periodicity.py` AND THIS IS A DELEGATION. It used to
+    be a byte-identical copy of `measure_speaker_f0.f0_frames` with the HNR line added,
+    kept in step by a comment. Two copies of the voicing rule is exactly the drift this
+    repo keeps finding, and here it would have been silent: an F0 axis and an HNR axis
+    built from different rules are not comparable, and the whole result is a correlation
+    between them. `measure_speaker_f0.py`'s synthetic self-test now guards this code.
     """
-    w, hop = int(0.040 * sr), int(0.010 * sr)
-    lo, hi = int(sr / fmax), int(sr / fmin)
-    hnr, f0 = [], []
-    for s in range(0, len(x) - w, hop):
-        fr = x[s:s + w].astype(np.float64)
-        fr = fr - fr.mean()
-        if np.sqrt(np.mean(fr ** 2)) < rms_floor:
-            continue
-        ac = np.correlate(fr, fr, "full")[w - 1:]
-        ac = ac / (ac[0] or 1.0)
-        seg = ac[lo:hi]
-        if not len(seg):
-            continue
-        k = int(np.argmax(seg))
-        r = float(seg[k])
-        if r < periodicity:
-            continue
-        # Clamped before the log: r at or above 1.0 is a numerical artifact of a
-        # near-constant frame, not an infinitely periodic one, and one inf poisons a mean.
-        r = min(max(r, 1e-6), 1.0 - 1e-6)
-        hnr.append(10.0 * math.log10(r / (1.0 - r)))
-        f0.append(sr / (lo + k))
-    return np.asarray(hnr), np.asarray(f0)
+    f0, hnr = periodicity.frames(x, sr, fmin, fmax, rms_floor, periodicity_threshold)
+    return hnr, f0
 
 
 def summarize(x, sr, args):
@@ -158,7 +142,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--filelist", required=True)
     ap.add_argument("--model-config", required=True)
-    ap.add_argument("--ckpt", required=True)
+    ap.add_argument("--ckpt", action="append", required=True, metavar="name=path",
+                    help="repeatable. The real and round-trip signals are computed\n"
+                         "ONCE and shared across every checkpoint, so the ladder is\n"
+                         "paired against one baseline rather than against N of them.")
     ap.add_argument("--out", required=True)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--timesteps", type=int, default=10)
@@ -186,13 +173,24 @@ def main():
         load_vat=d.get("load_vat", vat_dim > 0), vat_dim=vat_dim)
     collate = TextMelBatchCollate(d.n_spks)
 
-    model = instantiate(cfg.model)
-    sd = torch.load(args.ckpt, map_location="cpu", weights_only=False)["state_dict"]
-    missing, unexpected = model.load_state_dict(sd, strict=False)
-    if missing or unexpected:
-        raise SystemExit("REFUSING: checkpoint does not match this config "
-                         "(missing=%d unexpected=%d)." % (len(missing), len(unexpected)))
-    model = model.to(device).eval()
+    # ⚠ CHECKPOINTS ARE THE INNER LOOP, as in score_holdout.py and for the same reason:
+    # reading the wav, melling it, vocoding the round trip and measuring two HNR series
+    # dominates, and none of it depends on which checkpoint is loaded. Held here, every
+    # model is compared against ONE baseline measured from ONE decode of the real audio.
+    loaded = []
+    for spec in args.ckpt:
+        if "=" not in spec:
+            raise SystemExit("--ckpt wants name=path, got %r" % spec)
+        name, path = spec.split("=", 1)
+        m = instantiate(cfg.model)
+        sd = torch.load(path, map_location="cpu", weights_only=False)["state_dict"]
+        missing, unexpected = m.load_state_dict(sd, strict=False)
+        if missing or unexpected:
+            raise SystemExit("REFUSING: %s does not match this config (missing=%d "
+                             "unexpected=%d)." % (name, len(missing), len(unexpected)))
+        loaded.append((name, m.to(device).eval()))
+        print("  loaded %s" % name, flush=True)
+    model = loaded[0][1]
     vocoder, sr = load_vocoder_24k(device)
     if sr != d.sample_rate:
         raise SystemExit("REFUSING: the vocoder runs at %d Hz and the corpus at %d. The "
@@ -225,26 +223,36 @@ def main():
         true_mel = denormalize(batch["y"], model.mel_mean, model.mel_std)
         rt = to_waveform(true_mel, vocoder, None).cpu().numpy()
 
-        torch.manual_seed(zlib.crc32(("%s|0" % clip).encode()))
-        syn_mel = denormalize(gen_mel(model, batch, args.timesteps, args.temperature),
-                              model.mel_mean, model.mel_std)
-        syn = to_waveform(syn_mel, vocoder, None).cpu().numpy()
-
-        row = {"clip": clip}
+        base = {}
         ok = True
-        for tag, sig in (("real", real), ("rt", rt), ("syn", syn)):
+        for tag, sig in (("real", real), ("rt", rt)):
             s = summarize(np.asarray(sig).squeeze(), sr, args)
             if s is None:
                 ok = False
                 break
             for k, v in s.items():
-                row["%s_%s" % (tag, k)] = round(v, 4)
+                base["%s_%s" % (tag, k)] = round(v, 4)
         if not ok:
             continue
-        row["d_hnr_rt"] = round(row["rt_hnr"] - row["real_hnr"], 4)
-        row["d_hnr_syn"] = round(row["syn_hnr"] - row["real_hnr"], 4)
-        row["d_jitter_syn"] = round(row["syn_jitter"] - row["real_jitter"], 4)
-        rows.append(row)
+        base["d_hnr_rt"] = round(base["rt_hnr"] - base["real_hnr"], 4)
+
+        for name, m in loaded:
+            # Same seed for the same clip across every checkpoint, so the ladder differs
+            # by weights and by nothing else.
+            torch.manual_seed(zlib.crc32(("%s|0" % clip).encode()))
+            syn_mel = denormalize(gen_mel(m, batch, args.timesteps, args.temperature),
+                                  m.mel_mean, m.mel_std)
+            syn = to_waveform(syn_mel, vocoder, None).cpu().numpy()
+            s = summarize(np.asarray(syn).squeeze(), sr, args)
+            if s is None:
+                continue
+            row = {"clip": clip, "ckpt": name, **base}
+            for k, v in s.items():
+                row["syn_%s" % k] = round(v, 4)
+            row["d_hnr_syn"] = round(row["syn_hnr"] - row["real_hnr"], 4)
+            row["d_jitter_syn"] = round(row["syn_jitter"] - row["real_jitter"], 4)
+            row["d_hnr_model"] = round(row["d_hnr_syn"] - row["d_hnr_rt"], 4)
+            rows.append(row)
         if (n + 1) % 50 == 0:
             print("    %d/%d  %.2f clips/s" % (n + 1, len(idx),
                                                (n + 1) / (time.time() - t0)), flush=True)
@@ -252,14 +260,18 @@ def main():
     if not rows:
         raise SystemExit("REFUSING: no clip produced a voiced frame in all three signals.")
 
-    def mean(k):
-        return sum(r[k] for r in rows) / len(rows)
+    def mean(k, rs=None):
+        rs = rs if rs is not None else rows
+        return sum(r[k] for r in rs) / len(rs)
 
-    print("\n  %d clips" % len(rows))
-    print("  HNR dB   real %6.2f   round-trip %6.2f   synth %6.2f"
-          % (mean("real_hnr"), mean("rt_hnr"), mean("syn_hnr")), flush=True)
-    print("  delta    round-trip %+6.2f   synth %+6.2f"
-          % (mean("d_hnr_rt"), mean("d_hnr_syn")), flush=True)
+    print("\n  %d rows over %d checkpoints" % (len(rows), len(loaded)))
+    print("  real HNR %6.2f dB   round trip %+6.2f dB" % (mean("real_hnr"),
+                                                          mean("d_hnr_rt")), flush=True)
+    print("  %-22s %10s %12s" % ("checkpoint", "d_hnr_syn", "model only"), flush=True)
+    for name, _ in loaded:
+        rs = [r for r in rows if r["ckpt"] == name]
+        print("  %-22s %+10.3f %+12.3f" % (name, mean("d_hnr_syn", rs),
+                                           mean("d_hnr_model", rs)), flush=True)
 
     # ⚠⚠ GATE, NOT A PRINTOUT. The round trip is known-audible; a measure blind to it
     # cannot support a null about pitch.
@@ -276,9 +288,11 @@ def main():
         w.writeheader()
         w.writerows(rows)
     with open(os.path.splitext(args.out)[0] + ".json", "w", encoding="utf-8") as f:
-        json.dump({"filelist": args.filelist, "ckpt": args.ckpt, "clips": len(rows),
+        json.dump({"filelist": args.filelist, "ckpts": args.ckpt, "rows": len(rows),
                    "mean_d_hnr_rt": round(mean("d_hnr_rt"), 4),
-                   "mean_d_hnr_syn": round(mean("d_hnr_syn"), 4),
+                   "per_ckpt": {n: round(mean("d_hnr_syn",
+                                              [r for r in rows if r["ckpt"] == n]), 4)
+                                for n, _ in loaded},
                    "is_holdout": False}, f, indent=2)
     print("  wrote %d rows -> %s" % (len(rows), args.out), flush=True)
 
