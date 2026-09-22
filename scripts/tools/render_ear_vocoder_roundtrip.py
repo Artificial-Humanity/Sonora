@@ -109,30 +109,11 @@ def match_loudness(x, sr, target):
     return (x * g).astype("float32"), g < gain
 
 
-def prove_writable(out):
-    """⚠ THE APP MUST BE ABLE TO WRITE BEFORE A LISTENER IS INVITED.
-
-    A container render runs as root, so the test directory comes out root-owned; docker
-    then creates a missing `verdicts/` as root:root and the app, running as another uid,
-    cannot write to it. Every POST returns 500 — and the page repaints from its own memory,
-    so it looks exactly like it is recording. That cost the owner ten minutes of listening
-    on 2026-09-19 with nothing saved. Creating the directory is not enough; this writes a
-    file and reads it back.
-    """
-    v = Path(out) / "verdicts"
-    v.mkdir(parents=True, exist_ok=True)
-    os.chmod(v, 0o2775)
-    probe = v / ".writable"
-    probe.write_text("probe")
-    if probe.read_text() != "probe":
-        refuse("%s did not read back what was written to it" % v)
-    probe.unlink()
-    # The app runs as a different uid than a container render. Group-writable plus setgid
-    # is what makes the directory usable by both; it is asserted, not assumed.
-    if not (os.stat(v).st_mode & 0o020):
-        refuse("%s is not group-writable, so the ear-test app will not be able to save "
-               "verdicts even though this process can" % v)
-
+# ⚠⚠ prove_writable MOVED TO ear_bench ON 2026-09-22 and this file kept a local copy of
+# it in the same diff — a second implementation of a rule this repo has already been
+# bitten by twice. The local one also chmod'd unguarded, so it raised where the shared
+# copy tolerates a directory someone else owns.
+prove_writable = ear_bench.prove_writable
 
 def main():
     ap = argparse.ArgumentParser()
@@ -283,9 +264,15 @@ def main():
                      ("B", other, "vocoded" if not same else "original")]
         item = {"id": pair_key, "set": "roundtrip", "text": "(recording)",
                 "spk": "(blind)", "vat": [], "delivery_ui": "(blind)"}
+        # ⚠ THE CROP LENGTH IS COMPUTED ONCE, FOR THE PAIR. `min(len(audio), len(orig))`
+        # inside the loop is per-SIDE, so when the round trip came out SHORTER than the
+        # original only the original was truncated — to its own length, which is no
+        # truncation at all — and the two served clips differed in duration. A length
+        # difference is a cue a listener can use without knowing they are using it.
+        n_pair = min(len(a) for _, a, _ in sides)
         for side_key, audio, label in sides:
             name = ear_bench.opaque(pair_key, side_key, args.salt)
-            n = min(len(audio), len(orig))          # the round trip can differ by a frame
+            n = n_pair                              # the round trip can differ by a frame
             sf.write(str(clips / ("%s.wav" % name)), audio[:n], xsr, "PCM_24")
             key[name] = {"label": label, "pair": pair_key, "side": side_key}
             item[side_key] = name

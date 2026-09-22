@@ -88,6 +88,11 @@ def candidate_pairs(spk, eligible, args):
             for r, c, g, f, d in pairs]
 
 
+# Pairs whose F0 falls within this many Hz of a target are treated as equally good,
+# so the pitch-sign balance below is what chooses between them.
+BUCKET_HZ = 5.0
+
+
 def select(pairs, n, rng):
     """`n` pairs spread over the F0 range, with the within-pair pitch sign balanced.
 
@@ -113,7 +118,12 @@ def select(pairs, n, rng):
         for i, p in enumerate(pairs):
             if i in taken:
                 continue
-            key = (abs(p["f0"] - t), abs(running + p["d_f0"]))
+            # ⚠⚠ THE SIGN BALANCE WAS DEAD CODE. As a second tuple element after a
+            # FLOAT distance it only broke exact ties, which essentially never happen, so
+            # the documented group pitch-balancing never ran and `--f0-balance` was
+            # carrying the whole claim alone. Bucketing the distance makes pairs at
+            # comparable distance genuinely comparable, and then the balance term decides.
+            key = (round(abs(p["f0"] - t) / BUCKET_HZ), abs(running + p["d_f0"]))
             if best is None or key < best[0]:
                 best = (key, i)
         _, i = best

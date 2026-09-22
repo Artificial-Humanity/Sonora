@@ -178,11 +178,18 @@ def main():
             made["rt"] = roundtrip(x)
         left_lbl, right_lbl = kind.split("_vs_")
         if "model" in (left_lbl, right_lbl):
-            name = ear_bench.opaque(pair_key, "model", args.salt)
+            # ⚠⚠ THE KEY NAMES THE SPEAKER AND THE SOURCE CLIP. Keyed on "model" alone
+            # the id was a constant function of the item index, and `Bench.render` returns
+            # early when the file already exists — so a re-run with a different seed, which
+            # draws a different speaker into item_07, would have served the PREVIOUS
+            # speaker's audio under a key claiming the new one. Nothing downstream could
+            # tell, because the id did not move.
+            side = "model_spk%d_%s" % (s, Path(src).stem)
+            name = ear_bench.opaque(pair_key, side, args.salt)
             # ⚠ THE LANE IS `DELIVERY_UNKNOWN`, NOT 0. The vocabulary is closed and
             # `delivery_index` refuses anything outside it — an integer looks like an
             # index and is not one. Caught by that refusal on the first run.
-            bench.render(pair_key, "model", args.ckpt, "(phonemes)", s, (0.0, 0.0, 0.0),
+            bench.render(pair_key, side, args.ckpt, "(phonemes)", s, (0.0, 0.0, 0.0),
                          delivery.DELIVERY_UNKNOWN, "model", phonemes=phon)
             made["model"], _ = sf.read(str(clips / ("%s.wav" % name)), dtype="float32")
 

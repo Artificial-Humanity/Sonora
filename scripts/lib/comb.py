@@ -136,7 +136,15 @@ def echo_strength(x, sr, fmin=55.0, fmax=350.0, lag_lo=0.004, lag_hi=0.060,
         best.append(float(np.nanmax(resid)) / spread)
         lags.append((q_lo + i) / sr)
     if not best:
-        return 0.0, 0.0, 0
+        # ⚠⚠ NOT A ZERO — A NON-MEASUREMENT. `range(0, len(x) - n, h)` yields nothing for a
+        # clip shorter than one window, and a silent 0.0 is the LOWEST possible score: a
+        # clip too short to analyse would rank as the cleanest in the set. This is the
+        # exact failure the self-test exists to catch, and it would have slipped past it
+        # because the self-test signal is always long enough.
+        raise ValueError(
+            "no analysable frame: %.2f s of audio at %d Hz gives no %.0f ms window above "
+            "the RMS floor. A clip this short cannot be scored, and returning 0.0 would "
+            "rank it as the cleanest in the set." % (len(x) / sr, sr, win * 1000))
     best = np.asarray(best)
     k = int(np.argsort(best)[int(pct / 100.0 * (len(best) - 1))])
     return float(np.percentile(best, pct)), float(lags[k]), len(best)

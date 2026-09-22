@@ -166,9 +166,16 @@ def main():
             # only difference heard is the checkpoint. A catch trial holds the checkpoint
             # fixed, so that same sharing would make the two files bit-identical.
             rk = pair_key if it["kind"] != "catch" else "%s_%s" % (pair_key, side_key)
+            # ⚠⚠ THE SIDE KEY NAMES THE CONTENT, NOT THE LETTER. `opaque` hashes
+            # salt|pair_key|side_key and `Bench.render` returns early when that file
+            # already exists, so with "A"/"B" the id is a constant function of the item
+            # index: re-rendering the same --out with a different arm or speaker serves
+            # the OLD audio under the new label, and `Bench.write`'s side-change guard —
+            # which compares (item["A"], item["B"]) — can never fire because the ids did
+            # not move. Keying on arm and speaker makes a changed assignment change the id.
             item[side_key] = bench.render(
-                rk, side_key, arms[arm], text, it["spk"], (0.0, 0.0, 0.0),
-                delivery.DELIVERY_UNKNOWN, arm)
+                rk, "%s_spk%d" % (arm, it["spk"]), arms[arm], text, it["spk"],
+                (0.0, 0.0, 0.0), delivery.DELIVERY_UNKNOWN, arm)
         served.append(item)
         truth[pair_key] = {"kind": it["kind"], "spk": it["spk"], "f0": it["f0"],
                            "hnr": it["hnr"], "hnr_gap": round(it["hnr_gap"], 3),

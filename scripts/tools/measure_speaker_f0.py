@@ -184,7 +184,11 @@ def main():
                % (path, args.min_rows, max(len(v) for v in rows.values())))
 
     rng = random.Random(args.seed)
-    chosen = eligible
+    # ⚠ COPY, NOT AN ALIAS. `--also` appends to `chosen`, and with a bare assignment
+    # that append landed in `eligible` too — inflating the "of N speakers with >= M
+    # rows" line by however many extras were named, i.e. reporting a population that
+    # did not meet the threshold the same sentence claims for it.
+    chosen = list(eligible)
     if args.speakers_sampled and args.speakers_sampled < len(eligible):
         chosen = rng.sample(eligible, args.speakers_sampled)
     for tok in args.also.split(","):

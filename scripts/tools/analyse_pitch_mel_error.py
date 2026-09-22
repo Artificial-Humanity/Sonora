@@ -135,6 +135,21 @@ def main():
     if args.harmonicity:
         with open(args.harmonicity, newline="", encoding="utf-8") as f:
             for r in csv.DictReader(f):
+                # ⚠⚠ A LADDER CSV HOLDS ONE ROW PER (clip, checkpoint), and keying on the
+                # clip alone keeps only the LAST checkpoint's row for each. Nothing
+                # downstream would notice: the coverage check passes, the correlation runs,
+                # and every checkpoint reports identical d_hnr_syn. Refuse instead of
+                # picking one arbitrarily — which checkpoint the caller wants is a decision
+                # this tool has no way to make.
+                if "ckpt" in r:
+                    raise SystemExit(
+                        "REFUSING: %s carries a `ckpt` column, so it holds several "
+                        "checkpoints and one row per clip is not well defined. Use "
+                        "analyse_harmonicity_ladder.py, or split the CSV first."
+                        % args.harmonicity)
+                if r["clip"] in harm:
+                    raise SystemExit("REFUSING: %s names clip %s twice."
+                                     % (args.harmonicity, r["clip"]))
                 harm[r["clip"]] = r
         stray = set(harm) - set(clips)
         if stray:

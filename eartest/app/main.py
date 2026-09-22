@@ -108,7 +108,32 @@ def _write(rows):
 
 
 def _append_history(row):
+    """Append-only log of every verdict, including ones later changed or cleared.
+
+    ⚠⚠ A COLUMN ADDED TO `FIELDS` ORPHANS EVERY EXISTING HISTORY FILE, and appending is
+    exactly where that goes unnoticed. `verdicts.csv` is rewritten whole on each save so it
+    migrates itself; this file is only ever appended to, so after `sev_a`/`sev_b` joined in
+    the middle of FIELDS on 2026-09-22 a new 8-column row would land under a 6-column
+    header and every reader parsing by header would read `confidence` out of `sev_a`. The
+    thirteen ear tests collected before that date all carry the old header on disk. So the
+    header is CHECKED, and a stale one is migrated by rewriting the file with the old rows
+    padded — not by hoping nobody reads it.
+    """
     VERDICT_DIR.mkdir(parents=True, exist_ok=True)
+    if HISTORY.exists():
+        with HISTORY.open(newline="", encoding="utf-8") as f:
+            r = csv.reader(f)
+            head = next(r, None)
+        if head is not None and head != FIELDS:
+            with HISTORY.open(newline="", encoding="utf-8") as f:
+                old = list(csv.DictReader(f))
+            tmp = HISTORY.with_suffix(".csv.tmp")
+            with tmp.open("w", newline="", encoding="utf-8") as f:
+                w = csv.DictWriter(f, fieldnames=FIELDS)
+                w.writeheader()
+                for o in old:
+                    w.writerow({k: o.get(k, "") or "" for k in FIELDS})
+            tmp.replace(HISTORY)
     new = not HISTORY.exists()
     with HISTORY.open("a", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)
@@ -303,7 +328,7 @@ kbd{background:#232833;border:1px solid #2a2f3a;border-radius:4px;padding:1px 6p
   <textarea id="note" rows="2" placeholder="Optional: what did you hear?"></textarea>
   <nav><button id="prev">← Previous</button><button id="next">Next →</button></nav>
   <div class="hint">
-    <kbd>1</kbd> play A · <kbd>2</kbd> play B · <kbd>←</kbd>/<kbd>→</kbd> move ·
+    <span id="hintplay"></span> · <kbd>←</kbd>/<kbd>→</kbd> move ·
     replay as often as you like.<br>
     <span id="hintmode"></span><br>
     Which clip is A changes from item to item, so the sides tell you nothing.
@@ -352,9 +377,11 @@ function render(){
       $(v).textContent=has?it[k]+" / 5":"Unset";
       $(v).classList.toggle("set",has);
     }
+    $("hintplay").innerHTML="<kbd>z</kbd> play A · <kbd>x</kbd> play B";
     $("hintmode").innerHTML="Rate EACH clip on its own. <kbd>0</kbd>–<kbd>5</kbd> sets A, "+
       "<kbd>shift</kbd>+<kbd>0</kbd>–<kbd>5</kbd> sets B. Equal ratings are a real answer.";
   } else {
+    $("hintplay").innerHTML="<kbd>1</kbd> play A · <kbd>2</kbd> play B";
     $("hintmode").innerHTML="<kbd>a</kbd>/<kbd>s</kbd>/<kbd>b</kbd> choose. "+
       "The middle answer is a real answer — do not force a choice.";
   }
@@ -407,8 +434,15 @@ $("note").onchange=()=>{ITEMS[i].note=$("note").value;save();};
 document.onkeydown=e=>{
   if(e.target.tagName==="TEXTAREA")return;
   const k=e.key.toLowerCase();
-  if(k==="1")play("A"); else if(k==="2")play("B");
-  else if(e.key==="ArrowLeft")move(-1); else if(e.key==="ArrowRight")move(1);
+  // ⚠⚠ ON A SEVERITY SET 1 AND 2 ARE RATINGS, NOT PLAY KEYS. They were checked first, so
+  // "0-5 sets A" was false for exactly the two values a listener reaches for most — A
+  // could not be rated 1 or 2 from the keyboard at all while the hint said it could.
+  // Play moves to z/x there; 1/2 keep their meaning on a forced-choice set.
+  if(scaleOf()){ if(k==="z")return play("A"),e.preventDefault();
+                 if(k==="x")return play("B"),e.preventDefault(); }
+  else if(k==="1"){play("A");e.preventDefault();return;}
+  else if(k==="2"){play("B");e.preventDefault();return;}
+  if(e.key==="ArrowLeft")move(-1); else if(e.key==="ArrowRight")move(1);
   else if(scaleOf()&&/^[0-5]$/.test(e.key))sev("A",e.key);
   else if(scaleOf()&&")!@#$%".indexOf(e.key)>=0)sev("B",String(")!@#$%".indexOf(e.key)));
   else if(!scaleOf()&&k==="a")choose("A");

@@ -67,6 +67,11 @@ SETS = {
 }
 
 
+# Pairs whose F0 falls within this many Hz of a target are treated as equally good,
+# so the pitch-sign balance below is what chooses between them.
+BUCKET_HZ = 5.0
+
+
 def spread(pairs, n, rng):
     """`n` pairs spaced over the F0 range, so pitch stays readable as a second axis."""
     if len(pairs) < n:
@@ -81,7 +86,10 @@ def spread(pairs, n, rng):
         for i, p in enumerate(pairs):
             if i in taken:
                 continue
-            k = (abs(p[3] - t), abs(running + p[4]))
+            # ⚠⚠ DEAD TIEBREAKER — see build_hnr_error_filelist.py. A float distance
+            # first means the balance term never decides anything, and unlike the filelist
+            # builder this bench has NO postcondition to catch an unbalanced draw.
+            k = (round(abs(p[3] - t) / BUCKET_HZ), abs(running + p[4]))
             if best is None or k < best[0]:
                 best = (k, i)
         taken.add(best[1])

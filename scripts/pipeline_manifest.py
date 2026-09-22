@@ -70,14 +70,21 @@ class Stage(NamedTuple):
 
 STAGES = "scripts/stages/"
 
-# Shells an orchestrator may run without them being stages: two are `.`-sourced definition
-# files, and the third runs inside the throwaway container to create the ai-mgr passwd
-# entry. Named explicitly rather than by exempting everything in NOT_ORCHESTRATORS, so
-# wiring (say) a developer tool into a data pass still has to be declared.
+# Scripts an orchestrator may run without them being stages: two are `.`-sourced definition
+# files, the third runs inside the throwaway container to create the ai-mgr passwd entry,
+# and `setup.py` builds monotonic_align (Cython) in a /tmp copy of the package. Named
+# explicitly rather than by exempting everything in NOT_ORCHESTRATORS, so wiring (say) a
+# developer tool into a data pass still has to be declared.
+#
+# ⚠ NOT SHELLS ONLY, and the comment here said "shells" until 2026-09-22. `setup.py` moved
+# into this set when the docker block moved out of score_holdout.sh into run_in_rocm.sh: it
+# was already declared as a non-stage there, and the dynamic-dispatch gate subtracts this
+# tuple, so leaving it out made a build step look like a hardcoded stage target.
 STRUCTURAL_HELPERS = (
     "container_env.sh",
     "capture_container_env.sh",
     "container_as_ai_mgr.sh",
+    "setup.py",
 )
 
 # Statically wired orchestrators: every stage below must appear as a real invocation, and
@@ -145,7 +152,11 @@ ORCHESTRATORS = {
         "invokes_orchestrators": (),
         # setup.py builds monotonic_align (Cython) in a /tmp copy of the package. A build
         # step, not a pipeline stage, and named here so it is allowed rather than ignored.
-        "non_stage_scripts": ("setup.py",),
+        # ⚠ score_holdout.sh is now a ONE-LINE `exec` into run_in_rocm.sh, which is what
+        # actually starts the container and runs score_holdout.py inside it. The stage is
+        # still reached; the path to it is one hop longer. Declared here rather than
+        # promoted to a stage because the runner is generic — its target is $1.
+        "non_stage_scripts": ("setup.py", "scripts/stages/run_in_rocm.sh"),
         "deliberately_not_invoked": {},
     },
 }
@@ -154,6 +165,14 @@ ORCHESTRATORS = {
 # stages at all. Declared, not enforced — the value here is that the next audit knows the
 # blind spot exists instead of concluding the lane is dead.
 DYNAMIC_DISPATCH = {
+    "scripts/stages/run_in_rocm.sh": (
+        "Takes the repo-relative script as $1 and runs it inside the pinned ROCm "
+        "container, so which stage it starts is a runtime choice and static reachability "
+        "cannot see it. Extracted from score_holdout.sh on 2026-09-20 when a second stage "
+        "needed the identical container — copying the docker block would have forked the "
+        "image pin, the dependency list and the argument-quoting fix across two files. "
+        "If a hardcoded stage list ever lands in it, that list belongs in ORCHESTRATORS."
+    ),
     "scripts/litert_export/run.sh": (
         "Takes the script name as $1 and `exec`s it, so none of the export-lane scripts in "
         "`scripts/litert_export/` appear as called by anything. Deliberate: it is the wrapper that "
