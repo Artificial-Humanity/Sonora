@@ -183,6 +183,10 @@ def verdict(v: Verdict):
         raise HTTPException(404, f"unknown item {v.item}")
     scale = _scale_of(known[v.item])
     if scale:
+        # "-1" is the slider's Unset notch; normalise it before validating so dragging a
+        # rating back to Unset clears it instead of being refused as out of range.
+        v.sev_a = "" if v.sev_a == "-1" else v.sev_a
+        v.sev_b = "" if v.sev_b == "-1" else v.sev_b
         if v.sev_a not in SEV_VALUES or v.sev_b not in SEV_VALUES:
             raise HTTPException(400, "severity must be 0-5 or empty to clear")
         # ⚠ DERIVED, NOT SENT. The client could post a `choice` that disagrees with the
@@ -287,10 +291,10 @@ kbd{background:#232833;border:1px solid #2a2f3a;border-radius:4px;padding:1px 6p
   <div class="sev" id="sev">
     <div class="anchors"><span id="anc0"></span><span id="anc5"></span></div>
     <div class="sevrow"><span class="lab">A</span>
-      <input type="range" id="ra" min="0" max="5" step="1" value="0">
+      <input type="range" id="ra" min="-1" max="5" step="1" value="-1">
       <span class="val" id="va">— not set</span></div>
     <div class="sevrow"><span class="lab">B</span>
-      <input type="range" id="rb" min="0" max="5" step="1" value="0">
+      <input type="range" id="rb" min="-1" max="5" step="1" value="-1">
       <span class="val" id="vb">— not set</span></div>
   </div>
   <div class="conf">
@@ -334,15 +338,18 @@ function render(){
   document.querySelector(".choices").style.display=sc?"none":"";
   if(sc){
     const anc=sc.anchors||{};
-    $("anc0").textContent="0 — "+(anc["0"]||"cannot hear it");
+    $("anc0").textContent="Unset · 0 — "+(anc["0"]||"cannot hear it");
     $("anc5").textContent="5 — "+(anc["5"]||"as bad as it gets");
-    // ⚠ THE SLIDER SHOWS "not set" UNTIL IT IS TOUCHED, because 0 is a real answer and
-    // a control resting on 0 would record "cannot hear it" for every item the listener
-    // simply has not reached yet.
+    // ⚠⚠ THE TRACK RUNS -1..5 AND -1 IS "Unset". 0 is a real answer — "cannot hear it"
+    // — so the control cannot REST on it, or every item not yet reached would read as a
+    // confident zero. The first version started at 0 and relied on the click firing
+    // `input`; it does not fire when the value does not change, so the owner found that
+    // leaving a genuine 0 alone left the item unrated (2026-09-22). Giving Unset its own
+    // notch makes 0 reachable by MOVING, which always fires.
     for(const [k,r,v] of [["sev_a","ra","va"],["sev_b","rb","vb"]]){
       const has=it[k]!==""&&it[k]!=null;
-      $(r).value=has?it[k]:0;
-      $(v).textContent=has?it[k]+" / 5":"— not set";
+      $(r).value=has?it[k]:-1;
+      $(v).textContent=has?it[k]+" / 5":"Unset";
       $(v).classList.toggle("set",has);
     }
     $("hintmode").innerHTML="Rate EACH clip on its own. <kbd>0</kbd>–<kbd>5</kbd> sets A, "+
@@ -392,7 +399,9 @@ $("prev").onclick=()=>move(-1); $("next").onclick=()=>move(1);
 document.querySelectorAll(".choices button").forEach(b=>b.onclick=()=>choose(b.dataset.c));
 // `input` fires on drag AND on a click anywhere on the track, including at 0 — which is
 // what lets "cannot hear it" be recorded without moving the handle off its start.
-$("ra").oninput=e=>sev("A",e.target.value); $("rb").oninput=e=>sev("B",e.target.value);
+const sevFrom=v=>v==="-1"?"":v;
+$("ra").oninput=e=>sev("A",sevFrom(e.target.value));
+$("rb").oninput=e=>sev("B",sevFrom(e.target.value));
 document.querySelectorAll(".conf button").forEach(b=>b.onclick=()=>conf(b.dataset.f));
 $("note").onchange=()=>{ITEMS[i].note=$("note").value;save();};
 document.onkeydown=e=>{
