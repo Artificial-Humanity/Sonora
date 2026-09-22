@@ -390,7 +390,10 @@ function render(){
     const k={a:"a",same:"s",b:"b"}[b.dataset.c.toLowerCase()];
     b.innerHTML=(L[b.dataset.c]||DEFAULT_LABELS[b.dataset.c])+` <kbd>${k}</kbd>`;});
   $("brief").innerHTML="<b>"+SETS[SET].title+"</b><br>"+SETS[SET].ask;
-  $("meta").textContent=`item ${i+1} of ${ITEMS.length}  ·  speaker ${it.spk}  ·  V/A/T ${it.vat.join(", ")}  ·  delivery ${it.delivery_ui}`;
+  // ⚠ TOLERATE A MANIFEST WITHOUT THE BLIND FIELDS. The builder is fixed, but manifests
+  // already on disk (source_audio) predate that, and a TypeError here blanks the whole
+  // page rather than one line of it.
+  $("meta").textContent=`item ${i+1} of ${ITEMS.length}  ·  speaker ${it.spk??"(blind)"}  ·  V/A/T ${(it.vat||[]).join(", ")}  ·  delivery ${it.delivery_ui??"(blind)"}`;
   $("text").textContent="“"+it.text+"”";
   document.querySelectorAll(".choices button").forEach(b=>
     b.classList.toggle("sel",b.dataset.c===it.choice));

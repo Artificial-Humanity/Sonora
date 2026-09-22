@@ -289,7 +289,12 @@ def main():
 
     key, served, limited, rates = {}, [], [], set()
     for set_name, pair_key, sides in plan:
-        item = {"id": pair_key, "set": set_name, "text": "(source recording)"}
+        # ⚠ THE BLIND FIELDS ARE PART OF THE MANIFEST SHAPE, not decoration. The app's
+        # renderer does `it.vat.join(...)` on every item, so a manifest without `vat` threw
+        # in the browser and left a blank page — the listener sees nothing load and no
+        # error. Every sibling bench writes these three; this one did not.
+        item = {"id": pair_key, "set": set_name, "text": "(source recording)",
+                "spk": "(blind)", "vat": [], "delivery_ui": "(blind)"}
         for side_key, spk, path in sides:
             name = opaque(pair_key, side_key, args.salt)
             wav, sr, loud, hit = load_normalised(path, args.lufs)
