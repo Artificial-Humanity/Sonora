@@ -78,6 +78,8 @@ import torch
 from matcha import delivery
 from matcha.cli import (detect_lane, load_matcha, load_vocoder_24k,
                         process_text_for_lane, to_waveform)
+from matcha.text import text_to_sequence
+from matcha.utils.utils import intersperse
 
 DEVICE = torch.device("cpu")
 
@@ -105,6 +107,51 @@ NEUTRAL_TEXTS = [
     "He put the box down on the table and waited for somebody else to speak first.",
     "Everything we agreed to last winter still holds, as far as I am concerned.",
 ]
+
+
+def match_loudness(x, sr, target_lufs):
+    """Level-match to `target_lufs`, peak-limited. Returns (audio, ceiling_bound).
+
+    ⚠⚠ LOUDNESS IS THE CONFOUND THAT RUNS BACKWARDS. The teacher-portfolio comparison had
+    to be redone because a level difference was read as a quality difference in the wrong
+    direction. Any bench putting two differently-produced signals side by side matches
+    level first, or it measures gain.
+    """
+    import numpy as np
+    import pyloudnorm
+    loud = pyloudnorm.Meter(sr).integrated_loudness(x.astype("float64"))
+    if not np.isfinite(loud):
+        raise SystemExit("REFUSING: a clip has no measurable loudness.")
+    gain = 10.0 ** ((target_lufs - loud) / 20.0)
+    peak = float(np.max(np.abs(x))) or 1.0
+    g = min(gain, 0.99 / peak)
+    return (x * g).astype("float32"), g < gain
+
+
+def prove_writable(out):
+    """⚠ THE APP MUST BE ABLE TO WRITE BEFORE A LISTENER IS INVITED.
+
+    A container render runs as another uid, so the test directory comes out owned by it;
+    docker then creates a missing `verdicts/` that the app cannot write to. Every POST
+    returns 500 — and the page repaints from its own memory, so it looks exactly like it
+    is recording. That cost the owner ten minutes of listening on 2026-09-19 with nothing
+    saved. Creating the directory is not enough; this writes a file and reads it back.
+    """
+    import os
+    v = Path(out) / "verdicts"
+    v.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(v, 0o2775)
+    except PermissionError:
+        pass                      # already correct and owned by someone else is fine
+    probe = v / ".writable"
+    probe.write_text("probe")
+    if probe.read_text() != "probe":
+        raise SystemExit("REFUSING: %s did not read back what was written to it." % v)
+    probe.unlink()
+    if not (os.stat(v).st_mode & 0o020):
+        raise SystemExit("REFUSING: %s is not group-writable, so the ear-test app will "
+                         "not be able to save verdicts even though this process can." % v)
 
 
 def opaque(pair_key, side_key, salt):
@@ -155,7 +202,7 @@ class Bench:
         return self._model
 
     def render(self, pair_key, side_key, ckpt, text, spk, vat, lane, label,
-               n_timesteps=None):
+               n_timesteps=None, phonemes=None):
         """Render one side of one pair. Returns its opaque id.
 
         `label` is what DISTINGUISHES this side inside its pair — a checkpoint name for
@@ -167,7 +214,18 @@ class Bench:
         path = self.out / "clips" / f"{name}.wav"
         if path.exists():
             return name
-        enc = process_text_for_lane(1, text, DEVICE, self.lane_kind)
+        # ⚠ PHONEMES BYPASS G2P ON PURPOSE. A bench that compares a model render against
+        # the REAL recording of a corpus row must speak that row's own phonemes — running
+        # its transcript back through G2P would introduce a second difference (front-end
+        # error) on top of the one under test. This is the same path training took:
+        # `text_to_sequence(ipa, ["no_cleaners"])`, the filelists already being IPA.
+        if phonemes is not None:
+            seq, _ = text_to_sequence(phonemes, ["no_cleaners"])
+            xt = torch.tensor(intersperse(seq, 0), dtype=torch.long, device=DEVICE)[None]
+            enc = {"x": xt, "x_lengths": torch.tensor([xt.shape[-1]], dtype=torch.long,
+                                                      device=DEVICE)}
+        else:
+            enc = process_text_for_lane(1, text, DEVICE, self.lane_kind)
         vec = delivery.vat_vector(*vat, lane)
         # ⚠ THE SEED IS SET BEFORE THE MODEL RUNS, AND THAT IS WHAT MAKES AN ODE-STEP
         # COMPARISON MEANINGFUL. `CFM.forward` draws z ONCE (`torch.randn_like(mu)`) and
