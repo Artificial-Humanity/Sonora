@@ -72,14 +72,16 @@ KINDS = ("real_vs_rt", "rt_vs_model", "real_vs_model")
 SETS = {
     "hum": {
         "title": "Which one has more of the machine in it?",
-        "ask": ("Two versions of the same sentence. Some are real recordings, some are "
-                "not, and some pairs genuinely have no difference. Ignore which you "
-                "would rather listen to and ignore the reading. Listen for the ROBOTIC "
-                "quality you have described before — the buzz or hum under the voice, "
-                "the sense of something mechanical trying to sound human. Which side has "
-                "more of it? 'No difference' is the right answer when it is true."),
-        "labels": {"A": "A has more of the hum", "same": "No difference",
-                   "B": "B has more of the hum"},
+        "ask": ("Two versions of the same sentence. Some are real recordings and some "
+                "are not. Ignore which you would rather listen to and ignore the "
+                "reading. Rate EACH clip on its own for the ROBOTIC quality you have "
+                "described — the buzz or hum under the voice, the sense of something "
+                "mechanical trying to sound human. 0 means you cannot hear it at all. 5 "
+                "means it sounds like a Freak-a-Zoid robot. Giving both clips the same "
+                "rating is a real answer."),
+        "scale": {"max": 5, "anchors": {
+            "0": "cannot hear the hum at all",
+            "5": "a Freak-a-Zoid robot"}},
     },
 }
 

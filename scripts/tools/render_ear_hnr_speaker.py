@@ -54,13 +54,15 @@ SETS = {
     "hum": {
         "title": "Which voice has more of the machine in it?",
         "ask": ("Same model, same sentence, two different speakers. Ignore which voice "
-                "you would rather listen to and ignore the reading. Listen for the "
-                "ROBOTIC quality you have described before — the buzz or hum under the "
-                "voice, the sense of something mechanical trying to sound human. Which "
-                "side has more of it? Many of these pairs genuinely have no difference, "
-                "and saying so is the right answer when it is true."),
-        "labels": {"A": "A has more of the hum", "same": "No difference",
-                   "B": "B has more of the hum"},
+                "you would rather listen to and ignore the reading. Rate EACH clip on "
+                "its own for the ROBOTIC quality you have described — the buzz or hum "
+                "under the voice, the sense of something mechanical trying to sound "
+                "human. 0 means you cannot hear it at all. 5 means it sounds like a "
+                "Freak-a-Zoid robot. Giving both clips the same rating is a real "
+                "answer."),
+        "scale": {"max": 5, "anchors": {
+            "0": "cannot hear the hum at all",
+            "5": "a Freak-a-Zoid robot"}},
     },
 }
 
