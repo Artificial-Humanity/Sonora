@@ -15,6 +15,12 @@ differences first.
 trials. Whichever pairing returns ~0 prices the listener's criterion for the others: a
 listener who rates everything 2 would show it as a null difference everywhere.
 
+⚠ THE PAIRINGS AND CONDITIONS ARE READ FROM THE KEY, not listed here. The mel_stats bench
+(stale_vs_fixed / rt_vs_rt_shifted / real_vs_fixed, 2026-09-22) has the same shape — one
+source, two conditions, two severities — and a hardcoded ceiling vocabulary would have
+reported it as "(none rated)" three times over, a null that is really a lookup miss.
+In `a_vs_b` the difference is always b minus a.
+
 Usage:
     python scripts/tools/unblind_ear_ceiling.py \
         --key /data/model-training/sonora/eartest/_keys/ceiling.key.json \
@@ -66,26 +72,30 @@ def main():
         print("⚠ %d of %d items not fully rated; reporting the %d that were.\n"
               % (missing, len(truth), len(rows)))
 
+    kinds = list(dict.fromkeys(t["kind"] for t in truth.values()))
+    if set(kinds) == {"real_vs_rt", "rt_vs_model", "real_vs_model"}:
+        kinds = ["real_vs_rt", "rt_vs_model", "real_vs_model"]
+    labels = list(dict.fromkeys(lbl for k in kinds for lbl in k.split("_vs_")))
     per = defaultdict(list)
     for r in rows:
-        for lbl in ("real", "rt", "model"):
+        for lbl in labels:
             if lbl in r:
                 per[lbl].append(r[lbl])
     print("SEVERITY BY CONDITION (0 = cannot hear it, 5 = Freak-a-Zoid)")
-    for lbl in ("real", "rt", "model"):
+    for lbl in labels:
         v = per.get(lbl, [])
         if v:
-            print("  %-6s n=%2d  mean %.2f  median %.1f  range %d-%d  %s"
+            print("  %-10s n=%2d  mean %.2f  median %.1f  range %d-%d  %s"
                   % (lbl, len(v), st.mean(v), st.median(v), min(v), max(v),
                      "".join(str(x) for x in sorted(v))))
 
     rng = random.Random(args.seed)
     print("\nPAIRED WITHIN ITEM (the drift-immune statistic)")
-    print("%-14s %2s  %-22s %-8s %s" % ("pairing", "n", "mean difference", "p", "split"))
-    for kind in ("real_vs_rt", "rt_vs_model", "real_vs_model"):
+    print("%-17s %2s  %-30s %-8s %s" % ("pairing", "n", "mean difference", "p", "split"))
+    for kind in kinds:
         rs = [r for r in rows if r["t"]["kind"] == kind]
         if not rs:
-            print("%-14s (none rated)" % kind)
+            print("%-17s (none rated)" % kind)
             continue
         lo, hi = kind.split("_vs_")
         d = [r[hi] - r[lo] for r in rs]
@@ -96,18 +106,19 @@ def main():
                    if abs(sum(x if rng.random() < .5 else -x for x in d) / n) >= abs(m))
         pos = sum(1 for x in d if x > 0)
         neg = sum(1 for x in d if x < 0)
-        print("%-14s %2d  %-22s %-8.4f %d up / %d down / %d tied"
+        print("%-17s %2d  %-30s %-8.4f %d up / %d down / %d tied"
               % (kind, n, "%+.2f  (%s over %s)" % (m, hi, lo),
                  (hits + 1) / (args.perms + 1.0), pos, neg, n - pos - neg))
 
     if args.verbose:
-        print("\nitem   kind           spk     HNR   real  rt  model   note")
-        for r in sorted(rows, key=lambda x: x["item"]):
+        print("\nitem   %-17s %-7s %5s  %s  note" % ("kind", "spk", "HNR",
+                                                  " ".join("%-10s" % l for l in labels)))
+        for r in sorted(rows, key=lambda x: (kinds.index(x["t"]["kind"]), x["t"]["hnr"])):
             t = r["t"]
             cell = lambda k: ("%d" % r[k]) if k in r else "·"       # noqa: E731
-            print("%-6s %-14s %-7s %5.2f   %-4s %-3s %-6s %s"
-                  % (r["item"], t["kind"], t["spk"], t["hnr"], cell("real"),
-                     cell("rt"), cell("model"), (r["note"] or "")[:44]))
+            print("%-6s %-17s %-7s %5.2f  %s  %s"
+                  % (r["item"], t["kind"], t["spk"], t["hnr"],
+                     " ".join("%-10s" % cell(l) for l in labels), (r["note"] or "")[:44]))
 
 
 if __name__ == "__main__":
