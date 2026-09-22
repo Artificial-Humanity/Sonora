@@ -84,7 +84,7 @@ def parse_ckpt(spec):
     return name, path
 
 
-def assert_disjoint(holdout, corpus_filelists):
+def assert_disjoint(holdout, corpus_filelists, trained_reason=None):
     """The instrument's whole claim is that no checkpoint has seen these clips.
 
     Asserted on wav basenames, which are globally unique in LibriTTS-R
@@ -98,6 +98,28 @@ def assert_disjoint(holdout, corpus_filelists):
             return {os.path.basename(line.split("|")[0]) for line in f if line.strip()}
 
     held = basenames(holdout)
+    if trained_reason:
+        # ⚠⚠ THE OPT-OUT THE REFUSAL BELOW ALREADY ANTICIPATED: "name the corpora, or say
+        # out loud that you are deliberately scoring without the guarantee." Some questions
+        # are ABOUT the training data and cannot be asked on a holdout — measuring whether
+        # the model reproduces its OWN low-pitched speakers badly needs those speakers'
+        # embeddings, and dev-clean's 40 speakers are not in the table at all, so the
+        # holdout would hand every clip an arbitrary voice (see "wrong by construction",
+        # above). The escape is deliberately awkward: it demands a reason in prose, prints
+        # a banner, and stamps itself into the JSON report so a downstream reader cannot
+        # mistake these for holdout numbers.
+        if corpus_filelists:
+            raise SystemExit(
+                "REFUSING: --scoring-trained-clips and --assert-disjoint-from are opposite\n"
+                "  claims about the same filelist. Pass exactly one."
+            )
+        print("  " + "=" * 68, flush=True)
+        print("  ⚠⚠ NOT A HOLDOUT. Contamination check DELIBERATELY SKIPPED.", flush=True)
+        print("  ⚠⚠ reason: %s" % trained_reason, flush=True)
+        print("  ⚠⚠ These numbers carry NO generalization claim and are NOT", flush=True)
+        print("  ⚠⚠ comparable to any score_holdout run.", flush=True)
+        print("  " + "=" * 68, flush=True)
+        return len(held)
     if not corpus_filelists:
         # An omitted `--assert-disjoint-from` used to mean "no check ran", silently
         # (TR-M3). The report then carried numbers that LOOK like holdout numbers and
@@ -177,6 +199,11 @@ def main():
     ap.add_argument("--ckpt", action="append", required=True, metavar="name=path")
     ap.add_argument("--assert-disjoint-from", nargs="*", default=[],
                     help="corpus filelists the holdout must share no clip with")
+    ap.add_argument("--scoring-trained-clips", metavar="REASON", default=None,
+                    help="deliberately score clips the checkpoints TRAINED on, with no "
+                         "contamination check. Requires a prose reason, which is printed "
+                         "and stamped into the report. Mutually exclusive with "
+                         "--assert-disjoint-from.")
     ap.add_argument("--samples", type=int, default=4,
                     help="paired flow-matching draws per clip")
     ap.add_argument("--limit", type=int, default=0, help="first N clips (0 = all)")
@@ -188,7 +215,8 @@ def main():
     enforce([args.filelist])
 
     print("holdout:", flush=True)
-    n_held = assert_disjoint(args.filelist, args.assert_disjoint_from)
+    n_held = assert_disjoint(args.filelist, args.assert_disjoint_from,
+                             args.scoring_trained_clips)
     print(f"  {n_held} clips", flush=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -273,6 +301,10 @@ def main():
         "model_config": args.model_config,
         "clips": len(idx),
         "samples": args.samples,
+        # Present and truthy ONLY on a deliberately contaminated run. A reader joining this
+        # report to another must branch on it: `is_holdout` is the claim, not the filename.
+        "scoring_trained_clips": args.scoring_trained_clips,
+        "is_holdout": not args.scoring_trained_clips,
         "data_statistics": OmegaConf.to_container(cfg.data.data_statistics, resolve=True),
         "checkpoints": summary,
     }
