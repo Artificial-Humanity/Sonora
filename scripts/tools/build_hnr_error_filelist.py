@@ -68,6 +68,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from lib import hnr_pairs                                     # noqa: E402
 from lib.corpus_filelist import dataset_of, partition_of, read_corpus   # noqa: E402
 from matcha.delivery import VAT_DIM                              # noqa: E402
 
@@ -75,39 +76,16 @@ from matcha.delivery import VAT_DIM                              # noqa: E402
 def candidate_pairs(spk, eligible, args):
     """Every disjoint (rough, clean) pair passing all four within-pair controls.
 
-    Greedy over speakers sorted by F0, taking the WIDEST available HNR gap for each — a
-    wider contrast is the measurement's signal, and the controls are hard constraints
-    rather than things to trade against it.
+    ⚠ THE PAIRING ITSELF LIVES IN `lib/hnr_pairs.py`, shared with the ear bench that
+    serves these same speakers. A contrast set and its control must be built by one piece
+    of code or the control can differ from the contrast in more than the thing under test.
     """
-    cand = sorted(eligible, key=lambda s: spk[s]["f0"])
-    used, pairs = set(), []
-    for i, a in enumerate(cand):
-        if a in used:
-            continue
-        best = None
-        for b in cand[i + 1:]:
-            if b in used:
-                continue
-            if spk[b]["f0"] - spk[a]["f0"] > args.max_f0_gap:
-                break                       # sorted by F0, so nothing further can qualify
-            if args.match_partition and spk[a]["partition"] != spk[b]["partition"]:
-                continue
-            ra, rb = len(eligible[a]), len(eligible[b])
-            if max(ra, rb) / min(ra, rb) > args.row_ratio:
-                continue
-            gap = abs(spk[a]["hnr"] - spk[b]["hnr"])
-            if gap >= args.min_hnr_gap and (best is None or gap > best[0]):
-                best = (gap, b)
-        if best is None:
-            continue
-        gap, b = best
-        rough, clean = (a, b) if spk[a]["hnr"] < spk[b]["hnr"] else (b, a)
-        used.add(a)
-        used.add(b)
-        pairs.append({"rough": rough, "clean": clean, "hnr_gap": gap,
-                      "f0": (spk[rough]["f0"] + spk[clean]["f0"]) / 2.0,
-                      "d_f0": spk[rough]["f0"] - spk[clean]["f0"]})
-    return pairs
+    pairs = hnr_pairs.matched_pairs(
+        {s: spk[s] for s in eligible}, lambda s: len(eligible[s]),
+        args.max_f0_gap, args.min_hnr_gap, float("inf"), args.row_ratio,
+        args.match_partition)
+    return [{"rough": r, "clean": c, "hnr_gap": g, "f0": f, "d_f0": d}
+            for r, c, g, f, d in pairs]
 
 
 def select(pairs, n, rng):
