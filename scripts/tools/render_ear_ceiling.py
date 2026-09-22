@@ -71,7 +71,7 @@ KINDS = ("real_vs_rt", "rt_vs_model", "real_vs_model")
 
 SETS = {
     "hum": {
-        "title": "Which one has more of the machine in it?",
+        "title": "How much machine is in each one?",
         "ask": ("Two versions of the same sentence. Some are real recordings and some "
                 "are not. Ignore which you would rather listen to and ignore the "
                 "reading. Rate EACH clip on its own for the ROBOTIC quality you have "

@@ -52,7 +52,7 @@ from matcha import delivery                                   # noqa: E402
 
 SETS = {
     "hum": {
-        "title": "Which voice has more of the machine in it?",
+        "title": "How much machine is in each voice?",
         "ask": ("Same model, same sentence, two different speakers. Ignore which voice "
                 "you would rather listen to and ignore the reading. Rate EACH clip on "
                 "its own for the ROBOTIC quality you have described — the buzz or hum "
