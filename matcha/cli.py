@@ -230,7 +230,7 @@ VOC24K_CONFIG = os.environ.get(
 )
 
 
-def load_vocoder_24k(device=torch.device("cpu")):
+def load_vocoder_24k(device=torch.device("cpu"), ckpt=None):
     """The Sonora 24 kHz HiFi-GAN. Returns `(vocoder, sampling_rate)`.
 
     Separate from `load_vocoder` because this one carries its own config JSON rather than
@@ -241,13 +241,16 @@ def load_vocoder_24k(device=torch.device("cpu")):
     No denoiser: it was fitted against the upstream vocoder's bias and confirmed
     unnecessary here (this vocoder is perceptually transparent — mel L1 = 10.2% of one
     mel_std, measured 2026-08-06 by copy-synthesis).
+
+    `ckpt` loads a different generator under the SAME config — a fine-tune of this vocoder,
+    which shares its architecture by construction. Anything else needs its own config.
     """
     import json
 
     with open(VOC24K_CONFIG, encoding="utf-8") as f:
         h = AttrDict(json.load(f))
     g = HiFiGAN(h).to(device)
-    g.load_state_dict(torch.load(VOC24K_CKPT, map_location=device)["generator"])
+    g.load_state_dict(torch.load(ckpt or VOC24K_CKPT, map_location=device)["generator"])
     g.eval()
     g.remove_weight_norm()
     return g, h.sampling_rate
