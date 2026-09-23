@@ -93,17 +93,23 @@ def main():
           % (mel_mean, mel_std, float(model.mel_mean), float(model.mel_std)), flush=True)
 
     os.makedirs(args.out, exist_ok=True)
-    meta = {"filelist": args.filelist, "ckpt": args.ckpt, "model_config": args.model_config,
+    # ⚠ THE FILELIST IS NOT A SETTING. The train and validation lists render into one
+    # directory, because hifi-gan reads both from one --input_mels_dir; comparing the path
+    # refused the second list on its first run. What must match is how a mel is made.
+    meta = {"ckpt": args.ckpt, "model_config": args.model_config,
             "n_timesteps": N_TIMESTEPS, "temperature": TEMPERATURE, "guidance": GUIDANCE,
             "hop": hop, "alignment": "MAS against the true mel",
             "mel_mean": mel_mean, "mel_std": mel_std}
     meta_path = os.path.join(args.out, "render_meta.json")
+    filelists = []
     if os.path.exists(meta_path):
         prev = json.load(open(meta_path, encoding="utf-8"))
         if {k: prev.get(k) for k in meta} != meta:
             raise SystemExit("REFUSING: %s was rendered with different settings:\n  %s\n"
                              "A resumed directory would mix two sets of mels."
                              % (args.out, prev))
+        filelists = prev.get("filelists", [])
+    meta["filelists"] = sorted(set(filelists) | {os.path.abspath(args.filelist)})
     with open(meta_path, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2)
 
