@@ -154,6 +154,27 @@ def prove_writable(out):
                          "not be able to save verdicts even though this process can." % v)
 
 
+def refuse_if_judged(out):
+    """Refuse to render into a test that already has verdicts.
+
+    ⚠⚠ THE WRITE GUARD CANNOT SEE THIS CASE. Clip names come from (salt, pair, side), not
+    from the label, so a rerun with a new seed or speaker list writes DIFFERENT audio under
+    the SAME names. `Bench.write` compares A/B names, which never move, and passes, while
+    every verdict now points at a clip the listener never heard. Benches that `sf.write`
+    their sides directly (rather than through `render`, which skips existing files) call
+    this first. Found in review of the temperature bench, 2026-09-24.
+    """
+    vcsv = Path(out) / "verdicts" / "verdicts.csv"
+    if vcsv.is_file():
+        with vcsv.open(newline="", encoding="utf-8") as f:
+            judged = [r["item"] for r in csv.DictReader(f)
+                      if r.get("choice") or r.get("sev_a") or r.get("sev_b")]
+        if judged:
+            raise SystemExit(f"REFUSING: {out} already has {len(judged)} judged item(s). "
+                             f"A rerun would overwrite the audio they judged under the same "
+                             f"names. Render to a NEW --out.")
+
+
 def opaque(pair_key, side_key, salt):
     """The served filename. Carries no information about what the clip is."""
     return hashlib.sha1(f"{salt}|{pair_key}|{side_key}".encode()).hexdigest()[:16]
@@ -223,9 +244,14 @@ class Bench:
             print(f"   {self.written} clips")
         return name
 
-    def synth(self, pair_key, ckpt, text, spk, vat, lane, n_timesteps=None, phonemes=None):
+    def synth(self, pair_key, ckpt, text, spk, vat, lane, n_timesteps=None, phonemes=None,
+              temperature=None):
         """The model's output dict for one pair, seeded by the pair. `render` vocodes its
-        `mel`; a bench that needs the normalised `decoder_outputs` calls this directly."""
+        `mel`; a bench that needs the normalised `decoder_outputs` calls this directly.
+
+        `temperature` defaults to TEMPERATURE. Because the seed is per PAIR and `CFM.forward`
+        draws z once and then scales it, two sides that differ only in temperature start
+        from the same noise direction at two magnitudes."""
         # ⚠ PHONEMES BYPASS G2P ON PURPOSE. A bench that compares a model render against
         # the REAL recording of a corpus row must speak that row's own phonemes — running
         # its transcript back through G2P would introduce a second difference (front-end
@@ -250,7 +276,8 @@ class Bench:
             return self._model_for(ckpt).synthesise(
                 enc["x"], enc["x_lengths"],
                 n_timesteps=N_TIMESTEPS if n_timesteps is None else n_timesteps,
-                temperature=TEMPERATURE, length_scale=LENGTH_SCALE,
+                temperature=TEMPERATURE if temperature is None else temperature,
+                length_scale=LENGTH_SCALE,
                 spks=torch.tensor([spk], dtype=torch.long),
                 vat=torch.tensor([vec]), guidance=GUIDANCE)
 

@@ -122,6 +122,7 @@ def main():
                          "would be served twice." % (len(order), need))
 
     rng = random.Random(args.seed)
+    ear_bench.refuse_if_judged(args.out)
     ear_bench.prove_writable(args.out)
     bench = ear_bench.Bench(args.out, args.salt, args.seed, "vat")
     vocoder, sr = bench.vocoder, bench.sample_rate
