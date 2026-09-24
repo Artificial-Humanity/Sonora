@@ -48,7 +48,6 @@ Usage (in the ROCm container — score_holdout.sh's wrapper shape):
 import argparse
 import csv
 import json
-import math
 import os
 import sys
 import time
@@ -57,28 +56,16 @@ import zlib
 import torch
 from omegaconf import OmegaConf
 
-sys.path.insert(0, os.environ.get("SONORA_REPO", "/sonora"))
+_REPO = os.environ.get("SONORA_REPO", "/sonora")
+for _p in (_REPO, os.path.join(_REPO, "scripts", "lib")):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
 
 from hydra.utils import instantiate  # noqa: E402
 
-import matcha.utils.monotonic_align as monotonic_align  # noqa: E402
+from aligned_synth import aligned_generate, build_dataset  # noqa: E402
 from matcha.data.license_wall import enforce  # noqa: E402
-from matcha.data.text_mel_datamodule import TextMelBatchCollate, TextMelDataset  # noqa: E402
-from matcha.utils.model import fix_len_compatibility, sequence_mask  # noqa: E402
-
-
-def build_dataset(cfg, filelist):
-    d = cfg.data
-    vat_dim = d.get("vat_dim", cfg.model.get("vat_dim", 3))
-    return TextMelDataset(
-        filelist_path=filelist, n_spks=d.n_spks, cleaners=d.cleaners,
-        add_blank=d.add_blank, n_fft=d.n_fft, n_mels=d.n_feats,
-        sample_rate=d.sample_rate, hop_length=d.hop_length, win_length=d.win_length,
-        f_min=d.f_min, f_max=d.f_max,
-        data_parameters=OmegaConf.to_container(d.data_statistics, resolve=True),
-        seed=1234, load_durations=d.load_durations,
-        load_vat=d.get("load_vat", vat_dim > 0), vat_dim=vat_dim,
-    )
+from matcha.data.text_mel_datamodule import TextMelBatchCollate  # noqa: E402
 
 
 @torch.no_grad()
@@ -87,57 +74,11 @@ def synth_error(model, batch, spk_override, n_timesteps, temperature, n_bands=8)
 
     The alignment is MAS against the TRUE mel, exactly as `forward()` derives it, so the
     generated mel is the same length as the target and the comparison is frame-for-frame.
+    The generation itself is `aligned_synth.aligned_generate`, shared with the vocoder's
+    fine-tune data so that the two cannot drift apart.
     """
-    x, x_lengths = batch["x"], batch["x_lengths"]
-    y, y_lengths = batch["y"], batch["y_lengths"]
-    spks = batch["spks"] if spk_override is None else torch.full_like(batch["spks"],
-                                                                     spk_override)
-    vat = batch.get("vat")
+    gen, y, m = aligned_generate(model, batch, n_timesteps, temperature, spk_override)
 
-    if model.n_spks > 1:
-        spks = model.spk_emb(spks)
-    if model.use_vat:
-        if vat is None:
-            vat = torch.zeros(x.shape[0], model.vat_dim, dtype=torch.float32, device=x.device)
-        if vat.dim() == 2:
-            vat = vat.unsqueeze(-1).expand(-1, -1, x.shape[-1])
-    else:
-        vat = None
-
-    mu_x, _logw, x_mask = model.encoder(x, x_lengths, spks, vat=vat)
-    y_max_length = y.shape[-1]
-    y_mask = sequence_mask(y_lengths, y_max_length).unsqueeze(1).to(x_mask)
-    attn_mask_squeezed = x_mask.transpose(1, 2) * y_mask
-
-    const = -0.5 * math.log(2 * math.pi) * model.n_feats
-    factor = -0.5 * torch.ones(mu_x.shape, dtype=mu_x.dtype, device=mu_x.device)
-    y_square = torch.matmul(factor.transpose(1, 2), y ** 2)
-    y_mu_double = torch.matmul(2.0 * (factor * mu_x).transpose(1, 2), y)
-    mu_square = torch.sum(factor * (mu_x ** 2), 1).unsqueeze(-1)
-    attn = monotonic_align.maximum_path(y_square - y_mu_double + mu_square + const,
-                                        attn_mask_squeezed).detach()
-
-    # ⚠ THE DECODER'S UNET DOWNSAMPLES, so the frame count it is given must be compatible
-    # or the solve fails on a shape mismatch. `synthesise` pads to fix_len_compatibility
-    # for the same reason. Pad here, solve, then CROP BOTH SIDES BACK to the true length —
-    # scoring the padding would dilute the error with frames that mean nothing.
-    padded = fix_len_compatibility(y_max_length)
-    mu_y = torch.matmul(attn.transpose(1, 2), mu_x.transpose(1, 2)).transpose(1, 2)
-    vat_y = None
-    if model.use_vat and vat is not None:
-        vat_y = torch.matmul(attn.transpose(1, 2), vat.transpose(1, 2)).transpose(1, 2)
-
-    def pad_to(t, n):
-        return torch.nn.functional.pad(t, (0, n - t.shape[-1])) if t.shape[-1] < n else t
-
-    mu_y_p = pad_to(mu_y, padded)
-    vat_y_p = pad_to(vat_y, padded) if vat_y is not None else None
-    y_mask_p = sequence_mask(y_lengths, padded).unsqueeze(1).to(x_mask)
-
-    gen = model.decoder(mu_y_p, y_mask_p, n_timesteps, temperature, spks, cond=vat_y_p)
-    gen = gen[:, :, :y_max_length]
-
-    m = y_mask[:, :, :y_max_length]
     denom = m.sum() * y.shape[1]
     l1 = float((torch.abs(gen - y) * m).sum() / denom)
 

@@ -65,6 +65,7 @@ import matcha.utils.monotonic_align as monotonic_align  # noqa: E402
 from matcha.cli import load_vocoder_24k, to_waveform  # noqa: E402
 from matcha.data.license_wall import enforce  # noqa: E402
 from matcha.data.text_mel_datamodule import TextMelBatchCollate, TextMelDataset  # noqa: E402
+from matcha.mel_stats import correct_state_dict  # noqa: E402
 from matcha.utils.model import denormalize, fix_len_compatibility, sequence_mask  # noqa: E402
 
 sys.path.insert(0, os.path.join(os.environ.get("SONORA_REPO", "/sonora"), "scripts"))
@@ -184,6 +185,9 @@ def main():
         name, path = spec.split("=", 1)
         m = instantiate(cfg.model)
         sd = torch.load(path, map_location="cpu", weights_only=False)["state_dict"]
+        # A bare load skips the Lightning hook, and this tool vocodes through the buffers.
+        correct_state_dict({"data_statistics": OmegaConf.to_container(
+            cfg.data.data_statistics, resolve=True)}, sd)
         missing, unexpected = m.load_state_dict(sd, strict=False)
         if missing or unexpected:
             raise SystemExit("REFUSING: %s does not match this config (missing=%d "

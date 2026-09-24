@@ -214,6 +214,18 @@ class Bench:
         path = self.out / "clips" / f"{name}.wav"
         if path.exists():
             return name
+        o = self.synth(pair_key, ckpt, text, spk, vat, lane, n_timesteps, phonemes)
+        with torch.no_grad():
+            wav = to_waveform(o["mel"], self.vocoder, None)
+        sf.write(path, wav.cpu().numpy(), self.sample_rate, "PCM_24")
+        self.written += 1
+        if self.written % 10 == 0:
+            print(f"   {self.written} clips")
+        return name
+
+    def synth(self, pair_key, ckpt, text, spk, vat, lane, n_timesteps=None, phonemes=None):
+        """The model's output dict for one pair, seeded by the pair. `render` vocodes its
+        `mel`; a bench that needs the normalised `decoder_outputs` calls this directly."""
         # ⚠ PHONEMES BYPASS G2P ON PURPOSE. A bench that compares a model render against
         # the REAL recording of a corpus row must speak that row's own phonemes — running
         # its transcript back through G2P would introduce a second difference (front-end
@@ -235,18 +247,12 @@ class Bench:
         # integration accuracy and nothing else.
         torch.manual_seed(seed_for(pair_key, self.seed))
         with torch.no_grad():
-            o = self._model_for(ckpt).synthesise(
+            return self._model_for(ckpt).synthesise(
                 enc["x"], enc["x_lengths"],
                 n_timesteps=N_TIMESTEPS if n_timesteps is None else n_timesteps,
                 temperature=TEMPERATURE, length_scale=LENGTH_SCALE,
                 spks=torch.tensor([spk], dtype=torch.long),
                 vat=torch.tensor([vec]), guidance=GUIDANCE)
-            wav = to_waveform(o["mel"], self.vocoder, None)
-        sf.write(path, wav.cpu().numpy(), self.sample_rate, "PCM_24")
-        self.written += 1
-        if self.written % 10 == 0:
-            print(f"   {self.written} clips")
-        return name
 
     def write(self, test_name, sets, served, meta, key_out=None):
         """items.json (served, blind) and the key (NOT served).
@@ -306,6 +312,9 @@ class Bench:
         old.write_text(json.dumps(manifest, indent=2))
         kp = Path(key_out) if key_out else (
             self.out.parent / "_keys" / f"{self.out.name}.key.json")
+        if self.out.resolve() in kp.resolve().parents:
+            raise SystemExit(f"REFUSING: the key {kp} is inside the served tree {self.out}, "
+                             f"where the app could reach it.")
         kp.parent.mkdir(parents=True, exist_ok=True)
         kp.write_text(json.dumps(
             {"test_dir": str(self.out), "salt": self.salt, "clips": self.key} | meta,

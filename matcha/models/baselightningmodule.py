@@ -103,6 +103,21 @@ class BaseLightningClass(LightningModule, ABC):
 
         self.sonora_lineage = carried_lineage(checkpoint)  # pylint: disable=attribute-defined-outside-init
 
+        # ⚠⚠ THE MEL BUFFERS ARE REPLACED WITH THIS RUN'S STATISTICS BEFORE THE STATE DICT
+        # LOADS. A warm-started checkpoint carries its donor's buffers, and every render then
+        # reaches the vocoder 9.4 dB low (vat7_finetune, 2026-09-22) — see matcha/mel_stats.py.
+        # Lightning calls this hook before `load_state_dict` on both doors, so editing the
+        # dict here is what the loaded module ends up holding.
+        from matcha.mel_stats import correct_state_dict
+
+        changed = correct_state_dict(getattr(self, "hparams", None), checkpoint.get("state_dict"))
+        if changed:
+            log.warning(
+                "mel statistics: checkpoint buffers mean %.4f std %.4f disagree with the "
+                "training config's mean %.4f std %.4f; using the config's",
+                changed["mel_mean"][0], changed["mel_std"][0],
+                changed["mel_mean"][1], changed["mel_std"][1])
+
     def on_save_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
         from matcha.data.license_wall import LINEAGE_KEY
 

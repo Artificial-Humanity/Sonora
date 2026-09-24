@@ -60,6 +60,9 @@ def load_acoustic(path):
     ckpt = torch.load(path, map_location="cpu", weights_only=False)
     hp = dict(ckpt["hyper_parameters"])
     model = MatchaTTS(**hp)
+    # A bare load skips the Lightning hook; see matcha/mel_stats.py.
+    from matcha.mel_stats import correct_state_dict
+    correct_state_dict(ckpt["hyper_parameters"], ckpt["state_dict"])
     model.load_state_dict(ckpt["state_dict"], strict=True)
     model.eval()
     return model
