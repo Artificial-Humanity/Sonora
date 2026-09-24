@@ -223,9 +223,14 @@ class Bench:
             print(f"   {self.written} clips")
         return name
 
-    def synth(self, pair_key, ckpt, text, spk, vat, lane, n_timesteps=None, phonemes=None):
+    def synth(self, pair_key, ckpt, text, spk, vat, lane, n_timesteps=None, phonemes=None,
+              temperature=None):
         """The model's output dict for one pair, seeded by the pair. `render` vocodes its
-        `mel`; a bench that needs the normalised `decoder_outputs` calls this directly."""
+        `mel`; a bench that needs the normalised `decoder_outputs` calls this directly.
+
+        `temperature` defaults to TEMPERATURE. Because the seed is per PAIR and `CFM.forward`
+        draws z once and then scales it, two sides that differ only in temperature start
+        from the same noise direction at two magnitudes."""
         # ⚠ PHONEMES BYPASS G2P ON PURPOSE. A bench that compares a model render against
         # the REAL recording of a corpus row must speak that row's own phonemes — running
         # its transcript back through G2P would introduce a second difference (front-end
@@ -250,7 +255,8 @@ class Bench:
             return self._model_for(ckpt).synthesise(
                 enc["x"], enc["x_lengths"],
                 n_timesteps=N_TIMESTEPS if n_timesteps is None else n_timesteps,
-                temperature=TEMPERATURE, length_scale=LENGTH_SCALE,
+                temperature=TEMPERATURE if temperature is None else temperature,
+                length_scale=LENGTH_SCALE,
                 spks=torch.tensor([spk], dtype=torch.long),
                 vat=torch.tensor([vec]), guidance=GUIDANCE)
 
