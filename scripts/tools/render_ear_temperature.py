@@ -17,6 +17,14 @@ decoder learned, the temperature does not, and the lever is the decoder.
     t0667_vs_t0333   the current setting against half the noise
     t0667_vs_t1000   the current setting against the full unit noise the flow was trained on
 
+That is `--design sweep`, judged 2026-09-24: 0333 +0.17 (p 0.62), 1000 -0.33 (p 0.12), and
+pooled POST HOC as one direction -0.25, 7 better / 1 worse, p 0.070. A lead, so:
+
+⚠⚠ `--design confirm` IS PRE-REGISTERED (owner asked for it, 2026-09-24). 24 pairs, all
+t0667_vs_t1000, on speakers no earlier bench has served. Prediction: severity is LOWER at
+1.0. Test: exact sign-flip over the 24 paired differences, two-sided, confirmed at p < 0.05.
+Written here before a clip was rendered, so the test cannot be chosen after the result.
+
 ⚠⚠ ONE SEED PER PAIR, SO BOTH SIDES START FROM THE SAME NOISE DIRECTION. `Bench.synth`
 seeds per pair and z is drawn once, so the only difference inside a pair is the magnitude.
 The durations do not depend on the temperature, so both sides are also the same length.
@@ -57,7 +65,8 @@ from matcha.cli import to_waveform                            # noqa: E402
 from matcha.delivery import VAT_DIM                           # noqa: E402
 
 BASE = 0.667
-KINDS = {"t0667_vs_t0333": 12, "t0667_vs_t1000": 12}
+DESIGNS = {"sweep": {"t0667_vs_t0333": 12, "t0667_vs_t1000": 12},
+           "confirm": {"t0667_vs_t1000": 24}}
 LEVELS = {"t0667": BASE, "t0333": 0.333, "t1000": 1.0}
 
 SETS = {
@@ -82,7 +91,10 @@ def main():
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--corpus", required=True)
     ap.add_argument("--hnr-json", required=True)
-    ap.add_argument("--exclude-key", action="append", default=[])
+    ap.add_argument("--design", choices=sorted(DESIGNS), default="sweep")
+    # ⚠ REQUIRED: the picks are a deterministic spread over HNR rank, so without the earlier
+    # benches' speakers excluded they would largely redraw the ceiling bench's voices.
+    ap.add_argument("--exclude-key", action="append", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--key-out", default=None)
     ap.add_argument("--min-seconds", type=float, default=4.0)
@@ -90,6 +102,7 @@ def main():
     ap.add_argument("--salt", default="temperature-v1")
     ap.add_argument("--seed", type=int, default=1618)
     args = ap.parse_args()
+    KINDS = DESIGNS[args.design]
 
     if ear_bench.TEMPERATURE != BASE:
         raise SystemExit("REFUSING: ear_bench renders at %.3f and this bench's baseline is "
@@ -117,6 +130,9 @@ def main():
     if len(set(picks)) != need:
         raise SystemExit("REFUSING: %d speakers cannot spread %d distinct picks."
                          % (len(order), need))
+    # ⚠⚠ STRATIFIED OVER HNR, THEN SHUFFLED — a random assignment can leave one kind
+    # without the roughest voices, and serving in HNR order is the confound that sank the
+    # 2026-09-19 pitch dose response. See render_ear_mel_stats.py.
     cycle = list(KINDS)
     kinds = [cycle[i % len(cycle)] for i in range(need)]
     if Counter(kinds) != Counter(KINDS):
@@ -126,14 +142,23 @@ def main():
     rng = random.Random(args.seed)
     plan = list(zip(picks, kinds))
     rng.shuffle(plan)
-    flip = [True] * (need // 2) + [False] * (need - need // 2)
-    rng.shuffle(flip)
+    # Side placement balanced WITHIN each kind, not only overall (review, 2026-09-24).
+    flips = {}
+    for kd, n in KINDS.items():
+        f = [True] * (n // 2) + [False] * (n - n // 2)
+        rng.shuffle(f)
+        flips[kd] = f
+    flip = [flips[kd].pop() for _, kd in plan]
 
+    ear_bench.refuse_if_judged(args.out)
     ear_bench.prove_writable(args.out)
     bench = ear_bench.Bench(args.out, args.salt, args.seed, "vat")
     vocoder, sr = bench.vocoder, bench.sample_rate
     model = bench._model_for(args.ckpt)
     hp = model.hparams.get("data_statistics") or {}
+    if not hp:
+        raise SystemExit("REFUSING: %s records no data_statistics, so there is no way to "
+                         "tell whether its mel buffers are stale." % args.ckpt)
     if (abs(float(model.mel_mean) - float(hp["mel_mean"])) > 1e-4
             or abs(float(model.mel_std) - float(hp["mel_std"])) > 1e-4):
         raise SystemExit("REFUSING: the model still denormalises with stale buffers.")
@@ -181,11 +206,17 @@ def main():
     key_out = args.key_out or str(Path(args.out).parent / "_keys" /
                                   ("%s.key.json" % Path(args.out).name))
     bench.write(Path(args.out).name, SETS, served,
-                {"ckpt": args.ckpt, "kinds": KINDS, "levels": LEVELS, "lufs": args.lufs,
-                 "peak_limited_sides": limited,
-                 "prediction": "if either pairing moves severity, the buzz is in the "
-                               "sampling and the temperature is a free lever; if both are "
-                               "null, the buzz is in the decoder's learned field"},
+                {"ckpt": args.ckpt, "design": args.design, "kinds": KINDS, "levels": LEVELS,
+                 "lufs": args.lufs, "peak_limited_sides": limited,
+                 # Overrides Bench.write's defaults, which describe `render`: this bench
+                 # sets the temperature per side and writes its clips itself.
+                 "temperature": "per side, see levels", "clips_written": 2 * len(served),
+                 "prediction": ("PRE-REGISTERED: severity is lower at 1.0; exact two-sided "
+                                "sign-flip over 24 pairs, confirmed at p < 0.05"
+                                if args.design == "confirm" else
+                                "if either pairing moves severity, the buzz is in the "
+                                "sampling and the temperature is a free lever; if both are "
+                                "null, the buzz is in the decoder's learned field")},
                 key_out=key_out)
     k = json.loads(Path(key_out).read_text())
     k["items"] = truth

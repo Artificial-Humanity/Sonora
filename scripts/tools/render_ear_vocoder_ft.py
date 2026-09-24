@@ -141,6 +141,7 @@ def main():
         raise SystemExit("REFUSING: %d source(s) are not training rows, e.g. %s."
                          % (len(missing), missing[:2]))
 
+    ear_bench.refuse_if_judged(args.out)
     ear_bench.prove_writable(args.out)
     bench = ear_bench.Bench(args.out, args.salt, args.seed, "vat")
     old_voc, sr = bench.vocoder, bench.sample_rate

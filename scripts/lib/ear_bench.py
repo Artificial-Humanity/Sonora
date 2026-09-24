@@ -154,6 +154,27 @@ def prove_writable(out):
                          "not be able to save verdicts even though this process can." % v)
 
 
+def refuse_if_judged(out):
+    """Refuse to render into a test that already has verdicts.
+
+    ⚠⚠ THE WRITE GUARD CANNOT SEE THIS CASE. Clip names come from (salt, pair, side), not
+    from the label, so a rerun with a new seed or speaker list writes DIFFERENT audio under
+    the SAME names. `Bench.write` compares A/B names, which never move, and passes, while
+    every verdict now points at a clip the listener never heard. Benches that `sf.write`
+    their sides directly (rather than through `render`, which skips existing files) call
+    this first. Found in review of the temperature bench, 2026-09-24.
+    """
+    vcsv = Path(out) / "verdicts" / "verdicts.csv"
+    if vcsv.is_file():
+        with vcsv.open(newline="", encoding="utf-8") as f:
+            judged = [r["item"] for r in csv.DictReader(f)
+                      if r.get("choice") or r.get("sev_a") or r.get("sev_b")]
+        if judged:
+            raise SystemExit(f"REFUSING: {out} already has {len(judged)} judged item(s). "
+                             f"A rerun would overwrite the audio they judged under the same "
+                             f"names. Render to a NEW --out.")
+
+
 def opaque(pair_key, side_key, salt):
     """The served filename. Carries no information about what the clip is."""
     return hashlib.sha1(f"{salt}|{pair_key}|{side_key}".encode()).hexdigest()[:16]
