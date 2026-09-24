@@ -41,6 +41,30 @@ def test_the_load_hook_applies_the_correction():
     with open(os.path.join(REPO, "matcha/models/baselightningmodule.py"), encoding="utf-8") as f:
         src = f.read()
     hook = src[src.index("def on_load_checkpoint"):src.index("def on_save_checkpoint")]
-    assert 'corrected_mel_buffers(getattr(self, "hparams", None), sd)' in hook
-    assert 'checkpoint.get("state_dict")' in hook
-    assert "sd[k] = torch.tensor(v" in hook
+    assert 'correct_state_dict(getattr(self, "hparams", None), checkpoint.get("state_dict"))' \
+        in hook
+
+
+def test_correct_state_dict_edits_in_place_and_reports_the_change():
+    from matcha.mel_stats import correct_state_dict
+
+    sd = dict(VAT7_BUFFERS)
+    changed = correct_state_dict(VAT7_HPARAMS, sd)
+    assert sd["mel_mean"] == -5.543695 and sd["mel_std"] == 2.430293
+    assert changed["mel_mean"] == (VAT7_BUFFERS["mel_mean"], -5.543695)
+    assert correct_state_dict(VAT7_HPARAMS, sd) == {}, "a second pass must be a no-op"
+
+
+def test_a_state_dict_missing_one_buffer_is_left_alone():
+    assert corrected_mel_buffers(VAT7_HPARAMS, {"mel_mean": -6.6}) == {}
+
+
+def test_every_bare_load_that_vocodes_applies_the_correction():
+    """The hook covers Lightning's two doors only. These three load with a bare
+    `load_state_dict` AND turn the mel back into audio, so each must correct first."""
+    for rel in ("scripts/stages/measure_harmonicity.py", "scripts/tools/render_vat_sweep.py",
+                "scripts/tools/render_guidance_demo.py"):
+        with open(os.path.join(REPO, rel), encoding="utf-8") as f:
+            src = f.read()
+        i = src.index("correct_state_dict(")
+        assert i < src.index("load_state_dict(", i), rel + " corrects after it loads"

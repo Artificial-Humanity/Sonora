@@ -101,7 +101,11 @@ def main():
     cfg = yaml.safe_load(Path(args.data_config).read_text())
     held_out = set()
     for k in args.exclude_key:
-        held_out |= {int(v["spk"]) for v in json.loads(Path(k).read_text())["items"].values()}
+        items = json.loads(Path(k).read_text()).get("items") or {}
+        if not items:
+            raise SystemExit("REFUSING: %s carries no `items`, so the hold-out would be "
+                             "silently empty." % k)
+        held_out |= {int(v["spk"]) for v in items.values()}
 
     spk_hnr = {int(k): v for k, v in
                json.loads(Path(args.hnr_json).read_text())["speakers"].items()}
@@ -113,6 +117,9 @@ def main():
     order = sorted(by_spk, key=lambda s: spk_hnr[s]["hnr"])
     need = sum(KINDS.values())
     picks = [order[round(i * (len(order) - 1) / (need - 1))] for i in range(need)]
+    if len(set(picks)) != need:
+        raise SystemExit("REFUSING: %d speakers cannot spread %d distinct picks; one voice "
+                         "would be served twice." % (len(order), need))
 
     rng = random.Random(args.seed)
     ear_bench.prove_writable(args.out)

@@ -312,6 +312,9 @@ class Bench:
         old.write_text(json.dumps(manifest, indent=2))
         kp = Path(key_out) if key_out else (
             self.out.parent / "_keys" / f"{self.out.name}.key.json")
+        if self.out.resolve() in kp.resolve().parents:
+            raise SystemExit(f"REFUSING: the key {kp} is inside the served tree {self.out}, "
+                             f"where the app could reach it.")
         kp.parent.mkdir(parents=True, exist_ok=True)
         kp.write_text(json.dumps(
             {"test_dir": str(self.out), "salt": self.salt, "clips": self.key} | meta,

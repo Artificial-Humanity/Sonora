@@ -150,9 +150,9 @@ datasets:
     #
     # `vocoder_ft` (2026-09-22) holds `build_vocoder_ft_filelist.py`'s output, one
     # subdirectory per fine-tune: a per-speaker SUBSET of a corpus above, REAL sources only —
-    # the tool refuses a synthetic root, because the audio beside each mel is what the
-    # vocoder learns to produce. Declared once for the parent so the next fine-tune is not a
-    # manifest edit. Its rows are the acoustic model's training rows by design: the mels
+    # the tool excludes synthetic roots and refuses unclassified ones, because the audio
+    # beside each mel is what the vocoder learns to produce. Declared once for the parent so
+    # the next fine-tune is not a manifest edit. Its rows are the acoustic model's training rows by design: the mels
     # are that model's, rendered on its own training clips.
     dirs: [libritts_r_emilia_vat_v5, libritts_r_emilia_expressive_vat_v6,
            libritts_r_full_vat_v7, libritts_r_full_vat_v7r,

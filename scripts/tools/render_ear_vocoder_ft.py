@@ -152,10 +152,12 @@ def main():
                              % path)
     model = bench._model_for(args.ckpt)
     hp = model.hparams.get("data_statistics") or {}
-    if abs(float(model.mel_mean) - float(hp["mel_mean"])) > 1e-4:
-        raise SystemExit("REFUSING: the model denormalises with mean %.4f and trained on "
-                         "%.4f — the load-time correction did not run."
-                         % (float(model.mel_mean), float(hp["mel_mean"])))
+    if (abs(float(model.mel_mean) - float(hp["mel_mean"])) > 1e-4
+            or abs(float(model.mel_std) - float(hp["mel_std"])) > 1e-4):
+        raise SystemExit("REFUSING: the model denormalises with %.4f / %.4f and trained on "
+                         "%.4f / %.4f — the load-time correction did not run."
+                         % (float(model.mel_mean), float(model.mel_std),
+                            float(hp["mel_mean"]), float(hp["mel_std"])))
 
     def vocode(v, mel):
         with torch.no_grad():

@@ -20,6 +20,13 @@ A synthetic clip carries the teacher engine's own artifacts — the DOUBLE/split
 DENYLIST, and a row whose root is on neither REFUSES: a new corpus source must be classified
 by a person, not defaulted into the training target.
 
+⚠ THE VALIDATION CLIPS COME FROM TRAINING SPEAKERS — one extra clip each from --val-clips
+of them. hifi-gan's validation loss therefore measures new sentences in known voices, not
+new voices; the held-out voices are the ear bench's job.
+
+⚠ PCM_16 ONLY. hifi-gan's `load_wav` divides whatever scipy returns by 32768, so a 24-bit or
+float file would train at the wrong scale with no error. The header is read anyway.
+
 ⚠ BALANCED PER SPEAKER. The corpus has 5385 speakers and very unequal row counts; a uniform
 draw over rows would fit the vocoder to the few voices with the most clips. Up to
 --per-speaker rows each, drawn with a fixed seed.
@@ -126,6 +133,10 @@ def main():
             if info.samplerate != args.sample_rate:
                 raise SystemExit("REFUSING: %s is %d Hz, not %d."
                                  % (wav, info.samplerate, args.sample_rate))
+            if info.subtype != "PCM_16":
+                raise SystemExit("REFUSING: %s is %s. hifi-gan scales every file by 1/32768, "
+                                 "so only PCM_16 reads at the right level."
+                                 % (wav, info.subtype))
             if info.frames < args.min_seconds * args.sample_rate:
                 short += 1
                 continue
