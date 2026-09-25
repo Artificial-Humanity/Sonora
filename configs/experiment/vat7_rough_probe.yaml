@@ -14,8 +14,15 @@
 # degrade them, which is acceptable for a probe and would rule it out as a candidate.
 #
 # 6,000 steps is ~1.6 epochs of the subset (118,860 rows / batch 32 = 3,714 steps/epoch).
-# Launch with SONORA_CKPT_EVERY_N_STEPS=1500 for four checkpoints. The owner retired the
-# spin-down rule on 2026-09-25, so the engines stay up.
+# Launch with SONORA_CKPT_EVERY_N_STEPS=1500 for four checkpoints. Their NAMES read one step
+# low (step=0001499 ... 0005999) because the logged step is taken before the increment; the
+# real global steps are 1500 ... 6000. The owner retired the spin-down rule on 2026-09-25,
+# so the engines stay up.
+#
+# ⚠ THE FIRST RUN IN THE LINEAGE THAT ENDS ON ITS OWN. max_steps stops fit() with exit 0, and
+# `restart: unless-stopped` restarts the container anyway: it resumes the step-6000
+# checkpoint, returns at once, and loops, making an empty run dir and an MLflow run each
+# time. Stop `sonora_training` once step=0005999 lands (review, 2026-09-25).
 
 defaults:
   - override /data: libritts_r_full_vat_v7_rough.yaml
