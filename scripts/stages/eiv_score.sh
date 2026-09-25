@@ -10,10 +10,10 @@
 # eiv_score.py APPENDS and is resumable: it reads --out on start-up and skips wavs it
 # already holds. Re-running after an interruption is safe and is the intended recovery.
 #
-# NOTE ON THE GPU: the encoder wants VRAM alongside whatever inference stack is up (there is
-# no standing spin-down — the owner retired that rule on 2026-09-25). EmoWhisper-Small + 12 heads is small;
-# if it OOMs, stop the renderers rather than shrinking the batch, so the scores stay
-# comparable to the existing corpus.
+# NOTE ON THE GPU: the encoder wants VRAM alongside whatever inference stack is up (there
+# is no standing spin-down; the owner retired that rule on 2026-09-25). EmoWhisper-Small +
+# 12 heads is small. If it OOMs, ask the owner, then stop the renderers rather than
+# shrinking the batch, so the scores stay comparable to the existing corpus.
 #
 # Usage:  eiv_score.sh <out.jsonl> <input...> [-- extra args to eiv_score.py]
 #   e.g.  eiv_score.sh /data/.../gap.jsonl /path/to/wavlist.txt -- --heads "Valence,Arousal"
