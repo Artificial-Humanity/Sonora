@@ -59,8 +59,8 @@
 #   * data_statistics re-measured: mel_mean -5.699118 / mel_std 2.709244.
 #
 # Pre-flight, all mandatory:
-#   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
-#     engines (Gemma director, synth_* renderers, Vocalizer), not just the trainer's.
+#   * (Stopping every inference engine was a pre-flight step here until the owner retired
+#     that rule on 2026-09-25. It is no longer required.)
 #   * scripts/gates/test_vat_dim_seams.py — IN-CONTAINER (they need torch). 35 checks.
 #     ⚠ Run it with a container that has real shm: the suite and the datamodule both use
 #     DataLoader workers, and `sonora_vocalizer` has Docker's default 64 MB /dev/shm,

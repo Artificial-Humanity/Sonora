@@ -6,9 +6,8 @@
 # something the host should grow. The compose-managed sonora_training service is not
 # usable for this either, because `up` STARTS the run in its `command:`.
 #
-# The GPU here is doing teacher-forced forward passes, not training, so the spin-down
-# rule does not apply — but it is still a full model per checkpoint, so do not run this
-# against a busy card and expect the clip rate to mean anything.
+# The GPU here is doing teacher-forced forward passes, and it is a full model per checkpoint,
+# so do not run this against a busy card and expect the clip rate to mean anything.
 #
 # monotonic_align is Cython and ships as a .pyx, so something has to compile it. That
 # happens in a COPY of the package under /tmp, never in the mounted repo: the checkout is

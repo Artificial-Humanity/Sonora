@@ -14,8 +14,9 @@
 #     --out /data/model-training/sonora/warmstart/vat3_init.ckpt
 # python -m matcha.train experiment=vat3_finetune ckpt_path=/data/model-training/sonora/warmstart/vat3_init.ckpt
 #
-# Pre-flight: AI-Lab-0/scripts/inference-engines.sh stop  (spin-down rule +
-# GitOps guard), owner audits audit-tension-v2 / audit-valence-v1 signed off.
+# Pre-flight: owner audits audit-tension-v2 / audit-valence-v1 signed off. (Stopping the
+# inference engines was also a pre-flight step until the owner retired that rule on
+# 2026-09-25.)
 
 defaults:
   - override /data: libritts_r_vat_v2.yaml

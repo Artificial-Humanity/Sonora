@@ -281,9 +281,9 @@ After the checks and the review/commit cycle in `WORKFLOW.md`:
 * Deploys refuse a dirty tree. `ALLOW_DIRTY=1` overrides this and is recorded in the stamp.
 * `audition` and `dashboard` compare content before copying; matching content needs
   no copy or restart. An orphaned stamp can still need a refresh.
-* `stack` refuses during training because `compose up -d` can restart stopped
-  inference engines. If using `ALLOW_STACK_DURING_TRAINING=1`, rerun
-  `inference-engines.sh stop` afterward.
+* `stack` refuses during training (`ALLOW_STACK_DURING_TRAINING=1` overrides). The guard
+  dates from the spin-down rule, which the owner retired on 2026-09-25; whether it stays is
+  AI-Lab-AMD's decision. Do not stop the inference engines as part of a launch.
 * Ship shared contracts rather than transcribing them. `deploy.sh` copies
   `matcha/delivery.py` into audition's `app/_contract/` after `rsync --delete`;
   the app refuses to start without it. Do not add a literal fallback.

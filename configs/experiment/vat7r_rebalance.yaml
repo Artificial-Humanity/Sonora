@@ -255,7 +255,8 @@
 # vat3-era `holdout.txt`, which an 8-wide config refuses on the vat_dim seam.
 #
 # Pre-flight, all mandatory:
-#   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL engines.
+#   * (Stopping every inference engine was a pre-flight step here until the owner retired
+#     that rule on 2026-09-25. It is no longer required.)
 #   * ⚠ THIS RUN GOT A CADENCE IT DID NOT ASK FOR, AND THE HOLE IS NOW FIXED — read this
 #     before trusting any older launch line. On 2026-08-29 the `sonora_training` command
 #     READ `${SONORA_CKPT_EVERY_N_STEPS:-3506}` while compose never put that variable in

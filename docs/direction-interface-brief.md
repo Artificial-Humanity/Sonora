@@ -105,8 +105,7 @@ text ─────────────────────────
    same harness that calibrated EIV.
 
 **Cost:** batch inference on the box. Rough order: ~30k LibriTTS-R utterances × (input ~400 tok
-+ output ~300 tok) at ~58 tok/s ≈ 40–50 GPU-hours — chunkable, resumable, and subject to the
-spin-down rule. Spike first: ~100 clips (50 certified + 50 LibriTTS-R), owner-audit the markup.
++ output ~300 tok) at ~58 tok/s ≈ 40–50 GPU-hours — chunkable and resumable. Spike first: ~100 clips (50 certified + 50 LibriTTS-R), owner-audit the markup.
 
 ## 5 · Value — HIGH
 
