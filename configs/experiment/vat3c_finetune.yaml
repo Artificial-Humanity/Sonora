@@ -45,8 +45,8 @@
 #       ckpt_path=/data/model-training/sonora/warmstart/vat3c_init.ckpt
 #
 # Pre-flight, both mandatory:
-#   * AI-Lab-0/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
-#     engines (Gemma director, synth_* renderers, Vocalizer), not just the trainer's.
+#   * (Stopping every inference engine was a pre-flight step here until the owner retired
+#     that rule on 2026-09-25. It is no longer required.)
 #   * .venv/bin/python scripts/gates/test_vat_dim_seams.py — the vat_dim guards. This run is
 #     still 3-wide; the test is what keeps it honest when delivery makes it 4.
 #

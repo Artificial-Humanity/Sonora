@@ -281,9 +281,15 @@ After the checks and the review/commit cycle in `WORKFLOW.md`:
 * Deploys refuse a dirty tree. `ALLOW_DIRTY=1` overrides this and is recorded in the stamp.
 * `audition` and `dashboard` compare content before copying; matching content needs
   no copy or restart. An orphaned stamp can still need a refresh.
-* `stack` refuses during training because `compose up -d` can restart stopped
-  inference engines. If using `ALLOW_STACK_DURING_TRAINING=1`, rerun
-  `inference-engines.sh stop` afterward.
+* `stack` refuses during training because `up -d` recreates mlflow, which the live run logs
+  into (`ALLOW_STACK_DURING_TRAINING=1` overrides; the inference profile is never selected
+  mid-run).
+* `training-code` refuses while ANY running container mounts `/data/repos/Sonora`, and
+  `sonora_vocalizer` does. That is deploy safety — code swapped under a live process — not the
+  retired spin-down rule. Stop only the mounting container for the deploy and start it again
+  straight after: `docker stop sonora_vocalizer`, deploy, `docker start sonora_vocalizer`.
+* Do not stop the inference engines for GPU reasons. The owner retired that rule on
+  2026-09-25 and coordinates GPU use directly.
 * Ship shared contracts rather than transcribing them. `deploy.sh` copies
   `matcha/delivery.py` into audition's `app/_contract/` after `rsync --delete`;
   the app refuses to start without it. Do not add a literal fallback.

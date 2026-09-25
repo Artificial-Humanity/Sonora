@@ -187,8 +187,10 @@ Full runbook: `notes/training-operations.md` (private). Pinned:
   GitOps was retired 2026-07-22, so a push to main deploys nothing; use
   `AI-Lab-AMD/scripts/deploy.sh`.
 * MLflow logging, unbuffered stdout.
-* **Spin down every inference engine first** — the Gemma director, every `synth_*` renderer,
-  the Vocalizer. Standing rule, not a courtesy: they share the one GPU.
+* **No spin-down of the inference engines.** That was a standing rule until the owner retired
+  it on 2026-09-25: the owner is the box's only user and coordinates GPU use directly. The
+  engines still share one unified memory pool with training, so a run that dies with no
+  traceback is most likely the host OOM killer.
 * **Convergence watcher wired BEFORE launch** (systemd timer → CPU-only throwaway container →
   postprocess → `history.jsonl` + CONVERGED marker). The watcher never auto-stops the trainer;
   stopping is a human act after audit. The first flip to CONVERGED also fires a **one-shot

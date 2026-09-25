@@ -57,8 +57,8 @@
 # change.
 #
 # Pre-flight, all mandatory:
-#   * AI-Lab-AMD/scripts/inference-engines.sh stop — the spin-down rule. ALL inference
-#     engines, not just the trainer's.
+#   * (Stopping every inference engine was a pre-flight step here until the owner retired
+#     that rule on 2026-09-25. It is no longer required.)
 #   * scripts/gates/test_vat_dim_seams.py — IN-CONTAINER (needs torch). ⚠ With real shm:
 #     the suite and the datamodule both use DataLoader workers and Docker's default 64 MB
 #     /dev/shm DEADLOCKS them silently — workers alive at 0.0% CPU, no error, forever. The

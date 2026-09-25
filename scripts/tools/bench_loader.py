@@ -14,9 +14,10 @@ scales with worker count, and worker count is exactly what collapses when you
 move from a 16-core box (num_workers=8) to a 5-vCPU pod (num_workers=4). The
 sweep below measures that scaling directly instead of assuming it is linear.
 
-Runs on CPU. Never touches the model. Spin the inference engines down first
-anyway (AI-Lab-AMD/scripts/inference-engines.sh stop) or you are timing
-against contended cores and the numbers mean nothing.
+Runs on CPU. Never touches the model. A timing is only meaningful on an idle box, and the
+inference engines normally stay up (the spin-down rule was retired 2026-09-25), so ask the
+owner before stopping them (AI-Lab-AMD/scripts/inference-engines.sh stop). Otherwise you are
+timing against contended cores and the numbers mean nothing.
 
 Usage:
     python scripts/tools/bench_loader.py --experiment vat3_finetune \
