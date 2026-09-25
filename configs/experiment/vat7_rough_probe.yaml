@@ -1,0 +1,31 @@
+# @package _global_
+
+# CAN THE DECODER RENDER ROUGH VOICES? — a probe, not a candidate (2026-09-25).
+#
+# The hum is in the predicted mel, sampling does not remove it, and the owner hears "buzz"
+# on voices with low natural HNR. Warm-started from vat7 ep005, this trains ONLY on rough
+# voices (HNR < 4.5 dB, v7 rows verbatim) and is benched blind on rough speakers it never
+# saw, against ep005 on the same renders:
+#   * buzz falls on unseen rough voices -> the decoder can do it; rough voices are
+#     under-trained, and the lever is rebalancing the data (cheap);
+#   * it does not -> the decoder cannot, and the DiT spike (model-decisions.md § Decoder v2)
+#     moves onto the critical path.
+# Clean held-out voices are in the bench as the regression check: a rough-only fine-tune may
+# degrade them, which is acceptable for a probe and would rule it out as a candidate.
+#
+# 6,000 steps is ~1.6 epochs of the subset (118,860 rows / batch 32 = 3,714 steps/epoch).
+# Launch with SONORA_CKPT_EVERY_N_STEPS=1500 for four checkpoints. The owner retired the
+# spin-down rule on 2026-09-25, so the engines stay up.
+
+defaults:
+  - override /data: libritts_r_full_vat_v7_rough.yaml
+
+tags: ["libritts_r", "vat", "vat7", "probe", "rough_voice", "decoder", "hum"]
+
+run_name: vat7_rough_probe
+
+model:
+  use_vat: true
+
+trainer:
+  max_steps: 6000

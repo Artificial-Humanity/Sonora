@@ -154,10 +154,15 @@ datasets:
     # beside each mel is what the vocoder learns to produce. Declared once for the parent so
     # the next fine-tune is not a manifest edit. Its rows are the acoustic model's training rows by design: the mels
     # are that model's, rendered on its own training clips.
+    #
+    # `libritts_r_full_vat_v7_rough` (2026-09-25) is a SUBSET of v7: its LibriTTS-R rows for
+    # speakers with natural HNR under 4.5 dB, verbatim, built by build_rough_voice_corpus.py
+    # for the rough-voice decoder probe. No new source and no new path; declared because
+    # the wall classifies the corpus directory as well as the audio (#294).
     dirs: [libritts_r_emilia_vat_v5, libritts_r_emilia_expressive_vat_v6,
            libritts_r_full_vat_v7, libritts_r_full_vat_v7r,
            _derived_train_clean_360, _derived_train_other_500,
-           pitch_error, vocoder_ft]
+           pitch_error, vocoder_ft, libritts_r_full_vat_v7_rough]
     license: CC-BY-4.0 (filelists only; each audio path is classified by its own source)
     class: permissive
   sonora_expressive_registers:

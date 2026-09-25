@@ -1,0 +1,29 @@
+# The rough-voice probe's corpus: v7's LibriTTS-R rows for speakers with natural HNR under
+# 4.5 dB, minus the 24 bench speakers, built by scripts/tools/build_rough_voice_corpus.py.
+# Rows are v7's verbatim, so n_spks and the mel statistics are v7's: the warm-start model's
+# speaker table and its normalised mel space must not move under it.
+
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_full_vat_v7_rough
+train_filelist_path: data/libritts_r_full_vat_v7_rough/train_op.txt
+valid_filelist_path: data/libritts_r_full_vat_v7_rough/val_op.txt
+batch_size: 32
+num_workers: 8
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 5385
+n_fft: 1024
+n_feats: 80
+sample_rate: 24000
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 12000
+data_statistics:  # v7's, ON PURPOSE — the warm-start model was trained in this space
+  mel_mean: -5.543695
+  mel_std: 2.430293
+seed: ${seed}
+load_durations: false
+load_vat: true
+vat_dim: ${model.vat_dim}
