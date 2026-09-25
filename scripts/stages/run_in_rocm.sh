@@ -38,7 +38,12 @@ GPU="--device /dev/kfd --device /dev/dri --security-opt seccomp=unconfined --gro
 source "$SONORA/scripts/container_env.sh"
 IMG="$SONORA_ROCM_IMAGE"
 
-DEPS="einops conformer diffusers lightning hydra-core omegaconf rootutils rich matplotlib gdown wget librosa soundfile cython numpy pyyaml unidecode"
+# ⚠⚠ hydra-core AND hydra-colorlog ARE PINNED TO pyproject.toml'S VERSIONS, and a test holds
+# them equal. Unpinned, this installed the newest hydra, and a checkpoint written here
+# (make_warmstart.py, 2026-09-25) pickled `hydra._internal.target_policy` into its
+# hyperparameters — a module the training container's pinned hydra 1.3.2 does not have.
+# The trainer died unpickling it at load, twice, before anyone looked at the version.
+DEPS="einops conformer diffusers lightning hydra-core==1.3.2 hydra-colorlog==1.2.0 omegaconf rootutils rich matplotlib gdown wget librosa soundfile cython numpy pyyaml unidecode"
 
 # ⚠ PER-STAGE EXTRAS, so one stage's dependency does not become every stage's. The ear
 # benches need `ai-edge-litert` for the neural G2P fallback and nothing else here does;
