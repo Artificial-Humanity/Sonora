@@ -1,0 +1,42 @@
+# @package _global_
+
+# DECODER v2 — THE DiT SPIKE (docs/model-decisions.md § Decoder v2). Owner-approved 2026-09-26.
+#
+# WHY NOW. The hum is in the predicted mel, and every cheaper lever has been ruled out
+# blind: the vocoder fine-tune, the stale mel buffers, ODE steps, temperature, and rough-voice
+# data weighting (which moved the buzz onto clean voices). What is left is the decoder's
+# architecture or its objective. This run changes the architecture and holds everything
+# else: v7 corpus, OT-CFM objective, encoder, durations, VAT, vocoder.
+#
+# WHAT IS WARM AND WHAT IS FRESH. The warm start is vat7 ep005, the selected checkpoint of
+# the U-Net trained on this SAME corpus, and it is also the baseline the bench judges this
+# against — the same-corpus parity the § Decoder v2 gate demands. Encoder, duration
+# predictor and speaker table come from it. The whole estimator starts fresh:
+#
+#   python scripts/lib/make_warmstart.py --experiment vat7_dit_spike \
+#       --donor <vat7 ep005 checkpoint> \
+#       --fresh-prefix decoder.estimator. \
+#       --out /data/model-training/sonora/warmstart/vat7_dit_init.ckpt
+#
+# No `--donor-speakers`: the donor was trained on v7, so the speaker table has the same
+# shape and loads as it is. `--fresh-prefix` is NOT optional. Without it the U-Net's
+# `vat_trunk` loads into the DiT by name (same shapes), and every other estimator tensor
+# is refused as "architecture drift".
+#
+# THE JUDGEMENT IS THE EAR, NOT THE LOSS. `diff` is not comparable across architectures,
+# and the val split is not a generalisation measure. The deciding bench is blind and
+# pre-registered: this run against ep005 on held-out speakers, rough and clean.
+#
+# THE RUN ENDS ON ITS OWN (max_steps). `restart: unless-stopped` then loops it: stop
+# `sonora_training` when the last checkpoint lands (vat7_rough_probe, 2026-09-25).
+
+defaults:
+  - override /data: libritts_r_full_vat_v7.yaml
+  - override /model/decoder: dit.yaml
+
+tags: ["libritts_r", "vat", "vat7", "decoder_v2", "dit", "spike", "hum"]
+
+run_name: vat7_dit_spike
+
+model:
+  use_vat: true

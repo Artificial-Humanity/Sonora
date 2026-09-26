@@ -4,6 +4,7 @@ import torch
 import torch.nn.functional as F
 
 from matcha.models.components.decoder import Decoder
+from matcha.models.components.dit_decoder import DiTDecoder
 from matcha.utils.pylogger import get_pylogger
 
 log = get_pylogger(__name__)
@@ -148,12 +149,27 @@ class CFM(BASECFM):
             spk_emb_dim=spk_emb_dim,
         )
 
-        in_channels = in_channels + (spk_emb_dim if n_spks > 1 else 0)
-        # Just change the architecture of the estimator here
-        self.estimator = Decoder(
-            in_channels=in_channels,
-            out_channels=out_channel,
-            vat_dim=vat_dim,
-            vat_cond_dim=vat_cond_dim if use_vat else 0,
-            **decoder_params,
-        )
+        # `type` selects the estimator. Absent means the U-Net, which is what every
+        # checkpoint before Decoder v2 was trained with and what its saved hparams say.
+        decoder_params = dict(decoder_params)
+        kind = decoder_params.pop("type", "unet")
+        if kind == "unet":
+            self.estimator = Decoder(
+                in_channels=in_channels + (spk_emb_dim if n_spks > 1 else 0),
+                out_channels=out_channel,
+                vat_dim=vat_dim,
+                vat_cond_dim=vat_cond_dim if use_vat else 0,
+                **decoder_params,
+            )
+        elif kind == "dit":
+            # The DiT takes the speaker through its conditioning, not its input channels.
+            self.estimator = DiTDecoder(
+                in_channels=in_channels,
+                out_channels=out_channel,
+                spk_emb_dim=spk_emb_dim if n_spks > 1 else 0,
+                vat_dim=vat_dim,
+                vat_cond_dim=vat_cond_dim if use_vat else 0,
+                **decoder_params,
+            )
+        else:
+            raise ValueError(f"unknown decoder type {kind!r}: expected 'unet' or 'dit'")

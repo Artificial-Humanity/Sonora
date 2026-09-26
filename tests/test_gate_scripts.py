@@ -122,7 +122,7 @@ SLOW = [
 # artifact at all. Its only prerequisite is an interpreter that has torch, so forcing it into
 # SLOW would mean inventing an env var and a path that do not exist, and a probe that passes
 # for a reason unrelated to the prerequisite is the defect this file keeps meeting.
-TORCH_ONLY = ["test_vat_dim_seams.py"]
+TORCH_ONLY = ["test_vat_dim_seams.py", "test_dit_decoder.py"]
 
 
 def _run(script):
