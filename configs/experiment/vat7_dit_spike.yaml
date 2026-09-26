@@ -71,6 +71,14 @@ model:
 callbacks:
   memory_trace:
     _target_: matcha.utils.memory_trace.MemoryTrace
+  # THE FIX (2026-09-26). The trace showed the cause: the trainer never allocates more than
+  # 45.5 GiB, but the caching allocator's RESERVED memory ratchets to 80-88 GiB as variable-
+  # length batches fragment it. Capped here, the allocator releases its cache and retries at
+  # 64 GiB (1.4x the real peak), well inside ttm.pages_limit's 90 GiB, so the host keeps its
+  # margin. matcha/utils/gpu_memory_cap.py.
+  gpu_memory_cap:
+    _target_: matcha.utils.gpu_memory_cap.GpuMemoryCap
+    cap_gib: 64
 
 trainer:
   max_steps: 105180
