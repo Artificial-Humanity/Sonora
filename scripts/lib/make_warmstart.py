@@ -285,17 +285,22 @@ def main():
           f"({len(widened)} widened)")
     print(f"fresh tensors: {len(fresh)} (expected: FiLM/vat_trunk + spk_emb"
           f"{' + ' + ', '.join(args.fresh_prefix) if args.fresh_prefix else ''})")
+    if args.fresh_prefix:
+        # ⚠ AN ARCHITECTURE SWAP IS ONLY A FAIR TEST IF EVERYTHING ELSE IS WARM. Outside the
+        # prefix, the FiLM/speaker allowances below would let a fresh speaker table or VAT
+        # path through with a printed line and exit 0, and the run would then compare a new
+        # decoder AND a half-fresh encoder against the baseline (review, 2026-09-26).
+        outside = [n for n in fresh if not any(n.startswith(p) for p in args.fresh_prefix)]
+        if outside or shape_dropped:
+            raise SystemExit(f"!! --fresh-prefix: {len(outside)} fresh tensor(s) and "
+                             f"{len(shape_dropped)} shape-dropped tensor(s) OUTSIDE the prefix, "
+                             f"e.g. {(outside or shape_dropped)[0]}. Everything but the swapped "
+                             f"module must load warm.")
     for name in fresh:
         if any(name.startswith(p) for p in args.fresh_prefix):
             continue
         if "film" not in name and "vat_trunk" not in name and "spk_emb" not in name:
             raise SystemExit(f"UNEXPECTED fresh tensor (architecture drift?): {name}")
-    if args.fresh_prefix:
-        warm_under = [k for k in model_sd if any(k.startswith(p) for p in args.fresh_prefix)
-                      and k not in fresh]
-        if warm_under:
-            raise SystemExit(f"!! {len(warm_under)} tensor(s) under --fresh-prefix were "
-                             f"loaded warm, e.g. {warm_under[0]}")
     if skipped:
         print(f"donor-only tensors skipped: {skipped}")
 

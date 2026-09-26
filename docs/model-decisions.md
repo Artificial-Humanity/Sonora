@@ -169,6 +169,13 @@ corpus**, frozen as the last act of Phase 1 — otherwise data and architecture 
 other and the run teaches nothing about either. Sequencing lives in
 `notes/quality-gap-plan.md` (private).
 
+**Built 2026-09-26** (`type: dit` in `configs/model/decoder/dit.yaml`,
+`matcha/models/components/dit_decoder.py`; gates `scripts/gates/test_dit_decoder.py`). The
+spike run is `configs/experiment/vat7_dit_spike.yaml`: warm from vat7 ep005 with the
+estimator fresh, on the same v7 corpus, so ep005 is the same-corpus U-Net baseline this
+section requires. It moved onto the critical path when the hum was ruled out of the vocoder,
+the mel statistics, the ODE step count, temperature and data weighting.
+
 **Pass → decoder v2 is the family backbone. Stall → the stock decoder runs the corpus** and
 the spike parks with its findings. The schedule never waits on the swap.
 

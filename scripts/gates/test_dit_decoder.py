@@ -15,6 +15,11 @@ IN-CONTAINER (needs torch):  scripts/stages/run_in_rocm.sh scripts/gates/test_di
 6. The experiment composes, and the full model trains one step and synthesises, finite.
 7. A fixed-shape `torch.export` trace succeeds. This is NOT the split-graph export gate,
    which is an adoption gate of its own. It only proves nothing here blocks tracing.
+8. ON THE GPU, UNDER THE RUN'S fp16 AUTOCAST (skipped without a GPU): padding invariance
+   again, and one full-size training step of the real config at batch 32 x 2,064 frames
+   (the 22 s ceiling) with finite loss and grads, and its peak memory. Gates 1-7 run in
+   fp32 on the CPU, which says nothing about the ROCm attention kernel, fp16 or memory
+   (review, 2026-09-26).
 """
 import os as _os  # noqa: E402
 import sys as _sys  # noqa: E402
@@ -23,6 +28,10 @@ _SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspa
 for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
+
+# Gate 8 runs under the kernel-search mode the run itself uses (configs/experiment/
+# vat7_dit_spike.yaml), and a cold default-mode search would take minutes per shape here.
+_os.environ.setdefault("MIOPEN_FIND_MODE", "FAST")
 
 import torch
 from omegaconf import OmegaConf
@@ -94,7 +103,7 @@ fresh = make()
 with torch.no_grad():
     a = fresh(x, mask, mu, t, spks, cond)
     b = fresh(x, mask, mu, t, spks, None)
-check("4 VAT inert at init", torch.equal(a, b))
+check("4 VAT inert at init (adaLN-Zero: no block reads c yet)", torch.equal(a, b))
 randomise_zero_inits(fresh)
 with torch.no_grad():
     a = fresh(x, mask, mu, t, spks, cond)
@@ -131,6 +140,9 @@ with initialize_config_dir(version_base="1.3", config_dir=_os.path.join(_SONORA_
     cfg = compose(config_name="train.yaml", overrides=["experiment=vat7_dit_spike"])
 check("6 experiment selects the DiT", cfg.model.decoder.type == "dit", f"decoder={dict(cfg.model.decoder)}")
 check("6 experiment keeps VAT on", bool(cfg.model.use_vat))
+check("6 experiment ends on its own", cfg.trainer.get("max_steps", -1) == 105170,
+      f"max_steps={cfg.trainer.get('max_steps')}")
+check("6 experiment sets FAST kernel search", cfg.get("miopen_find_mode") == "FAST")
 model = instantiate(cfg.model)
 est = model.decoder.estimator
 n_dec = sum(p.numel() for p in est.parameters())
@@ -155,6 +167,17 @@ model.eval()
 res = model.synthesise(bx, bxl, n_timesteps=4, temperature=0.667, spks=bspk, vat=bvat)
 check("6 synthesis finite", bool(torch.isfinite(res["mel"]).all()), f"mel {tuple(res['mel'].shape)}")
 
+# 6b. batch of one (compute_loss's `t.squeeze()` is 0-d) and scalar t at B>1 without speakers
+model.train()
+d1, p1, f1, _ = model(bx[:1], bxl[:1], by[:1], byl[:1], spks=bspk[:1], vat=bvat[:1])
+check("6b training step at B=1 finite", bool(torch.isfinite(d1 + p1 + f1).all()))
+nospk = make()
+randomise_zero_inits(nospk)
+nospk.spk_proj = None
+with torch.no_grad():
+    o = nospk(x, mask, mu, torch.tensor(0.3), None, cond)
+check("6b scalar t, B=3, no speaker", tuple(o.shape) == (B, N_FEATS, T) and bool(torch.isfinite(o).all()))
+
 # 7. fixed-shape trace
 try:
     ep = torch.export.export(dec, (x[:1], mask[:1], mu[:1], t[:1], spks[:1], cond[:1]))
@@ -163,6 +186,46 @@ try:
     check("7 torch.export trace", d7 < 1e-4, f"max|diff| vs eager {d7:.2e}")
 except Exception as exc:  # noqa: BLE001
     check("7 torch.export trace", False, f"{type(exc).__name__}: {exc}")
+
+# 8. GPU, fp16 autocast, full size
+if torch.cuda.is_available():
+    dev = torch.device("cuda")
+    g = dec.to(dev)
+    with torch.no_grad(), torch.autocast("cuda", dtype=torch.float16):
+        full = g(x.to(dev), mask.to(dev), mu.to(dev), t.to(dev), spks.to(dev), cond.to(dev))
+        one = g(x[2:3, :, :12].to(dev), mask[2:3, :, :12].to(dev), mu[2:3, :, :12].to(dev),
+                t[2:3].to(dev), spks[2:3].to(dev), cond[2:3, :, :12].to(dev))
+    d8 = float((one.float() - full[2:3, :, :12].float()).abs().max())
+    check("8 GPU fp16 padding invariance", d8 < 2e-2, f"max|diff| {d8:.2e}")
+
+    big = instantiate(cfg.model).to(dev).train()
+    opt = torch.optim.Adam(big.parameters(), lr=1e-4)
+    scaler = torch.amp.GradScaler("cuda")
+    BB, TT, TX = 32, 2064, 260
+    torch.cuda.reset_peak_memory_stats()
+    gx = torch.randint(1, 170, (BB, TX), device=dev)
+    gxl = torch.full((BB,), TX, device=dev)
+    gxl[1::2] = TX // 2
+    gy = torch.randn(BB, N_FEATS, TT, device=dev)
+    gyl = torch.full((BB,), TT, device=dev)
+    gyl[1::2] = TT // 2
+    gspk = torch.randint(0, cfg.model.n_spks, (BB,), device=dev)
+    gvat = torch.zeros(BB, cfg.model.vat_dim, TX, device=dev)
+    try:
+        with torch.autocast("cuda", dtype=torch.float16):
+            d, p, f, _ = big(gx, gxl, gy, gyl, spks=gspk, vat=gvat)
+            gl = d + p + f
+        scaler.scale(gl).backward()
+        scaler.unscale_(opt)
+        gg = [q.grad for q in big.decoder.estimator.parameters() if q.grad is not None]
+        ok = bool(torch.isfinite(gl)) and all(torch.isfinite(q).all() for q in gg)
+        peak = torch.cuda.max_memory_allocated() / 2**30
+        check("8 GPU fp16 full-size step finite", ok,
+              f"B={BB} T={TT} loss {float(gl):.3f}, peak {peak:.1f} GiB")
+    except Exception as exc:  # noqa: BLE001
+        check("8 GPU fp16 full-size step finite", False, f"{type(exc).__name__}: {exc}")
+else:
+    print("8 GPU gates: SKIPPED (no GPU)")
 
 print()
 if _FAILURES:

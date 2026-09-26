@@ -14,7 +14,9 @@ The block design is StableTTS's `DiTConVBlock` (MIT, https://github.com/KdaiP/St
   * RoPE on half of each head, and LayerNorm without affine (adaLN supplies the affine).
   * A convolutional prenet on the encoder output `mu` (masked between layers; see there).
 
-⚠ ONE DELIBERATE DEPARTURE: THE CONDITIONING IS PER FRAME, NOT ONE VECTOR PER UTTERANCE.
+⚠ DEPARTURES FROM STABLETTS, ALL DELIBERATE:
+
+1. THE CONDITIONING IS PER FRAME, NOT ONE VECTOR PER UTTERANCE.
 StableTTS modulates with one vector per utterance. Our V/A/T and delivery channels are per
 TOKEN, expanded to frames through the alignment, and a vector per utterance would average
 away every in-utterance change of direction. So the conditioning here is a [B, C, T]
@@ -25,6 +27,16 @@ same arithmetic as StableTTS's Linear, applied at each frame.
 The speaker enters the conditioning, not the input. The U-Net concatenates the speaker
 embedding to its input channels; `CFM` therefore passes the DiT the input width WITHOUT
 the speaker channels.
+
+2. TIME ENTERS THROUGH adaLN, AS IN THE DiT PAPER, NOT THROUGH A SEPARATE FiLM. StableTTS's
+`DitWrapper` applies a per-block time FiLM to `x` before each block and sends only the
+speaker through adaLN. Here time is summed into `c`. One consequence: at init the output
+does not depend on `t` until the adaLN heads move off zero, which the first steps do.
+
+3. THE ATTENTION MASK IS A BOOLEAN KEY MASK (see `MultiHeadAttention`), not a [T, T] float
+mask filled with -finfo.max.
+
+4. THE mu PRENET IS MASKED BETWEEN LAYERS (see there).
 
 ⚠ EXPORT: everything here is Conv1d, LayerNorm, matmul and pointwise ops, and RoPE is
 computed from the sequence length in `forward` (no cache held between calls), so a
@@ -196,15 +208,15 @@ class DiTDecoder(nn.Module):
         )
         self.spk_proj = nn.Linear(spk_emb_dim, hidden_channels) if spk_emb_dim > 0 else None
 
-        # VAT: the same trunk as the U-Net (the width seam lives there), then a zero-init
-        # projection into the conditioning. At zero the conditioned decoder IS the
-        # unconditioned one, which is what `vat_cond_dropout` and CFG assume.
+        # VAT: the same trunk as the U-Net (the width seam lives there), then a projection
+        # into the conditioning. Not zero-initialised: the U-Net's FiLM heads are zero so a
+        # WARM start stays exact, and this estimator is always fresh. The unconditional
+        # state CFG needs is VAT = 0 at the INPUT, which `vat_cond_dropout` trains; it does
+        # not need a zero projection. A zero here would only put a second zero factor in
+        # series with the adaLN heads and slow the VAT path's start (review, 2026-09-26).
         use_vat = vat_cond_dim > 0
         self.vat_trunk = VATTrunk(vat_dim, vat_cond_dim) if use_vat else None
         self.vat_proj = nn.Conv1d(vat_cond_dim, hidden_channels, 1) if use_vat else None
-        if self.vat_proj is not None:
-            nn.init.zeros_(self.vat_proj.weight)
-            nn.init.zeros_(self.vat_proj.bias)
 
         self.blocks = nn.ModuleList(
             [DiTConvBlock(hidden_channels, filter_channels, n_heads, kernel_size, dropout) for _ in range(n_layers)]
