@@ -14,7 +14,16 @@ exists after a clean exit is no use against the OOM killer, so the gates below h
   5. allocator state (allocated, reserved, retries, device allocs/frees, inactive split) on a GPU;
   6. null allocator fields on a CPU run;
   7. the vat7_dit_spike config composes WITH it and still carries the default callbacks
-     (a `callbacks:` key in an experiment merges; a mistake there would silently replace).
+     (a `callbacks:` key in an experiment merges; a mistake there would silently replace);
+  8. a `start` line with the batch shape BEFORE the step runs: the OOM kill lands inside
+     forward/backward, so an end-only trace never records the batch that killed it (review);
+  9. with no explicit GTT path, the amdgpu card is found by glob, and a miss is warned about
+     rather than written as a silent null for two hours (review);
+ 10. a failing write disables the trace instead of ending the run (review);
+ 11. this PROCESS's GTT from DRM fdinfo, deduplicated by client id, beside the box total —
+     the box total alone cannot say whose memory grew;
+ 12. ON A GPU, IN A CONTAINER, WITH THE DEFAULTS: host GTT and process GTT are non-null. Every
+     other gate feeds synthetic files, so nothing else proves the real paths are visible.
 """
 import os as _os  # noqa: E402
 import sys as _sys  # noqa: E402
@@ -56,9 +65,13 @@ def host_files(d, gtt_bytes=5 * 2**30, avail_kb=90 * 2**20):
     return str(d / "gtt_used"), str(d / "meminfo")
 
 
-def lines(d):
+def all_lines(d):
     p = d / "memory_trace.jsonl"
     return [json.loads(l) for l in p.read_text().splitlines()] if p.exists() else []
+
+
+def lines(d):
+    return [r for r in all_lines(d) if r.get("phase") == "end"]
 
 
 def one_step(cb, t, b, idx=0):
@@ -129,6 +142,8 @@ if torch.cuda.is_available():
           and all(k in rec for k in keys),
           f"alloc={rec.get('allocated_gib')} reserved={rec.get('reserved_gib')} "
           f"missing={[k for k in keys if k not in rec]}")
+    print(f"   measured, not gated: proc_gtt_gib={rec.get('proc_gtt_gib')} "
+          f"host_gtt_gib={rec.get('host_gtt_gib')} pinned_gib={rec.get('pinned_gib', 'absent')}")
     del held
 else:
     print("5 allocator state on GPU: SKIPPED (no GPU)")
@@ -160,6 +175,107 @@ built = instantiate(cbs["memory_trace"]) if "memory_trace" in cbs else None
 check("7 spike config carries the trace and keeps the defaults",
       isinstance(built, MemoryTrace) and {"model_checkpoint", "throughput_probe"} <= set(cbs),
       f"callbacks={sorted(cbs)}")
+
+# 8. a start line with the shape, before the step runs
+d = fresh()
+gtt, mi = host_files(d)
+cb, t = MemoryTrace(gtt_path=gtt, meminfo_path=mi), trainer(d, step=5)
+cb.on_train_start(t, None)
+cb.on_train_batch_start(t, None, batch(frames=2064, b=32), 0)  # ... and the kill lands here
+starts = [r for r in all_lines(d) if r.get("phase") == "start"]
+check("8 start line carries the shape before the step",
+      len(starts) == 1 and starts[0].get("frames") == 2064 and starts[0].get("step") == 5,
+      f"start lines={starts}")
+
+# 9. GTT path found by glob; a miss warns
+import logging  # noqa: E402
+
+d = fresh()
+(d / "card3" / "device").mkdir(parents=True)
+(d / "card3" / "device" / "mem_info_gtt_used").write_text(f"{7 * 2**30}\n")
+_, mi = host_files(d)
+cb, t = MemoryTrace(gtt_path=None, gtt_glob=str(d / "card*" / "device" / "mem_info_gtt_used"),
+                    meminfo_path=mi), trainer(d)
+cb.on_train_start(t, None)
+one_step(cb, t, batch())
+rec = (lines(d) or [{}])[0]
+found = rec.get("host_gtt_gib") == 7.0
+
+
+class _Catch(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.msgs = []
+
+    def emit(self, record):
+        self.msgs.append(record.getMessage())
+
+
+catch = _Catch()
+logging.getLogger("matcha.utils.memory_trace").addHandler(catch)
+d2 = fresh()
+cb2, t2 = MemoryTrace(gtt_path=None, gtt_glob=str(d2 / "none*" / "x"),
+                      meminfo_path=host_files(d2)[1]), trainer(d2)
+cb2.on_train_start(t2, None)
+logging.getLogger("matcha.utils.memory_trace").removeHandler(catch)
+warned = any("gtt" in m.lower() for m in catch.msgs)
+check("9 GTT found by glob, and a miss is warned", found and warned,
+      f"gtt={rec.get('host_gtt_gib')} warnings={catch.msgs}")
+
+
+# 10. a failing write disables the trace instead of raising
+class _Broken:
+    def write(self, _):
+        raise OSError(28, "No space left on device")
+
+    def close(self):
+        pass
+
+
+d = fresh()
+gtt, mi = host_files(d)
+cb, t = MemoryTrace(gtt_path=gtt, meminfo_path=mi), trainer(d)
+cb.on_train_start(t, None)
+cb._fh.close()
+cb._fh = _Broken()
+try:
+    one_step(cb, t, batch())
+    one_step(cb, t, batch(), 1)
+    check("10 a failing write disables the trace", cb._fh is None, f"fh={cb._fh!r}")
+except Exception as e:  # noqa: BLE001
+    check("10 a failing write disables the trace", False, f"raised {type(e).__name__}: {e}")
+
+# 11. this process's GTT from fdinfo, deduplicated by client id
+d = fresh()
+fdi = d / "fdinfo"
+fdi.mkdir()
+(fdi / "3").write_text("pos:\t0\ndrm-driver:\tamdgpu\ndrm-client-id:\t11\ndrm-memory-gtt:\t2097152 KiB\n")
+(fdi / "4").write_text("pos:\t0\ndrm-driver:\tamdgpu\ndrm-client-id:\t11\ndrm-memory-gtt:\t2097152 KiB\n")
+(fdi / "5").write_text("pos:\t0\ndrm-driver:\tamdgpu\ndrm-client-id:\t12\ndrm-memory-gtt:\t1048576 KiB\n")
+(fdi / "6").write_text("pos:\t0\nflags:\t02\n")
+gtt, mi = host_files(d)
+cb, t = MemoryTrace(gtt_path=gtt, meminfo_path=mi, fdinfo_dir=str(fdi)), trainer(d)
+cb.on_train_start(t, None)
+one_step(cb, t, batch())
+rec = (lines(d) or [{}])[0]
+check("11 process GTT from fdinfo, one count per client", rec.get("proc_gtt_gib") == 3.0,
+      f"proc_gtt={rec.get('proc_gtt_gib')}")
+
+# 12. the real paths, in a container, on the GPU
+if torch.cuda.is_available():
+    d = fresh()
+    cb, t = MemoryTrace(), trainer(d)
+    held = torch.empty(256 * 2**20, dtype=torch.uint8, device="cuda")
+    cb.on_train_start(t, None)
+    one_step(cb, t, batch())
+    rec = (lines(d) or [{}])[0]
+    check("12 default paths read real GTT in a container",
+          rec.get("host_gtt_gib") is not None and (rec.get("proc_gtt_gib") or 0) >= 0.25,
+          f"gtt_path={cb.gtt_path} host_gtt={rec.get('host_gtt_gib')} "
+          f"proc_gtt={rec.get('proc_gtt_gib')} avail={rec.get('host_avail_gib')}")
+    del held
+else:
+    print("12 default paths read real GTT in a container: SKIPPED (no GPU)")
 
 print()
 if _FAILURES:
