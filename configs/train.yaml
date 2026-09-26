@@ -61,3 +61,6 @@ ckpt_path: null
 
 # seed for random number generators in pytorch, numpy and python.random
 seed: 1234
+
+# MIOpen kernel search mode for this run (matcha/train.py main). null = MIOpen's default.
+miopen_find_mode: null

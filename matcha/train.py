@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Optional, Tuple
 
 import hydra
@@ -117,6 +118,17 @@ def main(cfg: DictConfig) -> Optional[float]:
     :param cfg: DictConfig configuration composed by Hydra.
     :return: Optional[float] with optimized metric value.
     """
+    # MIOpen's kernel search, per run (vat7_dit_spike, 2026-09-26). The default mode searches
+    # every new convolution shape, and a length-bucketed corpus makes a new shape of almost
+    # every batch: the DiT's 1,024-channel convolutions cost ~150 s per new length on a
+    # cold cache. FAST picks kernels by heuristic instead. Measured on the U-Net, same
+    # batches: 0.805 s/step in FAST against ~0.79 s/step for the tuned vat7 run. MIOpen
+    # reads the variable at its first search, which is inside `train`, so setting it here
+    # is in time. An explicit environment value wins.
+    if cfg.get("miopen_find_mode"):
+        os.environ.setdefault("MIOPEN_FIND_MODE", str(cfg.miopen_find_mode))
+        log.info(f"MIOPEN_FIND_MODE={os.environ['MIOPEN_FIND_MODE']}")
+
     # apply extra utilities
     # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
     utils.extras(cfg)

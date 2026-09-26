@@ -189,6 +189,14 @@ def main():
                          "state_dict shape error 2026-08-08 — the loud failure; the quiet "
                          "one is a config that happens to agree on shapes and not on "
                          "meaning.")
+    ap.add_argument("--fresh-prefix", action="append", default=[], metavar="PREFIX",
+                    help="state-dict prefix to start FRESH, repeatable. Every donor tensor "
+                         "under it is dropped before the load, and fresh model tensors under "
+                         "it are expected rather than refused. For an architecture swap "
+                         "(Decoder v2: `decoder.estimator.`). Dropping is the point: a donor "
+                         "tensor whose name and shape happen to match the new module (the "
+                         "VAT trunk does) would otherwise load silently into a module that "
+                         "gives it a different meaning.")
     args = ap.parse_args()
 
     config_dir = os.path.join(_SONORA_REPO, "configs")
@@ -241,7 +249,11 @@ def main():
     model_sd = model.state_dict()
     donor_sd = {}
     shape_dropped, widened = [], []
+    fresh_dropped = []
     for k, v in donor["state_dict"].items():
+        if any(k.startswith(p) for p in args.fresh_prefix):
+            fresh_dropped.append(k)
+            continue
         if k in model_sd and model_sd[k].shape != v.shape:
             grown = _widen(k, v, model_sd[k], allow_speakers=allow_speakers)
             if grown is None:
@@ -259,13 +271,34 @@ def main():
             print(f"  {detail}   new: {_policy(name)}")
     if shape_dropped:
         print("shape-mismatched (fresh):", shape_dropped)
+    if args.fresh_prefix:
+        print(f"fresh by request: {len(fresh_dropped)} donor tensors dropped under "
+              f"{', '.join(args.fresh_prefix)}")
+        if not fresh_dropped:
+            raise SystemExit("!! --fresh-prefix matched NO donor tensor. A prefix that "
+                             "matches nothing is a typo, and the swap it names did not "
+                             "happen on the donor side.")
     missing, unexpected = model.load_state_dict(donor_sd, strict=False)
     fresh = sorted(missing)
     skipped = sorted(unexpected)
-    print(f"warm tensors : {len(donor['state_dict']) - len(skipped)} "
+    print(f"warm tensors : {len(donor['state_dict']) - len(skipped) - len(fresh_dropped)} "
           f"({len(widened)} widened)")
-    print(f"fresh tensors: {len(fresh)} (expected: FiLM/vat_trunk + spk_emb)")
+    print(f"fresh tensors: {len(fresh)} (expected: FiLM/vat_trunk + spk_emb"
+          f"{' + ' + ', '.join(args.fresh_prefix) if args.fresh_prefix else ''})")
+    if args.fresh_prefix:
+        # ⚠ AN ARCHITECTURE SWAP IS ONLY A FAIR TEST IF EVERYTHING ELSE IS WARM. Outside the
+        # prefix, the FiLM/speaker allowances below would let a fresh speaker table or VAT
+        # path through with a printed line and exit 0, and the run would then compare a new
+        # decoder AND a half-fresh encoder against the baseline (review, 2026-09-26).
+        outside = [n for n in fresh if not any(n.startswith(p) for p in args.fresh_prefix)]
+        if outside or shape_dropped:
+            raise SystemExit(f"!! --fresh-prefix: {len(outside)} fresh tensor(s) and "
+                             f"{len(shape_dropped)} shape-dropped tensor(s) OUTSIDE the prefix, "
+                             f"e.g. {(outside or shape_dropped)[0]}. Everything but the swapped "
+                             f"module must load warm.")
     for name in fresh:
+        if any(name.startswith(p) for p in args.fresh_prefix):
+            continue
         if "film" not in name and "vat_trunk" not in name and "spk_emb" not in name:
             raise SystemExit(f"UNEXPECTED fresh tensor (architecture drift?): {name}")
     if skipped:

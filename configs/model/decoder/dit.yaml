@@ -1,0 +1,11 @@
+# Decoder v2 — the DiT estimator (docs/model-decisions.md § Decoder v2,
+# matcha/models/components/dit_decoder.py). StableTTS's shape: 256 hidden, 1024 filter,
+# 4 heads, 6 blocks, kernel 3, dropout 0.1, long skips on.
+type: dit
+hidden_channels: 256
+filter_channels: 1024
+n_layers: 6
+n_heads: 4
+kernel_size: 3
+dropout: 0.1
+use_lsc: true

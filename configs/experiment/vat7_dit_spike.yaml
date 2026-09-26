@@ -1,0 +1,69 @@
+# @package _global_
+
+# DECODER v2 — THE DiT SPIKE (docs/model-decisions.md § Decoder v2). Owner-approved 2026-09-26.
+#
+# WHY NOW. The hum is in the predicted mel, and every cheaper lever has been ruled out
+# blind: the vocoder fine-tune, the stale mel buffers, ODE steps, temperature, and rough-voice
+# data weighting (which moved the buzz onto clean voices). What is left is the decoder's
+# architecture or its objective. This run changes the architecture and holds everything
+# else: v7 corpus, OT-CFM objective, encoder, durations, VAT, vocoder.
+#
+# WHAT IS WARM AND WHAT IS FRESH. The warm start is vat7 ep005, the selected checkpoint of
+# the U-Net trained on this SAME corpus, and it is also the baseline the bench judges this
+# against — the same-corpus parity the § Decoder v2 gate demands. Encoder, duration
+# predictor and speaker table come from it. The whole estimator starts fresh:
+#
+#   python scripts/lib/make_warmstart.py --experiment vat7_dit_spike \
+#       --donor <vat7 ep005 checkpoint> \
+#       --fresh-prefix decoder.estimator. \
+#       --out /data/model-training/sonora/warmstart/vat7_dit_init.ckpt
+#
+# No `--donor-speakers`: the donor was trained on v7, so the speaker table has the same
+# shape and loads as it is. With `--fresh-prefix`, the script refuses if ANY tensor outside
+# the prefix is fresh or shape-dropped. `--fresh-prefix` is NOT optional. Without it the U-Net's
+# `vat_trunk` loads into the DiT by name (same shapes), and every other estimator tensor
+# is refused as "architecture drift".
+#
+# THE JUDGEMENT IS THE EAR, NOT THE LOSS. `diff` is not comparable across architectures,
+# and the val split is not a generalisation measure. The deciding bench is blind and
+# pre-registered: this run against ep005 on held-out speakers, rough and clean.
+#
+# COST, MEASURED 2026-09-26 on the same batches in the same container: the DiT trains at
+# 1.81 s/step against the U-Net's 0.805 (2.25x), peak memory 27.7 GiB against 11.7 on real
+# bucketed batches, and 40.4 GiB at the 22 s ceiling (batch 32 x 2,064 frames, gate 8). An
+# epoch of v7 is 10,517 steps, so ~5.3 h.
+#
+# BUDGET: 105,180 steps, ~10 epochs, ~53 h. v5 took all its gain in 10 epochs, and the
+# U-Net baseline this is judged against is epoch 5 of its own run.
+#   * STAGE A, the early look: `step=0021035` (global step 21,036, 2 epochs, ~11 h) is
+#     rendered for the owner to catch anything badly wrong. A broken run stops there.
+#   * STAGE B, the rest, only if stage A is healthy.
+# Checkpoints every 3,506 steps (the launcher default). Their NAMES read one step low.
+#
+# ⚠ max_steps IS 30 x 3,506 ON PURPOSE, not the 105,170 of ten exact epochs. The launcher
+# resumes only `checkpoint_epoch=*` files, and those land every 3,506 steps. At 105,170 the
+# last one would be at 101,674: every `unless-stopped` restart would resume there, retrain
+# 1.76 h, and exit, and those steps would never persist (review, 2026-09-26). At 105,180
+# the last periodic save IS the end: `step=0105179`.
+#
+# THE RUN ENDS ON ITS OWN (max_steps). `restart: unless-stopped` then loops it: stop
+# `sonora_training` when the last checkpoint lands (vat7_rough_probe, 2026-09-25).
+#
+# miopen_find_mode FAST: see matcha/train.py. A cold search costs ~150 s per new clip
+# length on this decoder, and the corpus has hundreds of lengths.
+
+defaults:
+  - override /data: libritts_r_full_vat_v7.yaml
+  - override /model/decoder: dit.yaml
+
+tags: ["libritts_r", "vat", "vat7", "decoder_v2", "dit", "spike", "hum"]
+
+run_name: vat7_dit_spike
+
+miopen_find_mode: FAST
+
+model:
+  use_vat: true
+
+trainer:
+  max_steps: 105180
