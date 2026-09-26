@@ -65,5 +65,12 @@ miopen_find_mode: FAST
 model:
   use_vat: true
 
+# THE HOST-OOM HUNT (2026-09-26). Five segments died of host memory exhaustion by GTT at the
+# same process age, 2 h 08 - 2 h 15, and at different steps, leaving no memory record. This
+# writes one flushed line per step (matcha/utils/memory_trace.py) to the run's log dir.
+callbacks:
+  memory_trace:
+    _target_: matcha.utils.memory_trace.MemoryTrace
+
 trainer:
   max_steps: 105180
