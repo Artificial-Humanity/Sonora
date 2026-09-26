@@ -140,7 +140,9 @@ with initialize_config_dir(version_base="1.3", config_dir=_os.path.join(_SONORA_
     cfg = compose(config_name="train.yaml", overrides=["experiment=vat7_dit_spike"])
 check("6 experiment selects the DiT", cfg.model.decoder.type == "dit", f"decoder={dict(cfg.model.decoder)}")
 check("6 experiment keeps VAT on", bool(cfg.model.use_vat))
-check("6 experiment ends on its own", cfg.trainer.get("max_steps", -1) == 105170,
+# The end must land on the launcher's checkpoint cadence (3,506), or restarts loop.
+check("6 experiment ends on its own, on a checkpoint",
+      cfg.trainer.get("max_steps", -1) == 105180 and 105180 % 3506 == 0,
       f"max_steps={cfg.trainer.get('max_steps')}")
 check("6 experiment sets FAST kernel search", cfg.get("miopen_find_mode") == "FAST")
 model = instantiate(cfg.model)
@@ -198,7 +200,11 @@ if torch.cuda.is_available():
     d8 = float((one.float() - full[2:3, :, :12].float()).abs().max())
     check("8 GPU fp16 padding invariance", d8 < 2e-2, f"max|diff| {d8:.2e}")
 
-    big = instantiate(cfg.model).to(dev).train()
+    big = instantiate(cfg.model)
+    # Live gates: at init every adaLN gate is 0, so attention and the FFN would carry no
+    # gradient and the step would test nothing about their fp16 backward (review).
+    randomise_zero_inits(big.decoder.estimator)
+    big = big.to(dev).train()
     opt = torch.optim.Adam(big.parameters(), lr=1e-4)
     scaler = torch.amp.GradScaler("cuda")
     BB, TT, TX = 32, 2064, 260

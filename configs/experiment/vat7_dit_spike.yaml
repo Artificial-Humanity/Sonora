@@ -29,15 +29,22 @@
 # pre-registered: this run against ep005 on held-out speakers, rough and clean.
 #
 # COST, MEASURED 2026-09-26 on the same batches in the same container: the DiT trains at
-# 1.81 s/step against the U-Net's 0.805 (2.25x), peak memory 27.7 GiB against 11.7. An
+# 1.81 s/step against the U-Net's 0.805 (2.25x), peak memory 27.7 GiB against 11.7 on real
+# bucketed batches, and 40.4 GiB at the 22 s ceiling (batch 32 x 2,064 frames, gate 8). An
 # epoch of v7 is 10,517 steps, so ~5.3 h.
 #
-# BUDGET: 10 epochs = 105,170 steps, ~53 h. v5 took all its gain in 10 epochs, and the
+# BUDGET: 105,180 steps, ~10 epochs, ~53 h. v5 took all its gain in 10 epochs, and the
 # U-Net baseline this is judged against is epoch 5 of its own run.
-#   * STAGE A, the early look: the checkpoint at step 21,034 (2 epochs, ~11 h) is rendered
-#     for the owner to catch anything badly wrong. A diverged or broken run stops there.
+#   * STAGE A, the early look: `step=0021035` (global step 21,036, 2 epochs, ~11 h) is
+#     rendered for the owner to catch anything badly wrong. A broken run stops there.
 #   * STAGE B, the rest, only if stage A is healthy.
 # Checkpoints every 3,506 steps (the launcher default). Their NAMES read one step low.
+#
+# ⚠ max_steps IS 30 x 3,506 ON PURPOSE, not the 105,170 of ten exact epochs. The launcher
+# resumes only `checkpoint_epoch=*` files, and those land every 3,506 steps. At 105,170 the
+# last one would be at 101,674: every `unless-stopped` restart would resume there, retrain
+# 1.76 h, and exit, and those steps would never persist (review, 2026-09-26). At 105,180
+# the last periodic save IS the end: `step=0105179`.
 #
 # THE RUN ENDS ON ITS OWN (max_steps). `restart: unless-stopped` then loops it: stop
 # `sonora_training` when the last checkpoint lands (vat7_rough_probe, 2026-09-25).
@@ -59,4 +66,4 @@ model:
   use_vat: true
 
 trainer:
-  max_steps: 105170
+  max_steps: 105180
