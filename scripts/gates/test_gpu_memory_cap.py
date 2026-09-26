@@ -10,8 +10,10 @@ to 90 GiB the driver refused at the cap, the allocator freed its cache and retri
 run survived. The cap below does the same thing earlier, inside the process, so the host keeps
 its margin. The GPU gates stay under 1 GiB so they can run beside a live trainer.
 
-  1. no cap configured -> nothing is set;
-  2. the cap is enforced: an allocation larger than it raises OutOfMemoryError;
+  1. no cap configured -> nothing is set; 1b. a cap with no GPU warns rather than passing silently;
+  2. the cap is enforced AT the requested size: under 0.5 GiB, 0.49 GiB succeeds and 0.51 GiB
+     raises. torch may scale the fraction by a different device total than the one it is
+     computed from, and on an APU those need not agree -- a loose bound would hide that (review);
   3. THE MECHANISM: a pattern that fragments the cache past the cap is absorbed by a cache
      release and retry -- reserved stays under the cap, nothing raises, a retry is counted;
   4. a cap at or above the device's memory is refused with a warning, not silently clamped;
@@ -58,21 +60,48 @@ cb = GpuMemoryCap(cap_gib=None)
 cb.setup(TRAINER, None, "fit")
 check("1 no cap sets nothing", cb.fraction is None, f"fraction={cb.fraction}")
 
+# 1b. a cap with no GPU warns
+_real = torch.cuda.is_available
+torch.cuda.is_available = lambda: False
+catch = _Catch()
+logging.getLogger("matcha.utils.gpu_memory_cap").addHandler(catch)
+try:
+    cb = GpuMemoryCap(cap_gib=64)
+    cb.setup(TRAINER, None, "fit")
+finally:
+    torch.cuda.is_available = _real
+    logging.getLogger("matcha.utils.gpu_memory_cap").removeHandler(catch)
+check("1b a cap with no GPU warns", cb.fraction is None
+      and any("no gpu" in m.lower() for m in catch.msgs), f"warnings={catch.msgs}")
+
 if torch.cuda.is_available():
     total = torch.cuda.get_device_properties(0).total_memory
 
-    # 2. enforced
+    # 2. enforced at the requested size: bracket it
     torch.cuda.empty_cache()
     cb = GpuMemoryCap(cap_gib=0.5)
-    cb.setup(TRAINER, None, "fit")
     try:
-        x = torch.empty(int(0.75 * _GIB), dtype=torch.uint8, device="cuda")
-        del x
-        check("2 cap is enforced", False, "0.75 GiB allocated under a 0.5 GiB cap")
-    except torch.OutOfMemoryError:
-        check("2 cap is enforced", True, f"fraction={cb.fraction:.5f} of {total / _GIB:.1f} GiB")
-    torch.cuda.set_per_process_memory_fraction(1.0, 0)
-    torch.cuda.empty_cache()
+        cb.setup(TRAINER, None, "fit")
+        below_ok, above_raised = False, False
+        try:
+            x = torch.empty(int(0.49 * _GIB), dtype=torch.uint8, device="cuda")
+            del x
+            below_ok = True
+        except torch.OutOfMemoryError:
+            pass
+        torch.cuda.empty_cache()
+        try:
+            x = torch.empty(int(0.51 * _GIB), dtype=torch.uint8, device="cuda")
+            del x
+        except torch.OutOfMemoryError:
+            above_raised = True
+        info_total = torch.cuda.mem_get_info(0)[1]
+        check("2 cap is enforced at the requested size", below_ok and above_raised,
+              f"0.49 ok={below_ok} 0.51 raised={above_raised} fraction={cb.fraction:.5f} "
+              f"props_total={total / _GIB:.3f} GiB mem_get_info_total={info_total / _GIB:.3f} GiB")
+    finally:
+        torch.cuda.set_per_process_memory_fraction(1.0, 0)
+        torch.cuda.empty_cache()
 
     # 3. the mechanism: fragment past the cap, absorbed by release-and-retry.
     # POSITIVE CONTROL first: uncapped, the same pattern must overshoot 0.75 GiB, or the
@@ -113,7 +142,7 @@ if torch.cuda.is_available():
     cb.setup(TRAINER, None, "fit")
     lg.removeHandler(catch)
     check("4 cap above the device is refused with a warning",
-          cb.fraction is None and any("cap" in m.lower() for m in catch.msgs),
+          cb.fraction is None and any("not below" in m for m in catch.msgs),
           f"fraction={cb.fraction} warnings={catch.msgs}")
 else:
     print("2-4 GPU gates: SKIPPED (no GPU)")
