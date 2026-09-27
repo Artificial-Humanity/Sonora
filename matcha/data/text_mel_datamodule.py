@@ -63,10 +63,21 @@ class LengthBucketBatchSampler(torch.utils.data.Sampler):
 
         `__len__` stays the full epoch: Lightning ends the epoch when its own restored count
         reaches len, so a shortened len would end the resumed epoch early.
+
+        The skip is taken when iteration STARTS, not when `iter()` is called: with worker
+        processes torch calls `iter()` on the batch sampler twice while building the loader
+        iterator and discards the first, so a skip taken in `iter()` landed on the discarded one
+        and production replayed the epoch anyway (review, 2026-09-27).
+
+        ⚠ If `set_epoch` is ever wired up (today nothing calls it; see `make_bucket_sampler`),
+        Lightning creates the resumed iterator in `setup_data`, BEFORE it would call
+        `set_epoch`, so the resume must set the epoch itself at construction or the skip
+        indexes into epoch 0's order.
         """
         self._skip = max(0, int(n))
 
     def __iter__(self):
+        # A generator: nothing below runs until the first batch is asked for (skip_once).
         idx = list(range(len(self.lengths)))
         if self.shuffle:
             random.Random(self.seed + self.epoch).shuffle(idx)
@@ -77,7 +88,7 @@ class LengthBucketBatchSampler(torch.utils.data.Sampler):
         if self.shuffle:
             random.Random(self.seed + self.epoch + 1).shuffle(batches)
         skip, self._skip = self._skip, 0
-        return iter(batches[skip:])
+        yield from batches[skip:]
 
     def __len__(self):
         return (len(self.lengths) + self.batch_size - 1) // self.batch_size
@@ -92,9 +103,17 @@ def resume_skip_batches(trainer, n_batches):
     twice and the last `count` never. Lightning restores the loops (`restore_training_state`)
     before the fit loop asks for the train dataloader, so the count is readable here, and after
     Lightning's own restart bookkeeping `current.ready` is the number it will add to the
-    fetcher. 0 with no trainer, on a fresh run, or at the epoch's end.
+    fetcher. 0 with no trainer, on a fresh run, at the epoch's end, or when Lightning is not
+    restarting: a dataloader reload after a short (`limit_train_batches`) epoch still holds
+    that epoch's count.
+
+    ⚠ This relies on nothing calling `trainer.estimated_stepping_batches` before the restore
+    (a OneCycle-style scheduler does, in `configure_optimizers`): that call builds the train
+    dataloader early, with the count still 0, and the later build is skipped.
     """
     try:
+        if not trainer.fit_loop.restarting:
+            return 0
         ready = int(trainer.fit_loop.epoch_loop.batch_progress.current.ready)
     except (AttributeError, TypeError, ValueError):
         return 0
@@ -219,6 +238,11 @@ class TextMelDataModule(LightningDataModule):
         # turned off from config without editing code if it ever needs bisecting.
         mult = getattr(self.hparams, "bucket_multiplier", 20)
         if not mult:
+            # ⚠ No resume positioning on this path: a mid-epoch resume trains the remaining
+            # count from a fresh permutation -- no replay by construction, but not "each once".
+            if resume_skip_batches(self.trainer, len(self.trainset) // self.hparams.batch_size + 1):
+                log.warning("resuming mid-epoch with bucket_multiplier=0: the resumed epoch is a "
+                            "fresh permutation, not the untrained remainder of the saved one")
             return DataLoader(
                 dataset=self.trainset,
                 batch_size=self.hparams.batch_size,
