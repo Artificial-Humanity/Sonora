@@ -240,7 +240,8 @@ class TextMelDataModule(LightningDataModule):
         if not mult:
             # ⚠ No resume positioning on this path: a mid-epoch resume trains the remaining
             # count from a fresh permutation -- no replay by construction, but not "each once".
-            if resume_skip_batches(self.trainer, len(self.trainset) // self.hparams.batch_size + 1):
+            bs = self.hparams.batch_size
+            if resume_skip_batches(self.trainer, (len(self.trainset) + bs - 1) // bs):
                 log.warning("resuming mid-epoch with bucket_multiplier=0: the resumed epoch is a "
                             "fresh permutation, not the untrained remainder of the saved one")
             return DataLoader(
