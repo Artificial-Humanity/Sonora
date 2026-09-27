@@ -123,7 +123,8 @@ SLOW = [
 # SLOW would mean inventing an env var and a path that do not exist, and a probe that passes
 # for a reason unrelated to the prerequisite is the defect this file keeps meeting.
 TORCH_ONLY = ["test_vat_dim_seams.py", "test_dit_decoder.py", "test_memory_trace.py",
-              "test_gpu_memory_cap.py"]
+              "test_gpu_memory_cap.py",
+              "test_resume_skip.py"]
 
 
 def _run(script):

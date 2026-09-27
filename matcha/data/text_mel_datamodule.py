@@ -1,3 +1,4 @@
+import logging
 import random
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -15,6 +16,8 @@ from matcha.text import text_to_sequence
 from matcha.utils.audio import mel_spectrogram
 from matcha.utils.model import fix_len_compatibility, normalize
 from matcha.utils.utils import intersperse
+
+log = logging.getLogger(__name__)
 
 
 def parse_filelist(filelist_path, split_char="|"):
@@ -50,9 +53,18 @@ class LengthBucketBatchSampler(torch.utils.data.Sampler):
         self.shuffle = shuffle
         self.seed = seed
         self.epoch = 0
+        self._skip = 0
 
     def set_epoch(self, epoch):
         self.epoch = epoch
+
+    def skip_once(self, n):
+        """Start the NEXT pass at batch `n`, for a mid-epoch resume; later passes are whole.
+
+        `__len__` stays the full epoch: Lightning ends the epoch when its own restored count
+        reaches len, so a shortened len would end the resumed epoch early.
+        """
+        self._skip = max(0, int(n))
 
     def __iter__(self):
         idx = list(range(len(self.lengths)))
@@ -64,10 +76,39 @@ class LengthBucketBatchSampler(torch.utils.data.Sampler):
             batches += [chunk[j : j + self.batch_size] for j in range(0, len(chunk), self.batch_size)]
         if self.shuffle:
             random.Random(self.seed + self.epoch + 1).shuffle(batches)
-        return iter(batches)
+        skip, self._skip = self._skip, 0
+        return iter(batches[skip:])
 
     def __len__(self):
         return (len(self.lengths) + self.batch_size - 1) // self.batch_size
+
+
+def resume_skip_batches(trainer, n_batches):
+    """-> how many batches of the current epoch Lightning already counts as trained.
+
+    Why (2026-09-27): LengthBucketBatchSampler keeps no position, so a resume from a mid-epoch
+    step checkpoint started the epoch again at batch 0, while Lightning restored its own count
+    and ended the epoch after `len - count` more batches: the first `count` batches trained
+    twice and the last `count` never. Lightning restores the loops (`restore_training_state`)
+    before the fit loop asks for the train dataloader, so the count is readable here, and after
+    Lightning's own restart bookkeeping `current.ready` is the number it will add to the
+    fetcher. 0 with no trainer, on a fresh run, or at the epoch's end.
+    """
+    try:
+        ready = int(trainer.fit_loop.epoch_loop.batch_progress.current.ready)
+    except (AttributeError, TypeError, ValueError):
+        return 0
+    return ready if 0 < ready < n_batches else 0
+
+
+def make_bucket_sampler(lengths, batch_size, multiplier, seed, trainer=None):
+    """The train batch sampler, positioned for a mid-epoch resume when there is one."""
+    sampler = LengthBucketBatchSampler(lengths, batch_size, multiplier=multiplier, seed=seed)
+    skip = resume_skip_batches(trainer, len(sampler))
+    if skip:
+        log.info(f"resuming mid-epoch: skipping the {skip} batches already trained this epoch")
+        sampler.skip_once(skip)
+    return sampler
 
 
 class TextMelDataModule(LightningDataModule):
@@ -191,8 +232,8 @@ class TextMelDataModule(LightningDataModule):
                    for r in self.trainset.filepaths_and_text]
         return DataLoader(
             dataset=self.trainset,
-            batch_sampler=LengthBucketBatchSampler(
-                lengths, self.hparams.batch_size, multiplier=mult, seed=self.hparams.seed),
+            batch_sampler=make_bucket_sampler(
+                lengths, self.hparams.batch_size, mult, self.hparams.seed, trainer=self.trainer),
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             collate_fn=TextMelBatchCollate(self.hparams.n_spks),
