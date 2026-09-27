@@ -26,6 +26,24 @@ def parse_filelist(filelist_path, split_char="|"):
     return filepaths_and_text
 
 
+class _EpochHook:
+    """The one place Lightning will call `set_epoch` on a custom batch sampler.
+
+    Lightning calls `set_epoch` only on `dataloader.sampler` and `batch_sampler.sampler`
+    (lightning.fabric.utilities.data._set_sampler_epoch). LengthBucketBatchSampler IS the
+    batch sampler, so until 2026-09-27 nothing reached its `set_epoch`, its epoch never left
+    0, and every epoch of every bucketed run since 2026-08-01 repeated one batch order.
+    Lightning's only other use of `batch_sampler.sampler` is a shuffle check for warnings,
+    which answers the same with this object as without it.
+    """
+
+    def __init__(self, owner):
+        self._owner = owner
+
+    def set_epoch(self, epoch):
+        self._owner.set_epoch(epoch)
+
+
 class LengthBucketBatchSampler(torch.utils.data.Sampler):
     """Batch indices so each batch holds utterances of similar length.
 
@@ -54,6 +72,7 @@ class LengthBucketBatchSampler(torch.utils.data.Sampler):
         self.seed = seed
         self.epoch = 0
         self._skip = 0
+        self.sampler = _EpochHook(self)
 
     def set_epoch(self, epoch):
         self.epoch = epoch
@@ -69,10 +88,10 @@ class LengthBucketBatchSampler(torch.utils.data.Sampler):
         iterator and discards the first, so a skip taken in `iter()` landed on the discarded one
         and production replayed the epoch anyway (review, 2026-09-27).
 
-        ⚠ If `set_epoch` is ever wired up (today nothing calls it; see `make_bucket_sampler`),
-        Lightning creates the resumed iterator in `setup_data`, BEFORE it would call
-        `set_epoch`, so the resume must set the epoch itself at construction or the skip
-        indexes into epoch 0's order.
+        ⚠ Lightning builds the resumed iterator in `setup_data`, BEFORE its own `set_epoch`
+        call, and with worker processes the first batches are fetched right then, so a resume
+        must set the epoch at construction -- the epoch Lightning WILL set, which is not always
+        `current_epoch` (`resume_epoch`) -- or it trains the wrong epoch's order.
         """
         self._skip = max(0, int(n))
 
@@ -120,9 +139,33 @@ def resume_skip_batches(trainer, n_batches):
     return ready if 0 < ready < n_batches else 0
 
 
+def resume_epoch(trainer, n_batches):
+    """-> the epoch Lightning is about to pass to `set_epoch`, readable before it does.
+
+    With worker processes the loader fetches its first batches while it is BUILT, in
+    `setup_data`, before Lightning's own `set_epoch`, and a resume never calls `iter()` again:
+    whatever epoch the sampler holds at construction is the order that epoch trains. That epoch
+    is `epoch_progress.current.processed`, except after a checkpoint saved on the LAST batch in
+    `on_train_batch_end` (the launcher's step cadence lands there every third checkpoint), where
+    Lightning's restart bookkeeping advances to the next epoch. `current_epoch` is one too low
+    there, and at an `on_train_epoch_end` checkpoint under `max_epochs` (review, 2026-09-27).
+    0 with no trainer.
+    """
+    try:
+        fl = trainer.fit_loop
+        epoch = int(fl.epoch_progress.current.processed)
+        b = fl.epoch_loop.batch_progress.current
+        if b.ready >= n_batches and b.completed == b.ready - 1:
+            epoch += 1
+        return epoch
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
 def make_bucket_sampler(lengths, batch_size, multiplier, seed, trainer=None):
     """The train batch sampler, positioned for a mid-epoch resume when there is one."""
     sampler = LengthBucketBatchSampler(lengths, batch_size, multiplier=multiplier, seed=seed)
+    sampler.set_epoch(resume_epoch(trainer, len(sampler)))
     skip = resume_skip_batches(trainer, len(sampler))
     if skip:
         log.info(f"resuming mid-epoch: skipping the {skip} batches already trained this epoch")

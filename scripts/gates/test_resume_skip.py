@@ -27,6 +27,19 @@ Lightning counts as done.
      anyway (review);
   3a. CONTROL: the same resume without the skip replays the epoch's start -- the defect,
      reproduced, so gate 3 cannot pass vacuously.
+  4. EACH EPOCH ITS OWN ORDER, in real Lightning with both loaders. Lightning calls `set_epoch`
+     only on `dataloader.sampler` and `batch_sampler.sampler`, and this sampler IS the batch
+     sampler, so until 2026-09-27 its epoch never left 0 and every epoch of every bucketed run
+     repeated one order;
+  4a. CONTROL: with the hook removed, epoch 1 repeats epoch 0 -- the defect, reproduced;
+  5. a resume in the middle of epoch 1 trains epoch 1's untrained remainder: the resumed
+     iterator is built before Lightning's own set_epoch, so the epoch is set at construction;
+  5b. a resume from a LAST-BATCH step checkpoint (every_n_train_steps = the epoch length: every
+     third launcher checkpoint lands there, stage A's step=0021035 among them) trains the next
+     epoch in ITS order. The construction epoch must be the one Lightning will set, which there
+     is current_epoch + 1: with worker processes the first batches are fetched before
+     Lightning's set_epoch, and a resume never calls iter() again (review);
+  5c. the same from an on_train_epoch_end checkpoint under max_epochs.
 """
 import os as _os  # noqa: E402
 import sys as _sys  # noqa: E402
@@ -82,14 +95,17 @@ class _Idx(torch.utils.data.Dataset):
 
 
 class _DM(L.LightningDataModule):
-    def __init__(self, resume_aware, num_workers):
+    def __init__(self, resume_aware, num_workers, epoch_hook=True):
         super().__init__()
         self.resume_aware = resume_aware
         self.num_workers = num_workers
+        self.epoch_hook = epoch_hook
 
     def train_dataloader(self):
         sampler = make_bucket_sampler(LENGTHS, BS, MULT, SEED,
                                       trainer=self.trainer if self.resume_aware else None)
+        if not self.epoch_hook:
+            del sampler.sampler  # the pre-fix shape: nothing for Lightning to call
         # The production loader's multiprocessing kwargs, from the production code.
         mp = TextMelDataModule._loader_mp_kwargs(
             types.SimpleNamespace(hparams=types.SimpleNamespace(num_workers=self.num_workers)))
@@ -102,8 +118,10 @@ class _M(L.LightningModule):
         super().__init__()
         self.w = torch.nn.Parameter(torch.ones(1))
         self.seen = []
+        self.by_epoch = {}
 
     def training_step(self, batch, _):
+        self.by_epoch.setdefault(self.current_epoch, []).append(batch.tolist())
         if self.current_epoch == 0:
             self.seen.append(batch.tolist())
         return (self.w * batch.float().mean()).sum()
@@ -124,6 +142,55 @@ def run(resume_aware, num_workers):
     m2 = _M()
     L.Trainer(max_steps=50, **kw).fit(m2, datamodule=_DM(resume_aware, num_workers), ckpt_path=path)
     return m2.seen
+
+
+def order(epoch):
+    s = LengthBucketBatchSampler(LENGTHS, BS, multiplier=MULT, seed=SEED)
+    s.set_epoch(epoch)
+    return list(s)
+
+
+def run_epochs(num_workers, epoch_hook):
+    d = tempfile.mkdtemp(prefix="sampler_epoch_")
+    m = _M()
+    L.Trainer(max_epochs=2, accelerator="cpu", devices=1, logger=False, enable_progress_bar=False,
+              enable_model_summary=False, enable_checkpointing=False, default_root_dir=d
+              ).fit(m, datamodule=_DM(True, num_workers, epoch_hook))
+    return m.by_epoch
+
+
+def run_resume_in_epoch_1(num_workers):
+    d = tempfile.mkdtemp(prefix="sampler_epoch_resume_")
+    kw = dict(accelerator="cpu", devices=1, logger=False, enable_progress_bar=False,
+              enable_model_summary=False, default_root_dir=d)
+    ck = ModelCheckpoint(dirpath=d, every_n_train_steps=60, save_top_k=-1,
+                         filename="checkpoint_{epoch:03d}_{step:07d}")
+    L.Trainer(max_steps=65, callbacks=[ck], **kw).fit(_M(), datamodule=_DM(True, num_workers))
+    path = next(os.path.join(d, f) for f in sorted(os.listdir(d)) if "step=0000060" in f)
+    m = _M()
+    L.Trainer(max_steps=100, **kw).fit(m, datamodule=_DM(True, num_workers), ckpt_path=path)
+    return m.by_epoch.get(1, [])
+
+
+def run_resume_at_epoch_end(num_workers, kind):
+    d = tempfile.mkdtemp(prefix=f"sampler_epoch_{kind}_")
+    kw = dict(accelerator="cpu", devices=1, logger=False, enable_progress_bar=False,
+              enable_model_summary=False, default_root_dir=d)
+    if kind == "last_batch":
+        ck = ModelCheckpoint(dirpath=d, every_n_train_steps=50, save_top_k=-1,
+                             filename="checkpoint_{epoch:03d}_{step:07d}")
+        L.Trainer(max_steps=55, callbacks=[ck], **kw).fit(_M(), datamodule=_DM(True, num_workers))
+        path = next(os.path.join(d, f) for f in sorted(os.listdir(d)) if "step=0000050" in f)
+        second = dict(max_steps=100)
+    else:
+        ck = ModelCheckpoint(dirpath=d, every_n_epochs=1, save_top_k=-1, save_on_train_epoch_end=True,
+                             filename="checkpoint_{epoch:03d}_{step:07d}")
+        L.Trainer(max_epochs=1, callbacks=[ck], **kw).fit(_M(), datamodule=_DM(True, num_workers))
+        path = next(os.path.join(d, f) for f in sorted(os.listdir(d)) if f.endswith(".ckpt"))
+        second = dict(max_epochs=2)
+    m = _M()
+    L.Trainer(**second, **kw).fit(m, datamodule=_DM(True, num_workers), ckpt_path=path)
+    return m.by_epoch.get(1, [])
 
 
 def main():
@@ -153,6 +220,24 @@ def main():
         after_ctrl = run(resume_aware=False, num_workers=nw)
         check(f"3a [num_workers={nw}] control: without the skip, the resume replays the start",
               after_ctrl == full[:30], f"resumed batches={len(after_ctrl)} first={after_ctrl[:1]}")
+
+    # 4. each epoch its own order; 4a control; 5 resume inside epoch 1
+    o0, o1 = order(0), order(1)
+    for nw in (2, 0):
+        got = run_epochs(nw, epoch_hook=True)
+        check(f"4 [num_workers={nw}] each epoch trains its own order",
+              got.get(0) == o0 and got.get(1) == o1 and o0 != o1,
+              f"epoch0 ok={got.get(0) == o0} epoch1 ok={got.get(1) == o1}")
+        got = run_epochs(nw, epoch_hook=False)
+        check(f"4a [num_workers={nw}] control: without the hook, epoch 1 repeats epoch 0",
+              got.get(1) == o0, f"epoch1==epoch0 order: {got.get(1) == o0}")
+        got = run_resume_in_epoch_1(nw)
+        check(f"5 [num_workers={nw}] a resume inside epoch 1 trains its untrained remainder",
+              got == o1[10:], f"resumed batches={len(got)} first={got[:1]} expected={o1[10:11]}")
+        for tag, kind in (("5b", "last_batch"), ("5c", "epoch_end")):
+            got = run_resume_at_epoch_end(nw, kind)
+            check(f"{tag} [num_workers={nw}] resume from a {kind} checkpoint trains epoch 1's order",
+                  got == o1, f"batches={len(got)} is_order1={got == o1} is_order0={got == o0}")
 
 
 if __name__ == "__main__":
