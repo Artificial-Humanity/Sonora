@@ -90,8 +90,8 @@ class LengthBucketBatchSampler(torch.utils.data.Sampler):
 
         ⚠ Lightning builds the resumed iterator in `setup_data`, BEFORE its own `set_epoch`
         call, and with worker processes the first batches are fetched right then, so a resume
-        must set the epoch at construction (`make_bucket_sampler` does) or the skip indexes
-        into epoch 0's order.
+        must set the epoch at construction -- the epoch Lightning WILL set, which is not always
+        `current_epoch` (`resume_epoch`) -- or it trains the wrong epoch's order.
         """
         self._skip = max(0, int(n))
 
@@ -139,13 +139,33 @@ def resume_skip_batches(trainer, n_batches):
     return ready if 0 < ready < n_batches else 0
 
 
+def resume_epoch(trainer, n_batches):
+    """-> the epoch Lightning is about to pass to `set_epoch`, readable before it does.
+
+    With worker processes the loader fetches its first batches while it is BUILT, in
+    `setup_data`, before Lightning's own `set_epoch`, and a resume never calls `iter()` again:
+    whatever epoch the sampler holds at construction is the order that epoch trains. That epoch
+    is `epoch_progress.current.processed`, except after a checkpoint saved on the LAST batch in
+    `on_train_batch_end` (the launcher's step cadence lands there every third checkpoint), where
+    Lightning's restart bookkeeping advances to the next epoch. `current_epoch` is one too low
+    there, and at an `on_train_epoch_end` checkpoint under `max_epochs` (review, 2026-09-27).
+    0 with no trainer.
+    """
+    try:
+        fl = trainer.fit_loop
+        epoch = int(fl.epoch_progress.current.processed)
+        b = fl.epoch_loop.batch_progress.current
+        if b.ready >= n_batches and b.completed == b.ready - 1:
+            epoch += 1
+        return epoch
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
 def make_bucket_sampler(lengths, batch_size, multiplier, seed, trainer=None):
     """The train batch sampler, positioned for a mid-epoch resume when there is one."""
     sampler = LengthBucketBatchSampler(lengths, batch_size, multiplier=multiplier, seed=seed)
-    try:
-        sampler.set_epoch(int(trainer.current_epoch))
-    except (AttributeError, TypeError, ValueError):
-        pass
+    sampler.set_epoch(resume_epoch(trainer, len(sampler)))
     skip = resume_skip_batches(trainer, len(sampler))
     if skip:
         log.info(f"resuming mid-epoch: skipping the {skip} batches already trained this epoch")

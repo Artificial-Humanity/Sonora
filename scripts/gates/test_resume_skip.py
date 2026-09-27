@@ -33,7 +33,13 @@ Lightning counts as done.
      repeated one order;
   4a. CONTROL: with the hook removed, epoch 1 repeats epoch 0 -- the defect, reproduced;
   5. a resume in the middle of epoch 1 trains epoch 1's untrained remainder: the resumed
-     iterator is built before Lightning's own set_epoch, so the epoch is set at construction.
+     iterator is built before Lightning's own set_epoch, so the epoch is set at construction;
+  5b. a resume from a LAST-BATCH step checkpoint (every_n_train_steps = the epoch length: every
+     third launcher checkpoint lands there, stage A's step=0021035 among them) trains the next
+     epoch in ITS order. The construction epoch must be the one Lightning will set, which there
+     is current_epoch + 1: with worker processes the first batches are fetched before
+     Lightning's set_epoch, and a resume never calls iter() again (review);
+  5c. the same from an on_train_epoch_end checkpoint under max_epochs.
 """
 import os as _os  # noqa: E402
 import sys as _sys  # noqa: E402
@@ -166,6 +172,27 @@ def run_resume_in_epoch_1(num_workers):
     return m.by_epoch.get(1, [])
 
 
+def run_resume_at_epoch_end(num_workers, kind):
+    d = tempfile.mkdtemp(prefix=f"sampler_epoch_{kind}_")
+    kw = dict(accelerator="cpu", devices=1, logger=False, enable_progress_bar=False,
+              enable_model_summary=False, default_root_dir=d)
+    if kind == "last_batch":
+        ck = ModelCheckpoint(dirpath=d, every_n_train_steps=50, save_top_k=-1,
+                             filename="checkpoint_{epoch:03d}_{step:07d}")
+        L.Trainer(max_steps=55, callbacks=[ck], **kw).fit(_M(), datamodule=_DM(True, num_workers))
+        path = next(os.path.join(d, f) for f in sorted(os.listdir(d)) if "step=0000050" in f)
+        second = dict(max_steps=100)
+    else:
+        ck = ModelCheckpoint(dirpath=d, every_n_epochs=1, save_top_k=-1, save_on_train_epoch_end=True,
+                             filename="checkpoint_{epoch:03d}_{step:07d}")
+        L.Trainer(max_epochs=1, callbacks=[ck], **kw).fit(_M(), datamodule=_DM(True, num_workers))
+        path = next(os.path.join(d, f) for f in sorted(os.listdir(d)) if f.endswith(".ckpt"))
+        second = dict(max_epochs=2)
+    m = _M()
+    L.Trainer(**second, **kw).fit(m, datamodule=_DM(True, num_workers), ckpt_path=path)
+    return m.by_epoch.get(1, [])
+
+
 def main():
     # 1. skip_once
     s = LengthBucketBatchSampler(LENGTHS, BS, multiplier=MULT, seed=SEED)
@@ -207,6 +234,10 @@ def main():
         got = run_resume_in_epoch_1(nw)
         check(f"5 [num_workers={nw}] a resume inside epoch 1 trains its untrained remainder",
               got == o1[10:], f"resumed batches={len(got)} first={got[:1]} expected={o1[10:11]}")
+        for tag, kind in (("5b", "last_batch"), ("5c", "epoch_end")):
+            got = run_resume_at_epoch_end(nw, kind)
+            check(f"{tag} [num_workers={nw}] resume from a {kind} checkpoint trains epoch 1's order",
+                  got == o1, f"batches={len(got)} is_order1={got == o1} is_order0={got == o0}")
 
 
 if __name__ == "__main__":
