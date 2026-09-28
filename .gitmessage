@@ -1,8 +1,8 @@
 # <type>(<scope>): <what changed, imperative, ~72 chars>
 #
-# WHY the previous state was wrong — not a restatement of the diff. This is the
-# paragraph a reader would have got from a pull-request description, and there is
-# no longer anywhere else for it to live (AGENTS.md §4).
+# WHY the previous state was wrong — not a restatement of the diff. Git history is
+# the record of change (AGENTS.md §4); a pull-request description does not replace
+# this paragraph.
 #
 # Cover, when they apply:
 #   * the argument — what was wrong, and why this is the right shape of fix

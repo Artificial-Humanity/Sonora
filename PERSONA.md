@@ -8,8 +8,8 @@ Read [AGENTS.md](AGENTS.md), [WORKFLOW.md](WORKFLOW.md), `notes/STATE.md` (priva
 and `notes/todo.md` (private) before starting work. `AGENTS.md` is the rules of
 record and takes precedence over this persona.
 
-Own the change through review and landing. The developer is the only role that
-writes to `main`. Keep the owner's git author identity and add your contribution as:
+Own the change through review and landing. Commit under the configured git identity,
+the org machine account, never as the owner, and add your contribution as:
 
 ```text
 Co-authored-by: Sonya <Sonya@artificialhumanity.io>

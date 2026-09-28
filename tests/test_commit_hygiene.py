@@ -5,10 +5,10 @@ WHY THIS FILE EXISTS (2026-08-18, issue #101)
 Two rules in `PERSONA.md` §1 had no enforcement:
 
   * commits carry a **`Co-Authored-By:` trailer naming the agent**, because the author line is
-    the repo's configured identity — the owner's, deliberately — so a forgotten trailer does
+    the repo's configured identity — the org machine account — so a forgotten trailer does
     not error, it silently produces a commit that credits nobody;
-  * **no commit is AUTHORED as the agent** — the author line stays the owner's, and re-authoring
-    to an agent misattributes a human's work.
+  * **no commit is AUTHORED as the agent** — the author line stays the configured identity, and
+    re-authoring to an agent hides whose account made the commit.
 
 ⚠⚠ **THESE TWO RULES INVERTED ON 2026-09-16** (owner), when the roster file and
 its resolver script were removed and `PERSONA.md` became the single identity source. Sonora
@@ -383,13 +383,13 @@ def test_no_commit_is_authored_as_the_agent():
 
     Until 2026-09-16 the agent WAS the author here, via a `-c` pair. A session carrying that
     habit — or an agent arriving from a sibling repo where it is still correct — re-authors a
-    commit to itself and the work stops being attributable to the owner. Nothing warns.
+    commit to itself and the author line stops naming the account that made it. Nothing warns.
     """
     bad = [f"  {_short(sha)}  {name} <{email}>" for sha, name, email, _t, _b in _commits()
            if (name, email) == AGENT]
     assert not bad, (
-        "commits are AUTHORED as the agent, but the author line here stays the owner's and the "
-        "agent goes in a trailer:\n" + "\n".join(bad)
+        "commits are AUTHORED as the agent, but the author line here stays the configured "
+        "identity and the agent goes in a trailer:\n" + "\n".join(bad)
         + "\n\nThis is the pre-2026-09-16 convention, or a habit carried from a sibling repo. "
         "Re-author to the configured identity and add the trailer instead.")
 
@@ -486,7 +486,7 @@ def test_a_merge_commit_never_enters_the_range(landed_branch):
     shas = {sha for sha, _n, _e, _t, _b in _commits(landed_branch["repo"], landed_branch["boundary"])}
     assert landed_branch["merge"] not in shas, (
         "the merge commit is in the range, so the author check will fail on it — and it is "
-        "made by a hand merge with the owner's configured identity, on purpose")
+        "made by a hand merge with the configured identity, on purpose")
 
 
 def test_a_commit_already_on_the_base_branch_never_enters_the_range(landed_branch):

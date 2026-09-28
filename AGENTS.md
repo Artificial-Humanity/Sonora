@@ -53,8 +53,11 @@ ln -s ../../Notes/Sonora notes
 
 ### 1. Role loading and the git environment
 
-* Work as Sonya under [PERSONA.md](PERSONA.md). Keep the owner's git author identity;
-  use the persona's co-author identity for your contribution.
+* Work as Sonya under [PERSONA.md](PERSONA.md). Commit under the configured git
+  identity, the org machine account `artificially-human`, and add the persona's
+  co-author identity for your contribution. Never author a commit as the owner:
+  GitHub rejects a push carrying the owner's private email. `gh` also holds the
+  owner's login as a second account; do not switch to it.
 * Keep `CLAUDE.md` as a real file containing pointers/imports to these instructions
   and the persona. Claude Code loads `CLAUDE.md`; do not rely on automatic discovery
   of `AGENTS.md`, a `CLAUDE.md` symlink, or a startup flag to load the persona.
@@ -67,7 +70,12 @@ Treat the following git settings and protections as things to check, not guarant
 made by this document:
 
 * This repo uses one committing session. Coordinate concurrent work.
-* `main` has no branch protection or pre-push hook; CI runs after a push.
+* `main` is protected. Changes land only through a pull request with one approving
+  review, a passing `pytest` check, and a branch up to date with `main`; deletion and
+  force-push are blocked. Read the live rules with
+  `gh api repos/Artificial-Humanity/Sonora/rules/branches/main`.
+* The `gh` token cannot read check runs or commit statuses, so `gh pr checks` reports
+  nothing. Read CI with `gh run list --branch <branch>`.
 * Set `pull.rebase=false` locally in a fresh checkout. Local config does not travel
   with a clone.
 * Leave `push.default` unset so Git's `simple` behavior refuses a branch whose name
@@ -269,7 +277,8 @@ Use the content comparison to distinguish an orphaned stamp from actual drift.
 
 #### Edit, commit, deploy, verify
 
-After the checks and the review/commit cycle in `WORKFLOW.md`:
+After the checks and the review/merge cycle in `WORKFLOW.md`, update local `main` with
+`git pull origin main` before deploying from it:
 
 ```bash
 ../../AI-Lab-AMD/scripts/deploy.sh <target>
@@ -288,8 +297,8 @@ After the checks and the review/commit cycle in `WORKFLOW.md`:
   `sonora_vocalizer` does. That is deploy safety — code swapped under a live process — not the
   retired spin-down rule. Stop only the mounting container for the deploy and start it again
   straight after: `docker stop sonora_vocalizer`, deploy, `docker start sonora_vocalizer`.
-* Do not stop the inference engines for GPU reasons. The owner retired that rule on
-  2026-09-25 and coordinates GPU use directly.
+* Do not stop the inference engines for GPU reasons. The owner coordinates GPU use
+  directly.
 * Ship shared contracts rather than transcribing them. `deploy.sh` copies
   `matcha/delivery.py` into audition's `app/_contract/` after `rsync --delete`;
   the app refuses to start without it. Do not add a literal fallback.
