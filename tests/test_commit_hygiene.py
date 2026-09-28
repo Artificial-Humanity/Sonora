@@ -5,10 +5,10 @@ WHY THIS FILE EXISTS (2026-08-18, issue #101)
 Two rules in `PERSONA.md` §1 had no enforcement:
 
   * commits carry a **`Co-Authored-By:` trailer naming the agent**, because the author line is
-    the repo's configured identity — the owner's, deliberately — so a forgotten trailer does
+    the repo's configured identity — the org machine account — so a forgotten trailer does
     not error, it silently produces a commit that credits nobody;
-  * **no commit is AUTHORED as the agent** — the author line stays the owner's, and re-authoring
-    to an agent misattributes a human's work.
+  * **no commit is AUTHORED as the agent** — the author line stays the configured identity, and
+    re-authoring to an agent hides whose account made the commit.
 
 ⚠⚠ **THESE TWO RULES INVERTED ON 2026-09-16** (owner), when the roster file and
 its resolver script were removed and `PERSONA.md` became the single identity source. Sonora
@@ -36,8 +36,8 @@ and says plainly which ones it is not looking at — an exemption that cannot qu
     `fcff394 lmcfarlin <2363604+lmcfarlin@users.noreply.github.com>` and turned this file red
     on `main`. **The script that lands a branch was the thing that broke the suite.**
   * The owner is 388 of 396 commits on `main` and hand-commits there regularly. PERSONA.md
-    §1 says the configured identity was left as theirs **deliberately**, so the guard
-    forbade exactly what the repo permits on purpose.
+    §1 then said the configured identity was left as theirs **deliberately**, so the guard
+    forbade exactly what the repo permitted on purpose.
 
 And the failure message told whoever saw it to re-author the commit as Sonya. The likely
 reader was the owner, looking at their own work; a guard whose remedy misattributes a human's
@@ -180,8 +180,8 @@ def _commits(repo=REPO, boundary=GRANDFATHERED_THROUGH):
     which is exactly why it survived: the cost lands on whoever writes the next caller.
 
     ⚠ `--no-merges`, and scoped to `BASE..HEAD` (issue #102). A merge commit is made by
-    a hand merge without a `-c` pair and carries the configured identity, which is the
-    owner's on purpose; and everything already on the base branch is history this guard was
+    a hand merge without a `-c` pair and carries the configured identity, the org machine
+    account, with no agent trailer; and everything already on the base branch is history this guard was
     never given a mandate over. Empty when the boundary is not an ancestor — a branch cut
     from elsewhere is not evidence of anything."""
     base = _base_ref(repo)
@@ -383,13 +383,13 @@ def test_no_commit_is_authored_as_the_agent():
 
     Until 2026-09-16 the agent WAS the author here, via a `-c` pair. A session carrying that
     habit — or an agent arriving from a sibling repo where it is still correct — re-authors a
-    commit to itself and the work stops being attributable to the owner. Nothing warns.
+    commit to itself and the author line stops naming the account that made it. Nothing warns.
     """
     bad = [f"  {_short(sha)}  {name} <{email}>" for sha, name, email, _t, _b in _commits()
            if (name, email) == AGENT]
     assert not bad, (
-        "commits are AUTHORED as the agent, but the author line here stays the owner's and the "
-        "agent goes in a trailer:\n" + "\n".join(bad)
+        "commits are AUTHORED as the agent, but the author line here stays the configured "
+        "identity and the agent goes in a trailer:\n" + "\n".join(bad)
         + "\n\nThis is the pre-2026-09-16 convention, or a habit carried from a sibling repo. "
         "Re-author to the configured identity and add the trailer instead.")
 
@@ -486,7 +486,7 @@ def test_a_merge_commit_never_enters_the_range(landed_branch):
     shas = {sha for sha, _n, _e, _t, _b in _commits(landed_branch["repo"], landed_branch["boundary"])}
     assert landed_branch["merge"] not in shas, (
         "the merge commit is in the range, so the author check will fail on it — and it is "
-        "made by a hand merge with the owner's configured identity, on purpose")
+        "made by a hand merge with the configured identity, on purpose")
 
 
 def test_a_commit_already_on_the_base_branch_never_enters_the_range(landed_branch):
