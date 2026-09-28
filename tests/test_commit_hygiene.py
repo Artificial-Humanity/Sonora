@@ -36,8 +36,8 @@ and says plainly which ones it is not looking at — an exemption that cannot qu
     `fcff394 lmcfarlin <2363604+lmcfarlin@users.noreply.github.com>` and turned this file red
     on `main`. **The script that lands a branch was the thing that broke the suite.**
   * The owner is 388 of 396 commits on `main` and hand-commits there regularly. PERSONA.md
-    §1 says the configured identity was left as theirs **deliberately**, so the guard
-    forbade exactly what the repo permits on purpose.
+    §1 then said the configured identity was left as theirs **deliberately**, so the guard
+    forbade exactly what the repo permitted on purpose.
 
 And the failure message told whoever saw it to re-author the commit as Sonya. The likely
 reader was the owner, looking at their own work; a guard whose remedy misattributes a human's
@@ -180,8 +180,8 @@ def _commits(repo=REPO, boundary=GRANDFATHERED_THROUGH):
     which is exactly why it survived: the cost lands on whoever writes the next caller.
 
     ⚠ `--no-merges`, and scoped to `BASE..HEAD` (issue #102). A merge commit is made by
-    a hand merge without a `-c` pair and carries the configured identity, which is the
-    owner's on purpose; and everything already on the base branch is history this guard was
+    a hand merge without a `-c` pair and carries the configured identity, the org machine
+    account, with no agent trailer; and everything already on the base branch is history this guard was
     never given a mandate over. Empty when the boundary is not an ancestor — a branch cut
     from elsewhere is not evidence of anything."""
     base = _base_ref(repo)

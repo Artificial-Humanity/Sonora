@@ -9,12 +9,13 @@ name: CI — tests
 #
 # This job is the floor. It is not a substitute for ai-lab-0 — see the two exclusions below.
 #
-# ⚠ IT RUNS ON `push` ONLY, so it does not GATE anything — it reports. Work is reviewed
-# before the push (AGENTS.md §1) and lands on `main` directly, so a red run here means `main`
-# is already broken, not that a change was stopped. Whoever pushed is the only one who will
-# notice.
+# ⚠ THE `pytest` JOB IS A REQUIRED CHECK. `main` accepts a pull request only when this job
+# passes on it (WORKFLOW.md), so its id is the check's name: renaming the job blocks every
+# merge. It also runs on each push to `main`, to report on the merged result.
 #
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:

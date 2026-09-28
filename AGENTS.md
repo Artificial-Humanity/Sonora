@@ -62,7 +62,8 @@ ln -s ../../Notes/Sonora notes
   and the persona. Claude Code loads `CLAUDE.md`; do not rely on automatic discovery
   of `AGENTS.md`, a `CLAUDE.md` symlink, or a startup flag to load the persona.
 * If a change must not land because it corrupts data, ships a known-broken training
-  path or cannot be safely reverted, **do not push; take it to the owner**.
+  path or cannot be safely reverted, **do not open or merge the pull request; take it to
+  the owner**.
 * Do not build tooling around the interim workflow without the owner's replacement
   workflow being settled.
 
