@@ -24,12 +24,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import lineage_bench as lb                           # noqa: E402
 
 ORDER = ["derisk", "vat3", "vat5", "vat6", "vat7"]
+# Four step tests, UNCORRECTED: a named step is where to look next, not a proof.
 READING = {
-    "step": "The excess enters at the named step(s); look at what that step changed.",
-    "first": ("The hum is already there at derisk-energy, the first move off stock, and no "
-              "later rise is shown: look at what that first step changed."),
+    "step": ("Hum rose at the named step(s) — uncorrected, so where to look next. Exposure "
+             "to these voices also falls along the chain (see the pre-registration)."),
+    "present_at_first": ("derisk-energy already hums and no later rise is shown. The step "
+                         "from stock is outside this bench, and stock itself hums (+0.75), "
+                         "so this does not say the first step caused it."),
     "gradual": "No single step is shown, but it rose from first to last: a creep.",
-    "inconclusive": "No step and no first-to-last rise is shown.",
+    "inconclusive": "No step and no first-to-last rise is shown. Not shown is not absent.",
     "invalid": "vat7 did not reproduce its known hum over the round trip: no reading.",
 }
 
@@ -45,8 +48,11 @@ def main():
     if not vpath.is_file():
         raise SystemExit("REFUSING: no %s — nothing was judged." % vpath)
 
+    if sorted({t["ckpt"] for t in truth.values()}) != sorted(ORDER):
+        raise SystemExit("REFUSING: the key's checkpoints are not %s." % ORDER)
     gaps = {c: {} for c in ORDER}
     sev = {c: [] for c in ORDER + ["rt"]}
+    floor = {c: [] for c in ORDER}
     with vpath.open(newline="", encoding="utf-8") as f:
         for r in csv.DictReader(f):
             if r["item"] not in truth:
@@ -59,6 +65,7 @@ def main():
             gaps[t["ckpt"]][t["spk"]] = s[t["ckpt"]] - s["rt"]
             sev[t["ckpt"]].append(s[t["ckpt"]])
             sev["rt"].append(s["rt"])
+            floor[t["ckpt"]].append(s["rt"])
     rated = sum(len(v) for v in gaps.values())
     if rated < len(truth):
         print("⚠ %d of %d items not fully rated; they are left out.\n"
@@ -75,15 +82,23 @@ def main():
           "vat7 +2.50)")
     for c in ORDER:
         m, p = r["level"][c]
-        print("  %-7s mean %+.2f  p = %.4f" % (c, m, p))
-    print("\nSTEP CHANGES (voice by voice; + = more hum after the step)")
+        fl = ("  (its round trips %.2f)" % st.mean(floor[c])) if floor[c] else ""
+        print("  %-7s mean %+.2f  p = %.4f%s" % (c, m, p, fl))
+    print("\nSTEP CHANGES (voice by voice; + = more hum after the step; uncorrected)")
     for a, b, m, p, n in r["steps"] + [r["span"]]:
-        print("  %-7s -> %-7s n=%d  mean %+.2f  p = %.4f" % (a, b, n, m, p))
+        d = [gaps[b][s] - gaps[a][s] for s in sorted(set(gaps[a]) & set(gaps[b]))]
+        print("  %-7s -> %-7s n=%d  mean %+.2f  p = %.4f  %d up / %d down / %d same"
+              % (a, b, n, m, p, sum(x > 0 for x in d), sum(x < 0 for x in d),
+                 sum(x == 0 for x in d)))
 
     print("\nOUTCOME: %s%s — %s" % (
         r["outcome"].upper(),
         (" " + ", ".join("%s->%s" % s for s in r["rises"])) if r["rises"] else "",
         READING[r["outcome"]]))
+    if r["falls"]:
+        print("  also: hum FELL at %s" % ", ".join("%s->%s" % s for s in r["falls"]))
+    if r["present_at_first"] and r["outcome"] != "present_at_first":
+        print("  also: derisk-energy already hums (gap > 0, p < 0.05)")
 
     spks = sorted({t["spk"] for t in truth.values()})
     hnr = {t["spk"]: t["hnr"] for t in truth.values()}

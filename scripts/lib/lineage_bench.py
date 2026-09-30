@@ -50,14 +50,14 @@ def assign_clips(clips, ckpts, rng, target):
 
 
 def side_swaps(spks, ckpts, rng):
-    """{(voice, checkpoint): swapped}. Half the voices swapped at every checkpoint, and each
-    voice alternates sides along the chain, so a listener's lean toward A or B cancels
-    within each checkpoint AND within each step contrast."""
+    """{(voice, checkpoint): swapped}. Half the voices swapped, and each voice keeps its
+    side along the whole chain: a listener's lean toward A or B then cancels exactly in
+    every step and span difference, which are within-voice, and balances 4/4 within each
+    checkpoint. (Alternating sides would add twice the lean as noise to every step.)"""
     order = list(spks)
     rng.shuffle(order)
     flip = rng.random() < 0.5
-    return {(s, c): ((i + j) % 2 == 0) != flip
-            for i, s in enumerate(order) for j, c in enumerate(ckpts)}
+    return {(s, c): (i % 2 == 0) != flip for i, s in enumerate(order) for c in ckpts}
 
 
 def _test(d):
@@ -74,13 +74,19 @@ def reading(gaps, ckpts):
 
     outcome  invalid  the last checkpoint does not reproduce its known hum (gap > 0, p < α)
              step     one or more steps rise significantly (`rises` names them)
-             first    no step rises, and the hum is already present at the first checkpoint
-                      while first -> last is not a significant rise
+             present_at_first  no step rises, first -> last is not shown to rise, and the
+                      first checkpoint already hums. NOT "the first step caused it": the
+                      step from stock is outside this bench, and stock itself hums (+0.75
+                      in the baseline bench)
              gradual  no single step rises, but first -> last does: a creep
              inconclusive  otherwise
 
-    Steps are tested UNCORRECTED, four at α = 0.05: a step found is where to look next,
-    not a proof. With 8 voices the smallest possible p is 2/256.
+    Also reported, whatever the outcome: `falls` (steps that significantly lower the hum)
+    and `present_at_first` (the first checkpoint's gap is > 0 at p < α).
+
+    Steps are tested UNCORRECTED, four at α = 0.05 (about 19% chance of at least one false
+    rise if nothing changed): a step found is where to look next, not a proof. With 8
+    voices the smallest possible p is 2/256. "Not shown" is never "absent".
     """
     def paired(a, b):
         both = sorted(set(gaps[a]) & set(gaps[b]))
@@ -91,17 +97,19 @@ def reading(gaps, ckpts):
     steps = [paired(a, b) for a, b in zip(ckpts, ckpts[1:])]
     span = paired(ckpts[0], ckpts[-1])
     rises = [(a, b) for a, b, m, p, _n in steps if m > 0 and p < ALPHA]
+    falls = [(a, b) for a, b, m, p, _n in steps if m < 0 and p < ALPHA]
     last, first = level[ckpts[-1]], level[ckpts[0]]
     span_rises = span[2] > 0 and span[3] < ALPHA
+    present_at_first = first[0] > 0 and first[1] < ALPHA
     if not (last[0] > 0 and last[1] < ALPHA):
         outcome = "invalid"
     elif rises:
         outcome = "step"
-    elif first[0] > 0 and first[1] < ALPHA and not span_rises:
-        outcome = "first"
+    elif present_at_first and not span_rises:
+        outcome = "present_at_first"
     elif span_rises:
         outcome = "gradual"
     else:
         outcome = "inconclusive"
-    return {"level": level, "steps": steps, "span": span, "rises": rises,
-            "outcome": outcome}
+    return {"level": level, "steps": steps, "span": span, "rises": rises, "falls": falls,
+            "present_at_first": present_at_first, "outcome": outcome}

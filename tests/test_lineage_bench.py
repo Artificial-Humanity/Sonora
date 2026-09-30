@@ -50,14 +50,14 @@ def test_assign_refuses_a_voice_with_too_few_recordings():
         lb.assign_clips({7: [("a", 5.0), ("b", 5.0)]}, CKPTS, random.Random(1), target=5.0)
 
 
-def test_sides_balance_per_checkpoint_and_alternate_along_the_chain():
+def test_sides_balance_per_checkpoint_and_hold_constant_along_the_chain():
+    # constant per voice: an A/B lean then cancels exactly in every step difference
     spks = list(range(8))
     sw = lb.side_swaps(spks, CKPTS, random.Random(3))
     for c in CKPTS:
         assert sum(sw[(s, c)] for s in spks) == 4
     for s in spks:
-        for a, b in zip(CKPTS, CKPTS[1:]):
-            assert sw[(s, a)] != sw[(s, b)]
+        assert len({sw[(s, c)] for c in CKPTS}) == 1
 
 
 def _gaps(per_ckpt):
@@ -74,7 +74,39 @@ def test_a_jump_at_one_step_is_named():
 
 def test_hum_already_present_at_the_first_checkpoint_with_no_rise_after():
     g = _gaps({c: [2] * 8 for c in CKPTS})
-    assert lb.reading(g, CKPTS)["outcome"] == "first"
+    r = lb.reading(g, CKPTS)
+    assert r["outcome"] == "present_at_first" and r["present_at_first"]
+
+
+def test_a_step_and_hum_at_the_first_checkpoint_are_both_reported():
+    g = _gaps({"derisk": [1] * 8, "vat3": [1] * 8, "vat5": [3] * 8, "vat6": [3] * 8,
+               "vat7": [3] * 8})
+    r = lb.reading(g, CKPTS)
+    assert r["outcome"] == "step" and r["present_at_first"]
+
+
+def test_a_significant_fall_is_reported():
+    g = _gaps({"derisk": [0] * 8, "vat3": [2] * 8, "vat5": [0] * 8, "vat6": [2] * 8,
+               "vat7": [2] * 8})
+    r = lb.reading(g, CKPTS)
+    assert r["falls"] == [("vat3", "vat5")]
+    assert ("derisk", "vat3") in r["rises"]
+
+
+def test_nothing_shown_is_inconclusive():
+    # vat7 reproduces its hum, but half the voices hum from derisk on and the other half
+    # only at vat7: no step, no span and no derisk level reaches significance with n = 8
+    half = [1, 1, 1, 1, 0, 0, 0, 0]
+    g = _gaps({"derisk": half, "vat3": half, "vat5": half, "vat6": half, "vat7": [1] * 8})
+    r = lb.reading(g, CKPTS)
+    assert r["rises"] == [] and not r["present_at_first"]
+    assert r["outcome"] == "inconclusive"
+
+
+def test_no_vat7_ratings_is_invalid():
+    g = _gaps({c: [1] * 8 for c in CKPTS[:-1]})
+    g["vat7"] = {}
+    assert lb.reading(g, CKPTS)["outcome"] == "invalid"
 
 
 def test_a_creep_with_no_single_significant_step_is_gradual():

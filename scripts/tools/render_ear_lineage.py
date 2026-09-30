@@ -29,7 +29,14 @@ corpus's phonemes would be judged on a front end it never saw.
 
 ⚠ vat5 ep019 IS NO LONGER ON DISK: it was reclaimed on 2026-08-29.
 `vat5_finetune/SELECTED.md` records that `warmstart/vat6_init.ckpt` was built from it and
-is indistinguishable from it by every check still possible; that stands in for it here.
+is indistinguishable from it by every check still possible; that stands in for it here. It
+carries v6's mel statistics in its hparams, so its buffers are reset to v5's, the data
+ep019 trained on (a 0.015 log-mel difference, but the right one).
+
+⚠ EVERY ITEM IS A SENTENCE ITS CHECKPOINT TRAINED ON, and exposure to these voices falls
+along the chain: they are ~100% of derisk's and vat3's data, ~72% of v5's, ~9% of v7's. A
+rise at a step is therefore confounded with memorisation of these clips fading, and the
+pre-registration says so. No recording of these voices is held out of all five corpora.
 
 ⚠ NEUTRAL CONDITIONING IS ALL ZEROS AT EITHER WIDTH. derisk-energy and vat3 take 3 values,
 the rest 8; `delivery.vat_vector(0, 0, 0, DELIVERY_UNKNOWN)` is eight zeros, so every
@@ -101,9 +108,12 @@ def sha256(path):
 
 
 def corpus_rows(corpus):
-    """{wav: (speaker index, phonemes)} over train and val, for the prefix voices only."""
+    """{wav: (speaker index, phonemes)} over TRAIN rows, for the prefix voices only.
+
+    Train only, so every item is a sentence its checkpoint trained on: a recording in one
+    corpus's val split and the others' train would make that one item unlike the rest."""
     out = {}
-    for name in ("train_op.txt", "val_op.txt"):
+    for name in ("train_op.txt",):
         for line in (Path("data") / corpus / name).read_text(encoding="utf-8").splitlines():
             if line.strip():
                 wav, spk, phon = line.split("|")[:3]
@@ -163,8 +173,8 @@ def select(args):
         print("  spk%-4d HNR %5.2f  %d usable recordings" % (s, hnr[s], len(clips[s])))
 
     out = {"rule": ("%d unheard LibriTTS-R train-clean-100 voices spread over speaker HNR; "
-                    "for each, one distinct recording per checkpoint, present in all five "
-                    "lineage corpora, %.1f-%.1fs, the %d nearest %.1fs; each checkpoint speaks "
+                    "for each, one distinct recording per checkpoint, in the TRAIN split of all "
+                    "five lineage corpora, %.1f-%.1fs, the %d nearest %.1fs; each checkpoint speaks "
                     "its own corpus's phonemes; seed %d."
                     % (args.n, args.min_seconds, args.max_seconds, len(NAMES),
                        args.target_seconds, args.seed)),
@@ -215,14 +225,22 @@ def render(args):
     pair_of = {idx: "item_%02d" % i for i, idx in enumerate(order)}
 
     made = {}
-    for name, ckpt, _d in LINEAGE:
+    for name, ckpt, corpus in LINEAGE:
         model = load_matcha(name, ckpt, ear_bench.DEVICE)
         hp = model.hparams
-        stats = hp["data_statistics"]
+        # The training data's statistics come from the CORPUS config, not the checkpoint:
+        # comparing with its hparams would only prove the load hook copied them.
+        want = yaml.safe_load((Path("configs/data") / ("%s.yaml" % corpus)).read_text())
+        want = (float(want["data_statistics"]["mel_mean"]),
+                float(want["data_statistics"]["mel_std"]))
         got = (float(model.mel_mean), float(model.mel_std))
-        if abs(got[0] - stats["mel_mean"]) > 1e-3 or abs(got[1] - stats["mel_std"]) > 1e-3:
-            raise SystemExit("REFUSING: %s loaded mel stats %r but trained on %r — the "
-                             "stale-buffer load hook did not run." % (name, got, dict(stats)))
+        if abs(got[0] - want[0]) > 1e-3 or abs(got[1] - want[1]) > 1e-3:
+            if name != "vat5":
+                raise SystemExit("REFUSING: %s normalises with %r but its corpus %s has %r."
+                                 % (name, got, corpus, want))
+            print("  %s: stand-in carries %r; set to its own corpus's %r" % (name, got, want))
+            model.mel_mean.fill_(want[0])
+            model.mel_std.fill_(want[1])
         vat_dim = int(hp["vat_dim"])
         for idx, it in enumerate(spec["items"]):
             if it["ckpt"] != name:
