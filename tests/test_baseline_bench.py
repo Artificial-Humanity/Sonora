@@ -32,6 +32,13 @@ def test_encoding_follows_upstream_last_wins_for_the_duplicated_apostrophe():
     assert ids[2] == bb.ours_symbols().index("a")
 
 
+def test_the_derived_table_is_upstream_byte_for_byte():
+    # sha256 of "".join(symbols) from upstream Matcha-TTS matcha/text/symbols.py
+    import hashlib
+    got = hashlib.sha256("".join(bb.original_matcha_symbols()).encode()).hexdigest()
+    assert got == bb.UPSTREAM_SYMBOLS_SHA256
+
+
 def test_encoding_refuses_a_symbol_the_stock_model_never_had():
     with pytest.raises(ValueError, match="ᵊ"):
         bb.encode_original("ᵊ")
@@ -74,6 +81,7 @@ def test_prior_speakers_reads_every_bench_file_shape():
     docs = [{"items": {"s1": {"spk": 1}, "s2": {"spk": 2}}},
             {"items": [{"spk": 3}, {"note": "no speaker"}]},
             {"items": {"item_00": {"spk": "4"}}},
+            {"items": {"item_01": {"spk": "p326"}}},   # a VCTK name is not an index
             {"rule": "no items at all"}]
     assert bb.prior_speakers(docs) == {1, 2, 3, 4}
 
@@ -103,3 +111,28 @@ def test_sign_flip_refuses_a_sample_too_large_to_enumerate():
 def test_outcome_follows_the_preregistered_rule(ours_p, stock, d, expected):
     got = bb.outcome(ours=(1.5, ours_p), stock=stock, matched=d)
     assert got == expected
+
+
+@pytest.mark.parametrize("rt_means, readable", [
+    ((1.0, 1.5), True),
+    ((1.0, 2.0), False),    # the round trips sit a point apart
+    ((4.0, 3.5), False),    # one round trip is already near the top of the scale
+])
+def test_the_matched_contrast_is_read_only_on_comparable_round_trips(rt_means, readable):
+    got = bb.outcome(ours=(1.5, 0.01), stock=(0.1, 0.6), matched=(1.2, 0.01),
+                     rt_means=rt_means)
+    assert got == ("lineage" if readable else "inconclusive")
+
+
+def test_flips_balance_within_each_family_and_oppose_within_each_match():
+    import random
+    flips = bb.balanced_flips(12, random.Random(3141))
+    assert len(flips) == 12
+    assert sum(st for st, _o in flips) == 6 and sum(o for _s, o in flips) == 6
+    assert all(st != o for st, o in flips)
+
+
+def test_closest_duration_takes_the_nearest_then_the_first_name():
+    cands = [("b", 4.0), ("a", 4.0), ("c", 3.1)]
+    assert bb.closest_duration(cands, 3.9) == "a"
+    assert bb.closest_duration(cands, 3.0) == "c"

@@ -19,6 +19,11 @@ from pathlib import Path
 
 _SYMBOLS_PY = Path(__file__).resolve().parents[2] / "matcha" / "text" / "symbols.py"
 
+# sha256 of "".join(symbols) in upstream Matcha-TTS `matcha/text/symbols.py`. The derivation
+# below only checks the last two slots; this pins all 178, so an edit to any earlier symbol
+# cannot silently misencode the stock model's input.
+UPSTREAM_SYMBOLS_SHA256 = "3e81afeec2d0906de3d7acf2214d32fbc066be8218d2edafe355255391ea92f7"
+
 
 def ours_symbols():
     """Sonora's symbol table, read from source without importing the `matcha` package."""
@@ -64,7 +69,8 @@ def prior_speakers(docs):
         items = d.get("items") if isinstance(d, dict) else None
         vals = items.values() if isinstance(items, dict) else (items or [])
         for v in vals:
-            if isinstance(v, dict) and "spk" in v:
+            # A VCTK name ("p326") is not a LibriTTS-R index and excludes nothing.
+            if isinstance(v, dict) and str(v.get("spk", "")).isdigit():
                 out.add(int(v["spk"]))
     return out
 
@@ -118,18 +124,27 @@ def sign_flip_p(d):
 ALPHA = 0.05
 
 
-def outcome(ours, stock, matched):
-    """The pre-registered reading. Each argument is `(mean difference, p)`.
+def outcome(ours, stock, matched, rt_means=None):
+    """The pre-registered reading. The first three are `(mean difference, p)`.
 
-    ours     our model over our round trip. Must be positive and significant, or the bench
-             failed to reproduce the known effect and says nothing ("invalid").
-    stock    stock model over its round trip: does stock Matcha add hum?
-    matched  (ours gap - stock gap) over HNR-matched pairs: does ours add MORE?
+    ours      our model over our round trip. Must be positive and significant, or the bench
+              failed to reproduce the known effect and says nothing ("invalid").
+    stock     stock model over its round trip: does stock Matcha add hum?
+    matched   (ours gap - stock gap) over HNR-matched pairs: does ours add MORE?
+    rt_means  (stock round-trip mean, ours round-trip mean). The two vocoders differ, and
+              on a 0-5 scale a gap measured from a higher floor has less room. So the
+              matched contrast is read only when the floors are within a point of each
+              other and both are under 4; otherwise it counts as not shown.
+
+    A non-significant contrast is "not shown", never "absent": n = 12 cannot show
+    equivalence, and the readings in `unblind_ear_baseline.py` say so.
     """
     if not (ours[0] > 0 and ours[1] < ALPHA):
         return "invalid"
+    floors_ok = rt_means is None or (abs(rt_means[0] - rt_means[1]) < 1.0
+                                     and max(rt_means) < 4.0)
     stock_hums = stock[0] > 0 and stock[1] < ALPHA
-    ours_more = matched[0] > 0 and matched[1] < ALPHA
+    ours_more = floors_ok and matched[0] > 0 and matched[1] < ALPHA
     if stock_hums and ours_more:
         return "both"
     if stock_hums:
@@ -137,3 +152,17 @@ def outcome(ours, stock, matched):
     if ours_more:
         return "lineage"
     return "inconclusive"
+
+
+def balanced_flips(n, rng):
+    """Per match, (stock side swapped, ours side swapped): half of each family swapped, and
+    the two items of a match always on OPPOSITE sides, so a listener's lean toward A or B
+    cancels within each family and within each matched pair."""
+    base = [True] * (n // 2) + [False] * (n - n // 2)
+    rng.shuffle(base)
+    return [(b, not b) for b in base]
+
+
+def closest_duration(cands, target):
+    """The name in `cands` [(name, seconds)] nearest `target` seconds; ties by name."""
+    return min(cands, key=lambda c: (abs(c[1] - target), c[0]))[0]

@@ -27,8 +27,21 @@ corpora's roughness mix instead of the two models.
 
 ⚠ THE STOCK MODEL READS UPSTREAM'S SYMBOL TABLE, NOT OURS. Sonora replaced a duplicated "'"
 in the table with "ᵊ", which moves "'" and "ᵻ" — see `baseline_bench.original_matcha_symbols`.
-Its input is VITS's own espeak phonemization of the VCTK transcript (the `.cleaned`
-filelist), which is what it was trained on, so no G2P runs and espeak is not needed.
+
+⚠ ITS INPUT IS VITS'S ESPEAK PHONEMIZATION (the `.cleaned` filelist), NOT A BYTE-EXACT COPY
+OF WHAT IT TRAINED ON. Upstream phonemized on the fly with `english_cleaners2` and whatever
+espeak-ng it ran. Checked 2026-09-30 on the 12 bench sentences: upstream's cleaner under
+espeak-ng 1.52 agrees on 8, and the other 4 differ in a stress mark on "I", one vowel
+(oː/ɔː), and "US", which 1.52 reads as the word "us" and VITS as "U.S.". Neither is exact;
+VITS's is the older espeak and reads "US" correctly, so it is used. No espeak runs here.
+
+⚠ THE FAMILIES ARE AUDIBLY DIFFERENT. Stock output has nothing above 11 kHz and VCTK voices
+are mostly British, so the listener can tell a stock item from ours. Each gap is within one
+item (same vocoder, same band), so that cannot move a gap directly — but the matched
+contrast is not blind to family, and the listener knows the hypothesis.
+
+⚠ CLIP LENGTHS ARE MATCHED. More seconds is more exposure to the hum, so each LibriTTS-R
+clip is the one closest in length to its matched VCTK clip.
 
 ⚠ SAME RENDER SETTINGS FOR BOTH MODELS: `ear_bench`'s steps, temperature and length scale.
 Stock's CLI would speak VCTK at length scale 0.85; the bench does not, so that no setting
@@ -92,8 +105,8 @@ KIND_STOCK, KIND_OURS = "stockrt_vs_stock", "oursrt_vs_ours"
 SETS = {
     "hum": {
         "title": "How much machine is in each one?",
-        "ask": ("Two versions of the same sentence. Some are real recordings and some "
-                "are not. Ignore which you would rather listen to and ignore the "
+        "ask": ("Two versions of the same sentence. Some are synthesized and some are "
+                "recordings passed through a vocoder. Ignore which you would rather listen to and ignore the "
                 "reading. Rate EACH clip on its own for the ROBOTIC quality you have "
                 "described — the buzz or hum under the voice, the sense of something "
                 "mechanical trying to sound human. 0 means you cannot hear it at all. 5 "
@@ -175,15 +188,24 @@ def select(args):
     for line, wav, s, _n in read_corpus(args.corpus, "train", VAT_DIM):
         rows.setdefault(s, []).append((wav, line.split("|")[2]))
 
-    def libri_clip(s):
-        cand = sorted(w for w in rows.get(s, [])
-                      if Path(w[0]).is_file() and sf.info(w[0]).duration >= args.min_seconds)
-        return rng.choice(cand) if cand else None
+    def libri_clips(s):
+        """[(wav, phonemes, seconds)] of this speaker's train rows long enough to serve."""
+        out = []
+        for wav, phon in sorted(rows.get(s, [])):
+            if Path(wav).is_file():
+                sec = sf.info(wav).duration
+                if sec >= args.min_seconds:
+                    out.append((wav, phon, sec))
+        return out
 
     def vctk_clip(spk):
-        cand = [u for u in sorted(by_spk[spk])
-                if sf.info(io.BytesIO(z.read("wav48_silence_trimmed/%s/%s_mic1.flac"
-                                             % (spk, u)))).duration >= args.min_seconds]
+        """(utterance, seconds), drawn among this speaker's clips long enough to serve."""
+        cand = []
+        for u in sorted(by_spk[spk]):
+            sec = sf.info(io.BytesIO(z.read("wav48_silence_trimmed/%s/%s_mic1.flac"
+                                            % (spk, u)))).duration
+            if sec >= args.min_seconds:
+                cand.append((u, sec))
         return rng.choice(cand) if cand else None
 
     # A matched LibriTTS-R speaker with no clip long enough is excluded and the match
@@ -192,31 +214,37 @@ def select(args):
     while True:
         libri = {s: v["hnr"] for s, v in libri_all.items() if s in rows and s not in dropped}
         matches = bb.match_speakers(vctk_hnr, libri, args.n, exclude, args.max_gap)
-        lib_clips = {m["libri"]: libri_clip(m["libri"]) for m in matches}
-        bad = {s for s, c in lib_clips.items() if c is None}
+        lib_clips = {m["libri"]: libri_clips(m["libri"]) for m in matches}
+        bad = {s for s, c in lib_clips.items() if not c}
         if not bad:
             break
         dropped |= bad
 
     items = []
     for i, m in enumerate(matches):
-        utt = vctk_clip(m["vctk"])
-        if utt is None:
+        pick = vctk_clip(m["vctk"])
+        if pick is None:
             raise SystemExit("REFUSING: VCTK %s has no mic1 clip of at least %.1fs."
                              % (m["vctk"], args.min_seconds))
+        utt, vsec = pick
         spk, sid, text = cleaned[utt]
-        wav, phon = lib_clips[m["libri"]]
+        by_wav = {w: (ph, sec) for w, ph, sec in lib_clips[m["libri"]]}
+        wav = bb.closest_duration([(w, sec) for w, (_p, sec) in by_wav.items()], vsec)
+        phon, lsec = by_wav[wav]
         items.append({"match": i, "vctk": m["vctk"], "vctk_hnr": m["vctk_hnr"],
-                      "vctk_sid": sid, "vctk_utt": utt, "vctk_phonemes": text,
-                      "vctk_text": raw[utt][2],
+                      "vctk_sid": sid, "vctk_utt": utt, "vctk_seconds": round(vsec, 2),
+                      "vctk_phonemes": text, "vctk_text": raw[utt][2],
                       "libri": m["libri"], "libri_hnr": m["libri_hnr"],
-                      "libri_wav": wav, "libri_phonemes": phon})
-        print("  match %2d  VCTK %-5s HNR %5.2f  <->  spk%-5d HNR %5.2f"
-              % (i, m["vctk"], m["vctk_hnr"], m["libri"], m["libri_hnr"]))
+                      "libri_partition": libri_all[m["libri"]].get("partition"),
+                      "libri_wav": wav, "libri_seconds": round(lsec, 2),
+                      "libri_phonemes": phon})
+        print("  match %2d  VCTK %-5s HNR %5.2f %4.1fs  <->  spk%-5d HNR %5.2f %4.1fs"
+              % (i, m["vctk"], m["vctk_hnr"], vsec, m["libri"], m["libri_hnr"], lsec))
 
     out = {"rule": ("%d VCTK speakers spread over speaker HNR, each matched to the "
                     "nearest unused LibriTTS-R v7 train speaker not heard in any earlier "
-                    "bench (max gap %.2f dB); one source clip of >= %.1fs each; seed %d."
+                    "bench (max gap %.2f dB); one VCTK clip of >= %.1fs each, and the LibriTTS-R "
+                    "clip closest to it in length; seed %d."
                     % (args.n, args.max_gap, args.min_seconds, args.seed)),
            "inputs": {"vctk_filelist": [args.vctk_filelist, sha256(args.vctk_filelist)],
                       "vctk_cleaned": [args.vctk_cleaned, sha256(args.vctk_cleaned)],
@@ -252,6 +280,16 @@ def render(args):
                          % (sr, args.data_config, cfg["sample_rate"]))
 
     stock = load_matcha("matcha_vctk", args.stock_ckpt, ear_bench.DEVICE)
+    if (stock.n_spks, stock.n_vocab) != (109, 178):
+        raise SystemExit("REFUSING: the stock checkpoint has n_spks %d, n_vocab %d; "
+                         "matcha_vctk has 109 and 178." % (stock.n_spks, stock.n_vocab))
+    # `mel_spectrogram` caches its mel basis by fmax and its window by device only, so
+    # the two families' mels share a cache: correct only while the fmax values differ and
+    # the windows are the same length.
+    if STOCK_MEL[6] == cfg["f_max"] or STOCK_MEL[4] != cfg["win_length"]:
+        raise SystemExit("REFUSING: the stock and ours mel configs now collide in "
+                         "matcha.utils.audio's cache (fmax %s/%s, win %s/%s)."
+                         % (STOCK_MEL[6], cfg["f_max"], STOCK_MEL[4], cfg["win_length"]))
     got = (float(stock.mel_mean), float(stock.mel_std))
     if abs(got[0] - STOCK_MEL_MEAN) > 1e-3 or abs(got[1] - STOCK_MEL_STD) > 1e-3:
         raise SystemExit("REFUSING: the stock model loaded mel stats %r, not VCTK's %r. "
@@ -289,14 +327,14 @@ def render(args):
         with torch.no_grad():
             return to_waveform(mel, bench.vocoder, None).numpy()
 
-    plan = [(it, fam) for it in spec["items"] for fam in ("stock", "ours")]
+    flips = bb.balanced_flips(len(spec["items"]), rng)
+    plan = [(it, fam, f[0] if fam == "stock" else f[1])
+            for it, f in zip(spec["items"], flips) for fam in ("stock", "ours")]
     rng.shuffle(plan)
-    flip = [True] * (len(plan) // 2) + [False] * (len(plan) - len(plan) // 2)
-    rng.shuffle(flip)
 
     clips = Path(args.out) / "clips"
     served, truth, limited = [], {}, 0
-    for i, ((it, fam), swap) in enumerate(zip(plan, flip)):
+    for i, (it, fam, swap) in enumerate(plan):
         pair_key = "item_%02d" % i
         if fam == "stock":
             x, xsr = vctk_audio(z, it["vctk_utt"])
@@ -328,7 +366,10 @@ def render(args):
             bench.key[nm] = {"label": lbl, "pair": pair_key, "side": side_key}
             item[side_key] = nm
         served.append(item)
-        truth[pair_key] = {"kind": kind, "family": fam, "match": it["match"], "spk": spk,
+        # ⚠ A VCTK name goes under `vctk_spk`, never `spk`: later benches read `spk` from
+        # every key in `_keys/` as a LibriTTS-R index to exclude.
+        truth[pair_key] = {"kind": kind, "family": fam, "match": it["match"],
+                           ("vctk_spk" if fam == "stock" else "spk"): spk,
                            "hnr": hnr, "A_label": sides[0][1], "B_label": sides[1][1],
                            "source": src}
         print("  %s  %-5s match %2d  %-7s HNR %5.2f" % (pair_key, fam, it["match"], spk, hnr))
