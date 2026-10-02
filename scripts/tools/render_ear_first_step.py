@@ -15,7 +15,7 @@ derisk-energy already hum more than stock at the same voice roughness? No traini
 
 THE DESIGN
 ----------
-16 matches. Each is one VCTK voice and one unheard LibriTTS-R train-clean-100 voice of
+20 matches. Each is one VCTK voice and one unheard LibriTTS-R train-clean-100 voice of
 nearly the same speaker HNR (`baseline_bench.match_speakers`, spread over the range both
 cover), with three items:
 
@@ -23,13 +23,22 @@ cover), with three items:
   derisk   derisk-energy on a LibriTTS-R recording, against it through the 24 kHz vocoder
   vat7     vat7 ep005 on a DIFFERENT recording of the same LibriTTS-R voice, likewise
 
-48 items. vat7 over stock repeats the baseline bench's result: if this bench cannot hear
+60 items. vat7 over stock repeats the baseline bench's result: if this bench cannot hear
 that, it says nothing (`first_step_bench.reading`).
+
+⚠ THE CHECK MAY BE SMALL ON THESE VOICES. vat7's gap was +2.50 on the baseline bench's voices
+(mostly train-other-500) but +1.38 on the lineage bench's train-clean-100 voices; against
+stock's +0.75 that leaves roughly +0.6 to detect, not +1.75. Hence 20 matches (the most the
+exact test enumerates) and clips of at least 4 s. An INVALID reading stays possible.
+
+⚠ EXPOSURE DIFFERS. Every LibriTTS-R item is a sentence both checkpoints trained on, but
+these voices are ~100% of derisk-energy's data and ~9% of vat7's. If memorisation lowers the
+hum, derisk is favoured: `first_step` is then conservative and `later` liberal.
 
 ⚠ THE STOCK HALF IS THE BASELINE BENCH'S, UNCHANGED: upstream's symbol table, VITS's espeak
 phonemes, the universal vocoder with its denoiser, resampled to 24 kHz after vocoding. See
 `render_ear_baseline.py` for why each is so. VCTK speaker HNR is read from the baseline
-bench's speakers file (pinned by sha256) rather than measured again.
+bench's speakers file (its sha256 recorded) rather than measured again.
 
 ⚠ EACH SONORA CHECKPOINT SPEAKS ITS OWN CORPUS'S PHONEMES with all-zero conditioning, as in
 the lineage bench, and its mel statistics are checked against its corpus config.
@@ -252,8 +261,8 @@ def render(args):
     from matcha.utils.utils import intersperse
 
     spec = json.loads(Path(args.speakers).read_text())
-    if [x["name"] for x in spec["ours"]] != NAMES:
-        raise SystemExit("REFUSING: the speakers file names different checkpoints.")
+    if [(x["name"], x["ckpt"], x["corpus"]) for x in spec["ours"]] != [tuple(o) for o in OURS]:
+        raise SystemExit("REFUSING: the speakers file names different checkpoints or corpora.")
     rng = random.Random(args.seed)
     ear_bench.refuse_if_judged(args.out)
     ear_bench.prove_writable(args.out)
@@ -406,8 +415,8 @@ def main():
     s.add_argument("--hnr-json", default=ROOT + "/pitch_error/speaker_hnr_all.json")
     s.add_argument("--prior", nargs="+", default=[ROOT + "/pitch_error/_*.json",
                                                   ROOT + "/eartest/_keys/*.key.json"])
-    s.add_argument("--n", type=int, default=16)
-    s.add_argument("--min-seconds", type=float, default=3.0)
+    s.add_argument("--n", type=int, default=20)
+    s.add_argument("--min-seconds", type=float, default=4.0)
     s.add_argument("--max-seconds", type=float, default=8.0)
     s.add_argument("--max-gap", type=float, default=0.25)
     s.add_argument("--seed", type=int, default=20261002)

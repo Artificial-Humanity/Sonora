@@ -105,3 +105,18 @@ def test_a_significant_fall_from_derisk_to_vat7_is_reported():
     g = _gaps([0] * 16, [3] * 16, [1] * 16)
     r = fs.reading(g, FLOORS_OK)
     assert r["outcome"] == "first_step" and r["vat7_below_derisk"]
+
+
+def test_any_vctk_name_is_excluded_not_only_p_names():
+    assert fs.heard_vctk([{"items": {"x": {"vctk_spk": "s5"}}}]) == {"s5"}
+
+
+def test_a_floor_at_or_over_four_is_invalid():
+    g = _gaps([0] * 16, [2] * 16, [2] * 16)
+    r = fs.reading(g, {"stock": 3.5, "derisk": 4.0, "vat7": 3.6})
+    assert r["outcome"] == "invalid" and not r["floors_ok"]
+
+
+def test_vat7_significantly_below_stock_is_invalid():
+    g = _gaps([2] * 16, [2] * 16, [0] * 16)
+    assert fs.reading(g, FLOORS_OK)["outcome"] == "invalid"

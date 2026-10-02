@@ -23,10 +23,12 @@ from lib import first_step_bench as fs                        # noqa: E402
 READING = {
     "first_step": ("derisk-energy already hums more than stock, and vat7 adding more is not "
                    "shown: the excess came in at the first step (corpus, 24 kHz vocoder and "
-                   "conditioning changed together)."),
+                   "conditioning changed together). derisk saw these voices most, so if "
+                   "anything this understates it."),
     "both_steps": "derisk-energy hums more than stock, and vat7 more again: both stages added.",
-    "later": ("vat7 hums more than derisk-energy, and derisk-energy over stock is not shown: "
-              "the excess came in after the first step."),
+    "later": ("vat7 hums more than derisk-energy, and derisk-energy over stock is not shown. "
+              "Either the excess came in after the first step, or derisk-energy is masked "
+              "by having trained on these voices ~10x more than vat7 did."),
     "inconclusive": ("vat7's excess is reproduced, but neither step is shown to carry it. "
                      "Not shown is not absent."),
     "invalid": ("vat7 did not reproduce its excess over stock, or the round-trip floors are "

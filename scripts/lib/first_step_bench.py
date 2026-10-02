@@ -40,7 +40,7 @@ def heard_vctk(docs):
             if not isinstance(v, dict):
                 continue
             for k in ("vctk_spk", "vctk"):
-                if str(v.get(k, "")).startswith("p"):
+                if isinstance(v.get(k), str) and v[k]:
                     out.add(v[k])
     return out
 
