@@ -50,6 +50,8 @@ for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in 
         _sys.path.insert(0, _p)
 
 import book_ingest as bi  # noqa: E402
+from gemma_client import DIRECTOR  # noqa: E402
+from gemma_server import GemmaServer  # noqa: E402
 import ref_select  # noqa: E402
 import schemas  # noqa: E402  -- the single definition of what counts as an axis number
 
@@ -204,29 +206,30 @@ def main():
     off_register = {k["id"] for k in ref_select._load_pool()
                     if k.get("register") not in REF_REGISTERS}
     cast_rows, skipped = [], collections.Counter()
-    for i, (lane, slug, src) in enumerate(selected):
-        engine = queues[lane].pop() if queues[lane] else None
-        if engine is None:
-            skipped["no engine left in lane"] += 1
-            continue
-        # ⚠ OMIT AN ABSENT AXIS, do not pass `None` (issue #92). `intended.V/A/T` may be
-        # `null` since 2026-08-17, and `casting_pass` formats each label with `:+.2f` under a
-        # pre-existing `if k in labels` guard — a guard written for exactly this case. Passing
-        # the key with a `None` value satisfies `in` and then raises in `__format__`.
-        # ⚠ `schemas.intended_labels`, WHICH IS THE FUNCTION FOR THIS (issue #113's class).
-        # The comprehension this replaces re-spelled both halves — the omit-if-absent rule
-        # AND `isinstance(v, (int, float))`, a sixth copy of "what counts as a number" that
-        # disagreed with `schemas.coerce_axis` on `"0.7"`. A numeric-string axis was dropped
-        # from the brief entirely, so the director was told nothing about an axis the row
-        # actually carried. `intended_labels` was added to this very branch to own this.
-        labels = schemas.intended_labels(src["intended"])
-        labels["register"] = src.get("register", "")
-        cast = bi.casting_pass(src["text"], engine, labels=labels)
-        if cast is None:
-            skipped[f"{engine}: casting_pass failed"] += 1
-            continue
-        cast_rows.append({"i": i, "lane": lane, "slug": slug, "src": src,
-                          "engine": engine, "labels": labels, "cast": cast})
+    with GemmaServer(DIRECTOR):
+        for i, (lane, slug, src) in enumerate(selected):
+            engine = queues[lane].pop() if queues[lane] else None
+            if engine is None:
+                skipped["no engine left in lane"] += 1
+                continue
+            # ⚠ OMIT AN ABSENT AXIS, do not pass `None` (issue #92). `intended.V/A/T` may be
+            # `null` since 2026-08-17, and `casting_pass` formats each label with `:+.2f` under a
+            # pre-existing `if k in labels` guard — a guard written for exactly this case. Passing
+            # the key with a `None` value satisfies `in` and then raises in `__format__`.
+            # ⚠ `schemas.intended_labels`, WHICH IS THE FUNCTION FOR THIS (issue #113's class).
+            # The comprehension this replaces re-spelled both halves — the omit-if-absent rule
+            # AND `isinstance(v, (int, float))`, a sixth copy of "what counts as a number" that
+            # disagreed with `schemas.coerce_axis` on `"0.7"`. A numeric-string axis was dropped
+            # from the brief entirely, so the director was told nothing about an axis the row
+            # actually carried. `intended_labels` was added to this very branch to own this.
+            labels = schemas.intended_labels(src["intended"])
+            labels["register"] = src.get("register", "")
+            cast = bi.casting_pass(src["text"], engine, labels=labels)
+            if cast is None:
+                skipped[f"{engine}: casting_pass failed"] += 1
+                continue
+            cast_rows.append({"i": i, "lane": lane, "slug": slug, "src": src,
+                              "engine": engine, "labels": labels, "cast": cast})
 
     # --- pass 2: freeze one voice per (book, engine) -------------------------
     # The frozen design is chosen from the group's MAJORITY gender intent, and then

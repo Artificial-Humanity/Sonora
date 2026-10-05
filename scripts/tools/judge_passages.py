@@ -25,7 +25,7 @@ COST ORDERING MATTERS. Script first, model second: the expensive pass never sees
 ~44% the cheap checks already reject. 24,332 passages x 26b would be 13+ hours; the
 gated subset we actually intend to render is a few hundred.
 
-MODEL COMPARISON. --model accepts any served Gemma model and --compare runs two over the
+MODEL COMPARISON. --model takes a role (director or volume) and --compare runs two over the
 same passages and reports their agreement, so "is 26b worth it over 4b" is measured
 rather than assumed. The precedent was `make_director_bench.py`, which benchmarked
 g2/g4/g26 on identical inputs; it was deleted 2026-08-12 as finished campaign tooling
