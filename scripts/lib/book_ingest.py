@@ -2,7 +2,7 @@
 
 Fetch a permissive ebook (Standard Ebooks / Project Gutenberg) -> parse -> chunk
 (narration windows + dialogue-with-attribution) -> Gemma-4 director-pass (VAD +
-register + per-engine direction, via the live ollama endpoint) -> emit the flat
+register + per-engine direction, via scripts/lib/gemma_client.py) -> emit the flat
 bank the synth_{vibevoice,dia,qwen,moss_vg}.py renderers consume.
 
 PROTOTYPE NOTES
@@ -10,8 +10,8 @@ PROTOTYPE NOTES
   should converge onto Prosodia's `folioparser` (EPUB->text) + `stage::segmenter`
   (sentence split + Paragraph{target_characters}) for on-device dogfooding — see
   notes/book-prose-lane.md (Part 1 — Operations; was book-prose-operations.md).
-- Director = the `MODEL` constant below, served by ollama on :11434 (read `content`,
-  give generous num_predict). Named once, there — a second copy in prose is a second
+- Director = the `MODEL` constant below, served through gemma_client (thinking off,
+  generous max_tokens). Named once, there — a second copy in prose is a second
   thing to forget, which is how this line spent a day naming the wrong model.
 
 Run:
@@ -43,14 +43,14 @@ for _p in (_SONORA_REPO, _os.path.join(_SONORA_REPO, "scripts", "lib")):
 # scope around line 130, well before the `synth_common` import block, so a `schemas` import
 # placed beside that one would be a NameError at import time rather than a missing feature.
 import schemas  # noqa: E402
+from gemma_client import DIRECTOR, GemmaError, chat  # noqa: E402
 
 
 UA = "Mozilla/5.0 (book_ingest prototype; contact lmcfarlin)"
-OLLAMA = "http://localhost:11434/api/chat"
-# Measured 2026-08-02 on 24 real narration passages, casting for zonos with the live
+# Measured 2026-08-02 on the previous server's tags, 24 real narration passages, casting for zonos with the live
 # skill file, register and V/A/T supplied exactly as casting_pass supplies them. The
 # 2026-07-29 malformed-JSON finding does NOT discriminate here — pass 2 is grammar-
-# constrained by `format` and pass 1 is short, so all three variants parsed 24/24.
+# constrained by its JSON schema and pass 1 is short, so all three variants parsed 24/24.
 # What separates them is whether they OBEY the skill file:
 #
 #   model                    emotion omitted   rate 14-16   pitch 20-45   distinct casts
@@ -71,7 +71,9 @@ OLLAMA = "http://localhost:11434/api/chat"
 # across 24 lines. 4.0 s/call against 2.4 is not a real cost on a pass that runs a
 # few dozen times per book. e4b stays the right pick for high-volume judging
 # (judge_passages), where there is no skill file to obey.
-MODEL = "gemma-4-31b-qat-spec"
+# The director is gemma_client's: the same 31B weights, now served with its QAT-matched
+# drafter. Re-validated against the table above by scripts/tools/director_obedience_bench.py.
+MODEL = DIRECTOR
 
 CHARS_PER_SEC = 14.0            # mirrors synth_dia.py length model
 # Owner floor (2026-07-25): nothing shorter than 4 s of speech enters a bank.
@@ -813,7 +815,7 @@ def _extract_json(content):
 
 def director_tag(chunk, retries=2):
     """Call the live Gemma director; return the parsed VAD/engine/direction dict (or None).
-    think=False: this is a fast structured judgment, not a reasoning task — skipping the
+    Thinking off: this is a fast structured judgment, not a reasoning task — skipping the
     chain-of-thought stops it from eating the token budget / bleeding into `content`."""
     if chunk["chunk_type"] == "dialogue":
         attr = chunk["source_ref"].get("attribution", "")
@@ -821,19 +823,11 @@ def director_tag(chunk, retries=2):
     else:
         user = f"Narration passage: {chunk['text']}"
     for _ in range(retries):
-        body = json.dumps({
-            "model": MODEL, "stream": False, "think": False,
-            "options": {"num_predict": 400, "temperature": 0.2},
-            "messages": [
-                {"role": "system", "content": DIRECTOR_SYSTEM},
-                {"role": "user", "content": user},
-            ],
-        }).encode()
-        req = urllib.request.Request(OLLAMA, data=body, headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=180) as r:
-                content = json.loads(r.read())["message"]["content"]
-        except Exception:
+            content = chat(DIRECTOR_SYSTEM, user, model=MODEL, max_tokens=400,
+                           temperature=0.2)
+        except GemmaError as e:
+            print(f"    director call failed: {e}", flush=True)
             continue
         tag = _extract_json(content)
         if not tag:
@@ -979,7 +973,7 @@ def _schema_str(engine):
     return "{" + ", ".join(f'"{k}": {v}' for k, v in CASTING_SCHEMA[engine].items()) + "}"
 
 
-# Machine-enforced shape for ollama's structured-output `format`. Prompt wording alone
+# Machine-enforced shape for the server's structured output (gemma_client's `schema`). Prompt wording alone
 # does NOT hold: chatterbox.md is long and table-rich, and the director answered it
 # with a prose "Recommended Configuration" table, and later with ZONOS's schema —
 # right engine named, right skill file loaded, wrong shape emitted (2026-07-28).
@@ -1090,18 +1084,11 @@ def load_skill(engine):
     return text
 
 
-def casting_pass(text, engine, labels=None, retries=2):
-    """Per-engine casting/delivery, governed by director_skills/<engine>.md.
+def casting_messages(text, engine, labels=None):
+    """(system, user) for one casting call — built, not sent.
 
-    `labels` is the line's already-decided {V, A, T, register}, passed as READ-ONLY
-    context. Step 5 of the onboarding pattern separates the line pass from the engine
-    pass so the training labels stop drifting with whichever engine is being written
-    for — but separating the passes was mistaken for withholding the labels, and for
-    a parameter-only engine that is fatal. Chatterbox's whole output is `exaggeration`,
-    an AROUSAL dial, and the director was being asked to choose it with the arousal
-    withheld: across 20 registers it emitted (0.25, 0.3) on 18 of them, including
-    victory and urgency (2026-07-28). Knowing the label is not the same as relabelling;
-    emitting one is still forbidden below.
+    Split out of `casting_pass` so scripts/tools/director_obedience_bench.py sends
+    byte-identical prompts to every server it compares.
     """
     # The output contract is repeated AFTER the skill file, and that placement is
     # load-bearing. Stated only before it, the last thing the director reads is a
@@ -1135,20 +1122,29 @@ def casting_pass(text, engine, labels=None, retries=2):
                  f"{axis_line}"
                  "Your direction must FIT THIS LINE. Direction identical to what you "
                  "would write for a different register is a failure.")
+    return system, user
+
+
+def casting_pass(text, engine, labels=None, retries=2):
+    """Per-engine casting/delivery, governed by director_skills/<engine>.md.
+
+    `labels` is the line's already-decided {V, A, T, register}, passed as READ-ONLY
+    context. Step 5 of the onboarding pattern separates the line pass from the engine
+    pass so the training labels stop drifting with whichever engine is being written
+    for — but separating the passes was mistaken for withholding the labels, and for
+    a parameter-only engine that is fatal. Chatterbox's whole output is `exaggeration`,
+    an AROUSAL dial, and the director was being asked to choose it with the arousal
+    withheld: across 20 registers it emitted (0.25, 0.3) on 18 of them, including
+    victory and urgency (2026-07-28). Knowing the label is not the same as relabelling;
+    emitting one is still forbidden below.
+    """
+    system, user = casting_messages(text, engine, labels)
     for _ in range(retries):
-        body = json.dumps({
-            "model": MODEL, "stream": False, "think": False,
-            "format": _json_schema(engine),
-            "options": {"num_predict": 900, "temperature": 0.2},
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": user}],
-        }).encode()
-        req = urllib.request.Request(OLLAMA, data=body,
-                                     headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=180) as r:
-                content = json.loads(r.read())["message"]["content"]
-        except Exception:
+            content = chat(system, user, model=MODEL, max_tokens=900, temperature=0.2,
+                           schema=_json_schema(engine))
+        except GemmaError as e:
+            print(f"    casting call failed ({engine}): {e}", flush=True)
             continue
         d = _extract_json(content)
         # Required keys ARE the schema keys. They were hard-coded to ("instruct",)
@@ -1458,10 +1454,10 @@ def main():
             print(f"    [{c['chunk_type']}] {c['text'][:90]}", flush=True)
         return
 
-    print(f"== director-pass ({MODEL} via ollama) ==", flush=True)
+    print(f"== director-pass ({MODEL} via gemma_client) ==", flush=True)
 
     # A-M11. `lines` used to accumulate in memory and reach disk only after the last
-    # chunk, so ANY interruption — a `load_skill` error at chunk 90, an ollama restart,
+    # chunk, so ANY interruption — a `load_skill` error at chunk 90, a server restart,
     # Ctrl-C — discarded every director call made so far. Each one is a 31B inference; a
     # 200-chunk book is an hour of them. Now each result is appended as it is produced and
     # a re-run picks up where it stopped.
