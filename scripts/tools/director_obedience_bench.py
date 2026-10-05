@@ -32,6 +32,7 @@ for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in 
 from book_ingest import (CASTING_SCHEMA, _extract_json, _json_schema,  # noqa: E402
                          _validate_casting, casting_messages)
 from gemma_client import DIRECTOR, VOLUME, chat  # noqa: E402
+from gemma_server import GemmaServer  # noqa: E402
 import judge_passages  # noqa: E402
 
 ENGINE = "zonos"
@@ -131,7 +132,7 @@ def run_arm(call, passages):
     return rows
 
 
-def lemonade_call(system, user, schema):
+def candidate_call(system, user, schema):
     return chat(system, user, model=DIRECTOR, max_tokens=900, temperature=0.2, schema=schema,
                 timeout=300)   # the reference arm's budget
 
@@ -211,12 +212,14 @@ def main():
             unload_ollama()   # both 31Bs at once would not fit beside the box's other models
 
         print(f"== candidate arm: {DIRECTOR} ==", flush=True)
-        chat(None, "Reply with an empty JSON object.", model=DIRECTOR, max_tokens=16,
-             temperature=0.0, as_json=True)   # warm: a cold load is not a casting call
-        out["arms"]["candidate"] = _arm(DIRECTOR, run_arm(lemonade_call, passages))
+        with GemmaServer(DIRECTOR):   # one server at a time: they would not fit together
+            chat(None, "Reply with an empty JSON object.", model=DIRECTOR, max_tokens=16,
+                 temperature=0.0, as_json=True)   # warm: a cold load is not a casting call
+            out["arms"]["candidate"] = _arm(DIRECTOR, run_arm(candidate_call, passages))
         _save(path, out)
         print(f"== volume smoke: {VOLUME} ==", flush=True)
-        out["volume_parsed"] = volume_smoke(passages)
+        with GemmaServer(VOLUME):
+            out["volume_parsed"] = volume_smoke(passages)
         out["verdict"], out["reasons"] = verdict(out["arms"]["reference"]["scores"],
                                                  out["arms"]["candidate"]["scores"],
                                                  out["volume_parsed"])

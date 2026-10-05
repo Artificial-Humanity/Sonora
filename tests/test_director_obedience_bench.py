@@ -10,6 +10,7 @@ from scripts_layout import ASSETS, SCRIPTS
 
 SCRIPTS.on_path()
 import director_obedience_bench as bench  # noqa: E402
+import gemma_server  # noqa: E402
 
 GOOD = {"voice_design": "a calm narrator", "emotion": None, "pitch_std": 30, "speaking_rate": 14}
 
@@ -163,6 +164,7 @@ def test_main_writes_the_reference_arm_even_when_a_later_step_fails(tmp_path, mo
     monkeypatch.setattr(bench, "ollama_call", lambda system, user, schema: json.dumps(GOOD))
     monkeypatch.setattr(bench, "unload_ollama", unload)
     monkeypatch.setattr(bench, "chat", no_network)
+    monkeypatch.setattr(bench, "GemmaServer", no_network)
     monkeypatch.setattr(sys, "argv", ["x", "--out", str(out)])
     with pytest.raises(RuntimeError):
         bench.main()
@@ -173,11 +175,90 @@ def test_main_writes_the_reference_arm_even_when_a_later_step_fails(tmp_path, mo
     assert "unload failed" in saved["error"]
 
 
-def test_lemonade_call_uses_the_same_timeout_as_the_reference_arm(monkeypatch):
+def test_candidate_call_uses_the_same_timeout_as_the_reference_arm(monkeypatch):
     seen = {}
     monkeypatch.setattr(bench, "chat", lambda *a, **k: seen.update(k) or "{}")
-    bench.lemonade_call("s", "u", {"type": "object"})
+    bench.candidate_call("s", "u", {"type": "object"})
     assert seen["timeout"] == 300
+
+
+# ------------------------------------------------------------------ the servers
+
+PASSING_REFERENCE = {"n": 2, "parsed": 2, "emotion_omitted": 2, "rate": 2, "pitch": 2,
+                     "distinct": 1}
+
+
+def _two_passage_run(tmp_path, monkeypatch):
+    asset = tmp_path / "passages.json"
+    asset.write_text(json.dumps([dict(id=f"p{i}", book="b", text=f"Line {i}.",
+                                      register="neutral_narration", V=0.0, A=0.1, T=0.2)
+                                 for i in range(2)]))
+    ref = tmp_path / "ref.json"
+    ref.write_text(json.dumps({"arms": {"reference": {"source": "recorded",
+                                                      "scores": PASSING_REFERENCE}}}))
+    out = tmp_path / "out"
+    monkeypatch.setattr(bench, "ASSET", asset)
+    monkeypatch.setattr(sys, "argv", ["x", "--reference", str(ref), "--out", str(out)])
+    return out
+
+
+def test_the_candidate_arm_and_the_volume_smoke_each_run_inside_their_own_server(
+        tmp_path, monkeypatch):
+    events = []
+
+    class FakeServer:
+        def __init__(self, role):
+            self.role = role
+
+        def __enter__(self):
+            events.append(("enter", self.role))
+            return self
+
+        def __exit__(self, *exc):
+            events.append(("exit", self.role))
+            return False
+
+    monkeypatch.setattr(bench, "GemmaServer", FakeServer)
+    monkeypatch.setattr(bench, "chat", lambda *a, **k: events.append(("call", "candidate"))
+                        or json.dumps(GOOD))
+    monkeypatch.setattr(bench.judge_passages, "ask",
+                        lambda role, text: events.append(("call", "volume", role))
+                        or ({"unit": True}, None))
+    out = _two_passage_run(tmp_path, monkeypatch)
+    bench.main()
+    # warm-up + 2 casting calls, then the smoke's 2 calls; nothing outside a server
+    assert events == [("enter", "director"), *[("call", "candidate")] * 3, ("exit", "director"),
+                      ("enter", "volume"), *[("call", "volume", "volume")] * 2,
+                      ("exit", "volume")]
+    saved = json.loads(next(out.glob("bench_*.json")).read_text(encoding="utf-8"))
+    assert saved["verdict"] == "PASS" and "error" not in saved
+
+
+def test_a_server_that_fails_to_start_still_leaves_the_results_file_with_the_error(
+        tmp_path, monkeypatch):
+    class Refusing:
+        def __init__(self, role):
+            pass
+
+        def __enter__(self):
+            raise gemma_server.ServerError("no GPU")
+
+        def __exit__(self, *exc):
+            return False
+
+    def no_network(*a, **k):
+        raise AssertionError("nothing may be called without a server")
+
+    monkeypatch.setattr(bench, "GemmaServer", Refusing)
+    monkeypatch.setattr(bench, "chat", no_network)
+    monkeypatch.setattr(bench.judge_passages, "ask", no_network)
+    out = _two_passage_run(tmp_path, monkeypatch)
+    with pytest.raises(gemma_server.ServerError):
+        bench.main()
+    saved = json.loads(next(out.glob("bench_*.json")).read_text(encoding="utf-8"))
+    assert "no GPU" in saved["error"]
+    assert saved["arms"]["reference"]["scores"] == PASSING_REFERENCE
+    assert "candidate" not in saved["arms"]
 
 
 # ------------------------------------------------------------------ the committed asset
