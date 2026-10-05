@@ -1,4 +1,4 @@
-"""The one way Sonora reaches Gemma: Lemonade's OpenAI-style chat endpoint.
+"""The one way Sonora reaches Gemma: Sonora's own llama.cpp server (scripts/lib/gemma_server.py).
 
 The endpoint, both model ids and the request/response shape live here and nowhere else
 (Notes/Sonora/lemonade-migration-design.md). Every other file imports them.
@@ -19,9 +19,11 @@ import json
 import urllib.error
 import urllib.request
 
-URL = "http://localhost:13305/v1/chat/completions"
-DIRECTOR = "gemma-4-31b-mtp"   # judgement: the director and casting passes
-VOLUME = "gemma-4-e4b-mtp"     # volume: passage judging and markup labelling
+from gemma_server import PORT
+
+URL = f"http://127.0.0.1:{PORT}/v1/chat/completions"
+DIRECTOR = "director"   # judgement: the director and casting passes
+VOLUME = "volume"       # volume: passage judging and markup labelling
 # Sent on every call. The server starts llama.cpp with its own sampling defaults, so
 # leaving these out would let a server setting change what Sonora samples.
 TOP_K, TOP_P = 64, 0.95

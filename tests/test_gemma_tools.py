@@ -32,8 +32,8 @@ def test_judge_asks_the_given_model_for_a_json_object(monkeypatch):
     d, err = jp.ask(gc.VOLUME, "The rain fell.")
     assert err is None and d["unit"] is True
     call = rec.calls[0]
-    assert call["system"] == jp.SYSTEM
-    assert call["user"] == "PASSAGE:\nThe rain fell."
+    assert call["system"] is None
+    assert call["user"] == jp.SYSTEM + "\n\nPASSAGE:\nThe rain fell."
     assert call["model"] == gc.VOLUME
     assert call["as_json"] is True
     assert (call["max_tokens"], call["temperature"], call["timeout"]) == (160, 0.0, 120)

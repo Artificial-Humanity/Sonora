@@ -44,6 +44,7 @@ for _p in (_SONORA_REPO, _os.path.join(_SONORA_REPO, "scripts", "lib")):
 # placed beside that one would be a NameError at import time rather than a missing feature.
 import schemas  # noqa: E402
 from gemma_client import DIRECTOR, GemmaError, chat  # noqa: E402
+from gemma_server import GemmaServer  # noqa: E402
 
 
 UA = "Mozilla/5.0 (book_ingest prototype; contact lmcfarlin)"
@@ -1454,48 +1455,49 @@ def main():
             print(f"    [{c['chunk_type']}] {c['text'][:90]}", flush=True)
         return
 
-    print(f"== director-pass ({MODEL} via gemma_client) ==", flush=True)
+    with GemmaServer(DIRECTOR):
+        print(f"== director-pass ({MODEL} via gemma_client) ==", flush=True)
 
-    # A-M11. `lines` used to accumulate in memory and reach disk only after the last
-    # chunk, so ANY interruption — a `load_skill` error at chunk 90, a server restart,
-    # Ctrl-C — discarded every director call made so far. Each one is a 31B inference; a
-    # 200-chunk book is an hour of them. Now each result is appended as it is produced and
-    # a re-run picks up where it stopped.
-    #
-    # FAILURES ARE NOT CHECKPOINTED, deliberately. Same reasoning as D-M6: a transiently
-    # failed chunk must be retried on the next run rather than recorded as done and
-    # dropped forever. The cost is re-attempting a permanently malformed chunk each time,
-    # which is bounded and visible in the failure count.
-    partial_path = os.path.join(args.out, f"{slug}_bank.partial.jsonl")
-    done = load_director_checkpoint(partial_path)
-    if done:
-        print(f"  resuming: {len(done)} chunk(s) already directed in a previous run",
-              flush=True)
+        # A-M11. `lines` used to accumulate in memory and reach disk only after the last
+        # chunk, so ANY interruption — a `load_skill` error at chunk 90, a server restart,
+        # Ctrl-C — discarded every director call made so far. Each one is a 31B inference; a
+        # 200-chunk book is an hour of them. Now each result is appended as it is produced and
+        # a re-run picks up where it stopped.
+        #
+        # FAILURES ARE NOT CHECKPOINTED, deliberately. Same reasoning as D-M6: a transiently
+        # failed chunk must be retried on the next run rather than recorded as done and
+        # dropped forever. The cost is re-attempting a permanently malformed chunk each time,
+        # which is bounded and visible in the failure count.
+        partial_path = os.path.join(args.out, f"{slug}_bank.partial.jsonl")
+        done = load_director_checkpoint(partial_path)
+        if done:
+            print(f"  resuming: {len(done)} chunk(s) already directed in a previous run",
+                  flush=True)
 
-    lines, failures, resumed = [], 0, 0
-    with open(partial_path, "a", encoding="utf-8") as checkpoint:
-        for i, chunk in enumerate(sample):
-            key = chunk_key(chunk)
-            if key in done:
-                lines.append(done[key])
-                resumed += 1
-                continue
-            tag = director_tag(chunk)
-            if not tag:
-                failures += 1
-                print(f"  [{i}] FAILED to parse director JSON ({chunk['chunk_type']})", flush=True)
-                continue
-            line = to_bank_line(i, chunk, tag, slug)
-            lines.append(line)
-            checkpoint.write(json.dumps({"chunk_key": key, "line": line},
-                                        ensure_ascii=False) + "\n")
-            checkpoint.flush()
-            os.fsync(checkpoint.fileno())
-            _i = line["intended"]
-            print(f"  [{i}] {chunk['chunk_type']:9} eng={line['engine']:6} "
-                  f"V={schemas.fmt_axis(_i['V'])} A={schemas.fmt_axis(_i['A'])} "
-                  f"T={schemas.fmt_axis(_i['T'])} "
-                  f"{line['register']:22} | {chunk['text'][:55]}", flush=True)
+        lines, failures, resumed = [], 0, 0
+        with open(partial_path, "a", encoding="utf-8") as checkpoint:
+            for i, chunk in enumerate(sample):
+                key = chunk_key(chunk)
+                if key in done:
+                    lines.append(done[key])
+                    resumed += 1
+                    continue
+                tag = director_tag(chunk)
+                if not tag:
+                    failures += 1
+                    print(f"  [{i}] FAILED to parse director JSON ({chunk['chunk_type']})", flush=True)
+                    continue
+                line = to_bank_line(i, chunk, tag, slug)
+                lines.append(line)
+                checkpoint.write(json.dumps({"chunk_key": key, "line": line},
+                                            ensure_ascii=False) + "\n")
+                checkpoint.flush()
+                os.fsync(checkpoint.fileno())
+                _i = line["intended"]
+                print(f"  [{i}] {chunk['chunk_type']:9} eng={line['engine']:6} "
+                      f"V={schemas.fmt_axis(_i['V'])} A={schemas.fmt_axis(_i['A'])} "
+                      f"T={schemas.fmt_axis(_i['T'])} "
+                      f"{line['register']:22} | {chunk['text'][:55]}", flush=True)
     if resumed:
         print(f"  reused {resumed} directed chunk(s) from the checkpoint", flush=True)
 

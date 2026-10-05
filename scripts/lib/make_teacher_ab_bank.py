@@ -49,6 +49,7 @@ from ref_select import route_engines
 from book_ingest import (MIN_CLIP_CHARS, MIN_CLIP_SECONDS, DIRECTOR_SYSTEM,
                          MODEL, _merge, _extract_json)
 from gemma_client import GemmaError, chat
+from gemma_server import GemmaServer  # noqa: E402
 
 CAMPAIGN = "teacher-ab-v1"
 # ⚠ SEMANTIC retries only — how many times the director is RE-ASKED for a well-formed
@@ -372,120 +373,121 @@ def main():
                          f"({MIN_CLIP_CHARS} chars): {short}")
 
     lines, misses, unusable, no_line, lost_arms = [], [], [], [], []
-    for idx, (key, expected_register, brief, text) in enumerate(ITEMS):
-        print(f"[{idx + 1}/{len(ITEMS)}] {key}", flush=True)
-        # ---- pass 1: label the LINE once. Shared verbatim by every arm. ----
-        lab = label_line(text, args.model)
-        if lab is None:
-            print("    SKIPPED (line pass failed)")
-            no_line.append(key)
-            continue
-        register = lab["register"]
-        # ⚠ THE SECOND WRITER OF `intended`, and it was left behind (issue #93). The whole
-        # argument for validating at the writer is "one place instead of seven readers" —
-        # which only holds if every writer goes through it. `intended_vat` is the one
-        # definition of what a legal axis is.
-        #
-        # ⚠ WHAT THE OLD `float(lab["valence"])` ACTUALLY DID, corrected 2026-08-18 (issue
-        # #100). The comment here used to claim it raised "KeyError on an absent axis";
-        # **that case is unreachable** and always was. `label_line` returns None if any of
-        # valence/arousal/tension/register is missing, and the `continue` above sends the
-        # item away before this line. Measured by stubbing the model call: all four missing
-        # keys are refused at the line pass. What genuinely arrives here is an axis that is
-        # present and out of range, or present and unreadable — and neither used to be
-        # refused: `float("1.5")` is 1.5, and the value was clamped silently downstream.
-        # That silent clamp is the ONE thing the change fixed. It did not remove a mid-run
-        # death; it swapped a ValueError for a SchemaError and, until this was caught,
-        # widened the set of values that cause one.
-        #
-        # ⚠ CAUGHT, NOT PROPAGATED — this loop has no checkpoint (issue #100). The bank is
-        # written only after every item completes, so one `SchemaError` here does not lose a
-        # line, it loses THE WHOLE CAMPAIGN, including every arm already rendered — each of
-        # which is a 31B inference. Site 1 in `book_ingest` can afford to be fatal because
-        # its retry loop re-asks the director and its checkpoint survives a death; neither
-        # is true here.
-        #
-        # Skipping matches this loop's own idiom for an unusable pass ("SKIPPED (line pass
-        # failed)" above). ⚠ THERE ARE FOUR WAYS OUT OF THIS LOOP, NOT TWO (issue #111):
-        # two item-level (line pass failed, unusable axis) and two arm-level (director
-        # failed, routed away). All four are counted and named at the end now; the comment
-        # here said "BOTH" while two of them left no trace at all (issues #105, #111).
-        try:
-            intended = {k: (round(v, 2) if v is not None else None)
-                        for k, v in schemas.intended_vat(lab).items()}
-        except schemas.SchemaError as e:
-            print(f"    SKIPPED (unusable axis): {e}")
-            # ⚠ NOT `misses` (issue #105). That list has one reader, which prints
-            # "expected {exp}, lexicon pick {got}" — so an axis skip filed there both
-            # inflates the ONE number this campaign reports about register quality and
-            # renders as "expected unusable axis, lexicon pick <error text>", with the
-            # tuple positions inverted and the cause truncated mid-sentence at 80 chars.
-            # A skip that is not a register mismatch does not belong in the register
-            # mismatch list, however much it wants a home.
-            unusable.append((key, str(e)))
-            continue
-        if register != expected_register:
-            misses.append((key, expected_register, register))
-        # ⚠ `fmt_axis`, NOT a bare `{}` (issue #100). An absent axis is legal here since
-        # 8d8f986 and `f"{None}"` renders it as the word "None" — which reads as a value the
-        # director produced rather than as one it declined to give. `fmt_axis` is in this
-        # range for exactly that, and its own test asserts "a placeholder, not the word None".
-        print(f"    line: {register}  V/A/T " + "/".join(
-            schemas.fmt_axis(intended[k]) for k in ("V", "A", "T")), flush=True)
+    with GemmaServer(args.model):
+        for idx, (key, expected_register, brief, text) in enumerate(ITEMS):
+            print(f"[{idx + 1}/{len(ITEMS)}] {key}", flush=True)
+            # ---- pass 1: label the LINE once. Shared verbatim by every arm. ----
+            lab = label_line(text, args.model)
+            if lab is None:
+                print("    SKIPPED (line pass failed)")
+                no_line.append(key)
+                continue
+            register = lab["register"]
+            # ⚠ THE SECOND WRITER OF `intended`, and it was left behind (issue #93). The whole
+            # argument for validating at the writer is "one place instead of seven readers" —
+            # which only holds if every writer goes through it. `intended_vat` is the one
+            # definition of what a legal axis is.
+            #
+            # ⚠ WHAT THE OLD `float(lab["valence"])` ACTUALLY DID, corrected 2026-08-18 (issue
+            # #100). The comment here used to claim it raised "KeyError on an absent axis";
+            # **that case is unreachable** and always was. `label_line` returns None if any of
+            # valence/arousal/tension/register is missing, and the `continue` above sends the
+            # item away before this line. Measured by stubbing the model call: all four missing
+            # keys are refused at the line pass. What genuinely arrives here is an axis that is
+            # present and out of range, or present and unreadable — and neither used to be
+            # refused: `float("1.5")` is 1.5, and the value was clamped silently downstream.
+            # That silent clamp is the ONE thing the change fixed. It did not remove a mid-run
+            # death; it swapped a ValueError for a SchemaError and, until this was caught,
+            # widened the set of values that cause one.
+            #
+            # ⚠ CAUGHT, NOT PROPAGATED — this loop has no checkpoint (issue #100). The bank is
+            # written only after every item completes, so one `SchemaError` here does not lose a
+            # line, it loses THE WHOLE CAMPAIGN, including every arm already rendered — each of
+            # which is a 31B inference. Site 1 in `book_ingest` can afford to be fatal because
+            # its retry loop re-asks the director and its checkpoint survives a death; neither
+            # is true here.
+            #
+            # Skipping matches this loop's own idiom for an unusable pass ("SKIPPED (line pass
+            # failed)" above). ⚠ THERE ARE FOUR WAYS OUT OF THIS LOOP, NOT TWO (issue #111):
+            # two item-level (line pass failed, unusable axis) and two arm-level (director
+            # failed, routed away). All four are counted and named at the end now; the comment
+            # here said "BOTH" while two of them left no trace at all (issues #105, #111).
+            try:
+                intended = {k: (round(v, 2) if v is not None else None)
+                            for k, v in schemas.intended_vat(lab).items()}
+            except schemas.SchemaError as e:
+                print(f"    SKIPPED (unusable axis): {e}")
+                # ⚠ NOT `misses` (issue #105). That list has one reader, which prints
+                # "expected {exp}, lexicon pick {got}" — so an axis skip filed there both
+                # inflates the ONE number this campaign reports about register quality and
+                # renders as "expected unusable axis, lexicon pick <error text>", with the
+                # tuple positions inverted and the cause truncated mid-sentence at 80 chars.
+                # A skip that is not a register mismatch does not belong in the register
+                # mismatch list, however much it wants a home.
+                unusable.append((key, str(e)))
+                continue
+            if register != expected_register:
+                misses.append((key, expected_register, register))
+            # ⚠ `fmt_axis`, NOT a bare `{}` (issue #100). An absent axis is legal here since
+            # 8d8f986 and `f"{None}"` renders it as the word "None" — which reads as a value the
+            # director produced rather than as one it declined to give. `fmt_axis` is in this
+            # range for exactly that, and its own test asserts "a placeholder, not the word None".
+            print(f"    line: {register}  V/A/T " + "/".join(
+                schemas.fmt_axis(intended[k]) for k in ("V", "A", "T")), flush=True)
 
-        tags = pick_dia_tags(text, args.model)
-        dia_text = _place_tags(text, tags)
+            tags = pick_dia_tags(text, args.model)
+            dia_text = _place_tags(text, tags)
 
-        # ---- pass 2: casting/delivery per engine, governed by its skill file ----
-        for engine, suffix in ENGINES:
-            row = {
-                "id": f"tab_{idx:02d}_{key}_{suffix}",
-                "engine": engine,
-                "register": register,
-                "expected_register": expected_register,
-                "intended": intended,
-                "seed": args.seed,
-                "text": text,
-                "pair_key": key,
-                "probe": "accent" if key.startswith("accent_") else "register",
-            }
-            if engine == "dia":
-                # Dia takes no direction; its skill file exists to say so and to
-                # govern tag choice (done once, above).
-                row["direction"] = {"render_text": f"[S1] {dia_text} [S1]",
-                                    "temperature": 1.8, "guidance": 3.0,
-                                    "dia_tags": tags}
+            # ---- pass 2: casting/delivery per engine, governed by its skill file ----
+            for engine, suffix in ENGINES:
+                row = {
+                    "id": f"tab_{idx:02d}_{key}_{suffix}",
+                    "engine": engine,
+                    "register": register,
+                    "expected_register": expected_register,
+                    "intended": intended,
+                    "seed": args.seed,
+                    "text": text,
+                    "pair_key": key,
+                    "probe": "accent" if key.startswith("accent_") else "register",
+                }
+                if engine == "dia":
+                    # Dia takes no direction; its skill file exists to say so and to
+                    # govern tag choice (done once, above).
+                    row["direction"] = {"render_text": f"[S1] {dia_text} [S1]",
+                                        "temperature": 1.8, "guidance": 3.0,
+                                        "dia_tags": tags}
+                    lines.append(row)
+                    continue
+
+                d = direct(brief, text, engine, args.model, DIRECT_RETRIES)
+                if d is None:
+                    print(f"    {engine}: SKIPPED (director failed)")
+                    # ⚠ No attempt count here (issue #115). The two failure paths inside
+                    # `direct` spend different numbers of calls, so one number stated at this
+                    # site would be wrong for one of them. `direct` prints which it was.
+                    lost_arms.append((key, engine, "director produced nothing usable"))
+                    continue
+                # Routing is checked HERE, not at the top of the loop: the rule reads the
+                # voice_design the director just wrote, which does not exist until now.
+                # Empty today (Chatterbox's bright-female ban was withdrawn 2026-07-29 when
+                # its guard moved to pitch excursion), wired so the next such finding is one
+                # dict entry in ref_select rather than an edit to every builder.
+                _kept, _dropped = route_engines(d.get("voice_design", ""), [engine])
+                if not _kept:
+                    for _e, _why in _dropped:
+                        print(f"    {_e}: ROUTED AWAY — {_why}")
+                        lost_arms.append((key, _e, _why))
+                    continue
+                if engine == "vibevoice":
+                    # design verbatim so ref_select can parse gender + age band;
+                    # instruct is carried for the audit card only — never sent.
+                    row["direction"] = {"design": d["voice_design"],
+                                        "instruct": d["instruct"]}
+                else:
+                    # single-string engines: exactly what the director wrote
+                    row["direction"] = {"instruct": d["instruct"]}
                 lines.append(row)
-                continue
-
-            d = direct(brief, text, engine, args.model, DIRECT_RETRIES)
-            if d is None:
-                print(f"    {engine}: SKIPPED (director failed)")
-                # ⚠ No attempt count here (issue #115). The two failure paths inside
-                # `direct` spend different numbers of calls, so one number stated at this
-                # site would be wrong for one of them. `direct` prints which it was.
-                lost_arms.append((key, engine, "director produced nothing usable"))
-                continue
-            # Routing is checked HERE, not at the top of the loop: the rule reads the
-            # voice_design the director just wrote, which does not exist until now.
-            # Empty today (Chatterbox's bright-female ban was withdrawn 2026-07-29 when
-            # its guard moved to pitch excursion), wired so the next such finding is one
-            # dict entry in ref_select rather than an edit to every builder.
-            _kept, _dropped = route_engines(d.get("voice_design", ""), [engine])
-            if not _kept:
-                for _e, _why in _dropped:
-                    print(f"    {_e}: ROUTED AWAY — {_why}")
-                    lost_arms.append((key, _e, _why))
-                continue
-            if engine == "vibevoice":
-                # design verbatim so ref_select can parse gender + age band;
-                # instruct is carried for the audit card only — never sent.
-                row["direction"] = {"design": d["voice_design"],
-                                    "instruct": d["instruct"]}
-            else:
-                # single-string engines: exactly what the director wrote
-                row["direction"] = {"instruct": d["instruct"]}
-            lines.append(row)
 
     bank = {"campaign": CAMPAIGN, "version": "1.0",
             "director": args.model,

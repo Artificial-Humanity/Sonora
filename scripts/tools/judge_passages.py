@@ -37,8 +37,8 @@ lesson of the audio work is that a plausible instrument can be confidently wrong
 what it PASSED, blind, before it gates anything.
 
 Usage:
-    .venv/bin/python scripts/tools/judge_passages.py --bank clean.json --model gemma-4-31b-mtp --out judged.jsonl
-    .venv/bin/python scripts/tools/judge_passages.py --bank clean.json --compare gemma-4-e4b-mtp,gemma-4-31b-mtp
+    .venv/bin/python scripts/tools/judge_passages.py --bank clean.json --model director --out judged.jsonl
+    .venv/bin/python scripts/tools/judge_passages.py --bank clean.json --compare volume,director
 """
 import argparse
 import json
@@ -53,6 +53,7 @@ for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in 
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
 from gemma_client import VOLUME, GemmaError, chat  # noqa: E402
+from gemma_server import GemmaServer  # noqa: E402
 
 _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$")
 
@@ -87,7 +88,9 @@ Reply with ONLY a JSON object, no prose, no code fence:
 
 def ask(model, text, timeout=120):
     try:
-        raw = chat(SYSTEM, f"PASSAGE:\n{text}", model=model, max_tokens=160,
+        # The E4B given a system prompt AND a schema reasons into reasoning_content until
+        # max_tokens (probe 2026-10-05), so the instructions travel in the user turn.
+        raw = chat(None, f"{SYSTEM}\n\nPASSAGE:\n{text}", model=model, max_tokens=160,
                    temperature=0.0, as_json=True, timeout=timeout)
     except GemmaError as e:
         return None, f"transport: {e}"
@@ -187,7 +190,8 @@ def main():
     allres = {}
     for m in models:
         print(f"\n== {m} ==", flush=True)
-        res, errs = run(m, rows, args.limit)
+        with GemmaServer(m):
+            res, errs = run(m, rows, args.limit)
         if errs:
             print(f"  ({errs} errors)")
         allres[m] = res

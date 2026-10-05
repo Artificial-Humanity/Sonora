@@ -1,7 +1,7 @@
 """The Gemma client: one request shape, one attempt, every failure a GemmaError.
 
 Pinned against a real local HTTP server, not a mocked urlopen, so the request that leaves
-the process is the one Lemonade would receive.
+the process is the one Sonora's llama.cpp server would receive.
 """
 
 import http.server
@@ -175,7 +175,7 @@ def test_an_unreadable_error_body_is_still_a_gemma_error(monkeypatch):
     # Mock urlopen to raise HTTPError whose .read() also raises
     def mock_urlopen(req, timeout=None):
         err = urllib.error.HTTPError(
-            "http://localhost:13305/v1/chat/completions",
+            "http://127.0.0.1:8014/v1/chat/completions",
             503,
             "Service Unavailable",
             {},
@@ -192,7 +192,7 @@ def test_an_unreadable_error_body_is_still_a_gemma_error(monkeypatch):
         _call()
 
 
-def test_the_defaults_name_lemonade_on_localhost_and_the_registered_models():
-    assert gc.URL == "http://localhost:13305/v1/chat/completions"
-    assert gc.DIRECTOR == "gemma-4-31b-mtp"
-    assert gc.VOLUME == "gemma-4-e4b-mtp"
+def test_the_defaults_name_sonoras_server_and_its_roles():
+    assert gc.URL == "http://127.0.0.1:8014/v1/chat/completions"
+    assert gc.DIRECTOR == "director"
+    assert gc.VOLUME == "volume"

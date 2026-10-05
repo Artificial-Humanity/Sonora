@@ -39,6 +39,7 @@ for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in 
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
 from gemma_client import DIRECTOR, chat  # noqa: E402
+from gemma_server import GemmaServer  # noqa: E402
 
 CHARS_PER_SEC = 14.0
 
@@ -182,37 +183,38 @@ def main():
                 if kind == "prose"}
 
     lines = []
-    for i, r in enumerate(picked):
-        pre, post = build_context(chapters.get(r["chapter"], []), r["para"], r["quote"])
-        attr = (f'{r["verb"]} {r["speaker"]}' if r.get("verb") else "none in text")
-        user = (
-            f"Scene context (the two sentences before the line):\n{pre or '(chapter opening)'}\n\n"
-            f'A character speaks (attribution: "{attr}"). Their line:\n“{r["quote"]}”\n\n'
-            f"What follows the line:\n{post or '(paragraph ends)'}"
-        )
-        print(f"  [{i + 1}/{len(picked)}] {r['quote'][:50]!r} ({attr})")
-        d = call_director(user, args.model)
-        if d is None:
-            print("    SKIPPED (director failed)")
-            continue
-        cls = (r.get("classes") or ["content"])[0]
-        from book_ingest import build_direction
-        _engine, direction = build_direction(d, r["quote"], dia_guidance=4.0)
-        lines.append({
-            "id": f"{args.id_prefix}_{i:02d}_{cls}",
-            "engine": d["engine"],
-            "register": d["register"],
-            "intended": {"V": round(float(d["valence"]), 2),
-                         "A": round(float(d["arousal"]), 2),
-                         "T": round(float(d["tension"]), 2)},
-            "seed": 1234,
-            "text": r["quote"],
-            "direction": direction,
-            "source_ref": {"book": "pg:14275", "chapter": r["chapter"],
-                           "para": r["para"], "verb": r.get("verb"),
-                           "speaker": r.get("speaker"), "clause": r.get("clause"),
-                           "context_pre": pre, "context_post": post},
-        })
+    with GemmaServer(args.model):
+        for i, r in enumerate(picked):
+            pre, post = build_context(chapters.get(r["chapter"], []), r["para"], r["quote"])
+            attr = (f'{r["verb"]} {r["speaker"]}' if r.get("verb") else "none in text")
+            user = (
+                f"Scene context (the two sentences before the line):\n{pre or '(chapter opening)'}\n\n"
+                f'A character speaks (attribution: "{attr}"). Their line:\n“{r["quote"]}”\n\n'
+                f"What follows the line:\n{post or '(paragraph ends)'}"
+            )
+            print(f"  [{i + 1}/{len(picked)}] {r['quote'][:50]!r} ({attr})")
+            d = call_director(user, args.model)
+            if d is None:
+                print("    SKIPPED (director failed)")
+                continue
+            cls = (r.get("classes") or ["content"])[0]
+            from book_ingest import build_direction
+            _engine, direction = build_direction(d, r["quote"], dia_guidance=4.0)
+            lines.append({
+                "id": f"{args.id_prefix}_{i:02d}_{cls}",
+                "engine": d["engine"],
+                "register": d["register"],
+                "intended": {"V": round(float(d["valence"]), 2),
+                             "A": round(float(d["arousal"]), 2),
+                             "T": round(float(d["tension"]), 2)},
+                "seed": 1234,
+                "text": r["quote"],
+                "direction": direction,
+                "source_ref": {"book": "pg:14275", "chapter": r["chapter"],
+                               "para": r["para"], "verb": r.get("verb"),
+                               "speaker": r.get("speaker"), "clause": r.get("clause"),
+                               "context_pre": pre, "context_post": post},
+            })
 
     bank = {
         "version": 1,
