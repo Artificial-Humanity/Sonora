@@ -13,7 +13,9 @@ into `../../blobs`; a snapshot-only mount leaves them dangling (found in the 202
 """
 
 import grp
+import signal
 import subprocess
+import threading
 import time
 import urllib.request
 import uuid
@@ -26,6 +28,7 @@ PORT = 8014
 LABEL = "sonora=llama"
 TRAINING_NAMES = ("sonora_training", "vocoder_training")
 START_TIMEOUT = 600
+RUN_TIMEOUT = 900  # `docker run` may pull the image first
 HUB = Path("/data/huggingface/hub")
 DRAFTERS = Path("/data/services/lemonade/recipe/drafters")
 
@@ -89,13 +92,21 @@ def _healthy():
 
 
 def _group_ids():
+    """`--group-add` for the host's GPU groups. Fails CLOSED: without them the container starts
+    with no access to /dev/kfd or /dev/dri and would only fail later, inside llama-server."""
     out = []
     for name in ("video", "render"):
         try:
             out += ["--group-add", str(grp.getgrnam(name).gr_gid)]
         except KeyError:
-            pass
+            raise ServerError(f"the host has no {name!r} group; the container would have no "
+                              f"GPU access") from None
     return out
+
+
+def _on_sigterm(signum, frame):
+    """Turn SIGTERM (systemd, `timeout`, an orchestrator) into SystemExit so `__exit__` runs."""
+    raise SystemExit(128 + signal.SIGTERM)
 
 
 class GemmaServer:
@@ -104,6 +115,7 @@ class GemmaServer:
         self.role, self._docker, self._healthy, self._sleep = role, docker, healthy, sleep
         self._hub, self._drafters = hub, drafters
         self.container = ""
+        self._prev_term, self._term_armed = None, False
 
     def _ps(self, *filters):
         args = ["ps", "--format", "{{.Names}}"]
@@ -114,6 +126,17 @@ class GemmaServer:
             raise ServerError(f"docker ps failed: {r.stderr.strip()}")
         return [n for n in r.stdout.split() if n]
 
+    def _arm_sigterm(self):
+        if threading.current_thread() is threading.main_thread():
+            self._prev_term = signal.signal(signal.SIGTERM, _on_sigterm)
+            self._term_armed = True
+
+    def _restore_sigterm(self):
+        if self._term_armed:
+            self._term_armed = False
+            signal.signal(signal.SIGTERM, signal.SIG_DFL if self._prev_term is None
+                          else self._prev_term)
+
     def __enter__(self):
         repo, model, drafter = resolve(self.role, self._hub, self._drafters)
         if running := self._ps(*(f"name={n}" for n in TRAINING_NAMES)):
@@ -121,16 +144,24 @@ class GemmaServer:
         if left := self._ps(f"label={LABEL}"):
             raise ServerError(f"a Sonora Gemma server is already running ({', '.join(left)}); "
                               f"remove it with `docker rm -f {' '.join(left)}` once nothing uses it")
+        groups = _group_ids()
         name = f"sonora-llama-{uuid.uuid4().hex[:8]}"
         cmd = ["run", "-d", "--rm", "--name", name, "--label", LABEL,
-               "--device", "/dev/kfd", "--device", "/dev/dri", *_group_ids(),
+               "--device", "/dev/kfd", "--device", "/dev/dri", *groups,
                "-p", f"127.0.0.1:{PORT}:8080", "-v", f"{repo}:/m:ro",
                "-v", f"{drafter}:/d/{drafter.name}:ro", IMAGE, *server_args(model, drafter.name)]
-        r = self._docker(*cmd)
-        if r.returncode != 0:
-            raise ServerError(f"docker run failed: {r.stderr.strip()}")
+        self._arm_sigterm()
+        # The name is recorded BEFORE `docker run`: a timeout or a signal during or after it
+        # must still reach the `rm -f` below.
         self.container = name
         try:
+            try:
+                r = self._docker(*cmd, timeout=RUN_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                raise ServerError(f"docker run did not return in {RUN_TIMEOUT}s; removing "
+                                  f"{name}") from None
+            if r.returncode != 0:
+                raise ServerError(f"docker run failed: {r.stderr.strip()}")
             deadline = time.monotonic() + START_TIMEOUT
             while not self._healthy():
                 state = self._docker("inspect", "-f", "{{.State.Running}}", name).stdout.strip()
@@ -145,10 +176,17 @@ class GemmaServer:
         return self
 
     def __exit__(self, *exc):
-        if not self.container:
-            return
-        name, self.container = self.container, ""
-        r = self._docker("rm", "-f", name, timeout=180)
-        if r.returncode != 0 and "No such container" not in r.stderr:
-            raise ServerError(f"could not remove {name}; it may still hold the GPU — "
-                              f"run `docker rm -f {name}`: {r.stderr.strip()}")
+        try:
+            if not self.container:
+                return
+            name, self.container = self.container, ""
+            remedy = (f"could not remove {name}; it may still hold the GPU — "
+                      f"run `docker rm -f {name}`")
+            try:
+                r = self._docker("rm", "-f", name, timeout=180)
+            except subprocess.TimeoutExpired:
+                raise ServerError(f"{remedy}: docker rm timed out") from None
+            if r.returncode != 0 and "No such container" not in r.stderr:
+                raise ServerError(f"{remedy}: {r.stderr.strip()}")
+        finally:
+            self._restore_sigterm()
