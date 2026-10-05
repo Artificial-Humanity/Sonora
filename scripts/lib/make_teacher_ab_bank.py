@@ -29,7 +29,6 @@ import argparse
 import json
 import os
 import sys
-import urllib.request
 
 # Sibling modules used to be reached with `sys.path.insert(0, dirname(__file__))`, which
 # worked only while every script lived in one directory. After #26 step 3 they are split
@@ -48,14 +47,15 @@ for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in 
 import schemas  # noqa: E402  (the validated loaders; see scripts/lib/schemas.py)
 from ref_select import route_engines
 from book_ingest import (MIN_CLIP_CHARS, MIN_CLIP_SECONDS, DIRECTOR_SYSTEM,
-                         MODEL, OLLAMA, _merge, _extract_json)
+                         MODEL, _merge, _extract_json)
+from gemma_client import GemmaError, chat
 
 CAMPAIGN = "teacher-ab-v1"
 # ⚠ SEMANTIC retries only — how many times the director is RE-ASKED for a well-formed
-# answer that was missing a required key. Transport retries belong to `_ollama` and are
-# counted by `OLLAMA_RETRIES`; nesting the two silently multiplied them (issue #115).
+# answer that was missing a required key. Transport retries belong to `_ask` and are
+# counted by `TRANSPORT_RETRIES`; nesting the two silently multiplied them (issue #115).
 # ⚠ The two still multiply on the flaky-endpoint path, by design: worst case for one arm
-# is DIRECT_RETRIES * OLLAMA_RETRIES = 6 model calls (issue #121). Bounded, and stated
+# is DIRECT_RETRIES * TRANSPORT_RETRIES = 6 model calls (issue #121). Bounded, and stated
 # wherever a number is printed, rather than hidden behind an "attempt" count.
 DIRECT_RETRIES = 2
 
@@ -169,27 +169,19 @@ DIA_TAG_SYSTEM = (
 ENGINES = [("moss_vg", "MVG"), ("qwen", "QWN"), ("vibevoice", "VV"), ("dia", "DIA")]
 
 
-OLLAMA_RETRIES = 3   # transport/parse attempts inside _ollama itself
+TRANSPORT_RETRIES = 3   # transport/parse attempts inside _ask itself
 
 
-def _ollama(system, user, model, url, retries=OLLAMA_RETRIES, num_predict=400):
+def _ask(system, user, model, retries=TRANSPORT_RETRIES, max_tokens=400):
     for _ in range(retries):
-        body = json.dumps({
-            "model": model, "stream": False, "think": False,
-            "options": {"num_predict": num_predict, "temperature": 0.2},
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": user}],
-        }).encode()
-        req = urllib.request.Request(url, data=body,
-                                     headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=300) as r:
-                content = json.load(r)["message"]["content"]
-            d = _extract_json(content)
-            if d is not None:
-                return d
-        except Exception as e:
-            print(f"    retry ({e!r})", flush=True)
+            d = _extract_json(chat(system, user, model=model, max_tokens=max_tokens,
+                                   temperature=0.2, timeout=300))
+        except GemmaError as e:
+            print(f"    retry ({e})", flush=True)
+            continue
+        if d is not None:
+            return d
     return None
 
 
@@ -265,10 +257,10 @@ def load_skill(engine):
     return text
 
 
-def label_line(text, model, url):
+def label_line(text, model):
     """Pass 1 — engine-agnostic. V/A/T + a register from the controlled lexicon."""
-    d = _ollama(LINE_SYSTEM, f"The line:\n\u201c{text}\u201d", model, url,
-                num_predict=300)
+    d = _ask(LINE_SYSTEM, f"The line:\n\u201c{text}\u201d", model,
+              max_tokens=300)
     if d is None:
         return None
     for k in ("valence", "arousal", "tension", "register"):
@@ -281,37 +273,37 @@ def label_line(text, model, url):
     return d
 
 
-def direct(brief, text, engine, model, url, retries=2):
+def direct(brief, text, engine, model, retries=2):
     """Pass 2 — per engine. Casting/delivery only, governed by the skill file.
 
-    ⚠ IT RETRIES, AS OF 2026-08-19 (owner decision on issue #111). One `_ollama` call
+    ⚠ IT RETRIES, AS OF 2026-08-19 (owner decision on issue #111). One `_ask` call
     decided an arm: a truncated generation or a missing `instruct` key cost that engine's
     whole arm for the line, and the item went into the bank with three of four.
 
-    ⚠⚠ IT RETRIES ONLY THE FAILURE `_ollama` CANNOT (issue #115). The first version looped
-    over `_ollama` — which has its own retry loop, default 3 — so a dead endpoint cost up
+    ⚠⚠ IT RETRIES ONLY THE FAILURE `_ask` CANNOT (issue #115). The first version looped
+    over `_ask` — which has its own retry loop, default 3 — so a dead endpoint cost up
     to SIX model calls and was reported as "attempt 2/2". That docstring also claimed the
     shape was `book_ingest.director_tag`'s "same loop, same number": it is not, and the
-    difference is the point. `director_tag` wraps a RAW `urlopen`, so its 2 really is 2.
-    `_ollama` is already a retrying client.
+    difference is the point. `director_tag` wraps a single-attempt `chat`, so its 2 really is 2.
+    `_ask` is already a retrying client.
 
     So the two loops now own two different failure classes:
 
-      * **transport or unparseable JSON** — `_ollama`'s own business, and by the time it
-        returns `None` it has already tried `OLLAMA_RETRIES` times. Asking again repeats a
+      * **transport or unparseable JSON** — `_ask`'s own business, and by the time it
+        returns `None` it has already tried `TRANSPORT_RETRIES` times. Asking again repeats a
         failure that has just been retried to exhaustion, so this returns immediately.
-      * **a well-formed answer missing a required key** — a SEMANTIC failure `_ollama`
+      * **a well-formed answer missing a required key** — a SEMANTIC failure `_ask`
         cannot see, and a fresh generation is exactly what might fix it. This is what
         `retries` counts.
 
     ⚠ `retries` COUNTS DIRECTOR ASKS, NOT MODEL CALLS, AND THE FIRST VERSION OF THIS
-    PARAGRAPH SAID OTHERWISE (issue #121). `_ollama` retries on any exception and on
+    PARAGRAPH SAID OTHERWISE (issue #121). `_ask` retries on any exception and on
     unparseable JSON, returning as soon as one attempt parses — so a well-formed answer
     missing a key can be the 1st, 2nd or 3rd model call of a single ask. The honest bound
-    for one arm is `DIRECT_RETRIES * OLLAMA_RETRIES` = **6 model calls**, which is exactly
+    for one arm is `DIRECT_RETRIES * TRANSPORT_RETRIES` = **6 model calls**, which is exactly
     the figure #115 was filed about; what #115 actually removed is the DEAD-endpoint case,
     where it is now 3 rather than 6. A flaky endpoint can still reach 6, and at
-    `_ollama`'s 300 s timeout that is a bounded but long stall on one arm. Stated rather
+    `_ask`'s 300 s timeout that is a bounded but long stall on one arm. Stated rather
     than fixed: capping it is a budget decision, not a defect.
     """
     system = (TARGETED_SYSTEM
@@ -323,26 +315,26 @@ def direct(brief, text, engine, model, url, retries=2):
             f"The line to be performed:\n\u201c{text}\u201d")
     required = ("voice_design", "instruct") if engine == "vibevoice" else ("instruct",)
     for attempt in range(retries):
-        d = _ollama(system, user, model, url, num_predict=900)
+        d = _ask(system, user, model, max_tokens=900)
         if d is None:
-            print(f"    director call failed ({engine}) — _ollama already spent its "
-                  f"{OLLAMA_RETRIES} attempts, not re-asking")
+            print(f"    director call failed ({engine}) — _ask already spent its "
+                  f"{TRANSPORT_RETRIES} attempts, not re-asking")
             return None
         missing = [k for k in required if k not in d]
         if missing:
             # ⚠ "ask", not "attempt" (issue #121): this counts director ASKS, and each
-            # ask may have cost up to OLLAMA_RETRIES model calls inside `_ollama`.
+            # ask may have cost up to TRANSPORT_RETRIES model calls inside `_ask`.
             print(f"    director missing key {', '.join(missing)} ({engine}), "
                   f"ask {attempt + 1}/{retries} "
-                  f"(each ask is up to {OLLAMA_RETRIES} model calls)")
+                  f"(each ask is up to {TRANSPORT_RETRIES} model calls)")
             continue
         return d
     return None
 
 
-def pick_dia_tags(text, model, url):
-    d = _ollama(DIA_TAG_SYSTEM, f"The line:\n\u201c{text}\u201d", model, url,
-                num_predict=120)
+def pick_dia_tags(text, model):
+    d = _ask(DIA_TAG_SYSTEM, f"The line:\n\u201c{text}\u201d", model,
+              max_tokens=120)
     tags = (d or {}).get("tags") or []
     return [t for t in tags if t in DIA_TAGS][:2]
 
@@ -372,7 +364,6 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=1234)
     ap.add_argument("--model", default=MODEL)
-    ap.add_argument("--ollama", default=OLLAMA)
     args = ap.parse_args()
 
     short = [k for k, _r, _b, t in ITEMS if len(t) < MIN_CLIP_CHARS]
@@ -384,7 +375,7 @@ def main():
     for idx, (key, expected_register, brief, text) in enumerate(ITEMS):
         print(f"[{idx + 1}/{len(ITEMS)}] {key}", flush=True)
         # ---- pass 1: label the LINE once. Shared verbatim by every arm. ----
-        lab = label_line(text, args.model, args.ollama)
+        lab = label_line(text, args.model)
         if lab is None:
             print("    SKIPPED (line pass failed)")
             no_line.append(key)
@@ -442,7 +433,7 @@ def main():
         print(f"    line: {register}  V/A/T " + "/".join(
             schemas.fmt_axis(intended[k]) for k in ("V", "A", "T")), flush=True)
 
-        tags = pick_dia_tags(text, args.model, args.ollama)
+        tags = pick_dia_tags(text, args.model)
         dia_text = _place_tags(text, tags)
 
         # ---- pass 2: casting/delivery per engine, governed by its skill file ----
@@ -467,7 +458,7 @@ def main():
                 lines.append(row)
                 continue
 
-            d = direct(brief, text, engine, args.model, args.ollama, DIRECT_RETRIES)
+            d = direct(brief, text, engine, args.model, DIRECT_RETRIES)
             if d is None:
                 print(f"    {engine}: SKIPPED (director failed)")
                 # ⚠ No attempt count here (issue #115). The two failure paths inside
@@ -537,7 +528,7 @@ def main():
     for k in no_line:
         print(f"      {k}")
     # ⚠ ARM-LEVEL LOSSES, WHICH ARE NOT ITEM-LEVEL ONES. `direct()` returns None whenever
-    # ollama fails or the model omits `instruct` — routine for a 31B local director, not
+    # the server fails or the model omits `instruct` — routine for a 31B local director, not
     # exotic — and `route_engines` can drop an arm on the voice_design it just read. Both
     # left the loop silently until 2026-08-18. An item missing one arm is still in the
     # bank; whether it BELONGS there is a campaign-design question and is not decided here.
