@@ -132,7 +132,8 @@ def run_arm(call, passages):
 
 
 def lemonade_call(system, user, schema):
-    return chat(system, user, model=DIRECTOR, max_tokens=900, temperature=0.2, schema=schema)
+    return chat(system, user, model=DIRECTOR, max_tokens=900, temperature=0.2, schema=schema,
+                timeout=300)   # the reference arm's budget
 
 
 def ollama_call(system, user, schema):
@@ -170,6 +171,10 @@ def _arm(source, rows):
             "scores": score([r["casting"] for r in rows])}
 
 
+def _save(path, out):
+    path.write_text(json.dumps(out, indent=1, ensure_ascii=False), encoding="utf-8")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--build-passages", action="store_true",
@@ -191,28 +196,35 @@ def main():
     passages = json.loads(ASSET.read_text(encoding="utf-8"))
     out = {"design": "Notes/Sonora/lemonade-migration-design.md", "engine": ENGINE,
            "passages": len(passages), "arms": {}}
-    if args.reference:
-        ref = json.loads(Path(args.reference).read_text(encoding="utf-8"))["arms"]["reference"]
-        out["arms"]["reference"] = {"source": f"{args.reference}: {ref['source']}",
-                                    "scores": ref["scores"]}
-    else:
-        print(f"== reference arm: {OLLAMA_MODEL} ==", flush=True)
-        ollama_call("Reply with an empty JSON object.", "{}", {"type": "object"})   # warm
-        out["arms"]["reference"] = _arm(OLLAMA_MODEL, run_arm(ollama_call, passages))
-        unload_ollama()   # both 31Bs at once would not fit beside the box's other models
-
-    print(f"== candidate arm: {DIRECTOR} ==", flush=True)
-    chat(None, "Reply with an empty JSON object.", model=DIRECTOR, max_tokens=16,
-         temperature=0.0, as_json=True)   # warm: a cold load is not a casting call
-    out["arms"]["candidate"] = _arm(DIRECTOR, run_arm(lemonade_call, passages))
-    print(f"== volume smoke: {VOLUME} ==", flush=True)
-    out["volume_parsed"] = volume_smoke(passages)
-    out["verdict"], out["reasons"] = verdict(out["arms"]["reference"]["scores"],
-                                             out["arms"]["candidate"]["scores"],
-                                             out["volume_parsed"])
     Path(args.out).mkdir(parents=True, exist_ok=True)
     path = Path(args.out) / time.strftime("bench_%Y%m%dT%H%M%S.json")
-    path.write_text(json.dumps(out, indent=1, ensure_ascii=False), encoding="utf-8")
+    try:
+        if args.reference:
+            ref = json.loads(Path(args.reference).read_text(encoding="utf-8"))["arms"]["reference"]
+            out["arms"]["reference"] = {"source": f"{args.reference}: {ref['source']}",
+                                        "scores": ref["scores"]}
+        else:
+            print(f"== reference arm: {OLLAMA_MODEL} ==", flush=True)
+            ollama_call("Reply with an empty JSON object.", "{}", {"type": "object"})   # warm
+            out["arms"]["reference"] = _arm(OLLAMA_MODEL, run_arm(ollama_call, passages))
+            _save(path, out)   # the reference arm is the expensive, unrepeatable half
+            unload_ollama()   # both 31Bs at once would not fit beside the box's other models
+
+        print(f"== candidate arm: {DIRECTOR} ==", flush=True)
+        chat(None, "Reply with an empty JSON object.", model=DIRECTOR, max_tokens=16,
+             temperature=0.0, as_json=True)   # warm: a cold load is not a casting call
+        out["arms"]["candidate"] = _arm(DIRECTOR, run_arm(lemonade_call, passages))
+        _save(path, out)
+        print(f"== volume smoke: {VOLUME} ==", flush=True)
+        out["volume_parsed"] = volume_smoke(passages)
+        out["verdict"], out["reasons"] = verdict(out["arms"]["reference"]["scores"],
+                                                 out["arms"]["candidate"]["scores"],
+                                                 out["volume_parsed"])
+    except BaseException as e:   # whatever finished stays on disk, with the reason it stopped
+        out["error"] = repr(e)
+        raise
+    finally:
+        _save(path, out)
 
     cols = ("parsed", "emotion_omitted", "rate", "pitch", "distinct")
     print("\narm        " + "  ".join(f"{c:>15}" for c in cols) + "   s/call")
