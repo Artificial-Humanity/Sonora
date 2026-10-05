@@ -14,6 +14,7 @@ budget the reasoning eats all of it and `content` comes back empty (measured 202
 schema `{"type": "object"}`.
 """
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -58,9 +59,12 @@ def chat(system, user, *, model, max_tokens, temperature, schema=None, as_json=F
         with urllib.request.urlopen(req, timeout=timeout) as r:
             raw = r.read()
     except urllib.error.HTTPError as e:   # before URLError: it is a subclass
-        detail = e.read()[:200].decode("utf-8", "replace")
+        try:
+            detail = e.read()[:200].decode("utf-8", "replace")
+        except (OSError, http.client.HTTPException):
+            detail = ""
         raise GemmaError(f"{model}: HTTP {e.code}: {detail}") from e
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as e:
         raise GemmaError(f"{model}: transport: {e}") from e
     try:
         content = json.loads(raw)["choices"][0]["message"]["content"]

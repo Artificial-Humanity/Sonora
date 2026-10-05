@@ -9,6 +9,8 @@ import json
 import socket
 import threading
 import time
+import urllib.error
+import urllib.request
 
 import pytest
 
@@ -141,6 +143,52 @@ def test_empty_or_null_content_is_a_gemma_error_not_a_value(server, content):
     # Review Focus 4: thinking that ate the budget arrives as 200 with nothing in content.
     server.reply = (200, _ok(content), 0)
     with pytest.raises(gc.GemmaError, match="empty content"):
+        _call()
+
+
+def test_a_truncated_body_is_a_gemma_error(monkeypatch):
+    # A handler that sends Content-Length larger than actual payload
+    class _TruncatedHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", "1000")
+            self.end_headers()
+            self.wfile.write(b'{"choices"')  # Incomplete JSON, closes connection
+
+        def log_message(self, *args):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _TruncatedHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+    monkeypatch.setattr(gc, "URL", f"http://127.0.0.1:{srv.server_port}/v1/chat/completions")
+    try:
+        with pytest.raises(gc.GemmaError, match="transport"):
+            _call()
+    finally:
+        srv.shutdown()
+        srv.server_close()
+
+
+def test_an_unreadable_error_body_is_still_a_gemma_error(monkeypatch):
+    # Mock urlopen to raise HTTPError whose .read() also raises
+    def mock_urlopen(req, timeout=None):
+        err = urllib.error.HTTPError(
+            "http://localhost:13305/v1/chat/completions",
+            503,
+            "Service Unavailable",
+            {},
+            None
+        )
+        # Make .read() raise ConnectionResetError
+        def read_raises(*args, **kwargs):
+            raise ConnectionResetError("Connection reset by peer")
+        err.read = read_raises
+        raise err
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+    with pytest.raises(gc.GemmaError, match="HTTP 503"):
         _call()
 
 
