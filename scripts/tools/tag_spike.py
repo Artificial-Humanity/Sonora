@@ -2,7 +2,7 @@
 
 Selects ~100 trusted clips from the utterance notation store (50 owner-certified
 expressive-registers + 50 LibriTTS-R spread across the V/A/T range), quantizes the
-instrument decode into symbols, has Gemma (ollama, AR 26B-A4B by default) fill the
+instrument decode into symbols, has Gemma (through gemma_client, e4b by default) fill the
 interpretive SCM fields blind (register is NOT given — recovery is scored), then
 validates + verifies each object and registers the results as the `audit-markup-v0`
 campaign in the Dataset Listening app (clip + inline projection in the note).
@@ -10,7 +10,7 @@ campaign in the Dataset Listening app (clip + inline projection in the note).
 Outputs under /data/model-training/sonora/markup_prep/spike_v0/:
   scm_rows.jsonl   one SCM sidecar per clip + verifier verdicts
   report.json      schema-valid rate, VAT verify rate, register recovery
-Run:  .venv/bin/python scripts/tools/tag_spike.py [--model gemma-4-26b-a4b-qat]
+Run:  .venv/bin/python scripts/tools/tag_spike.py [--model gemma-4-e4b-mtp]
       [--limit N] [--no-register]
 """
 import argparse
@@ -19,7 +19,6 @@ import os
 import json
 import random
 import sys
-import urllib.request
 from pathlib import Path
 
 # Sibling modules used to be reached with `sys.path.insert(0, dirname(__file__))`, which
@@ -41,9 +40,9 @@ SON = Path("/data/model-training/sonora")
 NOTATION = SON / "markup_prep" / "utterance_notation.jsonl"
 OUT_DIR = SON / "markup_prep" / "spike_v0"
 import synth_common  # noqa: E402
+from gemma_client import VOLUME, chat  # noqa: E402
 
 RATINGS = Path("/data/model-training/datasets/sonora-expressive-registers/ratings.csv")
-OLLAMA = "http://localhost:11434/api/chat"
 
 
 def bin_sym(v):
@@ -149,13 +148,9 @@ def prompt_for(r, lexicon, include_register_list=True):
 
 
 def ask(model, prompt):
-    req = urllib.request.Request(OLLAMA, method="POST", data=json.dumps({
-        "model": model, "stream": False, "think": False, "format": "json",
-        "messages": [{"role": "user", "content": prompt}],
-        "options": {"temperature": 0.2, "num_predict": 700, "num_ctx": 8192},
-    }).encode())
-    with urllib.request.urlopen(req, timeout=300) as resp:
-        return json.loads(resp.read())["message"]["content"]
+    # The served context is 8192 tokens — the num_ctx this spike used to request.
+    return chat(None, prompt, model=model, max_tokens=700, temperature=0.2,
+                as_json=True, timeout=300)
 
 
 def main():
@@ -166,7 +161,7 @@ def main():
     # ⚠ The recorded audit-markup-v0 spike results were produced with
     # `gemma-4-26b-a4b-qat`. Re-running with this default will not reproduce them;
     # pass --model explicitly to compare against the old numbers.
-    ap.add_argument("--model", default="gemma-4-e4b-qat-spec")
+    ap.add_argument("--model", default=VOLUME)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--no-register-audit", action="store_true",
                     help="skip appending the audit-markup-v0 campaign rows")
