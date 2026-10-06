@@ -1110,7 +1110,7 @@ def casting_messages(text, engine, labels=None):
     if labels:
         vat = ", ".join(f"{k}={labels[k]:+.2f}" for k in ("V", "A", "T") if k in labels)
         # ⚠ AN EMPTY AXIS LINE IS WORSE THAN NO AXIS LINE (issue #99). When the director's
-        # first pass emits no axis at all — legal, since that pass sends no `format` schema —
+        # first pass emits no axis at all — legal, since that pass sends no JSON schema —
         # `vat` is "" and this block used to brief the second pass with
         # `valence/arousal/tension: ` under a heading reading "treat as FIXED CONTEXT you must
         # serve". A labelled field followed by nothing is not neutral: it is an instruction to

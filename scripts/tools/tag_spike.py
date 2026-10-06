@@ -159,9 +159,9 @@ def main():
     # e4b: this is the LABELER half of the span-markup plan (e4b labels, 31b
     # judges), and it is scored on schema-valid rate — which makes a default of
     # the one variant measured at 13/100 malformed JSON indefensible.
-    # ⚠ The recorded audit-markup-v0 spike results were produced with
-    # `gemma-4-26b-a4b-qat`. Re-running with this default will not reproduce them;
-    # pass --model explicitly to compare against the old numbers.
+    # ⚠ The recorded audit-markup-v0 spike results came from the 26B MoE
+    # (`gemma-4-26b-a4b-qat`), which this tool can no longer serve (--model takes only a
+    # role, director or volume), so they cannot be reproduced with it.
     ap.add_argument("--model", default=VOLUME)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--no-register-audit", action="store_true",

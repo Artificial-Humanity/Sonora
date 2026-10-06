@@ -261,3 +261,10 @@ def test_the_committed_passages_are_the_pre_registered_set():
     for p in passages:
         assert set(p) == {"id", "book", "text", "register", "V", "A", "T"}
         assert "_nar_" in p["id"]
+
+
+def test_the_pre_registered_passages_are_unchanged():
+    # A deliberate change invalidates the recorded reference and needs a new pre-registration.
+    import hashlib
+    digest = hashlib.sha256((ASSETS / "director_bench_passages.json").read_bytes()).hexdigest()
+    assert digest == "aa672a06b47d1906813f5d47d0cb288a0f06a98cb71b96164dc47bf2be1d2b1d"

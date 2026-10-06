@@ -2,7 +2,7 @@
 
 The pilot of the synth half of the v1.1 rescope (librivox-quote-mining-plan.md
 §companion lane; owner go 2026-07-21): take stage-A quote candidates, give the
-live Gemma 26B director each quote WITH ITS SCENE CONTEXT (the preceding two
+live Gemma 31B director each quote WITH ITS SCENE CONTEXT (the preceding two
 sentences and the following sentence — owner spec), and emit a script bank in
 the exact shape synth_{dia,qwen,moss85}.py consume. The director's V/A/T is
 the training label by construction; the bank records the attribution

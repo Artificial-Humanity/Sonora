@@ -11,7 +11,8 @@ Run:
   .venv/bin/python scripts/tools/director_obedience_bench.py --build-passages
   .venv/bin/python scripts/tools/director_obedience_bench.py --reference RESULTS.json [--out DIR]
 The reference scores are the paired run recorded in the design note's Verdict section; the
-retired server's reference arm is recorded in bench_20261005T230855.json (under --out).
+retired server's reference arm is recorded in bench_20261005T230855.json. A run writes its
+results file to the --out directory.
 """
 
 import argparse
@@ -130,7 +131,7 @@ def run_arm(call, passages):
 
 def candidate_call(system, user, schema):
     return chat(system, user, model=DIRECTOR, max_tokens=900, temperature=0.2, schema=schema,
-                timeout=300)   # the reference arm's budget
+                timeout=300)   # the recorded reference arm's 300 s
 
 
 def volume_smoke(passages):

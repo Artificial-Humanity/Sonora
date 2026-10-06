@@ -14,6 +14,10 @@ from scripts_layout import SCRIPTS
 SCRIPTS.on_path()
 import gemma_server as gs  # noqa: E402
 
+# The snapshot revisions the bench validated; the weights are pinned like the image is.
+DIRECTOR_REV = "59dde24573e7e61570dba08b18a2e1fe246955ed"
+VOLUME_REV = "4b4a2c1d584be7264f87aac328a1bc739ce81b6c"
+
 
 class FakeDocker:
     """Records every docker invocation and answers like a small docker.
@@ -68,8 +72,10 @@ class FakeDocker:
 @pytest.fixture
 def cache(tmp_path):
     hub, drafters = tmp_path / "hub", tmp_path / "drafters"
-    for size, file in (("31B", "gemma-4-31B_q4_0-it.gguf"), ("E4B", "gemma-4-E4B_q4_0-it.gguf")):
-        snap = hub / f"models--google--gemma-4-{size}-it-qat-q4_0-gguf" / "snapshots" / "abc123"
+    for size, file, role in (("31B", "gemma-4-31B_q4_0-it.gguf", "director"),
+                             ("E4B", "gemma-4-E4B_q4_0-it.gguf", "volume")):
+        snap = (hub / f"models--google--gemma-4-{size}-it-qat-q4_0-gguf" / "snapshots"
+                / gs.ROLES[role].revision)
         snap.mkdir(parents=True)
         (snap / file).write_bytes(b"GGUF")
     drafters.mkdir()
@@ -110,17 +116,46 @@ def test_resolve_mounts_the_whole_repo_and_addresses_the_snapshot(cache):
     hub, drafters = cache
     repo, model, drafter = gs.resolve("director", hub=hub, drafters=drafters)
     assert repo == hub / "models--google--gemma-4-31B-it-qat-q4_0-gguf"
-    assert model == "/m/snapshots/abc123/gemma-4-31B_q4_0-it.gguf"
+    assert model == f"/m/snapshots/{DIRECTOR_REV}/gemma-4-31B_q4_0-it.gguf"
     assert drafter == drafters / "gemma-4-31B-it-qat-assistant-Q8_0.gguf"
 
 
-def test_resolve_refuses_two_snapshots_or_a_missing_file(cache):
+def test_the_weights_are_pinned_by_snapshot_revision():
+    assert gs.ROLES["director"].revision == DIRECTOR_REV
+    assert gs.ROLES["volume"].revision == VOLUME_REV
+
+
+def test_resolve_refuses_a_missing_pinned_revision_and_names_it(cache):
     hub, drafters = cache
-    (hub / "models--google--gemma-4-31B-it-qat-q4_0-gguf" / "snapshots" / "def456").mkdir()
-    with pytest.raises(gs.ServerError, match="exactly one snapshot"):
+    (hub / "models--google--gemma-4-31B-it-qat-q4_0-gguf" / "snapshots" / DIRECTOR_REV
+     / "gemma-4-31B_q4_0-it.gguf").unlink()
+    (hub / "models--google--gemma-4-31B-it-qat-q4_0-gguf" / "snapshots" / DIRECTOR_REV).rmdir()
+    other = hub / "models--google--gemma-4-31B-it-qat-q4_0-gguf" / "snapshots" / "def456"
+    other.mkdir()
+    (other / "gemma-4-31B_q4_0-it.gguf").write_bytes(b"GGUF")
+    with pytest.raises(gs.ServerError, match=DIRECTOR_REV):
         gs.resolve("director", hub=hub, drafters=drafters)
+
+
+def test_resolve_ignores_an_unrelated_snapshot_beside_the_pinned_one(cache):
+    hub, drafters = cache
+    other = hub / "models--google--gemma-4-31B-it-qat-q4_0-gguf" / "snapshots" / "def456"
+    other.mkdir()
+    (other / "gemma-4-31B_q4_0-it.gguf").write_bytes(b"GGUF")
+    _, model, _ = gs.resolve("director", hub=hub, drafters=drafters)
+    assert model == f"/m/snapshots/{DIRECTOR_REV}/gemma-4-31B_q4_0-it.gguf"
+
+
+def test_resolve_refuses_a_missing_file_role_or_drafter(cache):
+    hub, drafters = cache
+    (hub / "models--google--gemma-4-E4B-it-qat-q4_0-gguf" / "snapshots" / VOLUME_REV
+     / "gemma-4-E4B_q4_0-it.gguf").unlink()
+    with pytest.raises(gs.ServerError, match="does not exist"):
+        gs.resolve("volume", hub=hub, drafters=drafters)
     with pytest.raises(gs.ServerError, match="no such role"):
         gs.resolve("nope", hub=hub, drafters=drafters)
+    (hub / "models--google--gemma-4-E4B-it-qat-q4_0-gguf" / "snapshots" / VOLUME_REV
+     / "gemma-4-E4B_q4_0-it.gguf").write_bytes(b"GGUF")
     (drafters / "gemma-4-E4B-it-qat-assistant-Q8_0.gguf").unlink()
     with pytest.raises(gs.ServerError, match="drafter"):
         gs.resolve("volume", hub=hub, drafters=drafters)
@@ -146,7 +181,7 @@ def test_start_runs_the_pinned_image_read_only_on_localhost_and_stop_removes_it(
         mounts = [line[j + 1] for j in range(len(line) - 1) if line[j] == "-v"]
         assert all(m.endswith(":ro") for m in mounts) and len(mounts) == 2
         assert line[line.index(gs.IMAGE) + 1:] == gs.server_args(
-            "/m/snapshots/abc123/gemma-4-31B_q4_0-it.gguf", "gemma-4-31B-it-qat-assistant-Q8_0.gguf")
+            f"/m/snapshots/{DIRECTOR_REV}/gemma-4-31B_q4_0-it.gguf", "gemma-4-31B-it-qat-assistant-Q8_0.gguf")
         assert "--rm" in line and "--restart" not in line
     assert docker.calls[-1] == ["rm", "-f", name]
     assert srv.container == ""
@@ -309,14 +344,34 @@ def test_sigterm_is_restored_when_start_up_fails(cache):
     assert signal.getsignal(signal.SIGTERM) is before
 
 
+def test_sighup_is_handled_inside_the_with_and_restored_after(cache):
+    before = signal.getsignal(signal.SIGHUP)
+    with _server(cache):
+        inside = signal.getsignal(signal.SIGHUP)
+        assert inside is not before and callable(inside)
+        with pytest.raises(SystemExit) as stop:
+            inside(signal.SIGHUP, None)
+        assert stop.value.code == 128 + signal.SIGHUP
+    assert signal.getsignal(signal.SIGHUP) is before
+
+
+def test_sighup_is_restored_when_start_up_fails(cache):
+    before = signal.getsignal(signal.SIGHUP)
+    with pytest.raises(gs.ServerError):
+        with _server(cache, docker=FakeDocker(run_rc=125)):
+            pass
+    assert signal.getsignal(signal.SIGHUP) is before
+
+
 def test_sigterm_off_the_main_thread_is_left_alone(cache):
     import threading
     seen = []
 
     def work():
-        before = signal.getsignal(signal.SIGTERM)
+        before = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGHUP)
         with _server(cache):
-            seen.append(signal.getsignal(signal.SIGTERM) is before)
+            seen.append((signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGHUP))
+                        == before)
 
     t = threading.Thread(target=work)
     t.start()

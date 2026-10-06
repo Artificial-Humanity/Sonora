@@ -4,9 +4,15 @@ Lemonade is user-facing; Sonora's pipelines run their own digest-pinned llama.cp
 (Notes/Sonora/lemonade-migration-design.md § Serving, revised; convention:
 Notes/AI-Lab-AMD/project-inference-runtimes.md). Modelled on Kaggle-Gemma4's `LlamaServer`.
 
-⚠ STARTED FOR A RUN AND ALWAYS REMOVED. `--rm`, no restart policy, bound to 127.0.0.1. Any
-failure or signal during start-up removes the container before it propagates: a leaked
-container holds the shared GPU, and the one-at-a-time guard would then refuse every later run.
+⚠ STARTED FOR A RUN AND REMOVED ON EVERY EXIT THE PROCESS CAN SEE. `--rm`, no restart policy,
+bound to 127.0.0.1. Any failure, SIGTERM or SIGHUP (on the main thread; both become SystemExit)
+removes the container before it propagates: a leaked container holds the shared GPU, and the
+one-at-a-time guard would then refuse every later run. SIGKILL or an OOM kill cannot be handled
+in-process and leaves the container running; the label guard then refuses the next run and names
+the remedy, `docker rm -f <name>`.
+
+⚠ THE IMAGE AND THE WEIGHTS ARE BOTH PINNED: the image by digest, each role's weights by
+Hugging Face snapshot revision (`Role.revision`). Other snapshots in the cache are ignored.
 
 ⚠ THE WHOLE CACHE REPO IS MOUNTED, NOT THE SNAPSHOT. Hugging Face snapshot files are symlinks
 into `../../blobs`; a snapshot-only mount leaves them dangling (found in the 2026-10-05 probe).
@@ -38,13 +44,16 @@ class Role:
     repo: str
     file: str
     drafter: str
+    revision: str  # the Hugging Face snapshot the bench validated; the weights are pinned like the image
 
 
 ROLES = {
     "director": Role("models--google--gemma-4-31B-it-qat-q4_0-gguf", "gemma-4-31B_q4_0-it.gguf",
-                     "gemma-4-31B-it-qat-assistant-Q8_0.gguf"),
+                     "gemma-4-31B-it-qat-assistant-Q8_0.gguf",
+                     "59dde24573e7e61570dba08b18a2e1fe246955ed"),
     "volume": Role("models--google--gemma-4-E4B-it-qat-q4_0-gguf", "gemma-4-E4B_q4_0-it.gguf",
-                   "gemma-4-E4B-it-qat-assistant-Q8_0.gguf"),
+                   "gemma-4-E4B-it-qat-assistant-Q8_0.gguf",
+                   "4b4a2c1d584be7264f87aac328a1bc739ce81b6c"),
 }
 
 
@@ -62,15 +71,15 @@ def resolve(role, hub=HUB, drafters=DRAFTERS):
         raise ServerError(f"no such role {role!r}; roles: {sorted(ROLES)}")
     r = ROLES[role]
     repo = Path(hub) / r.repo
-    snaps = sorted(p for p in (repo / "snapshots").glob("*") if p.is_dir())
-    if len(snaps) != 1:
-        raise ServerError(f"{repo}: expected exactly one snapshot, found {len(snaps)}")
-    if not (snaps[0] / r.file).exists():
-        raise ServerError(f"{snaps[0] / r.file} does not exist")
+    snap = repo / "snapshots" / r.revision  # other snapshots may coexist; only this one is used
+    if not snap.is_dir():
+        raise ServerError(f"{repo}: pinned snapshot revision {r.revision} is not in the cache")
+    if not (snap / r.file).exists():
+        raise ServerError(f"{snap / r.file} does not exist")
     drafter = Path(drafters) / r.drafter
     if not drafter.exists():
         raise ServerError(f"drafter {drafter} does not exist")
-    return repo, f"/m/snapshots/{snaps[0].name}/{r.file}", drafter
+    return repo, f"/m/snapshots/{r.revision}/{r.file}", drafter
 
 
 def server_args(model_in_container, drafter_name):
@@ -104,9 +113,13 @@ def _group_ids():
     return out
 
 
-def _on_sigterm(signum, frame):
-    """Turn SIGTERM (systemd, `timeout`, an orchestrator) into SystemExit so `__exit__` runs."""
-    raise SystemExit(128 + signal.SIGTERM)
+_HANDLED = (signal.SIGTERM, signal.SIGHUP)
+
+
+def _on_signal(signum, frame):
+    """Turn SIGTERM (systemd, `timeout`, an orchestrator) or SIGHUP (a closed terminal or ssh
+    session) into SystemExit so `__exit__` runs."""
+    raise SystemExit(128 + signum)
 
 
 class GemmaServer:
@@ -115,7 +128,7 @@ class GemmaServer:
         self.role, self._docker, self._healthy, self._sleep = role, docker, healthy, sleep
         self._hub, self._drafters = hub, drafters
         self.container = ""
-        self._prev_term, self._term_armed = None, False
+        self._prev_handlers = {}
 
     def _ps(self, *filters):
         args = ["ps", "--format", "{{.Names}}"]
@@ -126,16 +139,15 @@ class GemmaServer:
             raise ServerError(f"docker ps failed: {r.stderr.strip()}")
         return [n for n in r.stdout.split() if n]
 
-    def _arm_sigterm(self):
+    def _arm_signals(self):
         if threading.current_thread() is threading.main_thread():
-            self._prev_term = signal.signal(signal.SIGTERM, _on_sigterm)
-            self._term_armed = True
+            for sig in _HANDLED:
+                self._prev_handlers[sig] = signal.signal(sig, _on_signal)
 
-    def _restore_sigterm(self):
-        if self._term_armed:
-            self._term_armed = False
-            signal.signal(signal.SIGTERM, signal.SIG_DFL if self._prev_term is None
-                          else self._prev_term)
+    def _restore_signals(self):
+        prev, self._prev_handlers = self._prev_handlers, {}
+        for sig, handler in prev.items():
+            signal.signal(sig, signal.SIG_DFL if handler is None else handler)
 
     def __enter__(self):
         repo, model, drafter = resolve(self.role, self._hub, self._drafters)
@@ -150,7 +162,7 @@ class GemmaServer:
                "--device", "/dev/kfd", "--device", "/dev/dri", *groups,
                "-p", f"127.0.0.1:{PORT}:8080", "-v", f"{repo}:/m:ro",
                "-v", f"{drafter}:/d/{drafter.name}:ro", IMAGE, *server_args(model, drafter.name)]
-        self._arm_sigterm()
+        self._arm_signals()
         # The name is recorded BEFORE `docker run`: a timeout or a signal during or after it
         # must still reach the `rm -f` below.
         self.container = name
@@ -189,4 +201,4 @@ class GemmaServer:
             if r.returncode != 0 and "No such container" not in r.stderr:
                 raise ServerError(f"{remedy}: {r.stderr.strip()}")
         finally:
-            self._restore_sigterm()
+            self._restore_signals()

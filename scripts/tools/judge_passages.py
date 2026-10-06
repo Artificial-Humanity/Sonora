@@ -26,8 +26,8 @@ COST ORDERING MATTERS. Script first, model second: the expensive pass never sees
 gated subset we actually intend to render is a few hundred.
 
 MODEL COMPARISON. --model takes a role (director or volume) and --compare runs two over the
-same passages and reports their agreement, so "is 26b worth it over 4b" is measured
-rather than assumed. The precedent was `make_director_bench.py`, which benchmarked
+same passages and reports their agreement, so "is the director (31B) worth it over the volume
+(E4B)" is measured rather than assumed. The precedent was `make_director_bench.py`, which benchmarked
 g2/g4/g26 on identical inputs; it was deleted 2026-08-12 as finished campaign tooling
 (#26 step 2) and is in git history, not on disk.
 
