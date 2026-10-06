@@ -1,0 +1,23 @@
+# @package _global_
+
+# Staged rebuild, arm C0 (Notes: Sonora/staged-rebuild-preregistration.md): stock fine-tuned
+# on its own VCTK data, phonemes, 22.05 kHz pipeline and statistics. Does fine-tuning itself
+# add the hum?
+#
+# Warm start: scripts/lib/make_warmstart.py --experiment staged_c0 --donor matcha_vctk.ckpt
+
+defaults:
+  - override /data: vctk_22k.yaml
+
+tags: ["staged", "C0", "vctk", "hum"]
+
+run_name: staged_c0
+
+model:
+  use_vat: false
+
+data:
+  bucket_multiplier: 0      # July's length-blind shuffle (owner ruling, 2026-10-06)
+
+trainer:
+  max_epochs: 10

@@ -1,0 +1,27 @@
+# S1 of the staged rebuild (Notes: Sonora/staged-rebuild-preregistration.md): the derisk
+# corpus (LibriTTS-R train-clean-100, our G2P, the 247-speaker table) resampled to
+# 22.05 kHz, on stock's mel (8 kHz ceiling) for the universal vocoder. No VAT. Built by
+# scripts/tools/prep_staged_corpora.py.
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_22k
+train_filelist_path: data/libritts_r_22k/train_op.txt
+valid_filelist_path: data/libritts_r_22k/val_op.txt
+batch_size: 32
+num_workers: 20
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 247
+n_fft: 1024
+n_feats: 80
+sample_rate: 22050
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 8000
+data_statistics:  # prep_staged_corpora.py stats (data/libritts_r_22k/mel_statistics.json)
+  mel_mean: -5.224468
+  mel_std: 2.325197
+seed: ${seed}
+load_durations: false
+load_vat: false

@@ -1,0 +1,24 @@
+# @package _global_
+
+# Staged rebuild, arm R (Notes: Sonora/staged-rebuild-preregistration.md): the derisk-energy
+# recipe exactly, for 10 epochs instead of 100. vat_dim 3 is derisk's width (its checkpoint
+# and its 3-field filelist); the default is 8 since contract v2.
+#
+# Warm start: /data/model-training/sonora/warmstart/derisk_energy_init.ckpt (derisk's own).
+
+defaults:
+  - override /data: libritts_r_vat.yaml
+
+tags: ["staged", "R", "libritts_r", "vat", "energy", "hum"]
+
+run_name: staged_r
+
+model:
+  use_vat: true
+  vat_dim: 3
+
+data:
+  bucket_multiplier: 0      # July's length-blind shuffle (owner ruling, 2026-10-06)
+
+trainer:
+  max_epochs: 10
