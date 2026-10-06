@@ -9,7 +9,9 @@ passage, scored on the skill file's Narration rules (emotion omitted, rate 14-16
 
 Run:
   .venv/bin/python scripts/tools/director_obedience_bench.py --build-passages
-  .venv/bin/python scripts/tools/director_obedience_bench.py [--out DIR] [--reference RESULTS.json]
+  .venv/bin/python scripts/tools/director_obedience_bench.py --reference RESULTS.json [--out DIR]
+The reference scores are the paired run recorded in the design note's Verdict section; the
+retired server's reference arm is recorded in bench_20261005T230855.json (under --out).
 """
 
 import argparse
@@ -19,7 +21,6 @@ import json
 import random
 import statistics
 import time
-import urllib.request
 from pathlib import Path
 
 import os as _os  # noqa: E402
@@ -43,11 +44,6 @@ ASSET = Path(_SONORA_REPO) / "scripts" / "assets" / "director_bench_passages.jso
 RATE = (14, 16)      # zonos.md, Narration: rate 14-16
 PITCH = (20, 45)     # zonos.md, Narration: pitch_std 20-45
 GATED = ("emotion_omitted", "rate", "pitch")
-
-# The reference arm: the server being replaced. Deleted once its paired run is recorded;
-# later runs compare against that record with --reference.
-OLLAMA_URL = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "gemma-4-31b-qat-spec"
 
 
 def select_passages(bank_paths, n=N, seed=SEED):
@@ -137,25 +133,6 @@ def candidate_call(system, user, schema):
                 timeout=300)   # the reference arm's budget
 
 
-def ollama_call(system, user, schema):
-    body = {"model": OLLAMA_MODEL, "stream": False, "think": False, "format": schema,
-            "options": {"num_predict": 900, "temperature": 0.2, "top_k": 64, "top_p": 0.95},
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": user}]}
-    req = urllib.request.Request(OLLAMA_URL, data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=300) as r:
-        return json.load(r)["message"]["content"]
-
-
-def unload_ollama():
-    req = urllib.request.Request(OLLAMA_URL.replace("/api/chat", "/api/generate"),
-                                 data=json.dumps({"model": OLLAMA_MODEL,
-                                                  "keep_alive": 0}).encode(),
-                                 headers={"Content-Type": "application/json"})
-    urllib.request.urlopen(req, timeout=60).read()
-
-
 def volume_smoke(passages):
     ok = 0
     for p in passages:
@@ -182,8 +159,8 @@ def main():
                     help="rewrite the committed passage asset from the book-prose banks")
     ap.add_argument("--out", default="/data/model-training/sonora/lemonade_bench")
     ap.add_argument("--reference",
-                    help="results JSON whose reference arm to compare against, instead of "
-                         "running the live reference arm")
+                    help="results JSON whose reference arm to compare against (required "
+                         "for a run)")
     args = ap.parse_args()
 
     if args.build_passages:
@@ -194,22 +171,18 @@ def main():
               f"{len({p['book'] for p in passages})} books -> {ASSET}")
         return
 
+    if not args.reference:
+        ap.error("--reference RESULTS.json is required: the reference arm's server is "
+                 "retired, so a run compares against its recorded scores")
     passages = json.loads(ASSET.read_text(encoding="utf-8"))
     out = {"design": "Notes/Sonora/lemonade-migration-design.md", "engine": ENGINE,
            "passages": len(passages), "arms": {}}
     Path(args.out).mkdir(parents=True, exist_ok=True)
     path = Path(args.out) / time.strftime("bench_%Y%m%dT%H%M%S.json")
     try:
-        if args.reference:
-            ref = json.loads(Path(args.reference).read_text(encoding="utf-8"))["arms"]["reference"]
-            out["arms"]["reference"] = {"source": f"{args.reference}: {ref['source']}",
-                                        "scores": ref["scores"]}
-        else:
-            print(f"== reference arm: {OLLAMA_MODEL} ==", flush=True)
-            ollama_call("Reply with an empty JSON object.", "{}", {"type": "object"})   # warm
-            out["arms"]["reference"] = _arm(OLLAMA_MODEL, run_arm(ollama_call, passages))
-            _save(path, out)   # the reference arm is the expensive, unrepeatable half
-            unload_ollama()   # both 31Bs at once would not fit beside the box's other models
+        ref = json.loads(Path(args.reference).read_text(encoding="utf-8"))["arms"]["reference"]
+        out["arms"]["reference"] = {"source": f"{args.reference}: {ref['source']}",
+                                    "scores": ref["scores"]}
 
         print(f"== candidate arm: {DIRECTOR} ==", flush=True)
         with GemmaServer(DIRECTOR):   # one server at a time: they would not fit together

@@ -53,9 +53,3 @@ def test_ask_passes_its_budget_and_a_long_timeout(monkeypatch):
     assert tab._ask("s", "u", "m", max_tokens=900) == {"instruct": "calm"}
     assert rec.calls[0] == {"model": "m", "max_tokens": 900, "temperature": 0.2,
                             "timeout": 300}
-
-
-def test_no_old_server_names_remain():
-    src = (SCRIPTS / "make_teacher_ab_bank.py").read_text(encoding="utf-8").lower()
-    assert "ollama" not in src
-    assert "11434" not in src

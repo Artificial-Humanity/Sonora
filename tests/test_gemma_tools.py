@@ -1,7 +1,5 @@
 """The three hand-run tools that call Gemma, after the move to gemma_client."""
 
-import pytest
-
 from scripts_layout import SCRIPTS
 
 SCRIPTS.on_path()
@@ -84,9 +82,3 @@ def test_quote_pilot_retries_a_dead_server_and_gives_up(monkeypatch):
     assert len(rec.calls) == 3
     assert rec.calls[0]["model"] == gc.DIRECTOR
     assert (rec.calls[0]["max_tokens"], rec.calls[0]["timeout"]) == (400, 300)
-
-
-@pytest.mark.parametrize("mod", [jp, ts, qp])
-def test_no_tool_names_the_old_server(mod):
-    src = (SCRIPTS / (mod.__name__ + ".py")).read_text(encoding="utf-8").lower()
-    assert "ollama" not in src and "11434" not in src

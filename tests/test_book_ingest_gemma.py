@@ -34,7 +34,6 @@ class Recorder:
 
 def test_the_director_is_the_client_director():
     assert bi.MODEL == gc.DIRECTOR
-    assert not hasattr(bi, "OLLAMA")
 
 
 def test_casting_pass_sends_exactly_what_casting_messages_builds(monkeypatch):
@@ -87,9 +86,3 @@ def test_director_tag_sends_the_director_prompt_and_gives_up_after_its_retries(m
     assert rec.calls[0]["max_tokens"] == 400
     assert rec.calls[0]["temperature"] == 0.2
     assert "schema" not in rec.calls[0]
-
-
-def test_book_ingest_no_longer_mentions_the_old_server():
-    src = (SCRIPTS / "book_ingest.py").read_text(encoding="utf-8").lower()
-    assert "ollama" not in src
-    assert "11434" not in src

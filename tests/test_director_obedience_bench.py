@@ -147,32 +147,22 @@ def test_run_arm_sends_casting_messages_and_records_a_failed_call(monkeypatch):
 
 # ------------------------------------------------------------------ main and the timeouts
 
-def test_main_writes_the_reference_arm_even_when_a_later_step_fails(tmp_path, monkeypatch):
-    asset = tmp_path / "passages.json"
-    asset.write_text(json.dumps([dict(id=f"p{i}", book="b", text=f"Line {i}.",
-                                      register="neutral_narration", V=0.0, A=0.1, T=0.2)
-                                 for i in range(2)]))
+def test_a_run_without_a_recorded_reference_is_refused_before_anything_is_written(
+        tmp_path, monkeypatch, capsys):
     out = tmp_path / "out"
 
-    def unload():
-        raise RuntimeError("unload failed")
-
     def no_network(*a, **k):
-        raise AssertionError("chat must not be reached in this test")
+        raise AssertionError("nothing may be called without a reference")
 
-    monkeypatch.setattr(bench, "ASSET", asset)
-    monkeypatch.setattr(bench, "ollama_call", lambda system, user, schema: json.dumps(GOOD))
-    monkeypatch.setattr(bench, "unload_ollama", unload)
+    monkeypatch.setattr(bench, "ASSET", tmp_path / "unread.json")
     monkeypatch.setattr(bench, "chat", no_network)
     monkeypatch.setattr(bench, "GemmaServer", no_network)
     monkeypatch.setattr(sys, "argv", ["x", "--out", str(out)])
-    with pytest.raises(RuntimeError):
+    with pytest.raises(SystemExit) as e:
         bench.main()
-    files = list(out.glob("bench_*.json"))
-    assert len(files) == 1
-    saved = json.loads(files[0].read_text(encoding="utf-8"))
-    assert saved["arms"]["reference"]["scores"]["parsed"] == 2
-    assert "unload failed" in saved["error"]
+    assert e.value.code == 2
+    assert "--reference RESULTS.json is required" in capsys.readouterr().err
+    assert not out.exists()
 
 
 def test_candidate_call_uses_the_same_timeout_as_the_reference_arm(monkeypatch):
