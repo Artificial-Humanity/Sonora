@@ -39,3 +39,19 @@ def test_resolved_checkpoints_name_every_arm():
                            ["R=/x/checkpoint_epoch=009_step=0009209.ckpt"])
     assert got == {"stock": rs.FIXED["stock"], "derisk": rs.FIXED["derisk"],
                    "R": "/x/checkpoint_epoch=009_step=0009209.ckpt"}
+
+
+def test_a_prior_pattern_that_matches_nothing_is_refused(tmp_path):
+    (tmp_path / "a.json").write_text("{}")
+    assert rs.load_prior([str(tmp_path / "*.json")], [], tmp_path / "out.json") == [{}]
+    with pytest.raises(SystemExit, match="matches no file"):
+        rs.load_prior([str(tmp_path / "*.json"), str(tmp_path / "x.json y.json")], [],
+                      tmp_path / "out.json")
+
+
+def test_an_optional_prior_pattern_may_match_nothing_and_the_output_is_skipped(tmp_path):
+    (tmp_path / "out.json").write_text('{"me": 1}')
+    (tmp_path / "a.json").write_text("{}")
+    assert rs.load_prior([str(tmp_path / "a.json")],
+                         [str(tmp_path / "nope_*.json"), str(tmp_path / "out.json")],
+                         tmp_path / "out.json") == [{}]

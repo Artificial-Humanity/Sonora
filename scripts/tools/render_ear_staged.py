@@ -22,8 +22,10 @@ Every recording is from its arm's training split.
 which is what both trained on. Every LibriTTS-R arm reads our G2P with no cleaners; the VAT
 arms (R, derisk) get all-zero conditioning.
 
-⚠ VOICES ARE UNHEARD: every key in `_keys/`, every pitch-error file and every earlier
-staged speakers file is excluded. A speakers file is never overwritten.
+⚠ VOICES ARE UNHEARD: every key in `_keys/`, every pitch-error file, the first-step speakers
+file (`--prior`, each pattern must match a file) and every earlier staged speakers file
+(`--prior-optional`, may match nothing) is excluded. A speakers file is never overwritten.
+Pass each glob as its own QUOTED argument: an unquoted `$P` is one word in zsh.
 
     # host (check 2 before check 3: check 3 then excludes check 2's voices)
     .venv/bin/python scripts/tools/render_ear_staged.py select --check 1 \\
@@ -117,6 +119,22 @@ def corpus_rows(corpus):
 
 # ------------------------------------------------------------------------------ select
 
+def load_prior(patterns, optional, skip):
+    """The earlier benches' files, as parsed JSON. Every pattern in `patterns` must match a
+    file: an exclusion that matches nothing re-draws heard voices without a word (an
+    unquoted `$P` in zsh arrives as ONE pattern and matches nothing). The `optional`
+    patterns may match nothing, for files that do not exist before the first draw. `skip`
+    (the speakers file being written) is never read."""
+    docs = []
+    for pat, may_be_empty in [(p, False) for p in patterns] + [(p, True) for p in optional]:
+        files = [f for f in sorted(glob.glob(pat)) if Path(f).resolve() != Path(skip).resolve()]
+        if not files and not may_be_empty:
+            raise SystemExit("REFUSING: --prior pattern %r matches no file; an exclusion that "
+                             "matches nothing re-draws heard voices." % pat)
+        docs += [json.loads(Path(f).read_text()) for f in files]
+    return docs
+
+
 def select(args):
     c = sb.CHECKS[args.check]
     out_path = Path(args.out_speakers)
@@ -129,8 +147,7 @@ def select(args):
             raise SystemExit("REFUSING: %s's checkpoint %s does not exist." % (a, p))
     rng = random.Random(args.seed + args.check)
 
-    docs = [json.loads(Path(f).read_text()) for pat in args.prior
-            for f in sorted(glob.glob(pat)) if Path(f).resolve() != out_path.resolve()]
+    docs = load_prior(args.prior, args.prior_optional, out_path)
     vheard, lheard = fs.heard_vctk(docs), sb.heard_libri(docs)
 
     rows = corpus_rows("libritts_r_vat")
@@ -208,7 +225,7 @@ def select(args):
                       "vctk_cleaned": [args.vctk_cleaned, sha256(args.vctk_cleaned)],
                       "vctk_hnr_from": [args.vctk_hnr_from, sha256(args.vctk_hnr_from)],
                       "hnr_json": [args.hnr_json, sha256(args.hnr_json)],
-                      "prior": args.prior},
+                      "prior": args.prior, "prior_optional": args.prior_optional},
            "items": items}
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=1, ensure_ascii=False))
@@ -396,8 +413,12 @@ def main():
     s.add_argument("--hnr-json", default=ROOT + "/pitch_error/speaker_hnr_all.json")
     s.add_argument("--prior", nargs="+", default=[ROOT + "/pitch_error/_*.json",
                                                   ROOT + "/eartest/_keys/*.key.json",
-                                                  ROOT + "/first_step_bench/speakers.json",
-                                                  ROOT + "/staged_bench/*_speakers.json"])
+                                                  ROOT + "/first_step_bench/speakers.json"],
+                   help="earlier benches' files; each pattern must match at least one file")
+    s.add_argument("--prior-optional", nargs="*",
+                   default=[ROOT + "/staged_bench/*_speakers.json"],
+                   help="patterns that may match nothing (no staged speakers file exists "
+                        "before check 1 is drawn)")
     s.add_argument("--n", type=int, default=20)
     s.add_argument("--min-seconds", type=float, default=4.0)
     s.add_argument("--max-seconds", type=float, default=8.0)
