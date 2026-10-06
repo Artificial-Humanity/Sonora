@@ -2,7 +2,7 @@
 
 The pilot of the synth half of the v1.1 rescope (librivox-quote-mining-plan.md
 §companion lane; owner go 2026-07-21): take stage-A quote candidates, give the
-live Gemma 26B director each quote WITH ITS SCENE CONTEXT (the preceding two
+live Gemma 31B director each quote WITH ITS SCENE CONTEXT (the preceding two
 sentences and the following sentence — owner spec), and emit a script bank in
 the exact shape synth_{dia,qwen,moss85}.py consume. The director's V/A/T is
 the training label by construction; the bank records the attribution
@@ -24,7 +24,6 @@ import json
 import os
 import re
 import sys
-import urllib.request
 
 # Sibling modules used to be reached with `sys.path.insert(0, dirname(__file__))`, which
 # worked only while every script lived in one directory. After #26 step 3 they are split
@@ -39,6 +38,8 @@ _SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspa
 for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
+from gemma_client import DIRECTOR, chat  # noqa: E402
+from gemma_server import GemmaServer  # noqa: E402
 
 CHARS_PER_SEC = 14.0
 
@@ -84,21 +85,13 @@ STYLE_RULE = ("\nRecording style is FIXED: a dry, close-mic modern studio. Never
               "voice_design or instruct — only the speaker and the delivery.")
 
 
-def call_director(user, model, url, retries=3):
+def call_director(user, model, retries=3):
     from book_ingest import DIRECTOR_SYSTEM
 
     for attempt in range(retries):
-        body = json.dumps({
-            "model": model, "stream": False, "think": False,
-            "options": {"num_predict": 400, "temperature": 0.2},
-            "messages": [{"role": "system", "content": DIRECTOR_SYSTEM + STYLE_RULE},
-                         {"role": "user", "content": user}],
-        }).encode()
-        req = urllib.request.Request(url, data=body,
-                                     headers={"Content-Type": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=300) as r:
-                content = json.load(r)["message"]["content"]
+            content = chat(DIRECTOR_SYSTEM + STYLE_RULE, user, model=model,
+                           max_tokens=400, temperature=0.2, timeout=300)
             m = re.search(r"\{.*\}", content, re.DOTALL)
             d = json.loads(m.group(0))
             for k in ("valence", "arousal", "tension", "register", "engine",
@@ -134,13 +127,12 @@ def main():
     ap.add_argument("--id-prefix", default="qp")
     ap.add_argument("--exclude-banks", nargs="*", default=[],
                     help="prior bank JSONs whose quotes must not be re-picked")
-    ap.add_argument("--ollama", default="http://localhost:11434/api/chat")
     # 31b, not the MoE: this is a director pass (V/A/T + casting written into a
     # bank), so it is the judgement job, not the volume job. Measured 2026-08-02 on
     # book_ingest's identical two-pass prompts — the MoE obeyed the engine skill
     # file on 8 of 24 narration lines against 24 of 24 for this model. See
     # book_ingest.MODEL for the full table.
-    ap.add_argument("--model", default="gemma-4-31b-qat-spec")
+    ap.add_argument("--model", default=DIRECTOR)
     args = ap.parse_args()
 
     from book_ingest import parse_epub, is_complete_utterance
@@ -191,37 +183,38 @@ def main():
                 if kind == "prose"}
 
     lines = []
-    for i, r in enumerate(picked):
-        pre, post = build_context(chapters.get(r["chapter"], []), r["para"], r["quote"])
-        attr = (f'{r["verb"]} {r["speaker"]}' if r.get("verb") else "none in text")
-        user = (
-            f"Scene context (the two sentences before the line):\n{pre or '(chapter opening)'}\n\n"
-            f'A character speaks (attribution: "{attr}"). Their line:\n“{r["quote"]}”\n\n'
-            f"What follows the line:\n{post or '(paragraph ends)'}"
-        )
-        print(f"  [{i + 1}/{len(picked)}] {r['quote'][:50]!r} ({attr})")
-        d = call_director(user, args.model, args.ollama)
-        if d is None:
-            print("    SKIPPED (director failed)")
-            continue
-        cls = (r.get("classes") or ["content"])[0]
-        from book_ingest import build_direction
-        _engine, direction = build_direction(d, r["quote"], dia_guidance=4.0)
-        lines.append({
-            "id": f"{args.id_prefix}_{i:02d}_{cls}",
-            "engine": d["engine"],
-            "register": d["register"],
-            "intended": {"V": round(float(d["valence"]), 2),
-                         "A": round(float(d["arousal"]), 2),
-                         "T": round(float(d["tension"]), 2)},
-            "seed": 1234,
-            "text": r["quote"],
-            "direction": direction,
-            "source_ref": {"book": "pg:14275", "chapter": r["chapter"],
-                           "para": r["para"], "verb": r.get("verb"),
-                           "speaker": r.get("speaker"), "clause": r.get("clause"),
-                           "context_pre": pre, "context_post": post},
-        })
+    with GemmaServer(args.model):
+        for i, r in enumerate(picked):
+            pre, post = build_context(chapters.get(r["chapter"], []), r["para"], r["quote"])
+            attr = (f'{r["verb"]} {r["speaker"]}' if r.get("verb") else "none in text")
+            user = (
+                f"Scene context (the two sentences before the line):\n{pre or '(chapter opening)'}\n\n"
+                f'A character speaks (attribution: "{attr}"). Their line:\n“{r["quote"]}”\n\n'
+                f"What follows the line:\n{post or '(paragraph ends)'}"
+            )
+            print(f"  [{i + 1}/{len(picked)}] {r['quote'][:50]!r} ({attr})")
+            d = call_director(user, args.model)
+            if d is None:
+                print("    SKIPPED (director failed)")
+                continue
+            cls = (r.get("classes") or ["content"])[0]
+            from book_ingest import build_direction
+            _engine, direction = build_direction(d, r["quote"], dia_guidance=4.0)
+            lines.append({
+                "id": f"{args.id_prefix}_{i:02d}_{cls}",
+                "engine": d["engine"],
+                "register": d["register"],
+                "intended": {"V": round(float(d["valence"]), 2),
+                             "A": round(float(d["arousal"]), 2),
+                             "T": round(float(d["tension"]), 2)},
+                "seed": 1234,
+                "text": r["quote"],
+                "direction": direction,
+                "source_ref": {"book": "pg:14275", "chapter": r["chapter"],
+                               "para": r["para"], "verb": r.get("verb"),
+                               "speaker": r.get("speaker"), "clause": r.get("clause"),
+                               "context_pre": pre, "context_post": post},
+            })
 
     bank = {
         "version": 1,

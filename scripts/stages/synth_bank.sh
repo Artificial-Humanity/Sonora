@@ -6,7 +6,7 @@
 # Why throwaway containers: the compose-managed `sonora_vocalizer` container has no GPU
 # device passthrough (torch.cuda.is_available() == False there), so synth runs in a
 # fresh `rocm/pytorch` container with --device /dev/kfd --device /dev/dri (mirrors the
-# ollama container's access; validated on the Strix Halo Radeon 8060S). Models are read
+# GPU inference services' device access; validated on the Strix Halo Radeon 8060S). Models are read
 # from /data/models (paths hardcoded in the synth_*.py renderers).
 #
 # Renders run as ai-mgr (uid 105, gid 109, in datashare) with umask 002 so outputs are

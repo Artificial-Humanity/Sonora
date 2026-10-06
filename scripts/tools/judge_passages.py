@@ -25,9 +25,9 @@ COST ORDERING MATTERS. Script first, model second: the expensive pass never sees
 ~44% the cheap checks already reject. 24,332 passages x 26b would be 13+ hours; the
 gated subset we actually intend to render is a few hundred.
 
-MODEL COMPARISON. --model accepts any ollama tag and --compare runs two models over the
-same passages and reports their agreement, so "is 26b worth it over 4b" is measured
-rather than assumed. The precedent was `make_director_bench.py`, which benchmarked
+MODEL COMPARISON. --model takes a role (director or volume) and --compare runs two over the
+same passages and reports their agreement, so "is the director (31B) worth it over the volume
+(E4B)" is measured rather than assumed. The precedent was `make_director_bench.py`, which benchmarked
 g2/g4/g26 on identical inputs; it was deleted 2026-08-12 as finished campaign tooling
 (#26 step 2) and is in git history, not on disk.
 
@@ -37,16 +37,25 @@ lesson of the audio work is that a plausible instrument can be confidently wrong
 what it PASSED, blind, before it gates anything.
 
 Usage:
-    .venv/bin/python scripts/tools/judge_passages.py --bank clean.json --model gemma-4-26b-a4b-qat --out judged.jsonl
-    .venv/bin/python scripts/tools/judge_passages.py --bank clean.json --compare gemma-4-e4b-qat,gemma-4-26b-a4b-qat
+    .venv/bin/python scripts/tools/judge_passages.py --bank clean.json --model director --out judged.jsonl
+    .venv/bin/python scripts/tools/judge_passages.py --bank clean.json --compare volume,director
 """
 import argparse
 import json
+import re
 import sys
-import urllib.error
-import urllib.request
 
-OLLAMA = "http://localhost:11434/api/generate"
+import os as _os  # noqa: E402
+import sys as _sys  # noqa: E402
+
+_SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):
+    if _p not in _sys.path:
+        _sys.path.insert(0, _p)
+from gemma_client import VOLUME, GemmaError, chat  # noqa: E402
+from gemma_server import GemmaServer  # noqa: E402
+
+_FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$")
 
 SYSTEM = """You judge whether a passage extracted from a novel is usable as a
 text-to-speech performance clip for a training corpus. You are NOT judging literary
@@ -78,20 +87,15 @@ Reply with ONLY a JSON object, no prose, no code fence:
 
 
 def ask(model, text, timeout=120):
-    body = json.dumps({
-        "model": model, "system": SYSTEM, "prompt": f"PASSAGE:\n{text}",
-        "stream": False, "format": "json",
-        "options": {"temperature": 0.0, "num_predict": 160},
-    }).encode()
-    req = urllib.request.Request(OLLAMA, data=body,
-                                 headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            raw = json.loads(r.read())["response"]
-    except (urllib.error.URLError, TimeoutError, OSError) as e:
+        # The E4B given a system prompt AND a schema reasons into reasoning_content until
+        # max_tokens (probe 2026-10-05), so the instructions travel in the user turn.
+        raw = chat(None, f"{SYSTEM}\n\nPASSAGE:\n{text}", model=model, max_tokens=160,
+                   temperature=0.0, as_json=True, timeout=timeout)
+    except GemmaError as e:
         return None, f"transport: {e}"
     try:
-        d = json.loads(raw)
+        d = json.loads(_FENCE.sub("", raw))
     except json.JSONDecodeError:
         return None, f"unparseable: {raw[:60]}"
     if "unit" not in d:
@@ -159,7 +163,7 @@ def summarise(res, model):
         print(f"      [{r.get('reason','')[:34]}] {r['text'][:64]!r}")
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bank", required=True)
     # e4b, not the MoE. THIS SCRIPT IS THE INSTRUMENT that measured the difference
@@ -168,12 +172,16 @@ def main():
     # 13/100 malformed JSON (```json fences, blank keys, `speak-able`) against
     # 0/100 for both plain dense variants. e4b over 31b here because passage
     # judging is the volume job and e4b is ~3x faster at 91% pass; `-spec` is
-    # speculative decoding, lossless and 1.29x on this size.
-    ap.add_argument("--model", default="gemma-4-e4b-qat-spec")
+    # speculative decoding (now the QAT-matched drafter), lossless.
+    ap.add_argument("--model", default=VOLUME)
     ap.add_argument("--compare", help="comma-separated models to run head-to-head")
     ap.add_argument("--limit", type=int, default=100)
     ap.add_argument("--out", help="write judgements jsonl")
-    args = ap.parse_args()
+    return ap
+
+
+def main():
+    args = build_parser().parse_args()
 
     rows = load(args.bank)
     print(f"{len(rows)} passages in {args.bank}; judging {min(args.limit, len(rows))}")
@@ -182,7 +190,8 @@ def main():
     allres = {}
     for m in models:
         print(f"\n== {m} ==", flush=True)
-        res, errs = run(m, rows, args.limit)
+        with GemmaServer(m):
+            res, errs = run(m, rows, args.limit)
         if errs:
             print(f"  ({errs} errors)")
         allres[m] = res

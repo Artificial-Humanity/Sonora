@@ -839,7 +839,7 @@ def test_retries_are_exhausted_then_it_raises(fetch_mod, monkeypatch):
 # --- A-M11: the director pass is checkpointed -----------------------------------------
 #
 # `lines` accumulated in memory and reached disk only after the LAST chunk, so any
-# interruption — a `load_skill` error at chunk 90, an ollama restart, Ctrl-C — discarded
+# interruption — a `load_skill` error at chunk 90, a server restart, Ctrl-C — discarded
 # every director call made so far. Each is a 31B inference; a 200-chunk book is an hour.
 
 
