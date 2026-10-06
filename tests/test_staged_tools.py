@@ -60,17 +60,23 @@ def test_an_optional_prior_pattern_may_match_nothing_and_the_output_is_skipped(t
                          tmp_path / "out.json") == [{}]
 
 
-def _bench(tmp_path, check, model_sev, n=16):
-    """A key + verdicts where arm `a` is rated model_sev[a] over a round trip of 1."""
+def _bench(tmp_path, check, model_sev, n=16, rt=1, swap=False):
+    """A key + verdicts where arm `a` is rated model_sev[a] over a round trip of rt[a] (an int,
+    or a per-unit list). swap=True serves the model on B for odd units."""
     arms = sb.CHECKS[check]["arms"]
     items, rows, i = {}, [], 0
     for u in range(n):
         for a in arms:
             k = "item_%02d" % i
             i += 1
-            items[k] = {"arm": a, "unit": u, "hnr": 10.0 + u, "A_label": a,
-                        "B_label": a + "rt", "source": "x", "spk": u}
-            rows.append({"item": k, "sev_a": model_sev[a], "sev_b": 1})
+            r = rt[a] if isinstance(rt, dict) else rt
+            r = r[u] if isinstance(r, list) else r
+            flip = swap and u % 2
+            items[k] = {"arm": a, "unit": u, "hnr": 10.0 + u,
+                        "A_label": a + "rt" if flip else a, "B_label": a if flip else a + "rt",
+                        "source": "x", "spk": u}
+            sev_a, sev_b = (r, model_sev[a]) if flip else (model_sev[a], r)
+            rows.append({"item": k, "sev_a": sev_a, "sev_b": sev_b})
     key = tmp_path / "k.json"
     key.write_text(json.dumps({"check": check, "items": items}))
     (tmp_path / "t" / "verdicts").mkdir(parents=True)
@@ -85,6 +91,25 @@ def test_check1_unblinds_to_go(tmp_path, capsys):
     r = ub.main(_bench(tmp_path, 1, {"stock": 1, "R": 3, "derisk": 3}))
     assert r["outcome"] == "go"
     assert "OUTCOME: GO" in capsys.readouterr().out
+
+
+def test_check1_unblinds_to_the_same_go_with_the_model_on_either_side(tmp_path):
+    sev = {"stock": 1, "R": 3, "derisk": 3}
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    plain = ub.main(_bench(tmp_path / "a", 1, sev))
+    swapped = ub.main(_bench(tmp_path / "b", 1, sev, swap=True))
+    assert swapped["outcome"] == plain["outcome"] == "go"
+    assert swapped["level"] == plain["level"] and swapped["contrasts"] == plain["contrasts"]
+
+
+def test_floors_exactly_one_point_apart_are_not_comparable(tmp_path, capsys):
+    # stock's round trip: 0 on 17 units, 1 on 3 = 3/20 = 0.15; derisk's: 23/20 = 1.15.
+    # A float mean computes the gap as 0.9999999999999999 and calls them comparable.
+    rt = {"stock": [0] * 17 + [1] * 3, "R": [0] * 17 + [1] * 3, "derisk": [1] * 17 + [2] * 3}
+    r = ub.main(_bench(tmp_path, 1, {"stock": 1, "R": 3, "derisk": 3}, n=20, rt=rt))
+    assert r["floors_ok"] is False and r["outcome"] == "invalid"
+    assert "floors not comparable" in capsys.readouterr().out
 
 
 def test_a_key_from_another_check_is_refused(tmp_path):

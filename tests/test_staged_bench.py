@@ -5,6 +5,7 @@ preregistration.md), the one-sided test they rest on, which voices are excluded,
 items are served.
 """
 import random
+from fractions import Fraction
 
 import pytest
 
@@ -94,6 +95,17 @@ def test_check1_invalid_when_floors_are_far_apart():
     r = sb.reading(1, gaps(stock=[0] * 16, R=[2] * 16, derisk=[2] * 16),
                    dict(OK, derisk=1.6))
     assert r["outcome"] == "invalid" and r["floors_ok"] is False
+
+
+def test_floors_exactly_one_point_apart_are_not_comparable():
+    # 3/20 vs 23/20: as floats the gap computes as 0.9999999999999999 and passes.
+    assert not sb.floors_ok({"stock": Fraction(3, 20), "R": Fraction(23, 20)}, ["stock", "R"])
+    assert sb.floors_ok({"stock": Fraction(3, 20), "R": Fraction(22, 20)}, ["stock", "R"])
+
+
+def test_a_floor_of_exactly_four_is_not_comparable():
+    assert not sb.floors_ok({"stock": Fraction(4), "R": Fraction(4)}, ["stock", "R"])
+    assert sb.floors_ok({"stock": Fraction(399, 100), "R": Fraction(399, 100)}, ["stock", "R"])
 
 
 def test_check1_reports_r_minus_derisk_whatever_the_outcome():

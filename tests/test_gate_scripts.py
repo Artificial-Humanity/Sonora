@@ -211,7 +211,7 @@ def _has_torch():
 @pytest.mark.slow
 @pytest.mark.parametrize("script,env_var,default", SLOW)
 def test_slow_gate(script, env_var, default):
-    # These two live in the training container / litert harness venv, which is
+    # These live in the training container / litert harness venv, which is
     # where torch is. The host venv deliberately does not carry it, so the
     # prerequisite to check is the interpreter's capability, not just the
     # data path.

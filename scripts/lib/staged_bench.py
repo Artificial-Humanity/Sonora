@@ -89,7 +89,9 @@ def side_plan(n, arms, rng):
 
 
 def floors_ok(floors, arms):
-    """Round-trip floors comparable: each arm's within 1 point of stock's, all under 4."""
+    """Round-trip floors comparable: each arm's within 1 point of stock's (strictly less than 1),
+    all under 4 (strictly). Pass `fractions.Fraction` floors: a float mean decides exact-1.0
+    gaps by rounding."""
     others = [a for a in arms if a != "stock"]
     return all(abs(floors[a] - floors["stock"]) < 1.0 for a in others) \
         and max(floors[a] for a in arms) < 4.0

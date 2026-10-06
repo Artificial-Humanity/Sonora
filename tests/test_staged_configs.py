@@ -68,7 +68,8 @@ def test_s1_is_the_derisk_corpus_on_stocks_mel():
 @pytest.mark.skipif(not Path("/data/model-training/sonora/data/libritts_r_22k").is_dir(),
                     reason="/data not mounted")
 def test_s1_statistics_are_the_measured_ones():
-    got = json.loads((REPO / "data/libritts_r_22k/mel_statistics.json").read_text())
+    got = json.loads(Path("/data/model-training/sonora/data/libritts_r_22k/mel_statistics.json")
+                     .read_text())
     want = y(DATA_CFG / "libritts_r_22k.yaml")["data_statistics"]
     assert want["mel_mean"] == pytest.approx(got["mel_mean"], abs=1e-6)
     assert want["mel_std"] == pytest.approx(got["mel_std"], abs=1e-6)

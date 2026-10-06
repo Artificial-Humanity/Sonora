@@ -14,6 +14,7 @@ import csv
 import json
 import statistics as st
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -87,14 +88,16 @@ def main(argv=None):
               % (len(truth) - rated, len(truth)))
     if not all(floor.values()):
         raise SystemExit("REFUSING: an arm has no rated item.")
-    floors = {a: st.mean(v) for a, v in floor.items()}
+    # Exact: the validity rule is strict (< 1 point, < 4), and a float mean of integer ratings
+    # decides exact-1.0 gaps by rounding (3/20 vs 23/20 computes 0.9999999999999999).
+    floors = {a: Fraction(sum(v), len(v)) for a, v in floor.items()}
 
     r = sb.reading(args.check, gaps, floors)
     print("CHECK %d — GAP PER ARM (model - round trip; one-sided p)" % args.check)
     for a in arms:
         m, p, n = r["level"][a]
         print("  %-6s n=%2d  model %.2f  round trip %.2f  gap %+.2f  p = %.4f"
-              % (a, n, st.mean(sev[a]), floors[a], m, p))
+              % (a, n, st.mean(sev[a]), float(floors[a]), m, p))
     print("\nCONTRASTS (per unit; one-sided; uncorrected — %d tests in this check)"
           % r["n_tests"])
     for k, (m, p, n) in r["contrasts"].items():
