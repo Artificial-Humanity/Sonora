@@ -102,6 +102,8 @@ SLOW = [
      "2026-07-11_04-02-23/checkpoints/checkpoint_epoch=199.ckpt"),
     ("test_film_export_gate.py", "SONORA_LITERT_HARNESS",
      "/data/toolchain/litert-conversion"),
+    ("test_staged_experiments.py", "SONORA_STAGED_WARMSTART_DIR",
+     "/data/model-training/sonora/warmstart"),
 ]
 
 # Needs torch and NOTHING ELSE — a fourth category, added 2026-08-21 (#197).
