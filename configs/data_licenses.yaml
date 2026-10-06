@@ -91,7 +91,7 @@ datasets:
     # recordings and their CC-BY-4.0 do not.
     dirs: [LibriTTS-R, libritts_r, libritts-r, libritts_r_vat, libritts_r_vat_v1,
            libritts_r_vat_v2, libritts_r_vat_v3, libritts_r_vat_v3b, libritts_r_vat_v3c,
-           libritts_r_vat_v4, libritts_r_holdout_devclean]
+           libritts_r_vat_v4, libritts_r_holdout_devclean, libritts_r_22k]
     license: CC-BY-4.0
     class: permissive
   merged_vat_corpora:
@@ -232,6 +232,7 @@ datasets:
     dirs: [Hi-Fi-TTS, hifi_tts_24k]
     license: CC-BY-4.0
     class: permissive
+  # vctk_22k / libritts_r_22k: the staged rebuild's 22.05 kHz copies (2026-10-06).
   vctk:
     # CSTR VCTK Corpus 0.92, CC-BY-4.0 (verified 2026-07-19). Declared ahead of use so the
     # wall does not refuse it as undeclared when it finally arrives.
@@ -243,7 +244,7 @@ datasets:
     # no End-Of-Central-Directory record at the tail, so `zipfile` refuses it outright. The
     # notes called it "unextracted" and the plan counted its 44 h as low-hanging fruit needing
     # only an `unzip`. It needs an 11.75 GB re-fetch first.
-    dirs: [VCTK, vctk, vctk_24k]
+    dirs: [VCTK, vctk, vctk_24k, vctk_22k]
     license: CC-BY-4.0
     class: permissive
   parler_libritts_r_annotated:
