@@ -368,6 +368,7 @@ def render(args):
             limited += int(bound)
             nm = ear_bench.opaque(pair_key, side_key, args.salt)
             sf.write(str(clips / ("%s.wav" % nm)), a, sr, "PCM_24")
+            bench.written += 1                 # render_meta.json and the summary count these
             bench.key[nm] = {"label": lbl, "pair": pair_key, "side": side_key}
             item[side_key] = nm
         served.append(item)
