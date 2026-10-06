@@ -1,0 +1,23 @@
+# @package _global_
+
+# Staged rebuild, arm S1 (Notes: Sonora/staged-rebuild-preregistration.md): changes 1-3 of
+# the first step (LibriTTS-R, a fresh 247-speaker table, our G2P) on stock's 22.05 kHz audio
+# path. No VAT.
+#
+# Warm start: scripts/lib/make_warmstart.py --experiment staged_s1 --donor matcha_vctk.ckpt
+
+defaults:
+  - override /data: libritts_r_22k.yaml
+
+tags: ["staged", "S1", "libritts_r", "hum"]
+
+run_name: staged_s1
+
+model:
+  use_vat: false
+
+data:
+  bucket_multiplier: 0      # July's length-blind shuffle (owner ruling, 2026-10-06)
+
+trainer:
+  max_epochs: 10

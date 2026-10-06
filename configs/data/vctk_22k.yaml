@@ -1,0 +1,12 @@
+# C0 of the staged rebuild (Notes: Sonora/staged-rebuild-preregistration.md): stock's own
+# data. VCTK 0.92 mic1 resampled to 22.05 kHz, the VITS espeak phonemes stock trained on,
+# rewritten so OUR symbol table yields upstream's ids (scripts/lib/staged_data.py), and
+# stock's speaker ids, mel and statistics. Built by scripts/tools/prep_staged_corpora.py.
+defaults:
+  - vctk
+  - _self_
+
+name: vctk_22k
+train_filelist_path: data/vctk_22k/train.txt
+valid_filelist_path: data/vctk_22k/val.txt
+cleaners: [no_cleaners]

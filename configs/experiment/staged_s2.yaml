@@ -1,0 +1,24 @@
+# @package _global_
+
+# Staged rebuild, arm S2 (Notes: Sonora/staged-rebuild-preregistration.md): S1 plus change 4,
+# the 24 kHz derisk corpus and our vocoder's mel. No VAT, so the filelist's VAT field is not
+# read. S2 -> R isolates the conditioning.
+#
+# Warm start: scripts/lib/make_warmstart.py --experiment staged_s2 --donor matcha_vctk.ckpt
+
+defaults:
+  - override /data: libritts_r_vat.yaml
+
+tags: ["staged", "S2", "libritts_r", "hum"]
+
+run_name: staged_s2
+
+model:
+  use_vat: false
+
+data:
+  load_vat: false
+  bucket_multiplier: 0      # July's length-blind shuffle (owner ruling, 2026-10-06)
+
+trainer:
+  max_epochs: 10
