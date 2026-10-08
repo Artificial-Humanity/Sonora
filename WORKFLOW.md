@@ -14,8 +14,9 @@ Follow [AGENTS.md](AGENTS.md) for repository rules and git configuration.
      to act on. If none is accepted, go to step 4.
    * Dispatch the accepted fixes to a fresh subagent, which commits them on the branch.
    * Dispatch a scoped re-review of the fix commits to another fresh subagent.
-   * Repeat for at most three rounds. If the re-review is still not clean, stop and
-     report the open findings to the owner.
+   * Repeat the evaluate, fix and re-review cycle for at most three rounds. If the
+     re-review is still not clean, stop and report the open findings to the owner.
+   * Go to step 4 once the re-review is clean.
 4. Push the branch under its own name and open a pull request against `main`.
 5. Merge the pull request once it has the owner's approval and a passing `pytest`
    check, with the branch up to date with `main`. If `main` has moved, run
