@@ -53,17 +53,15 @@ Outputs land in `$SONORA_LITERT_WORK/artifacts/`: `matcha_textenc_fp16.tflite`, 
 Every graph converts GPU-clean (per-graph tflite-vs-torch corr **1.000000**; end-to-end waveform corr ≥0.99). Fixed shapes (256 phonemes, 512 mel frames) with a runtime float mask let one compiled graph handle any length. See `build_matcha.py` for the op-by-op recipe.
 
 ⚠ **`build_matcha.py` is the 22.05 kHz Phase-0 lane.** The 24 kHz / multi-speaker / VAT
-converter is `convert_vat.py`, **here, in this directory** — it was migrated in on
-2026-08-04 and this sentence claimed otherwise until 2026-08-06. Before trusting either,
+converter is `convert_vat.py`, **here, in this directory**. Before trusting either,
 read `notes/todo.md` (private) §2: the gate suite prints PASS/FAIL and **exits 0
 regardless**, and valence/tension have never been driven nonzero through a converted graph.
 
 ## Provenance, and which copy is authoritative
 
-Migrated into source control 2026-07-22 from `/data/toolchain/litert-conversion/` on
-ai-lab-0, where the **working directory** (venv, checkpoints, logs, `artifacts*/` outputs)
-remains. These scripts produced the LiteRT/TFLite exports published in
-`artificial-humanity/Sonora` → `baseline-ljspeech-22k/` (end-to-end graphs and the
+The **working directory** (venv, checkpoints, logs, `artifacts*/` outputs) is
+`/data/toolchain/litert-conversion/` on ai-lab-0. These scripts produced the LiteRT/TFLite
+exports published in `artificial-humanity/Sonora` → `baseline-ljspeech-22k/` (end-to-end graphs and the
 `litert-split/` mobile lane) and the VAT-ready split export in `derisk-energy-24k/`.
 
 **Run these from here, with `run.sh`:**
@@ -75,15 +73,8 @@ scripts/litert_export/run.sh build_matcha.py parity
 
 `SONORA_LITERT_WORK` (default `/data/toolchain/litert-conversion`) is where the **data**
 lives — the checkpoints read, and the `.tflite`/`.wav`/`artifacts*/` written. It defaults
-to this directory when unset, so an old invocation still behaves as it always did.
-
-That split is what let the `/data` **code** copy be retired rather than merely policed.
-The migration had left the scripts there too, and by 2026-08-06 two had drifted:
-`convert_vat.py` was three weeks stale and missing the `detect_vat_dim` seam guard this
-repo recorded as landed, and the README still documented a bare-`pip` install predating
-the uv standard. Nothing detected either — both directories looked healthy, and the only
-symptom was that a fix believed to have shipped had not.
+to this directory when unset.
 
 Owner principle (AGENTS.md §6): code executes from the repo; `/data` holds what its name
 implies. `tests/test_data_mirrors.py::test_litert_harness_has_no_code_copy` fails if a
-`.py` reappears on `/data`.
+`.py` appears on `/data`.

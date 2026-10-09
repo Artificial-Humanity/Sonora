@@ -1,9 +1,7 @@
 # `scripts/` — what goes where
 
-Until 2026-08-12 this directory was 114 files in two folders, and **"nothing invokes this"
-was the normal, healthy state** for most of them. That is why `qc_verdict.py` could be named
-in a `synth_bank.sh` comment for a month without running: an unwired *stage* looked exactly
-like the majority of files that were never meant to be called (issues #24, #26).
+**"Nothing invokes this" is the normal, healthy state** for a hand-run tool, so an unwired
+*stage* must not be able to look like one.
 
 The layout is the answer to *"what is this file?"*. The enforcement is
 [`pipeline_manifest.py`](pipeline_manifest.py) plus `tests/test_stage_coverage.py`.
@@ -34,8 +32,7 @@ for _p in (_SONORA_REPO, _os.path.join(_SONORA_REPO, "scripts", "lib")):
         _sys.path.insert(0, _p)
 ```
 
-It replaced 87 scattered `sys.path.insert(0, dirname(__file__))` calls, which worked only
-while every sibling shared one directory. Two things about it:
+Two things about it:
 
 * **Imports stay flat** (`import synth_common`), not `from scripts.lib import synth_common`.
   Package-qualified imports need the repo root on `sys.path` at *every* entry point, and the
@@ -43,12 +40,11 @@ while every sibling shared one directory. Two things about it:
   script's own directory on the path. Converting them means rewriting the launch path of
   every lane that cannot be tested off-GPU. It is the remaining piece, not a done one.
 * **The prologue aliases its own `os`/`sys`** (`_os`, `_sys`). `ref_select.py` imports
-  `sys as _sys` and nothing else, so a prologue that assumed a bare `sys` broke on import.
+  `sys as _sys` and nothing else, so a prologue that assumes a bare `sys` breaks on import.
 
-⚠ **`pyproject.toml` still excludes `scripts*` from the package, deliberately.** #26 proposed
-dropping it "so bucket 2 can be imported rather than path-hacked", and that reason does not
-hold: implicit namespace packages already make `scripts.lib` importable whenever the repo
-root is on `sys.path`, exclude or not. The exclude governs what a built wheel *ships*, and
+⚠ **`pyproject.toml` excludes `scripts*` from the package, deliberately.** Dropping it "so
+bucket 2 can be imported rather than path-hacked" gains nothing: implicit namespace packages
+already make `scripts.lib` importable whenever the repo root is on `sys.path`, exclude or not. The exclude governs what a built wheel *ships*, and
 nothing installs this repo. Dropping it would put `scripts/`, `scripts/assets/` and the rest
 into `setuptools.packages.find`'s results for no gain.
 

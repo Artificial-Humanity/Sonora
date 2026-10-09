@@ -295,8 +295,8 @@ After the checks and the review/merge cycle in `WORKFLOW.md`, update local `main
   into (`ALLOW_STACK_DURING_TRAINING=1` overrides; the inference profile is never selected
   mid-run).
 * `training-code` refuses while ANY running container mounts `/data/repos/Sonora`, and
-  `sonora_vocalizer` does. That is deploy safety — code swapped under a live process — not the
-  retired spin-down rule. Stop only the mounting container for the deploy and start it again
+  `sonora_vocalizer` does. That is deploy safety — code swapped under a live process — not a
+  GPU rule. Stop only the mounting container for the deploy and start it again
   straight after: `docker stop sonora_vocalizer`, deploy, `docker start sonora_vocalizer`.
 * Do not stop the inference engines for GPU reasons. The owner coordinates GPU use
   directly.
