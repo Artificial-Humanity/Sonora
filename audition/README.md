@@ -1,8 +1,8 @@
 # Dataset Listening
 
-Web rating surface for the Sonora **expressive-registers** dataset. Replaces the
-sandboxed Excel workflow: serves each clip's audio inline (`audio/wav`, no download
-dialog, plays on phone/iPad over Tailscale) and edits `ratings.csv` directly as the
+Web rating surface for the Sonora **expressive-registers** dataset. Serves each clip's
+audio inline (`audio/wav`, no download dialog, plays on phone/iPad over Tailscale) and
+edits `ratings.csv` directly as the
 **single source of truth** the training pipeline reads.
 
 - **Live URL:** https://listen.ai-lab-0.mcfarlin.family (Caddy → `localhost:8095`)
@@ -14,8 +14,8 @@ dialog, plays on phone/iPad over Tailscale) and edits `ratings.csv` directly as 
 
 ## Rating vocabulary (v3)
 
-The four UI actions are exactly the v3 score codes (see `synthesis-pipeline.md` in the
-`Sonora-GH` sibling repo's `notes/`):
+The four UI actions are exactly the v3 score codes (see `notes/synthesis-pipeline.md`
+(private)):
 
 | Action        | Writes score | status      | Notes |
 |---------------|--------------|-------------|-------|
@@ -32,7 +32,7 @@ Comment field is always available. Every save also appends to
 
 - **To rate** (`todo`) — clips not yet rated (unaudited).
 - **Re-rate** (`rerate`) — *every* already-rated clip, so any rating can be revised at
-  any time (scale is strictly 1–5; no former-9 special-casing). Each card shows its
+  any time (scale is strictly 1–5). Each card shows its
   current score ("Currently: Keep ★3") so nothing is lost when you reconsider.
 - **All** (`all`) — the whole dataset.
 
@@ -49,17 +49,14 @@ Every list is **paginated 20 clips per page** (`page` / `page_size`, server-clam
 - `POST /api/anchor` — `{score, id?, why?}` → set a reference from a clip; `id: null` clears
 - `GET /` — the audition UI (static)
 
-## Anchor exemplars — what each number sounds like (2026-08-08)
+## Anchor exemplars — what each number sounds like
 
-**The scale had saturated.** 799 of 1,219 scored keeps are 5s (66%); on identical text, 46
+**The scale is saturated.** 799 of 1,219 scored keeps are 5s (66%); on identical text, 46
 of 62 controlled groups have three or more *different* engines all at 5; and `librivox`
 **real human audio** means exactly 5.00 across its 43 keeps. The top of the scale is
 "indistinguishable from a human read" and most of the corpus is sitting on it — which is why
 mean score ranks `chatterbox` above `qwen`, an inversion produced by compression rather than
 by quality. Never rank engines by mean score; keep RATE survives this, means do not.
-
-Owner, after the equal-loudness re-listen: *"Qwen relays human-like prosody in those cases
-where it scored a 5 that makes me rethink 5's given out to others."*
 
 A saturated scale is not fixed by adding scale points. It is fixed by a **fixed reference**,
 which is standard MOS practice — without one, 5 drifts per session, per engine, and per how
@@ -73,13 +70,12 @@ good the last clip happened to be.
   and a mis-key that silently re-rates a clip is the worst collision on this surface.
 
 **Anchors are the ear's, never a measure's.** Nothing computes one; a computed anchor would
-re-anchor the scale to whatever the measure already believes. Ships with exactly one entry —
-the exemplar the owner named by hand — and the other four **unset rather than guessed**.
+re-anchor the scale to whatever the measure already believes. A score with no exemplar chosen
+by ear stays **unset rather than guessed**.
 
-**State lives in `anchors.json`, not in a clip column**, and that is a scar: the
-Qwen/VibeVoice A/B parked prior scores in `note`, which this app overwrites when you type,
-and 17 of 33 were lost. Hand-editable; `id` must exist in `ratings.csv`; deleting an entry
-unsets it. Two failure modes are shown rather than hidden — an anchor whose clip was
+**State lives in `anchors.json`, not in a clip column**: this app overwrites `note` when you
+type, so anything parked there is lost. Hand-editable; `id` must exist in `ratings.csv`;
+deleting an entry unsets it. Two failure modes are shown rather than hidden — an anchor whose clip was
 **re-rated** renders as drift (it does not silently re-point), and one whose clip has left
 `ratings.csv` renders as **broken**.
 
@@ -94,23 +90,23 @@ AUDITION_DATA_ROOT=/data/model-training/datasets \
 
 ## Deploy
 
-1. **App code (absolute path — NOT pure GitOps):** the container binds
-   `/data/services/audition/app` (absolute), because Portainer deploys the stack from its
-   own checkout and a relative `./audition/app` bind resolves to an empty dir → crash
-   loop. Sync code changes to that path:
-   `sudo rsync -a --delete AI-Lab-AMD/audition/app/ /data/services/audition/app/`
-2. **Compose (GitOps):** commit and push to `main` — Portainer redeploys the `ai-lab`
-   stack and (re)creates the `audition` container against the absolute bind.
+1. **App code:** the container binds `/data/services/audition/app` (absolute) — a deploy
+   copy, so the live app never serves half-edited working-tree state. Deploy this repo's
+   `audition/app/` there with `AI-Lab-AMD/scripts/deploy.sh audition` (run the
+   [AGENTS.md](../AGENTS.md) §7 checks first; from a linked worktree, prefix
+   `SONORA_REPO="$(git rev-parse --show-toplevel)"`).
+2. **Compose:** the `audition` service is defined in `AI-Lab-AMD`; `deploy.sh stack`
+   (re)creates the container against the absolute bind.
 3. **Caddy route:** `sudo cp AI-Lab-AMD/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy`
-4. **Dashboard tile:** `sudo rsync -av --delete --exclude '.git*' --exclude 'AGENTS.md' --exclude 'status.json' AI-Lab-AMD/dashboard/ /data/services/dashboard/`
+4. **Dashboard tile:** `AI-Lab-AMD/scripts/deploy.sh dashboard`
    (the `Dataset Listening` tile + regrouped sections are already in `index.html`).
 
 ---
 
-## Re-rolls — mark, don't fire (owner decision 2026-07-18)
+## Re-rolls — mark, don't fire
 
-**The app never triggers synthesis.** Retake is a *mark*, not a job. This was a
-deliberate call: the value of a Retake is the owner's freeform comment, and that
+**The app never triggers synthesis.** Retake is a *mark*, not a job. This is
+deliberate: the value of a Retake is the owner's freeform comment, and that
 comment is an instruction needing judgment ("half-step down in pitch" = voice-design
 change; "replace the words with a psalm, fix the distortion" = text+quality change;
 "monotone and lazy" = maybe just an unlucky seed). An auto-trigger could only bump the
@@ -143,7 +139,7 @@ worker in this service.
 
 ---
 
-## Audit sets — `audit-*` campaigns (owner, 2026-07-19)
+## Audit sets — `audit-*` campaigns
 
 **The app is the de facto auditioning surface for EVERY audit set** — calibration audits
 included — because phone-anywhere beats desk sessions. Convention:
@@ -159,16 +155,11 @@ included — because phone-anywhere beats desk sessions. Convention:
   evidence, not dataset clips. The fold reads them out as per-class agreement rates and
   archives the rows.
 
-First sets (2026-07-19): `audit-tension-v2` (does +T sound strained, −T breathy, at
-matched loudness?) and `audit-valence-v1` (does +V sound positive, −V negative?) — both
-50 clips drawn from the `libritts_r_vat_v2` corpus, the pre-training human gate from
-vat-corpus-decision-brief step 3.
-
-## Processing a rated batch (the fold, first run 2026-07-19)
+## Processing a rated batch (the fold)
 
 When the owner has rated a batch, a working session folds the ratings into the dataset:
 
-1. **Rename on tag mismatch (standing rule, owner 2026-07-19).** Filenames imply tags
+1. **Rename on tag mismatch (standing rule).** Filenames imply tags
    (`<register>_<NN>_<voice>_s<seed>`; voice's last letter = gender). When the audited
    truth contradicts them, the files are renamed so the dataset stays in good order:
    - register relabel → register prefix rewritten (`fierce_devotion_00_…` →
@@ -191,7 +182,7 @@ When the owner has rated a batch, a working session folds the ratings into the d
 4. **Reroll queue**: deduped (newest row per id wins), rows for ids no longer marked
    `reroll` pruned. Rendering the retakes stays a separate GPU working session.
 
-## Scoring semantics for synth/actor campaigns (owner ruling 2026-07-22)
+## Scoring semantics for synth/actor campaigns
 
 Two rating regimes exist in the logged data — read tallies accordingly:
 

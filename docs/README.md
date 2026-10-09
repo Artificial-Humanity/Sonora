@@ -3,12 +3,8 @@
 **Policy and canon. What is ratified, settled, and standing.** Other work conforms to what is
 here; when a document elsewhere disagrees with one of these, this directory wins.
 
-Split out of `notes/` on 2026-08-17 (owner) to match the pattern already established in
-**Prosodia**. The distinction is not filing — it is which documents are *binding*. Before the
-split, `direction-contract-v3-proposal.md` ("nothing here is ratified and nothing here is
-built") and `markup-schema-brief.md` (ratified v0.1) were the same kind of file in the same
-directory, and only their prose told them apart. A reviewer citing the first as authority was
-making an error the structure invited.
+This directory follows the pattern established in **Prosodia**. The distinction from `notes/`
+is not filing — it is which documents are *binding*.
 
 **The test for admission:** does the file state a rule other work must conform to, or does it
 record state, progress, research, or a plan? A runbook listing runs-to-date is a record and
@@ -19,27 +15,25 @@ records.
 ⚠ **Deliberately small.** Prosodia's canon directory holds four files. A `docs/` that grows to
 absorb everything authoritative-feeling is the flat `notes/` directory again with a new name.
 
-⚠ **`personas/` IS GONE FROM THIS DIRECTORY** (owner, 2026-09-16). The reviewer persona was
-deleted with the rest of the review-lane machinery, and the developer persona is now
-`PERSONA.md` at the repo root. Nothing agent-facing lives under `docs/` any more.
+⚠ **Nothing agent-facing lives under `docs/`.** The developer persona is `PERSONA.md` at the
+repo root.
 
 ⚠ **`PERSONA.md` is not policy and this file does not describe it.** It is an agent-direction
 file: UPPERCASE against the lowercase-kebab rule below, not canon, not in the table, and
-excluded from this repo's doc gates by the owner's ruling of 2026-08-21 (`_SCAN_EXCLUDE` in
+excluded from this repo's doc gates (`_SCAN_EXCLUDE` in
 `scripts/gates/test_doc_links.py`). **Nothing in `docs/` should be read as applying to it.**
 
 ## Rules for this directory
 
-Inherited from `notes/README.md` (retired 2026-09-08), and they apply to both directories:
+These apply to both `docs/` and `notes/`:
 
 * **Each file owns its subject.** When two disagree, the one named as SSOT wins — and for the
   subjects below, that is the file in this directory.
-* **Superseded narrative is deleted, not archived.** Git history is the archive. (The
-  `notes/archive/` directory was removed 2026-08-02 — see the warning below.)
+* **Superseded narrative is deleted, not archived.** Git history is the archive.
 * **Filenames are `lowercase-kebab-case.md`**, except `ARCHITECTURE.md` — the only uppercase
   file in `docs/`. `notes/` keeps `STATE.md`, and the repo root keeps `AGENTS.md`, `CLAUDE.md`,
   `WORKFLOW.md` and `PERSONA.md`.
-  * ⚠ **AN UPPERCASE NAME IS A SIGNAL: MUST READ** (owner, 2026-09-16). It is not decoration
+  * ⚠ **AN UPPERCASE NAME IS A SIGNAL: MUST READ.** It is not decoration
     and it is not seniority — the owner navigates by it. A new file earns capitals only if
     reading it is genuinely required.
 * **`[[double-bracket]]` names are memory slugs, not repo files.** They point at the agent's
@@ -52,43 +46,30 @@ Inherited from `notes/README.md` (retired 2026-09-08), and they apply to both di
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | the tier-independent architecture — the Director↔Actor contract (v2), corpus rules, gates, promotion |
 | [vat-channels.md](vat-channels.md) | the three conditioning channels — §1 FiLM mechanism, §2 label recipes, §3 tension semantics |
-| [direction-interface-brief.md](direction-interface-brief.md) | how Sonora receives direction — the contract-v2 decision record (DECIDED 2026-07-30) |
+| [direction-interface-brief.md](direction-interface-brief.md) | how Sonora receives direction — the contract-v2 decision record |
 | [markup-schema-brief.md](markup-schema-brief.md) | SCM v0.1 — the ratified conveyance markup (sidecar-canonical, six tags) |
 | [model-decisions.md](model-decisions.md) | model **shape** — size ladder, 150M ceiling, 24 kHz, the DiT decoder-v2 design, base-model choice |
-| [tts-engine-onboarding.md](tts-engine-onboarding.md) | the engine onboarding pattern, revisit list, and the gotcha compendium (ratified 2026-07-25) |
+| [tts-engine-onboarding.md](tts-engine-onboarding.md) | the engine onboarding pattern, revisit list, and the gotcha compendium (ratified) |
 | [audiobook-corpus-policy.md](audiobook-corpus-policy.md) | the owner's-audiobooks boundary and the private-lineage firewall |
 
 _These are **design and policy records, not build status.** ⚠ The delivery channel that
-`vat-channels.md` and `direction-interface-brief.md` describe **SHIPPED in the model core on
-2026-08-07** — a five-wide one-hot block, `vat_dim` 8, `matcha/delivery.py`
-(`notes/STATE.md` (private)). **The EXPORT half is what is still open.** This paragraph said
-"not implemented" until 2026-08-22 (#283), in a file created after the channel shipped._
+`vat-channels.md` and `direction-interface-brief.md` describe **is in the model core** — a
+five-wide one-hot block, `vat_dim` 8, `matcha/delivery.py`
+(`notes/STATE.md` (private)). **The EXPORT half is what is still open.**_
 
 ## Where the rest is
 
 `notes/` holds what is in flight, starting with `notes/STATE.md` (private) — what is true
-now, the snapshot every arriving agent is told to read. It briefly lived here on 2026-09-08
-and went back the same day: it records state rather than stating a rule, so it fails this
-directory's own test for admission. Alongside it:
+now, the snapshot every arriving agent is told to read. It records state rather than stating
+a rule, so it fails this directory's own test for admission. Alongside it:
 `notes/quality-gap-plan.md` (private) (what happens next),
 `notes/todo.md` (private), the campaign records, the research, the runbook
 (`notes/training-operations.md` (private)), and the whole `high-ambition-*`
-series. ⚠ That directory's index was retired with `notes/README.md` on the same day — it was a
-hand-maintained copy of a directory listing and it had drifted.
+series. ⚠ `notes/` has no index: a hand-maintained copy of a directory listing drifts.
 
 ⚠ **The `high-ambition-N` series stays in `notes/` and must not move.** It is a **cross-repo**
 series — goals 3 and 4 live in `Prosodia/notes` — and Prosodia links back to these files **by
-name**. Moving them breaks links that no checker in this repo would ever see. Measured
-2026-08-17: Prosodia holds 37 links into Sonora's prose, and moving the series would have
-broken 21 of them.
+name**. Moving them breaks links that no checker in this repo would ever see.
 
-⚠ **10 of those 37 were dead when the split was made** — `notes/archive/` was removed on
-2026-08-02 and neither repo noticed for a fortnight. ⚠ **They have since been REPAIRED on
-Prosodia's side, and the gate reports 0 today** (re-measured 2026-08-21: 31 relative links in,
-all resolving; the archive references are now prose naming the deletion, not links). This
-sentence said the gate "reports them on every run" until then — a claim that stopped being
-true when someone else fixed their own files (#264).
-
-The mechanism still stands and is the part worth keeping: inbound links are **reported, never
-failed**. They are Prosodia's lines to fix, and a check no commit here can turn green is one
-everybody learns to ignore.
+Inbound links are **reported, never failed**. They are Prosodia's lines to fix,
+and a check no commit here can turn green is one everybody learns to ignore.
