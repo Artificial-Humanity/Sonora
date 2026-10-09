@@ -74,8 +74,7 @@ scripts/litert_export/run.sh build_matcha.py parity
 `SONORA_LITERT_WORK` (default `/data/toolchain/litert-conversion`) is where the **data**
 lives — the checkpoints read, and the `.tflite`/`.wav`/`artifacts*/` written.
 
-A code copy on `/data` drifts silently from the repo; nothing else detects it.
-
 Owner principle (AGENTS.md §6): code executes from the repo; `/data` holds what its name
-implies. `tests/test_data_mirrors.py::test_litert_harness_has_no_code_copy` fails if a
+implies. A code copy on `/data` drifts silently from the repo, and only
+`tests/test_data_mirrors.py::test_litert_harness_has_no_code_copy` catches it: it fails if a
 `.py` appears on `/data`.
