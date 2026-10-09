@@ -90,9 +90,11 @@ AUDITION_DATA_ROOT=/data/model-training/datasets \
 
 ## Deploy
 
-1. **App code:** the container binds `/data/services/audition/app` (absolute). Deploy this
-   repo's `audition/app/` there with `AI-Lab-AMD/scripts/deploy.sh audition`
-   ([AGENTS.md](../AGENTS.md) §7).
+1. **App code:** the container binds `/data/services/audition/app` (absolute) — a deploy
+   copy, so the live app never serves half-edited working-tree state. Deploy this repo's
+   `audition/app/` there with `AI-Lab-AMD/scripts/deploy.sh audition` (run the
+   [AGENTS.md](../AGENTS.md) §7 checks first; from a linked worktree, prefix
+   `SONORA_REPO="$(git rev-parse --show-toplevel)"`).
 2. **Compose:** the `audition` service is defined in `AI-Lab-AMD`; `deploy.sh stack`
    (re)creates the container against the absolute bind.
 3. **Caddy route:** `sudo cp AI-Lab-AMD/Caddyfile /etc/caddy/Caddyfile && sudo systemctl reload caddy`

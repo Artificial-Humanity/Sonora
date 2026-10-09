@@ -49,7 +49,7 @@ These apply to both `docs/` and `notes/`:
 | [direction-interface-brief.md](direction-interface-brief.md) | how Sonora receives direction — the contract-v2 decision record |
 | [markup-schema-brief.md](markup-schema-brief.md) | SCM v0.1 — the ratified conveyance markup (sidecar-canonical, six tags) |
 | [model-decisions.md](model-decisions.md) | model **shape** — size ladder, 150M ceiling, 24 kHz, the DiT decoder-v2 design, base-model choice |
-| [tts-engine-onboarding.md](tts-engine-onboarding.md) | the engine onboarding pattern, revisit list, and the gotcha compendium |
+| [tts-engine-onboarding.md](tts-engine-onboarding.md) | the engine onboarding pattern, revisit list, and the gotcha compendium (ratified) |
 | [audiobook-corpus-policy.md](audiobook-corpus-policy.md) | the owner's-audiobooks boundary and the private-lineage firewall |
 
 _These are **design and policy records, not build status.** ⚠ The delivery channel that

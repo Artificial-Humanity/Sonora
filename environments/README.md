@@ -39,7 +39,7 @@ Refresh both after any dependency change, and say so in the commit message —
 a stale snapshot asserting the wrong versions is the failure mode these files exist to
 prevent.
 
-## The container lanes
+## The container lanes (D-M2)
 
 The three throwaway-container lanes — `scripts/stages/synth_bank.sh`,
 `scripts/stages/librivox_align.sh`, `scripts/stages/eiv_score.sh` — source one pin table,
@@ -49,7 +49,7 @@ The three throwaway-container lanes — `scripts/stages/synth_bank.sh`,
   existing campaign and every existing EIV score ran under. Override with
   `SONORA_ROCM_IMAGE` to test a new base; re-pin the default from a run that passed.
 * **`transformers` is held at 4.57.3**, the line the corpus was built on. By dry-run
-  resolution inside the pinned image, unpinned it resolves to **5.14.1**. All seven
+  resolution inside the pinned image: unpinned, it resolves to a 5.x release (5.14.1 when the pin was set). All seven
   dependency sets resolve against the held version (7/7 clean) — these are checked pins,
   not hopeful ones.
 * **Installs go through uv**, per AGENTS.md § 3 (`--python /opt/venv/bin/python`, never
