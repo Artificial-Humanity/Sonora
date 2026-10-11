@@ -1,21 +1,29 @@
-"""WHICH PART OF THE FIRST STEP ADDS THE HUM? The staged-rebuild bench, checks 1-3.
+"""WHICH PART OF THE FIRST STEP ADDS THE HUM? The staged-rebuild bench, checks 1-4.
 
-Pre-registered in Notes: Sonora/staged-rebuild-preregistration.md (owner, 2026-10-06); the
-readings are `staged_bench.reading`. Each check is 20 units x 3 arms = 60 items. An item is
-one arm's render and the vocoder round trip of the same real recording, each rated for hum
-0-5, on the app, scale and loudness of the earlier hum benches.
+Pre-registered in Notes: Sonora/staged-rebuild-preregistration.md (owner, 2026-10-06; check 4
+2026-10-11); the readings are `staged_bench.reading`. Checks 1-3 are 20 units x 3 arms = 60
+items; check 4 is at most 20 units x 2 arms. An item is one arm's render and the vocoder
+round trip of the same real recording, each rated for hum 0-5, on the app, scale and
+loudness of the earlier hum benches.
 
   check 1  stock (VCTK voice) | R, derisk (its HNR-matched LibriTTS-R voice)   the gate
   check 2  stock, C0 (one VCTK voice) | S1 (its HNR-matched LibriTTS-R voice)
   check 3  S1, S2, R (one LibriTTS-R voice)
+  check 4  S1, L (one LibriTTS-R voice)      does LibriTTS-R's restoration add the hum?
 
 ⚠ EVERY ARM RENDERS THROUGH ITS OWN AUDIO PATH. stock, C0 and S1: 22.05 kHz mels through the
 universal vocoder with its denoiser, resampled to the bench rate after vocoding, exactly as
 `render_ear_baseline.py` renders stock. S2, R and derisk: 24 kHz through our vocoder. Each
-round trip goes through its arm's path.
+round trip goes through its arm's path. L renders on S1's path, but round-trips its OWN
+corpus's copy of the utterance: the 22.05 kHz copy of the ORIGINAL LibriTTS recording, where
+S1 round-trips LibriTTS-R's (`round_trip_source`).
+
+⚠ CHECK 4 TAKES EVERY ELIGIBLE VOICE IF THERE ARE 20 OR FEWER, and refuses under 16. A voice
+is eligible with 2 recordings of 4-8 s (on the 24 kHz LibriTTS-R file) that are in both S1's
+and L's train filelists and whose original recording is within 0.1 s of the same length.
 
 ⚠ A VOICE THAT SPEAKS SEVERAL ARMS GETS A DIFFERENT RECORDING FOR EACH (`assign_clips`), the
-ones nearest in length to the unit's VCTK clip (checks 1-2) or to --target-seconds (check 3).
+ones nearest in length to the unit's VCTK clip (checks 1-2) or to --target-seconds (checks 3-4).
 Every recording is from its arm's training split.
 
 ⚠ stock and C0 read VITS's espeak phonemes through upstream's table (`encode_original`),
@@ -27,6 +35,12 @@ file (`--prior`, each pattern must match a file) and every earlier staged speake
 (`--prior-optional`, may match nothing) is excluded. A speakers file is never overwritten.
 Pass each glob as its own QUOTED argument: an unquoted `$P` is one word in zsh.
 
+    # host, before L trains: the pre-flight count. A dry run may omit an untrained arm's
+    # checkpoint; its speakers file is marked as one, never lands in staged_bench/, and
+    # render refuses it.
+    .venv/bin/python scripts/tools/render_ear_staged.py select --check 4 --dry-run \\
+        --ckpt S1=<staged_s1 checkpoint_epoch=009_step=0009209.ckpt> \\
+        --out-speakers <scratch>/check4_dryrun_speakers.json
     # host (check 2 before check 3: check 3 then excludes check 2's voices)
     .venv/bin/python scripts/tools/render_ear_staged.py select --check 1 \\
         --ckpt R=<staged_r checkpoint_epoch=009_step=…ckpt> \\
@@ -49,6 +63,7 @@ import json
 import random
 import sys
 import zipfile
+from fractions import Fraction
 from pathlib import Path
 
 import numpy as np
@@ -68,11 +83,17 @@ DATA = ROOT + "/data"
 FIXED = {"stock": ROOT + "/warmstart/matcha_vctk.ckpt",
          "derisk": ROOT + "/logs/train/derisk_energy/runs/2026-07-15_00-20-31/checkpoints/"
                           "checkpoint_epoch=099.ckpt"}
-NEW = ("R", "C0", "S1", "S2")
+NEW = ("R", "C0", "S1", "S2", "L")
 # arm: (data config holding its mel statistics, n_spks, use_vat)
 EXPECT = {"stock": ("vctk", 109, False), "C0": ("vctk", 109, False),
           "S1": ("libritts_r_22k", 247, False), "S2": ("libritts_r_vat", 247, False),
-          "R": ("libritts_r_vat", 247, True), "derisk": ("libritts_r_vat", 247, True)}
+          "R": ("libritts_r_vat", 247, True), "derisk": ("libritts_r_vat", 247, True),
+          "L": ("libritts_22k", 247, False)}
+# A 22.05 kHz LibriTTS arm's round trip: its own corpus's copy of the 24 kHz LibriTTS-R row.
+RT_22K = {"libri22": sd.to_22k, "orig22": sd.to_l22k}
+ORIG_MAX_DRIFT = Fraction(1, 10)     # check 4: original vs LibriTTS-R length, seconds, strict
+PRIOR = [ROOT + "/pitch_error/_*.json", ROOT + "/eartest/_keys/*.key.json",
+         ROOT + "/first_step_bench/speakers.json"]
 OURS_MEL = ("n_fft", "n_feats", "sample_rate", "hop_length", "win_length", "f_min", "f_max")
 
 
@@ -84,9 +105,11 @@ def sha256(path):
     return h.hexdigest()
 
 
-def resolve_ckpts(arms, given):
-    """{arm: checkpoint} for one check. stock and derisk are fixed; R, C0, S1 and S2 must be
-    given as ARM=PATH, and must be the step checkpoint that ended the tenth epoch."""
+def resolve_ckpts(arms, given, allow_missing=False):
+    """{arm: checkpoint} for one check. stock and derisk are fixed; R, C0, S1, S2 and L must
+    be given as ARM=PATH, and must be the step checkpoint that ended the tenth epoch.
+    `allow_missing` (a dry run only) maps an arm given no checkpoint to None, for an arm not
+    trained yet; a checkpoint that IS given is still checked."""
     got = {}
     for g in given:
         arm, _, path = g.partition("=")
@@ -97,6 +120,8 @@ def resolve_ckpts(arms, given):
     for a in arms:
         if a in FIXED:
             out[a] = FIXED[a]
+        elif a not in got and allow_missing:
+            out[a] = None
         elif a not in got:
             raise SystemExit("REFUSING: arm %s needs --ckpt %s=<checkpoint>." % (a, a))
         elif not sb.ten_epoch_ckpt(got[a]):
@@ -115,6 +140,62 @@ def corpus_rows(corpus):
             wav, spk, phon = line.split("|")[:3]
             out[wav] = (int(spk), phon)
     return out
+
+
+def round_trip_source(arm, wav24):
+    """The 22.05 kHz copy a LibriTTS arm on the universal vocoder round-trips for the 24 kHz
+    LibriTTS-R row `wav24`: S1 its LibriTTS-R copy, L its copy of the ORIGINAL recording."""
+    return RT_22K[sb.FAMILY[arm]](wav24)
+
+
+def exact_duration(path):
+    """A file's length in seconds, exactly (frames / rate): a float difference can put 5.1 s
+    against 5.0 s inside 0.1 s."""
+    i = sf.info(path)
+    return Fraction(i.frames, i.samplerate)
+
+
+def same_utterance_length(sec_r, sec_orig):
+    """Check 4: is the original recording within 0.1 s (strictly) of the LibriTTS-R file?"""
+    return abs(sec_r - sec_orig) < ORIG_MAX_DRIFT
+
+
+def default_prior(check):
+    """--prior when none is given. Check 4 also REQUIRES every earlier staged speakers file
+    (pre-registered: all required, each must match a file)."""
+    if check == 4:
+        return PRIOR + [ROOT + "/staged_bench/check%d_speakers.json" % i for i in (1, 2, 3)]
+    return list(PRIOR)
+
+
+def pick_voices(pool, n, check):
+    """The units' voices, spread over HNR (`lineage_bench.spread`). Check 4 takes every
+    eligible voice when there are `n` or fewer, and refuses under its minimum."""
+    least = sb.CHECKS[check].get("min_units")
+    if least is None:
+        return lb.spread(pool, n)
+    if len(pool) < least:
+        raise SystemExit("REFUSING: %d eligible voices; check %d needs at least %d. It is not "
+                         "run, and the owner decides." % (len(pool), check, least))
+    return lb.spread(pool, min(n, len(pool)))
+
+
+def refuse_dry_run_target(path):
+    """A dry run never writes where the real selection goes: select refuses an existing
+    speakers file, so a dry-run file there would block the real draw."""
+    if Path(path).resolve().is_relative_to(Path(ROOT + "/staged_bench").resolve()):
+        raise SystemExit("REFUSING: a dry run may not write into %s/staged_bench/." % ROOT)
+
+
+def read_spec(path, check):
+    """The speakers file render takes, refused if it is another check's or a dry run's."""
+    spec = json.loads(Path(path).read_text())
+    if spec.get("check") != check:
+        raise SystemExit("REFUSING: %s is check %s's, not check %d's."
+                         % (path, spec.get("check"), check))
+    if spec.get("dry_run"):
+        raise SystemExit("REFUSING: %s is a dry run's speakers file, not a selection." % path)
+    return spec
 
 
 # ------------------------------------------------------------------------------ select
@@ -141,9 +222,11 @@ def select(args):
     if out_path.exists():
         raise SystemExit("REFUSING: %s exists. Voices are drawn once (pre-registration)."
                          % out_path)
-    ckpts = resolve_ckpts(c["arms"], args.ckpt)
+    if args.dry_run:
+        refuse_dry_run_target(out_path)
+    ckpts = resolve_ckpts(c["arms"], args.ckpt, args.dry_run)
     for a, p in ckpts.items():
-        if not Path(p).is_file():
+        if p is not None and not Path(p).is_file():
             raise SystemExit("REFUSING: %s's checkpoint %s does not exist." % (a, p))
     rng = random.Random(args.seed + args.check)
 
@@ -152,6 +235,8 @@ def select(args):
 
     rows = corpus_rows("libritts_r_vat")
     s1_have = set(corpus_rows("libritts_r_22k")) if "S1" in c["arms"] else None
+    l_have = set(corpus_rows("libritts_22k")) if "L" in c["arms"] else None
+    orig_sec = {}
     hnr = {int(k): v["hnr"] for k, v in
            json.loads(Path(args.hnr_json).read_text())["speakers"].items()}
     lib_clips = {}
@@ -161,8 +246,16 @@ def select(args):
             continue
         if s1_have is not None and sd.to_22k(w) not in s1_have:
             continue
+        if l_have is not None and sd.to_l22k(w) not in l_have:
+            continue
         sec = sf.info(w).duration
         if args.min_seconds <= sec <= args.max_seconds:
+            if l_have is not None:
+                o = sd.to_original(w)
+                if not (Path(o).is_file()
+                        and same_utterance_length(exact_duration(w), exact_duration(o))):
+                    continue
+                orig_sec[w] = sf.info(o).duration
             lib_clips.setdefault(s, []).append((w, sec))
     pool = {s: hnr[s] for s, cl in lib_clips.items() if len(cl) >= len(c["libri_arms"])}
     print("%d LibriTTS-R voices eligible (%d heard)" % (len(pool), len(lheard)))
@@ -170,8 +263,12 @@ def select(args):
     def libri_arms(voice, target):
         got = lb.assign_clips({voice: lib_clips[voice]}, c["libri_arms"], rng, target)[voice]
         secs = dict(lib_clips[voice])
-        return {a: {"source": w, "seconds": round(secs[w], 2), "phonemes": rows[w][1]}
-                for a, w in got.items()}
+        out = {a: {"source": w, "seconds": round(secs[w], 2), "phonemes": rows[w][1]}
+               for a, w in got.items()}
+        for a, w in got.items():
+            if w in orig_sec:
+                out[a]["original_seconds"] = round(orig_sec[w], 2)
+        return out
 
     items = []
     if c["vctk_arms"]:
@@ -206,7 +303,7 @@ def select(args):
             items.append({"unit": i, "vctk": m["vctk"], "vctk_hnr": m["vctk_hnr"],
                           "libri": m["libri"], "libri_hnr": m["libri_hnr"], "arms": arms})
     else:
-        for i, s in enumerate(lb.spread(pool, args.n)):
+        for i, s in enumerate(pick_voices(pool, args.n, args.check)):
             items.append({"unit": i, "libri": s, "libri_hnr": hnr[s],
                           "arms": libri_arms(s, args.target_seconds)})
     for it in items:
@@ -220,13 +317,21 @@ def select(args):
                     "(check 3, target %.1fs); a distinct training recording per arm; seed %d."
                     % (args.check, "/".join(c["arms"]), args.n, args.min_seconds,
                        args.max_seconds, args.max_gap, args.target_seconds, args.seed)),
-           "ckpts": {a: [p, sha256(p)] for a, p in ckpts.items()},
+           "ckpts": {a: [p, sha256(p)] if p else None for a, p in ckpts.items()},
            "inputs": {"vctk_filelist": [args.vctk_filelist, sha256(args.vctk_filelist)],
                       "vctk_cleaned": [args.vctk_cleaned, sha256(args.vctk_cleaned)],
                       "vctk_hnr_from": [args.vctk_hnr_from, sha256(args.vctk_hnr_from)],
                       "hnr_json": [args.hnr_json, sha256(args.hnr_json)],
                       "prior": args.prior, "prior_optional": args.prior_optional},
            "items": items}
+    if args.check == 4:
+        out["rule"] += (" Check 4: every eligible voice if %d or fewer (at least %d); "
+                        "recordings in both S1's and L's train filelists whose original is "
+                        "within %s s of the LibriTTS-R file's length."
+                        % (args.n, c["min_units"], float(ORIG_MAX_DRIFT)))
+        out["eligible"] = len(pool)
+    if args.dry_run:
+        out["dry_run"] = True
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=1, ensure_ascii=False))
     print("wrote %s  sha256 %s" % (out_path, sha256(out_path)))
@@ -235,6 +340,9 @@ def select(args):
 # ------------------------------------------------------------------------------ render
 
 def render(args):
+    spec = read_spec(args.speakers, args.check)
+    c = sb.CHECKS[args.check]
+
     import soxr
     import torch
     import yaml
@@ -245,11 +353,6 @@ def render(args):
     from matcha.utils.audio import mel_spectrogram
     from matcha.utils.utils import intersperse
 
-    spec = json.loads(Path(args.speakers).read_text())
-    c = sb.CHECKS[args.check]
-    if spec.get("check") != args.check:
-        raise SystemExit("REFUSING: %s is check %s's, not check %d's."
-                         % (args.speakers, spec.get("check"), args.check))
     if set(spec["ckpts"]) != set(c["arms"]):
         raise SystemExit("REFUSING: the speakers file names arms %s." % sorted(spec["ckpts"]))
     for a, (p, digest) in spec["ckpts"].items():
@@ -340,10 +443,11 @@ def render(args):
             else:
                 seq, _ = text_to_sequence(src["phonemes"], ["no_cleaners"])
                 mel = synth(model, seq, it["libri"], vat_dim, pair_key)
-                if fam == "libri22":
-                    x, xsr = sf.read(sd.to_22k(src["source"]), dtype="float64")
+                if fam in RT_22K:
+                    rt_src = round_trip_source(arm, src["source"])
+                    x, xsr = sf.read(rt_src, dtype="float64")
                     if xsr != sd.TARGET_SR:
-                        raise SystemExit("REFUSING: %s is %d Hz." % (sd.to_22k(src["source"]), xsr))
+                        raise SystemExit("REFUSING: %s is %d Hz." % (rt_src, xsr))
                     rt, wave = univ_rt(mono(x), xsr), univ(mel)
                 else:
                     x, xsr = sf.read(src["source"], dtype="float32")
@@ -403,8 +507,12 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     s = sub.add_parser("select")
-    s.add_argument("--check", type=int, choices=(1, 2, 3), required=True)
+    s.add_argument("--check", type=int, choices=(1, 2, 3, 4), required=True)
     s.add_argument("--ckpt", action="append", default=[], metavar="ARM=PATH")
+    s.add_argument("--dry-run", action="store_true",
+                   help="pre-flight count: an arm given no --ckpt (not trained yet) is recorded "
+                        "as null; the file is marked a dry run, may not be written into "
+                        "staged_bench/, and render refuses it")
     s.add_argument("--vctk-zip", default=rfs.VCTK_ZIP)
     s.add_argument("--vctk-filelist",
                    default=rfs.BASELINE_DIR + "/vctk_audio_sid_text_train_filelist.txt")
@@ -412,10 +520,9 @@ def main():
                    default=rfs.BASELINE_DIR + "/vctk_audio_sid_text_train_filelist.txt.cleaned")
     s.add_argument("--vctk-hnr-from", default=rfs.BASELINE_DIR + "/speakers.json")
     s.add_argument("--hnr-json", default=ROOT + "/pitch_error/speaker_hnr_all.json")
-    s.add_argument("--prior", nargs="+", default=[ROOT + "/pitch_error/_*.json",
-                                                  ROOT + "/eartest/_keys/*.key.json",
-                                                  ROOT + "/first_step_bench/speakers.json"],
-                   help="earlier benches' files; each pattern must match at least one file")
+    s.add_argument("--prior", nargs="+", default=None,
+                   help="earlier benches' files; each pattern must match at least one file "
+                        "(default: `default_prior`; check 4 adds staged_bench/check{1,2,3})")
     s.add_argument("--prior-optional", nargs="*",
                    default=[ROOT + "/staged_bench/*_speakers.json"],
                    help="patterns that may match nothing (no staged speakers file exists "
@@ -429,7 +536,7 @@ def main():
     s.add_argument("--out-speakers", required=True)
 
     r = sub.add_parser("render")
-    r.add_argument("--check", type=int, choices=(1, 2, 3), required=True)
+    r.add_argument("--check", type=int, choices=(1, 2, 3, 4), required=True)
     r.add_argument("--speakers", required=True)
     r.add_argument("--commit", required=True,
                    help="the registered commit this render runs from (Task 10); recorded in "
@@ -443,6 +550,8 @@ def main():
     r.add_argument("--seed", type=int, default=1618)
 
     args = ap.parse_args()
+    if args.cmd == "select" and args.prior is None:
+        args.prior = default_prior(args.check)
     if args.cmd == "render" and args.salt is None:
         args.salt = "staged-check%d-v1" % args.check
     (select if args.cmd == "select" else render)(args)

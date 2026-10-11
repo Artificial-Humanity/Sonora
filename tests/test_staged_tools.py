@@ -4,6 +4,7 @@ The render tool's torch half runs in the container; these pin what it decides on
 """
 import csv
 import json
+from fractions import Fraction
 import pytest
 
 from scripts_layout import SCRIPTS
@@ -137,3 +138,102 @@ def test_an_arm_with_nothing_rated_is_refused(tmp_path):
     p.write_text("\n".join(kept) + "\n")
     with pytest.raises(SystemExit, match="no rated item"):
         ub.main(argv)
+
+
+# ---------------------------------------------------------------- check 4 (arm L)
+
+def test_a_dry_run_select_may_leave_an_untrained_arm_without_a_checkpoint():
+    s1 = "/x/staged_s1/checkpoint_epoch=009_step=0009209.ckpt"
+    assert rs.resolve_ckpts(("S1", "L"), ["S1=" + s1], allow_missing=True) == {"S1": s1, "L": None}
+    with pytest.raises(SystemExit, match="L"):
+        rs.resolve_ckpts(("S1", "L"), ["S1=" + s1])
+    with pytest.raises(SystemExit, match="10 epochs"):        # a GIVEN checkpoint still counts
+        rs.resolve_ckpts(("S1", "L"), ["S1=" + s1, "L=/x/last.ckpt"], allow_missing=True)
+
+
+def test_a_dry_run_speakers_file_is_refused_by_render(tmp_path):
+    p = tmp_path / "s.json"
+    p.write_text(json.dumps({"check": 4, "dry_run": True, "ckpts": {"S1": ["/a", "h"], "L": None},
+                             "items": []}))
+    with pytest.raises(SystemExit, match="dry run"):
+        rs.read_spec(str(p), 4)
+    p.write_text(json.dumps({"check": 3, "ckpts": {}, "items": []}))
+    with pytest.raises(SystemExit, match="check 3's"):
+        rs.read_spec(str(p), 4)
+
+
+def test_a_dry_run_may_not_write_where_the_real_selection_goes():
+    with pytest.raises(SystemExit, match="staged_bench"):
+        rs.refuse_dry_run_target(rs.ROOT + "/staged_bench/check4_speakers.json")
+    rs.refuse_dry_run_target("/tmp/scratch/check4_dryrun_speakers.json")
+
+
+def test_check4_requires_the_earlier_staged_speakers_files_by_default():
+    base = rs.default_prior(3)
+    four = rs.default_prior(4)
+    assert base == [rs.ROOT + "/pitch_error/_*.json", rs.ROOT + "/eartest/_keys/*.key.json",
+                    rs.ROOT + "/first_step_bench/speakers.json"]
+    assert four == base + [rs.ROOT + "/staged_bench/check%d_speakers.json" % i for i in (1, 2, 3)]
+    assert rs.default_prior(1) == rs.default_prior(2) == base
+
+
+def test_check4_uses_every_eligible_voice_up_to_twenty_and_refuses_under_sixteen():
+    pool = {s: float(s) for s in range(18)}
+    assert rs.pick_voices(pool, 20, 4) == list(range(18))      # all, in HNR order
+    big = {s: float(s) for s in range(30)}
+    assert rs.pick_voices(big, 20, 4) == rs.lb.spread(big, 20)
+    with pytest.raises(SystemExit, match="15 eligible"):
+        rs.pick_voices({s: float(s) for s in range(15)}, 20, 4)
+    assert rs.pick_voices(big, 20, 3) == rs.lb.spread(big, 20)  # check 3 unchanged
+
+
+@pytest.mark.parametrize("r,o,ok", [("5", "5.05", True), ("5", "4.91", True), ("5", "5.1", False),
+                                    ("5", "4.9", False), ("6", "5.85", False)])
+def test_an_utterance_whose_original_differs_by_a_tenth_of_a_second_or_more_is_not_eligible(r, o, ok):
+    # exact: as floats, 5.1 - 5.0 is 0.0999999999999996 and would pass
+    assert rs.same_utterance_length(Fraction(r), Fraction(o)) is ok
+
+
+def test_durations_are_read_exactly_as_frames_over_rate(tmp_path):
+    import numpy as np
+    import soundfile as sf
+    sf.write(str(tmp_path / "a.wav"), np.zeros(24000 * 5 + 2400), 24000, "PCM_16")
+    assert rs.exact_duration(str(tmp_path / "a.wav")) == Fraction(51, 10)
+
+
+def test_each_libri22_arm_round_trips_its_own_corpus_copy():
+    from staged_data import LIBRI_24K_ROOT, LIBRI_22K_ROOT, LIBRI_ORIG_22K_ROOT
+    w = LIBRI_24K_ROOT + "/19/198/19_198_000000_000000.wav"
+    assert rs.round_trip_source("S1", w) == LIBRI_22K_ROOT + "/19/198/19_198_000000_000000.wav"
+    assert rs.round_trip_source("L", w) == LIBRI_ORIG_22K_ROOT + "/19/198/19_198_000000_000000.wav"
+
+
+def test_check4_unblinds_to_shown(tmp_path, capsys):
+    r = ub.main(_bench(tmp_path, 4, {"S1": 3, "L": 1}, rt={"S1": 1, "L": 1}))
+    out = capsys.readouterr().out
+    assert r["outcome"] == "shown" and r["shown"] == ["restoration"]
+    assert "OUTCOME: SHOWN" in out and "restoration adds the hum" in out
+    assert ("three p-values reported (S1's excess, S1 − L, L's excess), two of them deciding "
+            "the reading") in out
+
+
+def test_check4_unblinds_to_not_shown_and_reports_ls_excess_and_the_split(tmp_path, capsys):
+    rt = {"S1": [1] * 16, "L": [1] * 8 + [2] * 8}            # floors 1 and 1.5
+    r = ub.main(_bench(tmp_path, 4, {"S1": 3, "L": 4}, rt=rt))
+    out = capsys.readouterr().out
+    assert r["outcome"] == "not_shown" and "speakers and G2P" in out
+    assert "L      n=16  model 4.00  round trip 1.50  gap +2.50" in out
+    assert "model ratings alone -1.00 (n=16)" in out
+    assert "round-trip ratings alone -0.50 (n=16)" in out
+    assert "L − S1 on the gaps +0.50" in out
+
+
+def test_check4_floors_are_compared_with_s1s(tmp_path, capsys):
+    r = ub.main(_bench(tmp_path, 4, {"S1": 3, "L": 3}, rt={"S1": 0, "L": 1}))
+    assert r["floors_ok"] is False and r["outcome"] == "invalid"
+    assert "within 1 point of S1's" in capsys.readouterr().out
+
+
+def test_check4_with_fifteen_voices_rated_in_both_arms_is_invalid(tmp_path):
+    r = ub.main(_bench(tmp_path, 4, {"S1": 3, "L": 1}, n=15, rt={"S1": 1, "L": 1}))
+    assert r["outcome"] == "invalid"

@@ -2,14 +2,17 @@
 
 Pre-registered in Notes: Sonora/staged-rebuild-preregistration.md (owner, 2026-10-06). The
 first fine-tune, stock -> derisk-energy, changed five things at once. Arms rebuilt from
-stock separate them; three blind checks of 20 units x 3 arms read them:
+stock separate them; three blind checks of 20 units x 3 arms read them, and a fourth
+(2026-10-11, after checks 2-3 named the data) splits the data:
 
   check 1  stock | R, derisk         the gate: does 10 epochs of the derisk recipe hum?
   check 2  stock, C0 | S1            does fine-tuning, or the new data, add the hum?
   check 3  S1, S2, R                 does the 24 kHz path, or the conditioning, add it?
+  check 4  S1, L                     does LibriTTS-R's restoration add it? L is S1 trained
+                                     on the ORIGINAL LibriTTS recordings of the same rows
 
 A UNIT is one HNR-matched (VCTK voice, LibriTTS-R voice) pair in checks 1-2 and one
-LibriTTS-R voice in check 3. An arm's GAP on a unit is its render's hum severity minus its
+LibriTTS-R voice in checks 3-4. An arm's GAP on a unit is its render's hum severity minus its
 own vocoder round trip of the same real recording.
 
 ⚠ THE TEST IS ONE-SIDED, as registered. `baseline_bench.sign_flip_p` is two-sided and is
@@ -28,19 +31,31 @@ try:                                    # imported as `lib.staged_bench` by the 
 except ImportError:                     # imported flat, with scripts/lib on the path
     from baseline_bench import ALPHA
 
+# floor_ref: the arm every other arm's round-trip floor must be within 1 point of (None: the
+# check has no floor rule). min_units (check 4): fewer units rated in both arms is INVALID,
+# and fewer eligible voices at selection is not run.
 CHECKS = {
     1: {"arms": ("stock", "R", "derisk"), "vctk_arms": ("stock",),
         "libri_arms": ("R", "derisk"),
-        "contrasts": (("derisk", "stock"), ("R", "stock"), ("R", "derisk"))},
+        "contrasts": (("derisk", "stock"), ("R", "stock"), ("R", "derisk")),
+        "floor_ref": "stock"},
     2: {"arms": ("stock", "C0", "S1"), "vctk_arms": ("stock", "C0"),
         "libri_arms": ("S1",),
-        "contrasts": (("C0", "stock"), ("S1", "stock"))},
+        "contrasts": (("C0", "stock"), ("S1", "stock")),
+        "floor_ref": "stock"},
     3: {"arms": ("S1", "S2", "R"), "vctk_arms": (),
         "libri_arms": ("S1", "S2", "R"),
-        "contrasts": (("R", "S1"), ("S2", "S1"), ("R", "S2"))},
+        "contrasts": (("R", "S1"), ("S2", "S1"), ("R", "S2")),
+        "floor_ref": None},
+    4: {"arms": ("S1", "L"), "vctk_arms": (),
+        "libri_arms": ("S1", "L"),
+        "contrasts": (("S1", "L"),),
+        "floor_ref": "S1", "min_units": 16},
 }
-# Each arm's audio path: 22.05 kHz + universal vocoder (stock's), or 24 kHz + ours.
-FAMILY = {"stock": "vctk22", "C0": "vctk22", "S1": "libri22",
+# Each arm's audio path: 22.05 kHz + universal vocoder (stock's), or 24 kHz + ours. L is on
+# S1's path, but its round trip is of the ORIGINAL recording's 22.05 kHz copy, not
+# LibriTTS-R's, so it is a family of its own.
+FAMILY = {"stock": "vctk22", "C0": "vctk22", "S1": "libri22", "L": "orig22",
           "S2": "libri24", "R": "libri24", "derisk": "libri24"}
 _TEN = re.compile(r"^checkpoint_epoch=009_step=\d{7}\.ckpt$")
 
@@ -88,13 +103,26 @@ def side_plan(n, arms, rng):
     return {u: {a: flips[u] for a in arms} for u in range(n)}
 
 
-def floors_ok(floors, arms):
-    """Round-trip floors comparable: each arm's within 1 point of stock's (strictly less than 1),
-    all under 4 (strictly). Pass `fractions.Fraction` floors: a float mean decides exact-1.0
-    gaps by rounding."""
-    others = [a for a in arms if a != "stock"]
-    return all(abs(floors[a] - floors["stock"]) < 1.0 for a in others) \
+def floors_ok(floors, arms, ref="stock"):
+    """Round-trip floors comparable: each arm's within 1 point of `ref`'s (strictly less than
+    1), all under 4 (strictly). Pass `fractions.Fraction` floors: a float mean decides
+    exact-1.0 gaps by rounding."""
+    others = [a for a in arms if a != ref]
+    return all(abs(floors[a] - floors[ref]) < 1.0 for a in others) \
         and max(floors[a] for a in arms) < 4.0
+
+
+def split_contrast(model, rt, a, b):
+    """a - b on the model ratings alone and on the round-trip ratings alone, each over the
+    units rated in both arms: {"model": (mean, n), "round_trip": (mean, n)}. DESCRIPTIVE, not
+    tested: it shows whether a difference in gaps comes from the renders or from a floor.
+    `model` and `rt` are {arm: {unit: severity}}."""
+    out = {}
+    for name, sev in (("model", model), ("round_trip", rt)):
+        both = sorted(set(sev[a]) & set(sev[b]))
+        d = [sev[a][u] - sev[b][u] for u in both]
+        out[name] = (st.mean(d) if d else 0.0, len(d))
+    return out
 
 
 def ten_epoch_ckpt(path):
@@ -115,6 +143,11 @@ def reading(check, gaps, floors):
              shown ["data"]         S1 - stock > 0 and C0 - stock not shown
     check 3  invalid  neither R - S1 > 0 nor S1's own gap > 0, at p < α
              shown ⊆ ["audio_path" (S2 - S1 > 0), "conditioning" (R - S2 > 0)]
+    check 4  invalid  S1's own gap not > 0 at p < α, or floors not comparable (L's within
+                      1 point of S1's, both under 4), or fewer than 16 units rated in both
+             shown ["restoration"]  S1 - L > 0      not_shown  otherwise
+             Three p-values reported (S1's gap, S1 - L, L's gap), two of them deciding
+             (S1's gap and S1 - L): `n_tests` 3, `n_deciding` 2.
 
     Every contrast is reported whatever the outcome, uncorrected; `n_tests` counts them.
     "Not shown" is never "absent".
@@ -129,8 +162,9 @@ def reading(check, gaps, floors):
     def up(t):
         return t[0] > 0 and t[1] < ALPHA
 
-    fl = floors_ok(floors, spec["arms"]) if "stock" in spec["arms"] else None
-    shown = []
+    ref = spec["floor_ref"]
+    fl = floors_ok(floors, spec["arms"], ref) if ref else None
+    shown, extra = [], {}
     if check == 1:
         valid = fl and up(contrasts["derisk-stock"])
         outcome = "go" if up(contrasts["R-stock"]) else "stop"
@@ -141,15 +175,23 @@ def reading(check, gaps, floors):
         elif up(contrasts["S1-stock"]):
             shown.append("data")
         outcome = "shown" if shown else "not_shown"
-    else:
+    elif check == 3:
         valid = up(contrasts["R-S1"]) or up(level["S1"])
         if up(contrasts["S2-S1"]):
             shown.append("audio_path")
         if up(contrasts["R-S2"]):
             shown.append("conditioning")
         outcome = "shown" if shown else "not_shown"
+    else:
+        valid = fl and up(level["S1"]) and contrasts["S1-L"][2] >= spec["min_units"]
+        if up(contrasts["S1-L"]):
+            shown.append("restoration")
+        outcome = "shown" if shown else "not_shown"
+        extra["n_deciding"] = 2
     if not valid:
         outcome, shown = "invalid", []
-    return {"level": level, "contrasts": contrasts, "floors_ok": fl, "valid": bool(valid),
-            "outcome": outcome, "shown": shown,
-            "n_tests": len(contrasts) + (1 if check == 3 else 0)}
+    # n_tests: the contrasts, plus S1's own gap in check 3 (the validity alternative) and in
+    # check 4 S1's and L's own gaps (both reported with their p).
+    return dict({"level": level, "contrasts": contrasts, "floors_ok": fl,
+                 "valid": bool(valid), "outcome": outcome, "shown": shown,
+                 "n_tests": len(contrasts) + {3: 1, 4: 2}.get(check, 0)}, **extra)
