@@ -37,6 +37,12 @@ OUTCOME = {
                        "Not shown is not absent."),
     (3, "invalid"): ("Neither R over S1 nor S1's own excess is shown: the hum is not visible "
                      "on these voices, so no reading."),
+    (4, "shown"): "",
+    (4, "not_shown"): ("S1 over L is not shown: the restoration is not shown to add the hum. "
+                       "The speakers and G2P are next. Not shown is not absent."),
+    (4, "invalid"): ("S1's own excess is not shown, or the round-trip floors are not comparable, "
+                     "or fewer than 16 voices were rated in both arms: no reading. The owner "
+                     "decides; no voices remain to re-draw from."),
 }
 SHOWN = {
     "fine_tuning": ("C0 hums more than stock: fine-tuning itself adds the hum. The cause is "
@@ -45,12 +51,20 @@ SHOWN = {
              "speakers or G2P, bundled here)."),
     "audio_path": "S2 hums more than S1: the 24 kHz path or our vocoder adds the hum.",
     "conditioning": "R hums more than S2: the VAT/FiLM conditioning adds it.",
+    "restoration": ("S1 hums more than L: the restoration adds the hum (Miipher denoising, "
+                    "dereverberation and WaveFit resynthesis, as a whole, not which part). "
+                    "Known limit: the original audio is noisier and more reverberant, and "
+                    "noise in L's renders could mask hum; the floor rule guards the round "
+                    "trips only."),
 }
+# How each check's tests are counted in the print-out.
+TESTS = {4: ("three p-values reported (S1's excess, S1 − L, L's excess), two of them "
+             "deciding the reading (S1's excess and S1 − L); uncorrected")}
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--check", type=int, choices=(1, 2, 3), required=True)
+    ap.add_argument("--check", type=int, choices=(1, 2, 3, 4), required=True)
     ap.add_argument("--key", required=True)
     ap.add_argument("--test", required=True)
     args = ap.parse_args(argv)
@@ -70,6 +84,7 @@ def main(argv=None):
     gaps = {a: {} for a in arms}
     sev = {a: [] for a in arms}
     floor = {a: [] for a in arms}
+    model_u, rt_u = {a: {} for a in arms}, {a: {} for a in arms}
     with vpath.open(newline="", encoding="utf-8") as f:
         for r in csv.DictReader(f):
             if r["item"] not in truth:
@@ -82,10 +97,16 @@ def main(argv=None):
             gaps[a][t["unit"]] = s[a] - s[a + "rt"]
             sev[a].append(s[a])
             floor[a].append(s[a + "rt"])
+            model_u[a][t["unit"]], rt_u[a][t["unit"]] = s[a], s[a + "rt"]
     rated = sum(len(v) for v in gaps.values())
     if rated < len(truth):
         print("⚠ %d of %d items not fully rated; they are left out.\n"
               % (len(truth) - rated, len(truth)))
+    if not all(floor.values()) and args.check == 4:
+        # Pre-registered: fewer than 16 voices rated in both arms is INVALID, not a crash.
+        print("OUTCOME: INVALID — %s" % OUTCOME[(4, "invalid")])
+        print("  an arm has no rated item: fewer than 16 voices rated in both arms.")
+        return {"outcome": "invalid", "shown": []}
     if not all(floor.values()):
         raise SystemExit("REFUSING: an arm has no rated item.")
     # Exact: the validity rule is strict (< 1 point, < 4), and a float mean of integer ratings
@@ -98,16 +119,27 @@ def main(argv=None):
         m, p, n = r["level"][a]
         print("  %-6s n=%2d  model %.2f  round trip %.2f  gap %+.2f  p = %.4f"
               % (a, n, st.mean(sev[a]), float(floors[a]), m, p))
-    print("\nCONTRASTS (per unit; one-sided; uncorrected — %d tests in this check)"
-          % r["n_tests"])
+    if args.check in TESTS:
+        print("\nCONTRASTS (per unit; one-sided) — %s" % TESTS[args.check])
+    else:
+        print("\nCONTRASTS (per unit; one-sided; uncorrected — %d tests in this check)"
+              % r["n_tests"])
     for k, (m, p, n) in r["contrasts"].items():
         a, b = k.split("-")
         d = [gaps[a][u] - gaps[b][u] for u in sorted(set(gaps[a]) & set(gaps[b]))]
         print("  %-12s n=%2d  mean %+.2f  p = %.4f  %d up / %d down / %d same"
               % (k, n, m, p, sum(x > 0 for x in d), sum(x < 0 for x in d),
                  sum(x == 0 for x in d)))
+    if args.check == 4:
+        a, b = sb.CHECKS[4]["contrasts"][0]
+        d = sb.split_contrast(model_u, rt_u, a, b)
+        print("  descriptive, not tested: %s − %s on the model ratings alone %+.2f (n=%d); on "
+              "the round-trip ratings alone %+.2f (n=%d); %s − %s on the gaps %+.2f"
+              % (a, b, d["model"][0], d["model"][1], d["round_trip"][0], d["round_trip"][1],
+                 b, a, -r["contrasts"]["%s-%s" % (a, b)][0]))
     if r["floors_ok"] is False:
-        print("\n⚠ round-trip floors not comparable (within 1 point of stock's, all under 4)")
+        print("\n⚠ round-trip floors not comparable (within 1 point of %s's, all under 4)"
+              % sb.CHECKS[args.check]["floor_ref"])
 
     print("\nOUTCOME: %s — %s" % (r["outcome"].upper(), OUTCOME[(args.check, r["outcome"])]))
     for s in r["shown"]:

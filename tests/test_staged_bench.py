@@ -1,6 +1,6 @@
 """The pure half of the staged-rebuild bench (`scripts/lib/staged_bench.py`).
 
-Pins the pre-registered readings of checks 1-3 (Notes: Sonora/staged-rebuild-
+Pins the pre-registered readings of checks 1-4 (Notes: Sonora/staged-rebuild-
 preregistration.md), the one-sided test they rest on, which voices are excluded, and how
 items are served.
 """
@@ -15,7 +15,7 @@ SCRIPTS.on_path()
 import baseline_bench as bb  # noqa: E402
 import staged_bench as sb  # noqa: E402
 
-OK = {"stock": 0.3, "R": 0.5, "derisk": 0.5, "C0": 0.4, "S1": 0.4, "S2": 0.6}
+OK = {"stock": 0.3, "R": 0.5, "derisk": 0.5, "C0": 0.4, "S1": 0.4, "S2": 0.6, "L": 0.9}
 
 
 def gaps(**arms):
@@ -157,3 +157,75 @@ def test_contrasts_use_only_units_rated_in_both_arms():
     del g["S2"][5]
     r = sb.reading(3, g, OK)
     assert r["contrasts"]["S2-S1"][2] == 15 and r["contrasts"]["R-S1"][2] == 16
+
+
+# ---------------------------------------------------------------- floors' reference arm
+
+def test_floors_are_compared_with_the_reference_arm_given():
+    f = {"stock": Fraction(0), "S1": Fraction(3, 2), "L": Fraction(2)}
+    assert not sb.floors_ok(f, ["stock", "S1"])             # stock is the default reference
+    assert sb.floors_ok(f, ["S1", "L"], "S1")
+    assert not sb.floors_ok(dict(f, L=Fraction(5, 2)), ["S1", "L"], "S1")    # exactly 1 apart
+
+
+def test_checks_1_and_2_take_stock_as_reference_and_check_3_has_no_floor_rule():
+    assert [sb.CHECKS[c].get("floor_ref") for c in (1, 2, 3, 4)] == ["stock", "stock", None, "S1"]
+    r = sb.reading(3, gaps(S1=[2] * 16, S2=[2] * 16, R=[2] * 16), dict(OK, S1=9))
+    assert r["floors_ok"] is None and r["valid"]
+
+
+# ---------------------------------------------------------------- check 4
+
+def test_check4_arms_and_its_one_contrast():
+    c = sb.CHECKS[4]
+    assert c["arms"] == ("S1", "L") and c["libri_arms"] == ("S1", "L") and c["vctk_arms"] == ()
+    assert c["contrasts"] == (("S1", "L"),)
+    assert sb.FAMILY["L"] != sb.FAMILY["S1"] == "libri22"     # its own round-trip source
+
+
+def test_check4_shown_when_s1_hums_more_than_l():
+    r = sb.reading(4, gaps(S1=[2] * 16, L=[0] * 16), OK)
+    assert r["valid"] and r["outcome"] == "shown" and r["shown"] == ["restoration"]
+
+
+def test_check4_not_shown_when_l_hums_as_much():
+    r = sb.reading(4, gaps(S1=[2] * 16, L=[2] * 16), OK)
+    assert r["valid"] and r["outcome"] == "not_shown" and r["shown"] == []
+
+
+def test_check4_invalid_when_s1s_own_excess_does_not_reproduce():
+    r = sb.reading(4, gaps(S1=[0] * 16, L=[-2] * 16), OK)
+    assert r["outcome"] == "invalid" and not r["valid"] and r["shown"] == []
+
+
+def test_check4_invalid_when_ls_floor_is_a_point_or_more_from_s1s():
+    r = sb.reading(4, gaps(S1=[2] * 16, L=[0] * 16),
+                   {"S1": Fraction(3, 20), "L": Fraction(23, 20)})
+    assert r["floors_ok"] is False and r["outcome"] == "invalid"
+
+
+def test_check4_invalid_when_a_floor_is_four():
+    r = sb.reading(4, gaps(S1=[2] * 16, L=[0] * 16), {"S1": Fraction(4), "L": Fraction(4)})
+    assert r["outcome"] == "invalid"
+
+
+def test_check4_invalid_with_fewer_than_sixteen_voices_rated_in_both_arms():
+    g = gaps(S1=[2] * 17, L=[0] * 17)
+    del g["L"][0]
+    assert sb.reading(4, g, OK)["outcome"] == "shown"         # 16 in both
+    del g["S1"][1]
+    r = sb.reading(4, g, OK)                                  # 15 in both
+    assert r["contrasts"]["S1-L"][2] == 15 and r["outcome"] == "invalid"
+
+
+def test_check4_reports_three_p_values_two_deciding_and_ls_own_excess():
+    r = sb.reading(4, gaps(S1=[2] * 16, L=[1] * 16), OK)
+    assert r["n_tests"] == 3 and r["n_deciding"] == 2
+    assert r["level"]["L"][0] == 1 and r["level"]["L"][1] < 0.05
+
+
+def test_check4_splits_s1_minus_l_into_model_and_round_trip_descriptively():
+    model = {"S1": {0: 3, 1: 4, 2: 2}, "L": {0: 2, 1: 2, 3: 5}}
+    rt = {"S1": {0: 1, 1: 1, 2: 0}, "L": {0: 2, 1: 1, 3: 0}}
+    d = sb.split_contrast(model, rt, "S1", "L")
+    assert d == {"model": (1.5, 2), "round_trip": (-0.5, 2)}     # units 0 and 1 only

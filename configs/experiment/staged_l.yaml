@@ -1,0 +1,27 @@
+# @package _global_
+
+# Staged rebuild, arm L (Notes: Sonora/staged-rebuild-preregistration.md, check 4): S1 with
+# only the audio changed. S1's rows, text, phonemes, 247-speaker table and val split, each
+# recording replaced by the same utterance's ORIGINAL LibriTTS recording (unrestored), at
+# 22.05 kHz on stock's mel. No VAT. Check 4 asks whether LibriTTS-R's restoration adds the hum.
+#
+# Warm start: /data/model-training/sonora/warmstart/staged_s1_init.ckpt, S1's own init file,
+# byte for byte (sha256 67dc8c6a3d1c3d94eb8cf1698e8361c0161ee292514af7e628335917557ef434), so
+# the speaker rows start identical; no new make_warmstart output. The load hook replaces its
+# mel buffers with libritts_22k's statistics.
+
+defaults:
+  - override /data: libritts_22k.yaml
+
+tags: ["staged", "L", "libritts", "hum"]
+
+run_name: staged_l
+
+model:
+  use_vat: false
+
+data:
+  bucket_multiplier: 0      # July's length-blind shuffle (owner ruling, 2026-10-06)
+
+trainer:
+  max_epochs: 10

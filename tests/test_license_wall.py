@@ -770,6 +770,11 @@ def test_an_unreadable_checkpoint_is_could_not_run_not_refused():
     ("data/libritts_r_22k/train_op.txt", "libritts_r"),
     ("/data/model-training/datasets/LibriTTS_R/train-clean-100_22k/1263/139804/x.wav",
      "libritts_r"),
+    # arm L (check 4): the ORIGINAL LibriTTS, a different corpus from LibriTTS-R
+    ("data/libritts_22k/train_op.txt", "libritts"),
+    ("/data/model-training/datasets/LibriTTS/train-clean-100_22k/1263/139804/x.wav",
+     "libritts"),
+    ("/data/model-training/datasets/LibriTTS/train-clean-100/1263/139804/x.wav", "libritts"),
 ])
 def test_the_staged_rebuild_corpora_are_declared_permissive(path, name):
     hit = wall.classify_path(path)
