@@ -450,6 +450,23 @@ def test_a_dry_run_may_not_write_a_file_a_prior_pattern_matches(tmp_path):
     rs.refuse_dry_run_target("/tmp/scratch/s.json", [rs.ROOT + "/pitch_error/_*.json"])
 
 
+def test_a_relative_prior_pattern_is_resolved_against_the_working_directory(tmp_path, monkeypatch):
+    (tmp_path / "prior").mkdir()
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit, match="prior"):
+        rs.refuse_dry_run_target(tmp_path / "prior" / "x.json", ["prior/*.json"])
+    with pytest.raises(SystemExit, match="prior"):
+        rs.refuse_dry_run_target("prior/x.json", ["prior/*.json"])
+    rs.refuse_dry_run_target(tmp_path / "other" / "x.json", ["prior/*.json"])
+
+
+def test_a_prior_pattern_star_does_not_cross_a_directory_as_glob_does_not(tmp_path):
+    pat = str(tmp_path / "scratch" / "*.json")
+    rs.refuse_dry_run_target(tmp_path / "scratch" / "sub" / "x.json", [pat])
+    with pytest.raises(SystemExit, match="prior"):
+        rs.refuse_dry_run_target(tmp_path / "scratch" / "x.json", [pat])
+
+
 def test_check4_keys_record_the_file_each_arm_round_tripped_and_checks_1_to_3_do_not():
     from staged_data import LIBRI_22K_ROOT, LIBRI_ORIG_22K_ROOT, LIBRI_24K_ROOT
     w = LIBRI_24K_ROOT + "/19/198/19_198_000000_000000.wav"

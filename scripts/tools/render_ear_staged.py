@@ -227,6 +227,15 @@ def pick_voices(pool, n, check):
     return lb.spread(pool, min(n, len(pool)))
 
 
+def glob_matches(pattern, path):
+    """Whether `glob.glob(pattern)` would return `path`: the pattern is made absolute against
+    the working directory, as glob resolves it, then matched segment by segment, so `*`
+    stops at a `/` (`fnmatch` on the whole string lets it cross one)."""
+    pat = os.path.abspath(pattern).split("/")
+    got = os.path.abspath(path).split("/")
+    return len(pat) == len(got) and all(fnmatch.fnmatchcase(g, p) for g, p in zip(got, pat))
+
+
 def refuse_dry_run_target(path, patterns=()):
     """A dry run never writes where a real selection or an exclusion reads: select refuses an
     existing speakers file, so a dry-run file in staged_bench/ would block the real draw, and
@@ -237,7 +246,7 @@ def refuse_dry_run_target(path, patterns=()):
         raise SystemExit("REFUSING: a dry run may not write under %s (the bench data root; the "
                          "real selection goes in staged_bench/)." % ROOT)
     for pat in patterns:
-        if fnmatch.fnmatchcase(str(here), pat) or fnmatch.fnmatchcase(os.path.abspath(path), pat):
+        if any(glob_matches(pat, p) for p in (str(here), os.path.abspath(path))):
             raise SystemExit("REFUSING: a dry run may not write %s: the --prior pattern %r "
                              "matches it." % (path, pat))
 
