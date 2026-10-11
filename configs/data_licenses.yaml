@@ -94,6 +94,17 @@ datasets:
            libritts_r_vat_v4, libritts_r_holdout_devclean, libritts_r_22k]
     license: CC-BY-4.0
     class: permissive
+  libritts:
+    # The ORIGINAL LibriTTS (OpenSLR 60), unrestored: a different corpus from LibriTTS-R,
+    # whose every clip is this audio cleaned by Miipher and resynthesised by WaveFit. Same
+    # utterances, same CC-BY-4.0. Arm L of the staged rebuild's check 4 (Notes:
+    # Sonora/staged-rebuild-preregistration.md) trains on `train-clean-100` at 22.05 kHz:
+    # `LibriTTS/train-clean-100_22k/` (audio) and `data/libritts_22k/` (filelists).
+    # ⚠ `libritts` matches the component exactly, so `LibriTTS_R` and `libritts_r_*` stay
+    # LibriTTS-R's (no prefix matching; see the header).
+    dirs: [LibriTTS, libritts_22k]
+    license: CC-BY-4.0
+    class: permissive
   merged_vat_corpora:
     # Corpus directories that hold FILELISTS ONLY — no audio — and point at more than one
     # source dataset. `libritts_r_emilia_vat_v5` (2026-08-08, Phase 1 #1) is v4's LibriTTS-R

@@ -1,12 +1,15 @@
 """Pure helpers for the staged rebuild's corpora (`scripts/tools/prep_staged_corpora.py`).
 
-Pre-registered in Notes: Sonora/staged-rebuild-preregistration.md. Two new corpora, both on
+Pre-registered in Notes: Sonora/staged-rebuild-preregistration.md. Three new corpora, all on
 stock's 22.05 kHz audio path:
 
   vctk_22k        C0: stock's own data. VCTK 0.92 mic1 resampled to 22.05 kHz, the VITS
                   espeak phonemes stock trained on, and its speaker ids.
   libritts_r_22k  S1: the derisk corpus (LibriTTS-R train-clean-100, our G2P, the
                   247-speaker table) resampled to 22.05 kHz, with the VAT field dropped.
+  libritts_22k    L (check 4): S1's rows with each recording replaced by the same
+                  utterance's ORIGINAL LibriTTS recording (unrestored), resampled the same
+                  way. The path relative to `train-clean-100/` is the same in both corpora.
 
 No torch here, so the host test suite covers it.
 """
@@ -26,6 +29,9 @@ STOCK_MEL = (1024, 80, 22050, 256, 1024, 0, 8000)      # upstream Matcha's VCTK 
 VCTK_22K_ROOT = "/data/model-training/datasets/VCTK/vctk_22k"
 LIBRI_24K_ROOT = "/data/model-training/datasets/LibriTTS_R/train-clean-100"
 LIBRI_22K_ROOT = "/data/model-training/datasets/LibriTTS_R/train-clean-100_22k"
+LIBRI_ORIG_ROOT = "/data/model-training/datasets/LibriTTS/train-clean-100"
+LIBRI_ORIG_22K_ROOT = "/data/model-training/datasets/LibriTTS/train-clean-100_22k"
+MAX_MISSING_SHARE = 0.01        # more of S1's rows than this without an original: L not trained
 
 
 def upstream_as_ours(text):
@@ -73,12 +79,32 @@ def c0_lines(rows, have):
     return lines, missing
 
 
-def to_22k(wav24):
-    """A train-clean-100 recording's path -> its 22.05 kHz copy. Any other root is refused,
+def _rebase(path, src, dst):
+    """`path` under `src` -> the same relative path under `dst`. Any other root is refused,
     so a row from another corpus cannot be written somewhere plausible and wrong."""
-    if not wav24.startswith(LIBRI_24K_ROOT + "/"):
-        raise ValueError("not under %s: %s" % (LIBRI_24K_ROOT, wav24))
-    return LIBRI_22K_ROOT + wav24[len(LIBRI_24K_ROOT):]
+    if not path.startswith(src + "/"):
+        raise ValueError("not under %s: %s" % (src, path))
+    return dst + path[len(src):]
+
+
+def to_22k(wav24):
+    """A train-clean-100 recording's path -> its 22.05 kHz copy."""
+    return _rebase(wav24, LIBRI_24K_ROOT, LIBRI_22K_ROOT)
+
+
+def to_original(wav24):
+    """A LibriTTS-R train-clean-100 recording -> the same utterance's original LibriTTS one."""
+    return _rebase(wav24, LIBRI_24K_ROOT, LIBRI_ORIG_ROOT)
+
+
+def to_l22k(wav24):
+    """A LibriTTS-R train-clean-100 recording -> L's 22.05 kHz copy of its original."""
+    return _rebase(wav24, LIBRI_24K_ROOT, LIBRI_ORIG_22K_ROOT)
+
+
+def original_of(wav22):
+    """An S1 row's audio (LibriTTS-R at 22.05 kHz) -> the original LibriTTS recording."""
+    return _rebase(wav22, LIBRI_22K_ROOT, LIBRI_ORIG_ROOT)
 
 
 def s1_line(line):
@@ -88,6 +114,41 @@ def s1_line(line):
         raise ValueError("expected 4 fields wav|spk|phonemes|vat, got %d: %r"
                          % (len(f), line[:80]))
     return "%s|%s|%s" % (to_22k(f[0]), f[1], f[2])
+
+
+def l22k_of(wav22):
+    """An S1 row's audio -> L's 22.05 kHz copy of the same utterance's original recording."""
+    return _rebase(wav22, LIBRI_22K_ROOT, LIBRI_ORIG_22K_ROOT)
+
+
+def l_line(line):
+    """An S1 row `wav22|spk|phonemes` -> L's row: the same text, phonemes and speaker, with
+    the audio moved to the 22.05 kHz copy of the utterance's original recording."""
+    f = line.split("|")
+    if len(f) != 3:
+        raise ValueError("expected 3 fields wav|spk|phonemes, got %d: %r" % (len(f), line[:80]))
+    return "|".join([l22k_of(f[0])] + f[1:])
+
+
+def l_lines(rows, have):
+    """S1 rows -> L's filelist lines, and the S1 paths left out.
+
+    `have` holds the original recordings on disk (`original_of` paths). A row without one is
+    dropped and counted, never given another recording."""
+    lines, missing = [], []
+    for line in rows:
+        wav = line.split("|", 1)[0]
+        if original_of(wav) not in have:
+            missing.append(wav)
+            continue
+        lines.append(l_line(line))
+    return lines, missing
+
+
+def too_many_missing(n_missing, n_rows):
+    """More than 1 % of S1's rows have no original recording (or there are no rows at all):
+    L is not trained and the owner decides."""
+    return n_rows == 0 or n_missing > MAX_MISSING_SHARE * n_rows
 
 
 def steps_per_epoch(n_rows, batch_size=32):

@@ -83,3 +83,47 @@ def test_the_stock_mel_is_upstream_vctks():
     assert dict(zip(sd.MEL_KEYS, sd.STOCK_MEL)) == {
         "n_fft": 1024, "n_feats": 80, "sample_rate": 22050, "hop_length": 256,
         "win_length": 1024, "f_min": 0, "f_max": 8000}
+
+
+# ---------------------------------------------------------------- L filelist (check 4)
+
+def test_l_line_moves_only_the_audio_to_the_originals_22k_copy():
+    rel = "/1263/139804/1263_139804_000006_000000.wav"
+    got = sd.l_line("%s%s|63|ɪf juː" % (sd.LIBRI_22K_ROOT, rel))
+    assert got == "%s%s|63|ɪf juː" % (sd.LIBRI_ORIG_22K_ROOT, rel)
+
+
+def test_an_l_row_not_from_s1s_corpus_is_refused():
+    with pytest.raises(ValueError, match="not under"):
+        sd.l_line(sd.LIBRI_24K_ROOT + "/1/2/x.wav|5|ab")
+    with pytest.raises(ValueError, match="3 fields"):
+        sd.l_line(sd.LIBRI_22K_ROOT + "/1/2/x.wav|5|ab|0,0,0")
+
+
+def test_every_corpus_path_of_one_utterance_shares_its_relative_path():
+    w = sd.LIBRI_24K_ROOT + "/19/198/19_198_000000_000000.wav"
+    assert sd.to_original(w) == sd.LIBRI_ORIG_ROOT + "/19/198/19_198_000000_000000.wav"
+    assert sd.to_l22k(w) == sd.LIBRI_ORIG_22K_ROOT + "/19/198/19_198_000000_000000.wav"
+    assert sd.original_of(sd.to_22k(w)) == sd.to_original(w)
+    with pytest.raises(ValueError, match="not under"):
+        sd.to_original(sd.LIBRI_22K_ROOT + "/19/198/x.wav")
+
+
+def test_l_lines_drop_and_count_rows_without_an_original_never_substitute():
+    a = sd.LIBRI_22K_ROOT + "/1/2/1_2_a.wav"
+    b = sd.LIBRI_22K_ROOT + "/1/2/1_2_b.wav"
+    lines, missing = sd.l_lines(["%s|0|ab" % a, "%s|0|cd" % b],
+                                have={sd.original_of(b)})
+    assert missing == [a]
+    assert lines == ["%s/1/2/1_2_b.wav|0|cd" % sd.LIBRI_ORIG_22K_ROOT]
+
+
+@pytest.mark.parametrize("missing,rows,refuse", [
+    (0, 30351, False), (303, 30351, False), (304, 30351, True), (1, 99, True), (0, 0, True)])
+def test_more_than_one_percent_without_an_original_refuses_l(missing, rows, refuse):
+    assert sd.too_many_missing(missing, rows) is refuse
+
+
+def test_an_s1_rows_l_copy_is_its_originals_22k_copy():
+    w = sd.LIBRI_24K_ROOT + "/19/198/19_198_000000_000000.wav"
+    assert sd.l22k_of(sd.to_22k(w)) == sd.to_l22k(w)
