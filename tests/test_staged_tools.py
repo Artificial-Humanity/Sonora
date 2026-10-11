@@ -5,6 +5,8 @@ The render tool's torch half runs in the container; these pin what it decides on
 import csv
 import json
 from fractions import Fraction
+from pathlib import Path
+
 import pytest
 
 from scripts_layout import SCRIPTS
@@ -237,3 +239,243 @@ def test_check4_floors_are_compared_with_s1s(tmp_path, capsys):
 def test_check4_with_fifteen_voices_rated_in_both_arms_is_invalid(tmp_path):
     r = ub.main(_bench(tmp_path, 4, {"S1": 3, "L": 1}, n=15, rt={"S1": 1, "L": 1}))
     assert r["outcome"] == "invalid"
+
+
+# ------------------------------------------------- check 4: review fixes (provenance, refusals)
+
+S1_REGISTERED = "857f62d7ac47770d94f971cf4bae80d3078e42fd028d45465fe30bd0e2a0d0d5"
+
+
+def test_the_registered_s1_checkpoint_sha_is_pinned_next_to_check_4():
+    assert sb.CHECK4_S1_SHA256 == S1_REGISTERED
+
+
+def _world(tmp_path, monkeypatch, n_voices, *, extra=None):
+    """Synthetic LibriTTS-R / S1 / L corpora for `select --check 4`: `n_voices` voices of two
+    1 s recordings each (24 kHz), their S1 and L filelist rows, originals of the same length,
+    an HNR file, an empty prior and a stand-in S1 checkpoint whose sha is registered.
+    `extra(spk, k, files)` may change one recording. Returns argv for `select`."""
+    import numpy as np
+    import soundfile as sf
+    r24, o24 = tmp_path / "r24", tmp_path / "o24"
+    rows, s1_rows, l_rows = {}, {}, {}
+    for spk in range(1, n_voices + 1):
+        for k in range(2):
+            name = "%d_%d.wav" % (spk, k)
+            w = str(r24 / str(spk) / name)
+            o = str(o24 / str(spk) / name)
+            files = {"r24": 24000, "o24": 24000}
+            if extra:
+                files = extra(spk, k, files) or files
+            for base, key in ((w, "r24"), (o, "o24")):
+                if files.get(key):
+                    Path(base).parent.mkdir(parents=True, exist_ok=True)
+                    sf.write(base, np.zeros(files[key]), 24000, "PCM_16")
+            rows[w] = (spk, "p%d" % k)
+            if files.get("s1", True):
+                s1_rows[w.replace("/r24/", "/r22/")] = (spk, "p%d" % k)
+            if files.get("l", True):
+                l_rows[w.replace("/o24/", "/o22/").replace("/r24/", "/o22/")] = (spk, "p%d" % k)
+    tables = {"libritts_r_vat": rows, "libritts_r_22k": s1_rows, "libritts_22k": l_rows}
+    monkeypatch.setattr(rs, "corpus_rows", lambda corpus: tables[corpus])
+    monkeypatch.setattr(rs.sd, "to_22k", lambda w: w.replace("/r24/", "/r22/"))
+    monkeypatch.setattr(rs.sd, "to_l22k", lambda w: w.replace("/r24/", "/o22/"))
+    monkeypatch.setattr(rs.sd, "to_original", lambda w: w.replace("/r24/", "/o24/"))
+    hnr = tmp_path / "hnr.json"
+    hnr.write_text(json.dumps({"speakers": {str(s): {"hnr": 5.0 + s}
+                                            for s in range(1, n_voices + 3)}}))
+    (tmp_path / "prior").mkdir()
+    (tmp_path / "prior" / "p.json").write_text(json.dumps({"items": []}))
+    for name in ("vl.txt", "vc.txt", "vh.json"):
+        (tmp_path / name).write_text("x")
+    ck = tmp_path / "checkpoint_epoch=009_step=0009209.ckpt"
+    ck.write_bytes(b"s1")
+    monkeypatch.setattr(rs.sb, "CHECK4_S1_SHA256", rs.sha256(str(ck)))
+    monkeypatch.setattr(rs, "ROOT", str(tmp_path / "root"))
+    prior = [str(tmp_path / "prior" / "*.json")]
+    monkeypatch.setattr(rs, "default_prior", lambda check: prior)
+    return ["select", "--check", "4", "--ckpt", "S1=" + str(ck),
+            "--hnr-json", str(hnr), "--vctk-filelist", str(tmp_path / "vl.txt"),
+            "--vctk-cleaned", str(tmp_path / "vc.txt"),
+            "--vctk-hnr-from", str(tmp_path / "vh.json"), "--prior-optional",
+            "--min-seconds", "0.5", "--max-seconds", "2"]
+
+
+def _run(monkeypatch, argv):
+    monkeypatch.setattr("sys.argv", ["render_ear_staged.py"] + argv)
+    rs.main()
+
+
+def _select(tmp_path, monkeypatch, n_voices, *, dry=True, extra=None, more=()):
+    argv = _world(tmp_path, monkeypatch, n_voices, extra=extra)
+    out = tmp_path / "scratch" / "speakers.json"
+    argv += ["--dry-run"] if dry else []
+    if not dry:       # a real selection also needs L's checkpoint
+        ck = tmp_path / "l" / "checkpoint_epoch=009_step=0009209.ckpt"
+        ck.parent.mkdir()
+        ck.write_bytes(b"l")
+        argv += ["--ckpt", "L=" + str(ck)]
+    _run(monkeypatch, argv + list(more) + ["--out-speakers", str(out)])
+    return json.loads(out.read_text())
+
+
+def test_select_check4_dry_run_marks_the_file_and_uses_the_filters(tmp_path, monkeypatch):
+    spec = _select(tmp_path, monkeypatch, 17)
+    assert spec["dry_run"] is True and spec["check"] == 4
+    assert spec["eligible"] == 17 and len(spec["items"]) == 17
+    assert spec["ckpts"]["L"] is None and spec["ckpts"]["S1"][1] == rs.sb.CHECK4_S1_SHA256
+    assert "; 17 units;" in spec["rule"] and "checks 3-4" in spec["rule"]
+
+
+def test_a_real_select_check4_has_no_dry_run_key(tmp_path, monkeypatch):
+    spec = _select(tmp_path, monkeypatch, 16, dry=False)
+    assert "dry_run" not in spec and len(spec["items"]) == 16
+
+
+@pytest.mark.parametrize("n,used", [(16, 16), (20, 20), (22, 20)])
+def test_select_check4_boundaries_accept_sixteen_and_use_all_twenty(tmp_path, monkeypatch, n, used):
+    spec = _select(tmp_path, monkeypatch, n)
+    assert spec["eligible"] == n and len(spec["items"]) == used
+
+
+def test_select_check4_with_fifteen_eligible_voices_is_refused(tmp_path, monkeypatch):
+    with pytest.raises(SystemExit, match="15 eligible"):
+        _select(tmp_path, monkeypatch, 15)
+
+
+def test_select_check4_drops_recordings_missing_from_either_filelist_or_the_originals(
+        tmp_path, monkeypatch):
+    def extra(spk, k, files):
+        if spk == 1 and k == 0:
+            return dict(files, s1=False)          # not in S1's train filelist
+        if spk == 2 and k == 1:
+            return dict(files, l=False)           # not in L's train filelist
+        if spk == 3 and k == 0:
+            return dict(files, o24=0)             # no original recording
+        if spk == 4 and k == 1:
+            return dict(files, o24=26400)         # 1.1 s against 1.0 s: drift of 0.1 s
+        if spk == 5 and k == 1:
+            return dict(files, o24=25920)         # 1.08 s: within 0.1 s, eligible
+    spec = _select(tmp_path, monkeypatch, 20, extra=extra)
+    voices = {it["libri"] for it in spec["items"]}
+    assert voices == set(range(5, 21))
+    assert spec["eligible"] == 16
+    assert spec["items"][0]["arms"]["S1"]["phonemes"] in ("p0", "p1")
+
+
+def test_select_check4_excludes_the_voices_heard_in_the_prior(tmp_path, monkeypatch):
+    argv = _world(tmp_path, monkeypatch, 20)
+    (tmp_path / "prior" / "p.json").write_text(json.dumps({"items": [{"libri": 3}, {"spk": 4}]}))
+    out = tmp_path / "scratch" / "s.json"
+    _run(monkeypatch, argv + ["--dry-run", "--out-speakers", str(out)])
+    spec = json.loads(out.read_text())
+    assert spec["eligible"] == 18
+    assert not {3, 4} & {it["libri"] for it in spec["items"]}
+
+
+def test_select_check4_reads_the_original_length_exactly(tmp_path, monkeypatch):
+    # 5.1 s against 5.0 s is 0.0999999999999996 as floats; exact_duration refuses it.
+    seen = []
+    real = rs.exact_duration
+    monkeypatch.setattr(rs, "exact_duration", lambda p: seen.append(p) or real(p))
+    _select(tmp_path, monkeypatch, 16)
+    assert any("/o24/" in p for p in seen) and any("/r24/" in p for p in seen)
+
+
+def test_select_check4_refuses_an_s1_checkpoint_that_is_not_the_registered_one(
+        tmp_path, monkeypatch):
+    argv = _world(tmp_path, monkeypatch, 16)
+    monkeypatch.setattr(rs.sb, "CHECK4_S1_SHA256", S1_REGISTERED)
+    out = tmp_path / "scratch" / "s.json"
+    with pytest.raises(SystemExit, match="registered"):
+        _run(monkeypatch, argv + ["--dry-run", "--out-speakers", str(out)])
+    lck = tmp_path / "l" / "checkpoint_epoch=009_step=0009209.ckpt"
+    lck.parent.mkdir()
+    lck.write_bytes(b"l")
+    with pytest.raises(SystemExit, match="registered"):
+        _run(monkeypatch, argv + ["--ckpt", "L=" + str(lck), "--out-speakers", str(out)])
+    assert not out.exists()
+
+
+def test_the_check4_rule_counts_the_units_and_names_the_spread_checks():
+    class A:
+        check, n, min_seconds, max_seconds, max_gap, target_seconds, seed = \
+            4, 20, 4.0, 8.0, 0.25, 6.0, 7
+    c = sb.CHECKS[4]
+    text = rs.speakers_rule(A, c, 17)
+    assert text.startswith("check 4: arms S1/L; 17 units; ")
+    assert "(checks 3-4, target 6.0s)" in text and "(check 3," not in text
+
+
+def test_the_rule_text_of_checks_1_to_3_is_unchanged():
+    class A:
+        check, n, min_seconds, max_seconds, max_gap, target_seconds, seed = \
+            3, 20, 4.0, 8.0, 0.25, 6.0, 7
+    c = sb.CHECKS[3]
+    assert rs.speakers_rule(A, c, 20) == (
+        "check 3: arms S1/S2/R; 20 units; clips 4.0-8.0s; VCTK/LibriTTS-R matched within 0.25 dB "
+        "HNR (checks 1-2) or LibriTTS-R voices spread over HNR (check 3, target 6.0s); a "
+        "distinct training recording per arm; seed 7.")
+
+
+def test_an_explicit_prior_for_check_4_must_hold_every_default_entry():
+    full = rs.default_prior(4)
+    rs.require_default_prior(4, full + ["/extra/*.json"])
+    rs.require_default_prior(3, ["/just/this.json"])           # checks 1-3 unchanged
+    with pytest.raises(SystemExit, match="check3_speakers.json") as e:
+        rs.require_default_prior(4, [p for p in full if "check3" not in p])
+    assert "check1_speakers.json" not in str(e.value)
+    with pytest.raises(SystemExit, match="first_step_bench"):
+        rs.require_default_prior(4, ["/x/*.json"])
+
+
+def test_main_refuses_a_short_explicit_prior_for_check_4(tmp_path, monkeypatch):
+    with pytest.raises(SystemExit, match="every default"):
+        _run(monkeypatch, ["select", "--check", "4", "--dry-run", "--prior", "/x/*.json",
+                           "--out-speakers", str(tmp_path / "o.json")])
+
+
+def test_a_dry_run_may_not_write_anywhere_under_the_bench_data_root():
+    with pytest.raises(SystemExit, match="under"):
+        rs.refuse_dry_run_target(rs.ROOT + "/eartest/_keys/x.key.json")
+    with pytest.raises(SystemExit, match="under"):
+        rs.refuse_dry_run_target(rs.ROOT + "/anything.json")
+
+
+def test_a_dry_run_may_not_write_a_file_a_prior_pattern_matches(tmp_path):
+    out = tmp_path / "prior" / "x_speakers.json"
+    with pytest.raises(SystemExit, match="prior"):
+        rs.refuse_dry_run_target(out, [str(tmp_path / "prior" / "*_speakers.json")])
+    rs.refuse_dry_run_target(out, [str(tmp_path / "other" / "*.json")])
+    rs.refuse_dry_run_target("/tmp/scratch/s.json", [rs.ROOT + "/pitch_error/_*.json"])
+
+
+def test_check4_keys_record_the_file_each_arm_round_tripped_and_checks_1_to_3_do_not():
+    from staged_data import LIBRI_22K_ROOT, LIBRI_ORIG_22K_ROOT, LIBRI_24K_ROOT
+    w = LIBRI_24K_ROOT + "/19/198/19_198_000000_000000.wav"
+    it = {"unit": 3, "libri": 19, "libri_hnr": 9.5,
+          "arms": {"S1": {"source": w}, "L": {"source": w}}}
+    sides = [("A", "S1rt"), ("B", "S1")]
+    s1 = rs.truth_entry(4, "S1", it, sides)
+    assert s1["rt_source"] == LIBRI_22K_ROOT + "/19/198/19_198_000000_000000.wav"
+    sides = [("A", "L"), ("B", "Lrt")]
+    l_ = rs.truth_entry(4, "L", it, sides)
+    assert l_["rt_source"] == LIBRI_ORIG_22K_ROOT + "/19/198/19_198_000000_000000.wav"
+    assert l_["source"] == w and l_["kind"] == "Lrt_vs_L" and l_["spk"] == 19
+    old = rs.truth_entry(3, "S1", it, [("A", "S1"), ("B", "S1rt")])
+    assert "rt_source" not in old
+    assert list(old) == ["spk", "kind", "arm", "unit", "hnr", "A_label", "B_label", "source"]
+
+
+def test_check4_with_an_arm_nothing_rated_prints_the_invalid_outcome(tmp_path, capsys):
+    argv = _bench(tmp_path, 4, {"S1": 3, "L": 1}, rt={"S1": 1, "L": 1})
+    p = tmp_path / "t" / "verdicts" / "verdicts.csv"
+    key = json.loads((tmp_path / "k.json").read_text())["items"]
+    kept = [l for l in p.read_text().splitlines()
+            if l.startswith("item,") or key[l.split(",")[0]]["arm"] != "L"]
+    p.write_text("\n".join(kept) + "\n")
+    r = ub.main(argv)
+    out = capsys.readouterr().out
+    assert r["outcome"] == "invalid"
+    assert "OUTCOME: INVALID" in out and "fewer than 16 voices" in out
+    assert "no reading" in out and "owner decides" in out

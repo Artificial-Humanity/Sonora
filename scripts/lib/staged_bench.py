@@ -52,6 +52,9 @@ CHECKS = {
         "contrasts": (("S1", "L"),),
         "floor_ref": "S1", "min_units": 16},
 }
+# Check 4 is registered against ONE S1 checkpoint: the step that ended its tenth epoch.
+# `select --check 4` (dry run included) refuses any other.
+CHECK4_S1_SHA256 = "857f62d7ac47770d94f971cf4bae80d3078e42fd028d45465fe30bd0e2a0d0d5"
 # Each arm's audio path: 22.05 kHz + universal vocoder (stock's), or 24 kHz + ours. L is on
 # S1's path, but its round trip is of the ORIGINAL recording's 22.05 kHz copy, not
 # LibriTTS-R's, so it is a family of its own.

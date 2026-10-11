@@ -56,10 +56,12 @@ Pass each glob as its own QUOTED argument: an unquoted `$P` is one word in zsh.
 """
 
 import argparse
+import fnmatch
 import glob
 import hashlib
 import io
 import json
+import os
 import random
 import sys
 import zipfile
@@ -168,6 +170,51 @@ def default_prior(check):
     return list(PRIOR)
 
 
+def require_default_prior(check, prior):
+    """Check 4 REQUIRES every entry of `default_prior(4)` (pre-registered): an explicit
+    --prior that leaves one out would re-draw heard voices without a word."""
+    if check != 4:
+        return
+    missing = [p for p in default_prior(4) if p not in prior]
+    if missing:
+        raise SystemExit("REFUSING: check 4's --prior must hold every default pattern; "
+                         "missing: %s." % ", ".join(missing))
+
+
+def require_registered_s1(path):
+    """Check 4 compares the registered S1 checkpoint, byte for byte."""
+    if path is None or sha256(path) != sb.CHECK4_S1_SHA256:
+        raise SystemExit("REFUSING: check 4's S1 checkpoint %s is not the registered one "
+                         "(sha256 %s)." % (path, sb.CHECK4_S1_SHA256))
+
+
+def speakers_rule(args, c, n_units):
+    """The `rule` text of a speakers file. `n_units` is the units actually drawn."""
+    spread = "checks 3-4" if args.check == 4 else "check 3"
+    return ("check %d: arms %s; %d units; clips %.1f-%.1fs; VCTK/LibriTTS-R matched "
+            "within %.2f dB HNR (checks 1-2) or LibriTTS-R voices spread over HNR "
+            "(%s, target %.1fs); a distinct training recording per arm; seed %d."
+            % (args.check, "/".join(c["arms"]), n_units, args.min_seconds,
+               args.max_seconds, args.max_gap, spread, args.target_seconds, args.seed))
+
+
+def truth_entry(check, arm, it, sides):
+    """One item's record in the key's truth. A VCTK name goes under `vctk_spk`, never `spk`:
+    later benches read `spk` from every key in `_keys/` as a LibriTTS-R index to exclude.
+    Check 4 alone also records `rt_source`, the file the round trip was made from (checks 1-3
+    keys keep their format)."""
+    if sb.FAMILY[arm] == "vctk22":
+        who, hnr = {"vctk_spk": it["vctk"]}, it["vctk_hnr"]
+    else:
+        who, hnr = {"spk": it["libri"]}, it["libri_hnr"]
+    entry = dict(who, kind="%srt_vs_%s" % (arm, arm), arm=arm, unit=it["unit"],
+                 hnr=hnr, A_label=sides[0][1], B_label=sides[1][1],
+                 source=it["arms"][arm]["source"])
+    if check == 4 and sb.FAMILY[arm] in RT_22K:
+        entry["rt_source"] = round_trip_source(arm, it["arms"][arm]["source"])
+    return entry
+
+
 def pick_voices(pool, n, check):
     """The units' voices, spread over HNR (`lineage_bench.spread`). Check 4 takes every
     eligible voice when there are `n` or fewer, and refuses under its minimum."""
@@ -180,11 +227,19 @@ def pick_voices(pool, n, check):
     return lb.spread(pool, min(n, len(pool)))
 
 
-def refuse_dry_run_target(path):
-    """A dry run never writes where the real selection goes: select refuses an existing
-    speakers file, so a dry-run file there would block the real draw."""
-    if Path(path).resolve().is_relative_to(Path(ROOT + "/staged_bench").resolve()):
-        raise SystemExit("REFUSING: a dry run may not write into %s/staged_bench/." % ROOT)
+def refuse_dry_run_target(path, patterns=()):
+    """A dry run never writes where a real selection or an exclusion reads: select refuses an
+    existing speakers file, so a dry-run file in staged_bench/ would block the real draw, and
+    a file a `--prior` / `--prior-optional` pattern matches would be read as a heard-voice
+    list by the next draw. Nothing under the bench data root is a scratch directory."""
+    here = Path(path).resolve()
+    if here.is_relative_to(Path(ROOT).resolve()):
+        raise SystemExit("REFUSING: a dry run may not write under %s (the bench data root; the "
+                         "real selection goes in staged_bench/)." % ROOT)
+    for pat in patterns:
+        if fnmatch.fnmatchcase(str(here), pat) or fnmatch.fnmatchcase(os.path.abspath(path), pat):
+            raise SystemExit("REFUSING: a dry run may not write %s: the --prior pattern %r "
+                             "matches it." % (path, pat))
 
 
 def read_spec(path, check):
@@ -223,11 +278,13 @@ def select(args):
         raise SystemExit("REFUSING: %s exists. Voices are drawn once (pre-registration)."
                          % out_path)
     if args.dry_run:
-        refuse_dry_run_target(out_path)
+        refuse_dry_run_target(out_path, list(args.prior) + list(args.prior_optional))
     ckpts = resolve_ckpts(c["arms"], args.ckpt, args.dry_run)
     for a, p in ckpts.items():
         if p is not None and not Path(p).is_file():
             raise SystemExit("REFUSING: %s's checkpoint %s does not exist." % (a, p))
+    if args.check == 4:
+        require_registered_s1(ckpts["S1"])
     rng = random.Random(args.seed + args.check)
 
     docs = load_prior(args.prior, args.prior_optional, out_path)
@@ -312,11 +369,7 @@ def select(args):
             for a, x in sorted(it["arms"].items()))))
 
     out = {"check": args.check,
-           "rule": ("check %d: arms %s; %d units; clips %.1f-%.1fs; VCTK/LibriTTS-R matched "
-                    "within %.2f dB HNR (checks 1-2) or LibriTTS-R voices spread over HNR "
-                    "(check 3, target %.1fs); a distinct training recording per arm; seed %d."
-                    % (args.check, "/".join(c["arms"]), args.n, args.min_seconds,
-                       args.max_seconds, args.max_gap, args.target_seconds, args.seed)),
+           "rule": speakers_rule(args, c, len(items) if args.check == 4 else args.n),
            "ckpts": {a: [p, sha256(p)] if p else None for a, p in ckpts.items()},
            "inputs": {"vctk_filelist": [args.vctk_filelist, sha256(args.vctk_filelist)],
                       "vctk_cleaned": [args.vctk_cleaned, sha256(args.vctk_cleaned)],
@@ -476,15 +529,8 @@ def render(args):
             bench.key[nm] = {"label": lbl, "pair": pair_key, "side": side_key}
             item[side_key] = nm
         served.append(item)
-        # ⚠ A VCTK name goes under `vctk_spk`, never `spk`: later benches read `spk` from
-        # every key in `_keys/` as a LibriTTS-R index to exclude.
-        if sb.FAMILY[arm] == "vctk22":
-            who, hnr = {"vctk_spk": it["vctk"]}, it["vctk_hnr"]
-        else:
-            who, hnr = {"spk": it["libri"]}, it["libri_hnr"]
-        truth[pair_key] = dict(who, kind="%srt_vs_%s" % (arm, arm), arm=arm, unit=it["unit"],
-                               hnr=hnr, A_label=sides[0][1], B_label=sides[1][1],
-                               source=it["arms"][arm]["source"])
+        truth[pair_key] = truth_entry(args.check, arm, it, sides)
+        hnr = truth[pair_key]["hnr"]
         print("  %s  %-6s unit %2d  HNR %5.2f" % (pair_key, arm, it["unit"], hnr))
     served.sort(key=lambda i: i["id"])
 
@@ -552,6 +598,8 @@ def main():
     args = ap.parse_args()
     if args.cmd == "select" and args.prior is None:
         args.prior = default_prior(args.check)
+    elif args.cmd == "select":
+        require_default_prior(args.check, args.prior)
     if args.cmd == "render" and args.salt is None:
         args.salt = "staged-check%d-v1" % args.check
     (select if args.cmd == "select" else render)(args)

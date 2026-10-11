@@ -104,3 +104,12 @@ def test_l_statistics_are_the_measured_ones():
     want = y(DATA_CFG / "libritts_22k.yaml")["data_statistics"]
     assert want["mel_mean"] == pytest.approx(got["mel_mean"], abs=1e-6)
     assert want["mel_std"] == pytest.approx(got["mel_std"], abs=1e-6)
+
+
+def test_l_defaults_are_s1s_but_for_the_data_override():
+    s1, l_ = y(EXP / "staged_s1.yaml")["defaults"], y(EXP / "staged_l.yaml")["defaults"]
+    keep = lambda d: [x for x in d if not (isinstance(x, dict) and "override /data" in x)]
+    assert keep(l_) == keep(s1)
+    assert len(l_) == len(s1)
+    assert sum(isinstance(x, dict) and "override /data" in x for x in l_) == 1
+    assert l_ != s1

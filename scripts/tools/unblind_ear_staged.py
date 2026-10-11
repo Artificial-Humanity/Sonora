@@ -102,6 +102,11 @@ def main(argv=None):
     if rated < len(truth):
         print("⚠ %d of %d items not fully rated; they are left out.\n"
               % (len(truth) - rated, len(truth)))
+    if not all(floor.values()) and args.check == 4:
+        # Pre-registered: fewer than 16 voices rated in both arms is INVALID, not a crash.
+        print("OUTCOME: INVALID — %s" % OUTCOME[(4, "invalid")])
+        print("  an arm has no rated item: fewer than 16 voices rated in both arms.")
+        return {"outcome": "invalid", "shown": []}
     if not all(floor.values()):
         raise SystemExit("REFUSING: an arm has no rated item.")
     # Exact: the validity rule is strict (< 1 point, < 4), and a float mean of integer ratings
