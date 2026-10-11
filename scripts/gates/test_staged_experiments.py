@@ -1,17 +1,18 @@
-"""Contract gate for the staged rebuild's four experiments.
+"""Contract gate for the staged rebuild's five experiments.
 
 IN-CONTAINER (needs torch, hydra and /data; CPU only):
     scripts/stages/run_in_rocm.sh scripts/gates/test_staged_experiments.py
 
 Pre-registered in Notes: Sonora/staged-rebuild-preregistration.md. Every new arm is a
-10-epoch fine-tune from stock that differs from it ONLY in the named changes. This proves
-the configs say so before a GPU hour is spent:
+10-epoch fine-tune from stock that differs from it ONLY in the named changes; L (check 4) is
+S1 with the original LibriTTS audio, warm-started from S1's own init file. This proves the
+configs say so before a GPU hour is spent:
 
 1. Each experiment composes to its arm: corpus, sample rate, mel ceiling, speakers, VAT on
    or off, 10 epochs, and a run name equal to the experiment name (the launcher resumes
    from logs/train/<experiment>/).
 2. R's model hyper-parameters equal derisk-energy ep099's on every key both record.
-3. C0, S1 and S2 share R's encoder, decoder, CFM and optimizer settings.
+3. C0, S1, S2 and L share R's encoder, decoder, CFM and optimizer settings.
 4. Each warm start loads into its composed model with strict=True, at epoch 0 and step 0.
 5. Each datamodule yields a first training batch (80 mel bins; R also a 3-wide VAT).
 6. R's composed `data`, `model` and `trainer` sections equal the July derisk run's own
@@ -50,6 +51,8 @@ ARMS = {
     "staged_c0": ("vctk_22k", 22050, 8000, 109, False, WS + "/staged_c0_init.ckpt"),
     "staged_s1": ("libritts_r_22k", 22050, 8000, 247, False, WS + "/staged_s1_init.ckpt"),
     "staged_s2": ("libritts_r_vat", 24000, 12000, 247, False, WS + "/staged_s2_init.ckpt"),
+    # L: S1's init, byte for byte (pre-registered), not a warm start of its own
+    "staged_l": ("libritts_22k", 22050, 8000, 247, False, WS + "/staged_s1_init.ckpt"),
 }
 SHARED = ("encoder", "decoder", "cfm", "optimizer")
 
@@ -137,10 +140,10 @@ def main():
     diff = [k for k in set(d) & set(hp["staged_r"]) if plain(d[k]) != hp["staged_r"][k]]
     assert not diff, f"R differs from derisk ep099 on {sorted(diff)}"
     print(f"  ok  R matches derisk ep099 on {len(set(d) & set(hp['staged_r']))} hparams")
-    for exp in ("staged_c0", "staged_s1", "staged_s2"):
+    for exp in ("staged_c0", "staged_s1", "staged_s2", "staged_l"):
         diff = [k for k in SHARED if hp[exp][k] != hp["staged_r"][k]]
         assert not diff, f"{exp} differs from R on {diff}"
-    print("  ok  C0, S1, S2 share R's encoder, decoder, CFM and optimizer")
+    print("  ok  C0, S1, S2, L share R's encoder, decoder, CFM and optimizer")
     print("STAGED EXPERIMENTS: PASS")
 
 

@@ -1,0 +1,29 @@
+# L of the staged rebuild, check 4 (Notes: Sonora/staged-rebuild-preregistration.md): S1's
+# corpus (libritts_r_22k.yaml) with only the audio changed. Each row's recording is the same
+# utterance's ORIGINAL LibriTTS train-clean-100 recording (OpenSLR 60, unrestored), resampled
+# to 22.05 kHz as S1's were; text, phonemes, the 247-speaker table and the val split are S1's.
+# Stock's mel (8 kHz ceiling) for the universal vocoder. No VAT. Built by
+# scripts/tools/prep_staged_corpora.py original.
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_22k
+train_filelist_path: data/libritts_22k/train_op.txt
+valid_filelist_path: data/libritts_22k/val_op.txt
+batch_size: 32
+num_workers: 20
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 247
+n_fft: 1024
+n_feats: 80
+sample_rate: 22050
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 8000
+data_statistics:  # prep_staged_corpora.py stats --corpus libritts_22k (data/libritts_22k/mel_statistics.json)
+  mel_mean: -5.491697
+  mel_std: 2.110346
+seed: ${seed}
+load_durations: false
+load_vat: false

@@ -29,6 +29,7 @@ ARMS = {
     "staged_c0": ("vctk_22k", False, None, None),
     "staged_s1": ("libritts_r_22k", False, None, None),
     "staged_s2": ("libritts_r_vat", False, None, False),
+    "staged_l": ("libritts_22k", False, None, None),
 }
 
 
@@ -71,5 +72,35 @@ def test_s1_statistics_are_the_measured_ones():
     got = json.loads(Path("/data/model-training/sonora/data/libritts_r_22k/mel_statistics.json")
                      .read_text())
     want = y(DATA_CFG / "libritts_r_22k.yaml")["data_statistics"]
+    assert want["mel_mean"] == pytest.approx(got["mel_mean"], abs=1e-6)
+    assert want["mel_std"] == pytest.approx(got["mel_std"], abs=1e-6)
+
+
+# ---------------------------------------------------------------- arm L (check 4)
+
+def test_l_is_s1_but_for_the_audio_and_its_statistics():
+    s1, l_ = y(DATA_CFG / "libritts_r_22k.yaml"), y(DATA_CFG / "libritts_22k.yaml")
+    differ = {k for k in set(s1) | set(l_) if s1.get(k) != l_.get(k)}
+    assert differ == {"name", "train_filelist_path", "valid_filelist_path", "data_statistics"}
+    assert l_["name"] == "libritts_22k"
+    assert l_["train_filelist_path"] == "data/libritts_22k/train_op.txt"
+    assert l_["valid_filelist_path"] == "data/libritts_22k/val_op.txt"
+
+
+def test_l_is_s1s_experiment_on_ls_data_and_warm_starts_from_s1s_own_init():
+    s1, l_ = y(EXP / "staged_s1.yaml"), y(EXP / "staged_l.yaml")
+    assert {k: v for k, v in l_.items() if k not in ("defaults", "tags", "run_name")} == \
+        {k: v for k, v in s1.items() if k not in ("defaults", "tags", "run_name")}
+    text = (EXP / "staged_l.yaml").read_text(encoding="utf-8")
+    assert "warmstart/staged_s1_init.ckpt" in text and "byte for byte" in text
+    assert "67dc8c6a3d1c3d94eb8cf1698e8361c0161ee292514af7e628335917557ef434" in text
+
+
+@pytest.mark.skipif(not Path("/data/model-training/sonora/data/libritts_22k").is_dir(),
+                    reason="/data not mounted")
+def test_l_statistics_are_the_measured_ones():
+    got = json.loads(Path("/data/model-training/sonora/data/libritts_22k/mel_statistics.json")
+                     .read_text())
+    want = y(DATA_CFG / "libritts_22k.yaml")["data_statistics"]
     assert want["mel_mean"] == pytest.approx(got["mel_mean"], abs=1e-6)
     assert want["mel_std"] == pytest.approx(got["mel_std"], abs=1e-6)
