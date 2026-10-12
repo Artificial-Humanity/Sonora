@@ -30,6 +30,11 @@ Usage:
         --corpus data/libritts_r_full_vat_v7 \
         --speakers-sampled 400 --clips-per-speaker 5 \
         --json /tmp/speaker_hnr.json
+
+`--speakers-from FILE` measures exactly the speaker indices listed in FILE (whitespace-
+separated integers, `#` comments) instead of drawing `--speakers-sampled` of them. A listed
+speaker with no row, or fewer than `--min-rows`, is refused rather than skipped, and the
+speaker draw is not made, so `--seed` drives only the clip draws.
 """
 
 import argparse
@@ -93,6 +98,40 @@ def self_test(args):
     print("   monotonic, spread %.2f dB  ✓\n" % spread)
 
 
+def read_speakers_file(path):
+    """`--speakers-from`: whitespace-separated speaker indices, `#` to end of line a comment."""
+    words = [w for line in Path(path).read_text(encoding="utf-8").splitlines()
+             for w in line.split("#", 1)[0].split()]
+    bad = [w for w in words if not w.lstrip("-").isdigit()]
+    if bad:
+        raise SystemExit("REFUSING: %s holds non-integer entries: %s" % (path, bad[:5]))
+    ids = [int(w) for w in words]
+    twice = sorted({i for i in ids if ids.count(i) > 1})
+    if twice:
+        raise SystemExit("REFUSING: %s lists speakers twice: %s" % (path, twice))
+    if not ids:
+        raise SystemExit("REFUSING: %s lists no speaker." % path)
+    return ids
+
+
+def choose_speakers(by_spk, min_rows, speakers_sampled, rng, listed=None):
+    """The speakers to measure, ascending. Without `listed`: a draw of `speakers_sampled`
+    from those with at least `min_rows` rows (the tool's original behaviour, rng use
+    included). With it: exactly those speakers, no draw; one with no row or fewer than
+    `min_rows` refuses, so a list cannot shrink without a word."""
+    if listed is not None:
+        short = {s: len(by_spk.get(s, ())) for s in listed if len(by_spk.get(s, ())) < min_rows}
+        if short:
+            raise SystemExit("REFUSING: listed speakers with fewer than --min-rows %d rows "
+                             "(speaker: rows): %s" % (min_rows, short))
+        return sorted(listed)
+    eligible = sorted(s for s, w in by_spk.items() if len(w) >= min_rows)
+    if len(eligible) < speakers_sampled:
+        print("  only %d speakers have >= %d rows; measuring all of them"
+              % (len(eligible), min_rows))
+    return sorted(rng.sample(eligible, min(speakers_sampled, len(eligible))))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--corpus", required=True)
@@ -107,6 +146,9 @@ def main():
     ap.add_argument("--periodicity", type=float, default=0.3)
     ap.add_argument("--min-selftest-spread", type=float, default=3.0)
     ap.add_argument("--seed", type=int, default=1234)
+    ap.add_argument("--speakers-from", default=None, metavar="FILE",
+                    help="measure exactly the speaker indices listed in FILE (whitespace-"
+                         "separated); --speakers-sampled is then unused")
     ap.add_argument("--json", required=True)
     args = ap.parse_args()
 
@@ -138,12 +180,9 @@ def main():
             continue
         by_spk[int(parts[1])].append(parts[0])
 
-    eligible = sorted(s for s, w in by_spk.items() if len(w) >= args.min_rows)
-    if len(eligible) < args.speakers_sampled:
-        print("  only %d speakers have >= %d rows; measuring all of them"
-              % (len(eligible), args.min_rows))
+    listed = read_speakers_file(args.speakers_from) if args.speakers_from else None
     rng = random.Random(args.seed)
-    chosen = sorted(rng.sample(eligible, min(args.speakers_sampled, len(eligible))))
+    chosen = choose_speakers(by_spk, args.min_rows, args.speakers_sampled, rng, listed)
 
     out, skipped = {}, []
     for n, s in enumerate(chosen):
@@ -189,12 +228,15 @@ def main():
     off = quad["low F0 / high HNR"] + quad["high F0 / low HNR"]
     print("    %-22s %4d  (%.0f%%)" % ("OFF-DIAGONAL", off, 100 * off / len(out)))
 
-    Path(args.json).write_text(json.dumps(
-        {"corpus": args.corpus, "split": args.split, "fmin": args.fmin,
-         "fmax": args.fmax, "min_rows": args.min_rows,
-         "clips_per_speaker": args.clips_per_speaker, "skipped": skipped,
-         "median_f0": mf, "median_hnr": mh,
-         "speakers": {str(k): v for k, v in out.items()}}, indent=2), encoding="utf-8")
+    doc = {"corpus": args.corpus, "split": args.split, "fmin": args.fmin,
+           "fmax": args.fmax, "min_rows": args.min_rows,
+           "clips_per_speaker": args.clips_per_speaker, "skipped": skipped,
+           "median_f0": mf, "median_hnr": mh,
+           "speakers": {str(k): v for k, v in out.items()}}
+    if listed is not None:
+        doc["speakers_from"] = {"file": str(args.speakers_from), "seed": args.seed,
+                                "speakers": sorted(listed)}
+    Path(args.json).write_text(json.dumps(doc, indent=2), encoding="utf-8")
     print("\n  wrote %s" % args.json)
 
 
