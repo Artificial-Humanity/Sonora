@@ -1,0 +1,28 @@
+# G′ of the hum-fix batch (Notes: Sonora/hum-fix-batch-preregistration.md): S1's corpus
+# (libritts_r_22k.yaml) with every `ᵻ` in the phonemes changed to `ᵊ`, our id 177, where stock
+# trained `ᵻ`; S1's `ᵻ` encodes to 176, an embedding stock never trained. On every row this
+# equals staged_data.upstream_as_ours, asserted at build time. Same audio, speakers, split and
+# statistics as S1. Built by scripts/tools/prep_staged_corpora.py g.
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_22k_g
+train_filelist_path: data/libritts_r_22k/train_g.txt
+valid_filelist_path: data/libritts_r_22k/val_g.txt
+batch_size: 32
+num_workers: 20
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 247
+n_fft: 1024
+n_feats: 80
+sample_rate: 22050
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 8000
+data_statistics:  # S1's (data/libritts_r_22k/mel_statistics.json): the audio is S1's
+  mel_mean: -5.224468
+  mel_std: 2.325197
+seed: ${seed}
+load_durations: false
+load_vat: false

@@ -1,0 +1,26 @@
+# @package _global_
+
+# Hum-fix batch, arm D1 (Notes: Sonora/hum-fix-batch-preregistration.md): C0 with 105 clips
+# per speaker. Does VCTK start humming when each speaker gets only S1's median clip count?
+# Matched to S1 in optimizer steps, not epochs: 26 epochs x 355 = 9,230 steps; final
+# checkpoint checkpoint_epoch=025_step=0009229.
+#
+# Warm start: /data/model-training/sonora/warmstart/staged_c0_init.ckpt, C0's own init file,
+# byte for byte (sha256 30fadd35e6cdff441b413e3a2f7657e033d53eadf63313f2fddfbcc4641c552d);
+# no new make_warmstart output.
+
+defaults:
+  - override /data: vctk_d1.yaml
+
+tags: ["staged", "D1", "vctk", "hum"]
+
+run_name: staged_d1
+
+model:
+  use_vat: false
+
+data:
+  bucket_multiplier: 0      # July's length-blind shuffle (owner ruling, 2026-10-06)
+
+trainer:
+  max_epochs: 26

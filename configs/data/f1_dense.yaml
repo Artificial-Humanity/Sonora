@@ -1,0 +1,30 @@
+# F1 of the hum-fix batch (Notes: Sonora/hum-fix-batch-preregistration.md): S1's recipe on
+# dense speakers. Every LibriTTS-R speaker with at least 300 train rows after S1's 1-16 s
+# filter (S1's train-clean-100 rows and the derived our-G2P train-clean-360 / train-other-500
+# rows): 90 speakers, 31,287 train and 960 val rows, re-indexed in ascending LibriTTS id order
+# (data/f1_dense/speakers.json also records each speaker's v7 index). 22.05 kHz on stock's mel
+# (8 kHz ceiling) for the universal vocoder. No VAT. Built by
+# scripts/tools/prep_staged_corpora.py f1.
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: f1_dense
+train_filelist_path: data/f1_dense/train_op.txt
+valid_filelist_path: data/f1_dense/val_op.txt
+batch_size: 32
+num_workers: 20
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 90
+n_fft: 1024
+n_feats: 80
+sample_rate: 22050
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 8000
+data_statistics:  # prep_staged_corpora.py stats --corpus f1_dense (data/f1_dense/mel_statistics.json)
+  mel_mean: -5.145988
+  mel_std: 2.322516
+seed: ${seed}
+load_durations: false
+load_vat: false

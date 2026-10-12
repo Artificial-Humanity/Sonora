@@ -1,0 +1,25 @@
+# @package _global_
+
+# Hum-fix batch, arm G′ (Notes: Sonora/hum-fix-batch-preregistration.md): S1 with `ᵻ` moved
+# to the id stock trained it on. Does S1 hum less when its `ᵻ` reaches a trained embedding?
+# 10 epochs x 921 = 9,210 steps, as S1.
+#
+# Warm start: /data/model-training/sonora/warmstart/staged_s1_init.ckpt, S1's own init file,
+# byte for byte (sha256 67dc8c6a3d1c3d94eb8cf1698e8361c0161ee292514af7e628335917557ef434);
+# no new make_warmstart output.
+
+defaults:
+  - override /data: libritts_r_22k_g.yaml
+
+tags: ["staged", "G", "libritts_r", "hum"]
+
+run_name: staged_g
+
+model:
+  use_vat: false
+
+data:
+  bucket_multiplier: 0      # July's length-blind shuffle (owner ruling, 2026-10-06)
+
+trainer:
+  max_epochs: 10

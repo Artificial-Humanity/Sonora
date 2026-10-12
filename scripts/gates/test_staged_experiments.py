@@ -1,18 +1,20 @@
-"""Contract gate for the staged rebuild's five experiments.
+"""Contract gate for the staged rebuild's experiments and the hum-fix batch's three.
 
 IN-CONTAINER (needs torch, hydra and /data; CPU only):
     scripts/stages/run_in_rocm.sh scripts/gates/test_staged_experiments.py
 
-Pre-registered in Notes: Sonora/staged-rebuild-preregistration.md. Every new arm is a
-10-epoch fine-tune from stock that differs from it ONLY in the named changes; L (check 4) is
-S1 with the original LibriTTS audio, warm-started from S1's own init file. This proves the
-configs say so before a GPU hour is spent:
+Pre-registered in Notes: Sonora/staged-rebuild-preregistration.md and
+Sonora/hum-fix-batch-preregistration.md. Every new arm is a fine-tune from stock that differs
+from it ONLY in the named changes; L (check 4) is S1 with the original LibriTTS audio,
+warm-started from S1's own init file. D1 is C0 on 105 clips per speaker for 26 epochs, from
+C0's init; G′ is S1 with `ᵻ` remapped, from S1's init; F1 is S1's recipe on dense speakers,
+from its own init. This proves the configs say so before a GPU hour is spent:
 
 1. Each experiment composes to its arm: corpus, sample rate, mel ceiling, speakers, VAT on
-   or off, 10 epochs, and a run name equal to the experiment name (the launcher resumes
-   from logs/train/<experiment>/).
+   or off, its registered epochs (10; D1 26), and a run name equal to the experiment name
+   (the launcher resumes from logs/train/<experiment>/).
 2. R's model hyper-parameters equal derisk-energy ep099's on every key both record.
-3. C0, S1, S2 and L share R's encoder, decoder, CFM and optimizer settings.
+3. Every other arm shares R's encoder, decoder, CFM and optimizer settings.
 4. Each warm start loads into its composed model with strict=True, at epoch 0 and step 0.
 5. Each datamodule yields a first training batch (80 mel bins; R also a 3-wide VAT).
 6. R's composed `data`, `model` and `trainer` sections equal the July derisk run's own
@@ -53,7 +55,13 @@ ARMS = {
     "staged_s2": ("libritts_r_vat", 24000, 12000, 247, False, WS + "/staged_s2_init.ckpt"),
     # L: S1's init, byte for byte (pre-registered), not a warm start of its own
     "staged_l": ("libritts_22k", 22050, 8000, 247, False, WS + "/staged_s1_init.ckpt"),
+    # the hum-fix batch. D1: C0's init, byte for byte; G′: S1's init, byte for byte
+    "staged_d1": ("vctk_d1", 22050, 8000, 109, False, WS + "/staged_c0_init.ckpt"),
+    "staged_g": ("libritts_r_22k_g", 22050, 8000, 247, False, WS + "/staged_s1_init.ckpt"),
+    "staged_f1": ("f1_dense", 22050, 8000, 90, False, WS + "/staged_f1_init.ckpt"),
 }
+# max_epochs where it is not 10: D1 is matched to S1 in optimizer steps (26 x 355 = 9,230)
+EPOCHS = {"staged_d1": 26}
 SHARED = ("encoder", "decoder", "cfm", "optimizer")
 
 
@@ -113,7 +121,7 @@ def check_arm(exp):
         print("  ok  R's data/model/trainer config matches July's outside", sorted(ALLOWED))
     got = (cfg.data.name, cfg.data.sample_rate, cfg.data.f_max, cfg.data.n_spks,
            bool(cfg.model.use_vat), cfg.trainer.max_epochs, cfg.run_name)
-    want = (name, sr, fmax, n_spks, use_vat, 10, exp)
+    want = (name, sr, fmax, n_spks, use_vat, EPOCHS.get(exp, 10), exp)
     assert got == want, f"{exp}: composed {got}, pre-registered {want}"
     model = instantiate(cfg.model)
     w = torch.load(warm, map_location="cpu", weights_only=False)
@@ -140,10 +148,11 @@ def main():
     diff = [k for k in set(d) & set(hp["staged_r"]) if plain(d[k]) != hp["staged_r"][k]]
     assert not diff, f"R differs from derisk ep099 on {sorted(diff)}"
     print(f"  ok  R matches derisk ep099 on {len(set(d) & set(hp['staged_r']))} hparams")
-    for exp in ("staged_c0", "staged_s1", "staged_s2", "staged_l"):
+    others = [exp for exp in ARMS if exp != "staged_r"]
+    for exp in others:
         diff = [k for k in SHARED if hp[exp][k] != hp["staged_r"][k]]
         assert not diff, f"{exp} differs from R on {diff}"
-    print("  ok  C0, S1, S2, L share R's encoder, decoder, CFM and optimizer")
+    print(f"  ok  {', '.join(others)} share R's encoder, decoder, CFM and optimizer")
     print("STAGED EXPERIMENTS: PASS")
 
 
