@@ -748,15 +748,26 @@ def _bench(tmp_path, check, model_sev, n=16, rt=1):
     _folder(tmp_path / "t", rows)
     argv = ["--check", str(check), "--key", str(key), "--test", str(tmp_path / "t")]
     if check in sb.HUM_FIX_CHECKS:      # the session's three folders: this one and two more
+        _meta(tmp_path / "t", check)
+        rest = [c for c in sorted(sb.HUM_FIX_CHECKS) if c != check]
         others = [_folder(tmp_path / n, [{"item": "item_%02d" % i, "sev_a": 2, "sev_b": 1}
-                                         for i in range(3)]) for n in ("t2", "t3")]
+                                         for i in range(3)], check=c)
+                  for n, c in zip(("t2", "t3"), rest)]
         argv += ["--session-tests", str(tmp_path / "t")] + [str(o) for o in others]
     return argv
 
 
-def _folder(path, rows):
-    """A test folder: items.json naming each row's item, and verdicts.csv with the rows."""
+def _meta(path, check):
+    """The folder's render_meta.json, which names the check it was rendered for."""
+    (path / "render_meta.json").write_text(json.dumps({"check": check, "pairs": 3}))
+
+
+def _folder(path, rows, check=None):
+    """A test folder: items.json naming each row's item, and verdicts.csv with the rows (and,
+    given a check, the render_meta.json of that check's bench)."""
     (path / "verdicts").mkdir(parents=True)
+    if check is not None:
+        _meta(path, check)
     (path / "items.json").write_text(json.dumps(
         {"test": path.name, "items": [{"id": r["item"], "A": "a", "B": "b"} for r in rows]}))
     with (path / "verdicts" / "verdicts.csv").open("w", newline="") as f:
@@ -898,6 +909,50 @@ def test_a_session_folder_without_items_json_is_refused(tmp_path):
     argv = _bench(tmp_path, 6, {"S1": 3, "G": 1})
     (tmp_path / "t3" / "items.json").unlink()
     with pytest.raises(SystemExit, match="REFUSING.*items.json"):
+        ub.main(argv)
+
+
+def _session_argv(tmp_path, check=6):
+    argv = _bench(tmp_path, check, {"S1": 3, "G": 1} if check == 6 else {"S1": 3, "F1": 1})
+    return argv, argv.index("--session-tests")
+
+
+def test_the_three_session_folders_must_be_distinct(tmp_path):
+    argv, i = _session_argv(tmp_path)
+    t = str(tmp_path / "t")
+    with pytest.raises(SystemExit, match="REFUSING.*distinct"):
+        ub.main(argv[:i + 1] + [t, t, argv[-1]])
+    # the same folder spelled another way is still the same folder
+    with pytest.raises(SystemExit, match="REFUSING.*distinct"):
+        ub.main(argv[:i + 1] + [t, str(tmp_path / "t2"), str(tmp_path / "x" / ".." / "t2")])
+
+
+def test_a_session_folder_rendered_for_another_check_is_refused(tmp_path):
+    argv, i = _session_argv(tmp_path)                     # t=6, t2=5, t3=7
+    _meta(tmp_path / "t3", 6)                             # two 6s, no 7
+    with pytest.raises(SystemExit, match="REFUSING.*5, 6 and 7"):
+        ub.main(argv)
+
+
+def test_a_session_folder_without_render_meta_is_refused(tmp_path):
+    argv, i = _session_argv(tmp_path)
+    (tmp_path / "t2" / "render_meta.json").unlink()
+    with pytest.raises(SystemExit, match="REFUSING.*render_meta.json"):
+        ub.main(argv)
+
+
+def test_a_render_meta_without_a_check_is_refused(tmp_path):
+    argv, i = _session_argv(tmp_path)
+    (tmp_path / "t2" / "render_meta.json").write_text(json.dumps({"pairs": 3}))
+    with pytest.raises(SystemExit, match="REFUSING.*5, 6 and 7"):
+        ub.main(argv)
+
+
+def test_the_test_folder_must_be_the_check_being_read(tmp_path):
+    argv, i = _session_argv(tmp_path)                     # t=6, t2=5, t3=7
+    # reading --check 6 against t2 (a check-5 folder): the three are fine, the pairing is not
+    argv[argv.index("--test") + 1] = str(tmp_path / "t2")
+    with pytest.raises(SystemExit, match="REFUSING.*--test.*check 5.*--check 6"):
         ub.main(argv)
 
 

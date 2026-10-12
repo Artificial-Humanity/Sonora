@@ -132,6 +132,25 @@ def require_session_rated(args):
                          "folders)." % args.check)
     if str(Path(args.test).resolve()) not in {str(Path(d).resolve()) for d in args.session_tests}:
         raise SystemExit("REFUSING: --test %s is not among --session-tests." % args.test)
+    resolved = [Path(d).resolve() for d in args.session_tests]
+    if len(set(resolved)) != 3:
+        raise SystemExit("REFUSING: --session-tests names the same folder more than once "
+                         "(%s); the session is three distinct folders." % ", ".join(args.session_tests))
+    checks = {}
+    for d in args.session_tests:
+        meta = Path(d) / "render_meta.json"
+        if not meta.is_file():
+            raise SystemExit("REFUSING: no %s — which check this folder was rendered for is "
+                             "not known." % meta)
+        checks[str(Path(d).resolve())] = json.loads(meta.read_text()).get("check")
+    if sorted(checks.values(), key=str) != [5, 6, 7]:
+        raise SystemExit("REFUSING: the three --session-tests folders must be the check 5, 6 "
+                         "and 7 benches, one each; their render_meta.json say %s."
+                         % ", ".join("%s=%s" % (Path(d).name, c) for d, c in checks.items()))
+    test_check = checks[str(Path(args.test).resolve())]
+    if test_check != args.check:
+        raise SystemExit("REFUSING: --test %s was rendered for check %s, not --check %d."
+                         % (args.test, test_check, args.check))
     total, left = 0, []
     for d in args.session_tests:
         n, bad = unrated(d)
