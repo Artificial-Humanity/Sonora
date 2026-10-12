@@ -7,6 +7,10 @@ of tests (uncorrected), and the outcome from `staged_bench.reading`. Exact; no r
     .venv/bin/python scripts/tools/unblind_ear_staged.py --check 1 \\
         --key /data/model-training/sonora/.keystage/staged_check1.key.json \\
         --test /data/model-training/sonora/eartest/staged_check1
+
+Checks 5-7 are one listening session over three test folders (A, B, C), and are read only when
+every item of all three is rated: name the folders with --session-tests (this check's --test
+among them). --session-closed reads them anyway, leaving out the items not fully rated.
 """
 
 import argparse
@@ -94,10 +98,49 @@ TESTS = {4: ("three p-values reported (S1's excess, S1 − L, L's excess), two o
              "deciding the reading (S1's excess and S1 − L); uncorrected"),
          5: ("three p-values reported (D1 − C0, D1's excess, C0's excess), one of them "
              "deciding the reading (D1 − C0); uncorrected"),
-         6: ("three p-values reported (S1's excess, S1 − G, G's excess), two of them "
-             "deciding the reading (S1's excess and S1 − G); uncorrected"),
+         6: ("three p-values reported (S1's excess, S1 − G′, G′'s excess), two of them "
+             "deciding the reading (S1's excess and S1 − G′); uncorrected"),
          7: ("three p-values reported (S1's excess, S1 − F1, F1's excess), two of them "
              "deciding the reading (S1's excess and S1 − F1); uncorrected")}
+
+
+def unrated(test_dir):
+    """(items, unrated ids) of one test folder: `items.json` names the items, and an item is
+    rated when its (last) row in verdicts/verdicts.csv holds both severities."""
+    ipath, vpath = Path(test_dir) / "items.json", Path(test_dir) / "verdicts" / "verdicts.csv"
+    if not ipath.is_file():
+        raise SystemExit("REFUSING: no %s — the session's items are not known." % ipath)
+    ids = [i["id"] for i in json.loads(ipath.read_text())["items"]]
+    done = {}
+    if vpath.is_file():
+        with vpath.open(newline="", encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                done[r["item"]] = r.get("sev_a", "") != "" and r.get("sev_b", "") != ""
+    return len(ids), [i for i in ids if not done.get(i)]
+
+
+def require_session_rated(args):
+    """Checks 5-7: refuse unless every item of the session's three folders is rated, or
+    --session-closed says the session is over (the unrated are then left out, as always)."""
+    if args.check not in sb.HUM_FIX_CHECKS:
+        if args.session_tests or args.session_closed:
+            raise SystemExit("REFUSING: --session-tests and --session-closed are for checks "
+                             "5-7.")
+        return
+    if not args.session_tests:
+        raise SystemExit("REFUSING: check %d needs --session-tests (the session's three test "
+                         "folders)." % args.check)
+    if str(Path(args.test).resolve()) not in {str(Path(d).resolve()) for d in args.session_tests}:
+        raise SystemExit("REFUSING: --test %s is not among --session-tests." % args.test)
+    total, left = 0, []
+    for d in args.session_tests:
+        n, bad = unrated(d)
+        total += n
+        left += ["%s/%s" % (Path(d).name, i) for i in bad]
+    if left and not args.session_closed:
+        raise SystemExit("REFUSING: %d of %d items in the session's three folders are not fully "
+                         "rated (e.g. %s). Rate them all, or pass --session-closed to read the "
+                         "check without them." % (len(left), total, ", ".join(left[:3])))
 
 
 def main(argv=None):
@@ -105,6 +148,11 @@ def main(argv=None):
     ap.add_argument("--check", type=int, choices=tuple(sb.CHECKS), required=True)
     ap.add_argument("--key", required=True)
     ap.add_argument("--test", required=True)
+    ap.add_argument("--session-tests", nargs=3, metavar="DIR",
+                    help="checks 5-7: the session's three test folders, this check's among them")
+    ap.add_argument("--session-closed", action="store_true",
+                    help="checks 5-7: read the check although items are not fully rated; they "
+                         "are left out")
     args = ap.parse_args(argv)
     arms = sb.CHECKS[args.check]["arms"]
 
@@ -115,6 +163,7 @@ def main(argv=None):
     truth = key["items"]
     if {t["arm"] for t in truth.values()} != set(arms):
         raise SystemExit("REFUSING: the key's arms are not %s." % (arms,))
+    require_session_rated(args)
     vpath = Path(args.test) / "verdicts" / "verdicts.csv"
     if not vpath.is_file():
         raise SystemExit("REFUSING: no %s — nothing was judged." % vpath)

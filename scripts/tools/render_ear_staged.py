@@ -19,7 +19,7 @@ loudness of the earlier hum benches.
 The hum-fix checks are pre-registered in Notes: Sonora/hum-fix-batch-preregistration.md
 (arm G is its G′). Each takes 20 voices or pairs spread over HNR (`lineage_bench.spread`;
 every one if 16-19, refused under 16), clips nearest 6.0 s by `assign_clips`; select pins the
-registered C0 / S1 checkpoints and HNR inputs, and render needs an explicit --salt
+registered C0 / S1 checkpoints and HNR inputs, and render takes only its check's --salt
 (hum-fix-A-v1, -B-v1, -C-v1). D1 renders exactly as C0 (VITS phonemes through upstream's
 table, the VCTK 0.92 mic1 round trip); G renders S1's phonemes with `ᵻ` moved to `ᵊ`
 (`arm_phonemes`) and round-trips S1's copy; F1 synthesises with its own 90-row table index
@@ -38,7 +38,8 @@ is eligible with 2 recordings of 4-8 s (on the 24 kHz LibriTTS-R file) that are 
 and L's train filelists and whose original recording is within 0.1 s of the same length.
 
 ⚠ A VOICE THAT SPEAKS SEVERAL ARMS GETS A DIFFERENT RECORDING FOR EACH (`assign_clips`), the
-ones nearest in length to the unit's VCTK clip (checks 1-2) or to --target-seconds (checks 3-4).
+ones nearest in length to the unit's VCTK clip (checks 1-2) or to --target-seconds (checks 3-7;
+default 6.0 s, and checks 5-7 use that target).
 Every recording is from its arm's training split.
 
 ⚠ stock and C0 read VITS's espeak phonemes through upstream's table (`encode_original`),
@@ -71,8 +72,8 @@ check 7's dry run takes check 6's dry-run file as an extra --prior.
         --out /data/model-training/sonora/eartest/staged_check1 \\
         --key-out /data/model-training/sonora/.keystage/staged_check1.key.json
     # host, hum-fix check B (G not trained yet: a dry run)
-    .venv/bin/python scripts/tools/render_ear_staged.py select --check 6 --dry-run \
-        --seed 20261012 --ckpt S1=<staged_s1 checkpoint_epoch=009_step=0009209.ckpt> \
+    .venv/bin/python scripts/tools/render_ear_staged.py select --check 6 --dry-run \\
+        --seed 20261012 --ckpt S1=<staged_s1 checkpoint_epoch=009_step=0009209.ckpt> \\
         --out-speakers <scratch>/check6_dryrun_speakers.json
 """
 
@@ -124,7 +125,7 @@ PHONEMES = {"G": lambda p: p.replace(sd.G_FROM, sd.G_TO)}
 SELECT_SEED = {c: (20261012 if c in sb.HUM_FIX_CHECKS else 20261006) for c in sb.CHECKS}
 HUM_FIX_SALT = {5: "hum-fix-A-v1", 6: "hum-fix-B-v1", 7: "hum-fix-C-v1"}
 # The registered inputs each hum-fix check reads (`staged_bench.INPUT_SHA256`).
-HUM_FIX_INPUTS = {5: ("vctk_hnr_from",), 6: (), 7: ("hnr_json",)}
+HUM_FIX_INPUTS = {5: ("vctk_hnr_from",), 6: ("s1_hnr_json",), 7: ("hnr_json", "s1_hnr_json")}
 MIN_CLIPS = 2           # checks 5-7: recordings of 4-8 s a voice needs to be eligible
 ORIG_MAX_DRIFT = Fraction(1, 10)     # check 4: original vs LibriTTS-R length, seconds, strict
 PRIOR = [ROOT + "/pitch_error/_*.json", ROOT + "/eartest/_keys/*.key.json",
@@ -209,14 +210,15 @@ def select_seed(check, seed):
 
 
 def resolve_salt(check, salt):
-    """Checks 1-4 default to `staged-check<n>-v1`. Checks 5-7 need an explicit salt (the
-    registered ones are `HUM_FIX_SALT`), and never the staged default."""
+    """Checks 1-4 default to `staged-check<n>-v1`. Checks 5-7 need an explicit salt and take
+    only the registered one (`HUM_FIX_SALT`): not the staged default, not another check's."""
     default = "staged-check%d-v1" % check
     if check not in sb.HUM_FIX_CHECKS:
         return default if salt is None else salt
-    if salt is None or salt == default:
-        raise SystemExit("REFUSING: check %d needs an explicit --salt (registered: %s), not %s."
-                         % (check, HUM_FIX_SALT[check], salt or "the default " + default))
+    if salt != HUM_FIX_SALT[check]:
+        raise SystemExit("REFUSING: check %d takes only --salt %s, not %s."
+                         % (check, HUM_FIX_SALT[check], repr(salt) if salt is not None
+                            else "the default " + default))
     return salt
 
 

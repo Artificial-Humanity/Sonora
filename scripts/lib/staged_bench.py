@@ -86,9 +86,11 @@ CHECK4_S1_SHA256 = "857f62d7ac47770d94f971cf4bae80d3078e42fd028d45465fe30bd0e2a0
 CONTROL_SHA256 = {"C0": "d0d6b49b2e92a59e1caf43b82f0359c4c0940d7960b428caadee1091ab24b879",
                   "S1": CHECK4_S1_SHA256}
 # The hum-fix batch's registered selection inputs: `--hnr-json` (speaker_hnr_all.json) and
-# `--vctk-hnr-from` (baseline_bench/speakers.json). Checks 5-7 refuse any other.
+# `--vctk-hnr-from` (baseline_bench/speakers.json) and `--s1-hnr-json`
+# (speaker_hnr_s1_rest.json). Checks 5-7 refuse any other.
 INPUT_SHA256 = {"hnr_json": "b2f15110082e9abcc4f74454f3fb6ba1f493604f0937b956483865190abddab2",
-                "vctk_hnr_from": "3bd8e2a61cdebd56dff96c7746b5418d6ee204f17b485b05fe7fb9083bd1be9f"}
+                "vctk_hnr_from": "3bd8e2a61cdebd56dff96c7746b5418d6ee204f17b485b05fe7fb9083bd1be9f",
+                "s1_hnr_json": "93a1d91eab6905a4652991c500841a509a978008a16a13c9fee7f311d620d27c"}
 F1_MAX_HNR_GAP = Fraction(1, 2)     # check 7: an S1 voice and its F1 voice, dB, inclusive
 # Each arm's audio path: 22.05 kHz + universal vocoder (stock's), or 24 kHz + ours. L is on
 # S1's path, but its round trip is of the ORIGINAL recording's 22.05 kHz copy, not
@@ -197,17 +199,21 @@ def final_epochs(arm):
 
 def check_registered_ckpts(check, digests):
     """Raise ValueError unless a hum-fix check's controls are the registered checkpoints
-    (`CONTROL_SHA256`) and its G checkpoint is not S1's (G's statistics are S1's, so the
-    load checks cannot tell them apart). `digests` is {arm: sha256 or None}; None is an arm
-    not trained yet (a dry run). Checks 1-4 pass."""
+    (`CONTROL_SHA256`) and its new arm's checkpoint (D1, G or F1) is not a copy of a control's
+    (C0's or S1's): a copy would load, pass every statistics check and compare a control with
+    itself. `digests` is {arm: sha256 or None}; None is an arm not trained yet (a dry run).
+    Checks 1-4 pass."""
     if check not in HUM_FIX_CHECKS:
         return
     for arm, want in sorted(CONTROL_SHA256.items()):
         if arm in digests and digests[arm] != want:
             raise ValueError("check %d's %s checkpoint is not the registered one (sha256 %s)."
                              % (check, arm, want))
-    if digests.get("G") is not None and digests["G"] == CONTROL_SHA256["S1"]:
-        raise ValueError("check %d's G checkpoint is S1's (sha256 %s)." % (check, digests["G"]))
+    for arm in ("D1", "G", "F1"):
+        for ctrl, want in sorted(CONTROL_SHA256.items()):
+            if digests.get(arm) is not None and digests[arm] == want:
+                raise ValueError("check %d's %s checkpoint is %s's (sha256 %s)."
+                                 % (check, arm, ctrl, want))
 
 
 def _exact(x):

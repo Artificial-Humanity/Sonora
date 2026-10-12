@@ -53,7 +53,8 @@ def test_the_registered_control_checkpoints():
 def test_the_registered_input_digests():
     assert sb.INPUT_SHA256 == {
         "hnr_json": "b2f15110082e9abcc4f74454f3fb6ba1f493604f0937b956483865190abddab2",
-        "vctk_hnr_from": "3bd8e2a61cdebd56dff96c7746b5418d6ee204f17b485b05fe7fb9083bd1be9f"}
+        "vctk_hnr_from": "3bd8e2a61cdebd56dff96c7746b5418d6ee204f17b485b05fe7fb9083bd1be9f",
+        "s1_hnr_json": "93a1d91eab6905a4652991c500841a509a978008a16a13c9fee7f311d620d27c"}
 
 
 @pytest.mark.parametrize("arm,good,bad", [
@@ -93,6 +94,16 @@ def test_a_g_checkpoint_that_is_s1s_is_refused():
     s1 = sb.CONTROL_SHA256["S1"]
     with pytest.raises(ValueError, match="G.*S1"):
         sb.check_registered_ckpts(6, {"S1": s1, "G": s1})
+
+
+@pytest.mark.parametrize("check,arm,ctrl", [
+    (5, "D1", "C0"), (5, "D1", "S1"), (6, "G", "S1"), (6, "G", "C0"),
+    (7, "F1", "S1"), (7, "F1", "C0")])
+def test_a_new_arms_checkpoint_that_is_a_controls_is_refused(check, arm, ctrl):
+    same = sb.CONTROL_SHA256[ctrl]
+    digests = {"C0": sb.CONTROL_SHA256["C0"]} if check == 5 else {"S1": sb.CONTROL_SHA256["S1"]}
+    with pytest.raises(ValueError, match="%s checkpoint is %s's" % (arm, ctrl)):
+        sb.check_registered_ckpts(check, dict(digests, **{arm: same}))
 
 
 def test_checks_1_to_4_have_no_hum_fix_pins():
@@ -301,6 +312,14 @@ def test_hum_fix_renders_need_an_explicit_salt_and_not_the_staged_default():
             rs.resolve_salt(check, "staged-check%d-v1" % check)
 
 
+def test_hum_fix_renders_refuse_any_salt_but_the_registered_one():
+    for check, other in ((5, "hum-fix-B-v1"), (6, "hum-fix-C-v1"), (7, "hum-fix-A-v1"),
+                         (5, "hum-fix-A-v2"), (6, "x"), (7, "")):
+        with pytest.raises(SystemExit, match="REFUSING.*hum-fix-%s-v1" % "ABC"[check - 5]):
+            rs.resolve_salt(check, other)
+    assert rs.resolve_salt(1, "anything") == "anything"
+
+
 def test_select_seed_defaults_to_the_registered_one_per_check():
     assert [rs.select_seed(c, None) for c in range(1, 8)] == [20261006] * 4 + [20261012] * 3
     assert rs.select_seed(6, 7) == 7
@@ -466,6 +485,49 @@ def test_select_check5_draws_vctk_voices_within_d1s_subsample(tmp_path, monkeypa
     assert "d1_train" in spec["inputs"]
 
 
+def _stand_in(tmp_path, arm, monkeypatch=None):
+    """A stand-in checkpoint for a new arm, named as registered, never a control's bytes."""
+    ck = tmp_path / "ck" / (arm + "x") / sb.FINAL_CKPT[arm]
+    ck.parent.mkdir(parents=True)
+    ck.write_bytes(("stand-in " + arm).encode())
+    return ["--ckpt", "%s=%s" % (arm, ck)]
+
+
+def test_check5_dry_run_items_equal_a_real_selects(tmp_path, monkeypatch):
+    argv = _vctk_world(tmp_path, monkeypatch, 22)
+    dry = _out(tmp_path, monkeypatch, argv, "dry.json")
+    real = _out(tmp_path, monkeypatch, argv + _stand_in(tmp_path, "D1"), "real.json", dry=False)
+    assert dry["dry_run"] is True and "dry_run" not in real and real["ckpts"]["D1"] is not None
+    assert dry["items"] == real["items"] and len(real["items"]) == 20
+
+
+def test_check6_dry_run_items_equal_a_real_selects(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 6, 24)
+    (tmp_path / "prior" / "check5.json").write_text(json.dumps({"check": 5, "items": []}))
+    dry = _out(tmp_path, monkeypatch, argv, "dry.json")
+    real = _out(tmp_path, monkeypatch, argv + _stand_in(tmp_path, "G"), "real.json", dry=False)
+    assert dry["dry_run"] is True and "dry_run" not in real and real["ckpts"]["G"] is not None
+    assert dry["items"] == real["items"] and len(real["items"]) == 20
+
+
+def test_check7_dry_run_items_equal_a_real_selects(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 7, 24, n_f1=30)   # writes a real check6 file
+    dry = _out(tmp_path, monkeypatch, argv, "dry.json")
+    real = _out(tmp_path, monkeypatch, argv + _stand_in(tmp_path, "F1"), "real.json", dry=False)
+    assert dry["dry_run"] is True and "dry_run" not in real and real["ckpts"]["F1"] is not None
+    assert dry["items"] == real["items"] and len(real["items"]) == 20
+
+
+def test_select_refuses_a_new_arm_that_is_a_copy_of_a_control(tmp_path, monkeypatch):
+    argv = _vctk_world(tmp_path, monkeypatch, 16)
+    c0 = tmp_path / "ck" / "C0" / "checkpoint_epoch=009_step=0013489.ckpt"
+    d1 = tmp_path / "ck" / "d1copy" / sb.FINAL_CKPT["D1"]
+    d1.parent.mkdir(parents=True)
+    d1.write_bytes(c0.read_bytes())
+    with pytest.raises(SystemExit, match="REFUSING.*D1 checkpoint is C0's"):
+        _out(tmp_path, monkeypatch, argv + ["--ckpt", "D1=%s" % d1], dry=False)
+
+
 def test_select_check5_excludes_heard_vctk_voices_and_spreads_twenty(tmp_path, monkeypatch):
     argv = _vctk_world(tmp_path, monkeypatch, 30, heard=("p301", "p305"))
     spec = _out(tmp_path, monkeypatch, argv)
@@ -551,12 +613,27 @@ def _libri_world(tmp_path, monkeypatch, check, n_s1, *, symbol=None, n_f1=0, f1_
     sh.write_text(json.dumps({"speakers": s1h}))
     ah.write_text(json.dumps({"speakers": dict(allh, **{"999": {"hnr": 1, "f0": 1}})}))
     _pin_input(monkeypatch, "hnr_json", str(ah))
+    _pin_input(monkeypatch, "s1_hnr_json", str(sh))
     assert arms[0] == "S1"
     if check == 7:                      # check 7 is drawn after check 6
         (tmp_path / "prior" / "check6.json").write_text(json.dumps({"check": 6, "items": []}))
     return ["select", "--check", str(check)] + ck + [
         "--s1-hnr-json", str(sh), "--hnr-json", str(ah), "--prior-optional",
         "--min-seconds", "0.5", "--max-seconds", "2", "--target-seconds", "1.0"]
+
+
+def test_the_inputs_each_hum_fix_check_must_have_registered():
+    assert rs.HUM_FIX_INPUTS == {5: ("vctk_hnr_from",), 6: ("s1_hnr_json",),
+                                 7: ("hnr_json", "s1_hnr_json")}
+
+
+@pytest.mark.parametrize("check", [6, 7])
+def test_select_refuses_an_s1_hnr_file_that_is_not_the_registered_one(tmp_path, monkeypatch, check):
+    argv = _libri_world(tmp_path, monkeypatch, check, 16, n_f1=16)
+    sh = tmp_path / "s1h.json"
+    sh.write_text(sh.read_text() + " ")             # a different file, same content
+    with pytest.raises(SystemExit, match="REFUSING.*s1-hnr-json"):
+        _out(tmp_path, monkeypatch, argv)
 
 
 def test_select_check6_takes_only_voices_with_two_symbol_bearing_clips(tmp_path, monkeypatch):
@@ -668,12 +745,25 @@ def _bench(tmp_path, check, model_sev, n=16, rt=1):
             rows.append({"item": k, "sev_a": model_sev[a], "sev_b": r})
     key = tmp_path / "k.json"
     key.write_text(json.dumps({"check": check, "items": items}))
-    (tmp_path / "t" / "verdicts").mkdir(parents=True)
-    with (tmp_path / "t" / "verdicts" / "verdicts.csv").open("w", newline="") as f:
+    _folder(tmp_path / "t", rows)
+    argv = ["--check", str(check), "--key", str(key), "--test", str(tmp_path / "t")]
+    if check in sb.HUM_FIX_CHECKS:      # the session's three folders: this one and two more
+        others = [_folder(tmp_path / n, [{"item": "item_%02d" % i, "sev_a": 2, "sev_b": 1}
+                                         for i in range(3)]) for n in ("t2", "t3")]
+        argv += ["--session-tests", str(tmp_path / "t")] + [str(o) for o in others]
+    return argv
+
+
+def _folder(path, rows):
+    """A test folder: items.json naming each row's item, and verdicts.csv with the rows."""
+    (path / "verdicts").mkdir(parents=True)
+    (path / "items.json").write_text(json.dumps(
+        {"test": path.name, "items": [{"id": r["item"], "A": "a", "B": "b"} for r in rows]}))
+    with (path / "verdicts" / "verdicts.csv").open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["item", "sev_a", "sev_b"])
         w.writeheader()
         w.writerows(rows)
-    return ["--check", str(check), "--key", str(key), "--test", str(tmp_path / "t")]
+    return path
 
 
 def test_check5_unblinds_to_shown_with_one_deciding_p(tmp_path, capsys):
@@ -703,8 +793,9 @@ def test_checks_6_and_7_unblind_to_shown(tmp_path, capsys, check, fix, text):
     r = ub.main(_bench(tmp_path, check, {"S1": 3, fix: 1}))
     out = capsys.readouterr().out
     assert r["outcome"] == "shown" and "OUTCOME: SHOWN" in out and text in out
+    shown = fix + "′" if fix == "G" else fix
     assert ("three p-values reported (S1's excess, S1 − %s, %s's excess), two of them deciding "
-            "the reading (S1's excess and S1 − %s); uncorrected" % (fix, fix, fix)) in out
+            "the reading (S1's excess and S1 − %s); uncorrected" % (shown, shown, shown)) in out
 
 
 @pytest.mark.parametrize("check,fix", [(6, "G"), (7, "F1")])
@@ -728,7 +819,7 @@ def test_an_arm_with_nothing_rated_is_invalid_not_a_crash(tmp_path, capsys, chec
     kept = [ln for ln in p.read_text().splitlines()
             if ln.startswith("item,") or key[ln.split(",")[0]]["arm"] != arm]
     p.write_text("\n".join(kept) + "\n")
-    r = ub.main(argv)
+    r = ub.main(argv + ["--session-closed"])
     out = capsys.readouterr().out
     assert r["outcome"] == "invalid" and "OUTCOME: INVALID" in out
     assert "fewer than 16 voices rated in both arms" in out
@@ -748,6 +839,81 @@ def test_the_unblind_tool_takes_checks_5_to_7_only_with_their_own_keys(tmp_path)
     argv[1] = "7"
     with pytest.raises(SystemExit, match="check 6"):
         ub.main(argv)
+
+
+# --- session-wide unblinding: checks 5-7 are read only when the whole session is rated
+
+def _unrate(path, item):
+    """Blank item's sev_b in a folder's verdicts.csv."""
+    p = path / "verdicts" / "verdicts.csv"
+    rows = list(csv.DictReader(p.open(newline="")))
+    for r in rows:
+        if r["item"] == item:
+            r["sev_b"] = ""
+    with p.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["item", "sev_a", "sev_b"])
+        w.writeheader()
+        w.writerows(rows)
+
+
+@pytest.mark.parametrize("check,fix", [(5, "D1"), (6, "G"), (7, "F1")])
+@pytest.mark.parametrize("folder", ["t", "t2", "t3"])
+def test_an_unrated_item_in_any_of_the_three_folders_refuses_the_unblinding(
+        tmp_path, capsys, check, fix, folder):
+    sev = {"C0": 1, "D1": 3} if check == 5 else {"S1": 3, fix: 1}
+    argv = _bench(tmp_path, check, sev)
+    _unrate(tmp_path / folder, "item_01")
+    with pytest.raises(SystemExit, match="REFUSING.*1 of .* items.*not fully rated.*--session-closed"):
+        ub.main(argv)
+    assert "OUTCOME" not in capsys.readouterr().out
+    r = ub.main(argv + ["--session-closed"])             # the session is closed: left out
+    assert r["outcome"] in ("shown", "not_shown", "invalid")
+    assert "OUTCOME" in capsys.readouterr().out
+
+
+def test_an_item_missing_from_the_verdicts_is_unrated(tmp_path):
+    argv = _bench(tmp_path, 6, {"S1": 3, "G": 1})
+    p = tmp_path / "t2" / "verdicts" / "verdicts.csv"
+    p.write_text("\n".join(p.read_text().splitlines()[:-1]) + "\n")      # item_02 has no row
+    with pytest.raises(SystemExit, match="REFUSING.*not fully rated"):
+        ub.main(argv)
+
+
+@pytest.mark.parametrize("check,fix", [(5, "D1"), (6, "G"), (7, "F1")])
+def test_a_fully_rated_session_unblinds_without_session_closed(tmp_path, check, fix):
+    sev = {"C0": 1, "D1": 3} if check == 5 else {"S1": 3, fix: 1}
+    assert ub.main(_bench(tmp_path, check, sev))["outcome"] == "shown"
+
+
+def test_checks_5_to_7_need_their_three_folders_and_the_one_read_is_among_them(tmp_path):
+    argv = _bench(tmp_path, 6, {"S1": 3, "G": 1})
+    i = argv.index("--session-tests")
+    with pytest.raises(SystemExit):
+        ub.main(argv[:i])                                  # no --session-tests
+    with pytest.raises(SystemExit, match="REFUSING.*--test"):
+        ub.main(argv[:i] + ["--session-tests"] + argv[i + 2:] + [argv[-1]])   # --test is not there
+
+
+def test_a_session_folder_without_items_json_is_refused(tmp_path):
+    argv = _bench(tmp_path, 6, {"S1": 3, "G": 1})
+    (tmp_path / "t3" / "items.json").unlink()
+    with pytest.raises(SystemExit, match="REFUSING.*items.json"):
+        ub.main(argv)
+
+
+def test_checks_1_to_4_take_no_session_options(tmp_path):
+    argv = _bench(tmp_path, 4, {"S1": 3, "L": 1})
+    with pytest.raises(SystemExit):
+        ub.main(argv + ["--session-closed"])
+    with pytest.raises(SystemExit):
+        ub.main(argv + ["--session-tests", str(tmp_path / "t"), "x", "y"])
+
+
+def test_check6_excess_text_names_g_prime(tmp_path, capsys):
+    ub.main(_bench(tmp_path, 6, {"S1": 3, "G": 1}))
+    out = capsys.readouterr().out
+    assert ("three p-values reported (S1's excess, S1 − G′, G′'s excess), two of them deciding "
+            "the reading (S1's excess and S1 − G′); uncorrected") in out
 
 
 # ---------------------------------------------------------------- selection order
