@@ -775,6 +775,14 @@ def test_an_unreadable_checkpoint_is_could_not_run_not_refused():
     ("/data/model-training/datasets/LibriTTS/train-clean-100_22k/1263/139804/x.wav",
      "libritts"),
     ("/data/model-training/datasets/LibriTTS/train-clean-100/1263/139804/x.wav", "libritts"),
+    # the hum-fix batch (Notes: Sonora/hum-fix-batch-preregistration.md): D1, G′, F1
+    ("data/vctk_d1/train.txt", "vctk"),
+    ("data/libritts_r_22k/train_g.txt", "libritts_r"),
+    ("data/f1_dense/train_op.txt", "libritts_r"),
+    ("/data/model-training/datasets/LibriTTS_R/train-clean-360_22k/100/121669/x.wav",
+     "libritts_r"),
+    ("/data/model-training/datasets/LibriTTS_R/train-other-500_22k/1006/135212/x.wav",
+     "libritts_r"),
 ])
 def test_the_staged_rebuild_corpora_are_declared_permissive(path, name):
     hit = wall.classify_path(path)

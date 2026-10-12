@@ -1,4 +1,4 @@
-"""Unblind one staged-rebuild check and apply its pre-registered reading.
+"""Unblind one staged-rebuild or hum-fix check (1-7) and apply its pre-registered reading.
 
 Reads the key written by `render_ear_staged.py render` and the app's verdicts, and prints
 each arm's gap (model minus round trip) with its floor, the check's contrasts, the number
@@ -7,6 +7,10 @@ of tests (uncorrected), and the outcome from `staged_bench.reading`. Exact; no r
     .venv/bin/python scripts/tools/unblind_ear_staged.py --check 1 \\
         --key /data/model-training/sonora/.keystage/staged_check1.key.json \\
         --test /data/model-training/sonora/eartest/staged_check1
+
+Checks 5-7 are one listening session over three test folders (A, B, C), and are read only when
+every item of all three is rated: name the folders with --session-tests (this check's --test
+among them). --session-closed reads them anyway, leaving out the items not fully rated.
 """
 
 import argparse
@@ -43,6 +47,27 @@ OUTCOME = {
     (4, "invalid"): ("S1's own excess is not shown, or the round-trip floors are not comparable, "
                      "or fewer than 16 voices were rated in both arms: no reading. The owner "
                      "decides; no voices remain to re-draw from."),
+    # the hum-fix batch (Notes: Sonora/hum-fix-batch-preregistration.md); arm G is its G′
+    (5, "shown"): "",
+    (5, "not_shown"): ("D1 over C0 is not shown: fewer clips per speaker is not shown to add "
+                       "hum (density is not shown to matter). D1 manipulates distinct clips per "
+                       "speaker at S1's step budget, so how often a speaker is heard is only "
+                       "weakly manipulated. Not shown is not absent."),
+    (5, "invalid"): ("The round-trip floors are not comparable (D1's within 1 point of C0's, "
+                     "both under 4), or fewer than 16 voices were rated in both arms: no "
+                     "reading. The owner decides."),
+    (6, "shown"): "",
+    (6, "not_shown"): ("S1 over G′ is not shown: the ᵻ remap is not shown to reduce the hum. "
+                       "Not shown is not absent."),
+    (6, "invalid"): ("S1's own excess is not shown, or the round-trip floors are not comparable "
+                     "(G′'s within 1 point of S1's, both under 4), or fewer than 16 voices were "
+                     "rated in both arms: no reading. The owner decides."),
+    (7, "shown"): "",
+    (7, "not_shown"): ("S1 over F1 is not shown: dense speakers are not shown to reduce the hum. "
+                       "Not shown is not absent."),
+    (7, "invalid"): ("S1's own excess is not shown, or the round-trip floors are not comparable "
+                     "(F1's within 1 point of S1's, both under 4), or fewer than 16 pairs were "
+                     "rated in both arms: no reading. The owner decides."),
 }
 SHOWN = {
     "fine_tuning": ("C0 hums more than stock: fine-tuning itself adds the hum. The cause is "
@@ -56,17 +81,97 @@ SHOWN = {
                     "Known limit: the original audio is noisier and more reverberant, and "
                     "noise in L's renders could mask hum; the floor rule guards the round "
                     "trips only."),
+    "clips_per_speaker": ("D1 hums more than C0: fewer clips per speaker adds hum. Production "
+                          "data should favour fewer speakers heard more (F1's recipe is the "
+                          "candidate)."),
+    "symbol": ("S1 hums more than G′: the remap reduces the hum. A symbol-table defect "
+               "contributes; the fix is a one-line remap in our pipeline, but it changes "
+               "Sonora's text-to-id contract, so Prosodia (which pins it) is consulted before "
+               "it lands."),
+    "dense_speakers": ("S1 hums more than F1: dense speakers reduce the hum, and training on "
+                       "them is a usable fix as it stands. Cross-voice: each pair rests on HNR "
+                       "and F0 matching, and F1 bundles density with other changes (partition, "
+                       "clip length, G2P version); each pair's partition is listed below."),
 }
 # How each check's tests are counted in the print-out.
 TESTS = {4: ("three p-values reported (S1's excess, S1 − L, L's excess), two of them "
-             "deciding the reading (S1's excess and S1 − L); uncorrected")}
+             "deciding the reading (S1's excess and S1 − L); uncorrected"),
+         5: ("three p-values reported (D1 − C0, D1's excess, C0's excess), one of them "
+             "deciding the reading (D1 − C0); uncorrected"),
+         6: ("three p-values reported (S1's excess, S1 − G′, G′'s excess), two of them "
+             "deciding the reading (S1's excess and S1 − G′); uncorrected"),
+         7: ("three p-values reported (S1's excess, S1 − F1, F1's excess), two of them "
+             "deciding the reading (S1's excess and S1 − F1); uncorrected")}
+
+
+def unrated(test_dir):
+    """(items, unrated ids) of one test folder: `items.json` names the items, and an item is
+    rated when its (last) row in verdicts/verdicts.csv holds both severities."""
+    ipath, vpath = Path(test_dir) / "items.json", Path(test_dir) / "verdicts" / "verdicts.csv"
+    if not ipath.is_file():
+        raise SystemExit("REFUSING: no %s — the session's items are not known." % ipath)
+    ids = [i["id"] for i in json.loads(ipath.read_text())["items"]]
+    done = {}
+    if vpath.is_file():
+        with vpath.open(newline="", encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                done[r["item"]] = r.get("sev_a", "") != "" and r.get("sev_b", "") != ""
+    return len(ids), [i for i in ids if not done.get(i)]
+
+
+def require_session_rated(args):
+    """Checks 5-7: refuse unless every item of the session's three folders is rated, or
+    --session-closed says the session is over (the unrated are then left out, as always)."""
+    if args.check not in sb.HUM_FIX_CHECKS:
+        if args.session_tests or args.session_closed:
+            raise SystemExit("REFUSING: --session-tests and --session-closed are for checks "
+                             "5-7.")
+        return
+    if not args.session_tests:
+        raise SystemExit("REFUSING: check %d needs --session-tests (the session's three test "
+                         "folders)." % args.check)
+    if str(Path(args.test).resolve()) not in {str(Path(d).resolve()) for d in args.session_tests}:
+        raise SystemExit("REFUSING: --test %s is not among --session-tests." % args.test)
+    resolved = [Path(d).resolve() for d in args.session_tests]
+    if len(set(resolved)) != 3:
+        raise SystemExit("REFUSING: --session-tests names the same folder more than once "
+                         "(%s); the session is three distinct folders." % ", ".join(args.session_tests))
+    checks = {}
+    for d in args.session_tests:
+        meta = Path(d) / "render_meta.json"
+        if not meta.is_file():
+            raise SystemExit("REFUSING: no %s — which check this folder was rendered for is "
+                             "not known." % meta)
+        checks[str(Path(d).resolve())] = json.loads(meta.read_text()).get("check")
+    if sorted(checks.values(), key=str) != [5, 6, 7]:
+        raise SystemExit("REFUSING: the three --session-tests folders must be the check 5, 6 "
+                         "and 7 benches, one each; their render_meta.json say %s."
+                         % ", ".join("%s=%s" % (Path(d).name, c) for d, c in checks.items()))
+    test_check = checks[str(Path(args.test).resolve())]
+    if test_check != args.check:
+        raise SystemExit("REFUSING: --test %s was rendered for check %s, not --check %d."
+                         % (args.test, test_check, args.check))
+    total, left = 0, []
+    for d in args.session_tests:
+        n, bad = unrated(d)
+        total += n
+        left += ["%s/%s" % (Path(d).name, i) for i in bad]
+    if left and not args.session_closed:
+        raise SystemExit("REFUSING: %d of %d items in the session's three folders are not fully "
+                         "rated (e.g. %s). Rate them all, or pass --session-closed to read the "
+                         "check without them." % (len(left), total, ", ".join(left[:3])))
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--check", type=int, choices=(1, 2, 3, 4), required=True)
+    ap.add_argument("--check", type=int, choices=tuple(sb.CHECKS), required=True)
     ap.add_argument("--key", required=True)
     ap.add_argument("--test", required=True)
+    ap.add_argument("--session-tests", nargs=3, metavar="DIR",
+                    help="checks 5-7: the session's three test folders, this check's among them")
+    ap.add_argument("--session-closed", action="store_true",
+                    help="checks 5-7: read the check although items are not fully rated; they "
+                         "are left out")
     args = ap.parse_args(argv)
     arms = sb.CHECKS[args.check]["arms"]
 
@@ -77,6 +182,7 @@ def main(argv=None):
     truth = key["items"]
     if {t["arm"] for t in truth.values()} != set(arms):
         raise SystemExit("REFUSING: the key's arms are not %s." % (arms,))
+    require_session_rated(args)
     vpath = Path(args.test) / "verdicts" / "verdicts.csv"
     if not vpath.is_file():
         raise SystemExit("REFUSING: no %s — nothing was judged." % vpath)
@@ -102,9 +208,9 @@ def main(argv=None):
     if rated < len(truth):
         print("⚠ %d of %d items not fully rated; they are left out.\n"
               % (len(truth) - rated, len(truth)))
-    if not all(floor.values()) and args.check == 4:
+    if not all(floor.values()) and "min_units" in sb.CHECKS[args.check]:
         # Pre-registered: fewer than 16 voices rated in both arms is INVALID, not a crash.
-        print("OUTCOME: INVALID — %s" % OUTCOME[(4, "invalid")])
+        print("OUTCOME: INVALID — %s" % OUTCOME[(args.check, "invalid")])
         print("  an arm has no rated item: fewer than 16 voices rated in both arms.")
         return {"outcome": "invalid", "shown": []}
     if not all(floor.values()):
@@ -153,7 +259,25 @@ def main(argv=None):
         print("%4d  %-20s %s" % (u, "/".join("%.2f" % hnr[u][a] for a in arms if a in hnr[u]),
                                  "  ".join("%+-6d" % gaps[a][u] if u in gaps[a] else "  .   "
                                            for a in arms)))
+    if args.check == 7:
+        print_pairs(truth)
     return r
+
+
+def print_pairs(truth):
+    """Check 7's pairs: each unit's S1 voice and F1 voice (v7 index), partition, HNR and F0.
+    HNR is partly a recording property, so a pair that crosses partitions is visible."""
+    by = {}
+    for t in truth.values():
+        by.setdefault(t["unit"], {})[t["arm"]] = t
+    print("\nPAIRS (v7 index, partition, HNR, F0)")
+    for u in sorted(by):
+        s, f = by[u].get("S1"), by[u].get("F1")
+        print("%4d  %s  |  %s" % (
+            u, "S1 v7 %d  %-16s HNR %.2f  F0 %.0f" % (s["spk"], s["partition"], s["hnr"], s["f0"])
+            if s else "S1 .",
+            "F1 v7 %d (LibriTTS %d)  %-16s HNR %.2f  F0 %.0f"
+            % (f["spk"], f["libritts_id"], f["partition"], f["hnr"], f["f0"]) if f else "F1 ."))
 
 
 if __name__ == "__main__":

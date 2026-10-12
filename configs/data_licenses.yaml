@@ -89,9 +89,12 @@ datasets:
     # re-derivation — 8-wide conditioning with the delivery block, D-L2's corrected z
     # guard, and D-M4 homograph resolution. Labels, phonemes and width change; the
     # recordings and their CC-BY-4.0 do not.
+    # `f1_dense` (the hum-fix batch's arm F1, Notes: Sonora/hum-fix-batch-preregistration.md)
+    # is again LibriTTS-R audio: train-clean-100 / -360 / other-500 speakers with at least
+    # 300 rows, at 22.05 kHz under `LibriTTS_R/<subset>_22k/` (covered by `LibriTTS_R`).
     dirs: [LibriTTS-R, libritts_r, libritts-r, libritts_r_vat, libritts_r_vat_v1,
            libritts_r_vat_v2, libritts_r_vat_v3, libritts_r_vat_v3b, libritts_r_vat_v3c,
-           libritts_r_vat_v4, libritts_r_holdout_devclean, libritts_r_22k]
+           libritts_r_vat_v4, libritts_r_holdout_devclean, libritts_r_22k, f1_dense]
     license: CC-BY-4.0
     class: permissive
   libritts:
@@ -255,7 +258,8 @@ datasets:
     # no End-Of-Central-Directory record at the tail, so `zipfile` refuses it outright. The
     # notes called it "unextracted" and the plan counted its 44 h as low-hanging fruit needing
     # only an `unzip`. It needs an 11.75 GB re-fetch first.
-    dirs: [VCTK, vctk, vctk_24k, vctk_22k]
+    # `vctk_d1` (the hum-fix batch's arm D1): filelists only, a subsample of `vctk_22k`'s rows.
+    dirs: [VCTK, vctk, vctk_24k, vctk_22k, vctk_d1]
     license: CC-BY-4.0
     class: permissive
   parler_libritts_r_annotated:

@@ -74,6 +74,35 @@ def test_only_the_tenth_epochs_step_checkpoint_counts(name, ok):
     assert sb.ten_epoch_ckpt("/x/runs/r/checkpoints/" + name) is ok
 
 
+@pytest.mark.parametrize("arm", ["R", "C0", "S1", "S2", "L"])
+@pytest.mark.parametrize("name,ok", [
+    ("checkpoint_epoch=009_step=0009209.ckpt", True),
+    ("checkpoint_epoch=025_step=0009229.ckpt", False),
+    ("last.ckpt", False),
+])
+def test_an_unregistered_arms_final_is_still_the_tenth_epochs_step(arm, name, ok):
+    assert arm not in sb.FINAL_CKPT
+    assert sb.final_ckpt(arm, "/x/checkpoints/" + name) is ok
+    assert sb.final_epochs(arm) == 10
+
+
+@pytest.mark.parametrize("name,ok", [
+    ("checkpoint_epoch=025_step=0009229.ckpt", True),
+    ("checkpoint_epoch=009_step=0003549.ckpt", False),
+    ("checkpoint_epoch=025_step=0009230.ckpt", False),
+    ("checkpoint_epoch=025.ckpt", False),
+])
+def test_d1s_final_is_its_registered_name(name, ok):
+    assert sb.final_ckpt("D1", "/x/staged_d1/runs/r/checkpoints/" + name) is ok
+    assert sb.final_epochs("D1") == 26
+
+
+def test_d1s_registered_final_is_26_epochs_of_its_subsample():
+    import staged_data as sd
+    spe = sd.steps_per_epoch(108 * sd.D1_PER_SPEAKER)
+    assert sb.FINAL_CKPT["D1"] == "checkpoint_epoch=%03d_step=%07d.ckpt" % (25, 26 * spe - 1)
+
+
 # ---------------------------------------------------------------- check 1
 
 def test_check1_go():

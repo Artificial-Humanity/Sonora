@@ -1,0 +1,28 @@
+# @package _global_
+
+# Hum-fix batch, arm F1 (Notes: Sonora/hum-fix-batch-preregistration.md): S1's recipe trained
+# only on LibriTTS-R speakers with at least 300 clips each (90 speakers, 31,287 rows). Does
+# S1's recipe hum less on dense speakers? 10 epochs x 978 = 9,780 steps.
+#
+# Launch: the compose launch must set SONORA_CKPT_EVERY_N_STEPS=978 (one checkpoint per epoch);
+# expected final checkpoint checkpoint_epoch=009_step=0009779.
+#
+# Warm start: scripts/lib/make_warmstart.py --experiment staged_f1 --donor matcha_vctk.ckpt
+#   -> /data/model-training/sonora/warmstart/staged_f1_init.ckpt (a fresh 90-row speaker
+#   table, as S1's was made)
+
+defaults:
+  - override /data: f1_dense.yaml
+
+tags: ["staged", "F1", "libritts_r", "hum"]
+
+run_name: staged_f1
+
+model:
+  use_vat: false
+
+data:
+  bucket_multiplier: 0      # July's length-blind shuffle (owner ruling, 2026-10-06)
+
+trainer:
+  max_epochs: 10

@@ -1,0 +1,12 @@
+# D1 of the hum-fix batch (Notes: Sonora/hum-fix-batch-preregistration.md): C0's data
+# (vctk_22k.yaml) with its train rows subsampled to exactly 105 per speaker, S1's median.
+# C0's val rows unchanged; stock's speaker ids, mel and statistics, as C0. Built by
+# scripts/tools/prep_staged_corpora.py d1.
+defaults:
+  - vctk
+  - _self_
+
+name: vctk_d1
+train_filelist_path: data/vctk_d1/train.txt
+valid_filelist_path: data/vctk_d1/val.txt
+cleaners: [no_cleaners]
