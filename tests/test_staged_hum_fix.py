@@ -258,3 +258,378 @@ def test_each_new_arm_is_checked_against_its_training_datas_statistics(arm, expe
     assert own["data_statistics"] == trained_on["data_statistics"]
     assert n == trained_on["n_spks"] == n_spks and use_vat is False
     assert arm in rs.NEW
+
+
+# ---------------------------------------------------------------- the select / render tool
+
+import io  # noqa: E402
+import json  # noqa: E402
+import zipfile  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import render_ear_staged as rs  # noqa: E402
+
+R24 = "/r24/"
+R22 = "/r22/"
+
+
+def test_libri_r_24k_inverts_libri_r_22k_for_every_f1_subset():
+    for s in sd.F1_SUBSETS:
+        w = "%s/%s/19/77/19_77_000000_000000.wav" % (sd.LIBRI_R_ROOT, s)
+        assert sd.libri_r_24k(sd.libri_r_22k(w)) == w
+    with pytest.raises(ValueError, match="not under"):
+        sd.libri_r_24k("%s/train-clean-100/19/77/19_77_000000_000000.wav" % sd.LIBRI_R_ROOT)
+
+
+def test_hum_fix_checks_require_the_staged_glob_and_every_default():
+    want = rs.PRIOR + [rs.ROOT + "/staged_bench/*_speakers.json"]
+    for check in (5, 6, 7):
+        assert rs.default_prior(check) == want
+        rs.require_default_prior(check, want + ["/scratch/check6_dryrun_speakers.json"])
+        with pytest.raises(SystemExit, match="check %d's --prior must hold" % check):
+            rs.require_default_prior(check, rs.PRIOR)
+
+
+def test_hum_fix_renders_need_an_explicit_salt_and_not_the_staged_default():
+    assert rs.resolve_salt(3, None) == "staged-check3-v1"
+    assert rs.resolve_salt(4, "x") == "x"
+    for check, salt in ((5, "hum-fix-A-v1"), (6, "hum-fix-B-v1"), (7, "hum-fix-C-v1")):
+        assert rs.resolve_salt(check, salt) == salt
+        with pytest.raises(SystemExit, match="--salt"):
+            rs.resolve_salt(check, None)
+        with pytest.raises(SystemExit, match="staged-check%d-v1" % check):
+            rs.resolve_salt(check, "staged-check%d-v1" % check)
+
+
+def test_select_seed_defaults_to_the_registered_one_per_check():
+    assert [rs.select_seed(c, None) for c in range(1, 8)] == [20261006] * 4 + [20261012] * 3
+    assert rs.select_seed(6, 7) == 7
+
+
+def test_g_renders_s1s_phonemes_with_its_symbol_moved_and_no_other_arm_changes():
+    assert rs.arm_phonemes("G", "pɚmˈɪɾᵻd ᵻ") == "pɚmˈɪɾᵊd ᵊ"
+    for arm in ("S1", "F1", "C0", "D1", "L"):
+        assert rs.arm_phonemes(arm, "pɚmˈɪɾᵻd") == "pɚmˈɪɾᵻd"
+
+
+def test_f1_synthesises_with_its_own_table_index_and_every_other_arm_with_the_v7_one():
+    it = {"libri": 40, "f1": {"libri": 4234, "f1_sid": 7}}
+    assert rs.voice_index(it, "F1") == 7
+    assert rs.voice_index(it, "S1") == rs.voice_index(it, "G") == 40
+
+
+def test_each_hum_fix_arm_round_trips_its_own_22k_copy():
+    w100 = sd.LIBRI_24K_ROOT + "/19/198/19_198_000000_000000.wav"
+    w500 = sd.LIBRI_R_ROOT + "/train-other-500/19/198/19_198_000000_000000.wav"
+    assert rs.rt_source_of("S1", w100) == rs.rt_source_of("G", w100) == sd.to_22k(w100)
+    assert rs.rt_source_of("F1", w500) == sd.libri_r_22k(w500)
+    assert rs.rt_source_of("D1", "p225_001") == rs.rt_source_of("C0", "p225_001") == \
+        "wav48_silence_trimmed/p225/p225_001_mic1.flac"
+
+
+def test_hum_fix_keys_record_arm_voice_source_and_round_trip_source():
+    w = sd.LIBRI_24K_ROOT + "/19/198/19_198_000000_000000.wav"
+    w5 = sd.LIBRI_R_ROOT + "/train-other-500/88/1/88_1_000000_000000.wav"
+    it = {"unit": 2, "libri": 19, "libri_hnr": 3.5, "libri_f0": 120.0,
+          "partition": "train-clean-100",
+          "f1": {"libri": 4234, "libritts_id": 88, "f1_sid": 7, "hnr": 3.6, "f0": 118.0,
+                 "partition": "train-other-500"},
+          "arms": {"S1": {"source": w}, "F1": {"source": w5}}}
+    f1 = rs.truth_entry(7, "F1", it, [("A", "F1"), ("B", "F1rt")])
+    assert (f1["spk"], f1["arm"], f1["source"], f1["hnr"]) == (4234, "F1", w5, 3.6)
+    assert f1["rt_source"] == sd.libri_r_22k(w5) and f1["f1_sid"] == 7
+    assert f1["partition"] == "train-other-500" and f1["f0"] == 118.0
+    s1 = rs.truth_entry(7, "S1", it, [("A", "S1rt"), ("B", "S1")])
+    assert (s1["spk"], s1["rt_source"], s1["partition"]) == (19, sd.to_22k(w), "train-clean-100")
+    g = rs.truth_entry(6, "G", dict(it, arms={"G": {"source": w}}), [("A", "G"), ("B", "Grt")])
+    assert g["spk"] == 19 and g["rt_source"] == sd.to_22k(w) and "f1_sid" not in g
+    v = rs.truth_entry(5, "D1", {"unit": 0, "vctk": "p225", "vctk_hnr": 4.0,
+                                 "arms": {"D1": {"source": "p225_001"}}},
+                       [("A", "D1"), ("B", "D1rt")])
+    assert v["vctk_spk"] == "p225" and "spk" not in v
+    assert v["rt_source"] == "wav48_silence_trimmed/p225/p225_001_mic1.flac"
+
+
+def test_render_refuses_a_speakers_file_whose_controls_are_not_registered():
+    s1 = sb.CONTROL_SHA256["S1"]
+    rs.require_registered_spec(6, {"ckpts": {"S1": ["/s1", s1], "G": ["/g", "g"]}})
+    with pytest.raises(SystemExit, match="REFUSING.*S1"):
+        rs.require_registered_spec(6, {"ckpts": {"S1": ["/s1", "x"], "G": ["/g", "g"]}})
+    with pytest.raises(SystemExit, match="REFUSING.*G"):
+        rs.require_registered_spec(6, {"ckpts": {"S1": ["/s1", s1], "G": ["/g", s1]}})
+    rs.require_registered_spec(3, {"ckpts": {"S1": ["/s1", "x"]}})
+
+
+# --- synthetic worlds for `select --check 5/6/7`
+
+def _wav(path, seconds, sr=24000):
+    import numpy as np
+    import soundfile as sf
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(path), np.zeros(int(sr * seconds)), sr, "PCM_16")
+
+
+def _pins(tmp_path, monkeypatch, arms):
+    """Stand-in checkpoints for the given arms (registered names), the controls' digests
+    pinned to them, and an empty prior. -> ([--ckpt args], {arm: path})."""
+    names = {"C0": "checkpoint_epoch=009_step=0013489.ckpt", "S1": "checkpoint_epoch=009_step=0009209.ckpt",
+             "D1": sb.FINAL_CKPT["D1"], "G": sb.FINAL_CKPT["G"], "F1": sb.FINAL_CKPT["F1"]}
+    out, paths = [], {}
+    for a in arms:
+        ck = tmp_path / "ck" / a / names[a]
+        ck.parent.mkdir(parents=True)
+        ck.write_bytes(a.encode())
+        out += ["--ckpt", "%s=%s" % (a, ck)]
+        paths[a] = ck
+    monkeypatch.setattr(rs.sb, "CONTROL_SHA256",
+                        {a: rs.sha256(str(paths[a])) if a in paths else "-" for a in ("C0", "S1")})
+    (tmp_path / "prior").mkdir()
+    (tmp_path / "prior" / "p.json").write_text(json.dumps({"items": []}))
+    prior = [str(tmp_path / "prior" / "*.json")]
+    monkeypatch.setattr(rs, "default_prior", lambda check: prior)
+    monkeypatch.setattr(rs, "ROOT", str(tmp_path / "root"))
+    monkeypatch.setattr(rs, "DATA", str(tmp_path / "data"))
+    return out, paths
+
+
+def _pin_input(monkeypatch, name, path):
+    monkeypatch.setattr(rs.sb, "INPUT_SHA256", dict(rs.sb.INPUT_SHA256, **{name: rs.sha256(path)}))
+
+
+def _vctk_world(tmp_path, monkeypatch, n_voices, *, clips=3, in_d1=None, heard=()):
+    """VCTK voices p301.. with `clips` 1 s mic1 recordings each in a zip, the VITS raw and
+    cleaned filelists, D1's train filelist (rows `in_d1(voice, k)` is true for; default all)
+    and an HNR file. Returns argv for `select --check 5`."""
+    import numpy as np
+    import soundfile as sf
+    zpath = tmp_path / "vctk.zip"
+    raw, cleaned, d1, hnr = [], [], [], {}
+    with zipfile.ZipFile(zpath, "w") as z:
+        for i in range(n_voices):
+            spk = "p%d" % (301 + i)
+            hnr[spk] = 2.0 + i / 10
+            for k in range(clips):
+                utt = "%s_%03d" % (spk, k)
+                b = io.BytesIO()
+                sf.write(b, np.zeros(48000), 48000, format="FLAC")
+                z.writestr(rs.rfs.vctk_path(utt), b.getvalue())
+                raw.append("DUMMY/%s/%s.wav|%d|Text %d." % (spk, utt, i, k))
+                ph = "tˈɛkst %s." % "abcdefgh"[k]
+                cleaned.append("DUMMY/%s/%s.wav|%d|%s" % (spk, utt, i, ph))
+                if in_d1 is None or in_d1(spk, k):
+                    d1.append("%s/%s/%s.wav|%d|%s" % (sd.VCTK_22K_ROOT, spk, utt, i,
+                                                      sd.upstream_as_ours(ph)))
+    for name, lines in (("raw.txt", raw), ("cleaned.txt", cleaned)):
+        (tmp_path / name).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (tmp_path / "data" / "vctk_d1").mkdir(parents=True)
+    (tmp_path / "data" / "vctk_d1" / "train.txt").write_text("\n".join(d1) + "\n",
+                                                             encoding="utf-8")
+    vh = tmp_path / "vh.json"
+    vh.write_text(json.dumps({"vctk_hnr": dict(hnr, p999=1.0)}))
+    ck, _ = _pins(tmp_path, monkeypatch, ("C0",))
+    _pin_input(monkeypatch, "vctk_hnr_from", str(vh))
+    if heard:
+        (tmp_path / "prior" / "p.json").write_text(
+            json.dumps({"items": [{"vctk": h} for h in heard]}))
+    return ["select", "--check", "5"] + ck + [
+        "--vctk-zip", str(zpath), "--vctk-filelist", str(tmp_path / "raw.txt"),
+        "--vctk-cleaned", str(tmp_path / "cleaned.txt"), "--vctk-hnr-from", str(vh),
+        "--prior-optional", "--min-seconds", "0.5", "--max-seconds", "2",
+        "--target-seconds", "1.0"]
+
+
+def _run(monkeypatch, argv):
+    monkeypatch.setattr("sys.argv", ["render_ear_staged.py"] + argv)
+    rs.main()
+
+
+def _out(tmp_path, monkeypatch, argv, name="speakers.json", dry=True):
+    out = tmp_path / "scratch" / name
+    _run(monkeypatch, argv + (["--dry-run"] if dry else []) + ["--out-speakers", str(out)])
+    return json.loads(out.read_text())
+
+
+def test_select_check5_draws_vctk_voices_within_d1s_subsample(tmp_path, monkeypatch):
+    # p301 has one D1 clip only; p302's clip 0 is outside D1 (two left: eligible)
+    def in_d1(spk, k):
+        return not (spk == "p301" and k > 0) and not (spk == "p302" and k == 0)
+    spec = _out(tmp_path, monkeypatch, _vctk_world(tmp_path, monkeypatch, 19, in_d1=in_d1))
+    assert spec["check"] == 5 and spec["dry_run"] is True and spec["eligible"] == 18
+    assert spec["ckpts"]["D1"] is None and spec["ckpts"]["C0"][1] == rs.sb.CONTROL_SHA256["C0"]
+    voices = [it["vctk"] for it in spec["items"]]
+    assert voices == ["p%d" % i for i in range(302, 320)]           # all 18, HNR order
+    p302 = spec["items"][0]["arms"]
+    assert {p302["C0"]["source"], p302["D1"]["source"]} == {"p302_001", "p302_002"}
+    assert set(p302["C0"]) == {"source", "seconds", "sid", "phonemes", "text"}
+    assert p302["C0"]["phonemes"].startswith("tˈɛkst") and p302["C0"]["sid"] == 1
+    assert spec["inputs"]["vctk_hnr_from"][1] == rs.sha256(str(tmp_path / "vh.json"))
+    assert "d1_train" in spec["inputs"]
+
+
+def test_select_check5_excludes_heard_vctk_voices_and_spreads_twenty(tmp_path, monkeypatch):
+    argv = _vctk_world(tmp_path, monkeypatch, 30, heard=("p301", "p305"))
+    spec = _out(tmp_path, monkeypatch, argv)
+    assert spec["eligible"] == 28 and len(spec["items"]) == 20
+    pool = {"p%d" % (301 + i): 2.0 + i / 10 for i in range(30)}
+    del pool["p301"], pool["p305"]
+    assert [it["vctk"] for it in spec["items"]] == rs.lb.spread(pool, 20)
+
+
+def test_select_check5_with_fifteen_eligible_voices_is_refused(tmp_path, monkeypatch):
+    with pytest.raises(SystemExit, match="15 eligible"):
+        _out(tmp_path, monkeypatch, _vctk_world(tmp_path, monkeypatch, 15))
+
+
+def test_select_check5_refuses_an_unregistered_c0(tmp_path, monkeypatch):
+    argv = _vctk_world(tmp_path, monkeypatch, 16)
+    monkeypatch.setattr(rs.sb, "CONTROL_SHA256", {"C0": "x", "S1": "y"})
+    with pytest.raises(SystemExit, match="C0"):
+        _out(tmp_path, monkeypatch, argv)
+
+
+def test_select_check5_refuses_an_unregistered_hnr_input(tmp_path, monkeypatch):
+    argv = _vctk_world(tmp_path, monkeypatch, 16)
+    monkeypatch.setattr(rs.sb, "INPUT_SHA256", dict(rs.sb.INPUT_SHA256, vctk_hnr_from="x"))
+    with pytest.raises(SystemExit, match="vctk-hnr-from"):
+        _out(tmp_path, monkeypatch, argv)
+
+
+def test_select_check5_refuses_a_d1_row_that_does_not_match_the_vits_filelists(tmp_path, monkeypatch):
+    argv = _vctk_world(tmp_path, monkeypatch, 16)
+    p = tmp_path / "data" / "vctk_d1" / "train.txt"
+    p.write_text(p.read_text(encoding="utf-8").replace("|0|", "|5|", 1), encoding="utf-8")
+    with pytest.raises(SystemExit, match="D1"):
+        _out(tmp_path, monkeypatch, argv)
+
+
+def _libri_world(tmp_path, monkeypatch, check, n_s1, *, symbol=None, n_f1=0, f1_hnr=None,
+                 f1_f0=None, g_bad=False):
+    """S1 voices 1..n_s1 (v7 = S1 index = LibriTTS id), each with 3 one-second train
+    recordings; `symbol(spk, k)` says whether recording k carries ᵻ (default: all). F1 voices
+    j = 0..n_f1-1: v7 index 1000+j, LibriTTS id 5000+j, F1 table index j, train-other-500,
+    3 recordings each. HNR: S1 voice s at 2 + s/10; F1 voice j at `f1_hnr(j)` (default the
+    same as S1 voice j+1). Returns argv for `select --check <check>`."""
+    base = str(tmp_path / "LibriTTS_R")
+    rows, s1, g, f1 = {}, {}, {}, {}
+    s1h, allh = {}, {}
+    for s in range(1, n_s1 + 1):
+        s1h[str(s)] = {"hnr": round(2 + s / 10, 3), "f0": 100.0 + s,
+                       "partition": "train-clean-100"}
+        for k in range(3):
+            w = "%s%strain-clean-100/%d/77/%d_77_%06d_000000.wav" % (base, R24, s, s, k)
+            _wav(w, 1.0)
+            ph = "pɚmˈɪɾᵻd %d" % k if (symbol is None or symbol(s, k)) else "pɚmˈɪt %d" % k
+            rows[w] = (s, ph)
+            s1[w.replace(R24, R22)] = (s, ph)
+            g[w.replace(R24, R22)] = (s, ph.replace("ᵻ", "ᵊ" if not g_bad else "ᵻ"))
+    table = {"n_spks": n_f1, "libritts_id_to_index": {}, "v7_index": {}}
+    for j in range(n_f1):
+        lid, v = 5000 + j, 1000 + j
+        table["libritts_id_to_index"][str(lid)] = j
+        table["v7_index"][str(lid)] = v
+        allh[str(v)] = {"hnr": f1_hnr(j) if f1_hnr else round(2 + (j + 1) / 10, 3),
+                        "f0": f1_f0(j) if f1_f0 else 100.0 + j + 1,
+                        "partition": "train-other-500"}
+        for k in range(3):
+            w = "%s%strain-other-500/%d/77/%d_77_%06d_000000.wav" % (base, R24, lid, lid, k)
+            _wav(w, 1.0)
+            f1[w.replace(R24, R22)] = (j, "fˈɛn %d" % k)
+    tables = {("libritts_r_vat", "train_op.txt"): rows, ("libritts_r_22k", "train_op.txt"): s1,
+              ("libritts_r_22k", "train_g.txt"): g, ("f1_dense", "train_op.txt"): f1}
+    monkeypatch.setattr(rs, "corpus_rows", lambda corpus, name="train_op.txt": tables[(corpus, name)])
+    for corpus, name in tables:                 # select records each filelist's sha256
+        (tmp_path / "data" / corpus).mkdir(parents=True, exist_ok=True)
+        (tmp_path / "data" / corpus / name).write_text(corpus + name)
+    monkeypatch.setattr(rs.sd, "to_22k", lambda w: w.replace(R24, R22))
+    monkeypatch.setattr(rs.sd, "libri_r_22k", lambda w: w.replace(R24, R22))
+    monkeypatch.setattr(rs.sd, "libri_r_24k", lambda w: w.replace(R22, R24))
+    arms = sb.CHECKS[check]["arms"]
+    ck, _ = _pins(tmp_path, monkeypatch, ("S1",))
+    (tmp_path / "data" / "f1_dense").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "data" / "f1_dense" / "speakers.json").write_text(json.dumps(table))
+    sh, ah = tmp_path / "s1h.json", tmp_path / "allh.json"
+    sh.write_text(json.dumps({"speakers": s1h}))
+    ah.write_text(json.dumps({"speakers": dict(allh, **{"999": {"hnr": 1, "f0": 1}})}))
+    _pin_input(monkeypatch, "hnr_json", str(ah))
+    assert arms[0] == "S1"
+    return ["select", "--check", str(check)] + ck + [
+        "--s1-hnr-json", str(sh), "--hnr-json", str(ah), "--prior-optional",
+        "--min-seconds", "0.5", "--max-seconds", "2", "--target-seconds", "1.0"]
+
+
+def test_select_check6_takes_only_voices_with_two_symbol_bearing_clips(tmp_path, monkeypatch):
+    # voice 1: one ᵻ clip; voice 2: two
+    argv = _libri_world(tmp_path, monkeypatch, 6, 18,
+                        symbol=lambda s, k: not (s == 1 and k > 0) and not (s == 2 and k == 0))
+    spec = _out(tmp_path, monkeypatch, argv)
+    assert spec["eligible"] == 17 and [it["libri"] for it in spec["items"]] == list(range(2, 19))
+    u = spec["items"][0]
+    assert set(u["arms"]) == {"S1", "G"} and u["arms"]["S1"]["source"] != u["arms"]["G"]["source"]
+    assert all("ᵻ" in a["phonemes"] for it in spec["items"] for a in it["arms"].values())
+    assert u["libri_hnr"] == 2.2 and u["partition"] == "train-clean-100" and u["libri_f0"] == 102.0
+    assert spec["inputs"]["s1_hnr_json"][1] == rs.sha256(str(tmp_path / "s1h.json"))
+    assert spec["ckpts"]["G"] is None
+
+
+def test_select_check6_refuses_a_g_row_that_is_not_s1s_with_the_symbol_moved(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 6, 16, g_bad=True)
+    with pytest.raises(SystemExit, match="G"):
+        _out(tmp_path, monkeypatch, argv)
+
+
+def test_select_check7_pairs_s1_voices_with_f1_voices_by_hnr_and_f0(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 7, 18, n_f1=20)
+    spec = _out(tmp_path, monkeypatch, argv)
+    assert spec["eligible"] == 18 and spec["f1_eligible"] == 20 and len(spec["items"]) == 18
+    for it in spec["items"]:
+        s, f = it["libri"], it["f1"]
+        assert f["libri"] == 1000 + s - 1 and f["libritts_id"] == 5000 + s - 1
+        assert f["f1_sid"] == s - 1 and f["partition"] == "train-other-500"
+        assert "/train-other-500/%d/" % f["libritts_id"] in it["arms"]["F1"]["source"]
+        assert it["arms"]["F1"]["row"] == it["arms"]["F1"]["source"].replace(R24, R22)
+        assert it["arms"]["F1"]["phonemes"].startswith("fˈɛn")
+        assert "/train-clean-100/%d/" % s in it["arms"]["S1"]["source"]
+    assert sb.heard_libri([spec]) == set(range(1, 19)) | set(range(1000, 1018))
+
+
+def test_select_check7_skips_an_s1_voice_without_a_candidate(tmp_path, monkeypatch):
+    # F1 voice 0 (HNR 2.1) is moved out of every window: S1 voice 1 (HNR 2.1) takes the next
+    # nearest F0 within 0.5 dB, and so on up; the last S1 voice is left without a partner.
+    argv = _libri_world(tmp_path, monkeypatch, 7, 17, n_f1=17,
+                        f1_hnr=lambda j: 9.0 if j == 0 else round(2 + (j + 1) / 10, 3))
+    spec = _out(tmp_path, monkeypatch, argv)
+    assert len(spec["items"]) == 16
+    assert spec["unpaired"] == [17]
+    assert [it["unit"] for it in spec["items"]] == list(range(16))
+
+
+def test_select_check7_with_fewer_than_sixteen_pairs_is_refused(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 7, 16, n_f1=15,
+                        f1_hnr=lambda j: round(2 + (j + 1) / 10, 3))
+    with pytest.raises(SystemExit, match="15 pairs"):
+        _out(tmp_path, monkeypatch, argv)
+
+
+def test_select_check7_excludes_check6s_voices_given_as_an_extra_prior(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 7, 20, n_f1=24)
+    b = tmp_path / "scratch" / "check6_dryrun_speakers.json"
+    b.parent.mkdir()
+    b.write_text(json.dumps({"check": 6, "dry_run": True,
+                             "items": [{"unit": 0, "libri": 3}, {"unit": 1, "libri": 4}]}))
+    spec = _out(tmp_path, monkeypatch, argv + ["--prior", str(tmp_path / "prior" / "*.json"),
+                                              str(b)])
+    assert not {3, 4} & {it["libri"] for it in spec["items"]} and spec["eligible"] == 18
+
+
+def test_select_check7_dry_run_is_reproducible(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 7, 22, n_f1=30)
+    a = _out(tmp_path, monkeypatch, argv, "a.json")
+    b = _out(tmp_path, monkeypatch, argv, "b.json")
+    assert a["items"] == b["items"] and a["rule"] == b["rule"]
+
+
+def test_select_check7_refuses_an_unregistered_s1_checkpoint(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 7, 16, n_f1=16)
+    monkeypatch.setattr(rs.sb, "CONTROL_SHA256", {"C0": "x", "S1": "y"})
+    with pytest.raises(SystemExit, match="S1"):
+        _out(tmp_path, monkeypatch, argv)

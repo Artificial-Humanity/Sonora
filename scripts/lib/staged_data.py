@@ -241,6 +241,16 @@ def libri_r_22k(wav24):
     raise ValueError("not under %s/{%s}: %s" % (LIBRI_R_ROOT, ",".join(F1_SUBSETS), wav24))
 
 
+def libri_r_24k(wav22):
+    """The inverse of `libri_r_22k`: a `<subset>_22k/` copy -> its 24 kHz LibriTTS-R recording
+    (the file the bench measures a clip's length on). Any other root is refused."""
+    for s in F1_SUBSETS:
+        src = "%s/%s_22k" % (LIBRI_R_ROOT, s)
+        if wav22.startswith(src + "/"):
+            return _rebase(wav22, src, "%s/%s" % (LIBRI_R_ROOT, s))
+    raise ValueError("not under %s/{%s}_22k: %s" % (LIBRI_R_ROOT, ",".join(F1_SUBSETS), wav22))
+
+
 def libritts_id(wav):
     """`.../<subset>/<speaker>/<chapter>/<speaker>_<chapter>_....wav` -> the speaker id. The
     directory must agree with the file name."""
