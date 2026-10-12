@@ -281,6 +281,22 @@ def require_registered_spec(check, spec):
         raise SystemExit("REFUSING: %s" % e)
 
 
+def require_drawn_before(check, docs, dry_run):
+    """The hum-fix checks are selected in order A, B, C, each excluded by the next. The
+    required glob cannot tell whether the previous check's file is there (checks 1-4 already
+    match it), so: check 7 needs a check-6 speakers file among the priors (a dry run may use
+    check 6's dry run, as registered; a real selection may not), and a real check 6 needs
+    check 5's. Check 6's dry run takes no check-5 file (the registered pre-flight does not)."""
+    want = {6: 5, 7: 6}.get(check)
+    if want is None or (check == 6 and dry_run):
+        return
+    if not any(isinstance(d, dict) and d.get("check") == want and (dry_run or not d.get("dry_run"))
+               for d in docs):
+        raise SystemExit("REFUSING: check %d is selected after check %d, and no %scheck-%d "
+                         "speakers file is among the priors." % (check, want,
+                                                                 "" if dry_run else "real ", want))
+
+
 def require_registered_inputs(args):
     """Checks 5-7 read the registered HNR inputs (`staged_bench.INPUT_SHA256`)."""
     for name in HUM_FIX_INPUTS[args.check]:
@@ -416,6 +432,7 @@ def select(args):
     docs = load_prior(args.prior, args.prior_optional, out_path)
     vheard, lheard = fs.heard_vctk(docs), sb.heard_libri(docs)
     if args.check in sb.HUM_FIX_CHECKS:
+        require_drawn_before(args.check, docs, args.dry_run)
         return select_hum_fix(args, c, ckpts, rng, vheard, lheard, out_path)
 
     rows = corpus_rows("libritts_r_vat")

@@ -552,6 +552,8 @@ def _libri_world(tmp_path, monkeypatch, check, n_s1, *, symbol=None, n_f1=0, f1_
     ah.write_text(json.dumps({"speakers": dict(allh, **{"999": {"hnr": 1, "f0": 1}})}))
     _pin_input(monkeypatch, "hnr_json", str(ah))
     assert arms[0] == "S1"
+    if check == 7:                      # check 7 is drawn after check 6
+        (tmp_path / "prior" / "check6.json").write_text(json.dumps({"check": 6, "items": []}))
     return ["select", "--check", str(check)] + ck + [
         "--s1-hnr-json", str(sh), "--hnr-json", str(ah), "--prior-optional",
         "--min-seconds", "0.5", "--max-seconds", "2", "--target-seconds", "1.0"]
@@ -746,3 +748,42 @@ def test_the_unblind_tool_takes_checks_5_to_7_only_with_their_own_keys(tmp_path)
     argv[1] = "7"
     with pytest.raises(SystemExit, match="check 6"):
         ub.main(argv)
+
+
+# ---------------------------------------------------------------- selection order
+
+def test_check7_refuses_without_check6s_speakers_file_among_the_priors(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 7, 16, n_f1=16)
+    (tmp_path / "prior" / "check6.json").unlink()
+    with pytest.raises(SystemExit, match="check 6"):
+        _out(tmp_path, monkeypatch, argv)
+
+
+def test_a_real_check7_selection_does_not_accept_check6s_dry_run(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 7, 16, n_f1=16)
+    (tmp_path / "prior" / "check6.json").write_text(
+        json.dumps({"check": 6, "dry_run": True, "items": []}))
+    _out(tmp_path, monkeypatch, argv)                           # a dry run may use it
+    f1 = tmp_path / "ck" / "F1x" / sb.FINAL_CKPT["F1"]
+    f1.parent.mkdir(parents=True)
+    f1.write_bytes(b"f1")
+    with pytest.raises(SystemExit, match="check 6"):
+        _out(tmp_path, monkeypatch, argv + ["--ckpt", "F1=%s" % f1], "real.json", dry=False)
+
+
+def test_a_real_check6_selection_needs_check5s_file_and_its_dry_run_does_not(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 6, 16)
+    _out(tmp_path, monkeypatch, argv)
+    g = tmp_path / "ck" / "Gx" / sb.FINAL_CKPT["G"]
+    g.parent.mkdir(parents=True)
+    g.write_bytes(b"g")
+    real = argv + ["--ckpt", "G=%s" % g]
+    with pytest.raises(SystemExit, match="check 5"):
+        _out(tmp_path, monkeypatch, real, "real.json", dry=False)
+    (tmp_path / "prior" / "check5.json").write_text(json.dumps({"check": 5, "items": []}))
+    assert len(_out(tmp_path, monkeypatch, real, "real.json", dry=False)["items"]) == 16
+
+
+def test_check5_needs_no_earlier_hum_fix_file(tmp_path, monkeypatch):
+    spec = _out(tmp_path, monkeypatch, _vctk_world(tmp_path, monkeypatch, 16))
+    assert len(spec["items"]) == 16
