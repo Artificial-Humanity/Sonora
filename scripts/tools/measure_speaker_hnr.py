@@ -230,6 +230,9 @@ def main():
 
     doc = {"corpus": args.corpus, "split": args.split, "fmin": args.fmin,
            "fmax": args.fmax, "min_rows": args.min_rows,
+           "rms_floor": args.rms_floor, "periodicity": args.periodicity,
+           "dataset": args.dataset, "filelist": str(fp), "seed": args.seed,
+           "speakers_sampled": args.speakers_sampled,
            "clips_per_speaker": args.clips_per_speaker, "skipped": skipped,
            "median_f0": mf, "median_hnr": mh,
            "speakers": {str(k): v for k, v in out.items()}}

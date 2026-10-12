@@ -93,3 +93,16 @@ def test_without_speakers_from_the_output_does_not_name_a_list(tmp_path, monkeyp
     _run(monkeypatch, ["--corpus", str(c), "--min-rows", "1", "--json", str(out)])
     j = json.loads(out.read_text())
     assert sorted(j["speakers"]) == ["3", "5"] and "speakers_from" not in j
+
+
+def test_the_output_records_every_option_that_defines_the_measurement(tmp_path, monkeypatch):
+    c = _corpus(tmp_path, {3: 2, 5: 2})
+    out = tmp_path / "o.json"
+    _run(monkeypatch, ["--corpus", str(c), "--min-rows", "1", "--rms-floor", "0.02",
+                       "--periodicity", "0.4", "--seed", "99", "--dataset", "LibriTTS_R",
+                       "--speakers-sampled", "7", "--json", str(out)])
+    j = json.loads(out.read_text())
+    assert j["rms_floor"] == 0.02 and j["periodicity"] == 0.4
+    assert j["seed"] == 99 and j["dataset"] == "LibriTTS_R" and j["speakers_sampled"] == 7
+    assert j["filelist"] == str(c / "train_op.txt")
+    assert "speakers_from" not in j       # seed is top-level now, not only under a list

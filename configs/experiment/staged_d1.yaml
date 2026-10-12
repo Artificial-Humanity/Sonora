@@ -5,6 +5,10 @@
 # Matched to S1 in optimizer steps, not epochs: 26 epochs x 355 = 9,230 steps; final
 # checkpoint checkpoint_epoch=025_step=0009229.
 #
+# Launch: the compose launch must set SONORA_CKPT_EVERY_N_STEPS=355 (one checkpoint per epoch,
+# so the final one carries that name); expected final checkpoint
+# checkpoint_epoch=025_step=0009229.
+#
 # Warm start: /data/model-training/sonora/warmstart/staged_c0_init.ckpt, C0's own init file,
 # byte for byte (sha256 30fadd35e6cdff441b413e3a2f7657e033d53eadf63313f2fddfbcc4641c552d);
 # no new make_warmstart output.

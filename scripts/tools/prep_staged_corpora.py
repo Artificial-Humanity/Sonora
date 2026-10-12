@@ -266,7 +266,8 @@ def f1(args):
     S1's train filelist and the derived our-G2P train-clean-360 / train-other-500 filelists
     (their lengths re-filtered from `measures.jsonl`), re-indexed into a table of its own.
     Val: those speakers' rows in the same filelists' val splits, filtered the same way.
-    Refuses before writing anything if the counts are not the registered ones."""
+    Refuses before writing anything if the counts are not the registered ones. The audio
+    copies are made first and the filelists, speaker table and provenance last."""
     sources = [("libritts_r_vat", None),                        # S1's rows (1-16 s already)
                ("_derived_train_clean_360", "measures.jsonl"),
                ("_derived_train_other_500", "measures.jsonl")]
@@ -315,12 +316,14 @@ def f1(args):
                          "owner decides." % (got, F1_EXPECT))
     out = Path(DATA) / "f1_dense"
     mkdir(out)
-    for split, ls in lines.items():
-        (out / ("%s_op.txt" % split)).write_text("\n".join(ls) + "\n", encoding="utf-8")
-    (out / "speakers.json").write_text(json.dumps(table, indent=1))
     jobs = [l.split("|", 1)[0] for s in ("train", "val") for l in kept[s]]
     with ProcessPoolExecutor(args.workers) as ex:
         res = list(ex.map(_f1_job, jobs, chunksize=64))
+    # The filelists and the speaker table come AFTER the audio: a crash mid-resample then
+    # leaves no filelist pointing at audio that is not there.
+    for split, ls in lines.items():
+        (out / ("%s_op.txt" % split)).write_text("\n".join(ls) + "\n", encoding="utf-8")
+    (out / "speakers.json").write_text(json.dumps(table, indent=1))
     report.update({
         "rows": {"train": got["train"], "val": got["val"]}, "speakers": got["speakers"],
         "rows_by_source": {s: dict(Counter(spk_source[spk_of(l)] for l in kept[s]))
