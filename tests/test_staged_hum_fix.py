@@ -633,3 +633,116 @@ def test_select_check7_refuses_an_unregistered_s1_checkpoint(tmp_path, monkeypat
     monkeypatch.setattr(rs.sb, "CONTROL_SHA256", {"C0": "x", "S1": "y"})
     with pytest.raises(SystemExit, match="S1"):
         _out(tmp_path, monkeypatch, argv)
+
+
+# ---------------------------------------------------------------- unblind
+
+import csv  # noqa: E402
+
+import unblind_ear_staged as ub  # noqa: E402
+
+
+def _bench(tmp_path, check, model_sev, n=16, rt=1):
+    """A key + verdicts: arm `a` rated model_sev[a] over a round trip of rt[a] (int or dict)."""
+    arms = sb.CHECKS[check]["arms"]
+    items, rows, i = {}, [], 0
+    for u in range(n):
+        for a in arms:
+            k = "item_%02d" % i
+            i += 1
+            r = rt[a] if isinstance(rt, dict) else rt
+            t = {"arm": a, "unit": u, "hnr": 3.0 + u / 10, "A_label": a, "B_label": a + "rt",
+                 "source": "x", "rt_source": "y"}
+            if check == 7:
+                t.update(spk=(40 + u if a == "S1" else 4000 + u), f0=110.0 + u,
+                         partition="train-clean-100" if a == "S1" else "train-other-500")
+                if a == "F1":
+                    t.update(f1_sid=u, libritts_id=5000 + u)
+            elif check == 5:
+                t["vctk_spk"] = "p%d" % (300 + u)
+            else:
+                t["spk"] = 40 + u
+            items[k] = t
+            rows.append({"item": k, "sev_a": model_sev[a], "sev_b": r})
+    key = tmp_path / "k.json"
+    key.write_text(json.dumps({"check": check, "items": items}))
+    (tmp_path / "t" / "verdicts").mkdir(parents=True)
+    with (tmp_path / "t" / "verdicts" / "verdicts.csv").open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["item", "sev_a", "sev_b"])
+        w.writeheader()
+        w.writerows(rows)
+    return ["--check", str(check), "--key", str(key), "--test", str(tmp_path / "t")]
+
+
+def test_check5_unblinds_to_shown_with_one_deciding_p(tmp_path, capsys):
+    r = ub.main(_bench(tmp_path, 5, {"C0": 1, "D1": 3}))
+    out = capsys.readouterr().out
+    assert r["outcome"] == "shown" and r["shown"] == ["clips_per_speaker"]
+    assert "OUTCOME: SHOWN" in out and "fewer clips per speaker adds hum" in out
+    assert ("three p-values reported (D1 − C0, D1's excess, C0's excess), one of them deciding "
+            "the reading (D1 − C0); uncorrected") in out
+    assert "D1-C0" in out
+
+
+def test_check5_not_shown_is_not_absent(tmp_path, capsys):
+    r = ub.main(_bench(tmp_path, 5, {"C0": 2, "D1": 2}))
+    out = capsys.readouterr().out
+    assert r["outcome"] == "not_shown" and "Not shown is not absent" in out
+
+
+def test_check5_floors_are_c0s(tmp_path, capsys):
+    r = ub.main(_bench(tmp_path, 5, {"C0": 3, "D1": 4}, rt={"C0": 0, "D1": 1}))
+    assert r["outcome"] == "invalid" and "within 1 point of C0's" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("check,fix,text", [
+    (6, "G", "the remap reduces the hum"), (7, "F1", "dense speakers reduce the hum")])
+def test_checks_6_and_7_unblind_to_shown(tmp_path, capsys, check, fix, text):
+    r = ub.main(_bench(tmp_path, check, {"S1": 3, fix: 1}))
+    out = capsys.readouterr().out
+    assert r["outcome"] == "shown" and "OUTCOME: SHOWN" in out and text in out
+    assert ("three p-values reported (S1's excess, S1 − %s, %s's excess), two of them deciding "
+            "the reading (S1's excess and S1 − %s); uncorrected" % (fix, fix, fix)) in out
+
+
+@pytest.mark.parametrize("check,fix", [(6, "G"), (7, "F1")])
+def test_checks_6_and_7_invalid_without_s1s_excess(tmp_path, capsys, check, fix):
+    r = ub.main(_bench(tmp_path, check, {"S1": 1, fix: 0}))
+    out = capsys.readouterr().out
+    assert r["outcome"] == "invalid" and "no reading" in out and "S1's own excess" in out
+
+
+@pytest.mark.parametrize("check,fix", [(5, "D1"), (6, "G"), (7, "F1")])
+def test_fifteen_voices_rated_in_both_arms_is_invalid(tmp_path, check, fix):
+    sev = {"C0": 1, "D1": 3} if check == 5 else {"S1": 3, fix: 1}
+    assert ub.main(_bench(tmp_path, check, sev, n=15))["outcome"] == "invalid"
+
+
+@pytest.mark.parametrize("check,arm", [(5, "D1"), (6, "G"), (7, "F1")])
+def test_an_arm_with_nothing_rated_is_invalid_not_a_crash(tmp_path, capsys, check, arm):
+    argv = _bench(tmp_path, check, {"C0": 1, "D1": 3} if check == 5 else {"S1": 3, arm: 1})
+    p = tmp_path / "t" / "verdicts" / "verdicts.csv"
+    key = json.loads((tmp_path / "k.json").read_text())["items"]
+    kept = [ln for ln in p.read_text().splitlines()
+            if ln.startswith("item,") or key[ln.split(",")[0]]["arm"] != arm]
+    p.write_text("\n".join(kept) + "\n")
+    r = ub.main(argv)
+    out = capsys.readouterr().out
+    assert r["outcome"] == "invalid" and "OUTCOME: INVALID" in out
+    assert "fewer than 16 voices rated in both arms" in out
+
+
+def test_check7_prints_each_pairs_partition(tmp_path, capsys):
+    ub.main(_bench(tmp_path, 7, {"S1": 3, "F1": 1}))
+    out = capsys.readouterr().out
+    assert "PAIRS" in out
+    line = [ln for ln in out.splitlines() if ln.startswith("   3  ")][-1]
+    assert "S1 v7 43" in line and "train-clean-100" in line
+    assert "F1 v7 4003" in line and "LibriTTS 5003" in line and "train-other-500" in line
+
+
+def test_the_unblind_tool_takes_checks_5_to_7_only_with_their_own_keys(tmp_path):
+    argv = _bench(tmp_path, 6, {"S1": 3, "G": 1})
+    argv[1] = "7"
+    with pytest.raises(SystemExit, match="check 6"):
+        ub.main(argv)
