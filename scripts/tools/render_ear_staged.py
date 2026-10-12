@@ -85,12 +85,15 @@ DATA = ROOT + "/data"
 FIXED = {"stock": ROOT + "/warmstart/matcha_vctk.ckpt",
          "derisk": ROOT + "/logs/train/derisk_energy/runs/2026-07-15_00-20-31/checkpoints/"
                           "checkpoint_epoch=099.ckpt"}
-NEW = ("R", "C0", "S1", "S2", "L")
-# arm: (data config holding its mel statistics, n_spks, use_vat)
+NEW = ("R", "C0", "S1", "S2", "L", "D1", "G", "F1")
+# arm: (data config holding its mel statistics, n_spks, use_vat). D1's vctk_d1.yaml takes its
+# statistics from vctk.yaml, which is read here because render does not compose defaults.
 EXPECT = {"stock": ("vctk", 109, False), "C0": ("vctk", 109, False),
           "S1": ("libritts_r_22k", 247, False), "S2": ("libritts_r_vat", 247, False),
           "R": ("libritts_r_vat", 247, True), "derisk": ("libritts_r_vat", 247, True),
-          "L": ("libritts_22k", 247, False)}
+          "L": ("libritts_22k", 247, False),
+          "D1": ("vctk", 109, False), "G": ("libritts_r_22k_g", 247, False),
+          "F1": ("f1_dense", 90, False)}
 # A 22.05 kHz LibriTTS arm's round trip: its own corpus's copy of the 24 kHz LibriTTS-R row.
 RT_22K = {"libri22": sd.to_22k, "orig22": sd.to_l22k}
 ORIG_MAX_DRIFT = Fraction(1, 10)     # check 4: original vs LibriTTS-R length, seconds, strict
