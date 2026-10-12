@@ -34,6 +34,13 @@ def test_a_new_arm_given_a_checkpoint_short_of_ten_epochs_is_refused():
                          ["R=/x/staged_r/runs/a/checkpoints/last.ckpt"])
 
 
+def test_d1_resolves_only_to_its_registered_26_epoch_final():
+    good = "/x/staged_d1/runs/a/checkpoints/checkpoint_epoch=025_step=0009229.ckpt"
+    assert rs.resolve_ckpts(("D1",), ["D1=" + good]) == {"D1": good}
+    with pytest.raises(SystemExit, match="26 epochs"):
+        rs.resolve_ckpts(("D1",), ["D1=/x/checkpoint_epoch=009_step=0003549.ckpt"])
+
+
 def test_a_fixed_arm_cannot_be_overridden():
     with pytest.raises(SystemExit, match="stock"):
         rs.resolve_ckpts(("stock", "R", "derisk"),

@@ -109,7 +109,9 @@ def sha256(path):
 
 def resolve_ckpts(arms, given, allow_missing=False):
     """{arm: checkpoint} for one check. stock and derisk are fixed; R, C0, S1, S2 and L must
-    be given as ARM=PATH, and must be the step checkpoint that ended the tenth epoch.
+    be given as ARM=PATH, and must be the arm's registered final checkpoint
+    (`staged_bench.final_ckpt`: the step that ended the tenth epoch unless `FINAL_CKPT`
+    names another, as for D1).
     `allow_missing` (a dry run only) maps an arm given no checkpoint to None, for an arm not
     trained yet; a checkpoint that IS given is still checked."""
     got = {}
@@ -126,9 +128,10 @@ def resolve_ckpts(arms, given, allow_missing=False):
             out[a] = None
         elif a not in got:
             raise SystemExit("REFUSING: arm %s needs --ckpt %s=<checkpoint>." % (a, a))
-        elif not sb.ten_epoch_ckpt(got[a]):
+        elif not sb.final_ckpt(a, got[a]):
+            want = sb.FINAL_CKPT.get(a, "checkpoint_epoch=009_step=…")
             raise SystemExit("REFUSING: %s's checkpoint %s is not the one that ended "
-                             "10 epochs (checkpoint_epoch=009_step=…)." % (a, got[a]))
+                             "%d epochs (%s)." % (a, got[a], sb.final_epochs(a), want))
         else:
             out[a] = got[a]
     return out

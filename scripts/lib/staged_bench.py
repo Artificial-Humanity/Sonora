@@ -61,6 +61,11 @@ CHECK4_S1_SHA256 = "857f62d7ac47770d94f971cf4bae80d3078e42fd028d45465fe30bd0e2a0
 FAMILY = {"stock": "vctk22", "C0": "vctk22", "S1": "libri22", "L": "orig22",
           "S2": "libri24", "R": "libri24", "derisk": "libri24"}
 _TEN = re.compile(r"^checkpoint_epoch=009_step=\d{7}\.ckpt$")
+# An arm whose final checkpoint is NOT the step that ended its tenth epoch, by exact file name
+# (Notes: Sonora/hum-fix-batch-preregistration.md). Every other arm's final is that step
+# (`ten_epoch_ckpt`). D1 is matched to S1 in optimizer steps: 26 epochs x 355 = 9,230.
+FINAL_CKPT = {"D1": "checkpoint_epoch=025_step=0009229.ckpt"}
+_EPOCH = re.compile(r"^checkpoint_epoch=(\d{3})_step=\d{7}\.ckpt$")
 
 
 def one_sided_p(d):
@@ -131,6 +136,19 @@ def split_contrast(model, rt, a, b):
 def ten_epoch_ckpt(path):
     """Is this the step checkpoint written at the end of the tenth epoch (epoch index 9)?"""
     return bool(_TEN.match(Path(path).name))
+
+
+def final_ckpt(arm, path):
+    """Is this `arm`'s registered final checkpoint? Its `FINAL_CKPT` name exactly, or, for an
+    arm not registered there, the step checkpoint that ended the tenth epoch."""
+    want = FINAL_CKPT.get(arm)
+    return Path(path).name == want if want else ten_epoch_ckpt(path)
+
+
+def final_epochs(arm):
+    """How many epochs `arm`'s final checkpoint ends (for messages)."""
+    want = FINAL_CKPT.get(arm)
+    return int(_EPOCH.match(want).group(1)) + 1 if want else 10
 
 
 def reading(check, gaps, floors):
