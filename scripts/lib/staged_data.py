@@ -304,3 +304,36 @@ def check_speaker_column(line, index_to_id):
     if got != want:
         raise ValueError("speaker column %s names LibriTTS %s; the path says %s: %s"
                          % (spk, got, want, wav))
+
+
+# ---------------------------------------------------------------- check D: arm E (espeak)
+
+def s1_transcript(wav22):
+    """An S1 row's 22.05 kHz audio path -> the `.normalized.txt` beside its 24 kHz recording.
+    Any root other than `<LIBRI_R_ROOT>/train-clean-100_22k` or a non-`.wav` path is refused."""
+    if not wav22.endswith(".wav"):
+        raise ValueError("expected a .wav path: %s" % wav22)
+    src = "%s/train-clean-100_22k" % LIBRI_R_ROOT
+    dst = "%s/train-clean-100" % LIBRI_R_ROOT
+    return _rebase(wav22[:-4], src, dst) + ".normalized.txt"
+
+
+def e_line(line, espeak_phonemes):
+    """An S1 row `wav22|spk|op_phonemes` and the espeak phonemes of its `.normalized.txt` ->
+    `(e_row, differed_from_s1, differed_from_g)`.
+
+    Asserts per row: 3 fields, a valid S1 `train-clean-100_22k` wav path and integer speaker,
+    a non-empty espeak phoneme string, and every character in `original_matcha_symbols()`
+    (via `upstream_as_ours`, which rewrites the string so our table encodes it to stock's
+    trained ids)."""
+    f = line.split("|")
+    if len(f) != 3:
+        raise ValueError("expected 3 fields wav|spk|phonemes, got %d: %r" % (len(f), line[:80]))
+    s1_transcript(f[0])
+    int(f[1])
+    if not isinstance(espeak_phonemes, str) or not espeak_phonemes.strip():
+        raise ValueError("empty espeak phoneme string for %s" % f[0])
+    mapped = upstream_as_ours(espeak_phonemes)
+    g_phon = f[2].replace(G_FROM, G_TO)
+    return "|".join([f[0], f[1], mapped]), int(mapped != f[2]), int(mapped != g_phon)
+

@@ -175,3 +175,65 @@ def test_f1_writes_no_filelist_if_a_copy_fails_midway(tmp_path, monkeypatch):
     out = data / "f1_dense"
     for name in ("train_op.txt", "val_op.txt", "speakers.json", "provenance.json"):
         assert not (out / name).exists()
+
+
+# ------------------------------------------------------------------------------------ e
+
+def _e_world(tmp_path, monkeypatch):
+    data, libri = _world(tmp_path, monkeypatch)
+    r22 = libri / "train-clean-100_22k"
+    r24 = libri / "train-clean-100"
+    monkeypatch.setattr(sd, "LIBRI_22K_ROOT", str(r22))
+    monkeypatch.setattr(sd, "LIBRI_24K_ROOT", str(r24))
+    monkeypatch.setattr(prep, "E_EXPECT", {"train": 2, "val": 1})
+    d = data / "libritts_r_22k"
+    d.mkdir(parents=True)
+    spec = {
+        "train": [("1/2/1_2_000001_000000", 3, "pɚmˈɪɾᵻd", "Permitted.", "pɚmˈɪɾᵻd."),
+                  ("1/2/1_2_000002_000000", 4, "ɪt", "It", "ɪt")],
+        "val": [("1/2/1_2_000003_000000", 3, "kˈæt", "Cat's", "k'ˈæts")]}
+    espeak_map = {}
+    for split, items in spec.items():
+        lines = []
+        for rel, spk, op_ph, text, es_ph in items:
+            tpath = r24 / (rel + ".normalized.txt")
+            tpath.parent.mkdir(parents=True, exist_ok=True)
+            tpath.write_text(text + "\n", encoding="utf-8")
+            lines.append("%s/%s.wav|%d|%s" % (r22, rel, spk, op_ph))
+            espeak_map[text] = es_ph
+        (d / ("%s_op.txt" % split)).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    monkeypatch.setattr(prep, "_espeak_phonemize", lambda texts, workers=1: [espeak_map[t] for t in texts])
+    return d, r24, espeak_map
+
+
+def test_e_writes_remapped_espeak_phonemes_beside_s1s(tmp_path, monkeypatch):
+    d, _r24, _es = _e_world(tmp_path, monkeypatch)
+    prep.e(ARGS)
+    train = (d / "train_e.txt").read_text(encoding="utf-8").splitlines()
+    val = (d / "val_e.txt").read_text(encoding="utf-8").splitlines()
+    assert [l.split("|")[2] for l in train] == ["pɚmˈɪɾᵊd.", "ɪt"]
+    assert [l.split("|")[2] for l in val] == ["kᵻˈæts"]
+    assert sd.G_FROM not in (d / "train_e.txt").read_text(encoding="utf-8")
+    prov = json.loads((d / "provenance_e.json").read_text(encoding="utf-8"))
+    assert prov["rows"] == {"train": 2, "val": 1}
+    assert prov["differ_from_s1"] == {"train": 1, "val": 1}
+    assert prov["differ_from_g"] == {"train": 1, "val": 1}
+
+
+def test_e_refuses_missing_transcript_or_count_mismatch_before_writing(tmp_path, monkeypatch):
+    d, r24, es = _e_world(tmp_path, monkeypatch)
+    monkeypatch.setattr(prep, "E_EXPECT", {"train": 3, "val": 1})
+    with pytest.raises(SystemExit, match="REFUSING"):
+        prep.e(ARGS)
+    assert not (d / "train_e.txt").exists()
+    monkeypatch.setattr(prep, "E_EXPECT", {"train": 2, "val": 1})
+    (r24 / "1/2/1_2_000001_000000.normalized.txt").unlink()
+    with pytest.raises(SystemExit, match="REFUSING"):
+        prep.e(ARGS)
+    assert not (d / "train_e.txt").exists()
+    (r24 / "1/2/1_2_000001_000000.normalized.txt").write_text("Permitted.\n", encoding="utf-8")
+    es["Permitted."] = ""
+    with pytest.raises(SystemExit, match="REFUSING"):
+        prep.e(ARGS)
+    assert not (d / "train_e.txt").exists()
+

@@ -1,0 +1,28 @@
+# E of the hum-fix follow-up, check D (Notes: Sonora/hum-fix-batch-preregistration.md): S1's
+# corpus (libritts_r_22k.yaml) with each row's phonemes generated from its 24 kHz LibriTTS-R
+# `.normalized.txt` through `english_cleaners2` (phonemizer 3.4.0, eSpeak NG 1.52.0) and mapped
+# by `staged_data.upstream_as_ours` to the ids stock trained on. Same audio, speakers, split and
+# statistics as S1. Built by scripts/tools/prep_staged_corpora.py e.
+_target_: matcha.data.text_mel_datamodule.TextMelDataModule
+name: libritts_r_22k_e
+train_filelist_path: data/libritts_r_22k/train_e.txt
+valid_filelist_path: data/libritts_r_22k/val_e.txt
+batch_size: 32
+num_workers: 20
+pin_memory: True
+cleaners: [no_cleaners]
+add_blank: True
+n_spks: 247
+n_fft: 1024
+n_feats: 80
+sample_rate: 22050
+hop_length: 256
+win_length: 1024
+f_min: 0
+f_max: 8000
+data_statistics:  # S1's (data/libritts_r_22k/mel_statistics.json): the audio is S1's
+  mel_mean: -5.224468
+  mel_std: 2.325197
+seed: ${seed}
+load_durations: false
+load_vat: false

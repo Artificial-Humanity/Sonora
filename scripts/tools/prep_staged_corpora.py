@@ -342,6 +342,70 @@ def f1(args):
 
 # corpus: its train/val filelists and speaker-table size, for `stats`
 STATS_CORPORA = {"libritts_r_22k": 247, "libritts_22k": 247, "f1_dense": 90}
+E_EXPECT = {"train": 29441, "val": 910}         # check D: S1's row counts, exact
+
+
+def _espeak_phonemize(texts, workers=1):
+    """Phonemize `texts` identically to `matcha.text.cleaners.english_cleaners2`, batched."""
+    repo = str(Path(__file__).resolve().parents[2])
+    if repo not in sys.path:
+        sys.path.insert(0, repo)
+    from matcha.text import cleaners
+    pre = [cleaners.expand_abbreviations(cleaners.lowercase(cleaners.convert_to_ascii(t)))
+           for t in texts]
+    raw = cleaners._get_espeak().phonemize(pre, strip=True, njobs=workers)
+    return [cleaners.collapse_whitespace(cleaners.remove_brackets(p)) for p in raw]
+
+
+def e(args):
+    """E (check D): S1's filelists with each row's phonemes generated from its 24 kHz
+    LibriTTS-R `.normalized.txt` through `english_cleaners2` and mapped by
+    `staged_data.upstream_as_ours`, written as `{train,val}_e.txt` beside S1's. Refuses before
+    writing anything if the row counts differ from `E_EXPECT`, any `.normalized.txt` is missing
+    or empty, or any row fails `staged_data.e_line`."""
+    d = Path(DATA) / "libritts_r_22k"
+    report = {"inputs": {}, "rows": {}, "differ_from_s1": {}, "differ_from_g": {}}
+    lines = {}
+    workers = getattr(args, "workers", 1)
+    for split in ("train", "val"):
+        src = d / ("%s_op.txt" % split)
+        rows = read_rows(src)
+        if len(rows) != E_EXPECT[split]:
+            raise SystemExit("REFUSING: E %s has %d rows, registered %d. Nothing written; "
+                             "the owner decides." % (split, len(rows), E_EXPECT[split]))
+        texts = []
+        for l in rows:
+            tpath = Path(sd.s1_transcript(l.split("|", 1)[0]))
+            if not tpath.is_file():
+                raise SystemExit("REFUSING: missing transcript %s." % tpath)
+            t = tpath.read_text(encoding="utf-8").strip()
+            if not t:
+                raise SystemExit("REFUSING: empty transcript %s." % tpath)
+            texts.append(t)
+        phons = _espeak_phonemize(texts, workers=workers)
+        if len(phons) != len(rows):
+            raise SystemExit("REFUSING: espeak returned %d lines for %d rows."
+                             % (len(phons), len(rows)))
+        try:
+            got = [sd.e_line(l, p) for l, p in zip(rows, phons)]
+        except ValueError as err:
+            raise SystemExit("REFUSING: %s" % err)
+        lines[split] = [l for l, _ds, _dg in got]
+        report["inputs"][split] = [str(src), sha256(src)]
+        report["rows"][split] = len(got)
+        report["differ_from_s1"][split] = sum(ds for _l, ds, _dg in got)
+        report["differ_from_g"][split] = sum(dg for _l, _ds, dg in got)
+    for split, ls in lines.items():
+        (d / ("%s_e.txt" % split)).write_text("\n".join(ls) + "\n", encoding="utf-8")
+    report["steps_per_epoch"] = sd.steps_per_epoch(report["rows"]["train"])
+    report["mapped_via"] = "staged_data.upstream_as_ours"
+    (d / "provenance_e.json").write_text(json.dumps(report, indent=1, ensure_ascii=False))
+    print("libritts_r_22k _e: train %d, val %d rows; differ from S1: %d train + %d val "
+          "(from G′: %d + %d); %d steps/epoch"
+          % (report["rows"]["train"], report["rows"]["val"],
+             report["differ_from_s1"]["train"], report["differ_from_s1"]["val"],
+             report["differ_from_g"]["train"], report["differ_from_g"]["val"],
+             report["steps_per_epoch"]))
 
 
 def stats(args):
@@ -364,14 +428,15 @@ def stats(args):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=("vctk", "libritts", "original", "d1", "g", "f1", "stats"))
+    ap.add_argument("cmd", choices=("vctk", "libritts", "original", "d1", "g", "f1", "e", "stats"))
     ap.add_argument("--workers", type=int, default=16)
     ap.add_argument("--corpus", choices=sorted(STATS_CORPORA),
                     default="libritts_r_22k", help="stats: S1's corpus, L's or F1's")
     args = ap.parse_args()
     {"vctk": vctk, "libritts": libritts, "original": original, "d1": d1, "g": g, "f1": f1,
-     "stats": stats}[args.cmd](args)
+     "e": e, "stats": stats}[args.cmd](args)
 
 
 if __name__ == "__main__":
     main()
+

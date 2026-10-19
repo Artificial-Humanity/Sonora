@@ -63,7 +63,7 @@ CHECKS = {
         "libri_arms": ("S1", "L"),
         "contrasts": (("S1", "L"),),
         "floor_ref": "S1", "min_units": 16},
-    # the hum-fix batch: A, B, C
+    # the hum-fix batch: A, B, C, and follow-up D (check 8, arm E)
     5: {"arms": ("C0", "D1"), "vctk_arms": ("C0", "D1"),
         "libri_arms": (),
         "contrasts": (("D1", "C0"),),
@@ -76,8 +76,12 @@ CHECKS = {
         "libri_arms": ("S1", "F1"),
         "contrasts": (("S1", "F1"),),
         "floor_ref": "S1", "min_units": 16},
+    8: {"arms": ("S1", "E"), "vctk_arms": (),
+        "libri_arms": ("S1", "E"),
+        "contrasts": (("S1", "E"),),
+        "floor_ref": "S1", "min_units": 16},
 }
-HUM_FIX_CHECKS = (5, 6, 7)
+HUM_FIX_CHECKS = (5, 6, 7, 8)
 # Check 4 is registered against ONE S1 checkpoint: the step that ended its tenth epoch.
 # `select --check 4` (dry run included) refuses any other.
 CHECK4_S1_SHA256 = "857f62d7ac47770d94f971cf4bae80d3078e42fd028d45465fe30bd0e2a0d0d5"
@@ -87,26 +91,27 @@ CONTROL_SHA256 = {"C0": "d0d6b49b2e92a59e1caf43b82f0359c4c0940d7960b428caadee109
                   "S1": CHECK4_S1_SHA256}
 # The hum-fix batch's registered selection inputs: `--hnr-json` (speaker_hnr_all.json) and
 # `--vctk-hnr-from` (baseline_bench/speakers.json) and `--s1-hnr-json`
-# (speaker_hnr_s1_rest.json). Checks 5-7 refuse any other.
+# (speaker_hnr_s1_rest.json). Checks 5-8 refuse any other.
 INPUT_SHA256 = {"hnr_json": "b2f15110082e9abcc4f74454f3fb6ba1f493604f0937b956483865190abddab2",
                 "vctk_hnr_from": "3bd8e2a61cdebd56dff96c7746b5418d6ee204f17b485b05fe7fb9083bd1be9f",
                 "s1_hnr_json": "93a1d91eab6905a4652991c500841a509a978008a16a13c9fee7f311d620d27c"}
 F1_MAX_HNR_GAP = Fraction(1, 2)     # check 7: an S1 voice and its F1 voice, dB, inclusive
 # Each arm's audio path: 22.05 kHz + universal vocoder (stock's), or 24 kHz + ours. L is on
 # S1's path, but its round trip is of the ORIGINAL recording's 22.05 kHz copy, not
-# LibriTTS-R's, so it is a family of its own. D1 is on C0's path and G on S1's; F1
+# LibriTTS-R's, so it is a family of its own. D1 is on C0's path, G and E on S1's; F1
 # round-trips its own 22.05 kHz copies, which for train-clean-360 / other-500 are not S1's.
 FAMILY = {"stock": "vctk22", "C0": "vctk22", "S1": "libri22", "L": "orig22",
           "S2": "libri24", "R": "libri24", "derisk": "libri24",
-          "D1": "vctk22", "G": "libri22", "F1": "f1_22"}
+          "D1": "vctk22", "G": "libri22", "F1": "f1_22", "E": "libri22"}
 _TEN = re.compile(r"^checkpoint_epoch=009_step=\d{7}\.ckpt$")
 # An arm whose final checkpoint is NOT the step that ended its tenth epoch, by exact file name
 # (Notes: Sonora/hum-fix-batch-preregistration.md). Every other arm's final is that step
-# (`ten_epoch_ckpt`). D1 is matched to S1 in optimizer steps: 26 epochs x 355 = 9,230. G
+# (`ten_epoch_ckpt`). D1 is matched to S1 in optimizer steps: 26 epochs x 355 = 9,230. G and E
 # (S1's 921 steps per epoch) and F1 (978) are named exactly too.
 FINAL_CKPT = {"D1": "checkpoint_epoch=025_step=0009229.ckpt",
               "G": "checkpoint_epoch=009_step=0009209.ckpt",
-              "F1": "checkpoint_epoch=009_step=0009779.ckpt"}
+              "F1": "checkpoint_epoch=009_step=0009779.ckpt",
+              "E": "checkpoint_epoch=009_step=0009209.ckpt"}
 _EPOCH = re.compile(r"^checkpoint_epoch=(\d{3})_step=\d{7}\.ckpt$")
 
 
@@ -199,17 +204,17 @@ def final_epochs(arm):
 
 def check_registered_ckpts(check, digests):
     """Raise ValueError unless a hum-fix check's controls are the registered checkpoints
-    (`CONTROL_SHA256`) and its new arm's checkpoint (D1, G or F1) is not a copy of a control's
-    (C0's or S1's): a copy would load, pass every statistics check and compare a control with
-    itself. `digests` is {arm: sha256 or None}; None is an arm not trained yet (a dry run).
-    Checks 1-4 pass."""
+    (`CONTROL_SHA256`) and its new arm's checkpoint (D1, G, F1 or E) is not a copy of a
+    control's (C0's or S1's): a copy would load, pass every statistics check and compare a
+    control with itself. `digests` is {arm: sha256 or None}; None is an arm not trained yet
+    (a dry run). Checks 1-4 pass."""
     if check not in HUM_FIX_CHECKS:
         return
     for arm, want in sorted(CONTROL_SHA256.items()):
         if arm in digests and digests[arm] != want:
             raise ValueError("check %d's %s checkpoint is not the registered one (sha256 %s)."
                              % (check, arm, want))
-    for arm in ("D1", "G", "F1"):
+    for arm in ("D1", "G", "F1", "E"):
         for ctrl, want in sorted(CONTROL_SHA256.items()):
             if digests.get(arm) is not None and digests[arm] == want:
                 raise ValueError("check %d's %s checkpoint is %s's (sha256 %s)."
@@ -271,7 +276,9 @@ def reading(check, gaps, floors):
              shown ["symbol"]  S1 - G > 0                     not_shown  otherwise
     check 7  invalid  as check 4, with F1 in L's place
              shown ["dense_speakers"]  S1 - F1 > 0            not_shown  otherwise
-             Checks 6-7: three p-values, two deciding (S1's gap and the contrast).
+    check 8  invalid  as check 4, with E in L's place
+             shown ["text_frontend"]  S1 - E > 0              not_shown  otherwise
+             Checks 6-8: three p-values, two deciding (S1's gap and the contrast).
 
     Every contrast is reported whatever the outcome, uncorrected; `n_tests` counts them.
     "Not shown" is never "absent".
@@ -323,14 +330,15 @@ def reading(check, gaps, floors):
         key = "S1-%s" % fix
         valid = fl and up(level["S1"]) and contrasts[key][2] >= spec["min_units"]
         if up(contrasts[key]):
-            shown.append({6: "symbol", 7: "dense_speakers"}[check])
+            shown.append({6: "symbol", 7: "dense_speakers", 8: "text_frontend"}[check])
         outcome = "shown" if shown else "not_shown"
         extra["n_deciding"] = 2
     if not valid:
         outcome, shown = "invalid", []
     # n_tests: the contrasts, plus S1's own gap in check 3 (the validity alternative) and in
-    # checks 4-7 both arms' own gaps (each reported with its p).
+    # checks 4-8 both arms' own gaps (each reported with its p).
     return dict({"level": level, "contrasts": contrasts, "floors_ok": fl,
                  "valid": bool(valid), "outcome": outcome, "shown": shown,
-                 "n_tests": len(contrasts) + {3: 1, 4: 2, 5: 2, 6: 2, 7: 2}.get(check, 0)},
+                 "n_tests": len(contrasts) + {3: 1, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2}.get(check, 0)},
                 **extra)
+
