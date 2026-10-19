@@ -253,12 +253,19 @@ def test_e_refuses_missing_transcript_or_count_or_version_mismatch_before_writin
     assert not (d / "train_e.txt").exists()
 
 
-def test_espeak_phonemize_matches_english_cleaners2():
-    pytest.importorskip("phonemizer")
+def test_espeak_phonemize_matches_english_cleaners2(monkeypatch):
     from matcha.text import cleaners
-    sents = ["Hello, Mr. Smith!", "Permitted [by] the doctor -- really?"]
-    try:
-        expected = [cleaners.english_cleaners2(s) for s in sents]
-    except Exception as exc:
-        pytest.skip("espeak-ng unavailable: %s" % exc)
-    assert prep._espeak_phonemize(sents, workers=1) == expected
+    seen = []
+
+    class _FakeEspeak:
+        def phonemize(self, texts, strip=True, njobs=1):
+            assert strip is True
+            seen.append((list(texts), njobs))
+            return ["[%s]   ˈoʊk" % t for t in texts]
+
+    monkeypatch.setattr(cleaners, "_get_espeak", lambda: _FakeEspeak())
+    sents = ["Hello, Mr. Smith!", "Permitted [by] Drs. Café -- really?"]
+    expected = [cleaners.english_cleaners2(s) for s in sents]
+    got = prep._espeak_phonemize(sents, workers=4)
+    assert got == expected
+    assert seen[-1] == ([s[0][0] for s in seen[:-1]], 4)
