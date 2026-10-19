@@ -70,8 +70,9 @@ OUTCOME = {
                      "(F1's within 1 point of S1's, both under 4), or fewer than 16 pairs were "
                      "rated in both arms: no reading. The owner decides."),
     (8, "shown"): "",
-    (8, "not_shown"): ("S1 over E is not shown: replacing op_g2p with VITS's espeak frontend is "
-                       "not shown to reduce the hum. Not shown is not absent."),
+    (8, "not_shown"): ("S1 over E is not shown: replacing op_g2p with an espeak front end "
+                       "(eSpeak NG 1.52.0, 99.4% character-identical to VITS's) is not shown "
+                       "to reduce the hum. Not shown is not absent."),
     (8, "invalid"): ("S1's own excess is not shown, or the round-trip floors are not comparable "
                      "(E's within 1 point of S1's, both under 4), or fewer than 16 voices were "
                      "rated in both arms: no reading. The owner decides."),
@@ -99,10 +100,10 @@ SHOWN = {
                        "them is a usable fix as it stands. Cross-voice: each pair rests on HNR "
                        "and F0 matching, and F1 bundles density with other changes (partition, "
                        "clip length, G2P version); each pair's partition is listed below."),
-    "text_frontend": ("S1 hums more than E: replacing op_g2p with VITS's espeak frontend "
-                      "reduces the hum. The hum enters through our text frontend (phoneme "
-                      "distribution, word-boundary spaces, stress placement or punctuation "
-                      "survival, bundled here)."),
+    "text_frontend": ("S1 hums more than E: at a 10-epoch budget, training on op_g2p instead of "
+                      "the espeak input stock's text encoder learned adds hum. This does not "
+                      "show op_g2p is worse in itself (S1 re-learns its input, E does not); "
+                      "candidate fixes each need their own run."),
 }
 # How each check's tests are counted in the print-out.
 TESTS = {4: ("three p-values reported (S1's excess, S1 − L, L's excess), two of them "

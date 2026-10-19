@@ -341,4 +341,3 @@ def reading(check, gaps, floors):
                  "valid": bool(valid), "outcome": outcome, "shown": shown,
                  "n_tests": len(contrasts) + {3: 1, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2}.get(check, 0)},
                 **extra)
-

@@ -323,9 +323,10 @@ def e_line(line, espeak_phonemes):
     `(e_row, differed_from_s1, differed_from_g)`.
 
     Asserts per row: 3 fields, a valid S1 `train-clean-100_22k` wav path and integer speaker,
-    a non-empty espeak phoneme string, and every character in `original_matcha_symbols()`
-    (via `upstream_as_ours`, which rewrites the string so our table encodes it to stock's
-    trained ids)."""
+    a non-empty espeak phoneme string, every character in `original_matcha_symbols()` (via
+    `upstream_as_ours`, which rewrites the string so our table encodes it to stock's trained
+    ids), and no `ᵻ` in the mapped row (which would come from an upstream `'` landing on
+    stock's untrained id 176)."""
     f = line.split("|")
     if len(f) != 3:
         raise ValueError("expected 3 fields wav|spk|phonemes, got %d: %r" % (len(f), line[:80]))
@@ -334,6 +335,8 @@ def e_line(line, espeak_phonemes):
     if not isinstance(espeak_phonemes, str) or not espeak_phonemes.strip():
         raise ValueError("empty espeak phoneme string for %s" % f[0])
     mapped = upstream_as_ours(espeak_phonemes)
+    if G_FROM in mapped:
+        raise ValueError("espeak output contains \"'\" (maps to untrained %s / id 176) for %s"
+                         % (G_FROM, f[0]))
     g_phon = f[2].replace(G_FROM, G_TO)
     return "|".join([f[0], f[1], mapped]), int(mapped != f[2]), int(mapped != g_phon)
-

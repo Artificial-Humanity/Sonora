@@ -343,6 +343,16 @@ def f1(args):
 # corpus: its train/val filelists and speaker-table size, for `stats`
 STATS_CORPORA = {"libritts_r_22k": 247, "libritts_22k": 247, "f1_dense": 90}
 E_EXPECT = {"train": 29441, "val": 910}         # check D: S1's row counts, exact
+E_VERSIONS = {"phonemizer": "3.4.0", "espeak_ng": "1.52.0"}  # owner ruling 2026-10-19
+
+
+def _espeak_versions():
+    """Return installed `phonemizer` and `espeak-ng` versions for `e`'s version pin."""
+    import phonemizer
+    from phonemizer.backend import EspeakBackend
+    ver = EspeakBackend.version()
+    es = ".".join(str(x) for x in ver) if isinstance(ver, tuple) else str(ver)
+    return {"phonemizer": getattr(phonemizer, "__version__", ""), "espeak_ng": es}
 
 
 def _espeak_phonemize(texts, workers=1):
@@ -361,10 +371,18 @@ def e(args):
     """E (check D): S1's filelists with each row's phonemes generated from its 24 kHz
     LibriTTS-R `.normalized.txt` through `english_cleaners2` and mapped by
     `staged_data.upstream_as_ours`, written as `{train,val}_e.txt` beside S1's. Refuses before
-    writing anything if the row counts differ from `E_EXPECT`, any `.normalized.txt` is missing
-    or empty, or any row fails `staged_data.e_line`."""
+    writing anything if `phonemizer` / `espeak-ng` versions differ from `E_VERSIONS`, the row
+    counts differ from `E_EXPECT`, any `.normalized.txt` is missing or empty, or any row fails
+    `staged_data.e_line`."""
+    vers = _espeak_versions()
+    if vers != E_VERSIONS:
+        raise SystemExit("REFUSING: E requires %s, got %s. Nothing written; "
+                         "the owner decides." % (E_VERSIONS, vers))
     d = Path(DATA) / "libritts_r_22k"
-    report = {"inputs": {}, "rows": {}, "differ_from_s1": {}, "differ_from_g": {}}
+    report = {"inputs": {}, "outputs": {}, "rows": {},
+              "differ_from_s1": {}, "differ_from_g": {},
+              "phonemizer_version": vers["phonemizer"],
+              "espeak_ng_version": vers["espeak_ng"]}
     lines = {}
     workers = getattr(args, "workers", 1)
     for split in ("train", "val"):
@@ -396,7 +414,9 @@ def e(args):
         report["differ_from_s1"][split] = sum(ds for _l, ds, _dg in got)
         report["differ_from_g"][split] = sum(dg for _l, _ds, dg in got)
     for split, ls in lines.items():
-        (d / ("%s_e.txt" % split)).write_text("\n".join(ls) + "\n", encoding="utf-8")
+        out = d / ("%s_e.txt" % split)
+        out.write_text("\n".join(ls) + "\n", encoding="utf-8")
+        report["outputs"][split] = [str(out), sha256(out)]
     report["steps_per_epoch"] = sd.steps_per_epoch(report["rows"]["train"])
     report["mapped_via"] = "staged_data.upstream_as_ours"
     (d / "provenance_e.json").write_text(json.dumps(report, indent=1, ensure_ascii=False))
@@ -439,4 +459,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

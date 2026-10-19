@@ -15,7 +15,7 @@ loudness of the earlier hum benches.
   check 5 (A)  C0, D1 (one VCTK voice)       does VCTK hum with 105 clips per speaker?
   check 6 (B)  S1, G (one S1 voice)          does moving `ᵻ` to stock's trained id help?
   check 7 (C)  S1 (an S1 voice) | F1 (its HNR- and F0-matched F1 voice)   dense speakers?
-  check 8 (D)  S1, E (one S1 voice)          does VITS's espeak frontend reduce the hum?
+  check 8 (D)  S1, E (one S1 voice)          does an espeak front end (eSpeak NG 1.52.0) reduce the hum?
 
 The hum-fix checks are pre-registered in Notes: Sonora/hum-fix-batch-preregistration.md
 (arm G is its G′). Each takes 20 voices or pairs spread over HNR (`lineage_bench.spread`;

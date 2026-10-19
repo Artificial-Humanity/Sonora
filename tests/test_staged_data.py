@@ -295,11 +295,12 @@ def test_s1_transcript_points_to_the_24k_normalized_txt_file():
 
 def test_e_line_remaps_espeak_phonemes_to_upstream_ids_and_checks_row():
     w = sd.LIBRI_22K_ROOT + "/1263/139804/1263_139804_000006_000000.wav"
-    espeak = "pɚmˈɪɾᵻd 'ɪt"
+    espeak = "pɚmˈɪɾᵻd ɪt."
     got, ds, dg = sd.e_line("%s|63|pɚmˈɪɾᵻd ɪt" % w, espeak)
-    assert got == "%s|63|pɚmˈɪɾᵊd ᵻɪt" % w and (ds, dg) == (1, 1)
+    assert got == "%s|63|pɚmˈɪɾᵊd ɪt." % w and (ds, dg) == (1, 1)
     assert _ours_ids(got.split("|")[2]) == bb.encode_original(espeak)
-    assert sd.G_FROM not in sd.e_line("%s|63|x" % w, "pɚmˈɪɾᵻd")[0].split("|")[2]
+    assert sd.G_FROM not in got.split("|")[2]
+    assert sd.e_line("%s|63|pɚmˈɪɾᵻd" % w, "pɚmˈɪɾᵻd") == ("%s|63|pɚmˈɪɾᵊd" % w, 1, 0)
     assert sd.e_line("%s|63|ɪt" % w, "ɪt") == ("%s|63|ɪt" % w, 0, 0)
 
 
@@ -313,4 +314,5 @@ def test_e_line_refuses_empty_phonemes_or_bad_rows():
         sd.e_line("%s|0|ab|0,0,0" % w, "ab")
     with pytest.raises(ValueError, match="ᵊ"):
         sd.e_line("%s|0|ab" % w, "aᵊ")
-
+    with pytest.raises(ValueError, match="id 176"):
+        sd.e_line("%s|0|ab" % w, "a'b")

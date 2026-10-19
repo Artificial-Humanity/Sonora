@@ -186,12 +186,13 @@ def _e_world(tmp_path, monkeypatch):
     monkeypatch.setattr(sd, "LIBRI_22K_ROOT", str(r22))
     monkeypatch.setattr(sd, "LIBRI_24K_ROOT", str(r24))
     monkeypatch.setattr(prep, "E_EXPECT", {"train": 2, "val": 1})
+    monkeypatch.setattr(prep, "_espeak_versions", lambda: dict(prep.E_VERSIONS))
     d = data / "libritts_r_22k"
     d.mkdir(parents=True)
     spec = {
         "train": [("1/2/1_2_000001_000000", 3, "pɚmˈɪɾᵻd", "Permitted.", "pɚmˈɪɾᵻd."),
                   ("1/2/1_2_000002_000000", 4, "ɪt", "It", "ɪt")],
-        "val": [("1/2/1_2_000003_000000", 3, "kˈæt", "Cat's", "k'ˈæts")]}
+        "val": [("1/2/1_2_000003_000000", 3, "kˈæt", "Cats", "kˈæts")]}
     espeak_map = {}
     for split, items in spec.items():
         lines = []
@@ -212,16 +213,26 @@ def test_e_writes_remapped_espeak_phonemes_beside_s1s(tmp_path, monkeypatch):
     train = (d / "train_e.txt").read_text(encoding="utf-8").splitlines()
     val = (d / "val_e.txt").read_text(encoding="utf-8").splitlines()
     assert [l.split("|")[2] for l in train] == ["pɚmˈɪɾᵊd.", "ɪt"]
-    assert [l.split("|")[2] for l in val] == ["kᵻˈæts"]
+    assert [l.split("|")[2] for l in val] == ["kˈæts"]
     assert sd.G_FROM not in (d / "train_e.txt").read_text(encoding="utf-8")
+    assert sd.G_FROM not in (d / "val_e.txt").read_text(encoding="utf-8")
     prov = json.loads((d / "provenance_e.json").read_text(encoding="utf-8"))
     assert prov["rows"] == {"train": 2, "val": 1}
     assert prov["differ_from_s1"] == {"train": 1, "val": 1}
     assert prov["differ_from_g"] == {"train": 1, "val": 1}
+    assert prov["phonemizer_version"] == "3.4.0" and prov["espeak_ng_version"] == "1.52.0"
+    assert prov["outputs"] == {
+        "train": [str(d / "train_e.txt"), prep.sha256(d / "train_e.txt")],
+        "val": [str(d / "val_e.txt"), prep.sha256(d / "val_e.txt")]}
 
 
-def test_e_refuses_missing_transcript_or_count_mismatch_before_writing(tmp_path, monkeypatch):
+def test_e_refuses_missing_transcript_or_count_or_version_mismatch_before_writing(tmp_path, monkeypatch):
     d, r24, es = _e_world(tmp_path, monkeypatch)
+    monkeypatch.setattr(prep, "_espeak_versions", lambda: {"phonemizer": "3.3.0", "espeak_ng": "1.52.0"})
+    with pytest.raises(SystemExit, match="REFUSING.*requires"):
+        prep.e(ARGS)
+    assert not (d / "train_e.txt").exists()
+    monkeypatch.setattr(prep, "_espeak_versions", lambda: dict(prep.E_VERSIONS))
     monkeypatch.setattr(prep, "E_EXPECT", {"train": 3, "val": 1})
     with pytest.raises(SystemExit, match="REFUSING"):
         prep.e(ARGS)
@@ -236,4 +247,18 @@ def test_e_refuses_missing_transcript_or_count_mismatch_before_writing(tmp_path,
     with pytest.raises(SystemExit, match="REFUSING"):
         prep.e(ARGS)
     assert not (d / "train_e.txt").exists()
+    es["Permitted."] = "pɚm'ɪɾᵻd"
+    with pytest.raises(SystemExit, match="REFUSING.*id 176"):
+        prep.e(ARGS)
+    assert not (d / "train_e.txt").exists()
 
+
+def test_espeak_phonemize_matches_english_cleaners2():
+    pytest.importorskip("phonemizer")
+    from matcha.text import cleaners
+    sents = ["Hello, Mr. Smith!", "Permitted [by] the doctor -- really?"]
+    try:
+        expected = [cleaners.english_cleaners2(s) for s in sents]
+    except Exception as exc:
+        pytest.skip("espeak-ng unavailable: %s" % exc)
+    assert prep._espeak_phonemize(sents, workers=1) == expected

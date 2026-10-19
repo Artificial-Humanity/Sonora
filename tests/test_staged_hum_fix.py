@@ -856,7 +856,7 @@ def test_check5_floors_are_c0s(tmp_path, capsys):
 
 @pytest.mark.parametrize("check,fix,text", [
     (6, "G", "the remap reduces the hum"), (7, "F1", "dense speakers reduce the hum"),
-    (8, "E", "replacing op_g2p with VITS's espeak frontend reduces the hum")])
+    (8, "E", "training on op_g2p instead of the espeak input stock's text encoder learned adds hum")])
 def test_checks_6_7_and_8_unblind_to_shown(tmp_path, capsys, check, fix, text):
     r = ub.main(_bench(tmp_path, check, {"S1": 3, fix: 1}))
     out = capsys.readouterr().out
@@ -1085,4 +1085,3 @@ def test_a_real_check6_selection_needs_check5s_file_and_its_dry_run_does_not(tmp
 def test_check5_needs_no_earlier_hum_fix_file(tmp_path, monkeypatch):
     spec = _out(tmp_path, monkeypatch, _vctk_world(tmp_path, monkeypatch, 16))
     assert len(spec["items"]) == 16
-
