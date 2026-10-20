@@ -55,10 +55,11 @@ ARMS = {
     "staged_s2": ("libritts_r_vat", 24000, 12000, 247, False, WS + "/staged_s2_init.ckpt"),
     # L: S1's init, byte for byte (pre-registered), not a warm start of its own
     "staged_l": ("libritts_22k", 22050, 8000, 247, False, WS + "/staged_s1_init.ckpt"),
-    # the hum-fix batch. D1: C0's init, byte for byte; G′: S1's init, byte for byte
+    # the hum-fix batch. D1: C0's init, byte for byte; G′ and E: S1's init, byte for byte
     "staged_d1": ("vctk_d1", 22050, 8000, 109, False, WS + "/staged_c0_init.ckpt"),
     "staged_g": ("libritts_r_22k_g", 22050, 8000, 247, False, WS + "/staged_s1_init.ckpt"),
     "staged_f1": ("f1_dense", 22050, 8000, 90, False, WS + "/staged_f1_init.ckpt"),
+    "staged_e": ("libritts_r_22k_e", 22050, 8000, 247, False, WS + "/staged_s1_init.ckpt"),
 }
 # max_epochs where it is not 10: D1 is matched to S1 in optimizer steps (26 x 355 = 9,230)
 EPOCHS = {"staged_d1": 26}

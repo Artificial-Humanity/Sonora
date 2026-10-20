@@ -1,4 +1,4 @@
-"""Unblind one staged-rebuild or hum-fix check (1-7) and apply its pre-registered reading.
+"""Unblind one staged-rebuild or hum-fix check (1-8) and apply its pre-registered reading.
 
 Reads the key written by `render_ear_staged.py render` and the app's verdicts, and prints
 each arm's gap (model minus round trip) with its floor, the check's contrasts, the number
@@ -10,7 +10,8 @@ of tests (uncorrected), and the outcome from `staged_bench.reading`. Exact; no r
 
 Checks 5-7 are one listening session over three test folders (A, B, C), and are read only when
 every item of all three is rated: name the folders with --session-tests (this check's --test
-among them). --session-closed reads them anyway, leaving out the items not fully rated.
+among them). Check 8 (D) is a single-folder session and is read only when every item of --test
+is rated. --session-closed reads a hum-fix check anyway, leaving out the items not fully rated.
 """
 
 import argparse
@@ -68,6 +69,13 @@ OUTCOME = {
     (7, "invalid"): ("S1's own excess is not shown, or the round-trip floors are not comparable "
                      "(F1's within 1 point of S1's, both under 4), or fewer than 16 pairs were "
                      "rated in both arms: no reading. The owner decides."),
+    (8, "shown"): "",
+    (8, "not_shown"): ("S1 over E is not shown: replacing op_g2p with an espeak front end "
+                       "(eSpeak NG 1.52.0, 99.4% character-identical to VITS's) is not shown "
+                       "to reduce the hum. Not shown is not absent."),
+    (8, "invalid"): ("S1's own excess is not shown, or the round-trip floors are not comparable "
+                     "(E's within 1 point of S1's, both under 4), or fewer than 16 voices were "
+                     "rated in both arms: no reading. The owner decides."),
 }
 SHOWN = {
     "fine_tuning": ("C0 hums more than stock: fine-tuning itself adds the hum. The cause is "
@@ -92,6 +100,10 @@ SHOWN = {
                        "them is a usable fix as it stands. Cross-voice: each pair rests on HNR "
                        "and F0 matching, and F1 bundles density with other changes (partition, "
                        "clip length, G2P version); each pair's partition is listed below."),
+    "text_frontend": ("S1 hums more than E: at a 10-epoch budget, training on op_g2p instead of "
+                      "the espeak input stock's text encoder learned adds hum. This does not "
+                      "show op_g2p is worse in itself (S1 re-learns its input, E does not); "
+                      "candidate fixes each need their own run."),
 }
 # How each check's tests are counted in the print-out.
 TESTS = {4: ("three p-values reported (S1's excess, S1 − L, L's excess), two of them "
@@ -101,7 +113,9 @@ TESTS = {4: ("three p-values reported (S1's excess, S1 − L, L's excess), two o
          6: ("three p-values reported (S1's excess, S1 − G′, G′'s excess), two of them "
              "deciding the reading (S1's excess and S1 − G′); uncorrected"),
          7: ("three p-values reported (S1's excess, S1 − F1, F1's excess), two of them "
-             "deciding the reading (S1's excess and S1 − F1); uncorrected")}
+             "deciding the reading (S1's excess and S1 − F1); uncorrected"),
+         8: ("three p-values reported (S1's excess, S1 − E, E's excess), two of them "
+             "deciding the reading (S1's excess and S1 − E); uncorrected")}
 
 
 def unrated(test_dir):
@@ -121,11 +135,31 @@ def unrated(test_dir):
 
 def require_session_rated(args):
     """Checks 5-7: refuse unless every item of the session's three folders is rated, or
-    --session-closed says the session is over (the unrated are then left out, as always)."""
+    --session-closed says the session is over. Check 8: single-folder session (--test only)."""
     if args.check not in sb.HUM_FIX_CHECKS:
         if args.session_tests or args.session_closed:
             raise SystemExit("REFUSING: --session-tests and --session-closed are for checks "
-                             "5-7.")
+                             "5-8.")
+        return
+    if args.check == 8:
+        if args.session_tests:
+            raise SystemExit("REFUSING: --session-tests is for checks 5-7 (the three-check "
+                             "session); check 8 is a single-folder session.")
+        meta = Path(args.test) / "render_meta.json"
+        if not meta.is_file():
+            raise SystemExit("REFUSING: no %s — which check this folder was rendered for is "
+                             "not known." % meta)
+        test_check = json.loads(meta.read_text()).get("check")
+        if test_check != args.check:
+            raise SystemExit("REFUSING: --test %s was rendered for check %s, not --check %d."
+                             % (args.test, test_check, args.check))
+        total, bad = unrated(args.test)
+        if bad and not args.session_closed:
+            left = ["%s/%s" % (Path(args.test).name, i) for i in bad]
+            raise SystemExit("REFUSING: %d of %d items in %s are not fully rated (e.g. %s). "
+                             "Rate them all, or pass --session-closed to read the check without "
+                             "them." % (len(left), total, Path(args.test).name,
+                                        ", ".join(left[:3])))
         return
     if not args.session_tests:
         raise SystemExit("REFUSING: check %d needs --session-tests (the session's three test "
@@ -170,7 +204,7 @@ def main(argv=None):
     ap.add_argument("--session-tests", nargs=3, metavar="DIR",
                     help="checks 5-7: the session's three test folders, this check's among them")
     ap.add_argument("--session-closed", action="store_true",
-                    help="checks 5-7: read the check although items are not fully rated; they "
+                    help="checks 5-8: read the check although items are not fully rated; they "
                          "are left out")
     args = ap.parse_args(argv)
     arms = sb.CHECKS[args.check]["arms"]

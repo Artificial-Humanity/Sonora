@@ -34,6 +34,7 @@ ARMS = {
     "staged_d1": ("vctk_d1", False, None, None),
     "staged_g": ("libritts_r_22k_g", False, None, None),
     "staged_f1": ("f1_dense", False, None, None),
+    "staged_e": ("libritts_r_22k_e", False, None, None),
 }
 # max_epochs where it is not 10: D1 is matched to S1 in optimizer steps (26 x 355 = 9,230)
 EPOCHS = {"staged_d1": 26}
@@ -173,6 +174,25 @@ def test_g_is_s1s_experiment_from_s1s_own_init():
     assert "67dc8c6a3d1c3d94eb8cf1698e8361c0161ee292514af7e628335917557ef434" in text
 
 
+def test_e_is_s1s_config_on_the_e_filelists_with_s1s_statistics():
+    s1, e = y(DATA_CFG / "libritts_r_22k.yaml"), y(DATA_CFG / "libritts_r_22k_e.yaml")
+    assert _differ(s1, e) == {"name", "train_filelist_path", "valid_filelist_path"}
+    assert e["name"] == "libritts_r_22k_e"
+    assert e["train_filelist_path"] == "data/libritts_r_22k/train_e.txt"
+    assert e["valid_filelist_path"] == "data/libritts_r_22k/val_e.txt"
+    assert e["cleaners"] == ["no_cleaners"]
+
+
+def test_e_is_s1s_experiment_from_s1s_own_init():
+    s1, e = y(EXP / "staged_s1.yaml"), y(EXP / "staged_e.yaml")
+    assert _without(e, "defaults", "tags", "run_name") == \
+        _without(s1, "defaults", "tags", "run_name")
+    assert e["defaults"] == [{"override /data": "libritts_r_22k_e.yaml"}]
+    text = (EXP / "staged_e.yaml").read_text(encoding="utf-8")
+    assert "warmstart/staged_s1_init.ckpt" in text and "byte for byte" in text
+    assert "67dc8c6a3d1c3d94eb8cf1698e8361c0161ee292514af7e628335917557ef434" in text
+
+
 def test_f1_is_s1s_config_on_its_own_corpus_table_and_statistics():
     s1, f1 = y(DATA_CFG / "libritts_r_22k.yaml"), y(DATA_CFG / "f1_dense.yaml")
     assert _differ(s1, f1) == {"name", "train_filelist_path", "valid_filelist_path",
@@ -203,7 +223,7 @@ def test_f1_statistics_are_the_measured_ones():
 
 
 @pytest.mark.parametrize("arm,base", [("staged_d1", "staged_c0"), ("staged_g", "staged_s1"),
-                                      ("staged_f1", "staged_s1")])
+                                      ("staged_f1", "staged_s1"), ("staged_e", "staged_s1")])
 def test_each_batch_arm_overrides_only_its_base_arms_data(arm, base):
     a, b = y(EXP / ("%s.yaml" % arm))["defaults"], y(EXP / ("%s.yaml" % base))["defaults"]
     keep = lambda d: [x for x in d if not (isinstance(x, dict) and "override /data" in x)]

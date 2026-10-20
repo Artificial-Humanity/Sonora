@@ -1,0 +1,28 @@
+# @package _global_
+
+# Hum-fix follow-up, arm E (Notes: Sonora/hum-fix-batch-preregistration.md, check D): S1 with
+# espeak phonemes (`english_cleaners2` + `staged_data.upstream_as_ours`). Does S1 hum less when
+# its phonemes come from espeak instead of our G2P? 10 epochs x 921 = 9,210 steps, as S1.
+#
+# Launch: the compose launch must set SONORA_CKPT_EVERY_N_STEPS=921 (one checkpoint per epoch);
+# expected final checkpoint checkpoint_epoch=009_step=0009209.
+#
+# Warm start: /data/model-training/sonora/warmstart/staged_s1_init.ckpt, S1's own init file,
+# byte for byte (sha256 67dc8c6a3d1c3d94eb8cf1698e8361c0161ee292514af7e628335917557ef434);
+# no new make_warmstart output.
+
+defaults:
+  - override /data: libritts_r_22k_e.yaml
+
+tags: ["staged", "E", "libritts_r", "hum"]
+
+run_name: staged_e
+
+model:
+  use_vat: false
+
+data:
+  bucket_multiplier: 0      # July's length-blind shuffle (owner ruling, 2026-10-06)
+
+trainer:
+  max_epochs: 10

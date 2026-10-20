@@ -1,5 +1,5 @@
 """WHICH PART OF THE FIRST STEP ADDS THE HUM? The staged-rebuild bench, checks 1-4, and the
-hum-fix batch's checks A, B, C as checks 5-7.
+hum-fix batch's checks A, B, C, D as checks 5-8.
 
 Pre-registered in Notes: Sonora/staged-rebuild-preregistration.md (owner, 2026-10-06; check 4
 2026-10-11); the readings are `staged_bench.reading`. Checks 1-3 are 20 units x 3 arms = 60
@@ -15,16 +15,18 @@ loudness of the earlier hum benches.
   check 5 (A)  C0, D1 (one VCTK voice)       does VCTK hum with 105 clips per speaker?
   check 6 (B)  S1, G (one S1 voice)          does moving `ᵻ` to stock's trained id help?
   check 7 (C)  S1 (an S1 voice) | F1 (its HNR- and F0-matched F1 voice)   dense speakers?
+  check 8 (D)  S1, E (one S1 voice)          does an espeak front end (eSpeak NG 1.52.0) reduce the hum?
 
 The hum-fix checks are pre-registered in Notes: Sonora/hum-fix-batch-preregistration.md
 (arm G is its G′). Each takes 20 voices or pairs spread over HNR (`lineage_bench.spread`;
 every one if 16-19, refused under 16), clips nearest 6.0 s by `assign_clips`; select pins the
 registered C0 / S1 checkpoints and HNR inputs, and render takes only its check's --salt
-(hum-fix-A-v1, -B-v1, -C-v1). D1 renders exactly as C0 (VITS phonemes through upstream's
+(hum-fix-A-v1, -B-v1, -C-v1, -D-v1). D1 renders exactly as C0 (VITS phonemes through upstream's
 table, the VCTK 0.92 mic1 round trip); G renders S1's phonemes with `ᵻ` moved to `ᵊ`
 (`arm_phonemes`) and round-trips S1's copy; F1 synthesises with its own 90-row table index
 (`f1_sid`) and round-trips its own 22.05 kHz copy, while every LibriTTS-R voice, F1's
-included, is named by its v7 index (`libri` / `spk`).
+included, is named by its v7 index (`libri` / `spk`); E synthesises its `train_e.txt` phonemes
+from `check8_speakers.json` through `no_cleaners` and round-trips S1's copy.
 
 ⚠ EVERY ARM RENDERS THROUGH ITS OWN AUDIO PATH. stock, C0 and S1: 22.05 kHz mels through the
 universal vocoder with its denoiser, resampled to the bench rate after vocoding, exactly as
@@ -38,8 +40,8 @@ is eligible with 2 recordings of 4-8 s (on the 24 kHz LibriTTS-R file) that are 
 and L's train filelists and whose original recording is within 0.1 s of the same length.
 
 ⚠ A VOICE THAT SPEAKS SEVERAL ARMS GETS A DIFFERENT RECORDING FOR EACH (`assign_clips`), the
-ones nearest in length to the unit's VCTK clip (checks 1-2) or to --target-seconds (checks 3-7;
-default 6.0 s, and checks 5-7 use that target).
+ones nearest in length to the unit's VCTK clip (checks 1-2) or to --target-seconds (checks 3-8;
+default 6.0 s, and checks 5-8 use that target).
 Every recording is from its arm's training split.
 
 ⚠ stock and C0 read VITS's espeak phonemes through upstream's table (`encode_original`),
@@ -49,8 +51,8 @@ arms (R, derisk) get all-zero conditioning.
 ⚠ VOICES ARE UNHEARD: every key in `_keys/`, every pitch-error file, the first-step speakers
 file (`--prior`, each pattern must match a file) and every earlier staged speakers file
 (`--prior-optional`, may match nothing) is excluded. A speakers file is never overwritten.
-Pass each glob as its own QUOTED argument: an unquoted `$P` is one word in zsh. Checks 5-7
-REQUIRE `staged_bench/*_speakers.json` (select them in order 5, 6, 7: each excludes the last);
+Pass each glob as its own QUOTED argument: an unquoted `$P` is one word in zsh. Checks 5-8
+REQUIRE `staged_bench/*_speakers.json` (select them in order 5, 6, 7, 8: each excludes the last);
 check 7's dry run takes check 6's dry-run file as an extra --prior.
 
     # host, before L trains: the pre-flight count. A dry run may omit an untrained arm's
@@ -107,7 +109,7 @@ DATA = ROOT + "/data"
 FIXED = {"stock": ROOT + "/warmstart/matcha_vctk.ckpt",
          "derisk": ROOT + "/logs/train/derisk_energy/runs/2026-07-15_00-20-31/checkpoints/"
                           "checkpoint_epoch=099.ckpt"}
-NEW = ("R", "C0", "S1", "S2", "L", "D1", "G", "F1")
+NEW = ("R", "C0", "S1", "S2", "L", "D1", "G", "F1", "E")
 # arm: (data config holding its mel statistics, n_spks, use_vat). D1's vctk_d1.yaml takes its
 # statistics from vctk.yaml, which is read here because render does not compose defaults.
 EXPECT = {"stock": ("vctk", 109, False), "C0": ("vctk", 109, False),
@@ -115,18 +117,20 @@ EXPECT = {"stock": ("vctk", 109, False), "C0": ("vctk", 109, False),
           "R": ("libritts_r_vat", 247, True), "derisk": ("libritts_r_vat", 247, True),
           "L": ("libritts_22k", 247, False),
           "D1": ("vctk", 109, False), "G": ("libritts_r_22k_g", 247, False),
-          "F1": ("f1_dense", 90, False)}
+          "F1": ("f1_dense", 90, False), "E": ("libritts_r_22k_e", 247, False)}
 # A 22.05 kHz LibriTTS arm's round trip: its own corpus's copy of the 24 kHz LibriTTS-R row.
 RT_22K = {"libri22": lambda w: sd.to_22k(w), "orig22": lambda w: sd.to_l22k(w),
           "f1_22": lambda w: sd.libri_r_22k(w)}
-# The phonemes an arm synthesises from the speakers file's (S1's) phonemes: G moves `ᵻ` (our
-# id 176, stock's untrained "'") to `ᵊ` (our 177, stock's trained `ᵻ`), as its filelist does.
+# The phonemes an arm synthesises from the speakers file's phonemes: G moves `ᵻ` (our id 176,
+# stock's untrained "'") to `ᵊ` (our 177, stock's trained `ᵻ`), as its filelist does; E's are
+# already mapped in `train_e.txt` and `check8_speakers.json`.
 PHONEMES = {"G": lambda p: p.replace(sd.G_FROM, sd.G_TO)}
 SELECT_SEED = {c: (20261012 if c in sb.HUM_FIX_CHECKS else 20261006) for c in sb.CHECKS}
-HUM_FIX_SALT = {5: "hum-fix-A-v1", 6: "hum-fix-B-v1", 7: "hum-fix-C-v1"}
+HUM_FIX_SALT = {5: "hum-fix-A-v1", 6: "hum-fix-B-v1", 7: "hum-fix-C-v1", 8: "hum-fix-D-v1"}
 # The registered inputs each hum-fix check reads (`staged_bench.INPUT_SHA256`).
-HUM_FIX_INPUTS = {5: ("vctk_hnr_from",), 6: ("s1_hnr_json",), 7: ("hnr_json", "s1_hnr_json")}
-MIN_CLIPS = 2           # checks 5-7: recordings of 4-8 s a voice needs to be eligible
+HUM_FIX_INPUTS = {5: ("vctk_hnr_from",), 6: ("s1_hnr_json",), 7: ("hnr_json", "s1_hnr_json"),
+                  8: ("s1_hnr_json",)}
+MIN_CLIPS = 2           # checks 5-8: recordings of 4-8 s a voice needs to be eligible
 ORIG_MAX_DRIFT = Fraction(1, 10)     # check 4: original vs LibriTTS-R length, seconds, strict
 PRIOR = [ROOT + "/pitch_error/_*.json", ROOT + "/eartest/_keys/*.key.json",
          ROOT + "/first_step_bench/speakers.json"]
@@ -188,7 +192,7 @@ def round_trip_source(arm, wav24):
 
 
 def rt_source_of(arm, source):
-    """The file a check-5-7 item's round trip is made from: a VCTK arm's 0.92 mic1 recording
+    """The file a check-5-8 item's round trip is made from: a VCTK arm's 0.92 mic1 recording
     in the VCTK zip (as C0 renders), any other arm's `round_trip_source`."""
     if sb.FAMILY[arm] == "vctk22":
         return rfs.vctk_path(source)
@@ -196,6 +200,8 @@ def rt_source_of(arm, source):
 
 
 def arm_phonemes(arm, phonemes):
+    if arm == "E" and (not phonemes or sd.G_FROM in phonemes):
+        raise SystemExit("REFUSING: E's phonemes must be non-empty with `ᵻ` already mapped.")
     return PHONEMES[arm](phonemes) if arm in PHONEMES else phonemes
 
 
@@ -210,7 +216,7 @@ def select_seed(check, seed):
 
 
 def resolve_salt(check, salt):
-    """Checks 1-4 default to `staged-check<n>-v1`. Checks 5-7 need an explicit salt and take
+    """Checks 1-4 default to `staged-check<n>-v1`. Checks 5-8 need an explicit salt and take
     only the registered one (`HUM_FIX_SALT`): not the staged default, not another check's."""
     default = "staged-check%d-v1" % check
     if check not in sb.HUM_FIX_CHECKS:
@@ -236,7 +242,7 @@ def same_utterance_length(sec_r, sec_orig):
 
 def default_prior(check):
     """--prior when none is given. Check 4 also REQUIRES every earlier staged speakers file
-    (pre-registered: all required, each must match a file); checks 5-7 require them all
+    (pre-registered: all required, each must match a file); checks 5-8 require them all
     through one glob, so each also excludes the hum-fix checks drawn before it."""
     if check == 4:
         return PRIOR + [ROOT + "/staged_bench/check%d_speakers.json" % i for i in (1, 2, 3)]
@@ -246,7 +252,7 @@ def default_prior(check):
 
 
 def require_default_prior(check, prior):
-    """Checks 4-7 REQUIRE every entry of `default_prior` (pre-registered): an explicit
+    """Checks 4-8 REQUIRE every entry of `default_prior` (pre-registered): an explicit
     --prior that leaves one out would re-draw heard voices without a word. Extra patterns
     (check 7's dry run takes check 6's dry-run file) are allowed."""
     if check != 4 and check not in sb.HUM_FIX_CHECKS:
@@ -265,8 +271,8 @@ def require_registered_s1(path):
 
 
 def require_registered_ckpts(check, ckpts):
-    """Checks 5-7 compare the registered C0 / S1 checkpoints, byte for byte, and never S1's
-    as G (`staged_bench.check_registered_ckpts`). `ckpts` is {arm: path or None}."""
+    """Checks 5-8 compare the registered C0 / S1 checkpoints, byte for byte, and never S1's
+    as G or E (`staged_bench.check_registered_ckpts`). `ckpts` is {arm: path or None}."""
     try:
         sb.check_registered_ckpts(check, {a: sha256(p) if p else None for a, p in ckpts.items()})
     except ValueError as e:
@@ -284,12 +290,12 @@ def require_registered_spec(check, spec):
 
 
 def require_drawn_before(check, docs, dry_run):
-    """The hum-fix checks are selected in order A, B, C, each excluded by the next. The
+    """The hum-fix checks are selected in order A, B, C, D, each excluded by the next. The
     required glob cannot tell whether the previous check's file is there (checks 1-4 already
-    match it), so: check 7 needs a check-6 speakers file among the priors (a dry run may use
-    check 6's dry run, as registered; a real selection may not), and a real check 6 needs
-    check 5's. Check 6's dry run takes no check-5 file (the registered pre-flight does not)."""
-    want = {6: 5, 7: 6}.get(check)
+    match it), so: check 8 needs a check-7 speakers file among the priors, check 7 needs a
+    check-6 speakers file (a dry run may use a dry-run file; a real selection may not), and a
+    real check 6 needs check 5's. Check 6's dry run takes no check-5 file."""
+    want = {6: 5, 7: 6, 8: 7}.get(check)
     if want is None or (check == 6 and dry_run):
         return
     if not any(isinstance(d, dict) and d.get("check") == want and (dry_run or not d.get("dry_run"))
@@ -732,8 +738,38 @@ def select_c(args, c, rng, lheard, rec):
                                 if s not in paired]}
 
 
+def select_d(args, c, rng, lheard, rec):
+    """Check 8: unheard S1 voices with an entry in --s1-hnr-json and at least two S1 train
+    recordings of 4-8 s; S1 and E each get one of those, and E synthesises its train_e.txt
+    phonemes (`english_cleaners2` mapped via `upstream_as_ours`)."""
+    s1h = hnr_table(args.s1_hnr_json)
+    rec("s1_hnr_json", args.s1_hnr_json)
+    rows, clips = s1_clips(args, lheard, s1h, False, rec)
+    s1 = corpus_rows("libritts_r_22k")
+    e = corpus_rows("libritts_r_22k", "train_e.txt")
+    rec("libritts_r_22k/train_e.txt", Path(DATA) / "libritts_r_22k" / "train_e.txt")
+    if set(e) != set(s1):
+        raise SystemExit("REFUSING: E's train_e.txt rows do not match S1's train_op.txt.")
+    allowed = set(bb.ours_symbols())
+    for w22, (spk, _phon) in s1.items():
+        espk, ephon = e[w22]
+        if espk != spk or not ephon or sd.G_FROM in ephon or not (set(ephon) <= allowed):
+            raise SystemExit("REFUSING: E's row %s is invalid (speaker or phonemes)." % w22)
+    pool = {s: s1h[s]["hnr"] for s, cl in clips.items() if len(cl) >= MIN_CLIPS}
+    print("%d S1 voices eligible (%d heard)" % (len(pool), len(lheard)))
+    items = []
+    for i, s in enumerate(pick_voices(pool, args.n, args.check)):
+        got = lb.assign_clips({s: clips[s]}, c["libri_arms"], rng, args.target_seconds)[s]
+        secs = dict(clips[s])
+        items.append(dict(s1_unit(i, s, s1h), arms={
+            a: {"source": w, "seconds": round(secs[w], 2),
+                "phonemes": e[sd.to_22k(w)][1] if a == "E" else rows[w][1]}
+            for a, w in got.items()}))
+    return items, {"eligible": len(pool)}
+
+
 def hum_fix_rule(args, c, n_units):
-    """The `rule` text of a check 5-7 speakers file."""
+    """The `rule` text of a check 5-8 speakers file."""
     rng = "%.1f-%.1fs" % (args.min_seconds, args.max_seconds)
     who = {5: "unheard VCTK voices with an HNR in --vctk-hnr-from and >= 2 utterances inside "
               "D1's subsample of %s on the 0.92 mic1 recording, spread over HNR" % rng,
@@ -745,10 +781,13 @@ def hum_fix_rule(args, c, n_units):
               "unused unheard F1 voice (HNR and F0 from --hnr-json, >= 2 F1 train recordings "
               "of %s on the 24 kHz file) within %s dB HNR that minimises |ln F0 ratio|, ties "
               "by HNR gap then LibriTTS id; an S1 voice without one is skipped"
-              % (rng, rng, float(sb.F1_MAX_HNR_GAP))}[args.check]
+              % (rng, rng, float(sb.F1_MAX_HNR_GAP)),
+           8: "unheard S1 voices with an entry in --s1-hnr-json and >= 2 S1 train recordings "
+              "of %s (24 kHz LibriTTS-R file), spread over HNR; E synthesises its train_e.txt "
+              "phonemes (english_cleaners2 via upstream_as_ours)" % rng}[args.check]
     return ("check %d (hum-fix %s): arms %s; %d units; %s; every one if %d or fewer (at least "
             "%d); clips nearest %.1fs by assign_clips, a distinct training recording per arm; "
-            "seed %d." % (args.check, "ABC"[args.check - 5], "/".join(c["arms"]), n_units, who,
+            "seed %d." % (args.check, "ABCD"[args.check - 5], "/".join(c["arms"]), n_units, who,
                           args.n, c["min_units"], args.target_seconds, args.seed))
 
 
@@ -762,8 +801,10 @@ def select_hum_fix(args, c, ckpts, rng, vheard, lheard, out_path):
         items, counts = select_a(args, c, rng, vheard, rec)
     elif args.check == 6:
         items, counts = select_b(args, c, rng, lheard, rec)
-    else:
+    elif args.check == 7:
         items, counts = select_c(args, c, rng, lheard, rec)
+    else:
+        items, counts = select_d(args, c, rng, lheard, rec)
     for it in items:
         pair = ""
         if "f1" in it:
@@ -970,11 +1011,11 @@ def main():
     s.add_argument("--vctk-hnr-from", default=rfs.BASELINE_DIR + "/speakers.json")
     s.add_argument("--hnr-json", default=ROOT + "/pitch_error/speaker_hnr_all.json")
     s.add_argument("--s1-hnr-json", default=ROOT + "/pitch_error/speaker_hnr_s1_rest.json",
-                   help="checks 6-7: the S1 voices' HNR and F0 (keys are S1 = v7 indices)")
+                   help="checks 6-8: the S1 voices' HNR and F0 (keys are S1 = v7 indices)")
     s.add_argument("--prior", nargs="+", default=None,
                    help="earlier benches' files; each pattern must match at least one file "
                         "(default: `default_prior`; check 4 adds staged_bench/check{1,2,3}, "
-                        "checks 5-7 staged_bench/*_speakers.json)")
+                        "checks 5-8 staged_bench/*_speakers.json)")
     s.add_argument("--prior-optional", nargs="*",
                    default=[ROOT + "/staged_bench/*_speakers.json"],
                    help="patterns that may match nothing (no staged speakers file exists "
@@ -985,7 +1026,7 @@ def main():
     s.add_argument("--target-seconds", type=float, default=6.0)
     s.add_argument("--max-gap", type=float, default=0.25)
     s.add_argument("--seed", type=int, default=None,
-                   help="default 20261006 for checks 1-4, 20261012 for checks 5-7")
+                   help="default 20261006 for checks 1-4, 20261012 for checks 5-8")
     s.add_argument("--out-speakers", required=True)
 
     r = sub.add_parser("render")
@@ -1000,8 +1041,8 @@ def main():
     r.add_argument("--key-out", required=True)
     r.add_argument("--lufs", type=float, default=-23.0)
     r.add_argument("--salt", default=None,
-                   help="checks 1-4 default to staged-check<n>-v1; checks 5-7 need it given "
-                        "(hum-fix-A-v1, hum-fix-B-v1, hum-fix-C-v1)")
+                   help="checks 1-4 default to staged-check<n>-v1; checks 5-8 need it given "
+                        "(hum-fix-A-v1, hum-fix-B-v1, hum-fix-C-v1, hum-fix-D-v1)")
     r.add_argument("--seed", type=int, default=1618)
 
     args = ap.parse_args()

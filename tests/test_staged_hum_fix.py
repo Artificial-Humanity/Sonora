@@ -1,8 +1,8 @@
-"""The hum-fix batch's checks A, B, C (`--check 5, 6, 7`) in the staged bench.
+"""The hum-fix batch's checks A, B, C, D (`--check 5, 6, 7, 8`) in the staged bench.
 
-Pre-registered in Notes: Sonora/hum-fix-batch-preregistration.md (owner, 2026-10-12). Pins
-the readings, the registered checkpoints and inputs, check C's pairing rule, and how the
-tools select, render and unblind the three checks. Checks 1-4 are pinned in
+Pre-registered in Notes: Sonora/hum-fix-batch-preregistration.md (owner, 2026-10-12; check D
+2026-10-19). Pins the readings, the registered checkpoints and inputs, check C's pairing
+rule, and how the tools select, render and unblind the four checks. Checks 1-4 are pinned in
 `test_staged_bench.py` and `test_staged_tools.py`.
 """
 from fractions import Fraction
@@ -16,7 +16,7 @@ import staged_bench as sb  # noqa: E402
 import staged_data as sd  # noqa: E402
 
 OK = {"C0": Fraction(2, 5), "D1": Fraction(1, 2), "S1": Fraction(2, 5), "G": Fraction(1, 2),
-      "F1": Fraction(3, 5)}
+      "F1": Fraction(3, 5), "E": Fraction(1, 2)}
 
 
 def gaps(**arms):
@@ -26,20 +26,22 @@ def gaps(**arms):
 # ---------------------------------------------------------------- registration
 
 def test_the_three_checks_and_their_arms():
-    assert sb.HUM_FIX_CHECKS == (5, 6, 7)
-    a, b, c = (sb.CHECKS[k] for k in (5, 6, 7))
+    assert sb.HUM_FIX_CHECKS == (5, 6, 7, 8)
+    a, b, c, d = (sb.CHECKS[k] for k in (5, 6, 7, 8))
     assert a["arms"] == ("C0", "D1") and a["vctk_arms"] == ("C0", "D1") and a["libri_arms"] == ()
     assert a["contrasts"] == (("D1", "C0"),) and a["floor_ref"] == "C0"
     assert b["arms"] == ("S1", "G") and b["libri_arms"] == ("S1", "G") and b["vctk_arms"] == ()
     assert b["contrasts"] == (("S1", "G"),) and b["floor_ref"] == "S1"
     assert c["arms"] == ("S1", "F1") and c["libri_arms"] == ("S1", "F1") and c["vctk_arms"] == ()
     assert c["contrasts"] == (("S1", "F1"),) and c["floor_ref"] == "S1"
-    assert {sb.CHECKS[k]["min_units"] for k in (5, 6, 7)} == {16}
+    assert d["arms"] == ("S1", "E") and d["libri_arms"] == ("S1", "E") and d["vctk_arms"] == ()
+    assert d["contrasts"] == (("S1", "E"),) and d["floor_ref"] == "S1"
+    assert {sb.CHECKS[k]["min_units"] for k in (5, 6, 7, 8)} == {16}
 
 
 def test_each_new_arm_renders_on_its_registered_path():
     assert sb.FAMILY["D1"] == sb.FAMILY["C0"] == "vctk22"
-    assert sb.FAMILY["G"] == sb.FAMILY["S1"] == "libri22"       # S1's LibriTTS-R 22k copy
+    assert sb.FAMILY["G"] == sb.FAMILY["E"] == sb.FAMILY["S1"] == "libri22"
     assert sb.FAMILY["F1"] not in ("libri22", "orig22", "vctk22", "libri24")
 
 
@@ -60,6 +62,7 @@ def test_the_registered_input_digests():
 @pytest.mark.parametrize("arm,good,bad", [
     ("F1", "checkpoint_epoch=009_step=0009779.ckpt", "checkpoint_epoch=009_step=0009209.ckpt"),
     ("G", "checkpoint_epoch=009_step=0009209.ckpt", "checkpoint_epoch=009_step=0009779.ckpt"),
+    ("E", "checkpoint_epoch=009_step=0009209.ckpt", "checkpoint_epoch=009_step=0009779.ckpt"),
 ])
 def test_f1_and_g_finals_are_their_registered_names(arm, good, bad):
     assert sb.final_ckpt(arm, "/x/checkpoints/" + good)
@@ -76,6 +79,7 @@ def test_f1s_final_is_ten_epochs_of_its_train_rows():
     (5, {"C0": "x", "D1": None}, "C0"),
     (6, {"S1": "x", "G": None}, "S1"),
     (7, {"S1": None, "F1": None}, "S1"),
+    (8, {"S1": "x", "E": None}, "S1"),
 ])
 def test_a_control_that_is_not_the_registered_checkpoint_is_refused(check, digests, why):
     with pytest.raises(ValueError, match=why):
@@ -88,6 +92,8 @@ def test_registered_controls_pass_and_an_untrained_arm_may_be_missing():
     sb.check_registered_ckpts(5, {"C0": c0, "D1": "d1"})
     sb.check_registered_ckpts(6, {"S1": s1, "G": "g"})
     sb.check_registered_ckpts(7, {"S1": s1, "F1": "f1"})
+    sb.check_registered_ckpts(8, {"S1": s1, "E": None})
+    sb.check_registered_ckpts(8, {"S1": s1, "E": "e"})
 
 
 def test_a_g_checkpoint_that_is_s1s_is_refused():
@@ -98,7 +104,7 @@ def test_a_g_checkpoint_that_is_s1s_is_refused():
 
 @pytest.mark.parametrize("check,arm,ctrl", [
     (5, "D1", "C0"), (5, "D1", "S1"), (6, "G", "S1"), (6, "G", "C0"),
-    (7, "F1", "S1"), (7, "F1", "C0")])
+    (7, "F1", "S1"), (7, "F1", "C0"), (8, "E", "S1"), (8, "E", "C0")])
 def test_a_new_arms_checkpoint_that_is_a_controls_is_refused(check, arm, ctrl):
     same = sb.CONTROL_SHA256[ctrl]
     digests = {"C0": sb.CONTROL_SHA256["C0"]} if check == 5 else {"S1": sb.CONTROL_SHA256["S1"]}
@@ -197,28 +203,29 @@ def test_check5_reports_both_arms_excess():
     assert r["level"]["C0"][0] == 1 and r["level"]["D1"][0] == 2
 
 
-# ---------------------------------------------------------------- checks B and C
+# ---------------------------------------------------------------- checks B, C and D
 
-@pytest.mark.parametrize("check,arm,name", [(6, "G", "symbol"), (7, "F1", "dense_speakers")])
+@pytest.mark.parametrize("check,arm,name", [
+    (6, "G", "symbol"), (7, "F1", "dense_speakers"), (8, "E", "text_frontend")])
 def test_shown_when_s1_hums_more(check, arm, name):
     r = sb.reading(check, gaps(S1=[2] * 16, **{arm: [0] * 16}), OK)
     assert r["valid"] and r["outcome"] == "shown" and r["shown"] == [name]
     assert r["n_tests"] == 3 and r["n_deciding"] == 2
 
 
-@pytest.mark.parametrize("check,arm", [(6, "G"), (7, "F1")])
+@pytest.mark.parametrize("check,arm", [(6, "G"), (7, "F1"), (8, "E")])
 def test_not_shown_when_the_fix_hums_as_much(check, arm):
     r = sb.reading(check, gaps(S1=[2] * 16, **{arm: [2] * 16}), OK)
     assert r["valid"] and r["outcome"] == "not_shown"
 
 
-@pytest.mark.parametrize("check,arm", [(6, "G"), (7, "F1")])
+@pytest.mark.parametrize("check,arm", [(6, "G"), (7, "F1"), (8, "E")])
 def test_invalid_when_s1s_own_excess_is_not_shown(check, arm):
     r = sb.reading(check, gaps(S1=[0] * 16, **{arm: [-2] * 16}), OK)
     assert r["outcome"] == "invalid" and r["shown"] == []
 
 
-@pytest.mark.parametrize("check,arm", [(6, "G"), (7, "F1")])
+@pytest.mark.parametrize("check,arm", [(6, "G"), (7, "F1"), (8, "E")])
 def test_floors_are_compared_with_s1s(check, arm):
     r = sb.reading(check, gaps(S1=[2] * 16, **{arm: [0] * 16}),
                    {"S1": Fraction(3, 20), arm: Fraction(23, 20)})
@@ -228,7 +235,7 @@ def test_floors_are_compared_with_s1s(check, arm):
     assert r["outcome"] == "invalid"
 
 
-@pytest.mark.parametrize("check,arm", [(6, "G"), (7, "F1")])
+@pytest.mark.parametrize("check,arm", [(6, "G"), (7, "F1"), (8, "E")])
 def test_fewer_than_sixteen_voices_rated_in_both_arms_is_invalid(check, arm):
     g = gaps(S1=[2] * 16, **{arm: [0] * 16})
     del g["S1"][0]
@@ -254,7 +261,8 @@ def _data_cfg(name):
 
 
 @pytest.mark.parametrize("arm,experiment,n_spks", [
-    ("D1", "staged_d1", 109), ("G", "staged_g", 247), ("F1", "staged_f1", 90)])
+    ("D1", "staged_d1", 109), ("G", "staged_g", 247), ("F1", "staged_f1", 90),
+    ("E", "staged_e", 247)])
 def test_each_new_arm_is_checked_against_its_training_datas_statistics(arm, experiment, n_spks):
     import yaml
     from pathlib import Path
@@ -294,7 +302,7 @@ def test_libri_r_24k_inverts_libri_r_22k_for_every_f1_subset():
 
 def test_hum_fix_checks_require_the_staged_glob_and_every_default():
     want = rs.PRIOR + [rs.ROOT + "/staged_bench/*_speakers.json"]
-    for check in (5, 6, 7):
+    for check in (5, 6, 7, 8):
         assert rs.default_prior(check) == want
         rs.require_default_prior(check, want + ["/scratch/check6_dryrun_speakers.json"])
         with pytest.raises(SystemExit, match="check %d's --prior must hold" % check):
@@ -304,7 +312,8 @@ def test_hum_fix_checks_require_the_staged_glob_and_every_default():
 def test_hum_fix_renders_need_an_explicit_salt_and_not_the_staged_default():
     assert rs.resolve_salt(3, None) == "staged-check3-v1"
     assert rs.resolve_salt(4, "x") == "x"
-    for check, salt in ((5, "hum-fix-A-v1"), (6, "hum-fix-B-v1"), (7, "hum-fix-C-v1")):
+    for check, salt in ((5, "hum-fix-A-v1"), (6, "hum-fix-B-v1"), (7, "hum-fix-C-v1"),
+                        (8, "hum-fix-D-v1")):
         assert rs.resolve_salt(check, salt) == salt
         with pytest.raises(SystemExit, match="--salt"):
             rs.resolve_salt(check, None)
@@ -314,19 +323,24 @@ def test_hum_fix_renders_need_an_explicit_salt_and_not_the_staged_default():
 
 def test_hum_fix_renders_refuse_any_salt_but_the_registered_one():
     for check, other in ((5, "hum-fix-B-v1"), (6, "hum-fix-C-v1"), (7, "hum-fix-A-v1"),
-                         (5, "hum-fix-A-v2"), (6, "x"), (7, "")):
-        with pytest.raises(SystemExit, match="REFUSING.*hum-fix-%s-v1" % "ABC"[check - 5]):
+                         (8, "hum-fix-B-v1"), (5, "hum-fix-A-v2"), (6, "x"), (7, ""), (8, "")):
+        with pytest.raises(SystemExit, match="REFUSING.*hum-fix-%s-v1" % "ABCD"[check - 5]):
             rs.resolve_salt(check, other)
     assert rs.resolve_salt(1, "anything") == "anything"
 
 
 def test_select_seed_defaults_to_the_registered_one_per_check():
-    assert [rs.select_seed(c, None) for c in range(1, 8)] == [20261006] * 4 + [20261012] * 3
+    assert [rs.select_seed(c, None) for c in range(1, 9)] == [20261006] * 4 + [20261012] * 4
     assert rs.select_seed(6, 7) == 7
 
 
 def test_g_renders_s1s_phonemes_with_its_symbol_moved_and_no_other_arm_changes():
     assert rs.arm_phonemes("G", "pɚmˈɪɾᵻd ᵻ") == "pɚmˈɪɾᵊd ᵊ"
+    assert rs.arm_phonemes("E", "pɚmˈɪɾᵊd ɪt") == "pɚmˈɪɾᵊd ɪt"
+    with pytest.raises(SystemExit, match="REFUSING.*E's phonemes"):
+        rs.arm_phonemes("E", "pɚmˈɪɾᵻd")
+    with pytest.raises(SystemExit, match="REFUSING.*E's phonemes"):
+        rs.arm_phonemes("E", "")
     for arm in ("S1", "F1", "C0", "D1", "L"):
         assert rs.arm_phonemes(arm, "pɚmˈɪɾᵻd") == "pɚmˈɪɾᵻd"
 
@@ -334,13 +348,14 @@ def test_g_renders_s1s_phonemes_with_its_symbol_moved_and_no_other_arm_changes()
 def test_f1_synthesises_with_its_own_table_index_and_every_other_arm_with_the_v7_one():
     it = {"libri": 40, "f1": {"libri": 4234, "f1_sid": 7}}
     assert rs.voice_index(it, "F1") == 7
-    assert rs.voice_index(it, "S1") == rs.voice_index(it, "G") == 40
+    assert rs.voice_index(it, "S1") == rs.voice_index(it, "G") == rs.voice_index(it, "E") == 40
 
 
 def test_each_hum_fix_arm_round_trips_its_own_22k_copy():
     w100 = sd.LIBRI_24K_ROOT + "/19/198/19_198_000000_000000.wav"
     w500 = sd.LIBRI_R_ROOT + "/train-other-500/19/198/19_198_000000_000000.wav"
-    assert rs.rt_source_of("S1", w100) == rs.rt_source_of("G", w100) == sd.to_22k(w100)
+    assert rs.rt_source_of("S1", w100) == rs.rt_source_of("G", w100) == \
+        rs.rt_source_of("E", w100) == sd.to_22k(w100)
     assert rs.rt_source_of("F1", w500) == sd.libri_r_22k(w500)
     assert rs.rt_source_of("D1", "p225_001") == rs.rt_source_of("C0", "p225_001") == \
         "wav48_silence_trimmed/p225/p225_001_mic1.flac"
@@ -362,6 +377,8 @@ def test_hum_fix_keys_record_arm_voice_source_and_round_trip_source():
     assert (s1["spk"], s1["rt_source"], s1["partition"]) == (19, sd.to_22k(w), "train-clean-100")
     g = rs.truth_entry(6, "G", dict(it, arms={"G": {"source": w}}), [("A", "G"), ("B", "Grt")])
     assert g["spk"] == 19 and g["rt_source"] == sd.to_22k(w) and "f1_sid" not in g
+    e = rs.truth_entry(8, "E", dict(it, arms={"E": {"source": w}}), [("A", "E"), ("B", "Ert")])
+    assert e["spk"] == 19 and e["rt_source"] == sd.to_22k(w) and "f1_sid" not in e
     v = rs.truth_entry(5, "D1", {"unit": 0, "vctk": "p225", "vctk_hnr": 4.0,
                                  "arms": {"D1": {"source": "p225_001"}}},
                        [("A", "D1"), ("B", "D1rt")])
@@ -372,14 +389,17 @@ def test_hum_fix_keys_record_arm_voice_source_and_round_trip_source():
 def test_render_refuses_a_speakers_file_whose_controls_are_not_registered():
     s1 = sb.CONTROL_SHA256["S1"]
     rs.require_registered_spec(6, {"ckpts": {"S1": ["/s1", s1], "G": ["/g", "g"]}})
+    rs.require_registered_spec(8, {"ckpts": {"S1": ["/s1", s1], "E": ["/e", "e"]}})
     with pytest.raises(SystemExit, match="REFUSING.*S1"):
         rs.require_registered_spec(6, {"ckpts": {"S1": ["/s1", "x"], "G": ["/g", "g"]}})
     with pytest.raises(SystemExit, match="REFUSING.*G"):
         rs.require_registered_spec(6, {"ckpts": {"S1": ["/s1", s1], "G": ["/g", s1]}})
+    with pytest.raises(SystemExit, match="REFUSING.*E"):
+        rs.require_registered_spec(8, {"ckpts": {"S1": ["/s1", s1], "E": ["/e", s1]}})
     rs.require_registered_spec(3, {"ckpts": {"S1": ["/s1", "x"]}})
 
 
-# --- synthetic worlds for `select --check 5/6/7`
+# --- synthetic worlds for `select --check 5/6/7/8`
 
 def _wav(path, seconds, sr=24000):
     import numpy as np
@@ -392,7 +412,8 @@ def _pins(tmp_path, monkeypatch, arms):
     """Stand-in checkpoints for the given arms (registered names), the controls' digests
     pinned to them, and an empty prior. -> ([--ckpt args], {arm: path})."""
     names = {"C0": "checkpoint_epoch=009_step=0013489.ckpt", "S1": "checkpoint_epoch=009_step=0009209.ckpt",
-             "D1": sb.FINAL_CKPT["D1"], "G": sb.FINAL_CKPT["G"], "F1": sb.FINAL_CKPT["F1"]}
+             "D1": sb.FINAL_CKPT["D1"], "G": sb.FINAL_CKPT["G"], "F1": sb.FINAL_CKPT["F1"],
+             "E": sb.FINAL_CKPT["E"]}
     out, paths = [], {}
     for a in arms:
         ck = tmp_path / "ck" / a / names[a]
@@ -565,14 +586,14 @@ def test_select_check5_refuses_a_d1_row_that_does_not_match_the_vits_filelists(t
 
 
 def _libri_world(tmp_path, monkeypatch, check, n_s1, *, symbol=None, n_f1=0, f1_hnr=None,
-                 f1_f0=None, g_bad=False):
+                 f1_f0=None, g_bad=False, e_bad=None):
     """S1 voices 1..n_s1 (v7 = S1 index = LibriTTS id), each with 3 one-second train
     recordings; `symbol(spk, k)` says whether recording k carries ᵻ (default: all). F1 voices
     j = 0..n_f1-1: v7 index 1000+j, LibriTTS id 5000+j, F1 table index j, train-other-500,
     3 recordings each. HNR: S1 voice s at 2 + s/10; F1 voice j at `f1_hnr(j)` (default the
     same as S1 voice j+1). Returns argv for `select --check <check>`."""
     base = str(tmp_path / "LibriTTS_R")
-    rows, s1, g, f1 = {}, {}, {}, {}
+    rows, s1, g, e, f1 = {}, {}, {}, {}, {}
     s1h, allh = {}, {}
     for s in range(1, n_s1 + 1):
         s1h[str(s)] = {"hnr": round(2 + s / 10, 3), "f0": 100.0 + s,
@@ -584,6 +605,8 @@ def _libri_world(tmp_path, monkeypatch, check, n_s1, *, symbol=None, n_f1=0, f1_
             rows[w] = (s, ph)
             s1[w.replace(R24, R22)] = (s, ph)
             g[w.replace(R24, R22)] = (s, ph.replace("ᵻ", "ᵊ" if not g_bad else "ᵻ"))
+            e[w.replace(R24, R22)] = (
+                (s, "ɛspˈiːkᵊ %s." % "abc"[k]) if e_bad is None else e_bad(s, k))
     table = {"n_spks": n_f1, "libritts_id_to_index": {}, "v7_index": {}}
     for j in range(n_f1):
         lid, v = 5000 + j, 1000 + j
@@ -597,7 +620,8 @@ def _libri_world(tmp_path, monkeypatch, check, n_s1, *, symbol=None, n_f1=0, f1_
             _wav(w, 1.0)
             f1[w.replace(R24, R22)] = (j, "fˈɛn %d" % k)
     tables = {("libritts_r_vat", "train_op.txt"): rows, ("libritts_r_22k", "train_op.txt"): s1,
-              ("libritts_r_22k", "train_g.txt"): g, ("f1_dense", "train_op.txt"): f1}
+              ("libritts_r_22k", "train_g.txt"): g, ("libritts_r_22k", "train_e.txt"): e,
+              ("f1_dense", "train_op.txt"): f1}
     monkeypatch.setattr(rs, "corpus_rows", lambda corpus, name="train_op.txt": tables[(corpus, name)])
     for corpus, name in tables:                 # select records each filelist's sha256
         (tmp_path / "data" / corpus).mkdir(parents=True, exist_ok=True)
@@ -617,6 +641,8 @@ def _libri_world(tmp_path, monkeypatch, check, n_s1, *, symbol=None, n_f1=0, f1_
     assert arms[0] == "S1"
     if check == 7:                      # check 7 is drawn after check 6
         (tmp_path / "prior" / "check6.json").write_text(json.dumps({"check": 6, "items": []}))
+    elif check == 8:                    # check 8 is drawn after check 7
+        (tmp_path / "prior" / "check7.json").write_text(json.dumps({"check": 7, "items": []}))
     return ["select", "--check", str(check)] + ck + [
         "--s1-hnr-json", str(sh), "--hnr-json", str(ah), "--prior-optional",
         "--min-seconds", "0.5", "--max-seconds", "2", "--target-seconds", "1.0"]
@@ -624,10 +650,10 @@ def _libri_world(tmp_path, monkeypatch, check, n_s1, *, symbol=None, n_f1=0, f1_
 
 def test_the_inputs_each_hum_fix_check_must_have_registered():
     assert rs.HUM_FIX_INPUTS == {5: ("vctk_hnr_from",), 6: ("s1_hnr_json",),
-                                 7: ("hnr_json", "s1_hnr_json")}
+                                 7: ("hnr_json", "s1_hnr_json"), 8: ("s1_hnr_json",)}
 
 
-@pytest.mark.parametrize("check", [6, 7])
+@pytest.mark.parametrize("check", [6, 7, 8])
 def test_select_refuses_an_s1_hnr_file_that_is_not_the_registered_one(tmp_path, monkeypatch, check):
     argv = _libri_world(tmp_path, monkeypatch, check, 16, n_f1=16)
     sh = tmp_path / "s1h.json"
@@ -714,6 +740,34 @@ def test_select_check7_refuses_an_unregistered_s1_checkpoint(tmp_path, monkeypat
         _out(tmp_path, monkeypatch, argv)
 
 
+def test_check8_dry_run_items_equal_a_real_selects_and_store_each_arms_phonemes(
+        tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 8, 24, symbol=lambda s, k: k == 0)
+    dry = _out(tmp_path, monkeypatch, argv, "dry.json")
+    real = _out(tmp_path, monkeypatch, argv + _stand_in(tmp_path, "E"), "real.json", dry=False)
+    assert dry["dry_run"] is True and "dry_run" not in real and real["ckpts"]["E"] is not None
+    assert dry["items"] == real["items"] and len(real["items"]) == 20
+    assert "libritts_r_22k/train_e.txt" in real["inputs"]
+    for it in real["items"]:
+        assert set(it["arms"]) == {"S1", "E"}
+        assert it["arms"]["S1"]["source"] != it["arms"]["E"]["source"]
+        assert it["arms"]["S1"]["phonemes"].startswith("pɚmˈɪ")
+        assert it["arms"]["E"]["phonemes"].startswith("ɛspˈiːkᵊ")
+        assert sd.G_FROM not in it["arms"]["E"]["phonemes"]
+
+
+@pytest.mark.parametrize("bad_fn", [
+    lambda s, k: (s + 1, "ɛspˈiːkᵊ"),          # speaker mismatch
+    lambda s, k: (s, ""),                       # empty phonemes
+    lambda s, k: (s, "pɚmˈɪɾᵻd"),               # unmapped ᵻ (id 176)
+    lambda s, k: (s, "ɛspˈiːk~"),               # symbol outside ours_symbols
+])
+def test_select_check8_refuses_an_invalid_or_unmapped_e_row(tmp_path, monkeypatch, bad_fn):
+    argv = _libri_world(tmp_path, monkeypatch, 8, 16, e_bad=bad_fn)
+    with pytest.raises(SystemExit, match="REFUSING.*E's row"):
+        _out(tmp_path, monkeypatch, argv)
+
+
 # ---------------------------------------------------------------- unblind
 
 import csv  # noqa: E402
@@ -747,13 +801,15 @@ def _bench(tmp_path, check, model_sev, n=16, rt=1):
     key.write_text(json.dumps({"check": check, "items": items}))
     _folder(tmp_path / "t", rows)
     argv = ["--check", str(check), "--key", str(key), "--test", str(tmp_path / "t")]
-    if check in sb.HUM_FIX_CHECKS:      # the session's three folders: this one and two more
+    if check in (5, 6, 7):              # checks 5-7: three-folder session
         _meta(tmp_path / "t", check)
-        rest = [c for c in sorted(sb.HUM_FIX_CHECKS) if c != check]
+        rest = [c for c in (5, 6, 7) if c != check]
         others = [_folder(tmp_path / n, [{"item": "item_%02d" % i, "sev_a": 2, "sev_b": 1}
                                          for i in range(3)], check=c)
                   for n, c in zip(("t2", "t3"), rest)]
         argv += ["--session-tests", str(tmp_path / "t")] + [str(o) for o in others]
+    elif check == 8:                    # check 8: single-folder session
+        _meta(tmp_path / "t", check)
     return argv
 
 
@@ -799,8 +855,9 @@ def test_check5_floors_are_c0s(tmp_path, capsys):
 
 
 @pytest.mark.parametrize("check,fix,text", [
-    (6, "G", "the remap reduces the hum"), (7, "F1", "dense speakers reduce the hum")])
-def test_checks_6_and_7_unblind_to_shown(tmp_path, capsys, check, fix, text):
+    (6, "G", "the remap reduces the hum"), (7, "F1", "dense speakers reduce the hum"),
+    (8, "E", "training on op_g2p instead of the espeak input stock's text encoder learned adds hum")])
+def test_checks_6_7_and_8_unblind_to_shown(tmp_path, capsys, check, fix, text):
     r = ub.main(_bench(tmp_path, check, {"S1": 3, fix: 1}))
     out = capsys.readouterr().out
     assert r["outcome"] == "shown" and "OUTCOME: SHOWN" in out and text in out
@@ -809,20 +866,20 @@ def test_checks_6_and_7_unblind_to_shown(tmp_path, capsys, check, fix, text):
             "the reading (S1's excess and S1 − %s); uncorrected" % (shown, shown, shown)) in out
 
 
-@pytest.mark.parametrize("check,fix", [(6, "G"), (7, "F1")])
-def test_checks_6_and_7_invalid_without_s1s_excess(tmp_path, capsys, check, fix):
+@pytest.mark.parametrize("check,fix", [(6, "G"), (7, "F1"), (8, "E")])
+def test_checks_6_7_and_8_invalid_without_s1s_excess(tmp_path, capsys, check, fix):
     r = ub.main(_bench(tmp_path, check, {"S1": 1, fix: 0}))
     out = capsys.readouterr().out
     assert r["outcome"] == "invalid" and "no reading" in out and "S1's own excess" in out
 
 
-@pytest.mark.parametrize("check,fix", [(5, "D1"), (6, "G"), (7, "F1")])
+@pytest.mark.parametrize("check,fix", [(5, "D1"), (6, "G"), (7, "F1"), (8, "E")])
 def test_fifteen_voices_rated_in_both_arms_is_invalid(tmp_path, check, fix):
     sev = {"C0": 1, "D1": 3} if check == 5 else {"S1": 3, fix: 1}
     assert ub.main(_bench(tmp_path, check, sev, n=15))["outcome"] == "invalid"
 
 
-@pytest.mark.parametrize("check,arm", [(5, "D1"), (6, "G"), (7, "F1")])
+@pytest.mark.parametrize("check,arm", [(5, "D1"), (6, "G"), (7, "F1"), (8, "E")])
 def test_an_arm_with_nothing_rated_is_invalid_not_a_crash(tmp_path, capsys, check, arm):
     argv = _bench(tmp_path, check, {"C0": 1, "D1": 3} if check == 5 else {"S1": 3, arm: 1})
     p = tmp_path / "t" / "verdicts" / "verdicts.csv"
@@ -845,7 +902,7 @@ def test_check7_prints_each_pairs_partition(tmp_path, capsys):
     assert "F1 v7 4003" in line and "LibriTTS 5003" in line and "train-other-500" in line
 
 
-def test_the_unblind_tool_takes_checks_5_to_7_only_with_their_own_keys(tmp_path):
+def test_the_unblind_tool_takes_checks_5_to_8_only_with_their_own_keys(tmp_path):
     argv = _bench(tmp_path, 6, {"S1": 3, "G": 1})
     argv[1] = "7"
     with pytest.raises(SystemExit, match="check 6"):
@@ -882,6 +939,19 @@ def test_an_unrated_item_in_any_of_the_three_folders_refuses_the_unblinding(
     assert "OUTCOME" in capsys.readouterr().out
 
 
+def test_check8_is_a_single_folder_session_and_refuses_unrated_or_session_tests(
+        tmp_path, capsys):
+    argv = _bench(tmp_path, 8, {"S1": 3, "E": 1}, n=17)
+    with pytest.raises(SystemExit, match="REFUSING.*--session-tests.*single-folder"):
+        ub.main(argv + ["--session-tests", str(tmp_path / "t"), "x", "y"])
+    _unrate(tmp_path / "t", "item_01")
+    with pytest.raises(SystemExit, match="REFUSING.*1 of .* items.*not fully rated.*--session-closed"):
+        ub.main(argv)
+    assert "OUTCOME" not in capsys.readouterr().out
+    r = ub.main(argv + ["--session-closed"])
+    assert r["outcome"] == "shown" and "OUTCOME" in capsys.readouterr().out
+
+
 def test_an_item_missing_from_the_verdicts_is_unrated(tmp_path):
     argv = _bench(tmp_path, 6, {"S1": 3, "G": 1})
     p = tmp_path / "t2" / "verdicts" / "verdicts.csv"
@@ -890,7 +960,7 @@ def test_an_item_missing_from_the_verdicts_is_unrated(tmp_path):
         ub.main(argv)
 
 
-@pytest.mark.parametrize("check,fix", [(5, "D1"), (6, "G"), (7, "F1")])
+@pytest.mark.parametrize("check,fix", [(5, "D1"), (6, "G"), (7, "F1"), (8, "E")])
 def test_a_fully_rated_session_unblinds_without_session_closed(tmp_path, check, fix):
     sev = {"C0": 1, "D1": 3} if check == 5 else {"S1": 3, fix: 1}
     assert ub.main(_bench(tmp_path, check, sev))["outcome"] == "shown"
@@ -977,6 +1047,13 @@ def test_check7_refuses_without_check6s_speakers_file_among_the_priors(tmp_path,
     argv = _libri_world(tmp_path, monkeypatch, 7, 16, n_f1=16)
     (tmp_path / "prior" / "check6.json").unlink()
     with pytest.raises(SystemExit, match="check 6"):
+        _out(tmp_path, monkeypatch, argv)
+
+
+def test_check8_refuses_without_check7s_speakers_file_among_the_priors(tmp_path, monkeypatch):
+    argv = _libri_world(tmp_path, monkeypatch, 8, 16)
+    (tmp_path / "prior" / "check7.json").unlink()
+    with pytest.raises(SystemExit, match="check 7"):
         _out(tmp_path, monkeypatch, argv)
 
 
