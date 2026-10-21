@@ -244,8 +244,16 @@ DELIVERY = (DELIVERY_UNKNOWN, *sorted(ACTIVE_DELIVERY_LANES))
 # Delivery v2 (owner-ratified 2026-10-21, notes/delivery-v2-context-and-manner.md):
 # Layer 1 (Discourse Context, 5 roles) and Layer 2 (Vocal Manner, 8 physical modes),
 # imported from `matcha.delivery` so the vocabulary has a single owner.
-DISCOURSE_CONTEXTS = (DELIVERY_UNKNOWN, *getattr(_delivery, "DISCOURSE_CONTEXTS", ()))
-VOCAL_MANNERS = (DELIVERY_UNKNOWN, *getattr(_delivery, "VOCAL_MANNERS", ()))
+_DISCOURSE_CONTEXTS = getattr(_delivery, "DISCOURSE_CONTEXTS", None)
+_VOCAL_MANNERS = getattr(_delivery, "VOCAL_MANNERS", None)
+if _DISCOURSE_CONTEXTS is None or _VOCAL_MANNERS is None:
+    raise RuntimeError(
+        "the delivery contract beside this app is STALE: it is missing "
+        "DISCOURSE_CONTEXTS or VOCAL_MANNERS (Delivery v2, 2026-10-21). "
+        "Fix: scripts/deploy.sh audition — which copies matcha/delivery.py to "
+        "app/_contract/delivery.py, not just the app code.")
+DISCOURSE_CONTEXTS = (DELIVERY_UNKNOWN, *_DISCOURSE_CONTEXTS)
+VOCAL_MANNERS = (DELIVERY_UNKNOWN, *_VOCAL_MANNERS)
 
 # Marker stage_pool.py writes into the note column of a machine-folded row: a clip
 # staged into the dataset on its GROUP's certification, which nobody listened to.

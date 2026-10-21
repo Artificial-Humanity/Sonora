@@ -553,8 +553,8 @@ document.onkeydown=e=>{
   else if(k==="1"){play("A");e.preventDefault();return;}
   else if(k==="2"){play("B");e.preventDefault();return;}
   if(e.key==="ArrowLeft")move(-1); else if(e.key==="ArrowRight")move(1);
-  else if(scaleOf()&&/^[0-5]$/.test(e.key))sev("A",e.key);
-  else if(scaleOf()&&")!@#$%".indexOf(e.key)>=0)sev("B",String(")!@#$%".indexOf(e.key)));
+  else if(scaleOf()&&!isDefects(scaleOf())&&/^[0-5]$/.test(e.key))sev("A",e.key);
+  else if(scaleOf()&&!isDefects(scaleOf())&&")!@#$%".indexOf(e.key)>=0)sev("B",String(")!@#$%".indexOf(e.key)));
   else if(!scaleOf()&&k==="a")choose("A");
   else if(!scaleOf()&&k==="b")choose("B");
   else if(!scaleOf()&&k==="s")choose("same");

@@ -450,6 +450,8 @@ function focusCard(i,scroll=false){
   if(scroll) c.el.scrollIntoView({block:'center',behavior:'smooth'});   // only on explicit keyboard nav
 }
 
+const numOr = (v, fb) => (v !== '' && v != null) ? +v : fb;
+
 function ageBandLabel(gender, val){
   const bands = AGE_BANDS_BY_GENDER[gender] || AGE_BANDS_BY_GENDER.Neutral || [];
   return bands[val - 1] || (`Band ${val}`);
@@ -459,17 +461,17 @@ function cardEl(c,i){
   const el=document.createElement('div'); el.className='card';
   const set = c._rated;
   const g = c.gender || genderOf(c.id);
-  const intAge = +(c.intended_age || 3), audAge = +(c.audited_age || intAge);
-  const intPitch = +(c.intended_pitch || 3), audPitch = +(c.audited_pitch || intPitch);
-  const intDepth = +(c.intended_depth || 3), audDepth = +(c.audited_depth || intDepth);
-  const intStrain = +(c.intended_strain || 0), audStrain = +(c.audited_strain || intStrain);
+  const intAge = numOr(c.intended_age, 3), audAge = numOr(c.audited_age, intAge);
+  const intPitch = numOr(c.intended_pitch, 3), audPitch = numOr(c.audited_pitch, intPitch);
+  const intDepth = numOr(c.intended_depth, 3), audDepth = numOr(c.audited_depth, intDepth);
+  const intStrain = numOr(c.intended_strain, 0), audStrain = numOr(c.audited_strain, intStrain);
   const sliderState = {
     intended_age: intAge, audited_age: audAge, touched_age: c.touched_age==='1',
     intended_pitch: intPitch, audited_pitch: audPitch, touched_pitch: c.touched_pitch==='1',
     intended_depth: intDepth, audited_depth: audDepth, touched_depth: c.touched_depth==='1',
     intended_strain: intStrain, audited_strain: audStrain, touched_strain: c.touched_strain==='1',
-    buzz: +(c.buzz || 0), hum: +(c.hum || 0), layering: +(c.layering || 0),
-    noise: +(c.noise || 0), robot: +(c.robot || 0)
+    buzz: numOr(c.buzz, 0), hum: numOr(c.hum, 0), layering: numOr(c.layering, 0),
+    noise: numOr(c.noise, 0), robot: numOr(c.robot, 0)
   };
   el.innerHTML=`
     <div class="meta">
@@ -580,6 +582,10 @@ function cardEl(c,i){
       sliderState[`touched_${attr}`]=true;
       const gCur=el.querySelector('select.gender').value||g;
       valEl.textContent=attr==='age'?`${v} · ${ageBandLabel(gCur,v)}`:`${v} / 5`;
+      if(attr==='age'){
+        const ageSel=el.querySelector('select[data-role="age"]');
+        if(ageSel) ageSel.value=ageBandLabel(gCur,v);
+      }
     };
     inp.addEventListener('input',updateAttr);
     inp.addEventListener('change',async()=>{
@@ -693,29 +699,40 @@ async function loadProbeDetail(probeId){
   if(data.age_bands_by_gender) AGE_BANDS_BY_GENDER = data.age_bands_by_gender;
   document.getElementById('probeTitle').textContent = data.title || probeId;
   const clips = data.clips || [];
-  const done = clips.filter(c=>c.zone).length;
-  document.getElementById('stat').textContent = `${done} / ${clips.length} zoned`;
+  const updateProbeStat = () => {
+    const done = clips.filter(c=>c.zone).length;
+    document.getElementById('stat').textContent = `${done} / ${clips.length} zoned`;
+  };
+  updateProbeStat();
   const pl = document.getElementById('probeList');
   pl.innerHTML = '';
-  clips.forEach(c => pl.appendChild(probeCardEl(probeId, c)));
+  clips.forEach(c => pl.appendChild(probeCardEl(probeId, c, updateProbeStat)));
 }
 
-function probeCardEl(probeId, c){
+function probeCardEl(probeId, c, updateProbeStat){
   const el = document.createElement('div');
   el.className = 'card' + (c.zone ? ' done' : '');
   const g = c.gender || genderOf(c.id);
   const ac = c.acoustics || {};
-  const intAge = +(c.intended_age || 3), audAge = +(c.audited_age || intAge);
-  const intPitch = +(c.intended_pitch || 3), audPitch = +(c.audited_pitch || intPitch);
-  const intDepth = +(c.intended_depth || 3), audDepth = +(c.audited_depth || intDepth);
-  const intStrain = +(c.intended_strain || 0), audStrain = +(c.audited_strain || intStrain);
+  const intAge = c.intended_age != null && c.intended_age !== '' ? +c.intended_age : null;
+  const intPitch = c.intended_pitch != null && c.intended_pitch !== '' ? +c.intended_pitch : null;
+  const intDepth = c.intended_depth != null && c.intended_depth !== '' ? +c.intended_depth : null;
+  const intStrain = c.intended_strain != null && c.intended_strain !== '' ? +c.intended_strain : null;
+  const audAge = numOr(c.audited_age, numOr(c.intended_age, 3));
+  const audPitch = numOr(c.audited_pitch, numOr(c.intended_pitch, 3));
+  const audDepth = numOr(c.audited_depth, numOr(c.intended_depth, 3));
+  const audStrain = numOr(c.audited_strain, numOr(c.intended_strain, 0));
   const sState = {
-    intended_age: intAge, audited_age: audAge, touched_age: c.touched_age==='1',
-    intended_pitch: intPitch, audited_pitch: audPitch, touched_pitch: c.touched_pitch==='1',
-    intended_depth: intDepth, audited_depth: audDepth, touched_depth: c.touched_depth==='1',
-    intended_strain: intStrain, audited_strain: audStrain, touched_strain: c.touched_strain==='1',
-    buzz: +(c.buzz || 0), hum: +(c.hum || 0), layering: +(c.layering || 0),
-    noise: +(c.noise || 0), robot: +(c.robot || 0)
+    ...(intAge !== null ? {intended_age: intAge} : {}),
+    audited_age: audAge, touched_age: c.touched_age==='1',
+    ...(intPitch !== null ? {intended_pitch: intPitch} : {}),
+    audited_pitch: audPitch, touched_pitch: c.touched_pitch==='1',
+    ...(intDepth !== null ? {intended_depth: intDepth} : {}),
+    audited_depth: audDepth, touched_depth: c.touched_depth==='1',
+    ...(intStrain !== null ? {intended_strain: intStrain} : {}),
+    audited_strain: audStrain, touched_strain: c.touched_strain==='1',
+    buzz: numOr(c.buzz, 0), hum: numOr(c.hum, 0), layering: numOr(c.layering, 0),
+    noise: numOr(c.noise, 0), robot: numOr(c.robot, 0)
   };
   el.innerHTML = `
     <div class="meta">
@@ -760,30 +777,42 @@ function probeCardEl(probeId, c){
         <input type="text" class="note" value="${esc(c.note||'')}" placeholder="probe note…">
       </div>
     </div>`;
+  const saveProbe = async (zone) => {
+    const noteVal = el.querySelector('.note').value;
+    const res = await fetch(`/api/probe/${encodeURIComponent(probeId)}/rate`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: c.id, zone, note: noteVal, ...sState})
+    });
+    if (!res.ok) { toast('Probe save failed'); return; }
+    c.zone = zone;
+    el.classList.add('done');
+    let badge = el.querySelector('.meta .badge.set');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'badge set';
+      el.querySelector('.meta').appendChild(badge);
+    }
+    badge.textContent = `Zone: ${zone}`;
+    el.querySelectorAll('button[data-zone]').forEach(b => b.classList.toggle('chosen', b.dataset.zone === zone));
+    if (updateProbeStat) updateProbeStat();
+    toast(`${c.id}: ${zone}`);
+  };
   el.querySelectorAll('input[data-pattr]').forEach(inp=>{
     const attr=inp.dataset.pattr, valEl=el.querySelector(`[data-pval="${attr}"]`);
     inp.addEventListener('input',()=>{
       const v=+inp.value; sState[`audited_${attr}`]=v; sState[`touched_${attr}`]=true;
       valEl.textContent=attr==='age'?`${v} · ${ageBandLabel(g,v)}`:`${v} / 5`;
     });
+    inp.addEventListener('change',()=>{ if (c.zone) saveProbe(c.zone); });
   });
   el.querySelectorAll('input[data-pdef]').forEach(inp=>{
     const def=inp.dataset.pdef, valEl=el.querySelector(`[data-pdval="${def}"]`);
     inp.addEventListener('input',()=>{ sState[def]=+inp.value; valEl.textContent=`${inp.value} / 5`; });
+    inp.addEventListener('change',()=>{ if (c.zone) saveProbe(c.zone); });
   });
+  el.querySelector('.note').addEventListener('blur',()=>{ if (c.zone) saveProbe(c.zone); });
   el.querySelectorAll('button[data-zone]').forEach(btn=>{
-    btn.onclick=async()=>{
-      const zone=btn.dataset.zone;
-      const noteVal=el.querySelector('.note').value;
-      const res=await fetch('/api/probe/'+encodeURIComponent(probeId)+'/rate',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({id:c.id,zone,note:noteVal,...sState})
-      });
-      if(!res.ok){toast('Probe save failed');return;}
-      c.zone=zone; el.classList.add('done');
-      el.querySelectorAll('button[data-zone]').forEach(b=>b.classList.toggle('chosen',b.dataset.zone===zone));
-      toast(`${c.id}: ${zone}`);
-    };
+    btn.onclick=()=>saveProbe(btn.dataset.zone);
   });
   return el;
 }

@@ -327,3 +327,44 @@ def test_audition_probe_mode_reads_manifest_jsonl_and_measures_jsonl(tmp_path, m
     assert clip["acoustics"]["f0_median_hz"] == 84.5
     assert clip["wav"].endswith("clips/M1_s1.wav")
 
+    # Rating a manifest.jsonl probe clip with no intended_* fields must not fabricate
+    # intended_age="3" or delta_age when touched_age=False, and must record audited_age
+    # with blank delta_age when touched_age=True and intended_age=None.
+    res_untouched = mod.rate_probe(
+        "qwen-1c0",
+        mod.ProbeRating(
+            id="M1_s1",
+            zone="core",
+            audited_age=3,
+            touched_age=False,
+        ),
+    )
+    assert res_untouched["row"].get("intended_age", "") == ""
+    assert res_untouched["row"].get("audited_age", "") == ""
+    assert res_untouched["row"].get("delta_age", "") == ""
+    assert res_untouched["row"].get("touched_age") == "0"
+
+    res_touched = mod.rate_probe(
+        "qwen-1c0",
+        mod.ProbeRating(
+            id="M1_s1",
+            zone="niche",
+            intended_age=None,
+            audited_age=4,
+            touched_age=True,
+        ),
+    )
+    assert res_touched["row"].get("intended_age", "") == ""
+    assert res_touched["row"].get("audited_age") == "4"
+    assert res_touched["row"].get("delta_age", "") == ""
+    assert res_touched["row"].get("touched_age") == "1"
+
+    vcsv = (probe_dir / "verdicts.csv").read_text(encoding="utf-8")
+    vrows = list(csv.DictReader(vcsv.splitlines()))
+    assert len(vrows) == 1
+    assert vrows[0]["intended_age"] == ""
+    assert vrows[0]["audited_age"] == "4"
+    assert vrows[0]["delta_age"] == ""
+    assert vrows[0]["touched_age"] == "1"
+
+
