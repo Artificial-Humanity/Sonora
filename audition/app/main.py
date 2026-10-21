@@ -123,6 +123,7 @@ if ACTIVE_DELIVERY_LANES is None:
 DATA_ROOT = Path(os.environ.get("AUDITION_DATA_ROOT", "/data/model-training/datasets")).resolve()
 RATINGS_DIR = Path(os.environ.get(
     "AUDITION_RATINGS_DIR", str(DATA_ROOT / "sonora-expressive-registers"))).resolve()
+PROBES_ROOT = DATA_ROOT / "probes"
 RATINGS_CSV = RATINGS_DIR / "ratings.csv"
 HISTORY_CSV = RATINGS_DIR / "ratings_history.csv"
 REROLL_QUEUE = RATINGS_DIR / "reroll_queue.csv"
@@ -135,9 +136,25 @@ BOOK_QUEUE_HEADER = (
     "#   a leading '* ' marks a processed book (verdict appended after ' → ').\n"
 )
 
-CSV_FIELDS = ["campaign", "id", "engine", "register", "gender", "age", "accent",
-              "delivery", "score", "note", "status", "link"]
-GENDERS = ("Male", "Female", "Undefined")
+SLIDER_ATTRS = ("age", "pitch", "depth", "strain")
+SLIDER_ATTR_FIELDS = [
+    f"{prefix}_{attr}"
+    for attr in SLIDER_ATTRS
+    for prefix in ("intended", "audited", "delta", "touched")
+]
+DEFECT_KEYS = ("buzz", "hum", "layering", "noise", "robot")
+
+CSV_FIELDS = [
+    "campaign", "id", "engine", "register", "gender", "age", "accent",
+    "delivery", "context", "manner",
+    "intended_age", "audited_age", "delta_age", "touched_age",
+    "intended_pitch", "audited_pitch", "delta_pitch", "touched_pitch",
+    "intended_depth", "audited_depth", "delta_depth", "touched_depth",
+    "intended_strain", "audited_strain", "delta_strain", "touched_strain",
+    "buzz", "hum", "layering", "noise", "robot",
+    "score", "note", "status", "link",
+]
+GENDERS = ("Male", "Female", "Neutral", "Undefined")
 # Provisional accent vocabulary (owner 2026-07-26). The casting-attribute-norms brief
 # calls accent an "open list" with no exhaustive set attempted, so this is a starter
 # taxonomy meant to be edited here in one place as auditing reveals what we actually
@@ -153,10 +170,23 @@ ACCENTS = ("",) + tuple(sorted((
     "British RP", "British other", "Scottish", "Irish", "Australian", "Indian",
 ))) + _ACCENT_TAIL
 
-# Owner age taxonomy (casting-attribute-norms-brief.md): five bands, deliberately ours
-# rather than inherited. Ordered youngest-first — alphabetical would be meaningless for
-# an ordinal scale. Blank = not assessed; "Unclear" = assessed and indeterminate.
-AGES = ("", "child", "teen", "adult", "middle-aged", "elderly", "Unclear")
+# Owner age taxonomy (casting-attribute-norms-brief.md, updated 2026-10-21): five
+# gender-specific bands per gender (`1..5`), ordered youngest-first. Legacy five-band
+# strings (`child`..`elderly`) remain valid in `AGES` so historical rows keep validating.
+AGE_BANDS_BY_GENDER = {
+    "Female": ("Child girl", "Young girl", "Young woman", "Woman", "Elderly woman"),
+    "Male": ("Child boy", "Young boy", "Young man", "Man", "Elderly man"),
+    "Neutral": ("Child", "Young", "Young adult", "Adult", "Elderly"),
+    "Undefined": ("Child", "Young", "Young adult", "Adult", "Elderly"),
+}
+AGES = (
+    "",
+    *AGE_BANDS_BY_GENDER["Female"],
+    *AGE_BANDS_BY_GENDER["Male"],
+    *AGE_BANDS_BY_GENDER["Neutral"],
+    "child", "teen", "adult", "middle-aged", "elderly",
+    "Unclear",
+)
 
 # Delivery style (owner 2026-07-27) — orthogonal to `register`, which is the LINE's
 # emotional colour. A clip can be a newscaster-styled anything. Added because
@@ -211,6 +241,19 @@ AGES = ("", "child", "teen", "adult", "middle-aged", "elderly", "Unclear")
 # detect. Sorting reproduces the existing order exactly and stays correct if a lane is ever
 # added.
 DELIVERY = (DELIVERY_UNKNOWN, *sorted(ACTIVE_DELIVERY_LANES))
+# Delivery v2 (owner-ratified 2026-10-21, notes/delivery-v2-context-and-manner.md):
+# Layer 1 (Discourse Context, 5 roles) and Layer 2 (Vocal Manner, 8 physical modes),
+# imported from `matcha.delivery` so the vocabulary has a single owner.
+_DISCOURSE_CONTEXTS = getattr(_delivery, "DISCOURSE_CONTEXTS", None)
+_VOCAL_MANNERS = getattr(_delivery, "VOCAL_MANNERS", None)
+if _DISCOURSE_CONTEXTS is None or _VOCAL_MANNERS is None:
+    raise RuntimeError(
+        "the delivery contract beside this app is STALE: it is missing "
+        "DISCOURSE_CONTEXTS or VOCAL_MANNERS (Delivery v2, 2026-10-21). "
+        "Fix: scripts/deploy.sh audition — which copies matcha/delivery.py to "
+        "app/_contract/delivery.py, not just the app code.")
+DISCOURSE_CONTEXTS = (DELIVERY_UNKNOWN, *_DISCOURSE_CONTEXTS)
+VOCAL_MANNERS = (DELIVERY_UNKNOWN, *_VOCAL_MANNERS)
 
 # Marker stage_pool.py writes into the note column of a machine-folded row: a clip
 # staged into the dataset on its GROUP's certification, which nobody listened to.
@@ -330,13 +373,14 @@ def _append(path, header, row):
 
 
 def _resolve_audio(link: str) -> Path:
-    """Resolve a ratings link (relative to RATINGS_DIR) and confine to DATA_ROOT."""
-    p = (RATINGS_DIR / link).resolve()
-    if DATA_ROOT not in p.parents and p != DATA_ROOT:
-        raise HTTPException(400, "path escapes data root")
-    if not p.is_file():
-        raise HTTPException(404, "audio not found")
-    return p
+    """Resolve a ratings or probe link (relative to RATINGS_DIR or DATA_ROOT) and confine to DATA_ROOT."""
+    for base in (RATINGS_DIR, DATA_ROOT):
+        p = (base / link).resolve()
+        if DATA_ROOT not in p.parents and p != DATA_ROOT:
+            raise HTTPException(400, "path escapes data root")
+        if p.is_file():
+            return p
+    raise HTTPException(404, "audio not found")
 
 
 def _gender_from_id(clip_id: str) -> str:
@@ -526,7 +570,10 @@ def clips(filter: str = "todo", register: str | None = None,
         "campaigns": campaigns,
         "accents": list(ACCENTS),
         "ages": list(AGES),
+        "age_bands_by_gender": {k: list(v) for k, v in AGE_BANDS_BY_GENDER.items()},
         "deliveries": list(DELIVERY),
+        "contexts": list(DISCOURSE_CONTEXTS),
+        "manners": list(VOCAL_MANNERS),
         "lexicon": _lexicon(),
         "page": page,
         "pages": pages,
@@ -555,6 +602,77 @@ class Rating(BaseModel):
     action: str            # keep | drop | retake
     score: int | None = None   # 1-5 for keep
     note: str = ""
+    context: str | None = None
+    manner: str | None = None
+    intended_age: int | None = None
+    audited_age: int | None = None
+    touched_age: bool | None = None
+    intended_pitch: int | None = None
+    audited_pitch: int | None = None
+    touched_pitch: bool | None = None
+    intended_depth: int | None = None
+    audited_depth: int | None = None
+    touched_depth: bool | None = None
+    intended_strain: int | None = None
+    audited_strain: int | None = None
+    touched_strain: bool | None = None
+    buzz: int | None = None
+    hum: int | None = None
+    layering: int | None = None
+    noise: int | None = None
+    robot: int | None = None
+
+
+def _format_delta(d: int) -> str:
+    return f"{d:+d}" if d != 0 else "0"
+
+
+def _apply_sliders_and_defects(row: dict, r):
+    if getattr(r, "context", None) is not None:
+        if r.context not in DISCOURSE_CONTEXTS:
+            raise HTTPException(422, f"context must be one of {DISCOURSE_CONTEXTS}")
+        row["context"] = r.context
+    if getattr(r, "manner", None) is not None:
+        if r.manner not in VOCAL_MANNERS:
+            raise HTTPException(422, f"manner must be one of {VOCAL_MANNERS}")
+        row["manner"] = r.manner
+
+    ranges = {"age": range(1, 6), "pitch": range(1, 6), "depth": range(1, 6), "strain": range(0, 6)}
+    for attr, allowed in ranges.items():
+        intended = getattr(r, f"intended_{attr}", None)
+        audited = getattr(r, f"audited_{attr}", None)
+        touched = getattr(r, f"touched_{attr}", None)
+        if intended is not None:
+            if intended not in allowed:
+                raise HTTPException(422, f"intended_{attr} out of range")
+            row[f"intended_{attr}"] = str(intended)
+        if touched is not None:
+            row[f"touched_{attr}"] = "1" if touched else "0"
+            if touched:
+                if audited not in allowed:
+                    raise HTTPException(422, f"audited_{attr} out of range")
+                row[f"audited_{attr}"] = str(audited)
+                eff_intended = intended
+                if eff_intended is None and row.get(f"intended_{attr}", "") != "":
+                    eff_intended = int(row[f"intended_{attr}"])
+                if eff_intended is not None:
+                    row[f"delta_{attr}"] = _format_delta(audited - eff_intended)
+                else:
+                    row[f"delta_{attr}"] = ""
+                if attr == "age":
+                    g = row.get("gender") or _gender_from_id(row.get("id", ""))
+                    bands = AGE_BANDS_BY_GENDER.get(g, AGE_BANDS_BY_GENDER["Neutral"])
+                    row["age"] = bands[audited - 1]
+            else:
+                row[f"audited_{attr}"] = ""
+                row[f"delta_{attr}"] = ""
+
+    for k in DEFECT_KEYS:
+        val = getattr(r, k, None)
+        if val is not None:
+            if val not in range(0, 6):
+                raise HTTPException(422, f"{k} must be 0-5")
+            row[k] = str(val)
 
 
 def _apply(row: dict, r: Rating):
@@ -570,6 +688,7 @@ def _apply(row: dict, r: Rating):
     else:
         raise HTTPException(422, f"unknown action {a}")
     row["note"] = r.note
+    _apply_sliders_and_defects(row, r)
     return row
 
 
@@ -954,6 +1073,238 @@ def set_anchor(a: AnchorUpdate):
         }
         _write_anchors(anchors)
         return {"ok": True, "score": a.score, "id": a.id}
+
+
+# --- Delivery v2 & slider standalone updates ----------------------------------
+class ContextUpdate(BaseModel):
+    id: str
+    context: str
+
+
+class MannerUpdate(BaseModel):
+    id: str
+    manner: str
+
+
+class SliderUpdate(BaseModel):
+    id: str
+    intended_age: int | None = None
+    audited_age: int | None = None
+    touched_age: bool | None = None
+    intended_pitch: int | None = None
+    audited_pitch: int | None = None
+    touched_pitch: bool | None = None
+    intended_depth: int | None = None
+    audited_depth: int | None = None
+    touched_depth: bool | None = None
+    intended_strain: int | None = None
+    audited_strain: int | None = None
+    touched_strain: bool | None = None
+    buzz: int | None = None
+    hum: int | None = None
+    layering: int | None = None
+    noise: int | None = None
+    robot: int | None = None
+
+
+@app.post("/api/context")
+def set_context(u: ContextUpdate):
+    if u.context not in DISCOURSE_CONTEXTS:
+        raise HTTPException(422, f"context must be one of {DISCOURSE_CONTEXTS}")
+    with _lock:
+        rows = _read_rows()
+        idx = next((i for i, row in enumerate(rows) if row.get("id") == u.id), None)
+        if idx is None:
+            raise HTTPException(404, f"unknown id {u.id}")
+        rows[idx]["context"] = u.context
+        _write_rows(rows)
+        return {"ok": True, "id": u.id, "context": u.context}
+
+
+@app.post("/api/manner")
+def set_manner(u: MannerUpdate):
+    if u.manner not in VOCAL_MANNERS:
+        raise HTTPException(422, f"manner must be one of {VOCAL_MANNERS}")
+    with _lock:
+        rows = _read_rows()
+        idx = next((i for i, row in enumerate(rows) if row.get("id") == u.id), None)
+        if idx is None:
+            raise HTTPException(404, f"unknown id {u.id}")
+        rows[idx]["manner"] = u.manner
+        _write_rows(rows)
+        return {"ok": True, "id": u.id, "manner": u.manner}
+
+
+@app.post("/api/sliders")
+def set_sliders(u: SliderUpdate):
+    with _lock:
+        rows = _read_rows()
+        idx = next((i for i, row in enumerate(rows) if row.get("id") == u.id), None)
+        if idx is None:
+            raise HTTPException(404, f"unknown id {u.id}")
+        _apply_sliders_and_defects(rows[idx], u)
+        _write_rows(rows)
+        return {"ok": True, "row": rows[idx]}
+
+
+# --- Calibration Probes (Step 1c-0 and future probes) -------------------------
+PROBE_ZONES = ("core", "niche", "exclude")
+PROBE_VERDICT_FIELDS = [
+    "id", "zone", "score",
+    *SLIDER_ATTR_FIELDS,
+    *DEFECT_KEYS,
+    "note", "ts",
+]
+
+
+def _probe_dir(probe_id: str) -> Path:
+    if not re.match(r"^[A-Za-z0-9_.-]+$", probe_id or ""):
+        raise HTTPException(400, "invalid probe id")
+    d = (PROBES_ROOT / probe_id).resolve()
+    if PROBES_ROOT.resolve() not in d.parents:
+        raise HTTPException(400, "invalid probe path")
+    if not d.is_dir():
+        raise HTTPException(404, f"unknown probe {probe_id}")
+    return d
+
+
+def _load_probe_manifest(probe_id: str, d: Path) -> dict:
+    json_path = d / "manifest.json"
+    jsonl_path = d / "manifest.jsonl"
+    if json_path.is_file():
+        return json.loads(json_path.read_text(encoding="utf-8"))
+    if jsonl_path.is_file():
+        measures = {}
+        m_path = d / "measures.jsonl"
+        if m_path.is_file():
+            for line in m_path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    rec = json.loads(line)
+                    measures[rec.get("id")] = rec
+        meta = {}
+        meta_path = d / "render_meta.json"
+        if meta_path.is_file():
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        clips = []
+        for line in jsonl_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            cid = rec.get("id")
+            wav_rel = rec.get("wav")
+            if not wav_rel:
+                cand = d / "clips" / f"{cid}.wav"
+                wav_rel = str(cand.relative_to(DATA_ROOT)) if cand.is_file() else f"probes/{probe_id}/clips/{cid}.wav"
+            acoustics = rec.get("acoustics") or measures.get(cid) or {}
+            clips.append({
+                **rec,
+                "group": rec.get("group") or rec.get("rung") or "",
+                "wav": wav_rel,
+                "acoustics": acoustics,
+            })
+        return {
+            "probe": probe_id,
+            "title": meta.get("title") or f"Calibration Probe — {probe_id}",
+            "clips": clips,
+        }
+    raise HTTPException(404, f"probe {probe_id} has no manifest.json or manifest.jsonl")
+
+
+def _read_probe_verdicts(d: Path) -> dict:
+    vpath = d / "verdicts.csv"
+    if not vpath.is_file():
+        return {}
+    with vpath.open(newline="", encoding="utf-8") as fh:
+        return {r["id"]: r for r in csv.DictReader(fh)}
+
+
+def _write_probe_verdicts(d: Path, rows: dict):
+    vpath = d / "verdicts.csv"
+    tmp = vpath.with_suffix(".csv.tmp")
+    with tmp.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=PROBE_VERDICT_FIELDS)
+        w.writeheader()
+        for r in rows.values():
+            w.writerow({k: r.get(k, "") for k in PROBE_VERDICT_FIELDS})
+    os.replace(tmp, vpath)
+
+
+@app.get("/api/probes")
+def list_probes():
+    if not PROBES_ROOT.is_dir():
+        return {"probes": []}
+    out = sorted(
+        p.name for p in PROBES_ROOT.iterdir()
+        if p.is_dir() and ((p / "manifest.json").is_file() or (p / "manifest.jsonl").is_file())
+    )
+    return {"probes": out}
+
+
+@app.get("/api/probe/{probe_id}")
+def get_probe(probe_id: str):
+    d = _probe_dir(probe_id)
+    manifest = _load_probe_manifest(probe_id, d)
+    verdicts = _read_probe_verdicts(d)
+    clips = []
+    for c in manifest.get("clips", []):
+        v = verdicts.get(c["id"], {})
+        clips.append({**c, **v})
+    return {
+        "probe": manifest.get("probe", probe_id),
+        "title": manifest.get("title", probe_id),
+        "clips": clips,
+        "age_bands_by_gender": {k: list(v) for k, v in AGE_BANDS_BY_GENDER.items()},
+    }
+
+
+class ProbeRating(BaseModel):
+    id: str
+    zone: str                  # core | niche | exclude
+    score: int | None = None   # 1-5 optional quality score
+    note: str = ""
+    intended_age: int | None = None
+    audited_age: int | None = None
+    touched_age: bool | None = None
+    intended_pitch: int | None = None
+    audited_pitch: int | None = None
+    touched_pitch: bool | None = None
+    intended_depth: int | None = None
+    audited_depth: int | None = None
+    touched_depth: bool | None = None
+    intended_strain: int | None = None
+    audited_strain: int | None = None
+    touched_strain: bool | None = None
+    buzz: int | None = None
+    hum: int | None = None
+    layering: int | None = None
+    noise: int | None = None
+    robot: int | None = None
+
+
+@app.post("/api/probe/{probe_id}/rate")
+def rate_probe(probe_id: str, r: ProbeRating):
+    if r.zone not in PROBE_ZONES:
+        raise HTTPException(422, f"zone must be one of {PROBE_ZONES}")
+    if r.score is not None and r.score not in range(1, 6):
+        raise HTTPException(422, "score must be 1-5")
+    d = _probe_dir(probe_id)
+    manifest = _load_probe_manifest(probe_id, d)
+    by_id = {c["id"]: c for c in manifest.get("clips", [])}
+    if r.id not in by_id:
+        raise HTTPException(404, f"unknown probe clip {r.id}")
+    with _RatingsLock(d / "verdicts.csv"):
+        verdicts = _read_probe_verdicts(d)
+        row = dict(verdicts.get(r.id, {"id": r.id, "gender": by_id[r.id].get("gender", "")}))
+        row["id"] = r.id
+        row["zone"] = r.zone
+        if r.score is not None:
+            row["score"] = str(r.score)
+        row["note"] = r.note
+        row["ts"] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
+        _apply_sliders_and_defects(row, r)
+        verdicts[r.id] = row
+        _write_probe_verdicts(d, verdicts)
+    return {"ok": True, "row": row}
 
 
 # NB: this catch-all mount must stay LAST. Routes registered after it are shadowed —

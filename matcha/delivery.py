@@ -100,6 +100,16 @@ ACTIVE_DELIVERY_LANES = tuple(ln for ln in DELIVERY_LANES if ln not in RETIRED_L
 # every LibriTTS clip is blank because that corpus predates the axis entirely.
 DELIVERY_UNKNOWN = ""
 
+# Delivery v2 (owner-ratified 2026-10-21; notes/delivery-v2-context-and-manner.md):
+# separates Layer 1 Discourse Context (Director-side text role, five labels) from
+# Layer 2 Vocal Manner (Actor conditioning channel, eight physical vocal modes).
+DISCOURSE_CONTEXTS = ("Narration", "Dialogue", "Internal", "Address", "Verse")
+VOCAL_MANNERS = (
+    "Measured", "Conversational", "Intimate", "Crisp",
+    "Oratory", "Hushed", "Projected", "Cadenced",
+)
+
+
 # Which lanes are NARRATION — a subset of the vocabulary, not a second copy of it, and a
 # property of the vocabulary rather than of any render mix. It lived in `book_ingest` and
 # again in `ref_select`; those two import each other, so neither could own it without a
