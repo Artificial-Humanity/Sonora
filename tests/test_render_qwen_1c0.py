@@ -235,6 +235,14 @@ def test_a_low_glide_reads_its_range_in_semitones():
     assert got["f0_excursion_st"] == pytest.approx(_st(got["f0_p90"], got["f0_p10"]))
 
 
+def test_a_brief_high_excursion_leaves_the_median_at_the_held_pitch():
+    """100 Hz for 80% of the clip, 400 Hz for 20%: the median stays at 100 Hz; a mean of the voiced
+    frames would read about 160 Hz. p90 shows the high stretch is voiced and counted."""
+    got = rq.f0_profile(np.concatenate([_stack(100.0, 1.2), _stack(400.0, 0.3)]), SR)
+    assert abs(got["f0_median"] - 100.0) / 100.0 < 0.03, got
+    assert got["f0_p90"] > 300.0, got
+
+
 @pytest.mark.skipif(not QWEN_HIGH_CLIP.exists(), reason="the real Qwen clip is not on this disk")
 def test_a_real_high_qwen_clip_reads_where_pyin_reads_it():
     import soundfile as sf
