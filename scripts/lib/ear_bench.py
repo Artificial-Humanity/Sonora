@@ -81,6 +81,14 @@ from matcha.cli import (detect_lane, load_matcha, load_vocoder_24k,
 from matcha.text import text_to_sequence
 from matcha.utils.utils import intersperse
 
+# `match_loudness` is `loudness.match_loudness`, re-exported: one implementation. It lives in its
+# own numpy + pyloudnorm module so a renderer that installs no Matcha (render_qwen_1c0.py, in the
+# qwen container) can level-match without importing this file's torch stack.
+try:                                    # imported as `lib.ear_bench` by the tools
+    from .loudness import match_loudness  # noqa: F401
+except ImportError:                     # imported flat, with scripts/lib on the path
+    from loudness import match_loudness  # noqa: F401
+
 DEVICE = torch.device("cpu")
 
 # Fixed render settings, IDENTICAL for every side of every pair in every bench. Taken
@@ -107,25 +115,6 @@ NEUTRAL_TEXTS = [
     "He put the box down on the table and waited for somebody else to speak first.",
     "Everything we agreed to last winter still holds, as far as I am concerned.",
 ]
-
-
-def match_loudness(x, sr, target_lufs):
-    """Level-match to `target_lufs`, peak-limited. Returns (audio, ceiling_bound).
-
-    ⚠⚠ LOUDNESS IS THE CONFOUND THAT RUNS BACKWARDS. The teacher-portfolio comparison had
-    to be redone because a level difference was read as a quality difference in the wrong
-    direction. Any bench putting two differently-produced signals side by side matches
-    level first, or it measures gain.
-    """
-    import numpy as np
-    import pyloudnorm
-    loud = pyloudnorm.Meter(sr).integrated_loudness(x.astype("float64"))
-    if not np.isfinite(loud):
-        raise SystemExit("REFUSING: a clip has no measurable loudness.")
-    gain = 10.0 ** ((target_lufs - loud) / 20.0)
-    peak = float(np.max(np.abs(x))) or 1.0
-    g = min(gain, 0.99 / peak)
-    return (x * g).astype("float32"), g < gain
 
 
 def prove_writable(out):
