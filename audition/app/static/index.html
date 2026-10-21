@@ -162,6 +162,24 @@
   .bstatus.converted{background:rgba(52,211,153,.15);color:var(--keep)}
   .bnote{font-size:.74rem;color:var(--muted);width:100%}
   .btn.del{color:var(--drop);padding:.35rem .65rem}
+  /* --- Two-panel card layout: Voice & Delivery vs Quality & Defects --- */
+  .panels{display:grid;grid-template-columns:1fr 1fr;gap:.85rem;margin-top:.55rem}
+  @media(max-width:700px){.panels{grid-template-columns:1fr}}
+  .panel{background:rgba(255,255,255,.025);border:1px solid var(--panel-brd);
+    border-radius:12px;padding:.75rem .85rem}
+  .panel h3{margin:0 0 .5rem;font-size:.74rem;font-weight:700;text-transform:uppercase;
+    letter-spacing:.4px;color:var(--accent)}
+  .panel.qual h3{color:var(--keep)}
+  .srow{display:flex;align-items:center;gap:.45rem;margin:.32rem 0;font-size:.76rem}
+  .srow .slab{width:6.8rem;color:var(--muted);flex-shrink:0}
+  .srow input[type=range]{flex:1;accent-color:var(--accent);cursor:pointer}
+  .panel.qual .srow input[type=range]{accent-color:var(--keep)}
+  .srow .sval{min-width:6.2rem;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+  .srow .sdelta{font-size:.68rem;color:var(--retake);margin-left:.25rem}
+  #probes{max-width:820px;margin:1.5rem auto;padding:0 1rem;display:flex;flex-direction:column;gap:1rem}
+  .btn.zone-core.chosen{background:var(--keep);color:#043024}
+  .btn.zone-niche.chosen{background:var(--retake);color:#3a2a00}
+  .btn.zone-exclude.chosen{background:var(--drop);color:#3a0d0d}
 </style>
 </head>
 <body>
@@ -169,6 +187,7 @@
   <h1>Dataset <span>Listening</span></h1>
   <div class="filters">
     <span class="chip vchip active" data-v="audit">Audit</span>
+    <span class="chip vchip" data-v="probes">Probes</span>
     <span class="chip vchip" data-v="books">Books</span>
   </div>
   <div class="filters" id="clipFilters">
@@ -192,6 +211,15 @@
 
 <main id="list"></main>
 
+<section id="probes" class="hidden">
+  <div class="filters" style="margin-bottom:.4rem">
+    <label style="font-size:.82rem;color:var(--muted)">Calibration probe:</label>
+    <select id="probeSelect"></select>
+    <span class="stat" id="probeTitle"></span>
+  </div>
+  <div id="probeList"></div>
+</section>
+
 <section id="books" class="hidden">
   <div class="addbook">
     <input type="text" id="bookUrl" placeholder="Book URL — Standard Ebooks or Project Gutenberg">
@@ -209,8 +237,21 @@
 <script>
 const AUDIO = p => `/audio?path=${encodeURIComponent(p)}`;
 const PAGE_SIZE = 20;
-let state = {view:'audit', filter:'todo', register:'', campaign:'', delivery:'', page:1};
-let LEXICON = [], ACCENTS = [], AGES = [], DELIVERIES = [];
+let state = {view:'audit', filter:'todo', register:'', campaign:'', delivery:'', page:1, probe:''};
+let LEXICON = [], ACCENTS = [], AGES = [], DELIVERIES = [], CONTEXTS = [], MANNERS = [];
+let AGE_BANDS_BY_GENDER = {
+  Female: ['Child girl','Young girl','Young woman','Woman','Elderly woman'],
+  Male: ['Child boy','Young boy','Young man','Man','Elderly man'],
+  Neutral: ['Child','Young','Young adult','Adult','Elderly'],
+  Undefined: ['Child','Young','Young adult','Adult','Elderly']
+};
+const DEFECT_SLIDERS = [
+  ['buzz', 'Buzz'],
+  ['hum', 'Hum'],
+  ['layering', 'Layering'],
+  ['noise', 'Background noise'],
+  ['robot', 'Human–Robot']
+];
 let pageInfo = {page:1, pages:1, matched:0, total:0};
 
 function toast(msg){
@@ -310,7 +351,10 @@ async function load(){
   if(data.lexicon && data.lexicon.length) LEXICON = data.lexicon;
   if(data.accents && data.accents.length) ACCENTS = data.accents;
   if(data.ages && data.ages.length) AGES = data.ages;
+  if(data.age_bands_by_gender) AGE_BANDS_BY_GENDER = data.age_bands_by_gender;
   if(data.deliveries && data.deliveries.length) DELIVERIES = data.deliveries;
+  if(data.contexts && data.contexts.length) CONTEXTS = data.contexts;
+  if(data.manners && data.manners.length) MANNERS = data.manners;
   pageInfo = {page:data.page, pages:data.pages, matched:data.matched, total:data.total};
   state.page = data.page;  // server clamps to valid range
   render(data.clips);
@@ -406,20 +450,34 @@ function focusCard(i,scroll=false){
   if(scroll) c.el.scrollIntoView({block:'center',behavior:'smooth'});   // only on explicit keyboard nav
 }
 
+const numOr = (v, fb) => (v !== '' && v != null) ? +v : fb;
+
+function ageBandLabel(gender, val){
+  const bands = AGE_BANDS_BY_GENDER[gender] || AGE_BANDS_BY_GENDER.Neutral || [];
+  return bands[val - 1] || (`Band ${val}`);
+}
+
 function cardEl(c,i){
   const el=document.createElement('div'); el.className='card';
   const set = c._rated;
   const g = c.gender || genderOf(c.id);
+  const intAge = numOr(c.intended_age, 3), audAge = numOr(c.audited_age, intAge);
+  const intPitch = numOr(c.intended_pitch, 3), audPitch = numOr(c.audited_pitch, intPitch);
+  const intDepth = numOr(c.intended_depth, 3), audDepth = numOr(c.audited_depth, intDepth);
+  const intStrain = numOr(c.intended_strain, 0), audStrain = numOr(c.audited_strain, intStrain);
+  const sliderState = {
+    intended_age: intAge, audited_age: audAge, touched_age: c.touched_age==='1',
+    intended_pitch: intPitch, audited_pitch: audPitch, touched_pitch: c.touched_pitch==='1',
+    intended_depth: intDepth, audited_depth: audDepth, touched_depth: c.touched_depth==='1',
+    intended_strain: intStrain, audited_strain: audStrain, touched_strain: c.touched_strain==='1',
+    buzz: numOr(c.buzz, 0), hum: numOr(c.hum, 0), layering: numOr(c.layering, 0),
+    noise: numOr(c.noise, 0), robot: numOr(c.robot, 0)
+  };
   el.innerHTML=`
     <div class="meta">
       <span class="clip-id">${c.id}</span>
       <span class="tag">${c.engine}</span>
       <span class="tag">${c.campaign}</span>
-      <select class="tag reg sel" data-role="register" title="register — controlled lexicon; change to correct a mislabel">${(LEXICON.length?LEXICON:[c.register]).map(o=>`<option value="${esc(o)}"${o===c.register?' selected':''}>${esc(o)}</option>`).join('')}${LEXICON.includes(c.register)?'':`<option value="${esc(c.register)}" selected>${esc(c.register)} (off-lexicon)</option>`}</select>
-      <select class="tag gender" data-g="${g}" title="speaker gender — change to correct a mislabel">${['Male','Female','Undefined'].map(o=>`<option value="${o}"${o===g?' selected':''}>${o}</option>`).join('')}</select>
-      <select class="tag age sel" data-role="age" title="age band you actually HEAR — blank = not assessed, Unclear = assessed but indeterminate">${AGES.map(o=>`<option value="${esc(o)}"${o===(c.age||'')?' selected':''}>${o===''?'age…':esc(o)}</option>`).join('')}${(c.age&&!AGES.includes(c.age))?`<option value="${esc(c.age)}" selected>${esc(c.age)} (unknown)</option>`:''}</select>
-      <select class="tag acc sel" data-role="accent" title="accent you actually HEAR — blank = not assessed, Unclear = assessed but indeterminate">${ACCENTS.map(o=>`<option value="${esc(o)}"${o===(c.accent||'')?' selected':''}>${o===''?'accent…':esc(o)}</option>`).join('')}${(c.accent&&!ACCENTS.includes(c.accent))?`<option value="${esc(c.accent)}" selected>${esc(c.accent)} (unknown)</option>`:''}</select>
-      <select class="tag del sel" data-role="delivery" title="delivery style — orthogonal to register; Dialogue = sounds like an actor speaking a character's line">${DELIVERIES.map(o=>`<option value="${esc(o)}"${o===(c.delivery||'')?' selected':''}>${o===''?'delivery…':esc(o)}</option>`).join('')}${(c.delivery&&!DELIVERIES.includes(c.delivery))?`<option value="${esc(c.delivery)}" selected>${esc(c.delivery)} (unknown)</option>`:''}</select>
       ${set?`<span class="badge set">Currently: ${scoreLabel(c.score,c.status)}</span>`:''}
     </div>
     ${c.direction?`<div class="direction">
@@ -431,17 +489,51 @@ function cardEl(c,i){
       ${c.direction.intended?`<div><b>intended</b> V ${c.direction.intended.V} · A ${c.direction.intended.A} · T ${c.direction.intended.T}</div>`:''}
     </div>`:''}
     <audio controls preload="none" src="${AUDIO(c.link)}"></audio>
-    <div class="actions">
-      <button class="btn keep" data-act="keep">Keep ▸</button>
-      <span class="stars" data-for="keep">${[1,2,3,4,5].map(n=>`<span class="star" data-n="${n}">${n}</span>`).join('')}</span>
-      <button class="btn drop" data-act="drop">Drop</button>
-      <button class="btn retake" data-act="retake">Retake ↻</button>
-      <button class="btn anchorset" data-act="anchor" title="make this clip the REFERENCE for a score — what that number sounds like">⚓</button>
+    <div class="panels">
+      <div class="panel voice">
+        <h3>Panel 1 — Voice &amp; Delivery</h3>
+        <div class="meta" style="margin-bottom:.45rem">
+          <select class="tag gender" data-g="${g}" title="speaker gender — change to correct a mislabel">${['Male','Female','Neutral','Undefined'].map(o=>`<option value="${o}"${o===g?' selected':''}>${o}</option>`).join('')}</select>
+          <select class="tag acc sel" data-role="accent" title="accent you actually HEAR — blank = not assessed, Unclear = assessed but indeterminate">${ACCENTS.map(o=>`<option value="${esc(o)}"${o===(c.accent||'')?' selected':''}>${o===''?'accent…':esc(o)}</option>`).join('')}${(c.accent&&!ACCENTS.includes(c.accent))?`<option value="${esc(c.accent)}" selected>${esc(c.accent)} (unknown)</option>`:''}</select>
+          <select class="tag del sel" data-role="context" title="Discourse Context (Layer 1 — text role)">${CONTEXTS.map(o=>`<option value="${esc(o)}"${o===(c.context||'')?' selected':''}>${o===''?'context…':esc(o)}</option>`).join('')}</select>
+          <select class="tag del sel" data-role="manner" title="Vocal Manner (Layer 2 — physical vocal mode)">${MANNERS.map(o=>`<option value="${esc(o)}"${o===(c.manner||'')?' selected':''}>${o===''?'manner…':esc(o)}</option>`).join('')}</select>
+          <select class="tag reg sel" data-role="register" title="register — controlled lexicon; change to correct a mislabel">${(LEXICON.length?LEXICON:[c.register]).map(o=>`<option value="${esc(o)}"${o===c.register?' selected':''}>${esc(o)}</option>`).join('')}${LEXICON.includes(c.register)?'':`<option value="${esc(c.register)}" selected>${esc(c.register)} (off-lexicon)</option>`}</select>
+          <select class="tag age sel" data-role="age" title="age band override">${AGES.map(o=>`<option value="${esc(o)}"${o===(c.age||'')?' selected':''}>${o===''?'age…':esc(o)}</option>`).join('')}${(c.age&&!AGES.includes(c.age))?`<option value="${esc(c.age)}" selected>${esc(c.age)} (unknown)</option>`:''}</select>
+          <select class="tag del sel" data-role="delivery" title="legacy delivery lane">${DELIVERIES.map(o=>`<option value="${esc(o)}"${o===(c.delivery||'')?' selected':''}>${o===''?'delivery (v1)…':esc(o)}</option>`).join('')}${(c.delivery&&!DELIVERIES.includes(c.delivery))?`<option value="${esc(c.delivery)}" selected>${esc(c.delivery)} (unknown)</option>`:''}</select>
+        </div>
+        <div class="srow"><span class="slab">Age (1–5)</span>
+          <input type="range" data-attr="age" min="1" max="5" step="1" value="${audAge}">
+          <span class="sval" data-val="age">${audAge} · ${esc(ageBandLabel(g, audAge))}</span></div>
+        <div class="srow"><span class="slab">Pitch (1–5)</span>
+          <input type="range" data-attr="pitch" min="1" max="5" step="1" value="${audPitch}">
+          <span class="sval" data-val="pitch">${audPitch} / 5</span></div>
+        <div class="srow"><span class="slab">Depth (1–5)</span>
+          <input type="range" data-attr="depth" min="1" max="5" step="1" value="${audDepth}">
+          <span class="sval" data-val="depth">${audDepth} / 5</span></div>
+        <div class="srow"><span class="slab">Strain (0–5)</span>
+          <input type="range" data-attr="strain" min="0" max="5" step="1" value="${audStrain}">
+          <span class="sval" data-val="strain">${audStrain} / 5</span></div>
+      </div>
+      <div class="panel qual">
+        <h3>Panel 2 — Quality &amp; Defects</h3>
+        <div class="actions" style="margin-bottom:.5rem">
+          <button class="btn keep" data-act="keep">Keep ▸</button>
+          <span class="stars" data-for="keep">${[1,2,3,4,5].map(n=>`<span class="star" data-n="${n}">${n}</span>`).join('')}</span>
+          <button class="btn drop" data-act="drop">Drop</button>
+          <button class="btn retake" data-act="retake">Retake ↻</button>
+          <button class="btn anchorset" data-act="anchor" title="make this clip the REFERENCE for a score — what that number sounds like">⚓</button>
+        </div>
+        ${DEFECT_SLIDERS.map(([k,lab])=>`
+          <div class="srow"><span class="slab">${lab}</span>
+            <input type="range" data-def="${k}" min="0" max="5" step="1" value="${sliderState[k]}">
+            <span class="sval" data-dval="${k}">${sliderState[k]} / 5</span></div>
+        `).join('')}
+        <input type="text" class="note" placeholder="comment — kept even on drops (&quot;drop because…&quot;). Category fixes go in Voice &amp; Delivery, not here.">
+      </div>
     </div>
-    <input type="text" class="note" placeholder="comment — kept even on drops (&quot;drop because…&quot;). Category fixes go in the dropdowns above, not here.">
-    <div class="hint"><kbd>1</kbd>–<kbd>5</kbd> keep — <b>vocals &amp; prosody only</b>; fix register/gender/accent above · <kbd>d</kbd> drop · <kbd>r</kbd> retake · <kbd>space</kbd> play · <kbd>j</kbd>/<kbd>k</kbd> next/prev · <kbd>[</kbd>/<kbd>]</kbd> page</div>`;
+    <div class="hint"><kbd>1</kbd>–<kbd>5</kbd> keep — <b>vocals &amp; prosody only</b>; fix voice/delivery in Panel 1 · <kbd>d</kbd> drop · <kbd>r</kbd> retake · <kbd>space</kbd> play · <kbd>j</kbd>/<kbd>k</kbd> next/prev · <kbd>[</kbd>/<kbd>]</kbd> page</div>`;
 
-  const rec={el,c,idx:i};
+  const rec={el,c,idx:i,sliders:sliderState};
   const keepStars=el.querySelector('.stars[data-for="keep"]');
   const note=el.querySelector('.note'); if(c.note) note.value=c.note;
 
@@ -481,6 +573,42 @@ function cardEl(c,i){
     };
   });
 
+  el.querySelectorAll('input[data-attr]').forEach(inp=>{
+    const attr=inp.dataset.attr;
+    const valEl=el.querySelector(`[data-val="${attr}"]`);
+    const updateAttr=()=>{
+      const v=+inp.value;
+      sliderState[`audited_${attr}`]=v;
+      sliderState[`touched_${attr}`]=true;
+      const gCur=el.querySelector('select.gender').value||g;
+      valEl.textContent=attr==='age'?`${v} · ${ageBandLabel(gCur,v)}`:`${v} / 5`;
+      if(attr==='age'){
+        const ageSel=el.querySelector('select[data-role="age"]');
+        if(ageSel) ageSel.value=ageBandLabel(gCur,v);
+      }
+    };
+    inp.addEventListener('input',updateAttr);
+    inp.addEventListener('change',async()=>{
+      updateAttr();
+      await fetch('/api/sliders',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id:c.id,...sliderState})});
+    });
+  });
+
+  el.querySelectorAll('input[data-def]').forEach(inp=>{
+    const def=inp.dataset.def;
+    const valEl=el.querySelector(`[data-dval="${def}"]`);
+    inp.addEventListener('input',()=>{
+      sliderState[def]=+inp.value;
+      valEl.textContent=`${inp.value} / 5`;
+    });
+    inp.addEventListener('change',async()=>{
+      sliderState[def]=+inp.value;
+      await fetch('/api/sliders',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({id:c.id,...sliderState})});
+    });
+  });
+
   rec.note=note; rec.play=()=>{const a=el.querySelector('audio');a.paused?a.play():a.pause();};
   // Save the comment on its own (blur / Ctrl-Enter) — notes typed after the
   // score click used to be silently dropped (owner data-loss 2026-07-22).
@@ -499,7 +627,10 @@ function cardEl(c,i){
     const val=genderSel.value;
     const res=await fetch('/api/gender',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:c.id,gender:val})});
     if(!res.ok){toast('Gender save failed: '+res.status);return;}
-    genderSel.dataset.g=val; c.gender=val; toast(`${c.id}: gender → ${val}`);
+    genderSel.dataset.g=val; c.gender=val;
+    const ageValEl=el.querySelector('[data-val="age"]');
+    if(ageValEl) ageValEl.textContent=`${sliderState.audited_age} · ${ageBandLabel(val,sliderState.audited_age)}`;
+    toast(`${c.id}: gender → ${val}`);
   };
   if(set) el.classList.add('done');       // already-rated cards read as done
   rec.reflect(currentChoice(c));           // light up the prior choice on load
@@ -507,7 +638,7 @@ function cardEl(c,i){
 }
 
 async function submit(rec,payload){
-  const body={id:rec.c.id,note:rec.note.value,...payload};
+  const body={id:rec.c.id,note:rec.note.value,...(rec.sliders||{}),...payload};
   const res=await fetch('/api/rate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(!res.ok){toast('Save failed: '+res.status);return;}
   const {row}=await res.json();
@@ -528,19 +659,162 @@ document.querySelectorAll('#clipFilters .chip').forEach(ch=>ch.onclick=()=>{
   ch.classList.add('active'); state.filter=ch.dataset.f; state.page=1; cards=[]; load();
 });
 
-// --- Books / conversion queue view ------------------------------------------
+// --- Probes & Books views ---------------------------------------------------
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 function switchView(v){
   state.view=v;
   document.querySelectorAll('.vchip').forEach(c=>c.classList.toggle('active',c.dataset.v===v));
-  const books = v==='books';
+  const audit = v==='audit', probes = v==='probes', books = v==='books';
+  document.getElementById('list').classList.toggle('hidden',!audit);
+  document.getElementById('clipFilters').classList.toggle('hidden',!audit);
+  document.getElementById('anchorBar').classList.toggle('hidden',!audit);
+  document.getElementById('probes').classList.toggle('hidden',!probes);
   document.getElementById('books').classList.toggle('hidden',!books);
-  document.getElementById('list').classList.toggle('hidden',books);
-  document.getElementById('clipFilters').classList.toggle('hidden',books);
-  document.getElementById('anchorBar').classList.toggle('hidden',books);
-  if(books) anchorAudio.pause();
-  books ? loadBooks() : load();
+  if(!audit) anchorAudio.pause();
+  if(books) loadBooks();
+  else if(probes) loadProbes();
+  else load();
+}
+
+async function loadProbes(){
+  let d;
+  try{ d = await (await fetch('/api/probes')).json(); }
+  catch{ document.getElementById('probeList').innerHTML='<div class="empty">Could not load probes.</div>'; return; }
+  const sel = document.getElementById('probeSelect');
+  sel.innerHTML = (d.probes||[]).map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('');
+  if(!d.probes || !d.probes.length){
+    document.getElementById('probeList').innerHTML='<div class="empty">No calibration probes found under probes/.</div>';
+    document.getElementById('stat').textContent='0 probes';
+    return;
+  }
+  if(!state.probe || !d.probes.includes(state.probe)) state.probe = d.probes[0];
+  sel.value = state.probe;
+  sel.onchange = () => { state.probe = sel.value; loadProbeDetail(state.probe); };
+  await loadProbeDetail(state.probe);
+}
+
+async function loadProbeDetail(probeId){
+  const data = await (await fetch('/api/probe/'+encodeURIComponent(probeId))).json();
+  if(data.age_bands_by_gender) AGE_BANDS_BY_GENDER = data.age_bands_by_gender;
+  document.getElementById('probeTitle').textContent = data.title || probeId;
+  const clips = data.clips || [];
+  const updateProbeStat = () => {
+    const done = clips.filter(c=>c.zone).length;
+    document.getElementById('stat').textContent = `${done} / ${clips.length} zoned`;
+  };
+  updateProbeStat();
+  const pl = document.getElementById('probeList');
+  pl.innerHTML = '';
+  clips.forEach(c => pl.appendChild(probeCardEl(probeId, c, updateProbeStat)));
+}
+
+function probeCardEl(probeId, c, updateProbeStat){
+  const el = document.createElement('div');
+  el.className = 'card' + (c.zone ? ' done' : '');
+  const g = c.gender || genderOf(c.id);
+  const ac = c.acoustics || {};
+  const intAge = c.intended_age != null && c.intended_age !== '' ? +c.intended_age : null;
+  const intPitch = c.intended_pitch != null && c.intended_pitch !== '' ? +c.intended_pitch : null;
+  const intDepth = c.intended_depth != null && c.intended_depth !== '' ? +c.intended_depth : null;
+  const intStrain = c.intended_strain != null && c.intended_strain !== '' ? +c.intended_strain : null;
+  const audAge = numOr(c.audited_age, numOr(c.intended_age, 3));
+  const audPitch = numOr(c.audited_pitch, numOr(c.intended_pitch, 3));
+  const audDepth = numOr(c.audited_depth, numOr(c.intended_depth, 3));
+  const audStrain = numOr(c.audited_strain, numOr(c.intended_strain, 0));
+  const sState = {
+    ...(intAge !== null ? {intended_age: intAge} : {}),
+    audited_age: audAge, touched_age: c.touched_age==='1',
+    ...(intPitch !== null ? {intended_pitch: intPitch} : {}),
+    audited_pitch: audPitch, touched_pitch: c.touched_pitch==='1',
+    ...(intDepth !== null ? {intended_depth: intDepth} : {}),
+    audited_depth: audDepth, touched_depth: c.touched_depth==='1',
+    ...(intStrain !== null ? {intended_strain: intStrain} : {}),
+    audited_strain: audStrain, touched_strain: c.touched_strain==='1',
+    buzz: numOr(c.buzz, 0), hum: numOr(c.hum, 0), layering: numOr(c.layering, 0),
+    noise: numOr(c.noise, 0), robot: numOr(c.robot, 0)
+  };
+  el.innerHTML = `
+    <div class="meta">
+      <span class="clip-id">${esc(c.id)}</span>
+      <span class="tag">${esc(c.group || c.rung || '')}</span>
+      <span class="tag">${esc(g)}</span>
+      ${ac.f0_median_hz!=null?`<span class="tag">F0 med ${ac.f0_median_hz} Hz</span>`:''}
+      ${ac.f0_excursion_hz!=null?`<span class="tag">F0 exc ${ac.f0_excursion_hz} Hz</span>`:''}
+      ${ac.hnr_db!=null?`<span class="tag">HNR ${ac.hnr_db} dB</span>`:''}
+      ${c.zone?`<span class="badge set">Zone: ${esc(c.zone)}</span>`:''}
+    </div>
+    ${c.instruct?`<div class="direction"><div><b>instruct</b>${esc(c.instruct)}</div></div>`:''}
+    <audio controls preload="none" src="${AUDIO(c.wav)}"></audio>
+    <div class="panels">
+      <div class="panel voice">
+        <h3>Panel 1 — Voice &amp; Delivery</h3>
+        <div class="srow"><span class="slab">Age (1–5)</span>
+          <input type="range" data-pattr="age" min="1" max="5" step="1" value="${audAge}">
+          <span class="sval" data-pval="age">${audAge} · ${esc(ageBandLabel(g, audAge))}</span></div>
+        <div class="srow"><span class="slab">Pitch (1–5)</span>
+          <input type="range" data-pattr="pitch" min="1" max="5" step="1" value="${audPitch}">
+          <span class="sval" data-pval="pitch">${audPitch} / 5</span></div>
+        <div class="srow"><span class="slab">Depth (1–5)</span>
+          <input type="range" data-pattr="depth" min="1" max="5" step="1" value="${audDepth}">
+          <span class="sval" data-pval="depth">${audDepth} / 5</span></div>
+        <div class="srow"><span class="slab">Strain (0–5)</span>
+          <input type="range" data-pattr="strain" min="0" max="5" step="1" value="${audStrain}">
+          <span class="sval" data-pval="strain">${audStrain} / 5</span></div>
+      </div>
+      <div class="panel qual">
+        <h3>Panel 2 — Quality &amp; Defects</h3>
+        <div class="actions" style="margin-bottom:.5rem">
+          <button class="btn zone-core${c.zone==='core'?' chosen':''}" data-zone="core">Core</button>
+          <button class="btn zone-niche${c.zone==='niche'?' chosen':''}" data-zone="niche">Niche</button>
+          <button class="btn zone-exclude${c.zone==='exclude'?' chosen':''}" data-zone="exclude">Exclude</button>
+        </div>
+        ${DEFECT_SLIDERS.map(([k,lab])=>`
+          <div class="srow"><span class="slab">${lab}</span>
+            <input type="range" data-pdef="${k}" min="0" max="5" step="1" value="${sState[k]}">
+            <span class="sval" data-pdval="${k}">${sState[k]} / 5</span></div>
+        `).join('')}
+        <input type="text" class="note" value="${esc(c.note||'')}" placeholder="probe note…">
+      </div>
+    </div>`;
+  const saveProbe = async (zone) => {
+    const noteVal = el.querySelector('.note').value;
+    const res = await fetch(`/api/probe/${encodeURIComponent(probeId)}/rate`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: c.id, zone, note: noteVal, ...sState})
+    });
+    if (!res.ok) { toast('Probe save failed'); return; }
+    c.zone = zone;
+    el.classList.add('done');
+    let badge = el.querySelector('.meta .badge.set');
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'badge set';
+      el.querySelector('.meta').appendChild(badge);
+    }
+    badge.textContent = `Zone: ${zone}`;
+    el.querySelectorAll('button[data-zone]').forEach(b => b.classList.toggle('chosen', b.dataset.zone === zone));
+    if (updateProbeStat) updateProbeStat();
+    toast(`${c.id}: ${zone}`);
+  };
+  el.querySelectorAll('input[data-pattr]').forEach(inp=>{
+    const attr=inp.dataset.pattr, valEl=el.querySelector(`[data-pval="${attr}"]`);
+    inp.addEventListener('input',()=>{
+      const v=+inp.value; sState[`audited_${attr}`]=v; sState[`touched_${attr}`]=true;
+      valEl.textContent=attr==='age'?`${v} · ${ageBandLabel(g,v)}`:`${v} / 5`;
+    });
+    inp.addEventListener('change',()=>{ if (c.zone) saveProbe(c.zone); });
+  });
+  el.querySelectorAll('input[data-pdef]').forEach(inp=>{
+    const def=inp.dataset.pdef, valEl=el.querySelector(`[data-pdval="${def}"]`);
+    inp.addEventListener('input',()=>{ sState[def]=+inp.value; valEl.textContent=`${inp.value} / 5`; });
+    inp.addEventListener('change',()=>{ if (c.zone) saveProbe(c.zone); });
+  });
+  el.querySelector('.note').addEventListener('blur',()=>{ if (c.zone) saveProbe(c.zone); });
+  el.querySelectorAll('button[data-zone]').forEach(btn=>{
+    btn.onclick=()=>saveProbe(btn.dataset.zone);
+  });
+  return el;
 }
 
 async function loadBooks(){

@@ -49,8 +49,18 @@ HISTORY = VERDICT_DIR / "verdicts_history.csv"
 # ⚠⚠ APPEND ONLY, NEVER REORDER OR REMOVE. Every previously collected verdicts.csv is
 # read back through this list, and `_write` fills a missing column with "". `sev_a`/`sev_b`
 # joined on 2026-09-22 for SEVERITY sets; rows written before that carry `choice` alone and
-# must keep parsing.
-FIELDS = ["item", "set", "choice", "sev_a", "sev_b", "confidence", "note", "ts"]
+# must keep parsing. Per-defect sliders (`buzz_a`..`robot_b`) joined on 2026-10-21
+# (notes/listening-sliders.md).
+DEFECT_KEYS = ("buzz", "hum", "layering", "noise", "robot")
+DEFECT_LABELS = {
+    "buzz": "Buzz",
+    "hum": "Hum",
+    "layering": "Layering",
+    "noise": "Background noise",
+    "robot": "Human–Robot",
+}
+DEFECT_FIELDS = [f"{k}_{s}" for s in ("a", "b") for k in DEFECT_KEYS]
+FIELDS = ["item", "set", "choice", "sev_a", "sev_b", "confidence", "note", "ts", *DEFECT_FIELDS]
 
 # A severity set asks for an ABSOLUTE 0-5 rating of each clip instead of a forced choice
 # between them. `choice` is still written, DERIVED from the two ratings, so every unblinder
@@ -147,6 +157,16 @@ class Verdict(BaseModel):
     choice: str = ""      # "A" | "B" | "same" — IGNORED for a severity set
     sev_a: str = ""       # "0".."5" on a severity set, else ""
     sev_b: str = ""
+    buzz_a: str = ""
+    hum_a: str = ""
+    layering_a: str = ""
+    noise_a: str = ""
+    robot_a: str = ""
+    buzz_b: str = ""
+    hum_b: str = ""
+    layering_b: str = ""
+    noise_b: str = ""
+    robot_b: str = ""
     confidence: str = ""  # "sure" | "unsure"
     note: str = ""
 
@@ -157,10 +177,16 @@ def _scale_of(set_name):
     return (sets.get(set_name) or {}).get("scale")
 
 
+def _is_defects_scale(scale) -> bool:
+    return isinstance(scale, dict) and bool(scale.get("defects"))
+
+
 def _judged(v, scale):
     """⚠ ZERO IS AN ANSWER. On a severity set "I cannot hear it" is 0, so completeness
     cannot be tested by truthiness — `if sev_a` would treat the most informative rating in
     the test as a blank and let the listener skip it without the counter noticing."""
+    if _is_defects_scale(scale):
+        return all(v.get(f, "") != "" for f in DEFECT_FIELDS)
     if scale:
         return v.get("sev_a", "") != "" and v.get("sev_b", "") != ""
     return bool(v.get("choice"))
@@ -175,10 +201,12 @@ def items(set: str = "all"):
         if set not in ("all", it["set"]):
             continue
         v = have.get(it["id"], {})
+        defect_vals = {f: v.get(f, "") for f in DEFECT_FIELDS}
         out.append(it | {"choice": v.get("choice", ""),
                          "sev_a": v.get("sev_a", ""), "sev_b": v.get("sev_b", ""),
                          "confidence": v.get("confidence", ""),
-                         "note": v.get("note", "")})
+                         "note": v.get("note", ""),
+                         **defect_vals})
     # ⚠ THE TEST DESCRIBES ITSELF. A bench knows what question its sets ask; this app
     # does not, and hardcoding it here meant a new test rendered with different set
     # names showed the wrong tabs and the wrong question. SET_BRIEF is the fallback for
@@ -207,7 +235,30 @@ def verdict(v: Verdict):
     if v.item not in known:
         raise HTTPException(404, f"unknown item {v.item}")
     scale = _scale_of(known[v.item])
-    if scale:
+    defect_out = {f: "" for f in DEFECT_FIELDS}
+    if _is_defects_scale(scale):
+        for f in DEFECT_FIELDS:
+            val = getattr(v, f, "")
+            val = "" if val == "-1" else val
+            if val not in SEV_VALUES:
+                raise HTTPException(400, f"{f} must be 0-5 or empty to clear")
+            defect_out[f] = val
+        primary = scale.get("primary")
+        if primary in DEFECT_KEYS:
+            v.sev_a = defect_out[f"{primary}_a"]
+            v.sev_b = defect_out[f"{primary}_b"]
+        else:
+            vals_a = [int(defect_out[f"{k}_a"]) for k in DEFECT_KEYS if defect_out[f"{k}_a"] != ""]
+            vals_b = [int(defect_out[f"{k}_b"]) for k in DEFECT_KEYS if defect_out[f"{k}_b"] != ""]
+            v.sev_a = str(max(vals_a)) if len(vals_a) == len(DEFECT_KEYS) else ""
+            v.sev_b = str(max(vals_b)) if len(vals_b) == len(DEFECT_KEYS) else ""
+        if all(defect_out[f] != "" for f in DEFECT_FIELDS) and v.sev_a != "" and v.sev_b != "":
+            a, b = int(v.sev_a), int(v.sev_b)
+            choice = "A" if a > b else ("B" if b > a else "same")
+        else:
+            choice = ""
+        empty = all(defect_out[f] == "" for f in DEFECT_FIELDS)
+    elif scale:
         # "-1" is the slider's Unset notch; normalise it before validating so dragging a
         # rating back to Unset clears it instead of being refused as out of range.
         v.sev_a = "" if v.sev_a == "-1" else v.sev_a
@@ -230,7 +281,8 @@ def verdict(v: Verdict):
     row = {"item": v.item, "set": known[v.item], "choice": choice,
            "sev_a": v.sev_a if scale else "", "sev_b": v.sev_b if scale else "",
            "confidence": v.confidence, "note": v.note,
-           "ts": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+           "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+           **defect_out}
     with _LOCK:
         rows = _read()
         if empty and not v.note and not v.confidence:
@@ -284,6 +336,15 @@ button:hover{border-color:#3d6ab5}
 .sevrow input[type=range]{flex:1;accent-color:#4d9c63}
 .sevrow .val{width:126px;text-align:right;color:#79839a;font-variant-numeric:tabular-nums}
 .sevrow .val.set{color:#4d9c63;font-weight:600}
+.defgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.defcol{background:#191d26;border:1px solid #2a2f3a;border-radius:8px;padding:12px}
+.defcol h3{margin:0 0 8px;font-size:14px;color:#aab2c4}
+.defrow{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:13px}
+.defrow .dlab{width:118px;color:#e6e8ee}
+.defrow input[type=range]{flex:1;accent-color:#4d9c63}
+.defrow .dval{width:58px;text-align:right;color:#79839a;font-variant-numeric:tabular-nums}
+.defrow .dval.set{color:#4d9c63;font-weight:600}
+@media(max-width:640px){.defgrid{grid-template-columns:1fr}}
 .anchors{display:flex;justify-content:space-between;color:#79839a;font-size:12px;
   margin:0 0 4px 32px}
 .conf{display:flex;gap:10px;margin-bottom:14px}
@@ -322,6 +383,10 @@ kbd{background:#232833;border:1px solid #2a2f3a;border-radius:4px;padding:1px 6p
       <input type="range" id="rb" min="-1" max="5" step="1" value="-1">
       <span class="val" id="vb">— not set</span></div>
   </div>
+  <div class="defgrid" id="defgrid" style="display:none">
+    <div class="defcol" id="defcol_a"><h3>Clip A defects (Unset → 0–5)</h3><div id="defrows_a"></div></div>
+    <div class="defcol" id="defcol_b"><h3>Clip B defects (Unset → 0–5)</h3><div id="defrows_b"></div></div>
+  </div>
   <div class="conf">
     <button data-f="sure">Sure</button><button data-f="unsure">Not sure</button>
   </div>
@@ -338,6 +403,29 @@ kbd{background:#232833;border:1px solid #2a2f3a;border-radius:4px;padding:1px 6p
 let ALL=[],ITEMS=[],SETS={},i=0,SET=null,au=new Audio();
 const $=id=>document.getElementById(id);
 const DEFAULT_LABELS={A:"A is better",same:"No difference",B:"B is better"};
+const DEFECT_AXES=[
+  ["buzz","Buzz"],
+  ["hum","Hum"],
+  ["layering","Layering"],
+  ["noise","Background noise"],
+  ["robot","Human–Robot"]
+];
+function buildDefectRows(){
+  for(const s of ["a","b"]){
+    $("defrows_"+s).innerHTML=DEFECT_AXES.map(([k,lab])=>
+      `<div class="defrow"><span class="dlab">${lab}</span>`+
+      `<input type="range" id="dr_${k}_${s}" min="-1" max="5" step="1" value="-1">`+
+      `<span class="dval" id="dv_${k}_${s}">Unset</span></div>`
+    ).join("");
+    for(const [k] of DEFECT_AXES){
+      $("dr_"+k+"_"+s).oninput=e=>{
+        const v=e.target.value==="-1"?"":String(e.target.value);
+        ITEMS[i][k+"_"+s]=v; save();
+      };
+    }
+  }
+}
+buildDefectRows();
 async function load(){
   const r=await(await fetch("/api/items")).json();
   ALL=r.items;SETS=r.sets;
@@ -354,14 +442,29 @@ function select(){
   render();
 }
 function scaleOf(){return SETS[SET]&&SETS[SET].scale;}
+function isDefects(sc){return sc&&!!sc.defects;}
 function judged(x){const sc=scaleOf();
+  if(isDefects(sc))return DEFECT_AXES.every(([k])=>x[k+"_a"]!==""&&x[k+"_a"]!=null&&x[k+"_b"]!==""&&x[k+"_b"]!=null);
   return sc?(x.sev_a!==""&&x.sev_a!=null&&x.sev_b!==""&&x.sev_b!=null):!!x.choice;}
 function render(){
   const it=ITEMS[i]; if(!it)return;
   const sc=scaleOf();
-  $("sev").style.display=sc?"":"none";
+  const def=isDefects(sc);
+  $("sev").style.display=(sc&&!def)?"":"none";
+  $("defgrid").style.display=def?"":"none";
   document.querySelector(".choices").style.display=sc?"none":"";
-  if(sc){
+  if(def){
+    for(const s of ["a","b"]){
+      for(const [k] of DEFECT_AXES){
+        const f=k+"_"+s, has=it[f]!==""&&it[f]!=null;
+        $("dr_"+f).value=has?it[f]:-1;
+        $("dv_"+f).textContent=has?it[f]+" / 5":"Unset";
+        $("dv_"+f).classList.toggle("set",has);
+      }
+    }
+    $("hintplay").innerHTML="<kbd>z</kbd> play A · <kbd>x</kbd> play B";
+    $("hintmode").innerHTML="Rate all 5 defect sliders on A and B (0 = clean / human, 5 = severe / robot).";
+  } else if(sc){
     const anc=sc.anchors||{};
     $("anc0").textContent="Unset · 0 — "+(anc["0"]||"cannot hear it");
     $("anc5").textContent="5 — "+(anc["5"]||"as bad as it gets");
@@ -412,12 +515,16 @@ function play(which){
 au.onended=()=>{$("pa").classList.remove("playing");$("pb").classList.remove("playing")};
 async function save(){
   const it=ITEMS[i];
+  const body={item:it.id,choice:it.choice||"",
+    sev_a:(it.sev_a==null?"":String(it.sev_a)),sev_b:(it.sev_b==null?"":String(it.sev_b)),
+    confidence:it.confidence||"",note:it.note||""};
+  for(const s of ["a","b"])for(const [k] of DEFECT_AXES){
+    const f=k+"_"+s; body[f]=(it[f]==null?"":String(it[f]));
+  }
   // ⚠ mutate in place; ALL and ITEMS share objects, so the tab counters stay right
   // without a refetch that would jump the listener back to the first unjudged item.
   await fetch("/api/verdict",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({item:it.id,choice:it.choice||"",
-      sev_a:(it.sev_a==null?"":String(it.sev_a)),sev_b:(it.sev_b==null?"":String(it.sev_b)),
-      confidence:it.confidence||"",note:it.note||""})});
+    body:JSON.stringify(body)});
   render();
 }
 function choose(c){const it=ITEMS[i];it.choice=(it.choice===c?"":c);save();}
@@ -446,8 +553,8 @@ document.onkeydown=e=>{
   else if(k==="1"){play("A");e.preventDefault();return;}
   else if(k==="2"){play("B");e.preventDefault();return;}
   if(e.key==="ArrowLeft")move(-1); else if(e.key==="ArrowRight")move(1);
-  else if(scaleOf()&&/^[0-5]$/.test(e.key))sev("A",e.key);
-  else if(scaleOf()&&")!@#$%".indexOf(e.key)>=0)sev("B",String(")!@#$%".indexOf(e.key)));
+  else if(scaleOf()&&!isDefects(scaleOf())&&/^[0-5]$/.test(e.key))sev("A",e.key);
+  else if(scaleOf()&&!isDefects(scaleOf())&&")!@#$%".indexOf(e.key)>=0)sev("B",String(")!@#$%".indexOf(e.key)));
   else if(!scaleOf()&&k==="a")choose("A");
   else if(!scaleOf()&&k==="b")choose("B");
   else if(!scaleOf()&&k==="s")choose("same");
