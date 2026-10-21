@@ -83,10 +83,12 @@ from matcha.utils.utils import intersperse
 
 # `match_loudness` is `loudness.match_loudness`, re-exported: one implementation. It lives in its
 # own numpy + pyloudnorm module so a renderer that installs no Matcha (render_qwen_1c0.py, in the
-# qwen container) can level-match without importing this file's torch stack.
-try:                                    # imported as `lib.ear_bench` by the tools
+# qwen container) can level-match without importing this file's torch stack. The spelling is
+# chosen by `__package__`, not by catching ImportError, so an ImportError raised inside
+# loudness.py surfaces as itself rather than as a missing flat `loudness`.
+if __package__:                         # imported as `lib.ear_bench` by the tools
     from .loudness import match_loudness  # noqa: F401
-except ImportError:                     # imported flat, with scripts/lib on the path
+else:                                   # imported flat, with scripts/lib on the path
     from loudness import match_loudness  # noqa: F401
 
 DEVICE = torch.device("cpu")

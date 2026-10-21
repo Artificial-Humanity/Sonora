@@ -45,6 +45,12 @@
 # safer than the status quo, which is not "some 4.x" but "whatever is newest at run time".
 SONORA_PIN_TRANSFORMERS="transformers==4.57.3"
 
+# `pyloudnorm` levels render_qwen_1c0.py's clips; the host venv measures with the same
+# release (0.2.0, the latest on PyPI as of 2026-10-21). NOT yet dry-run inside the pinned
+# image: it is pure Python over numpy and scipy, and the render's `_env` freeze records what
+# resolved.
+SONORA_PIN_PYLOUDNORM="pyloudnorm==0.2.0"
+
 # `pip install uv` is the documented bootstrap for these images and matches the training
 # container's own prep chain (see environments/training-container.txt). Everything after
 # it goes through uv, per AGENTS.md § 3 — `--python /opt/venv/bin/python`, never

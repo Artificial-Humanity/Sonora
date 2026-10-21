@@ -152,6 +152,10 @@ def test_render_refuses_any_qwen_tts_but_the_studied_release():
 # --- F0 -------------------------------------------------------------------------------------
 
 SR = 24000
+# A real Qwen VoiceDesign clip the per-clip two-pass autocorrelation read at 235 Hz, with no flag,
+# where librosa's pYIN reads about 371 Hz (16 kHz, 50-800 Hz, frame 1024: the review's reference).
+QWEN_HIGH_CLIP = pathlib.Path("/data/model-training/datasets/sonora-expressive-registers/"
+                              "quote-pilot-v3/qp3_04_content_G26.wav")
 
 
 def _voice(f0, sr=SR, seconds=1.5):
@@ -166,80 +170,208 @@ def _stack(f0, seconds=1.5, amps=None):
     return 0.3 * sum(a * np.sin(2 * np.pi * f0 * k * t) for k, a in enumerate(amps, 1)) / sum(amps)
 
 
+def _glide(lo, hi, seconds=1.5):
+    """A 1/k² stack whose F0 moves linearly from `lo` to `hi` Hz."""
+    n = int(SR * seconds)
+    phase = 2 * np.pi * np.cumsum(np.linspace(lo, hi, n)) / SR
+    return 0.3 * sum(np.sin(k * phase) / k ** 2 for k in range(1, int(0.45 * SR / hi) + 1))
+
+
+def _noisy(x, snr_db, seed):
+    rng = np.random.default_rng(seed)
+    return x + rng.standard_normal(len(x)) * np.sqrt(np.mean(x ** 2) / 10 ** (snr_db / 10))
+
+
+def _st(a, b):
+    return 12.0 * np.log2(a / b)
+
+
+@pytest.mark.parametrize("f0", [55.0, 60.0, 70.0, 80.0, 90.0, 220.0, 520.0, 650.0])
+def test_f0_profile_reads_a_harmonic_stack_across_the_range(f0):
+    """Within 3%, off both search limits. The audit autocorrelation agrees below its 350 Hz ceiling
+    and, reading a subharmonic, disagrees above it."""
+    got = rq.f0_profile(_stack(f0), SR)
+    assert abs(got["f0_median"] - f0) / f0 < 0.03, got
+    assert got["f0_edge_frac"] == 0 and got["f0_above_range_frac"] == 0, got
+    assert not got["f0_out_of_range"], got
+    assert got["f0_methods_disagree"] is (f0 > rq.ACF_BAND[1]), got
+    assert got["voiced_frames"] > 100 and got["f0_range_hz"] == list(rq.F0_RANGE)
+
+
 @pytest.mark.parametrize("f0", [90.0, 220.0, 520.0])
-def test_f0_profile_finds_a_voice_across_the_whole_band(f0):
+def test_f0_profile_finds_a_four_harmonic_voice(f0):
     x, sr = _voice(f0)
     got = rq.f0_profile(x, sr)
     assert got is not None and abs(got["f0_median"] - f0) / f0 < 0.03, got
-    assert got["f0_edge_frac"] == 0 and not got["f0_above_ceiling"], got
-    assert got["f0_band"] == ("high" if f0 > 350 else "low")
+    assert not got["f0_out_of_range"], got
 
 
-@pytest.mark.parametrize("f0", [60.0, 70.0, 80.0, 400.0, 650.0])
-def test_f0_profile_reads_a_low_or_high_harmonic_stack_unpinned(f0):
-    """A flat 50-700 Hz search reads every stack here below 80 Hz as ~706 Hz (its 34-sample top
-    lag); the two-pass measure must read each within 3% and off both search edges."""
-    got = rq.f0_profile(_stack(f0), SR)
-    assert abs(got["f0_median"] - f0) / f0 < 0.03, got
-    assert got["f0_edge_frac"] == 0 and not got["f0_above_ceiling"], got
+@pytest.mark.parametrize("f0", [500.0, 600.0])
+def test_a_noisy_high_voice_is_not_read_at_half(f0):
+    """7 dB SNR white noise. The two-pass autocorrelation read these at 250 / 300 Hz with no flag
+    (600 Hz on every seed here, 500 Hz on seed 2)."""
+    for seed in range(4):
+        got = rq.f0_profile(_noisy(_stack(f0), 7.0, seed), SR)
+        assert abs(got["f0_median"] - f0) / f0 < 0.03, (seed, got)
+        assert not got["f0_out_of_range"], (seed, got)
 
 
-def test_a_flat_wide_search_pins_a_low_voice_to_its_top_edge():
-    """Positive control for the two passes: one 50-700 Hz search reads 70 Hz as ~706 Hz."""
-    from periodicity import frames
-    f0, _h = frames(_stack(70.0), SR, 50.0, 700.0, 0.01, 0.3)
-    assert abs(float(np.median(f0)) - SR / int(SR / 700.0)) < 1.0
+def test_a_noisy_glide_across_350_hz_reads_its_range():
+    """250 -> 450 Hz at 10 dB SNR: the two-pass autocorrelation stayed in its low band and read the
+    median at about 273 Hz."""
+    got = rq.f0_profile(_noisy(_glide(250.0, 450.0), 10.0, 0), SR)
+    assert abs(got["f0_median"] - 350.0) / 350.0 < 0.03, got
+    assert 262.0 < got["f0_p10"] < 278.0 and 422.0 < got["f0_p90"] < 440.0, got
+    assert not got["f0_out_of_range"], got
 
 
 def test_a_low_glide_reads_its_range_in_semitones():
-    t = np.arange(int(SR * 1.5)) / SR
-    phase = 2 * np.pi * np.cumsum(70.0 + 40.0 * t / 1.5) / SR
-    x = 0.3 * sum(np.sin(k * phase) / k ** 2 for k in range(1, 90))
-    got = rq.f0_profile(x, SR)
-    assert got["f0_band"] == "low" and got["f0_edge_frac"] == 0, got
+    got = rq.f0_profile(_glide(70.0, 110.0), SR)
     assert abs(got["f0_median"] - 90.0) / 90.0 < 0.03, got
-    assert 74.0 < got["f0_p10"] < 78.0 and 102.0 < got["f0_p90"] < 108.0, got
+    assert got["f0_edge_frac"] == 0 and not got["f0_out_of_range"], got
+    assert 72.0 < got["f0_p10"] < 78.0 and 102.0 < got["f0_p90"] < 108.0, got
     assert 5.0 < got["f0_excursion_st"] < 7.0, got
     assert got["f0_excursion"] == pytest.approx(got["f0_p90"] - got["f0_p10"])
+    assert got["f0_excursion_st"] == pytest.approx(_st(got["f0_p90"], got["f0_p10"]))
+
+
+@pytest.mark.skipif(not QWEN_HIGH_CLIP.exists(), reason="the real Qwen clip is not on this disk")
+def test_a_real_high_qwen_clip_reads_where_pyin_reads_it():
+    import soundfile as sf
+    x, sr = sf.read(str(QWEN_HIGH_CLIP), dtype="float32")
+    got = rq.f0_profile(x.mean(axis=1) if x.ndim > 1 else x, sr)
+    assert abs(_st(got["f0_median"], 371.0)) < 1.0, got
+    assert not got["f0_out_of_range"], got
 
 
 def test_the_repo_default_band_would_miss_a_child_voice():
-    """Positive control for the high band: at measure_speaker_hnr's 350 Hz ceiling, a 520 Hz voice
-    is not measured as 520 Hz, which is why this probe re-measures up to 700 Hz."""
+    """Positive control for the 700 Hz range: at measure_speaker_hnr's 350 Hz ceiling, a 520 Hz
+    voice is not measured as 520 Hz."""
     from periodicity import frames
     x, sr = _voice(520.0)
     f0, _h = frames(np.asarray(x, dtype=np.float64), sr, 55.0, 350.0, 0.01, 0.3)
     assert not len(f0) or abs(float(np.median(f0)) - 520.0) / 520.0 > 0.1
 
 
-def test_a_dominant_second_harmonic_is_not_read_an_octave_up():
-    """The high band alone reads this 220 Hz voice at ~440 Hz (positive control); its HNR there is
-    within `HNR_MARGIN_DB` of the low band's, so the low band's 220 Hz stands."""
-    x = _stack(220.0, amps=[0.15, 1.0, 0.1, 0.5, 0.05, 0.2])
-    high = rq._read_band(x, SR, rq.HIGH_BAND)
-    assert abs(float(np.median(high["f0"])) - 440.0) / 440.0 < 0.03
-    got = rq.f0_profile(x, SR)
-    assert got["f0_band"] == "low" and abs(got["f0_median"] - 220.0) / 220.0 < 0.03, got
+def test_a_flat_wide_autocorrelation_pins_a_low_voice_to_its_top_edge():
+    """Why F0 is not one 50-700 Hz `periodicity.frames` search: it reads 70 Hz as ~706 Hz."""
+    from periodicity import frames
+    f0, _h = frames(_stack(70.0), SR, 50.0, 700.0, 0.01, 0.3)
+    assert abs(float(np.median(f0)) - SR / int(SR / 700.0)) < 1.0
 
 
 @pytest.mark.parametrize("f0", [720.0, 800.0, 1000.0])
-def test_a_voice_above_the_ceiling_is_flagged(f0):
-    """Just above 700 Hz the high band pins to its top edge; further up it locks to a subharmonic
-    off the edges and only the ceiling probe sees it. Either way the row must warn."""
+def test_a_voice_above_the_range_is_flagged(f0):
+    """The 50-700 Hz pass reads these at half their F0 with no frame at an edge (positive control);
+    the extended pass reads them above 700 Hz."""
     got = rq.f0_profile(_stack(f0), SR)
-    assert got["f0_edge_frac"] > 0.5 or got["f0_above_ceiling"], got
-    if f0 >= 800:
-        assert got["f0_above_ceiling"], got
+    assert abs(got["f0_median"] - f0 / 2) / f0 < 0.03 and got["f0_edge_frac"] == 0, got
+    assert got["f0_above_range_frac"] > 0.9 and got["f0_out_of_range"], got
+
+
+@pytest.mark.parametrize("f0", [40.0, 45.0])
+def test_a_voice_below_the_floor_reads_at_the_floor_and_is_flagged(f0):
+    got = rq.f0_profile(_stack(f0), SR)
+    assert got["f0_edge_frac"] > 0.9 and got["f0_above_range_frac"] == 0, got
+    assert got["f0_out_of_range"], got
+
+
+def test_a_dominant_second_harmonic_misread_is_visible():
+    """pYIN's octave error: H2 16 dB over H1 reads 220 Hz as ~441 Hz (positive control). The
+    autocorrelation reads 220 Hz, so the row says the methods disagree."""
+    got = rq.f0_profile(_stack(220.0, amps=[0.15, 1.0, 0.1, 0.5, 0.05, 0.2]), SR)
+    assert abs(got["f0_median"] - 440.0) / 440.0 < 0.03, got
+    assert abs(got["f0_median_acf"] - 220.0) / 220.0 < 0.03, got
+    assert got["f0_methods_disagree"] is True, got
+
+
+def test_the_methods_disagree_beyond_one_semitone_only(monkeypatch):
+    """`f0_methods_disagree` is |pYIN - ACF| > METHODS_DISAGREE_ST semitones, either sign; None
+    when the autocorrelation finds no voiced frame."""
+    import periodicity
+    x = _stack(200.0)
+    for acf_hz, want in ((200.0 * 2 ** (0.9 / 12), False), (200.0 * 2 ** (-0.9 / 12), False),
+                         (200.0 * 2 ** (1.1 / 12), True), (200.0 * 2 ** (-1.1 / 12), True)):
+        monkeypatch.setattr(periodicity, "frames",
+                            lambda *a, v=acf_hz: (np.full(10, v), np.zeros(10)))
+        got = rq.f0_profile(x, SR)
+        assert abs(got["f0_median"] - 200.0) < 2.0 and got["f0_methods_disagree"] is want, (acf_hz, got)
+    monkeypatch.setattr(periodicity, "frames", lambda *a: (np.zeros(0), np.zeros(0)))
+    got = rq.f0_profile(x, SR)
+    assert got["f0_median_acf"] is None and got["f0_methods_disagree"] is None and got["hnr"] is None
+
+
+def test_out_of_range_needs_more_than_a_tenth_of_the_frames(monkeypatch):
+    """OUT_OF_RANGE_FRAC holds for either fraction: 2 edge (or above-range) frames in 20 is not out
+    of range, 3 in 20 is. Both limits count as an edge, within EDGE_TOL."""
+    def fake(frac_edge, frac_above, edge_hz):
+        def pyin(_x, _sr, fmax):
+            n = 20
+            if fmax == rq.F0_RANGE[1]:
+                return np.array([edge_hz] * round(frac_edge * n) + [200.0] * (n - round(frac_edge * n)))
+            return np.array([900.0] * round(frac_above * n) + [200.0] * (n - round(frac_above * n)))
+        return pyin
+    x = _stack(200.0)
+    lo, hi = rq.F0_RANGE
+    for edge_hz in (lo * 1.025, hi / 1.025):
+        for fe, fa, want in ((0.10, 0.0, False), (0.15, 0.0, True), (0.0, 0.10, False), (0.0, 0.15, True)):
+            monkeypatch.setattr(rq, "_pyin_voiced", fake(fe, fa, edge_hz))
+            got = rq.f0_profile(x, SR)
+            assert got["f0_edge_frac"] == pytest.approx(fe) and got["f0_above_range_frac"] == pytest.approx(fa)
+            assert got["f0_out_of_range"] is want, (edge_hz, fe, fa, got)
+    for clear_hz in (lo * 1.035, hi / 1.035):
+        monkeypatch.setattr(rq, "_pyin_voiced", fake(0.5, 0.0, clear_hz))
+        assert rq.f0_profile(x, SR)["f0_edge_frac"] == 0, clear_hz
+
+
+def test_pyin_frame_holds_two_periods_of_the_floor():
+    assert rq.pyin_frame(24000) == 1024
+    for sr in (16000, 22050, 24000, 44100, 48000):
+        n = rq.pyin_frame(sr)
+        assert n & (n - 1) == 0 and sr / rq.F0_RANGE[0] < n // 2 and not sr / rq.F0_RANGE[0] < n // 4
 
 
 def test_hnr_rises_with_f0_for_a_perfectly_periodic_voice():
     """Why each row carries `hnr_note`: the same perfect periodicity reads >5 dB apart."""
-    low, high = rq.f0_profile(_stack(70.0), SR), rq.f0_profile(_stack(650.0), SR)
+    low, high = rq.f0_profile(_stack(70.0), SR), rq.f0_profile(_stack(330.0), SR)
     assert high["hnr"] - low["hnr"] > 5.0, (low["hnr"], high["hnr"])
 
 
 def test_f0_profile_is_none_on_silence():
     assert rq.f0_profile(np.zeros(24000), 24000) is None
+
+
+def test_f0_keys_are_the_profiles_keys():
+    """A clip with no voiced frame gets a row of nulls under exactly the keys a voiced clip gets."""
+    assert tuple(rq.f0_profile(_stack(200.0), SR)) == rq.F0_KEYS
+
+
+# --- phonation ------------------------------------------------------------------------------
+
+def _f0_row(p10, p90, out_of_range=False):
+    return {"f0_p10": p10, "f0_p90": p90, "f0_out_of_range": out_of_range}
+
+
+@pytest.mark.parametrize("p10, p90, null", [
+    (100.0, 300.0, False), (59.0, 200.0, True), (100.0, 401.0, True), (60.0, 400.0, False)])
+def test_phonation_is_null_outside_its_cepstral_band_at_either_end(p10, p90, null):
+    import derive_vat_corpus as dvc
+    assert (dvc.F0_MIN, dvc.F0_MAX) == (60.0, 400.0)
+    row = rq.phonation_row(_stack(110.0), SR, _f0_row(p10, p90))
+    if null:
+        assert row["cpp"] is None and row["h1h2"] is None and row["alpha_db"] is None, row
+        assert "leaves phonation_measures' 60-400 Hz cepstral band" in row["phonation_null_reason"], row
+    else:
+        assert row["cpp"] is not None and row["phonation_null_reason"] is None, row
+
+
+def test_phonation_is_null_when_f0_is_out_of_range():
+    """A 720 Hz voice reads p10-p90 inside the cepstral band (at half its F0); its phonation would
+    measure the wrong peak."""
+    f0 = rq.f0_profile(_stack(720.0), SR)
+    assert 60.0 < f0["f0_p10"] and f0["f0_p90"] < 400.0 and f0["f0_out_of_range"], f0
+    row = rq.phonation_row(_stack(720.0), SR, f0)
+    assert row["cpp"] is None and "F0 not measured" in row["phonation_null_reason"], row
 
 
 # --- render's imports -----------------------------------------------------------------------
@@ -281,6 +413,27 @@ def test_ear_bench_re_exports_the_one_match_loudness():
              "assert ear_bench.match_loudness is loudness.match_loudness\n"
              "assert lib.ear_bench.match_loudness is lib.loudness.match_loudness\n"
              "assert 'def match_loudness' not in open(ear_bench.__file__).read()\n"
+             % str(REPO / "scripts"))
+    _heavy_after(stubs)
+
+
+def test_an_import_error_inside_loudness_surfaces_from_ear_bench():
+    """The package spelling imports `.loudness` and nothing else: a broken `lib.loudness` raises
+    its own ImportError rather than falling back to the flat module and hiding it."""
+    stubs = ("import types\n"
+             "for name, attrs in {'torch': {'device': lambda *a: None},"
+             " 'matcha.cli': dict.fromkeys(['detect_lane', 'load_matcha', 'load_vocoder_24k',"
+             " 'process_text_for_lane', 'to_waveform']), 'matcha.text': {'text_to_sequence': None},"
+             " 'matcha.utils': {}, 'matcha.utils.utils': {'intersperse': None}}.items():\n"
+             "    m = types.ModuleType(name); m.__dict__.update(attrs); sys.modules[name] = m\n"
+             "sys.path.insert(0, %r)\n"
+             "sys.modules['lib.loudness'] = None\n"
+             "try:\n"
+             "    import lib.ear_bench\n"
+             "except ImportError as e:\n"
+             "    assert 'lib.loudness' in str(e), e\n"
+             "else:\n"
+             "    raise AssertionError('lib.ear_bench imported around a broken lib.loudness')\n"
              % str(REPO / "scripts"))
     _heavy_after(stubs)
 
@@ -357,6 +510,7 @@ def test_a_finished_render_exits_before_loading_the_model(render_env, capsys):
     (lambda r: r.update(seed=r["seed"] + 1), "seed"),
     (lambda r: r.update(text="Another sentence."), "text"),
     (lambda r: r.update(commit="0ld"), "commit"),
+    (lambda r: r.update(file="clips/M1-s1.wav"), "file"),     # another row's wav, which exists
 ])
 def test_resume_refuses_a_done_row_that_is_not_its_ladder_item(render_env, change, match):
     out, weights, _model_dir = render_env
@@ -434,13 +588,15 @@ def test_measure_writes_a_row_per_ladder_clip(tmp_path, capsys):
         r, f0 = by_id[it["id"]], _clip_f0(it)
         assert abs(r["f0_median"] - f0) / f0 < 0.03, r
         assert r["hnr_note"] == rq.HNR_NOTE
+        assert not r["f0_out_of_range"] and r["f0_methods_disagree"] is (f0 > 350), r
         if f0 > 400:
-            assert r["f0_band"] == "high" and r["cpp"] is None and r["h1h2"] is None, r
+            assert r["cpp"] is None and r["h1h2"] is None, r
             assert "cepstral band" in r["phonation_null_reason"], r
         else:
-            assert r["f0_band"] == "low" and r["cpp"] is not None and r["phonation_null_reason"] is None, r
+            assert r["cpp"] is not None and r["phonation_null_reason"] is None, r
         assert r["phonation_f0_band_hz"] == [60.0, 400.0]
-    assert "60 clips measured; 0 without a voiced frame; 3 without a phonation measure" \
+    assert ("60 clips measured; 0 without a voiced frame; 3 without a phonation measure; 0 with F0 "
+            "out of pYIN's 50-700 Hz range; 3 where pYIN and the autocorrelation disagree") \
         in capsys.readouterr().out
 
 
@@ -463,4 +619,28 @@ def test_measure_refuses_a_missing_manifest_a_wrong_id_set_or_a_missing_wav(tmp_
     manifest.write_text("".join(lines))
     (out / "clips" / "F3-s2.wav").unlink()
     with pytest.raises(SystemExit, match="REFUSING: manifest row F3-s2 has no wav"):
+        rq.cmd_measure(argparse.Namespace(out=str(out)))
+
+
+def test_measure_refuses_a_truncated_manifest(tmp_path):
+    out = _measure_dir(tmp_path)
+    manifest = out / "manifest.jsonl"
+    text = manifest.read_text()
+    manifest.write_text(text[:-40])                     # the last row loses its tail and newline
+    with pytest.raises(SystemExit, match="REFUSING: .* ends in a truncated line"):
+        rq.cmd_measure(argparse.Namespace(out=str(out)))
+
+
+def test_measure_refuses_a_missing_meta_or_rows_from_another_commit(tmp_path):
+    out = _measure_dir(tmp_path)
+    meta = out / "render_meta.json"
+    text = meta.read_text()
+    meta.unlink()
+    with pytest.raises(SystemExit, match="REFUSING: .* no readable render_meta.json commit"):
+        rq.cmd_measure(argparse.Namespace(out=str(out)))
+    meta.write_text(json.dumps({"qwen_tts": "0.1.1"}))
+    with pytest.raises(SystemExit, match="REFUSING: .* no readable render_meta.json commit"):
+        rq.cmd_measure(argparse.Namespace(out=str(out)))
+    meta.write_text(json.dumps(dict(json.loads(text), commit="def456")))
+    with pytest.raises(SystemExit, match="REFUSING: manifest row M1-s1 .*commit"):
         rq.cmd_measure(argparse.Namespace(out=str(out)))

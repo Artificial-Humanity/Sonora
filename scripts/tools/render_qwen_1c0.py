@@ -12,9 +12,14 @@ and 1c-i's two anchors. This tool renders the clips and measures them; it decide
     # host: the container runs as ai-mgr and cannot create a directory in probes/
     install -d -m 2775 /data/model-training/datasets/probes/qwen-1c0
 
-    # container (GPU, a JARVIS slot), in bash from the root of a clean checkout of the registered
+    # container (GPU, a JARVIS slot), in bash from the root of the checkout of the registered
     # commit: synth_bank.sh's run() and qwen block, with the studied release pinned and pyloudnorm
-    # added. The --device ... video flags are synth_bank.sh's $GPU.
+    # added. The --device ... video flags are synth_bank.sh's $GPU. It runs only from a checkout
+    # with no uncommitted change and no untracked file under scripts/, so the --commit it passes
+    # names the code that runs. `$(git ... rev-parse HEAD)` expands on the host because the
+    # bash -c string is double-quoted.
+    if git -C "$PWD" diff --quiet HEAD &&
+       [ -z "$(git -C "$PWD" ls-files -o --exclude-standard scripts/)" ]; then
     . scripts/container_env.sh
     docker run --rm --device /dev/kfd --device /dev/dri --security-opt seccomp=unconfined \\
       --group-add video -e SONORA_ROCM_IMAGE="$SONORA_ROCM_IMAGE" \\
@@ -24,13 +29,15 @@ and 1c-i's two anchors. This tool renders the clips and measures them; it decide
       $SONORA_UVPIP --no-deps qwen-tts==0.1.1 >/dev/null 2>&1;
       $SONORA_UVPIP $SONORA_PIN_TRANSFORMERS soundfile sox onnxruntime einops librosa >/dev/null 2>&1;
       $SONORA_UVPIP --no-deps accelerate==1.12.0 >/dev/null 2>&1;
-      $SONORA_UVPIP pyloudnorm >/dev/null 2>&1;
+      $SONORA_UVPIP $SONORA_PIN_PYLOUDNORM >/dev/null 2>&1;
       bash /sonora/scripts/container_as_ai_mgr.sh &&
       $(capture_env_cmd qwen-1c0 /data/model-training/datasets/probes/qwen-1c0/_env)
       runuser -u ai-mgr -- bash -c 'umask 002; python /sonora/scripts/tools/render_qwen_1c0.py \\
-        render --commit <sha> --out /data/model-training/datasets/probes/qwen-1c0'"
+        render --commit $(git -C "$PWD" rev-parse HEAD) \\
+        --out /data/model-training/datasets/probes/qwen-1c0'"
+    else echo "REFUSING: $PWD has uncommitted changes or untracked files under scripts/."; fi
 
-    # host: F0 / HNR / phonation per clip, beside the clips
+    # host: F0 / HNR / phonation per clip, beside the clips (librosa's pYIN: the host venv)
     .venv/bin/python scripts/tools/render_qwen_1c0.py measure \\
         --out /data/model-training/datasets/probes/qwen-1c0
 
@@ -57,31 +64,42 @@ run's, and unless every rendered row is its ladder item (seed, text, instruct, c
 on disk. Only a truncated final manifest line, a render killed mid-write, is dropped (with a
 warning) and re-rendered. When nothing remains it exits before loading the model.
 
-⚠ F0 IS TWO PASSES OF `periodicity.frames`, NOT ONE WIDE SEARCH. A 50-700 Hz search starts at a
-34-sample lag at 24 kHz, where a voice below about 80 Hz has not decorrelated yet, so the peak pins
-to the search edge and the clip reads about 706 Hz. Pass 1 is the repo's speaker band (the 350 Hz
-ceiling of `measure_speaker_f0` and `measure_harmonicity`, floor 50 Hz). Above 350 Hz it reads a
-voice at half its F0: the period is shorter than the band's shortest lag and twice the period is
-inside it. So `HIGH_BAND` re-measures when pass 1's median is pressed against its top, or when pass
-1 reads above half its ceiling and the high band is more periodic (median HNR higher by
-`HNR_MARGIN_DB`) without being pinned to its own floor. A subharmonic is always less periodic than
-the true period; the formant lags a low voice shows in the high band are far less periodic than
-its own period. Each row says
-which band it used (`f0_band`), the fraction of voiced frames whose lag sits at either search edge
-(`f0_edge_frac`: a reading at an edge is the edge, not the voice) and `f0_above_ceiling`. Above
-about 740 Hz the high band locks to a subharmonic without touching an edge, so a 700-1400 Hz probe
-that finds the voice, unpinned and more periodic by the same margin, sets `f0_above_ceiling`. A voice at the 50 Hz
-floor or near 700 Hz pins both bands at their shortest lag and shows only as `f0_edge_frac` near 1,
-whichever end it is. Either flag means the clip's F0 is not measured.
+⚠ F0 IS LIBROSA'S pYIN OVER 50-700 Hz, NOT THE REPO'S AUTOCORRELATION. `periodicity.frames` takes
+the highest peak in one fixed lag band. Over 50-700 Hz at 24 kHz its shortest lag (34 samples) is
+where a voice below about 80 Hz has not decorrelated yet, so the clip reads about 706 Hz; over the
+repo's 50-350 Hz band a voice above 350 Hz reads at half its F0; and a per-clip rule choosing between
+bands read noisy high voices at half with no flag (a 600 Hz stack at 7 dB SNR as 300 Hz, a real Qwen
+clip that pYIN reads at 371 Hz as 235 Hz). pYIN weighs every candidate period in every frame and
+tracks the contour, so one search covers the range. Its frame (`pyin_frame`) is the smallest power of
+two holding two periods of the 50 Hz floor, librosa's condition for reading the floor accurately:
+1024 samples (42.7 ms) at 24 kHz, close to `periodicity.frames`' 40 ms. librosa's default 2048 reads
+the test file's voices within 0.5 semitone of it, with half the time resolution on the contour
+whose p10-p90 is the excursion. The hop is 10 ms. Over pYIN's voiced frames each row reports:
 
-⚠ HNR IS DESCRIPTIVE ONLY. `periodicity.frames` normalises a biased autocorrelation, so the peak at
-the period shrinks with the lag: a perfectly periodic 1/k² harmonic stack reads about 2.5 dB at
-70 Hz and about 14 dB at 650 Hz. Across this ladder HNR tracks F0, not breathiness. Each row carries
-`hnr_note`; do not compare or gate HNR across rungs.
+* `f0_edge_frac`: the fraction within `EDGE_TOL` of 50 or 700 Hz. A reading at a limit is the limit,
+  not the voice: a voice below 50 Hz reads 50 Hz.
+* `f0_above_range_frac`: the fraction of a second pYIN pass, its ceiling an octave higher
+  (`F0_EXTENDED_FMAX`), that reads above 700 Hz. The 50-700 Hz pass reads a voice above 700 Hz at
+  half its F0, off both edges, so only this pass sees it.
+* `f0_out_of_range`: either fraction above `OUT_OF_RANGE_FRAC`. The clip's F0 is then not measured.
+* `f0_median_acf` and `f0_methods_disagree`: the repo autocorrelation's median over 50-350 Hz, and
+  whether it is more than `METHODS_DISAGREE_ST` from pYIN's. pYIN reads a voice whose second
+  harmonic exceeds its first by about 16 dB an octave up (a synthetic 220 Hz voice reads 441 Hz;
+  from about 350 Hz only the extended pass does, which sets `f0_out_of_range` on a voice in range).
+  The autocorrelation reads such a voice at its F0, so a misread is visible. Above 350 Hz the
+  autocorrelation reads a subharmonic and the two disagree by construction; there a flagged clip
+  needs the ear.
+
+⚠ HNR IS DESCRIPTIVE ONLY. It is `periodicity.frames` over the repo's 50-350 Hz band, the pass that
+gives `f0_median_acf`. That estimator normalises a biased autocorrelation, so the peak at the period
+shrinks with the lag: a perfectly periodic 1/k² harmonic stack reads about 2.5 dB at 70 Hz and
+about 11 dB at 330 Hz, and above 350 Hz HNR is read at a subharmonic's lag. Across this ladder HNR
+tracks F0, not breathiness. Each row carries `hnr_note`; do not compare or gate HNR across rungs.
 
 ⚠ CPP / H1-H2 / ALPHA COME FROM `phonation_measures`, WHOSE CEPSTRAL F0 SEARCH IS
-`derive_vat_corpus.F0_MIN`-`F0_MAX`. A clip measured in the high band or with F0 p90 above that
-ceiling gets nulls and `phonation_null_reason`, rather than a measure of the wrong peak.
+`derive_vat_corpus.F0_MIN`-`F0_MAX`. A clip with F0 p10 below that floor or p90 above that ceiling,
+or with `f0_out_of_range`, gets nulls and `phonation_null_reason`, rather than a measure of the wrong
+peak.
 """
 import argparse
 import hashlib
@@ -106,18 +124,19 @@ LANGUAGE = "English"
 # `render_meta.json` keys a resume must match exactly.
 RESUME_KEYS = ("commit", "weights_sha256", "qwen_tts")
 
-# F0 search bands (Hz) for `periodicity.frames`, with the repo estimators' voicing thresholds.
-LOW_BAND = (50.0, 350.0)
-HIGH_BAND = (250.0, 700.0)
-CEILING_PROBE = (700.0, 1400.0)
-TOP_OF_LOW = 0.9        # a pass-1 median above 0.9 x 350 Hz is pressed against the band's top
-# A periodic voice's true period reads 3.2-3.4 dB more HNR than its octave error below 700 Hz and
-# 1.6-2 dB more than its subharmonic lock above (biased autocorrelation, 40 ms window). A voice
-# whose even harmonics dominate reads within 0.5 dB at twice its F0, so the switch needs a margin.
-HNR_MARGIN_DB = 1.0
+# F0 (module docstring): pYIN's search range (Hz), and the extended pass that sees a voice above it.
+F0_RANGE = (50.0, 700.0)
+F0_EXTENDED_FMAX = 2 * F0_RANGE[1]
+EDGE_TOL = 0.03         # a reading within 3% of a search limit is the limit
+OUT_OF_RANGE_FRAC = 0.1
+METHODS_DISAGREE_ST = 1.0
+# The repo autocorrelation (`periodicity.frames`), kept for HNR and the `f0_median_acf` audit only:
+# the speaker band of `measure_speaker_f0` and `measure_harmonicity`, with their voicing thresholds.
+ACF_BAND = (50.0, 350.0)
 RMS_FLOOR, PERIODICITY = 0.01, 0.3
-HNR_NOTE = ("descriptive only: periodicity.frames' biased autocorrelation reads a periodic voice "
-            "higher the higher its F0; do not compare or gate HNR across rungs")
+HNR_NOTE = ("descriptive only: periodicity.frames' biased autocorrelation over %g-%g Hz reads a "
+            "periodic voice higher the higher its F0, and a voice above %g Hz at a subharmonic; "
+            "do not compare or gate HNR across rungs" % (ACF_BAND + ACF_BAND[1:]))
 
 # Qwen's 12-key instruct order (director_skills/qwen.md).
 KEY_ORDER = ("gender", "pitch", "speed", "volume", "age", "clarity", "fluency", "accent",
@@ -203,60 +222,63 @@ def require_qwen_tts(version_of):
     return got
 
 
-def _read_band(x, sr, band):
-    """`periodicity.frames` over one band -> its voiced frames' f0 and hnr, and the fraction whose
-    lag is the band's shortest (`at_top`, fmax) or longest (`at_floor`, fmin). None if unvoiced."""
+def pyin_frame(sr):
+    """pYIN's frame in samples: the smallest power of two holding two periods of the F0 floor
+    (librosa warns below that). 1024 samples, 42.7 ms, at 24 kHz."""
+    return 1 << math.ceil(math.log2(2 * sr / F0_RANGE[0] + 2))
+
+
+def _pyin_voiced(x, sr, fmax):
+    """librosa's pYIN from the F0 floor to `fmax` -> the F0 (Hz) of its voiced frames."""
+    import librosa
     import numpy as np
-    from periodicity import frames
-    f0, hnr = frames(x, sr, band[0], band[1], RMS_FLOOR, PERIODICITY)
-    if not len(f0):
-        return None
-    lag = np.rint(sr / f0).astype(int)          # frames reports sr / lag exactly
-    return {"band": band, "f0": f0, "hnr": float(np.median(hnr)),
-            "at_top": float(np.mean(lag == int(sr / band[1]))),
-            "at_floor": float(np.mean(lag == int(sr / band[0]) - 1))}
+    f0, voiced, _prob = librosa.pyin(x.astype(np.float32), fmin=F0_RANGE[0], fmax=fmax, sr=sr,
+                                     frame_length=pyin_frame(sr), hop_length=int(0.010 * sr))
+    return f0[voiced & np.isfinite(f0)]
 
 
 def f0_profile(x, sr):
-    """Voiced-frame F0 of a mono clip, two-pass (module docstring): the band used, median, p10,
-    p90, excursion in Hz and semitones, edge fraction, the ceiling flag, median HNR. None if no
-    frame is voiced."""
+    """Voiced-frame F0 of a mono clip from pYIN (module docstring): median, p10, p90, excursion in
+    Hz and semitones, the edge and above-range fractions, the out-of-range flag, the autocorrelation
+    median it is audited against, and median HNR. None if pYIN finds no voiced frame."""
     import numpy as np
+    from periodicity import frames
     x = np.asarray(x, dtype=np.float64)
-    use = low = _read_band(x, sr, LOW_BAND)
-    if low is None:
+    f0 = _pyin_voiced(x, sr, F0_RANGE[1])
+    if not len(f0):
         return None
-    m_low = float(np.median(low["f0"]))
-    above = False
-    if m_low > 0.5 * LOW_BAND[1]:               # pass 1 may be reading a voice above 350 Hz at half
-        high = _read_band(x, sr, HIGH_BAND)
-        if high is not None and (m_low > TOP_OF_LOW * LOW_BAND[1]
-                                 or (high["hnr"] > low["hnr"] + HNR_MARGIN_DB
-                                     and high["at_floor"] < 0.5)):
-            use = high
-            probe = _read_band(x, sr, CEILING_PROBE)
-            above = bool(probe is not None and len(probe["f0"]) >= 0.5 * len(high["f0"])
-                         and probe["hnr"] > high["hnr"] + HNR_MARGIN_DB
-                         and probe["at_top"] + probe["at_floor"] < 0.5)
-    f0 = use["f0"]
+    wide = _pyin_voiced(x, sr, F0_EXTENDED_FMAX)
+    acf, hnr = frames(x, sr, ACF_BAND[0], ACF_BAND[1], RMS_FLOOR, PERIODICITY)
+    lo, hi = F0_RANGE
+    median = float(np.median(f0))
     p10, p90 = float(np.percentile(f0, 10)), float(np.percentile(f0, 90))
-    return {"f0_band": "high" if use is not low else "low", "f0_band_hz": list(use["band"]),
-            "f0_median": float(np.median(f0)), "f0_p10": p10, "f0_p90": p90,
-            "f0_excursion": p90 - p10, "f0_excursion_st": 12.0 * math.log2(p90 / p10),
-            "f0_edge_frac": use["at_top"] + use["at_floor"], "f0_above_ceiling": above,
-            "hnr": use["hnr"], "voiced_frames": int(len(f0))}
+    edge = float(np.mean((f0 < lo * (1 + EDGE_TOL)) | (f0 > hi / (1 + EDGE_TOL))))
+    above = float(np.mean(wide > hi)) if len(wide) else 0.0
+    acf_median = float(np.median(acf)) if len(acf) else None
+    return {"f0_median": median, "f0_p10": p10, "f0_p90": p90, "f0_excursion": p90 - p10,
+            "f0_excursion_st": 12.0 * math.log2(p90 / p10), "voiced_frames": int(len(f0)),
+            "f0_range_hz": list(F0_RANGE), "f0_edge_frac": edge, "f0_above_range_frac": above,
+            "f0_out_of_range": edge > OUT_OF_RANGE_FRAC or above > OUT_OF_RANGE_FRAC,
+            "f0_median_acf": acf_median,
+            "f0_methods_disagree": None if acf_median is None else
+            abs(12.0 * math.log2(median / acf_median)) > METHODS_DISAGREE_ST,
+            "hnr": float(np.median(hnr)) if len(hnr) else None}
 
 
 def phonation_row(x, sr, f0):
-    """`phonation_measures` (CPP, H1-H2, alpha), or nulls and the reason when the clip's F0 sits
-    above its cepstral band."""
+    """`phonation_measures` (CPP, H1-H2, alpha), or nulls and the reason when the clip's F0 is not
+    measured or leaves its cepstral band at either end."""
     import derive_vat_corpus as dvc
     row = {"phonation_f0_band_hz": [dvc.F0_MIN, dvc.F0_MAX], "alpha_db": None, "cpp": None,
            "h1h2": None, "phonation_null_reason": None}
-    if f0 is not None and (f0["f0_band"] == "high" or f0["f0_p90"] > dvc.F0_MAX):
+    if f0 is not None and f0["f0_out_of_range"]:
         row["phonation_null_reason"] = (
-            "F0 above phonation_measures' %g-%g Hz cepstral band (f0_band %s, p90 %.0f Hz)"
-            % (dvc.F0_MIN, dvc.F0_MAX, f0["f0_band"], f0["f0_p90"]))
+            "F0 not measured: at a pYIN search limit or above %g Hz" % F0_RANGE[1])
+        return row
+    if f0 is not None and (f0["f0_p90"] > dvc.F0_MAX or f0["f0_p10"] < dvc.F0_MIN):
+        row["phonation_null_reason"] = (
+            "F0 p10-p90 %.0f-%.0f Hz leaves phonation_measures' %g-%g Hz cepstral band"
+            % (f0["f0_p10"], f0["f0_p90"], dvc.F0_MIN, dvc.F0_MAX))
         return row
     ph = dvc.phonation_measures(x, sr)
     if ph is None:
@@ -408,8 +430,9 @@ def cmd_render(args):
     print("RENDER-QWEN-1C0-DONE")
 
 
-F0_KEYS = ("f0_band", "f0_band_hz", "f0_median", "f0_p10", "f0_p90", "f0_excursion",
-           "f0_excursion_st", "f0_edge_frac", "f0_above_ceiling", "hnr", "voiced_frames")
+F0_KEYS = ("f0_median", "f0_p10", "f0_p90", "f0_excursion", "f0_excursion_st", "voiced_frames",
+           "f0_range_hz", "f0_edge_frac", "f0_above_range_frac", "f0_out_of_range",
+           "f0_median_acf", "f0_methods_disagree", "hnr")
 
 
 def cmd_measure(args):
@@ -423,7 +446,13 @@ def cmd_measure(args):
     rows, _repaired, dropped = read_manifest(manifest)
     if dropped is not None:
         raise SystemExit("REFUSING: %s ends in a truncated line; resume the render." % manifest)
-    check_rows(rows, args.out)
+    try:
+        with open(os.path.join(args.out, "render_meta.json"), encoding="utf-8") as fh:
+            commit = json.load(fh)["commit"]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        raise SystemExit("REFUSING: %s has no readable render_meta.json commit (%r)."
+                         % (args.out, e))
+    check_rows(rows, args.out, commit=commit)
     want = [it["id"] for it in ladder()]
     if {r["id"] for r in rows} != set(want):
         raise SystemExit("REFUSING: %d of %d ladder clips rendered (missing %s)." % (
@@ -440,11 +469,10 @@ def cmd_measure(args):
     write_text_atomic(os.path.join(args.out, "measures.jsonl"),
                       "".join(json.dumps(o) + "\n" for o in out))
     print("%d clips measured; %d without a voiced frame; %d without a phonation measure; %d with "
-          "F0 at a search edge (> 10%% of frames) or above the %g Hz ceiling" % (
+          "F0 out of pYIN's %g-%g Hz range; %d where pYIN and the autocorrelation disagree" % (
               len(out), sum(o["f0_median"] is None for o in out),
-              sum(o["cpp"] is None for o in out),
-              sum(bool(o["f0_above_ceiling"]) or (o["f0_edge_frac"] or 0) > 0.1 for o in out),
-              HIGH_BAND[1]))
+              sum(o["cpp"] is None for o in out), sum(bool(o["f0_out_of_range"]) for o in out),
+              F0_RANGE[0], F0_RANGE[1], sum(bool(o["f0_methods_disagree"]) for o in out)))
 
 
 def main(argv=None):
