@@ -41,10 +41,15 @@ and 1c-i's two anchors. This tool renders the clips and measures them; it decide
     .venv/bin/python scripts/tools/render_qwen_1c0.py measure \\
         --out /data/model-training/datasets/probes/qwen-1c0
 
-The probe folder is laid out for the audition app's probe mode (`manifest.jsonl` in listening
-order, `measures.jsonl` joined by `id`). That mode is pending in a separate PR: at this commit
-nothing serves the folder. Nothing here touches `ratings.csv`. Nothing here pre-fills an attribute
-from the prompt either: a pitch value taken from the rung would tell the listener the answer.
+The probe folder is what the audition app's probe mode reads (`audition/app/main.py`,
+`_load_probe_manifest`): `$AUDITION_DATA_ROOT/probes/<name>/` (by default
+/data/model-training/datasets/probes/qwen-1c0), its `manifest.jsonl` in listening order with each
+clip at `clips/<id>.wav`, its `measures.jsonl` joined to the manifest by `id` and shown as the
+clip's `acoustics`, and its `render_meta.json`. The card shows the row's `gender` (the prompted one)
+and, from `acoustics`, `f0_median_hz`, `f0_excursion_hz` and `hnr_db`; `cpp_db` rides along unshown.
+The owner's verdicts go to that folder's `verdicts.csv`. Nothing here touches `ratings.csv`. Nothing
+here pre-fills an attribute from the prompt either: a pitch value taken from the rung would tell the
+listener the answer.
 
 ⚠ THE STEP 1B SPEAKER EMBEDDING IS A SEPARATE STEP. The spec's per-clip measures include the Zonos
 `SpeakerEmbeddingLDA` embedding; this tool does not compute it and takes no Zonos dependency. The
@@ -60,8 +65,8 @@ from one RNG stream, so the registered per-clip seeds would no longer name the a
 ⚠ A RESUME MUST NOT MIX TWO RENDERS. `render_meta.json` is written before the first clip. With a
 manifest already present, `render` refuses unless that meta's commit, weights hashes
 (`model.safetensors` and every file under `speech_tokenizer/`) and qwen-tts version equal this
-run's, and unless every rendered row is its ladder item (seed, text, instruct, commit) with its wav
-on disk. Only a truncated final manifest line, a render killed mid-write, is dropped (with a
+run's, and unless every rendered row is its ladder item (seed, text, instruct, gender, commit) with
+its wav on disk. Only a truncated final manifest line, a render killed mid-write, is dropped (with a
 warning) and re-rendered. When nothing remains it exits before loading the model.
 
 ⚠ F0 IS LIBROSA'S pYIN OVER 50-700 Hz, NOT THE REPO'S AUTOCORRELATION. `periodicity.frames` takes
@@ -74,21 +79,35 @@ tracks the contour, so one search covers the range. Its frame (`pyin_frame`) is 
 two holding two periods of the 50 Hz floor, librosa's condition for reading the floor accurately:
 1024 samples (42.7 ms) at 24 kHz, close to `periodicity.frames`' 40 ms. librosa's default 2048 reads
 the test file's voices within 0.5 semitone of it, with half the time resolution on the contour
-whose p10-p90 is the excursion. The hop is 10 ms. Over pYIN's voiced frames each row reports:
+whose p10-p90 is the excursion. The hop is `PYIN_HOP_S`, 10 ms. Over the frames the 50-700 Hz pass
+voices, each row reports:
 
 * `f0_edge_frac`: the fraction within `EDGE_TOL` of 50 or 700 Hz. A reading at a limit is the limit,
   not the voice: a voice below 50 Hz reads 50 Hz.
-* `f0_above_range_frac`: the fraction of a second pYIN pass, its ceiling an octave higher
-  (`F0_EXTENDED_FMAX`), that reads above 700 Hz. The 50-700 Hz pass reads a voice above 700 Hz at
-  half its F0, off both edges, so only this pass sees it.
-* `f0_out_of_range`: either fraction above `OUT_OF_RANGE_FRAC`. The clip's F0 is then not measured.
+* `f0_above_range_frac`: the fraction that a second pYIN pass, its ceiling an octave higher
+  (`F0_EXTENDED_FMAX`), on the same frames also voices and reads above 700 Hz. The 50-700 Hz pass
+  reads a voice above 700 Hz at half its F0, off both edges, so only the second pass sees it. A frame
+  only the second pass voices does not count: on real Qwen clips that pass voices low-probability
+  noise near 1 kHz the first pass leaves unvoiced (a real clip at 246 Hz read 0.22 above range
+  counting it, 0 without). A steady tone above 700 Hz that the first pass voices at half still
+  counts, at any level: 0.3 s of a 980 Hz tone at -20 dB, in noise 10 dB below it, after 1.2 s of a
+  300 Hz voice reads about 0.13 and is flagged.
+* `f0_out_of_range`: either fraction above `OUT_OF_RANGE_FRAC`. The clip's F0 is then not measured:
+  its row nulls `f0_median`, `f0_p10`, `f0_p90`, `f0_excursion`, `f0_excursion_st` and their `_hz`
+  copies, so a band derived from the rows cannot take in a misread.
 * `f0_median_acf` and `f0_methods_disagree`: the repo autocorrelation's median over 50-350 Hz, and
   whether it is more than `METHODS_DISAGREE_ST` from pYIN's. pYIN reads a voice whose second
   harmonic exceeds its first by about 16 dB an octave up (a synthetic 220 Hz voice reads 441 Hz;
   from about 350 Hz only the extended pass does, which sets `f0_out_of_range` on a voice in range).
-  The autocorrelation reads such a voice at its F0, so a misread is visible. Above 350 Hz the
-  autocorrelation reads a subharmonic and the two disagree by construction; there a flagged clip
-  needs the ear.
+  The autocorrelation reads such a 220 Hz voice at its F0, so that misread is visible. It does not
+  catch every octave error: at 110 Hz with the second harmonic 14 dB over the first, pYIN reads an
+  octave up, about 220 Hz, and so does the autocorrelation, so `f0_methods_disagree` stays False.
+  Above 350 Hz the autocorrelation reads a subharmonic and the two disagree by construction; there a
+  flagged clip needs the ear.
+
+`measure` writes `measure_meta.json` beside `measures.jsonl`: the measuring commit (`git rev-parse
+HEAD` of this tool's checkout) and whether that tree is clean (`git status --porcelain` empty), the
+librosa and numpy versions, every F0 and HNR setting above, and the UTC time.
 
 ⚠ HNR IS DESCRIPTIVE ONLY. It is `periodicity.frames` over the repo's 50-350 Hz band, the pass that
 gives `f0_median_acf`. That estimator normalises a biased autocorrelation, so the peak at the period
@@ -127,6 +146,7 @@ RESUME_KEYS = ("commit", "weights_sha256", "qwen_tts")
 # F0 (module docstring): pYIN's search range (Hz), and the extended pass that sees a voice above it.
 F0_RANGE = (50.0, 700.0)
 F0_EXTENDED_FMAX = 2 * F0_RANGE[1]
+PYIN_HOP_S = 0.010
 EDGE_TOL = 0.03         # a reading within 3% of a search limit is the limit
 OUT_OF_RANGE_FRAC = 0.1
 METHODS_DISAGREE_ST = 1.0
@@ -201,14 +221,16 @@ def ladder():
             for s, text in enumerate(SENTENCES, 1):
                 items.append({"id": "%s%d-s%d" % (g, r, s), "group": "%s ladder" % gender,
                               "rung": r, "label": rung, "band": "Man" if g == "M" else "Woman",
-                              "seed": int("9%d%d%d" % (gd, r, s)), "sentence": s, "text": text,
+                              "gender": gender, "seed": int("9%d%d%d" % (gd, r, s)),
+                              "sentence": s, "text": text,
                               "instruct": build_instruct(keys)})
     for n, p in enumerate(PERSONAS, 1):
         keys = dict(FIXED, **{k: p[k] for k in ("gender", "pitch", "age", "texture")})
         for s, text in enumerate(SENTENCES, 1):
             items.append({"id": "%s-s%d" % (p["id"], s), "group": "niche personas",
                           "rung": None, "label": p["label"], "band": p["band"],
-                          "seed": int("93%d%d" % (n, s)), "sentence": s, "text": text,
+                          "gender": p["gender"], "seed": int("93%d%d" % (n, s)),
+                          "sentence": s, "text": text,
                           "instruct": build_instruct(keys)})
     return items
 
@@ -228,32 +250,39 @@ def pyin_frame(sr):
     return 1 << math.ceil(math.log2(2 * sr / F0_RANGE[0] + 2))
 
 
-def _pyin_voiced(x, sr, fmax):
-    """librosa's pYIN from the F0 floor to `fmax` -> the F0 (Hz) of its voiced frames."""
+def _pyin(x, sr, fmax):
+    """librosa's pYIN from the F0 floor to `fmax` -> (F0 in Hz, voiced) for every frame. The frame
+    and hop do not depend on `fmax`, so two passes share one frame grid."""
     import librosa
     import numpy as np
     f0, voiced, _prob = librosa.pyin(x.astype(np.float32), fmin=F0_RANGE[0], fmax=fmax, sr=sr,
-                                     frame_length=pyin_frame(sr), hop_length=int(0.010 * sr))
-    return f0[voiced & np.isfinite(f0)]
+                                     frame_length=pyin_frame(sr), hop_length=int(PYIN_HOP_S * sr))
+    return f0, voiced & np.isfinite(f0)
 
 
 def f0_profile(x, sr):
     """Voiced-frame F0 of a mono clip from pYIN (module docstring): median, p10, p90, excursion in
     Hz and semitones, the edge and above-range fractions, the out-of-range flag, the autocorrelation
-    median it is audited against, and median HNR. None if pYIN finds no voiced frame."""
+    median it is audited against, and median HNR. None if pYIN finds no voiced frame. The F0
+    statistics are what the 50-700 Hz pass read even when the flag is set; `measure_row` nulls them."""
     import numpy as np
     from periodicity import frames
     x = np.asarray(x, dtype=np.float64)
-    f0 = _pyin_voiced(x, sr, F0_RANGE[1])
-    if not len(f0):
+    track, voiced = _pyin(x, sr, F0_RANGE[1])
+    if not voiced.any():
         return None
-    wide = _pyin_voiced(x, sr, F0_EXTENDED_FMAX)
+    wide, wide_voiced = _pyin(x, sr, F0_EXTENDED_FMAX)
+    if len(wide) != len(track):
+        raise ValueError("the two pYIN passes are on different frame grids (%d, %d frames)"
+                         % (len(track), len(wide)))
+    f0 = track[voiced]
     acf, hnr = frames(x, sr, ACF_BAND[0], ACF_BAND[1], RMS_FLOOR, PERIODICITY)
     lo, hi = F0_RANGE
     median = float(np.median(f0))
     p10, p90 = float(np.percentile(f0, 10)), float(np.percentile(f0, 90))
     edge = float(np.mean((f0 < lo * (1 + EDGE_TOL)) | (f0 > hi / (1 + EDGE_TOL))))
-    above = float(np.mean(wide > hi)) if len(wide) else 0.0
+    with np.errstate(invalid="ignore"):         # NaN in the unvoiced frames compares False
+        above = float(np.mean(wide_voiced[voiced] & (wide[voiced] > hi)))
     acf_median = float(np.median(acf)) if len(acf) else None
     return {"f0_median": median, "f0_p10": p10, "f0_p90": p90, "f0_excursion": p90 - p10,
             "f0_excursion_st": 12.0 * math.log2(p90 / p10), "voiced_frames": int(len(f0)),
@@ -322,7 +351,7 @@ def check_rows(rows, out, commit=None):
             raise SystemExit("REFUSING: manifest id %r is %s." % (
                 r.get("id"), "repeated" if it is not None else "not a ladder id"))
         seen.add(r["id"])
-        bad = [k for k in ("seed", "text", "instruct") if r.get(k) != it[k]]
+        bad = [k for k in ("seed", "text", "instruct", "gender") if r.get(k) != it[k]]
         bad += ["file"] if r.get("file") != "clips/%s.wav" % r["id"] else []
         bad += ["commit"] if commit is not None and r.get("commit") != commit else []
         if bad:
@@ -433,12 +462,59 @@ def cmd_render(args):
 F0_KEYS = ("f0_median", "f0_p10", "f0_p90", "f0_excursion", "f0_excursion_st", "voiced_frames",
            "f0_range_hz", "f0_edge_frac", "f0_above_range_frac", "f0_out_of_range",
            "f0_median_acf", "f0_methods_disagree", "hnr")
+# The F0 statistics a row nulls when `f0_out_of_range` is set.
+F0_STATS = ("f0_median", "f0_p10", "f0_p90", "f0_excursion", "f0_excursion_st")
+# The audition app's probe card reads these names from `acoustics` (module docstring); each is a
+# copy of the row's own key, which stays.
+READER_ALIASES = (("f0_median_hz", "f0_median"), ("f0_excursion_hz", "f0_excursion"),
+                  ("hnr_db", "hnr"), ("cpp_db", "cpp"))
+
+
+def measure_row(clip_id, x, sr):
+    """One `measures.jsonl` row for a mono clip: F0, HNR and phonation, the F0 statistics nulled
+    when `f0_out_of_range` is set, and the audition app's aliases."""
+    f0 = f0_profile(x, sr)
+    row = dict({"id": clip_id}, **(f0 or dict.fromkeys(F0_KEYS)), hnr_note=HNR_NOTE,
+               **phonation_row(x, sr, f0))
+    if f0 is not None and f0["f0_out_of_range"]:
+        row.update(dict.fromkeys(F0_STATS))
+    row.update({alias: row[key] for alias, key in READER_ALIASES})
+    return row
+
+
+def measure_meta(render_commit, srs):
+    """`measure_meta.json`: the code, library versions and settings that produced the measures."""
+    import datetime
+    import subprocess
+
+    import derive_vat_corpus as dvc
+    import librosa
+    import numpy as np
+
+    def git(*argv):
+        try:
+            return subprocess.run(["git", "-C", _SONORA_REPO, *argv], capture_output=True,
+                                  text=True, check=True).stdout
+        except (OSError, subprocess.CalledProcessError):
+            return None
+    head, status = git("rev-parse", "HEAD"), git("status", "--porcelain")
+    return {"tool": TOOL, "commit": head.strip() if head else None,
+            "tree_clean": None if status is None else not status.strip(),
+            "render_commit": render_commit, "librosa": librosa.__version__, "numpy": np.__version__,
+            "f0_range_hz": list(F0_RANGE), "f0_extended_fmax_hz": F0_EXTENDED_FMAX,
+            "pyin_frame_samples": {str(sr): pyin_frame(sr) for sr in sorted(srs)},
+            "pyin_hop_s": PYIN_HOP_S, "edge_tol": EDGE_TOL, "out_of_range_frac": OUT_OF_RANGE_FRAC,
+            "methods_disagree_st": METHODS_DISAGREE_ST, "acf_band_hz": list(ACF_BAND),
+            "acf_rms_floor": RMS_FLOOR, "acf_periodicity": PERIODICITY,
+            "phonation_f0_band_hz": [dvc.F0_MIN, dvc.F0_MAX],
+            "measured_utc":
+                datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
 
 
 def cmd_measure(args):
     import soundfile as sf
 
-    from synth_common import write_text_atomic
+    from synth_common import write_json_atomic, write_text_atomic
 
     manifest = os.path.join(args.out, "manifest.jsonl")
     if not os.path.exists(manifest):
@@ -458,19 +534,19 @@ def cmd_measure(args):
         raise SystemExit("REFUSING: %d of %d ladder clips rendered (missing %s)." % (
             len(rows), len(want), sorted(set(want) - {r["id"] for r in rows})))
     by_id = {r["id"]: r for r in rows}
-    out = []
+    out, srs = [], set()
     for i in want:
         x, sr = sf.read(os.path.join(args.out, by_id[i]["file"]), dtype="float32")
         if x.ndim > 1:
             x = x.mean(axis=1)
-        f0 = f0_profile(x, sr)
-        out.append(dict({"id": i}, **(f0 or dict.fromkeys(F0_KEYS)), hnr_note=HNR_NOTE,
-                        **phonation_row(x, sr, f0)))
+        srs.add(sr)
+        out.append(measure_row(i, x, sr))
     write_text_atomic(os.path.join(args.out, "measures.jsonl"),
                       "".join(json.dumps(o) + "\n" for o in out))
+    write_json_atomic(os.path.join(args.out, "measure_meta.json"), measure_meta(commit, srs))
     print("%d clips measured; %d without a voiced frame; %d without a phonation measure; %d with "
           "F0 out of pYIN's %g-%g Hz range; %d where pYIN and the autocorrelation disagree" % (
-              len(out), sum(o["f0_median"] is None for o in out),
+              len(out), sum(o["voiced_frames"] is None for o in out),
               sum(o["cpp"] is None for o in out), sum(bool(o["f0_out_of_range"]) for o in out),
               F0_RANGE[0], F0_RANGE[1], sum(bool(o["f0_methods_disagree"]) for o in out)))
 
