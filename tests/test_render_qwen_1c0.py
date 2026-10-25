@@ -1,6 +1,7 @@
-"""Phase 1S Step 1c-0's ladder is the pre-registered one, its F0 measure reads the whole range or
-says it cannot, its renderer imports in the qwen container, a resume cannot mix two renders, and the
-audition app's probe mode reads the folder it leaves."""
+"""Phase 1S Step 1c-0's ladder and 1c-0b's methods are the pre-registered ones, the F0 measure reads
+the whole range or says it cannot, the renderer imports in the qwen container and decodes in float32,
+a resume cannot mix two renders or two probes, 1c-0b's steer reading is the spec's rule, and the
+audition app's probe mode reads the folder a render leaves."""
 import argparse
 import ast
 import importlib.util
@@ -151,6 +152,127 @@ def test_render_refuses_any_qwen_tts_but_the_studied_release():
     assert rq.require_qwen_tts(lambda _pkg: "0.1.1") == "0.1.1"
     with pytest.raises(SystemExit, match="REFUSING"):
         rq.require_qwen_tts(lambda _pkg: "0.1.2")
+
+
+# --- 1c-0b's plan ---------------------------------------------------------------------------
+
+# § 1c-0b's methods, as the spec words them: (id part, key, male low, male high, female low,
+# female high). None for the key is the free-text instruct, which replaces the 12 keys.
+PREREG_1C0B = (
+    ("num", "pitch", "Very low, around 80 Hz, stable", "Very high, around 160 Hz, stable",
+     "Very low, around 150 Hz, stable", "Very high, around 300 Hz, stable"),
+    ("desc", "pitch", "Deep bass, far below an average man's voice, stable",
+     "Light and high, far above an average man's voice, stable",
+     "Deep bass, far below an average woman's voice, stable",
+     "Light and high, far above an average woman's voice, stable"),
+    ("age", "age", "Elderly man", "Young man", "Elderly woman", "Young woman"),
+    ("weight", "texture", "Deep, heavy and chest-resonant", "Light, thin and head-voiced",
+     "Deep, heavy and chest-resonant", "Light, thin and head-voiced"),
+    ("free", None,
+     "A man with a very deep, low-pitched voice, calm and composed, reading narration in American English.",
+     "A man with an unusually high-pitched voice, calm and composed, reading narration in American English.",
+     "A woman with a very deep, low-pitched voice, calm and composed, reading narration in American English.",
+     "A woman with an unusually high-pitched voice, calm and composed, reading narration in American English."),
+)
+
+
+def test_1c0b_is_66_items_in_listening_order():
+    items = rq.plan_1c0b()
+    assert len(items) == 66 and len({i["id"] for i in items}) == 66
+    arms = ["base"] + ["%s-%s" % (m[0], pole) for m in PREREG_1C0B for pole in ("lo", "hi")]
+    want = ["%s-%s-k%d" % (g, arm, k) for g in "MF" for arm in arms for k in (1, 2, 3)]
+    assert [i["id"] for i in items] == want
+    assert want[:4] == ["M-base-k1", "M-base-k2", "M-base-k3", "M-num-lo-k1"]
+    assert [i["gender"] for i in items] == ["Male"] * 33 + ["Female"] * 33
+    assert {i["group"] for i in items[:33]} == {"Male 1c-0b"}
+    assert {i["group"] for i in items[33:]} == {"Female 1c-0b"}
+    assert [i["band"] for i in items] == ["Man"] * 33 + ["Woman"] * 33
+    for i in items:
+        assert set(i) == {"id", "group", "method", "pole", "gender", "seed", "sentence", "text",
+                          "instruct", "label", "band"}, i
+        assert i["sentence"] == 2 and i["text"] == rq.SENTENCES[1]
+        assert (i["method"] == "baseline") is (i["pole"] is None)
+
+
+def test_1c0b_seeds_are_unique_deterministic_and_disjoint_from_1c0s():
+    items = rq.plan_1c0b()
+    seeds = [i["seed"] for i in items]
+    assert len(set(seeds)) == 66 and seeds == [i["seed"] for i in rq.plan_1c0b()]
+    assert not set(seeds) & {i["seed"] for i in rq.ladder()}
+    by_id = {i["id"]: i["seed"] for i in items}
+    assert (by_id["M-base-k1"], by_id["M-num-lo-k2"], by_id["M-num-hi-k3"], by_id["F-free-hi-k3"],
+            by_id["F-age-lo-k1"]) == (951001, 951112, 951123, 952523, 952311)
+    methods = ["baseline"] + [m[1] for m in rq.STEER_METHODS]
+    for i in items:
+        g = 1 if i["gender"] == "Male" else 2
+        pole = {None: 0, "low": 1, "high": 2}[i["pole"]]
+        k = int(i["id"].rsplit("-k", 1)[1])
+        assert i["seed"] == int("95%d%d%d%d" % (g, methods.index(i["method"]), pole, k)), i
+
+
+def test_the_1c0b_baseline_is_1c0s_rung_4():
+    ladder = {i["id"]: i for i in rq.ladder()}
+    items = {i["id"]: i for i in rq.plan_1c0b()}
+    assert items["M-base-k1"]["instruct"] == ladder["M4-s2"]["instruct"] == PREREG_M4
+    assert items["F-base-k2"]["instruct"] == ladder["F4-s2"]["instruct"]
+    assert items["M-base-k3"]["text"] == ladder["M4-s2"]["text"]
+
+
+def test_each_1c0b_method_sets_its_spec_words_and_changes_only_its_key():
+    by_id = {i["id"]: i for i in rq.plan_1c0b()}
+    assert [m[0] for m in rq.STEER_METHODS] == [m[0] for m in PREREG_1C0B]
+    for part, key, m_lo, m_hi, f_lo, f_hi in PREREG_1C0B:
+        for g, lo, hi in (("M", m_lo, m_hi), ("F", f_lo, f_hi)):
+            base = _keys(by_id["%s-base-k1" % g]["instruct"])
+            for pole, value in (("lo", lo), ("hi", hi)):
+                got = [by_id["%s-%s-%s-k%d" % (g, part, pole, k)] for k in (1, 2, 3)]
+                assert len({i["instruct"] for i in got}) == 1
+                assert {i["pole"] for i in got} == {"low" if pole == "lo" else "high"}
+                if key is None:
+                    assert got[0]["instruct"] == value
+                    assert ": " not in got[0]["instruct"]          # not the 12-key format
+                    continue
+                k = _keys(got[0]["instruct"])
+                assert k[key] == value, (part, g, pole, k)
+                assert {n: v for n, v in k.items() if n != key} == \
+                    {n: v for n, v in base.items() if n != key}, (part, g, pole)
+                assert k[key] != base[key]
+
+
+def test_the_1c0b_age_method_uses_the_ratified_band_words():
+    """The band labels as written, the taxonomy's own words (audition's AGE_BANDS_BY_GENDER)."""
+    ages = {(i["gender"], i["pole"]): _keys(i["instruct"])["age"]
+            for i in rq.plan_1c0b() if i["method"] == "age"}
+    assert ages == {("Male", "low"): "Elderly man", ("Male", "high"): "Young man",
+                    ("Female", "low"): "Elderly woman", ("Female", "high"): "Young woman"}
+    src = (REPO / "audition/app/main.py").read_text(encoding="utf-8")
+    for band in ages.values():
+        assert '"%s"' % band in src, band
+
+
+def test_the_1c0b_numeric_and_descriptive_pitch_strings():
+    pitch = {(i["gender"], i["method"], i["pole"]): _keys(i["instruct"])["pitch"]
+             for i in rq.plan_1c0b() if i["method"] in ("numeric pitch", "descriptive pitch")}
+    assert pitch[("Male", "numeric pitch", "low")] == "Very low, around 80 Hz, stable"
+    assert pitch[("Male", "numeric pitch", "high")] == "Very high, around 160 Hz, stable"
+    assert pitch[("Female", "numeric pitch", "low")] == "Very low, around 150 Hz, stable"
+    assert pitch[("Female", "numeric pitch", "high")] == "Very high, around 300 Hz, stable"
+    assert pitch[("Male", "descriptive pitch", "low")] == \
+        "Deep bass, far below an average man's voice, stable"
+    assert pitch[("Female", "descriptive pitch", "high")] == \
+        "Light and high, far above an average woman's voice, stable"
+    instruct = next(i for i in rq.plan_1c0b() if i["id"] == "M-num-lo-k1")["instruct"]
+    assert "pitch: Very low, around 80 Hz, stable. " in instruct
+
+
+def test_plan_prints_the_chosen_probe(capsys):
+    rq.main(["plan", "--probe", "1c0b"])
+    out = capsys.readouterr().out
+    assert out.rstrip().endswith("66 items") and "M-free-hi-k1" in out
+    assert "A woman with an unusually high-pitched voice" in out
+    rq.main(["plan"])
+    out = capsys.readouterr().out
+    assert out.rstrip().endswith("60 items") and "M-free" not in out
 
 
 # --- F0 -------------------------------------------------------------------------------------
@@ -493,8 +615,9 @@ def test_render_imports_only_dependency_light_lib_modules():
     fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "cmd_render")
     names = {a.name.split(".")[0] for n in ast.walk(fn) if isinstance(n, ast.Import) for a in n.names}
     names |= {n.module.split(".")[0] for n in ast.walk(fn) if isinstance(n, ast.ImportFrom)}
-    assert {m for m in names if (LIB / (m + ".py")).exists()} == {"loudness", "synth_common"}
-    assert _heavy_after("import loudness, synth_common") == []
+    assert {m for m in names if (LIB / (m + ".py")).exists()} == \
+        {"loudness", "qwen_load", "synth_common"}
+    assert _heavy_after("import loudness, qwen_load, synth_common") == []
     assert _heavy_after("import matcha.delivery") == ["matcha"]     # the probe can see one
 
 
@@ -548,15 +671,21 @@ def _model(tmp_path):
     return d
 
 
-def _rendered(out, commit, weights, items=None, wav=lambda it: b"RIFF"):
+def _meta(commit, weights, probe="1c0"):
+    """The RESUME_KEYS of a render_meta.json."""
+    return {"commit": commit, "weights_sha256": weights, "qwen_tts": "0.1.1",
+            "speech_tokenizer_dtype": "float32", "probe": probe}
+
+
+def _rendered(out, commit, weights, items=None, wav=lambda it: b"RIFF", probe="1c0"):
     """An --out a render left: meta, a manifest row per item and its (placeholder) wav."""
     (out / "clips").mkdir(parents=True, exist_ok=True)
-    (out / "render_meta.json").write_text(json.dumps(
-        {"commit": commit, "weights_sha256": weights, "qwen_tts": "0.1.1"}))
+    (out / "render_meta.json").write_text(json.dumps(_meta(commit, weights, probe)))
     rows = []
-    for it in items if items is not None else rq.ladder():
+    for it in items if items is not None else rq.plan_items(probe):
         (out / "clips" / (it["id"] + ".wav")).write_bytes(wav(it))
-        rows.append(dict(it, file="clips/%s.wav" % it["id"], sr=SR, commit=commit))
+        rows.append(dict(it, file="clips/%s.wav" % it["id"], sr=SR, commit=commit,
+                         speech_tokenizer_dtype="float32"))
     (out / "manifest.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     return rows
 
@@ -573,8 +702,8 @@ def render_env(tmp_path, monkeypatch):
     return tmp_path / "out", rq.weights_sha256(str(model)), model
 
 
-def _render(out, commit="abc123"):
-    rq.cmd_render(argparse.Namespace(out=str(out), commit=commit))
+def _render(out, commit="abc123", probe="1c0"):
+    rq.cmd_render(argparse.Namespace(out=str(out), commit=commit, probe=probe))
 
 
 def test_weights_hash_covers_every_speech_tokenizer_file(tmp_path):
@@ -595,6 +724,40 @@ def test_a_fresh_render_writes_its_meta_before_loading_the_model(render_env):
     meta = json.loads((out / "render_meta.json").read_text())
     assert (meta["commit"], meta["weights_sha256"], meta["qwen_tts"]) == ("abc123", weights, "0.1.1")
     assert (meta["batch_size"], meta["items"], meta["lufs"]) == (1, 60, rq.LUFS)
+    assert (meta["speech_tokenizer_dtype"], meta["probe"]) == ("float32", "1c0")
+    assert set(rq.RESUME_KEYS) <= set(meta)
+
+
+def test_a_fresh_1c0b_render_records_its_probe(render_env):
+    out, _weights, _model_dir = render_env
+    with pytest.raises(ImportError):
+        _render(out, probe="1c0b")
+    meta = json.loads((out / "render_meta.json").read_text())
+    assert (meta["probe"], meta["items"], meta["speech_tokenizer_dtype"]) == ("1c0b", 66, "float32")
+    assert {"speech_tokenizer_dtype", "probe"} <= set(rq.RESUME_KEYS)
+
+
+def test_render_loads_through_load_qwen_and_records_the_decoder_dtype_per_row(render_env,
+                                                                            monkeypatch):
+    """A fake load_qwen and torch: the model comes from qwen_load, and every manifest row records
+    the decoder's dtype."""
+    import types
+    import qwen_load
+    out, _weights, model_dir = render_env
+    loaded = []
+
+    class Model:
+        def generate_voice_design(self, text, language, instruct):
+            return [np.zeros(SR // 10, dtype=np.float32)], SR
+    monkeypatch.setattr(qwen_load, "load_qwen", lambda d: loaded.append(d) or Model())
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(manual_seed=lambda s: None))
+    monkeypatch.setitem(sys.modules, "loudness", types.SimpleNamespace(
+        match_loudness=lambda x, sr, lufs: (x, False)))
+    _render(out, probe="1c0b")
+    assert loaded == [str(model_dir)]
+    rows = [json.loads(line) for line in (out / "manifest.jsonl").read_text().splitlines()]
+    assert [r["id"] for r in rows] == [it["id"] for it in rq.plan_1c0b()]
+    assert {r["speech_tokenizer_dtype"] for r in rows} == {"float32"}
 
 
 def test_a_finished_render_exits_before_loading_the_model(render_env, capsys):
@@ -634,26 +797,43 @@ def test_resume_refuses_a_missing_wav_or_a_repeated_id(render_env):
         _render(out)
 
 
-@pytest.mark.parametrize("what", ["commit", "weights_sha256", "qwen_tts"])
+@pytest.mark.parametrize("what", ["commit", "weights_sha256", "qwen_tts",
+                                  "speech_tokenizer_dtype", "probe"])
 def test_resume_refuses_another_renders_meta(render_env, what):
     out, weights, model = render_env
     _rendered(out, "abc123", weights, items=rq.ladder()[:10])
-    commit = "abc123"
+    commit, probe = "abc123", "1c0"
+    meta = json.loads((out / "render_meta.json").read_text())
     if what == "commit":
         commit = "def456"
     elif what == "weights_sha256":
         (model / "speech_tokenizer" / "sub" / "model.bin").write_bytes(b"retrained")
-    else:
-        meta = json.loads((out / "render_meta.json").read_text())
+    elif what == "qwen_tts":
         (out / "render_meta.json").write_text(json.dumps(dict(meta, qwen_tts="0.1.2")))
+    elif what == "speech_tokenizer_dtype":
+        # A folder rendered with the bf16 decoder records no decoder dtype (the 1c-0 probe).
+        del meta["speech_tokenizer_dtype"]
+        (out / "render_meta.json").write_text(json.dumps(meta))
+    else:
+        probe = "1c0b"
     with pytest.raises(SystemExit, match="REFUSING: resuming .*%s" % what):
-        _render(out, commit=commit)
+        _render(out, commit=commit, probe=probe)
+
+
+def test_resume_refuses_a_meta_rendered_before_the_decoder_dtype_was_recorded(render_env):
+    """The 1c-0 probe's own render_meta.json keys: commit, weights, qwen-tts, nothing else."""
+    out, weights, _model = render_env
+    _rendered(out, "abc123", weights, items=rq.ladder()[:10])
+    (out / "render_meta.json").write_text(json.dumps(
+        {"commit": "abc123", "weights_sha256": weights, "qwen_tts": "0.1.1"}))
+    with pytest.raises(SystemExit, match="REFUSING: resuming .*speech_tokenizer_dtype, probe"):
+        _render(out)
 
 
 def test_resume_drops_only_a_truncated_final_line(tmp_path, capsys):
     out = tmp_path / "out"
     rows = _rendered(out, "abc123", {"w": "x"}, items=rq.ladder()[:5])
-    meta = {"commit": "abc123", "weights_sha256": {"w": "x"}, "qwen_tts": "0.1.1"}
+    meta = _meta("abc123", {"w": "x"})
     whole = (out / "manifest.jsonl").read_text()
     (out / "manifest.jsonl").write_text(whole + json.dumps(rows[0])[:40])
     assert rq.resume_state(str(out), meta) == {r["id"] for r in rows}
@@ -666,22 +846,27 @@ def test_resume_drops_only_a_truncated_final_line(tmp_path, capsys):
 
 # --- measure --------------------------------------------------------------------------------
 
+def _measure(out, probe="1c0"):
+    rq.cmd_measure(argparse.Namespace(out=str(out), probe=probe))
+
+
 def _clip_f0(it):
     return 520.0 if it["id"].startswith("P1") else 210.0 if it["id"].startswith("F") else 110.0
 
 
-def _measure_dir(tmp_path, out=None, f0_of=_clip_f0):
+def _measure_dir(tmp_path, out=None, f0_of=_clip_f0, probe="1c0", seconds=1.0):
     import soundfile as sf
     out = out or tmp_path / "probe"
-    _rendered(out, "abc123", {"w": "x"})
-    for it in rq.ladder():
-        sf.write(str(out / "clips" / (it["id"] + ".wav")), _stack(f0_of(it), 1.0).astype("float32"), SR)
+    _rendered(out, "abc123", {"w": "x"}, probe=probe)
+    for it in rq.plan_items(probe):
+        sf.write(str(out / "clips" / (it["id"] + ".wav")),
+                 _stack(f0_of(it), seconds).astype("float32"), SR)
     return out
 
 
 def test_measure_writes_a_row_per_ladder_clip(tmp_path, capsys):
     out = _measure_dir(tmp_path)
-    rq.cmd_measure(argparse.Namespace(out=str(out)))
+    _measure(out)
     rows = [json.loads(line) for line in (out / "measures.jsonl").read_text().splitlines()]
     assert [r["id"] for r in rows] == [it["id"] for it in rq.ladder()]
     by_id = {r["id"]: r for r in rows}
@@ -705,24 +890,24 @@ def test_measure_writes_a_row_per_ladder_clip(tmp_path, capsys):
 
 def test_measure_refuses_a_missing_manifest_a_wrong_id_set_or_a_missing_wav(tmp_path):
     with pytest.raises(SystemExit, match="REFUSING: no manifest"):
-        rq.cmd_measure(argparse.Namespace(out=str(tmp_path / "nothing")))
+        _measure(tmp_path / "nothing")
     out = _measure_dir(tmp_path)
     manifest = out / "manifest.jsonl"
     lines = manifest.read_text().splitlines(keepends=True)
     manifest.write_text("".join(lines[:-1]))
     with pytest.raises(SystemExit, match=r"REFUSING: 59 of 60 .*P6-s3"):
-        rq.cmd_measure(argparse.Namespace(out=str(out)))
+        _measure(out)
     manifest.write_text("".join(lines[:-1] + lines[:1]))
     with pytest.raises(SystemExit, match="REFUSING: manifest id 'M1-s1' is repeated"):
-        rq.cmd_measure(argparse.Namespace(out=str(out)))
+        _measure(out)
     stranger = dict(json.loads(lines[-1]), id="Q9-s1", file="clips/Q9-s1.wav")
     manifest.write_text("".join(lines[:-1]) + json.dumps(stranger) + "\n")
-    with pytest.raises(SystemExit, match="REFUSING: manifest id 'Q9-s1' is not a ladder id"):
-        rq.cmd_measure(argparse.Namespace(out=str(out)))
+    with pytest.raises(SystemExit, match="REFUSING: manifest id 'Q9-s1' is not a plan id"):
+        _measure(out)
     manifest.write_text("".join(lines))
     (out / "clips" / "F3-s2.wav").unlink()
     with pytest.raises(SystemExit, match="REFUSING: manifest row F3-s2 has no wav"):
-        rq.cmd_measure(argparse.Namespace(out=str(out)))
+        _measure(out)
 
 
 def test_measure_refuses_a_truncated_manifest(tmp_path):
@@ -731,7 +916,7 @@ def test_measure_refuses_a_truncated_manifest(tmp_path):
     text = manifest.read_text()
     manifest.write_text(text[:-40])                     # the last row loses its tail and newline
     with pytest.raises(SystemExit, match="REFUSING: .* ends in a truncated line"):
-        rq.cmd_measure(argparse.Namespace(out=str(out)))
+        _measure(out)
 
 
 def test_measure_refuses_a_missing_meta_or_rows_from_another_commit(tmp_path):
@@ -740,13 +925,13 @@ def test_measure_refuses_a_missing_meta_or_rows_from_another_commit(tmp_path):
     text = meta.read_text()
     meta.unlink()
     with pytest.raises(SystemExit, match="REFUSING: .* no readable render_meta.json commit"):
-        rq.cmd_measure(argparse.Namespace(out=str(out)))
+        _measure(out)
     meta.write_text(json.dumps({"qwen_tts": "0.1.1"}))
     with pytest.raises(SystemExit, match="REFUSING: .* no readable render_meta.json commit"):
-        rq.cmd_measure(argparse.Namespace(out=str(out)))
+        _measure(out)
     meta.write_text(json.dumps(dict(json.loads(text), commit="def456")))
     with pytest.raises(SystemExit, match="REFUSING: manifest row M1-s1 .*commit"):
-        rq.cmd_measure(argparse.Namespace(out=str(out)))
+        _measure(out)
 
 
 def test_an_out_of_range_row_nulls_its_f0_statistics():
@@ -771,7 +956,7 @@ def test_an_out_of_range_row_nulls_its_f0_statistics():
 def test_measure_writes_its_meta_beside_the_measures(tmp_path):
     import librosa
     out = _measure_dir(tmp_path)
-    rq.cmd_measure(argparse.Namespace(out=str(out)))
+    _measure(out)
     meta = json.loads((out / "measure_meta.json").read_text())
     head = subprocess.run(["git", "-C", str(REPO), "rev-parse", "HEAD"], capture_output=True,
                           text=True, check=True).stdout.strip()
@@ -817,7 +1002,7 @@ def test_the_audition_probe_mode_reads_a_measured_probe_folder(tmp_path, monkeyp
     gender, wav and the measures under the names its card shows; an out-of-range clip shows none."""
     out = _measure_dir(tmp_path, tmp_path / "probes" / "qwen-1c0",
                        f0_of=lambda it: 720.0 if it["id"] == "P2-s1" else _clip_f0(it))
-    rq.cmd_measure(argparse.Namespace(out=str(out)))
+    _measure(out)
     measures = {r["id"]: r for r in map(json.loads, (out / "measures.jsonl").read_text().splitlines())}
     app = _audition(tmp_path, monkeypatch)
     assert app.list_probes()["probes"] == ["qwen-1c0"]
@@ -839,3 +1024,264 @@ def test_the_audition_probe_mode_reads_a_measured_probe_folder(tmp_path, monkeyp
     # The probe mode rates the clip into the folder's verdicts.csv, nowhere else.
     res = app.rate_probe("qwen-1c0", app.ProbeRating(id="P2-s1", zone="exclude"))
     assert res["row"]["zone"] == "exclude" and (out / "verdicts.csv").is_file()
+
+
+# --- --probe threads through check_rows and measure -----------------------------------------
+
+def test_check_rows_refuses_the_other_probes_rows(tmp_path):
+    out = tmp_path / "out"
+    rows_b = _rendered(out / "b", "abc123", {"w": "x"}, probe="1c0b")
+    rows_0 = _rendered(out / "0", "abc123", {"w": "x"})
+    rq.check_rows(rows_b, str(out / "b"), rq.plan_1c0b(), commit="abc123")
+    rq.check_rows(rows_0, str(out / "0"), rq.ladder(), commit="abc123")
+    with pytest.raises(SystemExit, match="REFUSING: manifest id 'M-base-k1' is not a plan id"):
+        rq.check_rows(rows_b, str(out / "b"), rq.ladder())
+    with pytest.raises(SystemExit, match="REFUSING: manifest id 'M1-s1' is not a plan id"):
+        rq.check_rows(rows_0, str(out / "0"), rq.plan_1c0b())
+
+
+def test_measure_refuses_a_folder_of_the_other_probe(tmp_path):
+    b = tmp_path / "b"
+    _rendered(b, "abc123", {"w": "x"}, probe="1c0b")
+    with pytest.raises(SystemExit, match="REFUSING: .* records probe 1c0b, not 1c0"):
+        _measure(b)
+    meta = json.loads((b / "render_meta.json").read_text())
+    del meta["probe"]                                # no probe recorded: the rows still refuse
+    (b / "render_meta.json").write_text(json.dumps(meta))
+    with pytest.raises(SystemExit, match="REFUSING: manifest id 'M-base-k1' is not a plan id"):
+        _measure(b)
+    zero = tmp_path / "0"
+    _rendered(zero, "abc123", {"w": "x"})
+    with pytest.raises(SystemExit, match="REFUSING: .* records probe 1c0, not 1c0b"):
+        _measure(zero, probe="1c0b")
+
+
+def test_measure_reads_a_1c0b_folder_in_its_plan_order(tmp_path, capsys):
+    out = _measure_dir(tmp_path, probe="1c0b", seconds=0.5)
+    _measure(out, probe="1c0b")
+    rows = [json.loads(line) for line in (out / "measures.jsonl").read_text().splitlines()]
+    assert [r["id"] for r in rows] == [it["id"] for it in rq.plan_1c0b()]
+    assert all(abs(r["f0_median"] - _clip_f0({"id": r["id"]})) < 5.0 for r in rows)
+    assert json.loads((out / "measure_meta.json").read_text())["probe"] == "1c0b"
+    assert "66 clips measured" in capsys.readouterr().out
+
+
+# --- 1c-0b's steer reading ------------------------------------------------------------------
+
+def _semis(hz, st):
+    return hz * 2 ** (st / 12.0)
+
+
+# Per gender and method: (low-pole F0 medians, high-pole F0 medians) by seed.
+STEER_F0 = {
+    "Male": {"baseline": [100.0, 102.0, 98.0],
+             "numeric pitch": ([80.0, 82.0, 85.0], [160.0, 150.0, 170.0]),       # steers
+             "descriptive pitch": ([100.0, 110.0, 105.0], [104.0, 120.0, 100.0]),  # overlaps
+             "age": ([100.0, 101.0, 102.0], [110.0, 112.0, 111.0]),             # separated, small
+             "vocal weight": ([80.0, 80.0, 80.0], [200.0, None, 210.0]),        # a null F0
+             "free-text instruct": ([100.0] * 3, [_semis(100.0, 4.01)] * 3)},   # just over 4 st
+    "Female": {"baseline": [None, 180.0, 170.0],
+               "numeric pitch": ([150.0] * 3, [_semis(150.0, 12.0)] * 3),
+               "descriptive pitch": ([200.0] * 3, [_semis(200.0, 3.99)] * 3),   # just under 4 st
+               "age": ([220.0, 230.0, 240.0], [200.0, 190.0, 180.0]),           # reversed
+               "vocal weight": ([180.0] * 3, [181.0] * 3),
+               "free-text instruct": ([None] * 3, [None] * 3)},
+}
+
+
+def _steer_measures():
+    out = {}
+    for it in rq.plan_1c0b():
+        f0 = STEER_F0[it["gender"]][it["method"]]
+        k = int(it["id"].rsplit("-k", 1)[1]) - 1
+        value = f0[k] if it["pole"] is None else f0[0 if it["pole"] == "low" else 1][k]
+        out[it["id"]] = {"id": it["id"], "f0_median": value, "f0_out_of_range": value is None}
+    return out
+
+
+def test_the_steer_reading_is_the_spec_rule():
+    res = rq.steer_readout(rq.plan_1c0b(), _steer_measures())
+    got = {(m["gender"], m["method"]): m for m in res["methods"]}
+    assert len(got) == 10
+    steers = {key: m["steers"] for key, m in got.items()}
+    assert steers == {("Male", "numeric pitch"): True, ("Male", "descriptive pitch"): False,
+                      ("Male", "age"): False, ("Male", "vocal weight"): False,
+                      ("Male", "free-text instruct"): True, ("Female", "numeric pitch"): True,
+                      ("Female", "descriptive pitch"): False, ("Female", "age"): False,
+                      ("Female", "vocal weight"): False, ("Female", "free-text instruct"): False}
+    num = got[("Male", "numeric pitch")]
+    assert num["low_f0_median_hz"] == [80.0, 82.0, 85.0] and num["high_f0_median_hz"] == [160.0, 150.0, 170.0]
+    assert num["low_ids"] == ["M-num-lo-k1", "M-num-lo-k2", "M-num-lo-k3"]
+    assert num["mean_shift_st"] == pytest.approx(np.mean([_st(160, 80), _st(150, 82), _st(170, 85)]))
+    assert num["complete_separation"] is True and num["unmeasured"] == []
+    assert got[("Male", "descriptive pitch")]["complete_separation"] is False
+    small = got[("Male", "age")]
+    assert small["complete_separation"] is True and 1.0 < small["mean_shift_st"] < 2.0
+    weight = got[("Male", "vocal weight")]
+    assert weight["complete_separation"] is False and weight["unmeasured"] == ["M-weight-hi-k2"]
+    assert weight["mean_shift_st"] == pytest.approx(np.mean([_st(200, 80), _st(210, 80)]))
+    assert got[("Male", "free-text instruct")]["mean_shift_st"] == pytest.approx(4.01)
+    assert got[("Female", "descriptive pitch")]["complete_separation"] is True
+    assert got[("Female", "descriptive pitch")]["mean_shift_st"] == pytest.approx(3.99)
+    rev = got[("Female", "age")]
+    assert rev["complete_separation"] is False and rev["mean_shift_st"] < -1.0
+    none = got[("Female", "free-text instruct")]
+    assert none["mean_shift_st"] is None and none["steers"] is False and len(none["unmeasured"]) == 6
+    assert res["baseline"]["Male"]["median_hz"] == 100.0
+    assert res["baseline"]["Female"] == {"ids": ["F-base-k1", "F-base-k2", "F-base-k3"],
+                                         "f0_median_hz": [None, 180.0, 170.0], "median_hz": 175.0,
+                                         "unmeasured": ["F-base-k1"]}
+    assert all(m["pole_cosine"] is None for m in res["methods"])
+
+
+def _steer_dir(tmp_path, embeddings=None):
+    out = tmp_path / "qwen-1c0b"
+    _rendered(out, "abc123", {"w": "x"}, probe="1c0b")
+    (out / "measures.jsonl").write_text(
+        "".join(json.dumps(m) + "\n" for m in _steer_measures().values()))
+    if embeddings is not None:
+        (out / "speaker_embeddings.jsonl").write_text("".join(
+            json.dumps({"id": i, "embedding": "zonos_SpeakerEmbeddingLDA_128", "emb": e}) + "\n"
+            for i, e in embeddings.items()))
+    return out
+
+
+def test_steer_prints_and_writes_the_reading(tmp_path, capsys):
+    out = _steer_dir(tmp_path)
+    rq.main(["steer", "--out", str(out)])
+    printed = capsys.readouterr().out
+    res = json.loads((out / "steer.json").read_text())
+    assert res["render_commit"] == "abc123" and res["steer_shift_st"] == 4.0
+    assert res["speaker_embeddings"] is False and "commit" in res and "tree_clean" in res
+    assert res["methods"] == rq.steer_readout(rq.plan_1c0b(), _steer_measures())["methods"]
+    assert "3 of 10 methods steer" in printed
+    assert "F0 not measured (out of range or unvoiced), so not separating: M-weight-hi-k2" in printed
+    assert "the pole cosine is null" in printed
+
+
+def test_steer_reports_the_pole_cosine_from_the_speaker_embeddings(tmp_path):
+    emb = {it["id"]: [1.0, 0.0] for it in rq.plan_1c0b()}
+    emb.update({it["id"]: [0.0, 1.0] for it in rq.plan_1c0b()
+                if it["method"] == "age" and it["pole"] == "high"})
+    out = _steer_dir(tmp_path, embeddings=emb)
+    rq.main(["steer", "--out", str(out)])
+    res = json.loads((out / "steer.json").read_text())
+    cos = {(m["gender"], m["method"]): m["pole_cosine"] for m in res["methods"]}
+    assert cos[("Male", "age")] == pytest.approx(0.0) and cos[("Female", "age")] == pytest.approx(0.0)
+    assert cos[("Male", "numeric pitch")] == pytest.approx(1.0)
+    assert res["speaker_embeddings"] is True
+    del emb["F-num-hi-k2"]
+    out = _steer_dir(tmp_path / "again", embeddings=emb)
+    with pytest.raises(SystemExit, match="REFUSING: .*speaker_embeddings.jsonl lacks 1 of 66"):
+        rq.main(["steer", "--out", str(out)])
+
+
+def test_steer_refuses_a_folder_that_is_not_a_measured_1c0b_render(tmp_path):
+    zero = tmp_path / "zero"
+    _rendered(zero, "abc123", {"w": "x"})
+    with pytest.raises(SystemExit, match="REFUSING: .* records probe 1c0; steer reads a 1c0b"):
+        rq.main(["steer", "--out", str(zero)])
+    out = _steer_dir(tmp_path)
+    meta = json.loads((out / "render_meta.json").read_text())
+    (out / "render_meta.json").write_text(json.dumps({k: v for k, v in meta.items() if k != "probe"}))
+    with pytest.raises(SystemExit, match="REFUSING: .* records probe None; steer reads a 1c0b"):
+        rq.main(["steer", "--out", str(out)])
+    (out / "render_meta.json").write_text(json.dumps(meta))
+    lines = (out / "measures.jsonl").read_text().splitlines(keepends=True)
+    (out / "measures.jsonl").write_text("".join(lines[:-1]))
+    with pytest.raises(SystemExit, match="REFUSING: .*measures.jsonl lacks 1 of 66 .*measure first"):
+        rq.main(["steer", "--out", str(out)])
+    (out / "measures.jsonl").unlink()
+    with pytest.raises(SystemExit, match="REFUSING: .*lacks 66 of 66"):
+        rq.main(["steer", "--out", str(out)])
+    assert not (out / "steer.json").exists()
+
+
+# --- qwen_load: the float32 waveform decoder ------------------------------------------------
+
+def _fake_qwen(monkeypatch, attach=True, tokenizer_honours_dtype=True):
+    """`torch` and `qwen_tts` stand-ins in sys.modules. As qwen-tts 0.1.1 does, the model's own
+    speech tokenizer comes up in the main model's dtype."""
+    import types
+
+    class DType:
+        def __init__(self, name):
+            self.name = name
+
+        def __str__(self):
+            return "torch." + self.name
+    torch = types.ModuleType("torch")
+    torch.bfloat16, torch.float32 = DType("bfloat16"), DType("float32")
+    calls = {}
+
+    class Tokenizer:
+        def __init__(self, dtype):
+            self.model = types.SimpleNamespace(
+                parameters=lambda: iter([types.SimpleNamespace(dtype=dtype)]))
+
+        @classmethod
+        def from_pretrained(cls, path, device_map, dtype):
+            calls["tokenizer"] = (path, device_map, dtype)
+            return cls(dtype if tokenizer_honours_dtype else torch.bfloat16)
+
+    class Inner:
+        def __init__(self, dtype):
+            self.speech_tokenizer = Tokenizer(dtype)
+
+        def load_speech_tokenizer(self, tokenizer):
+            calls["attached"] = tokenizer
+            if attach:
+                self.speech_tokenizer = tokenizer
+
+    class Model:
+        @classmethod
+        def from_pretrained(cls, path, device_map, dtype):
+            calls["model"] = (path, device_map, dtype)
+            m = cls()
+            m.model = Inner(dtype)
+            return m
+    qwen_tts = types.ModuleType("qwen_tts")
+    qwen_tts.Qwen3TTSModel, qwen_tts.Qwen3TTSTokenizer = Model, Tokenizer
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "qwen_tts", qwen_tts)
+    return torch, calls
+
+
+def test_load_qwen_attaches_a_float32_speech_tokenizer(monkeypatch):
+    import qwen_load
+    torch, calls = _fake_qwen(monkeypatch)
+    model = qwen_load.load_qwen("/models/qwen")
+    assert calls["model"] == ("/models/qwen", "cuda:0", torch.bfloat16)
+    assert calls["tokenizer"] == ("/models/qwen/speech_tokenizer", "cuda:0", torch.float32)
+    assert calls["attached"] is model.model.speech_tokenizer
+    assert qwen_load.decoder_dtype(model) == qwen_load.TOKENIZER_DTYPE == "float32"
+
+
+@pytest.mark.parametrize("fault", ["not attached", "tokenizer ignores dtype"])
+def test_load_qwen_refuses_a_decoder_that_is_not_float32(monkeypatch, fault):
+    import qwen_load
+    _fake_qwen(monkeypatch, attach=fault != "not attached",
+               tokenizer_honours_dtype=fault != "tokenizer ignores dtype")
+    with pytest.raises(SystemExit, match="REFUSING: Qwen's waveform decoder loaded as bfloat16"):
+        qwen_load.load_qwen("/models/qwen")
+
+
+def _loads_qwen_directly(src):
+    """Whether `src` calls a `from_pretrained` (the model's own load, which decodes in bf16)."""
+    return any(isinstance(n, ast.Attribute) and n.attr == "from_pretrained"
+               for n in ast.walk(ast.parse(src)))
+
+
+@pytest.mark.parametrize("rel", ["scripts/stages/synth_qwen.py", "scripts/tools/render_qwen_1c0.py"])
+def test_qwen_renderers_load_through_load_qwen(rel):
+    src = (REPO / rel).read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    assert not _loads_qwen_directly(src), rel
+    assert any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "load_qwen"
+               for n in ast.walk(tree)), rel
+    assert any(isinstance(n, ast.ImportFrom) and n.module == "qwen_load"
+               and "load_qwen" in {a.name for a in n.names} for n in ast.walk(tree)), rel
+    # Positive control: the load both used before qwen_load is seen.
+    assert _loads_qwen_directly(
+        "model = Qwen3TTSModel.from_pretrained(MODEL_DIR, device_map='cuda:0', dtype=torch.bfloat16)")
+

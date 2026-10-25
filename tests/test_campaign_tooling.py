@@ -137,7 +137,7 @@ def test_qwen_checks_for_jobs_before_loading_the_model():
     src = _src("synth_qwen.py")
     jobs_at = src.index('jobs = [l for l in bank["lines"]')
     guard_at = src.index('if not jobs:')
-    load_at = src.index("Qwen3TTSModel.from_pretrained")
+    load_at = src.index("load_qwen(MODEL_DIR)")
     assert jobs_at < guard_at < load_at, "the shard load still precedes the zero-jobs check"
 
 
