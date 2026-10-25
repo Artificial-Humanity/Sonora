@@ -1072,6 +1072,10 @@ def _semis(hz, st):
     return hz * 2 ** (st / 12.0)
 
 
+def _gmean(hz):
+    return float(np.exp(np.mean(np.log(hz))))
+
+
 # Per gender and method: (low-pole F0 medians, high-pole F0 medians) by seed.
 STEER_F0 = {
     "Male": {"baseline": [100.0, 102.0, 98.0],
@@ -1112,14 +1116,14 @@ def test_the_steer_reading_is_the_spec_rule():
     num = got[("Male", "numeric pitch")]
     assert num["low_f0_median_hz"] == [80.0, 82.0, 85.0] and num["high_f0_median_hz"] == [160.0, 150.0, 170.0]
     assert num["low_ids"] == ["M-num-lo-k1", "M-num-lo-k2", "M-num-lo-k3"]
-    assert num["mean_shift_st"] == pytest.approx(np.mean([_st(160, 80), _st(150, 82), _st(170, 85)]))
+    assert num["mean_shift_st"] == pytest.approx(_st(_gmean([160, 150, 170]), _gmean([80, 82, 85])))
     assert num["complete_separation"] is True and num["unmeasured"] == []
     assert got[("Male", "descriptive pitch")]["complete_separation"] is False
     small = got[("Male", "age")]
     assert small["complete_separation"] is True and 1.0 < small["mean_shift_st"] < 2.0
     weight = got[("Male", "vocal weight")]
     assert weight["complete_separation"] is False and weight["unmeasured"] == ["M-weight-hi-k2"]
-    assert weight["mean_shift_st"] == pytest.approx(np.mean([_st(200, 80), _st(210, 80)]))
+    assert weight["mean_shift_st"] == pytest.approx(_st(_gmean([200, 210]), 80))
     assert got[("Male", "free-text instruct")]["mean_shift_st"] == pytest.approx(4.01)
     assert got[("Female", "descriptive pitch")]["complete_separation"] is True
     assert got[("Female", "descriptive pitch")]["mean_shift_st"] == pytest.approx(3.99)
@@ -1134,11 +1138,64 @@ def test_the_steer_reading_is_the_spec_rule():
     assert all(m["pole_cosine"] is None for m in res["methods"])
 
 
+def _one_method(lo, hi):
+    """steer_readout's Male numeric-pitch row when its low and high poles read `lo` and `hi` (Hz by
+    seed, None for a clip whose F0 is not measured)."""
+    measures = _steer_measures()
+    for it in rq.plan_1c0b():
+        if (it["gender"], it["method"]) == ("Male", "numeric pitch"):
+            value = (lo if it["pole"] == "low" else hi)[int(it["id"].rsplit("-k", 1)[1]) - 1]
+            measures[it["id"]] = {"id": it["id"], "f0_median": value, "f0_out_of_range": value is None}
+    res = rq.steer_readout(rq.plan_1c0b(), measures)
+    return next(m for m in res["methods"] if (m["gender"], m["method"]) == ("Male", "numeric pitch"))
+
+
+def test_the_mean_shift_takes_every_measured_clip_of_each_pole():
+    """The poles' seeds are independent draws: seed k's low clip says nothing about seed k's high
+    one, so a null high clip does not drop its seed's low clip. Pairing by seed would read
+    mean(st(200/80), st(180/90)) = 13.93 st, discarding the 100 Hz low clip."""
+    m = _one_method([80.0, 100.0, 90.0], [200.0, None, 180.0])
+    assert m["unmeasured"] == ["M-num-hi-k2"] and m["complete_separation"] is False
+    assert m["mean_shift_st"] == pytest.approx(_st(_gmean([200, 180]), _gmean([80, 100, 90])))
+    assert m["mean_shift_st"] == pytest.approx(12.99, abs=0.01)
+    paired = np.mean([_st(200, 80), _st(180, 90)])
+    assert abs(m["mean_shift_st"] - paired) > 0.9
+    # The semitones' reference cancels: every clip an octave up reads the same shift.
+    up = _one_method([160.0, 200.0, 180.0], [400.0, None, 360.0])
+    assert up["mean_shift_st"] == pytest.approx(m["mean_shift_st"])
+
+
+def test_a_tie_between_the_poles_is_not_separated():
+    tie = _one_method([100.0, 110.0, 120.0], [120.0, 300.0, 400.0])
+    assert tie["mean_shift_st"] > 2 * rq.STEER_SHIFT_ST
+    assert tie["complete_separation"] is False and tie["steers"] is False
+    above = _one_method([100.0, 110.0, 120.0], [120.001, 300.0, 400.0])
+    assert above["complete_separation"] is True and above["steers"] is True
+
+
+def test_a_mean_shift_of_exactly_the_threshold_steers():
+    assert rq.STEER_SHIFT_ST == 4.0
+    exact = _one_method([100.0] * 3, [_semis(100.0, 4.0)] * 3)
+    assert exact["mean_shift_st"] == 4.0 and exact["complete_separation"] is True
+    assert exact["steers"] is True
+    under = _one_method([100.0] * 3, [_semis(100.0, 3.99)] * 3)
+    assert under["mean_shift_st"] == pytest.approx(3.99) and under["complete_separation"] is True
+    assert under["steers"] is False
+
+
+def _measure_meta(out, **change):
+    """The keys of a measure_meta.json that steer reads, as `measure` writes them for _steer_dir."""
+    (out / "measure_meta.json").write_text(json.dumps(
+        dict({"tool": rq.TOOL, "commit": "def456", "tree_clean": True, "probe": "1c0b",
+              "render_commit": "abc123"}, **change)))
+
+
 def _steer_dir(tmp_path, embeddings=None):
     out = tmp_path / "qwen-1c0b"
     _rendered(out, "abc123", {"w": "x"}, probe="1c0b")
     (out / "measures.jsonl").write_text(
         "".join(json.dumps(m) + "\n" for m in _steer_measures().values()))
+    _measure_meta(out)
     if embeddings is not None:
         (out / "speaker_embeddings.jsonl").write_text("".join(
             json.dumps({"id": i, "embedding": "zonos_SpeakerEmbeddingLDA_128", "emb": e}) + "\n"
@@ -1151,7 +1208,8 @@ def test_steer_prints_and_writes_the_reading(tmp_path, capsys):
     rq.main(["steer", "--out", str(out)])
     printed = capsys.readouterr().out
     res = json.loads((out / "steer.json").read_text())
-    assert res["render_commit"] == "abc123" and res["steer_shift_st"] == 4.0
+    assert res["render_commit"] == "abc123" and res["measure_commit"] == "def456"
+    assert res["steer_shift_st"] == 4.0
     assert res["speaker_embeddings"] is False and "commit" in res and "tree_clean" in res
     assert res["methods"] == rq.steer_readout(rq.plan_1c0b(), _steer_measures())["methods"]
     assert "3 of 10 methods steer" in printed
@@ -1197,11 +1255,39 @@ def test_steer_refuses_a_folder_that_is_not_a_measured_1c0b_render(tmp_path):
     assert not (out / "steer.json").exists()
 
 
+def test_steer_refuses_measures_that_are_not_this_renders_1c0b_measures(tmp_path):
+    out = _steer_dir(tmp_path)
+    (out / "measure_meta.json").unlink()
+    with pytest.raises(SystemExit, match="REFUSING: .* no readable measure_meta.json .*measure first"):
+        rq.main(["steer", "--out", str(out)])
+    (out / "measure_meta.json").write_text("[]")
+    with pytest.raises(SystemExit, match="REFUSING: .* no readable measure_meta.json"):
+        rq.main(["steer", "--out", str(out)])
+    _measure_meta(out, probe="1c0")
+    with pytest.raises(SystemExit, match="REFUSING: .*measure_meta.json records probe 1c0; steer reads"):
+        rq.main(["steer", "--out", str(out)])
+    _measure_meta(out, probe=None)
+    with pytest.raises(SystemExit, match="REFUSING: .*measure_meta.json records probe None; steer reads"):
+        rq.main(["steer", "--out", str(out)])
+    _measure_meta(out, render_commit="abc999")
+    with pytest.raises(SystemExit, match="REFUSING: .*measured render abc999, not render_meta.json's "
+                                         "abc123; measure again"):
+        rq.main(["steer", "--out", str(out)])
+    assert not (out / "steer.json").exists()
+    _measure_meta(out)
+    rq.main(["steer", "--out", str(out)])
+    assert json.loads((out / "steer.json").read_text())["measure_commit"] == "def456"
+
+
 # --- qwen_load: the float32 waveform decoder ------------------------------------------------
 
-def _fake_qwen(monkeypatch, attach=True, tokenizer_honours_dtype=True):
+def _fake_qwen(monkeypatch, attach=True, tokenizer_honours_dtype=True, decoder_dtypes=None):
     """`torch` and `qwen_tts` stand-ins in sys.modules. As qwen-tts 0.1.1 does, the model's own
-    speech tokenizer comes up in the main model's dtype."""
+    speech tokenizer comes up in the main model's dtype. A tokenizer's model holds an encoder and a
+    decoder and, like the nn.Module that registers the encoder first, lists the encoder's
+    parameters first. Every parameter is in the loaded dtype, except that `decoder_dtypes` (dtype
+    names) are the decoder's parameters in the tokenizer `load_qwen` loads."""
+    import itertools
     import types
 
     class DType:
@@ -1214,15 +1300,22 @@ def _fake_qwen(monkeypatch, attach=True, tokenizer_honours_dtype=True):
     torch.bfloat16, torch.float32 = DType("bfloat16"), DType("float32")
     calls = {}
 
+    def module(dtypes):
+        return types.SimpleNamespace(
+            parameters=lambda: iter([types.SimpleNamespace(dtype=d) for d in dtypes]))
+
     class Tokenizer:
-        def __init__(self, dtype):
+        def __init__(self, dtype, decoder=None):
+            encoder, decoder = module([dtype] * 2), module(decoder or [dtype] * 2)
             self.model = types.SimpleNamespace(
-                parameters=lambda: iter([types.SimpleNamespace(dtype=dtype)]))
+                encoder=encoder, decoder=decoder,
+                parameters=lambda: itertools.chain(encoder.parameters(), decoder.parameters()))
 
         @classmethod
         def from_pretrained(cls, path, device_map, dtype):
             calls["tokenizer"] = (path, device_map, dtype)
-            return cls(dtype if tokenizer_honours_dtype else torch.bfloat16)
+            return cls(dtype if tokenizer_honours_dtype else torch.bfloat16,
+                       decoder=decoder_dtypes and [getattr(torch, n) for n in decoder_dtypes])
 
     class Inner:
         def __init__(self, dtype):
@@ -1255,6 +1348,7 @@ def test_load_qwen_attaches_a_float32_speech_tokenizer(monkeypatch):
     assert calls["tokenizer"] == ("/models/qwen/speech_tokenizer", "cuda:0", torch.float32)
     assert calls["attached"] is model.model.speech_tokenizer
     assert qwen_load.decoder_dtype(model) == qwen_load.TOKENIZER_DTYPE == "float32"
+    assert qwen_load.decoder_dtypes(model) == {"float32"}
 
 
 @pytest.mark.parametrize("fault", ["not attached", "tokenizer ignores dtype"])
@@ -1263,6 +1357,18 @@ def test_load_qwen_refuses_a_decoder_that_is_not_float32(monkeypatch, fault):
     _fake_qwen(monkeypatch, attach=fault != "not attached",
                tokenizer_honours_dtype=fault != "tokenizer ignores dtype")
     with pytest.raises(SystemExit, match="REFUSING: Qwen's waveform decoder loaded as bfloat16"):
+        qwen_load.load_qwen("/models/qwen")
+
+
+@pytest.mark.parametrize("decoder, got", [(("bfloat16", "bfloat16"), "bfloat16"),
+                                          (("float32", "bfloat16"), r"bfloat16\+float32")])
+def test_load_qwen_reads_the_decoder_not_the_encoder(monkeypatch, decoder, got):
+    """The reloaded tokenizer's encoder is float32 and its decoder is not, or not wholly: its first
+    parameter is the encoder's, so only every decoder parameter tells."""
+    import qwen_load
+    _fake_qwen(monkeypatch, decoder_dtypes=decoder)
+    with pytest.raises(SystemExit, match="REFUSING: Qwen's waveform decoder loaded as %s, not "
+                                         "float32" % got):
         qwen_load.load_qwen("/models/qwen")
 
 

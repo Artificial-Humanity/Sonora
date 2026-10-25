@@ -132,9 +132,12 @@ voices, each row reports:
 
 `measure` writes `measure_meta.json` beside `measures.jsonl`: the measuring commit (`git rev-parse
 HEAD` of this tool's checkout) and whether that tree is clean (`git status --porcelain` empty), the
-probe, the librosa and numpy versions, every F0 and HNR setting above, and the UTC time. `steer`
-writes `steer.json` beside them: the same commit and cleanliness, the render's commit,
-`STEER_SHIFT_ST`, and `steer_readout`'s rows.
+probe, the render's commit, the librosa and numpy versions, every F0 and HNR setting above, and the
+UTC time. `steer` refuses a folder whose `measure_meta.json` is missing, records a probe other than
+1c0b, or measured another render (its `render_commit` is not `render_meta.json`'s `commit`). It
+writes `steer.json` beside them: its own commit and cleanliness, `render_commit` (the render's
+commit), `measure_commit` (`measure_meta.json`'s `commit`), `STEER_SHIFT_ST`, and `steer_readout`'s
+rows.
 
 ⚠ HNR IS DESCRIPTIVE ONLY. It is `periodicity.frames` over the repo's 50-350 Hz band, the pass that
 gives `f0_median_acf`. That estimator normalises a biased autocorrelation, so the peak at the period
@@ -686,11 +689,13 @@ def steer_readout(rows, measures, embeddings=None):
     """1c-0b's reading (spec § 1c-0b) from its manifest rows, {id: measures row} and optionally
     {id: speaker embedding}. Per gender, the baseline's F0 medians by seed and their median; per
     gender and method, the low- and high-pole F0 medians by seed, `complete_separation` (every
-    high-pole median above every low-pole one), `mean_shift_st` (high - low in semitones, the mean
-    over the seeds both poles measured) and `steers` (complete separation and a mean shift of at
-    least STEER_SHIFT_ST). A clip whose F0 is not measured (null `f0_median`) separates nothing and
-    is listed in `unmeasured`. `pole_cosine` is the mean embedding cosine over the 3 x 3 low-high
-    pairs, None without embeddings."""
+    high-pole median above every low-pole one), `mean_shift_st` (the mean F0 in semitones re 1 Hz
+    of the high-pole clips measured minus that of the low-pole clips measured, i.e. 12 log2 of the
+    ratio of their geometric means; a pole's seeds are independent draws, so no low clip pairs with
+    a high one) and `steers` (complete separation and a mean shift of at least STEER_SHIFT_ST). A
+    clip whose F0 is not measured (null `f0_median`) separates nothing and is listed in
+    `unmeasured`. `pole_cosine` is the mean embedding cosine over the 3 x 3 low-high pairs, None
+    without embeddings."""
     import numpy as np
 
     out = {"baseline": {}, "methods": []}
@@ -708,9 +713,9 @@ def steer_readout(rows, measures, embeddings=None):
                       for pole in POLES)
             lo_f0, hi_f0 = [f0[i] for i in lo], [f0[i] for i in hi]
             separated = None not in lo_f0 + hi_f0 and min(hi_f0) > max(lo_f0)
-            shifts = [12.0 * math.log2(h / l) for l, h in zip(lo_f0, hi_f0)
-                      if l is not None and h is not None]
-            shift = float(np.mean(shifts)) if shifts else None
+            lo_st, hi_st = ([12.0 * math.log2(v) for v in pole if v is not None]
+                            for pole in (lo_f0, hi_f0))
+            shift = float(np.mean(hi_st) - np.mean(lo_st)) if lo_st and hi_st else None
             cosine = None
             if embeddings is not None:
                 cosine = float(np.mean([_cosine(embeddings[a], embeddings[b])
@@ -747,6 +752,20 @@ def cmd_steer(args):
     if missing:
         raise SystemExit("REFUSING: %s lacks %d of %d clips (%s); measure first."
                          % (path, len(missing), len(rows), missing[:3]))
+    try:
+        with open(os.path.join(args.out, "measure_meta.json"), encoding="utf-8") as fh:
+            measured = json.load(fh)
+        measured_probe, measured_render = measured.get("probe"), measured.get("render_commit")
+    except (OSError, ValueError, AttributeError) as e:
+        raise SystemExit("REFUSING: %s has no readable measure_meta.json (%r); measure first."
+                         % (args.out, e))
+    if measured_probe != "1c0b":
+        raise SystemExit("REFUSING: %s's measure_meta.json records probe %s; steer reads 1c0b "
+                         "measures." % (args.out, measured_probe))
+    if measured_render != meta["commit"]:
+        raise SystemExit("REFUSING: %s's measure_meta.json measured render %s, not "
+                         "render_meta.json's %s; measure again."
+                         % (args.out, measured_render, meta["commit"]))
     emb_path = os.path.join(args.out, "speaker_embeddings.jsonl")
     embeddings = None
     if os.path.exists(emb_path):
@@ -781,7 +800,8 @@ def cmd_steer(args):
         print("no speaker_embeddings.jsonl: the pole cosine is null")
     write_json_atomic(os.path.join(args.out, "steer.json"), dict(
         {"tool": TOOL}, **tool_commit(), render_commit=meta["commit"],
-        steer_shift_st=STEER_SHIFT_ST, speaker_embeddings=embeddings is not None, **res))
+        measure_commit=measured.get("commit"), steer_shift_st=STEER_SHIFT_ST,
+        speaker_embeddings=embeddings is not None, **res))
     print("%d of %d methods steer" % (sum(m["steers"] for m in res["methods"]),
                                       len(res["methods"])))
 
