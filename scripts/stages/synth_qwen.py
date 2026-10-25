@@ -3,7 +3,7 @@
 Reads the script bank, renders every engine=="qwen" line, writes wavs +
 qwen_manifest.jsonl (full provenance per clip) to --out.
 
-Container recipe (audition-proven): apt sox; pip --no-deps qwen-tts;
+Container recipe (audition-proven): apt sox; pip --no-deps qwen-tts==0.1.1;
 transformers==4.57.3, soundfile, sox, onnxruntime, einops; --no-deps accelerate==1.12.0.
 """
 import argparse
@@ -12,7 +12,6 @@ import os
 
 import soundfile as sf
 import torch
-from qwen_tts import Qwen3TTSModel
 
 import sys as _sys  # noqa: E402
 # Sibling modules used to be reached with `sys.path.insert(0, dirname(__file__))`, which
@@ -27,6 +26,7 @@ _SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspa
 for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
+from qwen_load import TOKENIZER_DTYPE, load_qwen  # noqa: E402
 from synth_common import write_wav_atomic  # noqa: E402
 
 MODEL_DIR = "/data/models/Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign"
@@ -47,8 +47,8 @@ def main():
     if not jobs:
         print("no qwen jobs in bank")
         return
-    model = Qwen3TTSModel.from_pretrained(MODEL_DIR, device_map="cuda:0",
-                                          dtype=torch.bfloat16)
+    # The language model in bfloat16, the waveform decoder in float32 (qwen_load.py says why).
+    model = load_qwen(MODEL_DIR)
     gen = getattr(model, "generate_voice_design", None) or model.generate_custom_voice
 
     manifest_path = os.path.join(args.out, "qwen_manifest.jsonl")
@@ -77,6 +77,7 @@ def main():
             row.update({
                 "engine": "qwen", "wav": name, "sr": sr,
                 "engine_license": "Apache-2.0 (Qwen3-TTS-VoiceDesign)",
+                "speech_tokenizer_dtype": TOKENIZER_DTYPE,
                 "bank_version": bank["version"], "campaign": bank["campaign"],
             })
             mf.write(json.dumps(row) + "\n")

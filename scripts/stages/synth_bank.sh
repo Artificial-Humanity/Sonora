@@ -139,7 +139,7 @@ fi
 if has qwen; then
   echo "== QWEN =="
   run qwen "apt-get -qq update >/dev/null 2>&1; apt-get -qq install -y sox >/dev/null 2>&1;
-       $SONORA_UVPIP --no-deps qwen-tts >/dev/null 2>&1;
+       $SONORA_UVPIP --no-deps qwen-tts==0.1.1 >/dev/null 2>&1;
        $SONORA_UVPIP $SONORA_PIN_TRANSFORMERS soundfile sox onnxruntime einops librosa >/dev/null 2>&1;
        $SONORA_UVPIP --no-deps accelerate==1.12.0 >/dev/null 2>&1;" \
       "python /sonora/scripts/stages/synth_qwen.py --bank $BANK --out $OUT" \
