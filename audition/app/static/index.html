@@ -457,6 +457,14 @@ function ageBandLabel(gender, val){
   return bands[val - 1] || (`Band ${val}`);
 }
 
+function fmtAttrVal(attr, gender, aud, intVal){
+  const base = attr === 'age' ? `${aud} · ${ageBandLabel(gender, aud)}` : `${aud} / 5`;
+  if (intVal == null || intVal === '') return base;
+  const d = aud - intVal;
+  const dStr = d > 0 ? `+${d}` : `${d}`;
+  return `${base} (Δ ${dStr})`;
+}
+
 function cardEl(c,i){
   const el=document.createElement('div'); el.className='card';
   const set = c._rated;
@@ -503,16 +511,16 @@ function cardEl(c,i){
         </div>
         <div class="srow"><span class="slab">Age (1–5)</span>
           <input type="range" data-attr="age" min="1" max="5" step="1" value="${audAge}">
-          <span class="sval" data-val="age">${audAge} · ${esc(ageBandLabel(g, audAge))}</span></div>
+          <span class="sval" data-val="age">${esc(fmtAttrVal('age', g, audAge, intAge))}</span></div>
         <div class="srow"><span class="slab">Pitch (1–5)</span>
           <input type="range" data-attr="pitch" min="1" max="5" step="1" value="${audPitch}">
-          <span class="sval" data-val="pitch">${audPitch} / 5</span></div>
+          <span class="sval" data-val="pitch">${esc(fmtAttrVal('pitch', g, audPitch, intPitch))}</span></div>
         <div class="srow"><span class="slab">Depth (1–5)</span>
           <input type="range" data-attr="depth" min="1" max="5" step="1" value="${audDepth}">
-          <span class="sval" data-val="depth">${audDepth} / 5</span></div>
+          <span class="sval" data-val="depth">${esc(fmtAttrVal('depth', g, audDepth, intDepth))}</span></div>
         <div class="srow"><span class="slab">Strain (0–5)</span>
           <input type="range" data-attr="strain" min="0" max="5" step="1" value="${audStrain}">
-          <span class="sval" data-val="strain">${audStrain} / 5</span></div>
+          <span class="sval" data-val="strain">${esc(fmtAttrVal('strain', g, audStrain, intStrain))}</span></div>
       </div>
       <div class="panel qual">
         <h3>Panel 2 — Quality &amp; Defects</h3>
@@ -581,7 +589,7 @@ function cardEl(c,i){
       sliderState[`audited_${attr}`]=v;
       sliderState[`touched_${attr}`]=true;
       const gCur=el.querySelector('select.gender').value||g;
-      valEl.textContent=attr==='age'?`${v} · ${ageBandLabel(gCur,v)}`:`${v} / 5`;
+      valEl.textContent=fmtAttrVal(attr, gCur, v, sliderState[`intended_${attr}`]);
       if(attr==='age'){
         const ageSel=el.querySelector('select[data-role="age"]');
         if(ageSel) ageSel.value=ageBandLabel(gCur,v);
@@ -739,9 +747,9 @@ function probeCardEl(probeId, c, updateProbeStat){
       <span class="clip-id">${esc(c.id)}</span>
       <span class="tag">${esc(c.group || c.rung || '')}</span>
       <span class="tag">${esc(g)}</span>
-      ${ac.f0_median_hz!=null?`<span class="tag">F0 med ${ac.f0_median_hz} Hz</span>`:''}
-      ${ac.f0_excursion_hz!=null?`<span class="tag">F0 exc ${ac.f0_excursion_hz} Hz</span>`:''}
-      ${ac.hnr_db!=null?`<span class="tag">HNR ${ac.hnr_db} dB</span>`:''}
+      ${ac.f0_median_hz!=null?`<span class="tag">F0 med ${(+ac.f0_median_hz).toFixed(1)} Hz</span>`:''}
+      ${ac.f0_excursion_hz!=null?`<span class="tag">F0 exc ${(+ac.f0_excursion_hz).toFixed(1)} Hz</span>`:''}
+      ${ac.hnr_db!=null?`<span class="tag">HNR ${(+ac.hnr_db).toFixed(1)} dB</span>`:''}
       ${c.zone?`<span class="badge set">Zone: ${esc(c.zone)}</span>`:''}
     </div>
     ${c.instruct?`<div class="direction"><div><b>instruct</b>${esc(c.instruct)}</div></div>`:''}
@@ -751,16 +759,16 @@ function probeCardEl(probeId, c, updateProbeStat){
         <h3>Panel 1 — Voice &amp; Delivery</h3>
         <div class="srow"><span class="slab">Age (1–5)</span>
           <input type="range" data-pattr="age" min="1" max="5" step="1" value="${audAge}">
-          <span class="sval" data-pval="age">${audAge} · ${esc(ageBandLabel(g, audAge))}</span></div>
+          <span class="sval" data-pval="age">${esc(fmtAttrVal('age', g, audAge, intAge))}</span></div>
         <div class="srow"><span class="slab">Pitch (1–5)</span>
           <input type="range" data-pattr="pitch" min="1" max="5" step="1" value="${audPitch}">
-          <span class="sval" data-pval="pitch">${audPitch} / 5</span></div>
+          <span class="sval" data-pval="pitch">${esc(fmtAttrVal('pitch', g, audPitch, intPitch))}</span></div>
         <div class="srow"><span class="slab">Depth (1–5)</span>
           <input type="range" data-pattr="depth" min="1" max="5" step="1" value="${audDepth}">
-          <span class="sval" data-pval="depth">${audDepth} / 5</span></div>
+          <span class="sval" data-pval="depth">${esc(fmtAttrVal('depth', g, audDepth, intDepth))}</span></div>
         <div class="srow"><span class="slab">Strain (0–5)</span>
           <input type="range" data-pattr="strain" min="0" max="5" step="1" value="${audStrain}">
-          <span class="sval" data-pval="strain">${audStrain} / 5</span></div>
+          <span class="sval" data-pval="strain">${esc(fmtAttrVal('strain', g, audStrain, intStrain))}</span></div>
       </div>
       <div class="panel qual">
         <h3>Panel 2 — Quality &amp; Defects</h3>
@@ -801,7 +809,7 @@ function probeCardEl(probeId, c, updateProbeStat){
     const attr=inp.dataset.pattr, valEl=el.querySelector(`[data-pval="${attr}"]`);
     inp.addEventListener('input',()=>{
       const v=+inp.value; sState[`audited_${attr}`]=v; sState[`touched_${attr}`]=true;
-      valEl.textContent=attr==='age'?`${v} · ${ageBandLabel(g,v)}`:`${v} / 5`;
+      valEl.textContent=fmtAttrVal(attr, g, v, sState[`intended_${attr}`]);
     });
     inp.addEventListener('change',()=>{ if (c.zone) saveProbe(c.zone); });
   });

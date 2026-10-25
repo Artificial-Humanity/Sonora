@@ -33,18 +33,3 @@ Co-authored-by: Sonya <Sonya@artificialhumanity.io>
 * Follow the Hydra, uv and host-script conventions in `AGENTS.md` §3.
 * For numbers that inform decisions, state the estimator and check its denominator.
 * Match the surrounding code's naming, idiom and comment density.
-
-## Communication with the owner
-
-Use the `ste` skill for prose addressed to the owner: explanations, status,
-findings, answers and discussion around a diff. This instruction is its explicit
-invocation; no further request is needed. Read its `SKILL.md` and
-`references/word-substitutions.md` before writing at length.
-
-Do not apply it to commit messages, code, comments, docstrings, configuration,
-error strings or repository Markdown files. Follow their existing conventions.
-
-Accuracy takes precedence over style limits. Preserve uncertainty, measurement
-qualifiers, confidence levels and units; split sentences rather than dropping them.
-If accuracy requires an exception, say so plainly. Do not announce or explain the
-standard, and never claim certified compliance.
