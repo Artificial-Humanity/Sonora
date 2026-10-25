@@ -637,7 +637,7 @@ function cardEl(c,i){
     if(!res.ok){toast('Gender save failed: '+res.status);return;}
     genderSel.dataset.g=val; c.gender=val;
     const ageValEl=el.querySelector('[data-val="age"]');
-    if(ageValEl) ageValEl.textContent=`${sliderState.audited_age} · ${ageBandLabel(val,sliderState.audited_age)}`;
+    if(ageValEl) ageValEl.textContent=fmtAttrVal('age', val, sliderState.audited_age, sliderState.intended_age);
     toast(`${c.id}: gender → ${val}`);
   };
   if(set) el.classList.add('done');       // already-rated cards read as done
