@@ -1,10 +1,20 @@
-"""Phase 1S Step 1c-0: the Qwen VoiceDesign anchor range calibration (60 clips).
+"""Phase 1S Steps 1c-0 and 1c-0b: Qwen VoiceDesign probes, rendered and measured.
 
-Pre-registered in Notes: Sonora/phase-1s-step1-preregistration.md § 1c-0 (owner, 2026-10-21).
-The owner hears a pure-pitch ladder (7 `pitch:` rungs per gender, every other key fixed) and six
-niche personas, three authored sentences each, and marks every clip core / niche / exclude. From
-those verdicts come the measured F0 bands that gate any Qwen anchor, the qwen.md casting rules,
-and 1c-i's two anchors. This tool renders the clips and measures them; it decides nothing.
+Pre-registered in Notes: Sonora/phase-1s-step1-preregistration.md § 1c-0 (owner, 2026-10-21) and
+§ 1c-0b (owner, 2026-10-25). `--probe` picks the plan; `1c0` is the default.
+
+* **1c0, the anchor range calibration (60 clips).** The owner hears a pure-pitch ladder (7 `pitch:`
+  rungs per gender, every other key fixed) and six niche personas, three authored sentences each,
+  and marks every clip core / niche / exclude. From those verdicts come the measured F0 bands that
+  gate any Qwen anchor, the qwen.md casting rules, and 1c-i's two anchors.
+* **1c0b, what moves Qwen's pitch (66 clips).** Per gender, 1c-0's rung 4 as a baseline and five
+  methods (numeric pitch, descriptive pitch, age, vocal weight, a free-text instruct) at a low and a
+  high pitch pole, three seeds each, all reading 1c-0's sentence 2. `steer` reads the measured
+  folder: a method steers when every high-pole clip's F0 median is above every low-pole clip's and
+  the mean shift is at least `STEER_SHIFT_ST` semitones.
+
+This tool renders and measures the clips and applies 1c-0b's registered reading; what follows from
+them is the owner's. The commands below are 1c-0's; 1c-0b's follow them.
 
     # host: print the 60 items (no GPU, no model)
     .venv/bin/python scripts/tools/render_qwen_1c0.py plan
@@ -41,6 +51,13 @@ and 1c-i's two anchors. This tool renders the clips and measures them; it decide
     .venv/bin/python scripts/tools/render_qwen_1c0.py measure \\
         --out /data/model-training/datasets/probes/qwen-1c0
 
+    # 1c-0b: the same plan, install -d, render and measure steps with `--probe 1c0b` after each
+    # subcommand and probes/qwen-1c0b in place of probes/qwen-1c0 (the install -d, the render's
+    # --out, capture_env_cmd's name and _env path, the measure's --out); then, on the host, the
+    # reading (numpy only), printed and written to steer.json beside the measures:
+    .venv/bin/python scripts/tools/render_qwen_1c0.py steer \\
+        --out /data/model-training/datasets/probes/qwen-1c0b
+
 The probe folder is what the audition app's probe mode reads (`audition/app/main.py`,
 `_load_probe_manifest`): `$AUDITION_DATA_ROOT/probes/<name>/` (by default
 /data/model-training/datasets/probes/qwen-1c0), its `manifest.jsonl` in listening order with each
@@ -56,7 +73,14 @@ listener the answer.
 Step 1b extractor computes it, on CPU in an environment with torch and /data/toolchain/Zonos:
 `/data/model-training/sonora/analysis/step1b_speaker_consistency_2026-10-21/features.py`. Its
 inputs are Step 1b's campaigns, so point it at this probe folder's clips. 1c-i's anchor choice
-needs that embedding beside the verdicts and these measures.
+needs that embedding beside the verdicts and these measures. Its rows (`id`, `emb`) in the folder's
+`speaker_embeddings.jsonl` give `steer` its pole cosine; without that file the cosine is null.
+
+⚠ THE WAVEFORM DECODER RUNS IN FLOAT32. `render` loads the model through `qwen_load.load_qwen`,
+whose docstring says why: the language model in bfloat16, the speech tokenizer in float32, any
+other decoder dtype refused. `render_meta.json` and every manifest row record
+`speech_tokenizer_dtype`, so a folder whose meta does not (one rendered with a bf16 decoder) refuses
+a resume.
 
 ⚠ BATCH SIZE 1, ONE SEED PER CLIP. `qwen_tts` has no seed argument; a clip is reproducible only
 from `torch.manual_seed(seed)` immediately before its own call. A batched call draws every clip
@@ -64,10 +88,11 @@ from one RNG stream, so the registered per-clip seeds would no longer name the a
 
 ⚠ A RESUME MUST NOT MIX TWO RENDERS. `render_meta.json` is written before the first clip. With a
 manifest already present, `render` refuses unless that meta's commit, weights hashes
-(`model.safetensors` and every file under `speech_tokenizer/`) and qwen-tts version equal this
-run's, and unless every rendered row is its ladder item (seed, text, instruct, gender, commit) with
-its wav on disk. Only a truncated final manifest line, a render killed mid-write, is dropped (with a
-warning) and re-rendered. When nothing remains it exits before loading the model.
+(`model.safetensors` and every file under `speech_tokenizer/`), qwen-tts version, speech tokenizer
+dtype and probe equal this run's (`RESUME_KEYS`), and unless every rendered row is its plan item
+(seed, text, instruct, gender, commit) with its wav on disk. Only a truncated final manifest line,
+a render killed mid-write, is dropped (with a warning) and re-rendered. When nothing remains it
+exits before loading the model.
 
 ⚠ F0 IS LIBROSA'S pYIN OVER 50-700 Hz, NOT THE REPO'S AUTOCORRELATION. `periodicity.frames` takes
 the highest peak in one fixed lag band. Over 50-700 Hz at 24 kHz its shortest lag (34 samples) is
@@ -107,7 +132,12 @@ voices, each row reports:
 
 `measure` writes `measure_meta.json` beside `measures.jsonl`: the measuring commit (`git rev-parse
 HEAD` of this tool's checkout) and whether that tree is clean (`git status --porcelain` empty), the
-librosa and numpy versions, every F0 and HNR setting above, and the UTC time.
+probe, the render's commit, the librosa and numpy versions, every F0 and HNR setting above, and the
+UTC time. `steer` refuses a folder whose `measure_meta.json` is missing, records a probe other than
+1c0b, or measured another render (its `render_commit` is not `render_meta.json`'s `commit`). It
+writes `steer.json` beside them: its own commit and cleanliness, `render_commit` (the render's
+commit), `measure_commit` (`measure_meta.json`'s `commit`), `STEER_SHIFT_ST`, and `steer_readout`'s
+rows.
 
 ⚠ HNR IS DESCRIPTIVE ONLY. It is `periodicity.frames` over the repo's 50-350 Hz band, the pass that
 gives `f0_median_acf`. That estimator normalises a biased autocorrelation, so the peak at the period
@@ -141,7 +171,8 @@ QWEN_TTS_VERSION = "0.1.1"
 LUFS = -23.0
 LANGUAGE = "English"
 # `render_meta.json` keys a resume must match exactly.
-RESUME_KEYS = ("commit", "weights_sha256", "qwen_tts")
+RESUME_KEYS = ("commit", "weights_sha256", "qwen_tts", "speech_tokenizer_dtype", "probe")
+PROBES = ("1c0", "1c0b")
 
 # F0 (module docstring): pYIN's search range (Hz), and the extended pass that sees a voice above it.
 F0_RANGE = (50.0, 700.0)
@@ -202,6 +233,39 @@ SENTENCES = (
     "lay open below.",
 )
 
+# 1c-0b: every clip reads 1c-0's sentence 2, three seeds per instruct, against 1c-0's rung 4.
+STEER_SENTENCE = 2
+STEER_SEEDS = 3
+BASELINE_RUNG = 4
+# A method steers on complete separation of its poles and a mean shift of at least this.
+STEER_SHIFT_ST = 4.0
+# 1c-0b's methods in listening order: (id part, method, the key the poles set or None for a
+# free-text instruct that replaces the 12 keys, {gender: (low pole, high pole)}). Every other key
+# is the baseline's. The poles are pitch poles: Qwen renders younger voices higher (§ 1c-0), so
+# `Elderly` is age's low pole and `Young` its high one.
+STEER_METHODS = (
+    ("num", "numeric pitch", "pitch",
+     {"Male": ("Very low, around 80 Hz, stable", "Very high, around 160 Hz, stable"),
+      "Female": ("Very low, around 150 Hz, stable", "Very high, around 300 Hz, stable")}),
+    ("desc", "descriptive pitch", "pitch",
+     {"Male": ("Deep bass, far below an average man's voice, stable",
+               "Light and high, far above an average man's voice, stable"),
+      "Female": ("Deep bass, far below an average woman's voice, stable",
+                 "Light and high, far above an average woman's voice, stable")}),
+    ("age", "age", "age",
+     {"Male": ("Elderly man", "Young man"), "Female": ("Elderly woman", "Young woman")}),
+    ("weight", "vocal weight", "texture",
+     dict.fromkeys(("Male", "Female"),
+                   ("Deep, heavy and chest-resonant", "Light, thin and head-voiced"))),
+    ("free", "free-text instruct", None,
+     {g: ("%s with a very deep, low-pitched voice, calm and composed, reading narration in "
+          "American English." % who,
+          "%s with an unusually high-pitched voice, calm and composed, reading narration in "
+          "American English." % who)
+      for g, who in (("Male", "A man"), ("Female", "A woman"))}),
+)
+POLES = ("low", "high")
+
 
 def build_instruct(keys):
     """{key: value} -> Qwen's 12-key instruct, every key filled, in KEY_ORDER."""
@@ -233,6 +297,38 @@ def ladder():
                           "sentence": s, "text": text,
                           "instruct": build_instruct(keys)})
     return items
+
+
+def plan_1c0b():
+    """1c-0b's 66 items in listening order: Male then Female; within each, the baseline (1c-0's rung
+    4 instruct), then every method's low then high pole; seeds 1..3 each, all reading sentence 2.
+    Seeds: 95GMPK (G 1 = M / 2 = F, method M 0 = baseline or 1-5, pole P 0 = baseline, 1 = low,
+    2 = high, seed K)."""
+    items = []
+    for g, gender, word, gd in GENDERS:
+        base = dict(FIXED, gender=gender,
+                    pitch="%s %s pitch, stable" % (RUNGS[BASELINE_RUNG - 1], word))
+        arms = [("base", "baseline", None, 0, 0, "baseline (1c-0 rung %d)" % BASELINE_RUNG,
+                 build_instruct(base))]
+        for m, (part, method, key, poles) in enumerate(STEER_METHODS, 1):
+            for p, (pole, value) in enumerate(zip(POLES, poles[gender]), 1):
+                arms.append(("%s-%s" % (part, pole[:2]), method, pole, m, p,
+                             "%s, %s" % (method, pole),
+                             value if key is None else build_instruct(dict(base, **{key: value}))))
+        for arm, method, pole, m, p, label, instruct in arms:
+            for k in range(1, STEER_SEEDS + 1):
+                items.append({"id": "%s-%s-k%d" % (g, arm, k), "group": "%s 1c-0b" % gender,
+                              "method": method, "pole": pole, "label": label,
+                              "band": "Man" if g == "M" else "Woman", "gender": gender,
+                              "seed": int("95%d%d%d%d" % (gd, m, p, k)),
+                              "sentence": STEER_SENTENCE, "text": SENTENCES[STEER_SENTENCE - 1],
+                              "instruct": instruct})
+    return items
+
+
+def plan_items(probe):
+    """The probe's items in listening order."""
+    return {"1c0": ladder, "1c0b": plan_1c0b}[probe]()
 
 
 def require_qwen_tts(version_of):
@@ -341,21 +437,22 @@ def read_manifest(path):
         return rows, text[:len(text) - len(tail)], tail
 
 
-def check_rows(rows, out, commit=None):
-    """Refuse a manifest row that is not its ladder item, repeats an id, or has no wav."""
-    items = {it["id"]: it for it in ladder()}
+def check_rows(rows, out, items, commit=None):
+    """Refuse a manifest row that is not its item in `items` (the probe's plan), repeats an id, or
+    has no wav."""
+    items = {it["id"]: it for it in items}
     seen = set()
     for r in rows:
         it = items.get(r.get("id"))
         if it is None or r["id"] in seen:
             raise SystemExit("REFUSING: manifest id %r is %s." % (
-                r.get("id"), "repeated" if it is not None else "not a ladder id"))
+                r.get("id"), "repeated" if it is not None else "not a plan id"))
         seen.add(r["id"])
         bad = [k for k in ("seed", "text", "instruct", "gender") if r.get(k) != it[k]]
         bad += ["file"] if r.get("file") != "clips/%s.wav" % r["id"] else []
         bad += ["commit"] if commit is not None and r.get("commit") != commit else []
         if bad:
-            raise SystemExit("REFUSING: manifest row %s differs from its ladder item in %s."
+            raise SystemExit("REFUSING: manifest row %s differs from its plan item in %s."
                              % (r["id"], ", ".join(bad)))
         if not os.path.exists(os.path.join(out, r["file"])):
             raise SystemExit("REFUSING: manifest row %s has no wav at %s." % (r["id"], r["file"]))
@@ -399,7 +496,7 @@ def resume_state(out, meta):
         raise SystemExit("REFUSING: resuming %s, but this run's %s differ from its "
                          "render_meta.json. Render into a new --out." % (out, ", ".join(differ)))
     rows, repaired, dropped = read_manifest(manifest)
-    check_rows(rows, out, commit=meta["commit"])
+    check_rows(rows, out, plan_items(meta["probe"]), commit=meta["commit"])
     if dropped is not None:
         print("WARNING: dropping a truncated final manifest line (%d chars); that clip is "
               "rendered again." % len(dropped), flush=True)
@@ -409,10 +506,15 @@ def resume_state(out, meta):
 
 
 def cmd_plan(args):
-    items = ladder()
-    for it in items:
-        print("%-7s seed %d  %-16s %-13s %s" % (it["id"], it["seed"], it["label"], it["band"],
-                                                 it["instruct"][:80]))
+    items = plan_items(args.probe)
+    if args.probe == "1c0":
+        for it in items:
+            print("%-7s seed %d  %-16s %-13s %s" % (it["id"], it["seed"], it["label"], it["band"],
+                                                     it["instruct"][:80]))
+    else:
+        # 1c-0b's instructs differ past their first 80 characters, so they print whole.
+        for it in items:
+            print("%-14s seed %d  %-26s %s" % (it["id"], it["seed"], it["label"], it["instruct"]))
     print("%d items" % len(items))
 
 
@@ -420,14 +522,19 @@ def cmd_render(args):
     import importlib.metadata
 
     from loudness import match_loudness
+    from qwen_load import TOKENIZER_DTYPE, load_qwen
     from synth_common import write_json_atomic, write_wav_atomic
 
+    items = plan_items(args.probe)
     version = require_qwen_tts(importlib.metadata.version)
-    meta = {"tool": TOOL, "commit": args.commit, "model_dir": MODEL_DIR, "qwen_tts": version,
+    # Written before the model loads; load_qwen refuses any decoder dtype but TOKENIZER_DTYPE, so
+    # the meta's speech_tokenizer_dtype holds for every clip rendered under it.
+    meta = {"tool": TOOL, "probe": args.probe, "commit": args.commit, "model_dir": MODEL_DIR,
+            "qwen_tts": version, "speech_tokenizer_dtype": TOKENIZER_DTYPE,
             "weights_sha256": weights_sha256(MODEL_DIR), "lufs": LUFS, "batch_size": 1,
-            "language": LANGUAGE, "items": len(ladder())}
+            "language": LANGUAGE, "items": len(items)}
     done = resume_state(args.out, meta)
-    todo = [it for it in ladder() if it["id"] not in done]
+    todo = [it for it in items if it["id"] not in done]
     if not todo:
         print("all %d clips already rendered; the model was not loaded." % len(done))
         print("RENDER-QWEN-1C0-DONE")
@@ -438,9 +545,8 @@ def cmd_render(args):
         write_json_atomic(os.path.join(args.out, "render_meta.json"), meta)
 
     import torch
-    from qwen_tts import Qwen3TTSModel
 
-    model = Qwen3TTSModel.from_pretrained(MODEL_DIR, device_map="cuda:0", dtype=torch.bfloat16)
+    model = load_qwen(MODEL_DIR)
     with open(os.path.join(args.out, "manifest.jsonl"), "a", encoding="utf-8") as mf:
         for it in todo:
             torch.manual_seed(it["seed"])
@@ -452,7 +558,8 @@ def cmd_render(args):
             write_wav_atomic(os.path.join(clips, it["id"] + ".wav"), audio, sr)
             row = dict(it, file="clips/%s.wav" % it["id"], sr=sr,
                        seconds=round(len(audio) / sr, 3), wall_s=round(wall, 2),
-                       peak_limited=bool(bound), commit=args.commit)
+                       peak_limited=bool(bound), commit=args.commit,
+                       speech_tokenizer_dtype=TOKENIZER_DTYPE)
             mf.write(json.dumps(row, ensure_ascii=False) + "\n")
             mf.flush()
             print("%-7s %5.1fs audio  %5.1fs wall" % (it["id"], row["seconds"], wall), flush=True)
@@ -482,14 +589,10 @@ def measure_row(clip_id, x, sr):
     return row
 
 
-def measure_meta(render_commit, srs):
-    """`measure_meta.json`: the code, library versions and settings that produced the measures."""
-    import datetime
+def tool_commit():
+    """{"commit": this checkout's HEAD, "tree_clean": `git status --porcelain` empty}, each None
+    when git cannot say."""
     import subprocess
-
-    import derive_vat_corpus as dvc
-    import librosa
-    import numpy as np
 
     def git(*argv):
         try:
@@ -498,8 +601,19 @@ def measure_meta(render_commit, srs):
         except (OSError, subprocess.CalledProcessError):
             return None
     head, status = git("rev-parse", "HEAD"), git("status", "--porcelain")
-    return {"tool": TOOL, "commit": head.strip() if head else None,
-            "tree_clean": None if status is None else not status.strip(),
+    return {"commit": head.strip() if head else None,
+            "tree_clean": None if status is None else not status.strip()}
+
+
+def measure_meta(render_commit, srs, probe="1c0"):
+    """`measure_meta.json`: the code, library versions and settings that produced the measures."""
+    import datetime
+
+    import derive_vat_corpus as dvc
+    import librosa
+    import numpy as np
+
+    return {"tool": TOOL, **tool_commit(), "probe": probe,
             "render_commit": render_commit, "librosa": librosa.__version__, "numpy": np.__version__,
             "f0_range_hz": list(F0_RANGE), "f0_extended_fmax_hz": F0_EXTENDED_FMAX,
             "pyin_frame_samples": {str(sr): pyin_frame(sr) for sr in sorted(srs)},
@@ -511,39 +625,53 @@ def measure_meta(render_commit, srs):
                 datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
 
 
-def cmd_measure(args):
-    import soundfile as sf
-
-    from synth_common import write_json_atomic, write_text_atomic
-
-    manifest = os.path.join(args.out, "manifest.jsonl")
+def rendered(out, probe):
+    """-> (the manifest's rows in plan order, render_meta.json) of a finished render of `probe`,
+    after refusing a missing or truncated manifest, a meta without a commit or recording another
+    probe, a row that is not its plan item, and a missing clip. A meta that records no probe is
+    checked by its rows alone: the two plans share no id."""
+    manifest = os.path.join(out, "manifest.jsonl")
     if not os.path.exists(manifest):
         raise SystemExit("REFUSING: no manifest at %s; render first." % manifest)
     rows, _repaired, dropped = read_manifest(manifest)
     if dropped is not None:
         raise SystemExit("REFUSING: %s ends in a truncated line; resume the render." % manifest)
     try:
-        with open(os.path.join(args.out, "render_meta.json"), encoding="utf-8") as fh:
-            commit = json.load(fh)["commit"]
+        with open(os.path.join(out, "render_meta.json"), encoding="utf-8") as fh:
+            meta = json.load(fh)
+        commit = meta["commit"]
     except (OSError, ValueError, KeyError, TypeError) as e:
-        raise SystemExit("REFUSING: %s has no readable render_meta.json commit (%r)."
-                         % (args.out, e))
-    check_rows(rows, args.out, commit=commit)
-    want = [it["id"] for it in ladder()]
+        raise SystemExit("REFUSING: %s has no readable render_meta.json commit (%r)." % (out, e))
+    if meta.get("probe", probe) != probe:
+        raise SystemExit("REFUSING: %s's render_meta.json records probe %s, not %s."
+                         % (out, meta["probe"], probe))
+    items = plan_items(probe)
+    check_rows(rows, out, items, commit=commit)
+    want = [it["id"] for it in items]
     if {r["id"] for r in rows} != set(want):
-        raise SystemExit("REFUSING: %d of %d ladder clips rendered (missing %s)." % (
-            len(rows), len(want), sorted(set(want) - {r["id"] for r in rows})))
+        raise SystemExit("REFUSING: %d of %d %s clips rendered (missing %s)." % (
+            len(rows), len(want), probe, sorted(set(want) - {r["id"] for r in rows})))
     by_id = {r["id"]: r for r in rows}
+    return [by_id[i] for i in want], meta
+
+
+def cmd_measure(args):
+    import soundfile as sf
+
+    from synth_common import write_json_atomic, write_text_atomic
+
+    rows, meta = rendered(args.out, args.probe)
     out, srs = [], set()
-    for i in want:
-        x, sr = sf.read(os.path.join(args.out, by_id[i]["file"]), dtype="float32")
+    for r in rows:
+        x, sr = sf.read(os.path.join(args.out, r["file"]), dtype="float32")
         if x.ndim > 1:
             x = x.mean(axis=1)
         srs.add(sr)
-        out.append(measure_row(i, x, sr))
+        out.append(measure_row(r["id"], x, sr))
     write_text_atomic(os.path.join(args.out, "measures.jsonl"),
                       "".join(json.dumps(o) + "\n" for o in out))
-    write_json_atomic(os.path.join(args.out, "measure_meta.json"), measure_meta(commit, srs))
+    write_json_atomic(os.path.join(args.out, "measure_meta.json"),
+                      measure_meta(meta["commit"], srs, args.probe))
     print("%d clips measured; %d without a voiced frame; %d without a phonation measure; %d with "
           "F0 out of pYIN's %g-%g Hz range; %d where pYIN and the autocorrelation disagree" % (
               len(out), sum(o["voiced_frames"] is None for o in out),
@@ -551,17 +679,150 @@ def cmd_measure(args):
               F0_RANGE[0], F0_RANGE[1], sum(bool(o["f0_methods_disagree"]) for o in out)))
 
 
+def _cosine(a, b):
+    import numpy as np
+    a, b = np.asarray(a, dtype=np.float64), np.asarray(b, dtype=np.float64)
+    return float(a @ b / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+
+def steer_readout(rows, measures, embeddings=None):
+    """1c-0b's reading (spec § 1c-0b) from its manifest rows, {id: measures row} and optionally
+    {id: speaker embedding}. Per gender, the baseline's F0 medians by seed and their median; per
+    gender and method, the low- and high-pole F0 medians by seed, `complete_separation` (every
+    high-pole median above every low-pole one), `mean_shift_st` (the mean F0 in semitones re 1 Hz
+    of the high-pole clips measured minus that of the low-pole clips measured, i.e. 12 log2 of the
+    ratio of their geometric means; a pole's seeds are independent draws, so no low clip pairs with
+    a high one) and `steers` (complete separation and a mean shift of at least STEER_SHIFT_ST). A
+    clip whose F0 is not measured (null `f0_median`) separates nothing and is listed in
+    `unmeasured`. `pole_cosine` is the mean embedding cosine over the 3 x 3 low-high pairs, None
+    without embeddings."""
+    import numpy as np
+
+    out = {"baseline": {}, "methods": []}
+    for _g, gender, _word, _gd in GENDERS:
+        mine = sorted((r for r in rows if r["gender"] == gender), key=lambda r: r["seed"])
+        f0 = {r["id"]: measures[r["id"]].get("f0_median") for r in mine}
+        base = [r["id"] for r in mine if r["method"] == "baseline"]
+        got = [f0[i] for i in base if f0[i] is not None]
+        out["baseline"][gender] = {
+            "ids": base, "f0_median_hz": [f0[i] for i in base],
+            "median_hz": float(np.median(got)) if got else None,
+            "unmeasured": [i for i in base if f0[i] is None]}
+        for _part, method, _key, _poles in STEER_METHODS:
+            lo, hi = ([r["id"] for r in mine if r["method"] == method and r["pole"] == pole]
+                      for pole in POLES)
+            lo_f0, hi_f0 = [f0[i] for i in lo], [f0[i] for i in hi]
+            separated = None not in lo_f0 + hi_f0 and min(hi_f0) > max(lo_f0)
+            lo_st, hi_st = ([12.0 * math.log2(v) for v in pole if v is not None]
+                            for pole in (lo_f0, hi_f0))
+            shift = float(np.mean(hi_st) - np.mean(lo_st)) if lo_st and hi_st else None
+            cosine = None
+            if embeddings is not None:
+                cosine = float(np.mean([_cosine(embeddings[a], embeddings[b])
+                                        for a in lo for b in hi]))
+            out["methods"].append({
+                "gender": gender, "method": method, "low_ids": lo, "high_ids": hi,
+                "low_f0_median_hz": lo_f0, "high_f0_median_hz": hi_f0,
+                "complete_separation": separated, "mean_shift_st": shift,
+                "steers": separated and shift is not None and shift >= STEER_SHIFT_ST,
+                "unmeasured": [i for i in lo + hi if f0[i] is None], "pole_cosine": cosine})
+    return out
+
+
+def _read_jsonl(path):
+    with open(path, encoding="utf-8") as fh:
+        return [json.loads(line) for line in fh if line.strip()]
+
+
+def cmd_steer(args):
+    from synth_common import write_json_atomic
+
+    try:
+        with open(os.path.join(args.out, "render_meta.json"), encoding="utf-8") as fh:
+            probe = json.load(fh).get("probe")
+    except (OSError, ValueError, AttributeError) as e:
+        raise SystemExit("REFUSING: %s has no readable render_meta.json (%r)." % (args.out, e))
+    if probe != "1c0b":
+        raise SystemExit("REFUSING: %s's render_meta.json records probe %s; steer reads a 1c0b "
+                         "render." % (args.out, probe))
+    rows, meta = rendered(args.out, "1c0b")
+    path = os.path.join(args.out, "measures.jsonl")
+    measures = {m["id"]: m for m in _read_jsonl(path)} if os.path.exists(path) else {}
+    missing = [r["id"] for r in rows if r["id"] not in measures]
+    if missing:
+        raise SystemExit("REFUSING: %s lacks %d of %d clips (%s); measure first."
+                         % (path, len(missing), len(rows), missing[:3]))
+    try:
+        with open(os.path.join(args.out, "measure_meta.json"), encoding="utf-8") as fh:
+            measured = json.load(fh)
+        measured_probe, measured_render = measured.get("probe"), measured.get("render_commit")
+    except (OSError, ValueError, AttributeError) as e:
+        raise SystemExit("REFUSING: %s has no readable measure_meta.json (%r); measure first."
+                         % (args.out, e))
+    if measured_probe != "1c0b":
+        raise SystemExit("REFUSING: %s's measure_meta.json records probe %s; steer reads 1c0b "
+                         "measures." % (args.out, measured_probe))
+    if measured_render != meta["commit"]:
+        raise SystemExit("REFUSING: %s's measure_meta.json measured render %s, not "
+                         "render_meta.json's %s; measure again."
+                         % (args.out, measured_render, meta["commit"]))
+    emb_path = os.path.join(args.out, "speaker_embeddings.jsonl")
+    embeddings = None
+    if os.path.exists(emb_path):
+        embeddings = {e["id"]: e["emb"] for e in _read_jsonl(emb_path)}
+        absent = [r["id"] for r in rows if r["id"] not in embeddings]
+        if absent:
+            raise SystemExit("REFUSING: %s lacks %d of %d clips (%s)."
+                             % (emb_path, len(absent), len(rows), absent[:3]))
+    res = steer_readout(rows, measures, embeddings)
+
+    def hz(values):
+        return " ".join("null" if v is None else "%.1f" % v for v in values)
+    for gender, b in res["baseline"].items():
+        print("%-6s baseline           F0 %s Hz, median %s" % (
+            gender, hz(b["f0_median_hz"]),
+            "null" if b["median_hz"] is None else "%.1f Hz" % b["median_hz"]))
+    print("%-6s %-18s %-20s %-20s %8s %9s %6s %6s" % (
+        "gender", "method", "low F0 (Hz)", "high F0 (Hz)", "shift st", "separated", "steers",
+        "cosine"))
+    for m in res["methods"]:
+        print("%-6s %-18s %-20s %-20s %8s %9s %6s %6s" % (
+            m["gender"], m["method"], hz(m["low_f0_median_hz"]), hz(m["high_f0_median_hz"]),
+            "null" if m["mean_shift_st"] is None else "%+.2f" % m["mean_shift_st"],
+            m["complete_separation"], m["steers"],
+            "null" if m["pole_cosine"] is None else "%.3f" % m["pole_cosine"]))
+    unmeasured = [i for m in res["methods"] for i in m["unmeasured"]] + \
+        [i for b in res["baseline"].values() for i in b["unmeasured"]]
+    if unmeasured:
+        print("F0 not measured (out of range or unvoiced), so not separating: %s"
+              % ", ".join(unmeasured))
+    if embeddings is None:
+        print("no speaker_embeddings.jsonl: the pole cosine is null")
+    write_json_atomic(os.path.join(args.out, "steer.json"), dict(
+        {"tool": TOOL}, **tool_commit(), render_commit=meta["commit"],
+        measure_commit=measured.get("commit"), steer_shift_st=STEER_SHIFT_ST,
+        speaker_embeddings=embeddings is not None, **res))
+    print("%d of %d methods steer" % (sum(m["steers"] for m in res["methods"]),
+                                      len(res["methods"])))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("plan")
+    probe = dict(choices=PROBES, default="1c0", help="the plan (default 1c0)")
+    sub.add_parser("plan").add_argument("--probe", **probe)
     r = sub.add_parser("render")
     r.add_argument("--out", required=True)
     r.add_argument("--commit", required=True)
+    r.add_argument("--probe", **probe)
     m = sub.add_parser("measure")
     m.add_argument("--out", required=True)
+    m.add_argument("--probe", **probe)
+    s = sub.add_parser("steer", help="1c-0b's reading of a measured 1c0b folder")
+    s.add_argument("--out", required=True)
     args = ap.parse_args(argv)
-    {"plan": cmd_plan, "render": cmd_render, "measure": cmd_measure}[args.cmd](args)
+    {"plan": cmd_plan, "render": cmd_render, "measure": cmd_measure,
+     "steer": cmd_steer}[args.cmd](args)
 
 
 if __name__ == "__main__":
