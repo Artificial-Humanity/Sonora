@@ -220,6 +220,19 @@ def test_qwen_bands_claims():
     check(("Male", "niche") in getattr(qwen_bands, "PROVISIONAL", ()),
           "qwen.md says the male niche band is provisional, but qwen_bands.PROVISIONAL "
           "does not hold ('Male', 'niche')")
+    # "Holding the range" quotes the female bands to the whole Hz; they must be BANDS'.
+    bands = getattr(qwen_bands, "BANDS", {})
+    core, niche = bands.get(("Female", "core")), bands.get(("Female", "niche"))
+    m = re.search(r"female\s+\*\*core\*\* band, which tops out at (\d+) Hz", text)
+    check(m is not None and core is not None and int(m.group(1)) == round(core.f0_median_max),
+          "qwen.md's female core ceiling (Holding the range) no longer matches "
+          "qwen_bands.BANDS[('Female', 'core')]")
+    m = re.search(r"\*\*Niche\*\* \((\d+)–(\d+) Hz\)", text)
+    check(m is not None and niche is not None
+          and (int(m.group(1)), int(m.group(2)))
+          == (round(niche.f0_median_min), round(niche.f0_median_max)),
+          "qwen.md's female niche range (Holding the range) no longer matches "
+          "qwen_bands.BANDS[('Female', 'niche')]")
 
 
 # --- the pause gate's two thresholds live in two files and must agree -------------

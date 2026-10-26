@@ -51,6 +51,11 @@ a fairy/sprite character voice, and **not usable in an adult non-fantasy novel a
 A clip that lands there is a DROP, not a low score. Since our corpus is overwhelmingly
 adult literary prose, that makes this a category error rather than a matter of taste.
 
+Young, higher-pitched female voices stay in the portfolio: the owner wants them, inside a
+normal human range. Past that range a voice is only usable for a cartoon or a non-human
+part. So it is niche, not mainstream. "Holding the range" below says how to tell the
+two apart.
+
 Left alone, a young + bright + high-arousal instruct collapses straight into it, and this
 casting is where it bites hardest because every attribute you are filling in pushes the
 same way: young age, high pitch, bright timbre and lifted emotion all compound.
@@ -60,14 +65,15 @@ take, but by writing the keys AGAINST the drift:
 
 - `tone:` and `personality:` — name something grounded (`matter-of-fact`, `direct`,
   `unaffected`, `dry`). Never `whimsical`, `magical`, `playful`, `sparkling`, `bubbly`.
-- `pitch:` — say **stable** or `level`. Unqualified "high" invites the sing-song contour.
+- `pitch:` — say **stable** or `level`. It does not set the voice's F0 (see "Pitch and
+  voice range"), but the naive arm below that read sing-song asked for a plain "high".
 - `fluency:`/`clarity:` — `natural`, `conversational`. "Crisp/precise" reads as elocution
   and pushes twee.
 - `emotion:` — keep it the register's actual emotion. Do not add brightness on top of a
-  bright voice; you are already there via `age` and `pitch`.
+  bright voice; `age` and the voice itself already carry it.
 
 A young voice should still sound like a person talking, not a narrator performing a
-fairy. If the read comes back sing-song, flatten `pitch:` and ground `personality:`
+fairy. If the read comes back sing-song, make `pitch:` stable and ground `personality:`
 before touching anything else.
 
 **This is measured, not asserted** (artifact-probe-routing, 2026-07-29). Five lines were
@@ -82,6 +88,20 @@ above — same casting, same text, only the instruct differing:
 Four of five naive reads landed at or over the line; none of the grounded ones did. Qwen
 with a grounded instruct is currently the **best** home for bright/teen female casting in
 the portfolio. Write the keys this way every time — the difference is the whole clip.
+
+#### Holding the range
+The keys above shape the delivery; they do not hold the pitch in range. In probe 1c-0 one
+young-teenager instruct (`age: Young teenager, about thirteen`, `pitch: High, stable`)
+rendered at 258 Hz on two seeds and 380 Hz on the third. The owner rated the first two core
+and the third niche. The words were identical, so only the measurement tells them apart:
+
+- **Mainstream use:** a young female voice qualifies only when `admit` places it in the female
+  **core** band, which tops out at 258 Hz.
+- **Niche** (361–389 Hz): cartoon or non-human parts only. Never cast a mainstream character
+  from it.
+- **Unmeasured** (between the bands, or beyond them): the owner's ear decides.
+
+When a design lands too high, a different seed moves it, not different pitch words.
 
 ## Pitch and voice range
 Qwen does **not** take pitch from the `pitch:` key. Measured over seven rungs from
