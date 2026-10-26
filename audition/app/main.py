@@ -144,6 +144,7 @@ SLIDER_ATTR_FIELDS = [
 ]
 DEFECT_KEYS = ("buzz", "hum", "layering", "noise", "robot")
 GENDER_SLIDER_LABELS = {1: "Male", 2: "Female", 3: "Neutral"}
+GENDER_TO_SLIDER = {"Male": 1, "Female": 2, "Neutral": 3}
 
 CSV_FIELDS = [
     "campaign", "id", "engine", "register", "gender", "age", "accent",
@@ -780,7 +781,27 @@ def set_gender(g: GenderUpdate):
         idx = next((i for i, row in enumerate(rows) if row.get("id") == g.id), None)
         if idx is None:
             raise HTTPException(404, f"unknown id {g.id}")
-        rows[idx]["gender"] = g.gender
+        row = rows[idx]
+        if row.get("intended_gender", "") == "":
+            prev_g = row.get("gender") or _gender_from_id(g.id)
+            if prev_g in GENDER_TO_SLIDER:
+                row["intended_gender"] = str(GENDER_TO_SLIDER[prev_g])
+        row["gender"] = g.gender
+        if g.gender in GENDER_TO_SLIDER:
+            aud_num = GENDER_TO_SLIDER[g.gender]
+            row["audited_gender"] = str(aud_num)
+            row["touched_gender"] = "1"
+            if row.get("intended_gender", "") != "":
+                row["delta_gender"] = _format_delta(aud_num - int(row["intended_gender"]))
+            else:
+                row["delta_gender"] = ""
+        else:
+            row["touched_gender"] = "0"
+            row["audited_gender"] = ""
+            row["delta_gender"] = ""
+        if row.get("touched_age") == "1" and row.get("audited_age", "") != "":
+            bands = AGE_BANDS_BY_GENDER.get(g.gender, AGE_BANDS_BY_GENDER["Neutral"])
+            row["age"] = bands[int(row["audited_age"]) - 1]
         _write_rows(rows)
         return {"ok": True, "id": g.id, "gender": g.gender}
 

@@ -250,6 +250,15 @@ def test_audition_gender_slider_persists_and_updates_age_band(tmp_path, monkeypa
     assert mod.SLIDER_ATTRS[0] == "gender"
     assert mod.GENDER_SLIDER_LABELS == {1: "Male", 2: "Female", 3: "Neutral"}
 
+    # Dropdown POST /api/gender before any slider edit preserves initial Female (2) as intended_gender
+    mod.set_gender(mod.GenderUpdate(id="clip_01_F_s1", gender="Male"))
+    row_g = mod._read_rows()[0]
+    assert row_g["gender"] == "Male"
+    assert row_g["intended_gender"] == "2"
+    assert row_g["audited_gender"] == "1"
+    assert row_g["delta_gender"] == "-1"
+    assert row_g["touched_gender"] == "1"
+
     # Clip starts as Female; listener hears Male (1) and Age 4 -> Man
     res = mod.rate(mod.Rating(
         id="clip_01_F_s1",
@@ -282,6 +291,26 @@ def test_audition_gender_slider_persists_and_updates_age_band(tmp_path, monkeypa
     assert row2["delta_gender"] == "+1"
     assert row2["gender"] == "Neutral"
     assert row2["age"] == "Adult"
+
+    # Dropdown update to Male updates slider columns and existing touched age band
+    mod.set_gender(mod.GenderUpdate(id="clip_01_F_s1", gender="Male"))
+    row3 = mod._read_rows()[0]
+    assert row3["gender"] == "Male"
+    assert row3["intended_gender"] == "2"
+    assert row3["audited_gender"] == "1"
+    assert row3["delta_gender"] == "-1"
+    assert row3["touched_gender"] == "1"
+    assert row3["age"] == "Man"
+
+    # Dropdown update to Undefined clears touched_gender/audited_gender/delta_gender and maps age band
+    mod.set_gender(mod.GenderUpdate(id="clip_01_F_s1", gender="Undefined"))
+    row4 = mod._read_rows()[0]
+    assert row4["gender"] == "Undefined"
+    assert row4["intended_gender"] == "2"
+    assert row4["audited_gender"] == ""
+    assert row4["delta_gender"] == ""
+    assert row4["touched_gender"] == "0"
+    assert row4["age"] == "Adult"
 
     with pytest.raises(HTTPException) as exc:
         mod.set_sliders(mod.SliderUpdate(

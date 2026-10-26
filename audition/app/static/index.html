@@ -475,14 +475,16 @@ function cardEl(c,i){
   const el=document.createElement('div'); el.className='card';
   const set = c._rated;
   const g = c.gender || genderOf(c.id);
-  const intGender = numOr(c.intended_gender, GENDER_TO_NUM[g] || 3), audGender = numOr(c.audited_gender, GENDER_TO_NUM[g] || intGender);
-  const effG = GENDER_LABELS[audGender] || g;
+  const intGender = c.intended_gender != null && c.intended_gender !== '' ? +c.intended_gender : (GENDER_TO_NUM[g] || null);
+  const audGender = numOr(c.audited_gender, numOr(intGender, GENDER_TO_NUM[g] || 3));
+  const effG = c.touched_gender === '1' ? (GENDER_LABELS[audGender] || g) : g;
   const intAge = numOr(c.intended_age, 3), audAge = numOr(c.audited_age, intAge);
   const intPitch = numOr(c.intended_pitch, 3), audPitch = numOr(c.audited_pitch, intPitch);
   const intDepth = numOr(c.intended_depth, 3), audDepth = numOr(c.audited_depth, intDepth);
   const intStrain = numOr(c.intended_strain, 0), audStrain = numOr(c.audited_strain, intStrain);
   const sliderState = {
-    intended_gender: intGender, audited_gender: audGender, touched_gender: c.touched_gender==='1',
+    ...(intGender !== null ? {intended_gender: intGender} : {}),
+    audited_gender: audGender, touched_gender: c.touched_gender==='1',
     intended_age: intAge, audited_age: audAge, touched_age: c.touched_age==='1',
     intended_pitch: intPitch, audited_pitch: audPitch, touched_pitch: c.touched_pitch==='1',
     intended_depth: intDepth, audited_depth: audDepth, touched_depth: c.touched_depth==='1',
@@ -665,9 +667,15 @@ function cardEl(c,i){
       sliderState.audited_gender=gNum; sliderState.touched_gender=true;
       const gInp=el.querySelector('input[data-attr="gender"]'); if(gInp) gInp.value=gNum;
       const gValEl=el.querySelector('[data-val="gender"]'); if(gValEl) gValEl.textContent=fmtAttrVal('gender', val, gNum, sliderState.intended_gender);
+    } else {
+      sliderState.touched_gender=false;
     }
     const ageValEl=el.querySelector('[data-val="age"]');
     if(ageValEl) ageValEl.textContent=fmtAttrVal('age', val, sliderState.audited_age, sliderState.intended_age);
+    if(sliderState.touched_age){
+      const ageSel=el.querySelector('select[data-role="age"]');
+      if(ageSel) ageSel.value=ageBandLabel(val, sliderState.audited_age);
+    }
     toast(`${c.id}: gender → ${val}`);
   };
   if(set) el.classList.add('done');       // already-rated cards read as done
@@ -781,7 +789,7 @@ function probeCardEl(probeId, c, updateProbeStat){
     <div class="meta">
       <span class="clip-id">${esc(c.id)}</span>
       <span class="tag">${esc(c.group || c.rung || '')}</span>
-      <span class="tag">${esc(g)}</span>
+      <span class="tag" data-pgender>${esc(curG)}</span>
       ${ac.f0_median_hz!=null?`<span class="tag">F0 med ${(+ac.f0_median_hz).toFixed(1)} Hz</span>`:''}
       ${ac.f0_excursion_hz!=null?`<span class="tag">F0 exc ${(+ac.f0_excursion_hz).toFixed(1)} Hz</span>`:''}
       ${ac.hnr_db!=null?`<span class="tag">HNR ${(+ac.hnr_db).toFixed(1)} dB</span>`:''}
@@ -849,6 +857,9 @@ function probeCardEl(probeId, c, updateProbeStat){
       const v=+inp.value; sState[`audited_${attr}`]=v; sState[`touched_${attr}`]=true;
       if(attr==='gender'){
         curG=GENDER_LABELS[v]||g;
+        c.gender=curG;
+        const gTag=el.querySelector('[data-pgender]');
+        if(gTag) gTag.textContent=curG;
         const ageValEl=el.querySelector('[data-pval="age"]');
         if(ageValEl) ageValEl.textContent=fmtAttrVal('age', curG, sState.audited_age, sState.intended_age);
       }
