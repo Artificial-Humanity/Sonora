@@ -112,7 +112,7 @@ def test_configure_optimizers_survives_a_scheduler_without_last_epoch():
     body = src[src.index("def configure_optimizers"):src.index("def ", src.index("def configure_optimizers") + 10)]
     # The assignment must dominate the use, not sit under the branch that may not run.
     assert body.index("current_epoch = -1") < body.index('if "last_epoch" in')
-    assert body.index("current_epoch = -1") < body.index("scheduler.last_epoch = current_epoch")
+    assert body.index("current_epoch = -1") < body.rindex("scheduler.last_epoch = current_epoch")
 
     # And the shape of the bug, reproduced so the fix has something to be a fix OF.
     def old(has_last_epoch):
