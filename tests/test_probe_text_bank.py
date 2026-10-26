@@ -867,3 +867,18 @@ def test_no_used_book_is_falsely_excluded(title, fulltitle, author):
     keys = ptb.holdout_title_keys(sources)
     assert ptb.holdout_match({"title": title, "fulltitle": fulltitle, "author": author,
                               "pg_ids": []}, keys, []) is None
+
+
+def test_an_unmatched_denylist_entry_is_reported():
+    """An entry no sentence matched is listed, so a changed source edition is not silent."""
+    entries = list(ptb.DENYLIST)
+    hits = [{"book": "x", "text": t, "reason": ptb.DENYLIST[t]} for t in entries[1:]]
+    assert tool.unmatched_denylist(hits) == entries[:1]
+    assert tool.unmatched_denylist([{"text": t} for t in entries]) == []
+
+
+def test_meta_constants_name_the_title_jaccard_and_parsers():
+    versions = tool._parser_versions()
+    assert set(versions) == {"beautifulsoup4", "lxml"}
+    src = open(tool.__file__).read()
+    assert '"TITLE_JACCARD": ptb.TITLE_JACCARD' in src

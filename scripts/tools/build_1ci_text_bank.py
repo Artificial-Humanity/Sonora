@@ -215,7 +215,9 @@ def build(args):
                       "MAX_CLIP_SECONDS": ptb.MAX_CLIP_SECONDS, "BANK_SIZE": ptb.BANK_SIZE,
                       "n": args.n, "max_per_book": args.max_per_book,
                       "NEAR_DUP_SHINGLE": ptb.NEAR_DUP_SHINGLE,
-                      "NEAR_DUP_JACCARD": ptb.NEAR_DUP_JACCARD},
+                      "NEAR_DUP_JACCARD": ptb.NEAR_DUP_JACCARD,
+                      "TITLE_JACCARD": ptb.TITLE_JACCARD},
+        "parsers": _parser_versions(),
         "est_seconds": {"min": min(est), "max": max(est)},
         "pool": {"candidates": len(candidates), **{k: v for k, v in stats.items()
                                                    if k not in ("per_book", "per_author")}},
@@ -225,7 +227,8 @@ def build(args):
                       "per_author": stats["per_author"], "per_book": stats["per_book"]},
         "rejections": dict(sorted(found["rejections"].items())),
         "denylist": {"entries": [{"text": t, "reason": why} for t, why in ptb.DENYLIST.items()],
-                     "hits": found["denylist_hits"]},
+                     "hits": found["denylist_hits"],
+                     "unmatched": unmatched_denylist(found["denylist_hits"])},
         "books_root": str(args.books_root),
         "books_used": used, "books_skipped": found["skipped"],
         "ledger": {
@@ -275,6 +278,26 @@ def write(out, rows, meta):
     return f"wrote {lines_path} ({len(rows)} lines) and {meta_path}"
 
 
+def unmatched_denylist(hits):
+    """The DENYLIST entries no sentence matched. Matching is exact on the normalised text, so an
+    entry stops matching silently when a source edition changes; meta.json records the misses and
+    the run warns about them."""
+    hit = {h["text"] for h in hits}
+    return [t for t in ptb.DENYLIST if t not in hit]
+
+
+def _parser_versions():
+    """bs4 and lxml parse the epubs, so their versions are part of what a rebuild depends on."""
+    from importlib import metadata
+    out = {}
+    for dist in ("beautifulsoup4", "lxml"):
+        try:
+            out[dist] = metadata.version(dist)
+        except metadata.PackageNotFoundError:
+            out[dist] = None
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--out", required=True, type=pathlib.Path)
@@ -298,6 +321,9 @@ def main(argv=None):
                          "so meta.json's commit would not name the code that ran. Commit first, "
                          "or pass --allow-dirty.")
     rows, meta = build(args)
+    if meta["denylist"]["unmatched"]:
+        print("WARNING: denylist entries matched no sentence (has a source edition changed?): "
+              + "; ".join(repr(t[:60]) for t in meta["denylist"]["unmatched"]), file=_sys.stderr)
     print(write(args.out, rows, meta))
     print(f"sha256 {meta['sha256']}  pool {meta['pool']['pool_size']}  "
           f"books {len(meta['books_used'])}  authors {meta['selection']['n_authors']}  "
