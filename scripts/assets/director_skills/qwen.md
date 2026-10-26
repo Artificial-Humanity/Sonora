@@ -53,7 +53,7 @@ adult literary prose, that makes this a category error rather than a matter of t
 
 That DROP is about a performed fairy delivery. Pitch is a separate question. Young,
 higher-pitched female voices stay in the portfolio: the owner wants them, inside a normal
-human range. A voice measured past that range is usable only for a cartoon or a non-human
+human range. A voice beyond a normal human range is usable only for a cartoon or a non-human
 part, so it is niche, not mainstream. "Holding the range" below says how the two are told
 apart.
 
@@ -68,7 +68,7 @@ take, but by writing the keys AGAINST the drift:
   `unaffected`, `dry`). Never `whimsical`, `magical`, `playful`, `sparkling`, `bubbly`.
 - `pitch:` — say **stable** or `level`, in keeping with the grounded keys. It does not set
   the voice's F0 (see "Pitch and voice range"). The naive arm below asked for "High and
-  bright" but changed every other key too, so no single word is known to cause the drift.
+  bright" but changed seven other keys too, so no single word is known to cause the drift.
 - `fluency:`/`clarity:` — `natural`, `conversational`. "Crisp/precise" reads as elocution
   and pushes twee.
 - `emotion:` — keep it the register's actual emotion. Do not add brightness on top of a
@@ -96,7 +96,8 @@ The keys above shape the delivery; they do not hold the pitch in range. In probe
 young-teenager instruct (`age: Young teenager, about thirteen`, `pitch: High, stable`) was
 rendered three times, each with a different seed and sentence. Two clips measured 258 Hz and
 the owner rated them core; one measured 380 Hz and was rated niche. The instruct was
-identical, so only the measurement tells them apart. `admit` places a female voice in:
+identical, so it cannot tell them apart; the measurement and the owner's ear do. `admit` places
+a female voice by its F0 median (and caps its F0 excursion) in:
 
 - **Core** (female, up to 258 Hz): mainstream use.
 - **Niche** (361–389 Hz): cartoon or non-human parts only. Never cast a mainstream character
@@ -105,7 +106,8 @@ identical, so only the measurement tells them apart. `admit` places a female voi
   pass it for mainstream use.
 
 The band edges mark where Qwen rendered in the probe, not where the human range ends. When a
-design lands too high, do not reword the pitch to bring it down; the words do not move it.
+design lands too high, do not reword the pitch to bring it down; the words do not reliably
+move it.
 The measurement and the owner decide.
 
 ## Pitch and voice range
