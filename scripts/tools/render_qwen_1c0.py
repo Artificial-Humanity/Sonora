@@ -136,9 +136,20 @@ voices, each row reports:
 `--probe` plan, in plan order, with their registered seeds and instructs; an id not in the plan, or
 one named twice, refuses. `render_meta.json` records the subset as `ids` in plan order (null for the
 whole plan), so a whole-plan folder refuses a subset resume and a subset folder refuses a whole-plan
-or another subset's resume. `measure` takes the same `--ids` and refuses a folder whose
-`render_meta.json` records another subset or the whole plan; a clip missing from the subset refuses,
-and the rest of the plan is not looked for. `steer` reads a whole 1c0b render only.
+or another subset's resume. An `--ids` that names every plan id IS the whole plan and is recorded as
+null, so it resumes, measures and steers as a whole-plan folder does. A `render_meta.json` without an
+`ids` key (one written before `--ids` existed, such as the 1c-0 probe's) reads as the whole plan.
+`measure` takes the same `--ids` and refuses a folder whose `render_meta.json` records another subset
+or the whole plan; a clip missing from the subset refuses, and the rest of the plan is not looked
+for. `steer` reads a whole 1c0b render only.
+
+`measure` also places each clip in Qwen's F0 admission bands (`scripts/lib/qwen_bands.py`): `zone`
+is `qwen_bands.admit` on the row's `f0_median_hz` and `f0_excursion_hz` for the manifest row's
+`gender` (the prompted one), "core", "niche" or "unmeasured"; a clip whose gender is not "Male" or
+"Female" is "unmeasured". `zone_provisional` is `qwen_bands.provisional` for that zone (False for
+"unmeasured"). It is a measure, not a verdict: the owner's zone is in `verdicts.csv`. `measure` prints
+the count of each zone, and `measure_meta.json` records the bands' `VERDICT_ZONES_SHA256` as
+`zone_verdicts_sha256`.
 
 `measure` writes `measure_meta.json` beside `measures.jsonl`: the measuring commit (`git rev-parse
 HEAD` of this tool's checkout) and whether that tree is clean (`git status --porcelain` empty), the
@@ -358,8 +369,13 @@ def select_ids(items, ids):
 
 
 def subset_ids(items, ids):
-    """The ids `render_meta.json` records for `--ids`: plan order, or None for the whole plan."""
-    return None if ids is None else [it["id"] for it in select_ids(items, ids)]
+    """The ids `render_meta.json` records for `--ids`: plan order, or None for the whole plan. An
+    `ids` that names every item is the whole plan, so it is None too: a folder's record does not
+    depend on whether the whole plan was named or implied."""
+    if ids is None:
+        return None
+    subset = [it["id"] for it in select_ids(items, ids)]
+    return None if len(subset) == len(items) else subset
 
 
 def require_qwen_tts(version_of):
@@ -622,6 +638,19 @@ def measure_row(clip_id, x, sr):
     return row
 
 
+def admission(gender, row):
+    """{"zone", "zone_provisional"} for a `measure_row` row: `qwen_bands.admit` on its
+    `f0_median_hz` and `f0_excursion_hz` for `gender`, the manifest row's prompted gender. A gender
+    that is not one of `qwen_bands.GENDERS` (missing, or anything else) is "unmeasured", not an
+    error."""
+    import qwen_bands
+
+    if gender not in qwen_bands.GENDERS:
+        return {"zone": qwen_bands.UNMEASURED, "zone_provisional": False}
+    zone = qwen_bands.admit(gender, row["f0_median_hz"], row["f0_excursion_hz"])
+    return {"zone": zone, "zone_provisional": qwen_bands.provisional(gender, zone)}
+
+
 def tool_commit():
     """{"commit": this checkout's HEAD, "tree_clean": `git status --porcelain` empty}, each None
     when git cannot say."""
@@ -646,8 +675,10 @@ def measure_meta(render_commit, srs, probe="1c0", ids=None):
     import derive_vat_corpus as dvc
     import librosa
     import numpy as np
+    import qwen_bands
 
     return {"tool": TOOL, **tool_commit(), "probe": probe, "ids": ids,
+            "zone_verdicts_sha256": qwen_bands.VERDICT_ZONES_SHA256,
             "render_commit": render_commit, "librosa": librosa.__version__, "numpy": np.__version__,
             "f0_range_hz": list(F0_RANGE), "f0_extended_fmax_hz": F0_EXTENDED_FMAX,
             "pyin_frame_samples": {str(sr): pyin_frame(sr) for sr in sorted(srs)},
@@ -710,7 +741,8 @@ def cmd_measure(args):
         if x.ndim > 1:
             x = x.mean(axis=1)
         srs.add(sr)
-        out.append(measure_row(r["id"], x, sr))
+        row = measure_row(r["id"], x, sr)
+        out.append(dict(row, **admission(r.get("gender"), row)))
     write_text_atomic(os.path.join(args.out, "measures.jsonl"),
                       "".join(json.dumps(o) + "\n" for o in out))
     write_json_atomic(os.path.join(args.out, "measure_meta.json"),
@@ -720,6 +752,10 @@ def cmd_measure(args):
               len(out), sum(o["voiced_frames"] is None for o in out),
               sum(o["cpp"] is None for o in out), sum(bool(o["f0_out_of_range"]) for o in out),
               F0_RANGE[0], F0_RANGE[1], sum(bool(o["f0_methods_disagree"]) for o in out)))
+    zones = [o["zone"] for o in out]
+    print("zones: %d core, %d niche (%d provisional), %d unmeasured" % (
+        zones.count("core"), zones.count("niche"), sum(o["zone_provisional"] for o in out),
+        zones.count("unmeasured")))
 
 
 def _cosine(a, b):

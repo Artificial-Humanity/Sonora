@@ -887,9 +887,16 @@ def test_measure_writes_a_row_per_ladder_clip(tmp_path, capsys):
         assert r["phonation_f0_band_hz"] == [60.0, 400.0]
         for alias, key in rq.READER_ALIASES:
             assert r[alias] == r[key], (alias, r)
+    printed = capsys.readouterr().out
     assert ("60 clips measured; 0 without a voiced frame; 3 without a phonation measure; 0 with F0 "
-            "out of pYIN's 50-700 Hz range; 3 where pYIN and the autocorrelation disagree") \
-        in capsys.readouterr().out
+            "out of pYIN's 50-700 Hz range; 3 where pYIN and the autocorrelation disagree") in printed
+    # _clip_f0 gives every male clip 110 Hz (core) and the female rungs 210 Hz (core); the female
+    # personas P2 and P6 read 110 Hz, below every female band, and P1 520 Hz, above them.
+    assert {r["id"]: r["zone"] for r in rows} == {
+        it["id"]: "unmeasured" if it["id"][:2] in ("P1", "P2", "P6") else "core"
+        for it in rq.ladder()}
+    assert not any(r["zone_provisional"] for r in rows)
+    assert "zones: 51 core, 0 niche (0 provisional), 9 unmeasured" in printed
 
 
 def test_measure_refuses_a_missing_manifest_a_wrong_id_set_or_a_missing_wav(tmp_path):
@@ -989,6 +996,49 @@ def test_measure_meta_says_when_the_commit_is_unknown(monkeypatch):
     assert meta["commit"] is None and meta["tree_clean"] is None, meta
 
 
+def test_measure_places_each_clip_in_the_bands_by_its_prompted_gender(tmp_path, capsys):
+    """zone and zone_provisional are qwen_bands' answer for the row's F0 and the manifest's gender:
+    P3 (male) at 300 Hz is the provisional male niche, P2 (female) at 375 Hz the female niche, P1 at
+    520 Hz is above every band, and a female 1c-0 rung at 110 Hz is below hers."""
+    import qwen_bands
+
+    def f0_of(it):
+        return {"P3": 300.0, "P2": 375.0, "P1": 520.0, "P6": 210.0, "F1": 110.0}.get(
+            it["id"][:2], _clip_f0(it))
+    out = _measure_dir(tmp_path, f0_of=f0_of, seconds=0.5)
+    _measure(out)
+    rows = [json.loads(line) for line in (out / "measures.jsonl").read_text().splitlines()]
+    gender = {it["id"]: it["gender"] for it in rq.ladder()}
+    for r in rows:
+        assert r["zone"] == qwen_bands.admit(gender[r["id"]], r["f0_median_hz"],
+                                             r["f0_excursion_hz"]), r
+        assert r["zone_provisional"] is qwen_bands.provisional(gender[r["id"]], r["zone"]), r
+    by_zone = {}
+    for r in rows:
+        by_zone.setdefault((r["zone"], r["zone_provisional"]), []).append(r["id"].split("-")[0])
+    assert sorted(set(by_zone[("niche", True)])) == ["P3"]
+    assert sorted(set(by_zone[("niche", False)])) == ["P2"]
+    assert sorted(set(by_zone[("unmeasured", False)])) == ["F1", "P1"]
+    assert set(by_zone) == {("core", False), ("niche", True), ("niche", False),
+                            ("unmeasured", False)}
+    assert "zones: 48 core, 6 niche (3 provisional), 6 unmeasured" in capsys.readouterr().out
+    meta = json.loads((out / "measure_meta.json").read_text())
+    assert meta["zone_verdicts_sha256"] == qwen_bands.VERDICT_ZONES_SHA256
+
+
+@pytest.mark.parametrize("gender", [None, "", "male", "M", "Other"])
+def test_a_clip_without_a_male_or_female_gender_is_unmeasured(gender):
+    row = rq.measure_row("M4-s1", _stack(110.0, 0.5), SR)
+    assert rq.admission("Male", row) == {"zone": "core", "zone_provisional": False}   # control
+    assert rq.admission(gender, row) == {"zone": "unmeasured", "zone_provisional": False}
+
+
+def test_a_clip_whose_f0_is_not_measured_is_unmeasured():
+    row = rq.measure_row("P1-s1", _stack(720.0, 0.5), SR)          # out of range: F0 nulled
+    assert row["f0_median_hz"] is None
+    assert rq.admission("Female", row) == {"zone": "unmeasured", "zone_provisional": False}
+
+
 # --- the audition app's probe mode ----------------------------------------------------------
 
 def _audition(tmp_path, monkeypatch):
@@ -1028,6 +1078,12 @@ def test_the_audition_probe_mode_reads_a_measured_probe_folder(tmp_path, monkeyp
     # The probe mode rates the clip into the folder's verdicts.csv, nowhere else.
     res = app.rate_probe("qwen-1c0", app.ProbeRating(id="P2-s1", zone="exclude"))
     assert res["row"]["zone"] == "exclude" and (out / "verdicts.csv").is_file()
+    # The measured zone rides inside `acoustics`; the clip's own `zone` stays the owner's verdict.
+    assert by_id["M4-s1"]["acoustics"]["zone"] == "core"
+    assert by_id["P2-s1"]["acoustics"]["zone"] == "unmeasured"
+    rated = {c["id"]: c for c in app.get_probe("qwen-1c0")["clips"]}
+    assert rated["P2-s1"]["zone"] == "exclude" and "zone" not in rated["M4-s1"]
+    assert rated["P2-s1"]["acoustics"]["zone"] == "unmeasured"
 
 
 # --- --probe threads through check_rows and measure -----------------------------------------
@@ -1088,6 +1144,43 @@ def test_select_ids_keeps_plan_order_and_refuses_an_unknown_or_repeated_id():
         rq.select_ids(plan, ["M-base-k1", "Q9"])
     with pytest.raises(SystemExit, match="REFUSING: --ids names M4-s3 more than once"):
         rq.select_ids(plan, ["M4-s3", "F4-s3", "M4-s3"])
+
+
+@pytest.mark.parametrize("probe", rq.PROBES)
+def test_ids_naming_every_plan_id_is_recorded_as_the_whole_plan(probe):
+    plan = rq.plan_items(probe)
+    every = [it["id"] for it in plan]
+    assert rq.subset_ids(plan, every) is None
+    assert rq.subset_ids(plan, every[::-1]) is None
+    assert rq.subset_ids(plan, every[1:]) == every[1:]
+
+
+def test_ids_naming_every_plan_id_resumes_and_measures_a_whole_plan_folder(render_env, capsys):
+    out, weights, _model_dir = render_env
+    _rendered(out, "abc123", weights)                               # a whole-plan folder
+    every = [it["id"] for it in rq.ladder()]
+    _render(out, ids=every[::-1])
+    assert "all 60 clips already rendered; the model was not loaded." in capsys.readouterr().out
+    rows, _meta = rq.rendered(str(out), "1c0", every)
+    assert [r["id"] for r in rows] == every
+
+
+def test_a_meta_without_an_ids_key_reads_as_the_whole_plan(render_env, capsys):
+    """A render_meta.json written before --ids existed (the 1c-0 probe's has no `ids`): a whole-plan
+    resume and measure accept it, and a subset of either refuses it."""
+    out, weights, _model_dir = render_env
+    _rendered(out, "abc123", weights)
+    meta = json.loads((out / "render_meta.json").read_text())
+    del meta["ids"]
+    (out / "render_meta.json").write_text(json.dumps(meta))
+    _render(out)
+    assert "all 60 clips already rendered; the model was not loaded." in capsys.readouterr().out
+    rows, got = rq.rendered(str(out), "1c0")
+    assert len(rows) == 60 and "ids" not in got
+    with pytest.raises(SystemExit, match="REFUSING: resuming .*this run's ids differ"):
+        _render(out, ids=ANCHORS)
+    with pytest.raises(SystemExit, match="REFUSING: .*records the whole plan, not --ids M4-s3"):
+        rq.rendered(str(out), "1c0", ANCHORS)
 
 
 def test_render_refuses_an_unknown_id_before_writing_anything(render_env):

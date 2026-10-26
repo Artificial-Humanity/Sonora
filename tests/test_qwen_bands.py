@@ -1,6 +1,7 @@
 """Qwen VoiceDesign's F0 admission bands are the ones the owner's 1c-0 verdicts and the probe's
 measures give, and `admit` places a voice in a band or says it is unmeasured, never excluded."""
 import csv
+import hashlib
 import importlib.util
 import itertools
 import json
@@ -27,8 +28,19 @@ def _jsonl(path):
         return {r["id"]: r for r in map(json.loads, filter(str.strip, fh))}
 
 
+def _assert_verdict_zones(path):
+    """The zones in `path` are the ones BANDS was computed from."""
+    got = qb.verdict_zones_sha256(path)
+    assert got == qb.VERDICT_ZONES_SHA256, (
+        "%s was re-rated: its zones hash to %s, not the VERDICT_ZONES_SHA256 the bands were "
+        "computed from (%s). Recompute BANDS from the probe folder, then update "
+        "VERDICT_ZONES_SHA256." % (path, got, qb.VERDICT_ZONES_SHA256))
+
+
 def _probe():
-    """(verdicts, measures, manifest), each {id: row}."""
+    """(verdicts, measures, manifest), each {id: row}. The zone fingerprint is asserted first, so
+    a re-rated verdicts.csv fails with that message, not with a band mismatch."""
+    _assert_verdict_zones(PROBE / "verdicts.csv")
     with open(PROBE / "verdicts.csv", encoding="utf-8", newline="") as fh:
         rows = list(csv.DictReader(fh))
     verdicts = {r["id"]: r for r in rows}
@@ -56,6 +68,41 @@ def test_every_band_is_the_probe_verdicts_measured():
     assert got == qb.BANDS
     # The population that matters: every core and niche clip, 49 + 7 of the 60.
     assert sum(b.n for b in got.values()) == 56
+
+
+@needs_probe
+def test_a_rerated_verdict_fails_the_zone_fingerprint(tmp_path):
+    """Mutation check on a copy of verdicts.csv (the real file is only read): one zone changed
+    makes the fingerprint assertion fire, with the re-rating message."""
+    _assert_verdict_zones(PROBE / "verdicts.csv")                   # positive control
+    with open(PROBE / "verdicts.csv", encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        fields, rows = reader.fieldnames, list(reader)
+    rows[0]["zone"] = "niche" if rows[0]["zone"] != "niche" else "core"
+    copy = tmp_path / "verdicts.csv"
+    with open(copy, "w", encoding="utf-8", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=fields)
+        w.writeheader()
+        w.writerows(rows)
+    with pytest.raises(AssertionError, match="re-rated.*Recompute BANDS"):
+        _assert_verdict_zones(copy)
+
+
+def test_the_zone_fingerprint_reads_only_id_and_zone(tmp_path):
+    """The canonical form: sorted "<id>,<zone>" lines, "\\n"-joined, no final newline. Row order
+    and the other columns do not change it; a zone does."""
+    def write(name, rows):
+        path = tmp_path / name
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["id", "zone", "note"])
+            w.writerows(rows)
+        return qb.verdict_zones_sha256(path)
+
+    want = hashlib.sha256(b"A-s1,core\nB-s1,niche").hexdigest()
+    assert write("a.csv", [("A-s1", "core", "x"), ("B-s1", "niche", "y")]) == want
+    assert write("b.csv", [("B-s1", "niche", "other"), ("A-s1", "core", "")]) == want
+    assert write("c.csv", [("A-s1", "exclude", "x"), ("B-s1", "niche", "y")]) != want
 
 
 @needs_probe
@@ -143,6 +190,13 @@ def test_admit_reads_a_voice_outside_every_band_as_unmeasured(gender):
 def test_admit_reads_an_unmeasured_f0_as_unmeasured(f0, exc):
     assert qb.admit("Male", 120.0, 10.0) == "core"                  # positive control
     assert qb.admit("Male", f0, exc) == qb.UNMEASURED
+
+
+@pytest.mark.parametrize("gender", qb.GENDERS)
+def test_admit_admits_a_negative_excursion(gender):
+    """The excursion has a maximum only (admit's docstring): a negative one is admitted."""
+    b = qb.BANDS[(gender, "core")]
+    assert qb.admit(gender, _mid(b), -1.0) == "core"
 
 
 def test_admit_never_says_exclude():
