@@ -17,11 +17,15 @@ Follow [AGENTS.md](AGENTS.md) for repository rules and git configuration.
    * Repeat the evaluate, fix and re-review cycle for at most three rounds. If the
      re-review is still not clean, stop and report the open findings to the owner.
    * Go to step 4 once the re-review is clean.
-4. Push the branch under its own name and open a pull request against `main`.
-5. Merge the pull request once it has the owner's approval and a passing `pytest`
-   check, with the branch up to date with `main`. If `main` has moved, run
-   `git pull origin main` on the branch and push before asking for approval. Any push
-   to the branch dismisses an existing approval, so re-request it after one.
+4. Push the branch under its own name, open a pull request against `main`, and request
+   review (`jarvis` reviews pull requests opened by the Project Lead; the Project Lead
+   reviews pull requests opened by subordinate agents).
+5. The agent who opened the pull request merges it once it has the required review
+   approval (`gh pr review --approve`) and a passing `pytest` check, with the branch up
+   to date with `main`. Reviewers never merge another agent's pull request. If `main`
+   has moved, run `git pull origin main` on the branch and push before asking for
+   approval. Any push to the branch dismisses an existing approval, so re-request it
+   after one.
 
 ## Commit identity and safeguards
 
@@ -30,8 +34,7 @@ Follow [AGENTS.md](AGENTS.md) for repository rules and git configuration.
   [PERSONA.md](PERSONA.md) for the agent's co-author identity. Subagents commit only on
   the work branch, under the same identity, and never push.
 * `main` accepts changes only through a pull request. The branch rules require one
-  approving review, the `pytest` check, and a branch up to date with `main`. The
-  machine account cannot approve its own pull request; the owner approves. Observe
+  approving review, the `pytest` check, and a branch up to date with `main`. Observe
   the git safeguards in `AGENTS.md`.
 * Use the workflow stated here. Do not reconstruct additional rules from retired
   workflows or git history; changes to the workflow belong to the owner.
