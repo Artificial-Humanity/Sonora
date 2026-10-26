@@ -51,6 +51,8 @@ them is the owner's. The commands below are 1c-0's; 1c-0b's follow them.
     .venv/bin/python scripts/tools/render_qwen_1c0.py measure \\
         --out /data/model-training/datasets/probes/qwen-1c0
 
+    # a subset of a plan, e.g. 1c-i's anchors from 1c-0's: `render` and `measure` with
+    # `--ids M4-s3 F4-s3 F6-s2` after `--out`, into a new folder of their own
     # 1c-0b: the same plan, install -d, render and measure steps with `--probe 1c0b` after each
     # subcommand and probes/qwen-1c0b in place of probes/qwen-1c0 (the install -d, the render's
     # --out, capture_env_cmd's name and _env path, the measure's --out); then, on the host, the
@@ -89,10 +91,10 @@ from one RNG stream, so the registered per-clip seeds would no longer name the a
 ⚠ A RESUME MUST NOT MIX TWO RENDERS. `render_meta.json` is written before the first clip. With a
 manifest already present, `render` refuses unless that meta's commit, weights hashes
 (`model.safetensors` and every file under `speech_tokenizer/`), qwen-tts version, speech tokenizer
-dtype and probe equal this run's (`RESUME_KEYS`), and unless every rendered row is its plan item
-(seed, text, instruct, gender, commit) with its wav on disk. Only a truncated final manifest line,
-a render killed mid-write, is dropped (with a warning) and re-rendered. When nothing remains it
-exits before loading the model.
+dtype, probe and id subset equal this run's (`RESUME_KEYS`), and unless every rendered row is its
+plan item (seed, text, instruct, gender, commit) with its wav on disk. Only a truncated final
+manifest line, a render killed mid-write, is dropped (with a warning) and re-rendered. When nothing
+remains it exits before loading the model.
 
 ⚠ F0 IS LIBROSA'S pYIN OVER 50-700 Hz, NOT THE REPO'S AUTOCORRELATION. `periodicity.frames` takes
 the highest peak in one fixed lag band. Over 50-700 Hz at 24 kHz its shortest lag (34 samples) is
@@ -130,14 +132,22 @@ voices, each row reports:
   Above 350 Hz the autocorrelation reads a subharmonic and the two disagree by construction; there a
   flagged clip needs the ear.
 
+`--ids` RENDERS PART OF A PLAN. `render --ids ID [ID ...]` renders only the named items of the
+`--probe` plan, in plan order, with their registered seeds and instructs; an id not in the plan, or
+one named twice, refuses. `render_meta.json` records the subset as `ids` in plan order (null for the
+whole plan), so a whole-plan folder refuses a subset resume and a subset folder refuses a whole-plan
+or another subset's resume. `measure` takes the same `--ids` and refuses a folder whose
+`render_meta.json` records another subset or the whole plan; a clip missing from the subset refuses,
+and the rest of the plan is not looked for. `steer` reads a whole 1c0b render only.
+
 `measure` writes `measure_meta.json` beside `measures.jsonl`: the measuring commit (`git rev-parse
 HEAD` of this tool's checkout) and whether that tree is clean (`git status --porcelain` empty), the
-probe, the render's commit, the librosa and numpy versions, every F0 and HNR setting above, and the
-UTC time. `steer` refuses a folder whose `measure_meta.json` is missing, records a probe other than
-1c0b, or measured another render (its `render_commit` is not `render_meta.json`'s `commit`). It
-writes `steer.json` beside them: its own commit and cleanliness, `render_commit` (the render's
-commit), `measure_commit` (`measure_meta.json`'s `commit`), `STEER_SHIFT_ST`, and `steer_readout`'s
-rows.
+probe and id subset, the render's commit, the librosa and numpy versions, every F0 and HNR setting
+above, and the UTC time. `steer` refuses a folder whose `measure_meta.json` is missing, records a
+probe other than 1c0b, or measured another render (its `render_commit` is not `render_meta.json`'s
+`commit`). It writes `steer.json` beside them: its own commit and cleanliness, `render_commit` (the
+render's commit), `measure_commit` (`measure_meta.json`'s `commit`), `STEER_SHIFT_ST`, and
+`steer_readout`'s rows.
 
 ⚠ HNR IS DESCRIPTIVE ONLY. It is `periodicity.frames` over the repo's 50-350 Hz band, the pass that
 gives `f0_median_acf`. That estimator normalises a biased autocorrelation, so the peak at the period
@@ -171,7 +181,7 @@ QWEN_TTS_VERSION = "0.1.1"
 LUFS = -23.0
 LANGUAGE = "English"
 # `render_meta.json` keys a resume must match exactly.
-RESUME_KEYS = ("commit", "weights_sha256", "qwen_tts", "speech_tokenizer_dtype", "probe")
+RESUME_KEYS = ("commit", "weights_sha256", "qwen_tts", "speech_tokenizer_dtype", "probe", "ids")
 PROBES = ("1c0", "1c0b")
 
 # F0 (module docstring): pYIN's search range (Hz), and the extended pass that sees a voice above it.
@@ -329,6 +339,27 @@ def plan_1c0b():
 def plan_items(probe):
     """The probe's items in listening order."""
     return {"1c0": ladder, "1c0b": plan_1c0b}[probe]()
+
+
+def select_ids(items, ids):
+    """`items` restricted to `ids`, in plan order; None keeps them all. Refuses an id that is not in
+    `items` and an id named twice."""
+    if ids is None:
+        return items
+    known = {it["id"] for it in items}
+    unknown = [i for i in ids if i not in known]
+    if unknown:
+        raise SystemExit("REFUSING: --ids %s %s not in the plan." % (
+            ", ".join(unknown), "is" if len(unknown) == 1 else "are"))
+    if len(set(ids)) != len(ids):
+        raise SystemExit("REFUSING: --ids names %s more than once."
+                         % ", ".join(sorted({i for i in ids if ids.count(i) > 1})))
+    return [it for it in items if it["id"] in set(ids)]
+
+
+def subset_ids(items, ids):
+    """The ids `render_meta.json` records for `--ids`: plan order, or None for the whole plan."""
+    return None if ids is None else [it["id"] for it in select_ids(items, ids)]
 
 
 def require_qwen_tts(version_of):
@@ -496,7 +527,8 @@ def resume_state(out, meta):
         raise SystemExit("REFUSING: resuming %s, but this run's %s differ from its "
                          "render_meta.json. Render into a new --out." % (out, ", ".join(differ)))
     rows, repaired, dropped = read_manifest(manifest)
-    check_rows(rows, out, plan_items(meta["probe"]), commit=meta["commit"])
+    check_rows(rows, out, select_ids(plan_items(meta["probe"]), meta["ids"]),
+               commit=meta["commit"])
     if dropped is not None:
         print("WARNING: dropping a truncated final manifest line (%d chars); that clip is "
               "rendered again." % len(dropped), flush=True)
@@ -525,14 +557,15 @@ def cmd_render(args):
     from qwen_load import TOKENIZER_DTYPE, load_qwen
     from synth_common import write_json_atomic, write_wav_atomic
 
-    items = plan_items(args.probe)
+    plan = plan_items(args.probe)
+    items = select_ids(plan, args.ids)
     version = require_qwen_tts(importlib.metadata.version)
     # Written before the model loads; load_qwen refuses any decoder dtype but TOKENIZER_DTYPE, so
     # the meta's speech_tokenizer_dtype holds for every clip rendered under it.
     meta = {"tool": TOOL, "probe": args.probe, "commit": args.commit, "model_dir": MODEL_DIR,
             "qwen_tts": version, "speech_tokenizer_dtype": TOKENIZER_DTYPE,
             "weights_sha256": weights_sha256(MODEL_DIR), "lufs": LUFS, "batch_size": 1,
-            "language": LANGUAGE, "items": len(items)}
+            "language": LANGUAGE, "ids": subset_ids(plan, args.ids), "items": len(items)}
     done = resume_state(args.out, meta)
     todo = [it for it in items if it["id"] not in done]
     if not todo:
@@ -605,15 +638,16 @@ def tool_commit():
             "tree_clean": None if status is None else not status.strip()}
 
 
-def measure_meta(render_commit, srs, probe="1c0"):
-    """`measure_meta.json`: the code, library versions and settings that produced the measures."""
+def measure_meta(render_commit, srs, probe="1c0", ids=None):
+    """`measure_meta.json`: the code, library versions and settings that produced the measures;
+    `ids` is the render's id subset (None for the whole plan)."""
     import datetime
 
     import derive_vat_corpus as dvc
     import librosa
     import numpy as np
 
-    return {"tool": TOOL, **tool_commit(), "probe": probe,
+    return {"tool": TOOL, **tool_commit(), "probe": probe, "ids": ids,
             "render_commit": render_commit, "librosa": librosa.__version__, "numpy": np.__version__,
             "f0_range_hz": list(F0_RANGE), "f0_extended_fmax_hz": F0_EXTENDED_FMAX,
             "pyin_frame_samples": {str(sr): pyin_frame(sr) for sr in sorted(srs)},
@@ -625,11 +659,11 @@ def measure_meta(render_commit, srs, probe="1c0"):
                 datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
 
 
-def rendered(out, probe):
-    """-> (the manifest's rows in plan order, render_meta.json) of a finished render of `probe`,
-    after refusing a missing or truncated manifest, a meta without a commit or recording another
-    probe, a row that is not its plan item, and a missing clip. A meta that records no probe is
-    checked by its rows alone: the two plans share no id."""
+def rendered(out, probe, ids=None):
+    """-> (the manifest's rows in plan order, render_meta.json) of a finished render of `probe`, or
+    of its `ids` subset, after refusing a missing or truncated manifest, a meta without a commit,
+    recording another probe or another id subset, a row that is not its item, and a missing clip. A
+    meta that records no probe is checked by its rows alone: the two plans share no id."""
     manifest = os.path.join(out, "manifest.jsonl")
     if not os.path.exists(manifest):
         raise SystemExit("REFUSING: no manifest at %s; render first." % manifest)
@@ -645,7 +679,12 @@ def rendered(out, probe):
     if meta.get("probe", probe) != probe:
         raise SystemExit("REFUSING: %s's render_meta.json records probe %s, not %s."
                          % (out, meta["probe"], probe))
-    items = plan_items(probe)
+    plan = plan_items(probe)
+    subset = subset_ids(plan, ids)
+    if meta.get("ids") != subset:
+        raise SystemExit("REFUSING: %s's render_meta.json records %s, not %s; measure the ids it "
+                         "rendered." % (out, _ids_text(meta.get("ids")), _ids_text(subset)))
+    items = select_ids(plan, ids)
     check_rows(rows, out, items, commit=commit)
     want = [it["id"] for it in items]
     if {r["id"] for r in rows} != set(want):
@@ -655,12 +694,16 @@ def rendered(out, probe):
     return [by_id[i] for i in want], meta
 
 
+def _ids_text(ids):
+    return "the whole plan" if ids is None else "--ids " + " ".join(ids)
+
+
 def cmd_measure(args):
     import soundfile as sf
 
     from synth_common import write_json_atomic, write_text_atomic
 
-    rows, meta = rendered(args.out, args.probe)
+    rows, meta = rendered(args.out, args.probe, args.ids)
     out, srs = [], set()
     for r in rows:
         x, sr = sf.read(os.path.join(args.out, r["file"]), dtype="float32")
@@ -671,7 +714,7 @@ def cmd_measure(args):
     write_text_atomic(os.path.join(args.out, "measures.jsonl"),
                       "".join(json.dumps(o) + "\n" for o in out))
     write_json_atomic(os.path.join(args.out, "measure_meta.json"),
-                      measure_meta(meta["commit"], srs, args.probe))
+                      measure_meta(meta["commit"], srs, args.probe, meta.get("ids")))
     print("%d clips measured; %d without a voiced frame; %d without a phonation measure; %d with "
           "F0 out of pYIN's %g-%g Hz range; %d where pYIN and the autocorrelation disagree" % (
               len(out), sum(o["voiced_frames"] is None for o in out),
@@ -810,14 +853,18 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     probe = dict(choices=PROBES, default="1c0", help="the plan (default 1c0)")
+    ids = dict(nargs="+", metavar="ID", default=None,
+               help="only these items of the plan, in plan order (default: all)")
     sub.add_parser("plan").add_argument("--probe", **probe)
     r = sub.add_parser("render")
     r.add_argument("--out", required=True)
     r.add_argument("--commit", required=True)
     r.add_argument("--probe", **probe)
+    r.add_argument("--ids", **ids)
     m = sub.add_parser("measure")
     m.add_argument("--out", required=True)
     m.add_argument("--probe", **probe)
+    m.add_argument("--ids", **ids)
     s = sub.add_parser("steer", help="1c-0b's reading of a measured 1c0b folder")
     s.add_argument("--out", required=True)
     args = ap.parse_args(argv)

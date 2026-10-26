@@ -82,6 +82,26 @@ Four of five naive reads landed at or over the line; none of the grounded ones d
 with a grounded instruct is currently the **best** home for bright/teen female casting in
 the portfolio. Write the keys this way every time — the difference is the whole clip.
 
+## Pitch and voice range
+Qwen does **not** take pitch from the `pitch:` key. Measured over seven rungs from
+`Extremely low` to `Extremely high`, every other key held (Phase 1S probe 1c-0), the rungs
+did not order the voices: the three clips of one rung differed more than the rungs did. No other
+wording is a pitch control either (probe 1c-0b): numeric Hz targets, descriptive pitch, age,
+vocal weight and a free-text sentence did not move F0, or moved it only by producing a
+different voice. A female instruct asking for a "deep" voice landed in the male range — it
+may produce a male-sounding voice, not the same woman lower.
+
+So:
+- Cast the voice with the keys as usual — gender, age, texture, personality — and keep
+  `pitch:` a plain, stable description that agrees with them. It belongs to the format; it
+  is not a control.
+- A designed voice is admitted by its **measured** F0 and the owner's ear, not by its
+  words: `admit` in `scripts/lib/qwen_bands.py` places it in its gender's core or niche
+  band, or reports it unmeasured, which leaves it to the ear. Never promise a pitch through
+  the words.
+- Child-boy designs tend to read female. The male niche band is provisional for that
+  reason, and nothing casts a child boy from it without the owner's review.
+
 ## Narration (Neutral / Newscaster / Documentary delivery)
 
 With VibeVoice and Dia set aside (2026-07-29), narration renders on this portfolio. Qwen's
@@ -122,3 +142,7 @@ than either working or inert, and do not promise an accent you cannot demonstrat
 - Do not describe rooms, microphones, eras or broadcast media. The recording style
   is always a dry, close-mic modern studio.
 - Do not write a separate design field. One `instruct` string only.
+- Do not rely on `pitch:` words, or Hz figures, to reach a low or high extreme. They do not
+  move Qwen's pitch.
+- Do not write "deep" or "low" for a female voice expecting the same woman lower. It may
+  come back a different, male-sounding voice.

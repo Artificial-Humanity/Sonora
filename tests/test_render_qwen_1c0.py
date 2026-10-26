@@ -671,18 +671,19 @@ def _model(tmp_path):
     return d
 
 
-def _meta(commit, weights, probe="1c0"):
+def _meta(commit, weights, probe="1c0", ids=None):
     """The RESUME_KEYS of a render_meta.json."""
     return {"commit": commit, "weights_sha256": weights, "qwen_tts": "0.1.1",
-            "speech_tokenizer_dtype": "float32", "probe": probe}
+            "speech_tokenizer_dtype": "float32", "probe": probe, "ids": ids}
 
 
-def _rendered(out, commit, weights, items=None, wav=lambda it: b"RIFF", probe="1c0"):
-    """An --out a render left: meta, a manifest row per item and its (placeholder) wav."""
+def _rendered(out, commit, weights, items=None, wav=lambda it: b"RIFF", probe="1c0", ids=None):
+    """An --out a render left: meta, a manifest row per item and its (placeholder) wav. `ids` is the
+    meta's id subset; without `items` the rows are its items (the whole plan when None)."""
     (out / "clips").mkdir(parents=True, exist_ok=True)
-    (out / "render_meta.json").write_text(json.dumps(_meta(commit, weights, probe)))
+    (out / "render_meta.json").write_text(json.dumps(_meta(commit, weights, probe, ids)))
     rows = []
-    for it in items if items is not None else rq.plan_items(probe):
+    for it in items if items is not None else rq.select_ids(rq.plan_items(probe), ids):
         (out / "clips" / (it["id"] + ".wav")).write_bytes(wav(it))
         rows.append(dict(it, file="clips/%s.wav" % it["id"], sr=SR, commit=commit,
                          speech_tokenizer_dtype="float32"))
@@ -702,8 +703,8 @@ def render_env(tmp_path, monkeypatch):
     return tmp_path / "out", rq.weights_sha256(str(model)), model
 
 
-def _render(out, commit="abc123", probe="1c0"):
-    rq.cmd_render(argparse.Namespace(out=str(out), commit=commit, probe=probe))
+def _render(out, commit="abc123", probe="1c0", ids=None):
+    rq.cmd_render(argparse.Namespace(out=str(out), commit=commit, probe=probe, ids=ids))
 
 
 def test_weights_hash_covers_every_speech_tokenizer_file(tmp_path):
@@ -724,7 +725,7 @@ def test_a_fresh_render_writes_its_meta_before_loading_the_model(render_env):
     meta = json.loads((out / "render_meta.json").read_text())
     assert (meta["commit"], meta["weights_sha256"], meta["qwen_tts"]) == ("abc123", weights, "0.1.1")
     assert (meta["batch_size"], meta["items"], meta["lufs"]) == (1, 60, rq.LUFS)
-    assert (meta["speech_tokenizer_dtype"], meta["probe"]) == ("float32", "1c0")
+    assert (meta["speech_tokenizer_dtype"], meta["probe"], meta["ids"]) == ("float32", "1c0", None)
     assert set(rq.RESUME_KEYS) <= set(meta)
 
 
@@ -798,7 +799,7 @@ def test_resume_refuses_a_missing_wav_or_a_repeated_id(render_env):
 
 
 @pytest.mark.parametrize("what", ["commit", "weights_sha256", "qwen_tts",
-                                  "speech_tokenizer_dtype", "probe"])
+                                  "speech_tokenizer_dtype", "probe", "ids"])
 def test_resume_refuses_another_renders_meta(render_env, what):
     out, weights, model = render_env
     _rendered(out, "abc123", weights, items=rq.ladder()[:10])
@@ -814,6 +815,9 @@ def test_resume_refuses_another_renders_meta(render_env, what):
         # A folder rendered with the bf16 decoder records no decoder dtype (the 1c-0 probe).
         del meta["speech_tokenizer_dtype"]
         (out / "render_meta.json").write_text(json.dumps(meta))
+    elif what == "ids":
+        (out / "render_meta.json").write_text(json.dumps(
+            dict(meta, ids=[it["id"] for it in rq.ladder()[:10]])))
     else:
         probe = "1c0b"
     with pytest.raises(SystemExit, match="REFUSING: resuming .*%s" % what):
@@ -846,19 +850,19 @@ def test_resume_drops_only_a_truncated_final_line(tmp_path, capsys):
 
 # --- measure --------------------------------------------------------------------------------
 
-def _measure(out, probe="1c0"):
-    rq.cmd_measure(argparse.Namespace(out=str(out), probe=probe))
+def _measure(out, probe="1c0", ids=None):
+    rq.cmd_measure(argparse.Namespace(out=str(out), probe=probe, ids=ids))
 
 
 def _clip_f0(it):
     return 520.0 if it["id"].startswith("P1") else 210.0 if it["id"].startswith("F") else 110.0
 
 
-def _measure_dir(tmp_path, out=None, f0_of=_clip_f0, probe="1c0", seconds=1.0):
+def _measure_dir(tmp_path, out=None, f0_of=_clip_f0, probe="1c0", seconds=1.0, ids=None):
     import soundfile as sf
     out = out or tmp_path / "probe"
-    _rendered(out, "abc123", {"w": "x"}, probe=probe)
-    for it in rq.plan_items(probe):
+    _rendered(out, "abc123", {"w": "x"}, probe=probe, ids=ids)
+    for it in rq.select_ids(rq.plan_items(probe), ids):
         sf.write(str(out / "clips" / (it["id"] + ".wav")),
                  _stack(f0_of(it), seconds).astype("float32"), SR)
     return out
@@ -1064,6 +1068,128 @@ def test_measure_reads_a_1c0b_folder_in_its_plan_order(tmp_path, capsys):
     assert all(abs(r["f0_median"] - _clip_f0({"id": r["id"]})) < 5.0 for r in rows)
     assert json.loads((out / "measure_meta.json").read_text())["probe"] == "1c0b"
     assert "66 clips measured" in capsys.readouterr().out
+
+
+# --- --ids: part of a plan ------------------------------------------------------------------
+
+ANCHORS = ["M4-s3", "F4-s3", "F6-s2"]
+
+
+def test_select_ids_keeps_plan_order_and_refuses_an_unknown_or_repeated_id():
+    plan = rq.ladder()
+    assert rq.select_ids(plan, None) is plan
+    assert [it["id"] for it in rq.select_ids(plan, ["F6-s2", "M4-s3", "F4-s3"])] == ANCHORS
+    assert rq.select_ids(plan, ["M4-s3"]) == [next(it for it in plan if it["id"] == "M4-s3")]
+    assert rq.subset_ids(plan, ["F6-s2", "M4-s3", "F4-s3"]) == ANCHORS
+    assert rq.subset_ids(plan, None) is None
+    with pytest.raises(SystemExit, match="REFUSING: --ids Q9-s9 is not in the plan"):
+        rq.select_ids(plan, ["M4-s3", "Q9-s9"])
+    with pytest.raises(SystemExit, match="REFUSING: --ids M-base-k1, Q9 are not in the plan"):
+        rq.select_ids(plan, ["M-base-k1", "Q9"])
+    with pytest.raises(SystemExit, match="REFUSING: --ids names M4-s3 more than once"):
+        rq.select_ids(plan, ["M4-s3", "F4-s3", "M4-s3"])
+
+
+def test_render_refuses_an_unknown_id_before_writing_anything(render_env):
+    out, _weights, _model_dir = render_env
+    with pytest.raises(SystemExit, match="REFUSING: --ids Q9-s9 is not in the plan"):
+        rq.main(["render", "--out", str(out), "--commit", "abc123", "--ids", "M4-s3", "Q9-s9"])
+    with pytest.raises(SystemExit, match="REFUSING: --ids M4-s3 is not in the plan"):
+        rq.main(["render", "--out", str(out), "--commit", "abc123", "--probe", "1c0b",
+                 "--ids", "M4-s3"])
+    assert not out.exists()
+
+
+def test_a_subset_render_renders_only_its_ids_in_plan_order(render_env, monkeypatch, capsys):
+    """A fake load_qwen and torch, as above: the anchors from 1c-0's plan, with their registered
+    seeds and instructs; render_meta.json records the subset."""
+    import types
+    import qwen_load
+    out, _weights, _model_dir = render_env
+    seeds = []
+
+    class Model:
+        def generate_voice_design(self, text, language, instruct):
+            return [np.zeros(SR // 10, dtype=np.float32)], SR
+    monkeypatch.setattr(qwen_load, "load_qwen", lambda d: Model())
+    monkeypatch.setitem(sys.modules, "torch", types.SimpleNamespace(manual_seed=seeds.append))
+    monkeypatch.setitem(sys.modules, "loudness", types.SimpleNamespace(
+        match_loudness=lambda x, sr, lufs: (x, False)))
+    rq.main(["render", "--out", str(out), "--commit", "abc123", "--ids", "F6-s2", "M4-s3", "F4-s3"])
+    meta = json.loads((out / "render_meta.json").read_text())
+    assert (meta["ids"], meta["items"], meta["probe"]) == (ANCHORS, 3, "1c0")
+    rows = [json.loads(line) for line in (out / "manifest.jsonl").read_text().splitlines()]
+    plan = {it["id"]: it for it in rq.ladder()}
+    assert [r["id"] for r in rows] == ANCHORS
+    assert seeds == [plan[i]["seed"] for i in ANCHORS] == [9143, 9243, 9262]
+    for r in rows:
+        assert {k: r[k] for k in ("seed", "text", "instruct", "gender")} == \
+            {k: plan[r["id"]][k] for k in ("seed", "text", "instruct", "gender")}
+    assert sorted(p.name for p in (out / "clips").iterdir()) == sorted(i + ".wav" for i in ANCHORS)
+    # The same subset, named in another order, is the same render: nothing is left to do.
+    rq.main(["render", "--out", str(out), "--commit", "abc123", "--ids", "M4-s3", "F6-s2", "F4-s3"])
+    assert "all 3 clips already rendered; the model was not loaded." in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("folder, run", [
+    (None, ANCHORS),                    # a whole-plan folder, resumed as a subset
+    (ANCHORS, None),                    # a subset folder, resumed as the whole plan
+    (ANCHORS, ["M4-s3", "F4-s3"]),      # a subset folder, resumed as another subset
+])
+def test_a_resume_refuses_another_id_subset(render_env, folder, run):
+    out, weights, _model_dir = render_env
+    plan = rq.ladder()
+    _rendered(out, "abc123", weights, items=rq.select_ids(plan, folder)[:2], ids=folder)
+    with pytest.raises(SystemExit, match="REFUSING: resuming .*this run's ids differ"):
+        _render(out, ids=run)
+
+
+def test_a_subset_resume_refuses_a_row_outside_the_subset(render_env):
+    out, weights, _model_dir = render_env
+    plan = {it["id"]: it for it in rq.ladder()}
+    _rendered(out, "abc123", weights, items=[plan["M4-s3"], plan["M1-s1"]], ids=ANCHORS)
+    with pytest.raises(SystemExit, match="REFUSING: manifest id 'M1-s1' is not a plan id"):
+        _render(out, ids=ANCHORS)
+
+
+def test_measure_reads_a_subset_folder(tmp_path, capsys):
+    out = _measure_dir(tmp_path, ids=ANCHORS, seconds=0.5)
+    _measure(out, ids=["F6-s2", "F4-s3", "M4-s3"])
+    rows = [json.loads(line) for line in (out / "measures.jsonl").read_text().splitlines()]
+    assert [r["id"] for r in rows] == ANCHORS
+    assert all(abs(r["f0_median"] - _clip_f0({"id": r["id"]})) < 5.0 for r in rows)
+    meta = json.loads((out / "measure_meta.json").read_text())
+    assert (meta["ids"], meta["probe"], meta["render_commit"]) == (ANCHORS, "1c0", "abc123")
+    assert "3 clips measured" in capsys.readouterr().out
+
+
+def test_measure_refuses_another_subset_than_the_render_and_misses_only_within_it(tmp_path):
+    out = _measure_dir(tmp_path, ids=ANCHORS, seconds=0.5)
+    with pytest.raises(SystemExit, match="REFUSING: .*records --ids M4-s3 F4-s3 F6-s2, not the "
+                                         "whole plan; measure the ids it rendered"):
+        _measure(out)
+    with pytest.raises(SystemExit, match="REFUSING: .*records --ids M4-s3 F4-s3 F6-s2, not --ids "
+                                         "M4-s3 F4-s3;"):
+        _measure(out, ids=["M4-s3", "F4-s3"])
+    with pytest.raises(SystemExit, match="REFUSING: --ids Q9-s9 is not in the plan"):
+        _measure(out, ids=ANCHORS + ["Q9-s9"])
+    lines = (out / "manifest.jsonl").read_text().splitlines(keepends=True)
+    (out / "manifest.jsonl").write_text("".join(lines[:2]))
+    with pytest.raises(SystemExit, match=r"REFUSING: 2 of 3 1c0 clips rendered \(missing \['F6-s2'\]\)"):
+        _measure(out, ids=ANCHORS)
+    assert not (out / "measures.jsonl").exists()
+    whole = _measure_dir(tmp_path / "whole", seconds=0.5)
+    with pytest.raises(SystemExit, match="REFUSING: .*records the whole plan, not --ids M4-s3 "
+                                         "F4-s3 F6-s2"):
+        _measure(whole, ids=ANCHORS)
+
+
+def test_steer_refuses_a_subset_of_1c0b(tmp_path):
+    out = tmp_path / "b"
+    _rendered(out, "abc123", {"w": "x"}, probe="1c0b", ids=["M-base-k1", "F-base-k1"])
+    with pytest.raises(SystemExit, match="REFUSING: .*records --ids M-base-k1 F-base-k1, not the "
+                                         "whole plan"):
+        rq.main(["steer", "--out", str(out)])
 
 
 # --- 1c-0b's steer reading ------------------------------------------------------------------
