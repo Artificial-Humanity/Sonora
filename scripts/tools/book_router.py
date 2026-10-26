@@ -78,26 +78,11 @@ API = "https://librivox.org/api/feed/audiobooks/"
 # LibriVox rate-limits; be a good citizen on a 30-book batch.
 SLEEP_BETWEEN = 1.5
 
-STOPWORDS = {"the", "a", "an"}
-
-
 # ---------------------------------------------------------------- helpers
-def norm_title(t: str) -> str:
-    """Lowercase, drop punctuation and a leading article, collapse space.
-
-    Deliberately lossy: it has to make "The Awakening" and "Awakening" agree. It must
-    NOT be clever enough to equate genuinely different titles — same-work/different-title
-    cases belong in ALIASES, where each entry is verified by hand.
-    """
-    t = (t or "").lower().replace("&", " and ")   # "Guest & Other" == "Guest and Other"
-    # Apostrophes are DELETED, not spaced: a URL slug writes "draculas", the catalogue
-    # writes "Dracula's", and spacing would give "dracula s" — two words vs one.
-    t = re.sub(r"['\u2018\u2019]", "", t)
-    t = re.sub(r"[^\w\s]", " ", t)
-    words = [w for w in t.split() if w]
-    while words and words[0] in STOPWORDS:
-        words.pop(0)
-    return " ".join(words)
+# One definition, in synth_common — `probe_text_bank` builds its holdout title key on the
+# same rule. Re-exported under the old names; callers here use them unchanged.
+STOPWORDS = synth_common.TITLE_ARTICLES
+norm_title = synth_common.norm_title
 
 
 # Works LibriTTS holds under a different Gutenberg edition than LibriVox reports.

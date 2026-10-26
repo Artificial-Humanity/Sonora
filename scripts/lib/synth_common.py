@@ -616,6 +616,33 @@ def parse_playtime(value):
     return seconds if seconds > 0 else None
 
 
+# ------------------------------------------------------------- book titles
+
+TITLE_ARTICLES = {"the", "a", "an"}
+
+
+def norm_title(t):
+    """Lowercase, drop punctuation and a leading article, collapse space.
+
+    Deliberately lossy: it has to make "The Awakening" and "Awakening" agree. It must
+    NOT be clever enough to equate genuinely different titles — same-work/different-title
+    cases belong in `book_router.ALIASES`, where each entry is verified by hand.
+
+    Moved here from `book_router` when `probe_text_bank` needed the same rule for its
+    holdout title key (which adds accent folding and volume/version stripping on top,
+    for its own over-excluding match; this function is unchanged).
+    """
+    t = (t or "").lower().replace("&", " and ")   # "Guest & Other" == "Guest and Other"
+    # Apostrophes are DELETED, not spaced: a URL slug writes "draculas", the catalogue
+    # writes "Dracula's", and spacing would give "dracula s" — two words vs one.
+    t = re.sub(r"['\u2018\u2019]", "", t)
+    t = re.sub(r"[^\w\s]", " ", t)
+    words = [w for w in t.split() if w]
+    while words and words[0] in TITLE_ARTICLES:
+        words.pop(0)
+    return " ".join(words)
+
+
 def _url_parts(url):
     """-> (host, [path segments]) lowercased, or ("", []) for nothing usable."""
     if not url:
