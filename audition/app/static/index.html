@@ -451,6 +451,8 @@ function focusCard(i,scroll=false){
 }
 
 const numOr = (v, fb) => (v !== '' && v != null) ? +v : fb;
+const GENDER_LABELS = {1: 'Male', 2: 'Female', 3: 'Neutral'};
+const GENDER_TO_NUM = {Male: 1, Female: 2, Neutral: 3};
 
 function ageBandLabel(gender, val){
   const bands = AGE_BANDS_BY_GENDER[gender] || AGE_BANDS_BY_GENDER.Neutral || [];
@@ -458,7 +460,11 @@ function ageBandLabel(gender, val){
 }
 
 function fmtAttrVal(attr, gender, aud, intVal){
-  const base = attr === 'age' ? `${aud} · ${ageBandLabel(gender, aud)}` : `${aud} / 5`;
+  const base = attr === 'gender'
+    ? `${aud} · ${GENDER_LABELS[aud] || ''}`
+    : attr === 'age'
+      ? `${aud} · ${ageBandLabel(gender, aud)}`
+      : `${aud} / 5`;
   if (intVal == null || intVal === '') return base;
   const d = aud - intVal;
   const dStr = d > 0 ? `+${d}` : `${d}`;
@@ -469,11 +475,14 @@ function cardEl(c,i){
   const el=document.createElement('div'); el.className='card';
   const set = c._rated;
   const g = c.gender || genderOf(c.id);
+  const intGender = numOr(c.intended_gender, GENDER_TO_NUM[g] || 3), audGender = numOr(c.audited_gender, GENDER_TO_NUM[g] || intGender);
+  const effG = GENDER_LABELS[audGender] || g;
   const intAge = numOr(c.intended_age, 3), audAge = numOr(c.audited_age, intAge);
   const intPitch = numOr(c.intended_pitch, 3), audPitch = numOr(c.audited_pitch, intPitch);
   const intDepth = numOr(c.intended_depth, 3), audDepth = numOr(c.audited_depth, intDepth);
   const intStrain = numOr(c.intended_strain, 0), audStrain = numOr(c.audited_strain, intStrain);
   const sliderState = {
+    intended_gender: intGender, audited_gender: audGender, touched_gender: c.touched_gender==='1',
     intended_age: intAge, audited_age: audAge, touched_age: c.touched_age==='1',
     intended_pitch: intPitch, audited_pitch: audPitch, touched_pitch: c.touched_pitch==='1',
     intended_depth: intDepth, audited_depth: audDepth, touched_depth: c.touched_depth==='1',
@@ -509,18 +518,21 @@ function cardEl(c,i){
           <select class="tag age sel" data-role="age" title="age band override">${AGES.map(o=>`<option value="${esc(o)}"${o===(c.age||'')?' selected':''}>${o===''?'age…':esc(o)}</option>`).join('')}${(c.age&&!AGES.includes(c.age))?`<option value="${esc(c.age)}" selected>${esc(c.age)} (unknown)</option>`:''}</select>
           <select class="tag del sel" data-role="delivery" title="legacy delivery lane">${DELIVERIES.map(o=>`<option value="${esc(o)}"${o===(c.delivery||'')?' selected':''}>${o===''?'delivery (v1)…':esc(o)}</option>`).join('')}${(c.delivery&&!DELIVERIES.includes(c.delivery))?`<option value="${esc(c.delivery)}" selected>${esc(c.delivery)} (unknown)</option>`:''}</select>
         </div>
+        <div class="srow"><span class="slab">Gender (1–3)</span>
+          <input type="range" data-attr="gender" min="1" max="3" step="1" value="${audGender}">
+          <span class="sval" data-val="gender">${esc(fmtAttrVal('gender', effG, audGender, intGender))}</span></div>
         <div class="srow"><span class="slab">Age (1–5)</span>
           <input type="range" data-attr="age" min="1" max="5" step="1" value="${audAge}">
-          <span class="sval" data-val="age">${esc(fmtAttrVal('age', g, audAge, intAge))}</span></div>
+          <span class="sval" data-val="age">${esc(fmtAttrVal('age', effG, audAge, intAge))}</span></div>
         <div class="srow"><span class="slab">Pitch (1–5)</span>
           <input type="range" data-attr="pitch" min="1" max="5" step="1" value="${audPitch}">
-          <span class="sval" data-val="pitch">${esc(fmtAttrVal('pitch', g, audPitch, intPitch))}</span></div>
+          <span class="sval" data-val="pitch">${esc(fmtAttrVal('pitch', effG, audPitch, intPitch))}</span></div>
         <div class="srow"><span class="slab">Depth (1–5)</span>
           <input type="range" data-attr="depth" min="1" max="5" step="1" value="${audDepth}">
-          <span class="sval" data-val="depth">${esc(fmtAttrVal('depth', g, audDepth, intDepth))}</span></div>
+          <span class="sval" data-val="depth">${esc(fmtAttrVal('depth', effG, audDepth, intDepth))}</span></div>
         <div class="srow"><span class="slab">Strain (0–5)</span>
           <input type="range" data-attr="strain" min="0" max="5" step="1" value="${audStrain}">
-          <span class="sval" data-val="strain">${esc(fmtAttrVal('strain', g, audStrain, intStrain))}</span></div>
+          <span class="sval" data-val="strain">${esc(fmtAttrVal('strain', effG, audStrain, intStrain))}</span></div>
       </div>
       <div class="panel qual">
         <h3>Panel 2 — Quality &amp; Defects</h3>
@@ -588,6 +600,18 @@ function cardEl(c,i){
       const v=+inp.value;
       sliderState[`audited_${attr}`]=v;
       sliderState[`touched_${attr}`]=true;
+      if(attr==='gender'){
+        const gNew=GENDER_LABELS[v]||g;
+        const gSel=el.querySelector('select.gender');
+        if(gSel){ gSel.value=gNew; gSel.dataset.g=gNew; }
+        c.gender=gNew;
+        const ageValEl=el.querySelector('[data-val="age"]');
+        if(ageValEl) ageValEl.textContent=fmtAttrVal('age', gNew, sliderState.audited_age, sliderState.intended_age);
+        if(sliderState.touched_age){
+          const ageSel=el.querySelector('select[data-role="age"]');
+          if(ageSel) ageSel.value=ageBandLabel(gNew, sliderState.audited_age);
+        }
+      }
       const gCur=el.querySelector('select.gender').value||g;
       valEl.textContent=fmtAttrVal(attr, gCur, v, sliderState[`intended_${attr}`]);
       if(attr==='age'){
@@ -636,6 +660,12 @@ function cardEl(c,i){
     const res=await fetch('/api/gender',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:c.id,gender:val})});
     if(!res.ok){toast('Gender save failed: '+res.status);return;}
     genderSel.dataset.g=val; c.gender=val;
+    if(GENDER_TO_NUM[val]){
+      const gNum=GENDER_TO_NUM[val];
+      sliderState.audited_gender=gNum; sliderState.touched_gender=true;
+      const gInp=el.querySelector('input[data-attr="gender"]'); if(gInp) gInp.value=gNum;
+      const gValEl=el.querySelector('[data-val="gender"]'); if(gValEl) gValEl.textContent=fmtAttrVal('gender', val, gNum, sliderState.intended_gender);
+    }
     const ageValEl=el.querySelector('[data-val="age"]');
     if(ageValEl) ageValEl.textContent=fmtAttrVal('age', val, sliderState.audited_age, sliderState.intended_age);
     toast(`${c.id}: gender → ${val}`);
@@ -722,15 +752,20 @@ function probeCardEl(probeId, c, updateProbeStat){
   el.className = 'card' + (c.zone ? ' done' : '');
   const g = c.gender || genderOf(c.id);
   const ac = c.acoustics || {};
+  const intGender = c.intended_gender != null && c.intended_gender !== '' ? +c.intended_gender : (GENDER_TO_NUM[g] || null);
   const intAge = c.intended_age != null && c.intended_age !== '' ? +c.intended_age : null;
   const intPitch = c.intended_pitch != null && c.intended_pitch !== '' ? +c.intended_pitch : null;
   const intDepth = c.intended_depth != null && c.intended_depth !== '' ? +c.intended_depth : null;
   const intStrain = c.intended_strain != null && c.intended_strain !== '' ? +c.intended_strain : null;
+  const audGender = numOr(c.audited_gender, numOr(intGender, 3));
+  let curG = GENDER_LABELS[audGender] || g;
   const audAge = numOr(c.audited_age, numOr(c.intended_age, 3));
   const audPitch = numOr(c.audited_pitch, numOr(c.intended_pitch, 3));
   const audDepth = numOr(c.audited_depth, numOr(c.intended_depth, 3));
   const audStrain = numOr(c.audited_strain, numOr(c.intended_strain, 0));
   const sState = {
+    ...(intGender !== null ? {intended_gender: intGender} : {}),
+    audited_gender: audGender, touched_gender: c.touched_gender==='1',
     ...(intAge !== null ? {intended_age: intAge} : {}),
     audited_age: audAge, touched_age: c.touched_age==='1',
     ...(intPitch !== null ? {intended_pitch: intPitch} : {}),
@@ -757,18 +792,21 @@ function probeCardEl(probeId, c, updateProbeStat){
     <div class="panels">
       <div class="panel voice">
         <h3>Panel 1 — Voice &amp; Delivery</h3>
+        <div class="srow"><span class="slab">Gender (1–3)</span>
+          <input type="range" data-pattr="gender" min="1" max="3" step="1" value="${audGender}">
+          <span class="sval" data-pval="gender">${esc(fmtAttrVal('gender', curG, audGender, intGender))}</span></div>
         <div class="srow"><span class="slab">Age (1–5)</span>
           <input type="range" data-pattr="age" min="1" max="5" step="1" value="${audAge}">
-          <span class="sval" data-pval="age">${esc(fmtAttrVal('age', g, audAge, intAge))}</span></div>
+          <span class="sval" data-pval="age">${esc(fmtAttrVal('age', curG, audAge, intAge))}</span></div>
         <div class="srow"><span class="slab">Pitch (1–5)</span>
           <input type="range" data-pattr="pitch" min="1" max="5" step="1" value="${audPitch}">
-          <span class="sval" data-pval="pitch">${esc(fmtAttrVal('pitch', g, audPitch, intPitch))}</span></div>
+          <span class="sval" data-pval="pitch">${esc(fmtAttrVal('pitch', curG, audPitch, intPitch))}</span></div>
         <div class="srow"><span class="slab">Depth (1–5)</span>
           <input type="range" data-pattr="depth" min="1" max="5" step="1" value="${audDepth}">
-          <span class="sval" data-pval="depth">${esc(fmtAttrVal('depth', g, audDepth, intDepth))}</span></div>
+          <span class="sval" data-pval="depth">${esc(fmtAttrVal('depth', curG, audDepth, intDepth))}</span></div>
         <div class="srow"><span class="slab">Strain (0–5)</span>
           <input type="range" data-pattr="strain" min="0" max="5" step="1" value="${audStrain}">
-          <span class="sval" data-pval="strain">${esc(fmtAttrVal('strain', g, audStrain, intStrain))}</span></div>
+          <span class="sval" data-pval="strain">${esc(fmtAttrVal('strain', curG, audStrain, intStrain))}</span></div>
       </div>
       <div class="panel qual">
         <h3>Panel 2 — Quality &amp; Defects</h3>
@@ -809,7 +847,12 @@ function probeCardEl(probeId, c, updateProbeStat){
     const attr=inp.dataset.pattr, valEl=el.querySelector(`[data-pval="${attr}"]`);
     inp.addEventListener('input',()=>{
       const v=+inp.value; sState[`audited_${attr}`]=v; sState[`touched_${attr}`]=true;
-      valEl.textContent=fmtAttrVal(attr, g, v, sState[`intended_${attr}`]);
+      if(attr==='gender'){
+        curG=GENDER_LABELS[v]||g;
+        const ageValEl=el.querySelector('[data-pval="age"]');
+        if(ageValEl) ageValEl.textContent=fmtAttrVal('age', curG, sState.audited_age, sState.intended_age);
+      }
+      valEl.textContent=fmtAttrVal(attr, curG, v, sState[`intended_${attr}`]);
     });
     inp.addEventListener('change',()=>{ if (c.zone) saveProbe(c.zone); });
   });
