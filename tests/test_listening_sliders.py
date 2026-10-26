@@ -236,6 +236,9 @@ def test_audition_static_html_has_two_panels_and_five_defect_sliders():
     assert "Quality &amp; Defects" in html or "Quality & Defects" in html
     for label in ("Buzz", "Hum", "Layering", "Background noise", "Human–Robot"):
         assert label in html, f"missing {label!r} in audition static/index.html"
+    assert "function fmtAttrVal(" in html
+    assert "(Δ ${dStr})" in html
+    assert "(+ac.f0_median_hz).toFixed(1)" in html
 
 
 # --- 3. Calibration Probe Mode in Dataset Listening (1c-0) --------------------
