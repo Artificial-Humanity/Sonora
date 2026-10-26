@@ -87,8 +87,9 @@ the portfolio. Write the keys this way every time — the difference is the whol
 Qwen does **not** take pitch from the `pitch:` key. Measured over seven rungs from
 `Extremely low` to `Extremely high`, every other key held (Phase 1S probe 1c-0), the rungs
 did not order the voices: from the lowest rung to the highest, the rung's F0 (the median of
-its three clips) moved only 1.4 semitones (male) and 0.4 semitones (female), and not in rung
-order, while the clips of one rung differed by up to 5.5 semitones. No other wording is a
+its three clips) moved only 1.4 semitones (male) and 0.4 semitones (female). The rungs fell
+in no order across a 4.6 (male) and 5.2 (female) semitone range, while the clips of one rung
+differed by up to 5.5 semitones. No other wording is a
 pitch control either (probe 1c-0b): numeric Hz targets, descriptive pitch, age, vocal weight
 and a free-text sentence did not reliably move F0, or moved it only by producing a different
 voice. A female instruct asking for a "deep" voice landed in the male range — it may produce
