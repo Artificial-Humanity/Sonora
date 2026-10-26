@@ -51,10 +51,11 @@ a fairy/sprite character voice, and **not usable in an adult non-fantasy novel a
 A clip that lands there is a DROP, not a low score. Since our corpus is overwhelmingly
 adult literary prose, that makes this a category error rather than a matter of taste.
 
-Young, higher-pitched female voices stay in the portfolio: the owner wants them, inside a
-normal human range. Past that range a voice is only usable for a cartoon or a non-human
-part. So it is niche, not mainstream. "Holding the range" below says how to tell the
-two apart.
+That DROP is about a performed fairy delivery. Pitch is a separate question. Young,
+higher-pitched female voices stay in the portfolio: the owner wants them, inside a normal
+human range. A voice measured past that range is usable only for a cartoon or a non-human
+part, so it is niche, not mainstream. "Holding the range" below says how the two are told
+apart.
 
 Left alone, a young + bright + high-arousal instruct collapses straight into it, and this
 casting is where it bites hardest because every attribute you are filling in pushes the
@@ -65,8 +66,9 @@ take, but by writing the keys AGAINST the drift:
 
 - `tone:` and `personality:` — name something grounded (`matter-of-fact`, `direct`,
   `unaffected`, `dry`). Never `whimsical`, `magical`, `playful`, `sparkling`, `bubbly`.
-- `pitch:` — say **stable** or `level`. It does not set the voice's F0 (see "Pitch and
-  voice range"), but the naive arm below that read sing-song asked for a plain "high".
+- `pitch:` — say **stable** or `level`, in keeping with the grounded keys. It does not set
+  the voice's F0 (see "Pitch and voice range"). The naive arm below asked for "High and
+  bright" but changed every other key too, so no single word is known to cause the drift.
 - `fluency:`/`clarity:` — `natural`, `conversational`. "Crisp/precise" reads as elocution
   and pushes twee.
 - `emotion:` — keep it the register's actual emotion. Do not add brightness on top of a
@@ -91,17 +93,20 @@ the portfolio. Write the keys this way every time — the difference is the whol
 
 #### Holding the range
 The keys above shape the delivery; they do not hold the pitch in range. In probe 1c-0 one
-young-teenager instruct (`age: Young teenager, about thirteen`, `pitch: High, stable`)
-rendered at 258 Hz on two seeds and 380 Hz on the third. The owner rated the first two core
-and the third niche. The words were identical, so only the measurement tells them apart:
+young-teenager instruct (`age: Young teenager, about thirteen`, `pitch: High, stable`) was
+rendered three times, each with a different seed and sentence. Two clips measured 258 Hz and
+the owner rated them core; one measured 380 Hz and was rated niche. The instruct was
+identical, so only the measurement tells them apart. `admit` places a female voice in:
 
-- **Mainstream use:** a young female voice qualifies only when `admit` places it in the female
-  **core** band, which tops out at 258 Hz.
+- **Core** (female, up to 258 Hz): mainstream use.
 - **Niche** (361–389 Hz): cartoon or non-human parts only. Never cast a mainstream character
   from it.
-- **Unmeasured** (between the bands, or beyond them): the owner's ear decides.
+- **Unmeasured** (between the bands, or beyond them): the owner's ear decides, and may still
+  pass it for mainstream use.
 
-When a design lands too high, a different seed moves it, not different pitch words.
+The band edges mark where Qwen rendered in the probe, not where the human range ends. When a
+design lands too high, do not reword the pitch to bring it down; the words do not move it.
+The measurement and the owner decide.
 
 ## Pitch and voice range
 Qwen does **not** take pitch from the `pitch:` key. Measured over seven rungs from

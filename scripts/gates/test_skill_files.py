@@ -199,7 +199,9 @@ def test_qwen_bands_claims():
     """qwen.md tells the director that a designed voice is admitted by `admit` in
     `scripts/lib/qwen_bands.py` (core, niche or unmeasured), and that the male niche band is
     provisional. Each of those is a name in the module; if one is renamed or the provisional
-    flag dropped, the skill file is describing code that no longer exists."""
+    flag dropped, the skill file is describing code that no longer exists. Its "Holding the
+    range" section quotes the female core ceiling and niche range in whole Hz; those must
+    round from `BANDS`."""
     import qwen_bands
 
     text = skill("qwen")
@@ -223,7 +225,7 @@ def test_qwen_bands_claims():
     # "Holding the range" quotes the female bands to the whole Hz; they must be BANDS'.
     bands = getattr(qwen_bands, "BANDS", {})
     core, niche = bands.get(("Female", "core")), bands.get(("Female", "niche"))
-    m = re.search(r"female\s+\*\*core\*\* band, which tops out at (\d+) Hz", text)
+    m = re.search(r"\*\*Core\*\* \(female, up to (\d+) Hz\)", text)
     check(m is not None and core is not None and int(m.group(1)) == round(core.f0_median_max),
           "qwen.md's female core ceiling (Holding the range) no longer matches "
           "qwen_bands.BANDS[('Female', 'core')]")
