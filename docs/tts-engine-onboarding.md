@@ -51,7 +51,7 @@ injected into the casting pass's system prompt. It must state:
   MOSS-VoiceGenerator: one free-form sentence; VibeVoice: a casting call, not a
   performance note; Dia: nothing but non-verbal tags).
 - The literal words our own code parses, where casting is regex-driven.
-- Known compensations (Qwen renders younger and higher than described).
+- Known compensations (Qwen renders younger than described).
 - An explicit **Do not** section. Forbidding the wrong move matters as much as
   describing the right one — MOSS silently deletes anything in `[...]`, and
   VibeVoice's ambience is triggered by describing rooms.

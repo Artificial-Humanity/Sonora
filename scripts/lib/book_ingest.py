@@ -179,7 +179,7 @@ _ENGINE_GUIDE = {
     "qwen": "the richest instruction slot in the portfolio and the measured gold "
             "standard — casting, delivery and accent all reach it as plain text. "
             "The default for a line whose PERFORMANCE must be described. Renders "
-            "younger and higher than you describe; account for it.",
+            "younger than you describe; account for it.",
     "chatterbox": "no text-instruction slot at all: two numbers and a reference "
                   "clip. Voice IDENTITY comes from the reference, so choose it "
                   "when who is speaking matters more than how.",

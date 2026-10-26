@@ -194,6 +194,34 @@ def test_zonos_emotion_off_is_representable():
           f"build_direction must pass emotion=None through, got {d['emotion']!r}")
 
 
+# --- qwen.md: the F0 admission bands it names must be the ones in qwen_bands -------
+def test_qwen_bands_claims():
+    """qwen.md tells the director that a designed voice is admitted by `admit` in
+    `scripts/lib/qwen_bands.py` (core, niche or unmeasured), and that the male niche band is
+    provisional. Each of those is a name in the module; if one is renamed or the provisional
+    flag dropped, the skill file is describing code that no longer exists."""
+    import qwen_bands
+
+    text = skill("qwen")
+    check(os.path.isfile(os.path.join(_SONORA_REPO, "scripts", "lib", "qwen_bands.py")),
+          "qwen.md names scripts/lib/qwen_bands.py, which does not exist")
+    check("`admit` in `scripts/lib/qwen_bands.py`" in text,
+          "qwen.md no longer names `admit` in `scripts/lib/qwen_bands.py`")
+    check(callable(getattr(qwen_bands, "admit", None)),
+          "qwen.md names qwen_bands.admit, which is not a function")
+    check(re.search(r"core or niche\s+band, or reports it unmeasured", text) is not None,
+          "qwen.md no longer says admit answers core, niche or unmeasured")
+    check(tuple(getattr(qwen_bands, "ZONES", ())) == ("core", "niche")
+          and getattr(qwen_bands, "UNMEASURED", None) == "unmeasured",
+          "qwen.md says admit answers core, niche or unmeasured; qwen_bands' zones differ")
+    check(re.search(r"male niche band[^.]*provisional", text, re.S) is not None
+          and "`PROVISIONAL`" in text,
+          "qwen.md no longer says the male niche band is provisional (`PROVISIONAL`)")
+    check(("Male", "niche") in getattr(qwen_bands, "PROVISIONAL", ()),
+          "qwen.md says the male niche band is provisional, but qwen_bands.PROVISIONAL "
+          "does not hold ('Male', 'niche')")
+
+
 # --- the pause gate's two thresholds live in two files and must agree -------------
 def test_pause_thresholds_agree():
     """qc_gate measures the pause; register_audition writes the advisory note.
@@ -356,6 +384,7 @@ def test_casting_schema_shapes():
 def main():
     for fn in (test_casting_words, test_dia_tag_vocabulary,
                test_orpheus_closed_sets, test_zonos_emotion_off_is_representable,
+               test_qwen_bands_claims,
                test_pause_thresholds_agree, test_relay_matrix_agrees,
                test_wip_guard, test_register_lexicon, test_casting_schema_shapes):
         try:
