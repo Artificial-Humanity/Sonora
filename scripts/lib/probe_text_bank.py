@@ -17,6 +17,17 @@ reading text `bodymatter`, and puts poems, letters, epigraphs and inscriptions i
 under a `z3998:verse` / `z3998:letter` type. Those are not narration, so the walk below reads the
 XHTML directly and skips them. The length model, the abbreviation expansion, the
 illustration check and the completeness gate are book_ingest's and are imported, not copied.
+
+BALANCE. Selection takes turns across AUTHORS first, then across that author's books, so one
+prolific author (three Lovecraft books) cannot fill a quarter of the bank; `MAX_PER_BOOK` stays a
+ceiling. See `select_lines`.
+
+HOLDOUT TITLES. A holdout book is matched over-inclusively (`title_key`, `match_title`): a false
+exclusion costs one book of candidates, a missed one puts holdout text in the probe.
+
+LEDGER. `books_ledger.json` records which lane each book is in; a book in the real-audio
+(force-align) lane, or not in the ledger at all, is left out (`ledger_decision`), so this
+synthetic bank stays disjoint from the real-audio lane.
 """
 import hashlib
 import io
@@ -42,13 +53,15 @@ from book_ingest import (  # noqa: E402
     references_the_invisible,
     split_sentences,
 )
+from synth_common import ledger_key_candidates, norm_title  # noqa: E402
 
 # The registered "at most about 8 s" of estimated speech. Inclusive, like the floor:
 # MIN_CLIP_SECONDS <= chars / CHARS_PER_SEC <= MAX_CLIP_SECONDS.
 MAX_CLIP_SECONDS = 8.0
 BANK_SIZE = 300
-# No book supplies more than this many lines (10% of the bank). Selection is round-robin across
-# books, so the cap binds only when few books qualify or some have few candidates.
+# No book supplies more than this many lines (10% of the bank). A ceiling, not a target: selection
+# is round-robin across authors and then across each author's books (`select_lines`), so the cap
+# binds only when few authors qualify or some have few candidates.
 MAX_PER_BOOK = 30
 DEFAULT_SEED = 20261026
 # Near-duplicate: Jaccard similarity of word-trigram sets at or above this, against any line
@@ -96,9 +109,49 @@ _INITIAL_RE = re.compile(r"\b[A-Za-z]\.(?=\s*\S)")
 
 
 def _speakable_char(c):
-    """ASCII, a Latin letter (accents included), or the apostrophe and dashes of running prose."""
-    return c.isascii() or c in "\u2019\u2013\u2014" or (
-        c.isalpha() and "LATIN" in unicodedata.name(c, ""))
+    """ASCII, or the curly apostrophe and the en and em dashes of running prose."""
+    return c.isascii() or c in "\u2019\u2013\u2014"
+
+
+def has_non_ascii_letter(text):
+    """True for any letter outside ASCII ("Angus Óg", "naïve", "Brontë"): an engine may read an
+    accented name in another language's phonology, and the probe compares voices, not names."""
+    return any(c.isalpha() and not c.isascii() for c in text)
+
+
+# A question set with a full stop: a sentence that opens with an auxiliary and "not" ("Had not
+# Cicely written…", "Did not the miller…") or a contracted negative auxiliary ("Wasn’t it…").
+# Conservative on purpose: only these openings, which in prose are almost always questions. The
+# rare declarative of this shape (a counterfactual "Had not the storm come, …") is lost too, which
+# costs a candidate and nothing else.
+_INVERSION_AUX = ("Had|Did|Was|Is|Were|Are|Could|Would|Should|Does|Do|Has|Have|Can|Will|Shall|"
+                  "Might|Must")
+_INVERSION_RE = re.compile(
+    rf"^(?:(?:{_INVERSION_AUX})\s+not\b"
+    r"|(?:Hadn|Didn|Wasn|Isn|Weren|Aren|Couldn|Wouldn|Shouldn|Doesn|Don|Hasn|Haven|Can|Won|Shan"
+    r"|Mightn|Mustn|Ain)[\u2019']t\b)")
+
+
+def is_interrogative_inversion(text):
+    return bool(_INVERSION_RE.match(text))
+
+
+# Exact source sentences (as the bank would carry them: cleaned and `normalize_speakable`-expanded)
+# that pass every rule above and are still defective. Each is dropped before selection, and each
+# hit is recorded in meta.json. Found in review of the first build (its ids in parentheses).
+DENYLIST = {
+    "At the first sight of Paula\u2019s face, she started erect and seem to forget her weakness "
+    "in a moment.":
+        "typo carried from the source: 'seem to forget' for 'seemed to forget' (1ci-0117)",
+    "Screamingly sentient, dumbly delirious, only the gods that were can tell.":
+        "verbless opening fragment; no reading of it is plain narration (1ci-0175)",
+    "Had not Cicely written that he had gone West, soon after her own departure from New York.":
+        "a question set with a full stop, so it would be read as a statement (1ci-0283)",
+    "Indeed\u2014Danforth is closer mouthed than I: for he saw, or thinks he saw, one thing he "
+    "will not tell even me.":
+        "opens mid-argument ('Indeed\u2014') and splices its clauses with ': for'; out of context "
+        "it does not read as a complete statement (1ci-0031)",
+}
 
 
 def has_quote(text):
@@ -123,6 +176,8 @@ def sentence_rejection(text):
         return "not_declarative"          # questions, exclamations and trailing ellipses
     if any(c in text for c in "?!\u2026") or "..." in text:
         return "not_declarative"
+    if is_interrogative_inversion(text):
+        return "interrogative_inversion"  # a question ending in a full stop
     if any(c.isdigit() for c in text):
         return "digits"
     if _SYMBOL_RE.search(text):
@@ -133,6 +188,8 @@ def sentence_rejection(text):
         return "initials"
     if references_the_invisible(text):
         return "references_the_invisible"
+    if has_non_ascii_letter(text):
+        return "non_ascii_letter"
     if not all(_speakable_char(c) for c in text):
         return "symbol"
     return None
@@ -153,25 +210,97 @@ def sentences_from_paragraph(paragraph):
 
 # ---------------------------------------------------------------- titles
 
-_ARTICLES = {"the", "a", "an"}
+# Words that carry no identity in a title: the overlap rules below need CONTENT words in common.
+TITLE_STOPWORDS = frozenset("the a an of and or to in on at for by with from as".split())
+# Two titles whose token sets overlap at least this much (and share a content word) are the same
+# book, unless their authors are both known and differ. Catches "Center" / "Centre".
+TITLE_JACCARD = 0.5
+_TITLE_NUMERAL = (r"(?:[ivxlcdm]+|\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|"
+                  r"twelve|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)")
+# "Volume 1", "Vol. IV", "Part II", "Book 01", "Edition 2": a tag naming one part of a work.
+_VOLUME_TAG_RE = re.compile(r"\b(?:volume|vol|part|pt|book|bk|edition)\b\.?\s*" + _TITLE_NUMERAL
+                            + r"\b")
+_ORDINAL_EDITION_RE = re.compile(r"\b(?:first|second|third|fourth|fifth|\d+(?:st|nd|rd|th))\s+"
+                                 r"edition\b")
+# LibriVox project titles only: "House of the Seven Gables (Version 2)".
+_VERSION_TAG_RE = re.compile(r"\(\s*version\s+\w+\s*\)")
+_NAME_SUFFIXES = frozenset({"jr", "sr", "ii", "iii", "iv"})
 
 
-def norm_title(title):
-    """Lowercase, `&` -> and, apostrophes deleted, other punctuation -> space, leading article and
-    a trailing LibriVox `(version N)` dropped, spaces collapsed.
+def fold_accents(text):
+    """NFKD, then drop the combining marks: "My Ántonia" -> "My Antonia"."""
+    return "".join(c for c in unicodedata.normalize("NFKD", text or "")
+                   if not unicodedata.combining(c))
 
-    The same rules as `scripts/tools/book_router.norm_title`, plus the version tag, which only
-    LibriVox project titles carry. Lossy so that "The Count of Monte Cristo" and "Count of Monte
-    Cristo" agree; deliberately not clever enough to equate different titles.
+
+def title_key(title):
+    """A title as the holdout match compares it: accents folded, a LibriVox `(version N)` and any
+    volume / part / book / edition tag removed, then `synth_common.norm_title` (lowercase, `&` ->
+    and, apostrophes deleted, other punctuation -> space, a leading article dropped).
+
+    `norm_title` itself is shared with `scripts/tools/book_router.py` and is not changed here: the
+    router must not equate different titles, while this key is deliberately over-inclusive, because
+    a holdout book that slips into the probe costs more than a book wrongly left out.
     """
-    t = (title or "").lower().replace("&", " and ")
-    t = re.sub(r"\(\s*version\s+\w+\s*\)", " ", t)
-    t = re.sub(r"['‘’]", "", t)
-    t = re.sub(r"[^\w\s]", " ", t)
-    words = t.split()
-    while words and words[0] in _ARTICLES:
-        words.pop(0)
-    return " ".join(words)
+    t = fold_accents(title).lower()
+    t = _VERSION_TAG_RE.sub(" ", t)
+    t = _VOLUME_TAG_RE.sub(" ", t)
+    t = _ORDINAL_EDITION_RE.sub(" ", t)
+    return norm_title(t)
+
+
+def _content_tokens(tokens):
+    return [w for w in tokens if w not in TITLE_STOPWORDS]
+
+
+def title_relation(a, b):
+    """"equal", "prefix" or None for two `title_key`s.
+
+    "prefix": one title's words are the leading words of the other's ("waverley" / "waverley or tis
+    sixty years since"), and the shorter has at least 2 content words. A shorter title of a single
+    content word must be equal: "erewhon" is not "erewhon revisited" by this rule.
+    """
+    if not a or not b:
+        return None
+    if a == b:
+        return "equal"
+    ta, tb = a.split(), b.split()
+    short, long_ = (ta, tb) if len(ta) <= len(tb) else (tb, ta)
+    if long_[:len(short)] == short and len(_content_tokens(short)) >= 2:
+        return "prefix"
+    return None
+
+
+def title_jaccard(a, b):
+    """Jaccard similarity of two `title_key`s' word sets; 0 unless they share a content word."""
+    sa, sb = set(a.split()), set(b.split())
+    if not sa or not sb or not set(_content_tokens(sa & sb)):
+        return 0.0
+    return len(sa & sb) / len(sa | sb)
+
+
+def author_surnames(author):
+    """{surname} of each name in an author field: accents folded, lowercase, the last word of each
+    comma-, `and`- or `&`-separated name, a Jr./Sr./II suffix ignored. "H. P. Lovecraft" ->
+    {"lovecraft"}; BOOKS.txt's "Frederick Douglass, Frederick Augustus Washington Bailey" ->
+    {"douglass", "bailey"}."""
+    t = fold_accents(author).lower().replace("&", ",")
+    t = re.sub(r"\band\b", ",", t)
+    out = set()
+    for name in t.split(","):
+        words = [w for w in re.sub(r"[^\w\s]", " ", name).split() if w not in _NAME_SUFFIXES]
+        if words:
+            out.add(words[-1])
+    return out
+
+
+def authors_agree(a, b):
+    """True when two author fields share a surname, False when both name someone and none is
+    shared, None when either is empty (BOOKS.txt leaves the author blank for most of its rows)."""
+    sa, sb = author_surnames(a), author_surnames(b)
+    if not sa or not sb:
+        return None
+    return bool(sa & sb)
 
 
 def _index_rows(text):
@@ -197,11 +326,13 @@ def holdout_chapters(holdout_text):
 
 
 def holdout_sources(chapters, chapters_txt, books_txt):
-    """The LibriTTS source books of `chapters`: [{book_id, title, project_titles, chapters}],
-    sorted by book_id. Refuses a chapter CHAPTERS.txt does not list, or lists under another reader
-    or a subset other than dev-clean, rather than leave a holdout book unnamed."""
+    """The LibriTTS source books of `chapters`: [{book_id, title, author, project_titles,
+    chapters}], sorted by book_id; `author` is BOOKS.txt's third field, often empty. Refuses a
+    chapter CHAPTERS.txt does not list, or lists under another reader or a subset other than
+    dev-clean, rather than leave a holdout book unnamed."""
     by_chapter = {r[0]: r for r in _index_rows(chapters_txt) if r[0].isdigit()}
     titles = {r[0]: r[1] for r in _index_rows(books_txt) if r[0].isdigit() and len(r) > 1}
+    authors = {r[0]: r[2] for r in _index_rows(books_txt) if r[0].isdigit() and len(r) > 2}
     books = {}
     for reader, chapter in sorted(chapters):
         row = by_chapter.get(chapter)
@@ -214,6 +345,7 @@ def holdout_sources(chapters, chapters_txt, books_txt):
         if book_id not in titles:
             raise ValueError(f"book {book_id} (chapter {chapter}) is not in BOOKS.txt")
         b = books.setdefault(book_id, {"book_id": book_id, "title": titles[book_id],
+                                       "author": authors.get(book_id, ""),
                                        "project_titles": set(), "chapters": []})
         b["project_titles"].add(row[7])
         b["chapters"].append(f"{reader}/{chapter}")
@@ -222,23 +354,49 @@ def holdout_sources(chapters, chapters_txt, books_txt):
 
 
 def holdout_title_keys(sources):
-    """{normalised title: the holdout book title it came from}, over BOOKS.txt titles and LibriVox
-    project titles."""
-    keys = {}
+    """[{key, title, author}]: one entry per distinct `title_key` of each holdout book's BOOKS.txt
+    title and LibriVox project titles; `title` is the BOOKS.txt title it names, `author` that
+    book's BOOKS.txt author. In book order, so the first match reported is stable."""
+    out, seen = [], set()
     for b in sources:
         for t in (b["title"], *b["project_titles"]):
-            k = norm_title(t)
-            if k:
-                keys.setdefault(k, b["title"])
-    return keys
+            k = title_key(t)
+            if k and (k, b["title"]) not in seen:
+                seen.add((k, b["title"]))
+                out.append({"key": k, "title": b["title"], "author": b.get("author") or ""})
+    return out
+
+
+def match_title(title, author, holdout_keys):
+    """-> (holdout entry, rule) for the first holdout title `title` matches, else None.
+
+    Rules, on `title_key`s: "equal"; "prefix" (`title_relation`); or "jaccard" — a word-set
+    Jaccard of at least TITLE_JACCARD with a content word in common, unless `author` and the
+    holdout book's author are both known and share no surname (`authors_agree` is False). An
+    unknown author counts as agreeing: BOOKS.txt names no author for "A Journey to the Centre of
+    the Earth", the case this rule exists for, nor for most of its rows.
+    """
+    k = title_key(title)
+    if not k:
+        return None
+    for h in holdout_keys:
+        rel = title_relation(k, h["key"])
+        if rel:
+            return h, rel
+        j = title_jaccard(k, h["key"])
+        if j >= TITLE_JACCARD and authors_agree(author, h["author"]) is not False:
+            return h, f"jaccard {j:.2f}"
+    return None
 
 
 # ---------------------------------------------------------------- epub
 
 _SKIP_TAGS = {"blockquote", "header", "hgroup", "footer", "figure", "figcaption", "table",
               "aside", "nav", "address"}
-_SKIP_TYPES = ("epigraph", "verse", "poem", "song", "hymn", "lyrics", "letter", "drama",
-               "stage-direction", "inscription", "footnote", "endnote", "note", "z3998:sign")
+# Matched as whole `epub:type` tokens, with or without the `z3998:` vocabulary prefix.
+_SKIP_TYPES = frozenset({"epigraph", "verse", "poem", "song", "hymn", "lyrics", "letter", "drama",
+                         "stage-direction", "inscription", "footnote", "footnotes", "endnote",
+                         "endnotes", "rearnote", "rearnotes", "note", "sign"})
 _PG_ID_RE = re.compile(r"gutenberg\.org/(?:ebooks|etext)/(\d+)")
 
 
@@ -254,9 +412,9 @@ def _skipped(p):
             continue
         if name in _SKIP_TAGS:
             return True
-        et = _epub_type(anc)
-        if any(t in et for t in _SKIP_TYPES):
-            return True
+        for token in _epub_type(anc).split():
+            if token in _SKIP_TYPES or token.split(":", 1)[-1] in _SKIP_TYPES:
+                return True
     return False
 
 
@@ -342,43 +500,106 @@ def is_standard_ebooks(meta):
             and (meta.get("publisher") or "").strip() == "Standard Ebooks")
 
 
-def holdout_match(book, title_keys, holdout_pg_ids):
-    """Why `book` is a holdout source book, or None. `book` carries `title`, `fulltitle` and
-    `pg_ids`: a normalised title equal to a holdout title, or a shared Project Gutenberg id."""
+def holdout_match(book, holdout_keys, holdout_pg_ids):
+    """Why `book` is a holdout source book, or None. `book` carries `title`, `fulltitle`, `author`
+    and `pg_ids`: either title matches a holdout title (`match_title`), or it shares a Project
+    Gutenberg id with a holdout book."""
     for field in ("title", "fulltitle"):
-        k = norm_title(book.get(field))
-        if k and k in title_keys:
-            return f"{field} {book.get(field)!r} matches holdout book {title_keys[k]!r}"
+        hit = match_title(book.get(field), book.get("author"), holdout_keys)
+        if hit:
+            h, rule = hit
+            return f"{field} {book.get(field)!r} matches holdout book {h['title']!r} ({rule})"
     shared = sorted(set(book.get("pg_ids") or ()) & set(holdout_pg_ids), key=int)
     if shared:
         return f"Project Gutenberg id(s) {shared} are holdout source books"
     return None
 
 
-def book_candidates(slug, book, title_keys):
-    """Candidate lines from one parsed book: (candidates, rejections, excluded_sections).
+def book_candidates(slug, book, holdout_keys):
+    """Candidate lines from one parsed book: (candidates, rejections, excluded_sections,
+    denylist_hits).
 
-    A document one of whose titles is a holdout book's title (a story in a collection) is
-    left out whole and reported. Candidates keep reading order.
+    A document one of whose titles matches a holdout book's title (`match_title`; a story in a
+    collection) is left out whole and reported. A sentence in DENYLIST is dropped and reported
+    before any other rule looks at it. Candidates keep reading order and carry the book's author.
     """
-    cands, rejections, excluded = [], {}, []
+    author = book["meta"].get("author") or ""
+    cands, rejections, excluded, deny = [], {}, [], []
     for doc in book["documents"]:
-        hit = next((t for t in doc["titles"] if norm_title(t) in title_keys), None)
+        hit = next(((t, m) for t in doc["titles"]
+                    for m in [match_title(t, author, holdout_keys)] if m), None)
         if hit:
-            excluded.append({"book": slug, "document": doc["href"], "title": hit,
-                             "holdout_title": title_keys[norm_title(hit)]})
+            t, (h, rule) = hit
+            excluded.append({"book": slug, "document": doc["href"], "title": t,
+                             "holdout_title": h["title"], "rule": rule})
             continue
         for para in doc["paragraphs"]:
             if has_quote(clean_text(para)):
                 rejections["quoted_paragraph"] = rejections.get("quoted_paragraph", 0) + 1
                 continue
             for s in sentences_from_paragraph(para):
+                if s in DENYLIST:
+                    rejections["denylist"] = rejections.get("denylist", 0) + 1
+                    deny.append({"book": slug, "text": s, "reason": DENYLIST[s]})
+                    continue
                 why = sentence_rejection(s)
                 if why:
                     rejections[why] = rejections.get(why, 0) + 1
                     continue
-                cands.append({"book": slug, "text": s})
-    return cands, rejections, excluded
+                cands.append({"book": slug, "author": author, "text": s})
+    return cands, rejections, excluded, deny
+
+
+# ---------------------------------------------------------------- ledger
+
+# What happens to a book `books_ledger.json` does not record: it is EXCLUDED. Its lane is unknown,
+# so it might be (or become) a real-audio book, and the bank must stay disjoint from that lane.
+NOT_IN_LEDGER = "excluded"
+REAL_AUDIO_LANE = "force-align"
+REAL_AUDIO_VERDICT = "REAL-AUDIO"
+
+
+def _url_key(url):
+    return (url or "").strip().rstrip("/").lower()
+
+
+def ledger_entries(ledger, meta):
+    """{key: entry} for every ledger entry that names this epub's book: one filed under a key
+    `synth_common.ledger_key_candidates` derives from its Standard Ebooks identifier or any
+    Gutenberg id its OPF lists, or one whose `source_url` is the identifier or whose `se_slug` is
+    its author/title path. Over-inclusive on purpose; each match only ever excludes."""
+    ident = meta.get("identifier") or ""
+    pg_ids = list(meta.get("pg_ids") or ())
+    keys = set(ledger_key_candidates(url=ident))
+    for pg in pg_ids:
+        keys.update(ledger_key_candidates(etext_id=pg))
+    slug_path = _url_key(ident).split("standardebooks.org/ebooks/", 1)[-1] if ident else ""
+    out = {}
+    for k, e in (ledger or {}).items():
+        if not isinstance(e, dict):
+            continue
+        gut = re.search(r"(?:ebooks|etext)/(\d+)", e.get("gutenberg_url") or "")
+        if (k in keys or (ident and _url_key(e.get("source_url")) == _url_key(ident))
+                or (slug_path and (e.get("se_slug") or "").strip("/").lower() == slug_path)
+                or (gut and gut.group(1) in pg_ids)):
+            out[k] = e
+    return dict(sorted(out.items()))
+
+
+def ledger_decision(entries):
+    """-> (use, record). `use` is False for a book with no ledger entry (NOT_IN_LEDGER) or with
+    any entry in the real-audio lane (`lane` force-align or `verdict` REAL-AUDIO). `record` lists
+    each matched entry's key, lane and verdict, plus the reason when the book is left out."""
+    record = {"ledger": [{"key": k, "lane": e.get("lane"), "verdict": e.get("verdict")}
+                         for k, e in entries.items()]}
+    if not entries:
+        return False, {**record, "reason": f"not in the ledger ({NOT_IN_LEDGER})"}
+    real = [k for k, e in entries.items()
+            if e.get("lane") == REAL_AUDIO_LANE
+            or (e.get("verdict") or "").upper() == REAL_AUDIO_VERDICT]
+    if real:
+        return False, {**record, "reason": f"real-audio lane in the ledger: {real}"}
+    return True, record
 
 
 # ---------------------------------------------------------------- selection
@@ -406,69 +627,101 @@ def _rank(seed, *parts):
     return hashlib.sha256("\x1f".join(map(str, (seed, *parts))).encode("utf-8")).hexdigest()
 
 
-def exact_dedupe(candidates):
-    """Drop every candidate whose `dedupe_key` was already seen, keeping the first in input
-    order. -> (kept, n_dropped)."""
-    seen, kept = set(), []
+def _author(c):
+    """The candidate's author, or its book when none is recorded (each such book its own author)."""
+    return c.get("author") or c["book"]
+
+
+def exact_dedupe(candidates, *, seed=DEFAULT_SEED):
+    """Keep one candidate per `dedupe_key`: the copy ranked first by sha256(seed, book, text), so
+    which copy survives (and which book it credits) does not depend on input order.
+    -> (kept, in rank order; n_dropped)."""
+    best = {}
     for c in candidates:
+        r = (_rank(seed, c["book"], c["text"]), c["book"], c["text"])
         k = dedupe_key(c["text"])
-        if k in seen:
-            continue
-        seen.add(k)
-        kept.append(c)
+        if k not in best or r < best[k][0]:
+            best[k] = (r, c)
+    kept = [c for _r, c in sorted(best.values(), key=lambda rc: rc[0])]
     return kept, len(candidates) - len(kept)
 
 
 def select_lines(candidates, *, n=BANK_SIZE, seed=DEFAULT_SEED, max_per_book=MAX_PER_BOOK):
-    """Pick `n` lines from `candidates` (dicts with `book` and `text`) deterministically.
+    """Pick `n` lines from `candidates` (dicts with `book`, `text` and optionally `author`)
+    deterministically.
 
     Each candidate's rank is sha256(seed, book, text), so the result depends on the candidate SET
-    and the seed, not on input order. Books take turns in slug order; each turn takes the book's
-    best-ranked line that is not a near-duplicate of one already taken, until the bank has `n` lines
-    or the book has `max_per_book`. The chosen lines are then ordered by sha256(seed, "order",
-    text): render order matters to the drift criterion, so no book is tied to a position.
+    and the seed, not on input order (`exact_dedupe` keeps the best-ranked copy of a duplicate).
+    Authors take turns in name order; on its turn an author offers its next book in slug order
+    (round-robin over its books), skipping a book that is exhausted or holds `max_per_book`
+    lines, and that book gives its best-ranked line that is not a near-duplicate of one already
+    taken. So each author supplies about n / authors lines, spread evenly over its books, and
+    `max_per_book` is a ceiling. An author that runs out drops out of the turns and the rest
+    continue in the same order; when `n` does not divide evenly, the authors first in name order
+    take the extra line. The chosen lines are then ordered by sha256(seed, "order", text): render
+    order matters to the drift criterion, so no book or author is tied to a position.
 
     -> (lines in bank order, stats). Raises BankError when fewer than `n` lines qualify.
     """
-    pool, n_exact = exact_dedupe(candidates)
+    pool, n_exact = exact_dedupe(candidates, seed=seed)
     if len(pool) < n:
         raise BankError(f"only {len(pool)} candidate lines qualify (after removing {n_exact} "
                         f"exact duplicates); the bank needs {n}")
-    by_book = {}
+    queues, author_of = {}, {}
     for c in pool:
-        by_book.setdefault(c["book"], []).append(c)
-    queues = {b: sorted(cs, key=lambda c: _rank(seed, c["book"], c["text"]))
-              for b, cs in by_book.items()}
-    cursor = dict.fromkeys(queues, 0)
-    taken, shingles, per_book, near_dups = [], [], dict.fromkeys(queues, 0), 0
+        queues.setdefault(c["book"], []).append(c)
+        if author_of.setdefault(c["book"], _author(c)) != _author(c):
+            raise ValueError(f"book {c['book']!r} has two authors: {author_of[c['book']]!r}, "
+                             f"{_author(c)!r}")
+    for q in queues.values():
+        q.sort(key=lambda c: (_rank(seed, c["book"], c["text"]), c["text"]))
+    books_of = {}
+    for b in sorted(queues):
+        books_of.setdefault(author_of[b], []).append(b)
+    cursor, turn = dict.fromkeys(queues, 0), dict.fromkeys(books_of, 0)
+    per_book, per_author = dict.fromkeys(queues, 0), dict.fromkeys(books_of, 0)
+    taken, shingles, near_dups = [], [], 0
+
+    def take_from(book):
+        nonlocal near_dups
+        q = queues[book]
+        while cursor[book] < len(q):
+            c = q[cursor[book]]
+            cursor[book] += 1
+            sh = _shingles(c["text"])
+            if any(_jaccard(sh, s) >= NEAR_DUP_JACCARD for s in shingles):
+                near_dups += 1
+                continue
+            taken.append(c)
+            shingles.append(sh)
+            per_book[book] += 1
+            per_author[author_of[book]] += 1
+            return True
+        return False
+
     while len(taken) < n:
         progressed = False
-        for book in sorted(queues):
+        for author in sorted(books_of):
             if len(taken) >= n:
                 break
-            if per_book[book] >= max_per_book:
-                continue
-            q = queues[book]
-            while cursor[book] < len(q):
-                c = q[cursor[book]]
-                cursor[book] += 1
-                sh = _shingles(c["text"])
-                if any(_jaccard(sh, s) >= NEAR_DUP_JACCARD for s in shingles):
-                    near_dups += 1
+            books = books_of[author]
+            for i in range(len(books)):
+                book = books[(turn[author] + i) % len(books)]
+                if per_book[book] >= max_per_book:
                     continue
-                taken.append(c)
-                shingles.append(sh)
-                per_book[book] += 1
-                progressed = True
-                break
+                if take_from(book):
+                    turn[author] = (turn[author] + i + 1) % len(books)
+                    progressed = True
+                    break
         if not progressed:
             raise BankError(
                 f"only {len(taken)} lines can be chosen from {len(pool)} candidates in "
-                f"{len(queues)} book(s) at {max_per_book} per book after near-duplicate removal; "
-                f"the bank needs {n}")
+                f"{len(queues)} book(s) by {len(books_of)} author(s) at {max_per_book} per book "
+                f"after near-duplicate removal; the bank needs {n}")
     ordered = sorted(taken, key=lambda c: _rank(seed, "order", c["text"]))
     stats = {"pool_size": len(pool), "exact_duplicates_removed": n_exact,
              "near_duplicates_skipped": near_dups,
+             "per_author": {a: k for a, k in sorted(per_author.items()) if k},
              "per_book": {b: k for b, k in sorted(per_book.items()) if k}}
     return ordered, stats
 
