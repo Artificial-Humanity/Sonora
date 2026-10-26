@@ -32,8 +32,9 @@ available — though Qwen does not formally document it as required, so treat it
 the strong default rather than a hard rule.
 
 ## Known behaviour to compensate for
-- **Renders younger and higher than described.** For a mature voice, exaggerate:
-  ask for older and lower than you actually want.
+- **Renders younger than described.** For a mature voice, exaggerate: ask for older
+  than you actually want. Do not compensate pitch through the words; see "Pitch and
+  voice range".
 - Free-form prose also works, but is less reliable under high arousal. Anchor the
   voice (gender + age + timbre) before any delivery instruction, or the model
   drifts cartoonish.
@@ -82,6 +83,31 @@ Four of five naive reads landed at or over the line; none of the grounded ones d
 with a grounded instruct is currently the **best** home for bright/teen female casting in
 the portfolio. Write the keys this way every time — the difference is the whole clip.
 
+## Pitch and voice range
+Qwen does **not** take pitch from the `pitch:` key. Measured over seven rungs from
+`Extremely low` to `Extremely high`, every other key held (Phase 1S probe 1c-0), the rungs
+did not order the voices: from the lowest rung to the highest, the rung's F0 (the median of
+its three clips) moved only 1.4 semitones (male) and 0.4 semitones (female). The rungs fell
+in no order across a 4.6 (male) and 5.2 (female) semitone range, while the clips of one rung
+differed by up to 5.5 semitones. No other wording is a
+pitch control either (probe 1c-0b): numeric Hz targets, descriptive pitch, age, vocal weight
+and a free-text sentence did not reliably move F0, or moved it only by producing a different
+voice. A female instruct asking for a "deep" voice landed in the male range — it may produce
+a male-sounding voice, not the same woman lower.
+
+So:
+- Cast the voice with the keys as usual — gender, age, texture, personality — and keep
+  `pitch:` a plain, stable description that agrees with them. It belongs to the format; it
+  is not a control.
+- A designed voice is admitted by its **measured** F0 and the owner's ear, not by its
+  words: `admit` in `scripts/lib/qwen_bands.py` places it in its gender's core or niche
+  band, or reports it unmeasured, which leaves it to the ear. Never promise a pitch through
+  the words.
+- The one child-boy design probed (persona P3, three seeds) read female or ambiguous to the
+  owner. The male niche band comes from those three clips alone, so it is provisional
+  (`PROVISIONAL` in `scripts/lib/qwen_bands.py`), and nothing casts a child boy from it
+  without the owner's review.
+
 ## Narration (Neutral / Newscaster / Documentary delivery)
 
 With VibeVoice and Dia set aside (2026-07-29), narration renders on this portfolio. Qwen's
@@ -122,3 +148,7 @@ than either working or inert, and do not promise an accent you cannot demonstrat
 - Do not describe rooms, microphones, eras or broadcast media. The recording style
   is always a dry, close-mic modern studio.
 - Do not write a separate design field. One `instruct` string only.
+- Do not rely on `pitch:` words, or Hz figures, to reach a low or high extreme. They do not
+  reliably move Qwen's pitch.
+- Do not write "deep" or "low" for a female voice expecting the same woman lower. It may
+  come back a different, male-sounding voice.
