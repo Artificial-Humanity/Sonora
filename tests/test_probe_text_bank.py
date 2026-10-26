@@ -192,6 +192,8 @@ def test_read_epub_keeps_only_running_bodymatter_prose():
         "into the evening light.</span></p></blockquote>"
         '<blockquote epub:type="z3998:letter"><p>The weather here has been fine for the whole of '
         "the week and we are all well.</p></blockquote>"
+        "<blockquote><p>The house stood empty for the whole of that long and bitter winter."
+        "</p></blockquote>"
         '<p>The waiter brought a dish he called <i xml:lang="fr">pommes de terre</i> with the '
         "cold meat.</p>"
         '<div epub:type="z3998:verse"><p>Over the river and through the wood the carriage went '
