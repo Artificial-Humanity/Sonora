@@ -346,9 +346,14 @@ def engine_pin(engine):
         dirty = subprocess.run(["git", "-C", ZONOS_SOURCE, "status", "--porcelain"],
                                capture_output=True, text=True, check=True).stdout.strip()
     except (OSError, subprocess.CalledProcessError):
-        commit, dirty = None, None
-    return {"source_checkout": ZONOS_SOURCE, "commit": commit,
-            "tree_clean": None if dirty is None else not dirty}
+        # An unreadable checkout would record commit None at plan AND at render, and the
+        # launch check compares values, so None == None would pass: refuse instead.
+        refuse("cannot read the Zonos source checkout %s (git rev-parse/status failed), so "
+               "the engine code this cell renders with cannot be recorded." % ZONOS_SOURCE)
+    if dirty:
+        refuse("the Zonos source checkout %s has uncommitted changes, so its commit does not "
+               "name the engine code that would run. Clean it first." % ZONOS_SOURCE)
+    return {"source_checkout": ZONOS_SOURCE, "commit": commit, "tree_clean": True}
 
 
 def plan_meta(anchor, engine, direction, git, n_lines):

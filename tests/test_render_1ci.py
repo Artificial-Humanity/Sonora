@@ -68,7 +68,13 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(r1, "ANCHOR_DIR", str(adir))
     monkeypatch.setattr(r1, "ANCHORS", tuple(pins))
     monkeypatch.setattr(ref_select, "REF_FILE_ROOT", str(tmp_path) + "/")
-    monkeypatch.setattr(r1, "ZONOS_SOURCE", str(tmp_path / "no-zonos-checkout"))
+    zonos = tmp_path / "zonos-checkout"                 # engine_pin refuses an unreadable one
+    zonos.mkdir()
+    _g(tmp_path, "init", "-q", str(zonos))
+    (zonos / "model.py").write_text("v0\n")
+    _g(zonos, "add", "-A")
+    _g(zonos, "commit", "-q", "-m", "v0")
+    monkeypatch.setattr(r1, "ZONOS_SOURCE", str(zonos))
     git = {"commit": "c0ffee", "tree_clean": True}
     monkeypatch.setattr(r1, "tool_commit", lambda: dict(git))
     return {"root": tmp_path, "out": tmp_path / "out", "rows": rows, "adir": adir, "git": git}
@@ -795,3 +801,17 @@ def test_the_real_inputs_verify():
     """Standing check on the real /data inputs where they exist."""
     assert len(r1.load_text()) == N
     assert [a["id"] for a in r1.load_anchors()] == ["M4-s3", "F6-s2"]
+
+
+def test_plan_refuses_an_unreadable_zonos_checkout(env, tmp_path, monkeypatch):
+    """An unreadable checkout would record commit None at plan and at render, and None == None
+    would pass the launch check, so it is refused."""
+    monkeypatch.setattr(r1, "ZONOS_SOURCE", str(tmp_path / "no-zonos-checkout"))
+    with pytest.raises(SystemExit, match="cannot read the Zonos source checkout"):
+        _plan(env)
+
+
+def test_plan_refuses_a_dirty_zonos_checkout(env, monkeypatch):
+    (Path(r1.ZONOS_SOURCE) / "model.py").write_text("edited\n")
+    with pytest.raises(SystemExit, match="uncommitted changes"):
+        _plan(env)
