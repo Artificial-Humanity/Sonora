@@ -239,6 +239,87 @@ def test_audition_static_html_has_two_panels_and_five_defect_sliders():
     assert "function fmtAttrVal(" in html
     assert "(Δ ${dStr})" in html
     assert "(+ac.f0_median_hz).toFixed(1)" in html
+    assert 'data-attr="gender" min="1" max="3" step="1"' in html
+    assert 'data-pattr="gender" min="1" max="3" step="1"' in html
+    assert html.index('data-attr="gender"') < html.index('data-attr="age"')
+    assert html.index('data-pattr="gender"') < html.index('data-pattr="age"')
+
+
+def test_audition_gender_slider_persists_and_updates_age_band(tmp_path, monkeypatch):
+    mod = _load_audition(tmp_path, monkeypatch)
+    assert mod.SLIDER_ATTRS[0] == "gender"
+    assert mod.GENDER_SLIDER_LABELS == {1: "Male", 2: "Female", 3: "Neutral"}
+
+    # Dropdown POST /api/gender before any slider edit preserves initial Female (2) as intended_gender
+    mod.set_gender(mod.GenderUpdate(id="clip_01_F_s1", gender="Male"))
+    row_g = mod._read_rows()[0]
+    assert row_g["gender"] == "Male"
+    assert row_g["intended_gender"] == "2"
+    assert row_g["audited_gender"] == "1"
+    assert row_g["delta_gender"] == "-1"
+    assert row_g["touched_gender"] == "1"
+
+    # Clip starts as Female; listener hears Male (1) and Age 4 -> Man
+    res = mod.rate(mod.Rating(
+        id="clip_01_F_s1",
+        action="keep",
+        score=4,
+        intended_gender=2,
+        audited_gender=1,
+        touched_gender=True,
+        intended_age=4,
+        audited_age=4,
+        touched_age=True,
+    ))
+    row = res["row"]
+    assert row["intended_gender"] == "2"
+    assert row["audited_gender"] == "1"
+    assert row["delta_gender"] == "-1"
+    assert row["touched_gender"] == "1"
+    assert row["gender"] == "Male"
+    assert row["age"] == "Man"
+
+    # Subsequent slider-only update to Neutral (3) updates gender and existing touched age band
+    res2 = mod.set_sliders(mod.SliderUpdate(
+        id="clip_01_F_s1",
+        intended_gender=2,
+        audited_gender=3,
+        touched_gender=True,
+    ))
+    row2 = res2["row"]
+    assert row2["audited_gender"] == "3"
+    assert row2["delta_gender"] == "+1"
+    assert row2["gender"] == "Neutral"
+    assert row2["age"] == "Adult"
+
+    # Dropdown update to Male updates slider columns and existing touched age band
+    mod.set_gender(mod.GenderUpdate(id="clip_01_F_s1", gender="Male"))
+    row3 = mod._read_rows()[0]
+    assert row3["gender"] == "Male"
+    assert row3["intended_gender"] == "2"
+    assert row3["audited_gender"] == "1"
+    assert row3["delta_gender"] == "-1"
+    assert row3["touched_gender"] == "1"
+    assert row3["age"] == "Man"
+
+    # Dropdown update to Undefined clears touched_gender/audited_gender/delta_gender and maps age band
+    mod.set_gender(mod.GenderUpdate(id="clip_01_F_s1", gender="Undefined"))
+    row4 = mod._read_rows()[0]
+    assert row4["gender"] == "Undefined"
+    assert row4["intended_gender"] == "2"
+    assert row4["audited_gender"] == ""
+    assert row4["delta_gender"] == ""
+    assert row4["touched_gender"] == "0"
+    assert row4["age"] == "Adult"
+
+    with pytest.raises(HTTPException) as exc:
+        mod.set_sliders(mod.SliderUpdate(
+            id="clip_01_F_s1",
+            audited_gender=4,
+            touched_gender=True,
+        ))
+    assert exc.value.status_code == 422
+
 
 
 # --- 3. Calibration Probe Mode in Dataset Listening (1c-0) --------------------
@@ -300,7 +381,27 @@ def test_audition_probe_mode_saves_without_touching_ratings_csv(tmp_path, monkey
     loaded = mod.get_probe("qwen_1c0")
     assert loaded["clips"][0]["zone"] == "core"
     assert loaded["clips"][0]["score"] == "5"
+    assert loaded["clips"][0]["gender"] == "Male"
     assert (tmp_path / "ratings.csv").read_text(encoding="utf-8") == ratings_before
+
+    # Auditing gender on a probe clip persists gender, audited_gender, and delta_gender in verdicts.csv
+    res_g = mod.rate_probe(
+        "qwen_1c0",
+        mod.ProbeRating(
+            id="M4_s1",
+            zone="niche",
+            intended_gender=1,
+            audited_gender=3,
+            touched_gender=True,
+        ),
+    )
+    assert res_g["row"]["gender"] == "Neutral"
+    assert res_g["row"]["audited_gender"] == "3"
+    assert res_g["row"]["delta_gender"] == "+2"
+    loaded_g = mod.get_probe("qwen_1c0")
+    assert loaded_g["clips"][0]["gender"] == "Neutral"
+    assert loaded_g["clips"][0]["audited_gender"] == "3"
+    assert loaded_g["clips"][0]["delta_gender"] == "+2"
 
 
 def test_audition_probe_mode_reads_manifest_jsonl_and_measures_jsonl(tmp_path, monkeypatch):

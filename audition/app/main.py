@@ -136,17 +136,20 @@ BOOK_QUEUE_HEADER = (
     "#   a leading '* ' marks a processed book (verdict appended after ' → ').\n"
 )
 
-SLIDER_ATTRS = ("age", "pitch", "depth", "strain")
+SLIDER_ATTRS = ("gender", "age", "pitch", "depth", "strain")
 SLIDER_ATTR_FIELDS = [
     f"{prefix}_{attr}"
     for attr in SLIDER_ATTRS
     for prefix in ("intended", "audited", "delta", "touched")
 ]
 DEFECT_KEYS = ("buzz", "hum", "layering", "noise", "robot")
+GENDER_SLIDER_LABELS = {1: "Male", 2: "Female", 3: "Neutral"}
+GENDER_TO_SLIDER = {"Male": 1, "Female": 2, "Neutral": 3}
 
 CSV_FIELDS = [
     "campaign", "id", "engine", "register", "gender", "age", "accent",
     "delivery", "context", "manner",
+    "intended_gender", "audited_gender", "delta_gender", "touched_gender",
     "intended_age", "audited_age", "delta_age", "touched_age",
     "intended_pitch", "audited_pitch", "delta_pitch", "touched_pitch",
     "intended_depth", "audited_depth", "delta_depth", "touched_depth",
@@ -604,6 +607,9 @@ class Rating(BaseModel):
     note: str = ""
     context: str | None = None
     manner: str | None = None
+    intended_gender: int | None = None
+    audited_gender: int | None = None
+    touched_gender: bool | None = None
     intended_age: int | None = None
     audited_age: int | None = None
     touched_age: bool | None = None
@@ -637,7 +643,13 @@ def _apply_sliders_and_defects(row: dict, r):
             raise HTTPException(422, f"manner must be one of {VOCAL_MANNERS}")
         row["manner"] = r.manner
 
-    ranges = {"age": range(1, 6), "pitch": range(1, 6), "depth": range(1, 6), "strain": range(0, 6)}
+    ranges = {
+        "gender": range(1, 4),
+        "age": range(1, 6),
+        "pitch": range(1, 6),
+        "depth": range(1, 6),
+        "strain": range(0, 6),
+    }
     for attr, allowed in ranges.items():
         intended = getattr(r, f"intended_{attr}", None)
         audited = getattr(r, f"audited_{attr}", None)
@@ -659,7 +671,12 @@ def _apply_sliders_and_defects(row: dict, r):
                     row[f"delta_{attr}"] = _format_delta(audited - eff_intended)
                 else:
                     row[f"delta_{attr}"] = ""
-                if attr == "age":
+                if attr == "gender":
+                    row["gender"] = GENDER_SLIDER_LABELS[audited]
+                    if row.get("touched_age") == "1" and row.get("audited_age", "") != "":
+                        bands = AGE_BANDS_BY_GENDER.get(row["gender"], AGE_BANDS_BY_GENDER["Neutral"])
+                        row["age"] = bands[int(row["audited_age"]) - 1]
+                elif attr == "age":
                     g = row.get("gender") or _gender_from_id(row.get("id", ""))
                     bands = AGE_BANDS_BY_GENDER.get(g, AGE_BANDS_BY_GENDER["Neutral"])
                     row["age"] = bands[audited - 1]
@@ -764,7 +781,27 @@ def set_gender(g: GenderUpdate):
         idx = next((i for i, row in enumerate(rows) if row.get("id") == g.id), None)
         if idx is None:
             raise HTTPException(404, f"unknown id {g.id}")
-        rows[idx]["gender"] = g.gender
+        row = rows[idx]
+        if row.get("intended_gender", "") == "":
+            prev_g = row.get("gender") or _gender_from_id(g.id)
+            if prev_g in GENDER_TO_SLIDER:
+                row["intended_gender"] = str(GENDER_TO_SLIDER[prev_g])
+        row["gender"] = g.gender
+        if g.gender in GENDER_TO_SLIDER:
+            aud_num = GENDER_TO_SLIDER[g.gender]
+            row["audited_gender"] = str(aud_num)
+            row["touched_gender"] = "1"
+            if row.get("intended_gender", "") != "":
+                row["delta_gender"] = _format_delta(aud_num - int(row["intended_gender"]))
+            else:
+                row["delta_gender"] = ""
+        else:
+            row["touched_gender"] = "0"
+            row["audited_gender"] = ""
+            row["delta_gender"] = ""
+        if row.get("touched_age") == "1" and row.get("audited_age", "") != "":
+            bands = AGE_BANDS_BY_GENDER.get(g.gender, AGE_BANDS_BY_GENDER["Neutral"])
+            row["age"] = bands[int(row["audited_age"]) - 1]
         _write_rows(rows)
         return {"ok": True, "id": g.id, "gender": g.gender}
 
@@ -1088,6 +1125,9 @@ class MannerUpdate(BaseModel):
 
 class SliderUpdate(BaseModel):
     id: str
+    intended_gender: int | None = None
+    audited_gender: int | None = None
+    touched_gender: bool | None = None
     intended_age: int | None = None
     audited_age: int | None = None
     touched_age: bool | None = None
@@ -1150,7 +1190,7 @@ def set_sliders(u: SliderUpdate):
 # --- Calibration Probes (Step 1c-0 and future probes) -------------------------
 PROBE_ZONES = ("core", "niche", "exclude")
 PROBE_VERDICT_FIELDS = [
-    "id", "zone", "score",
+    "id", "zone", "score", "gender",
     *SLIDER_ATTR_FIELDS,
     *DEFECT_KEYS,
     "note", "ts",
@@ -1247,7 +1287,7 @@ def get_probe(probe_id: str):
     verdicts = _read_probe_verdicts(d)
     clips = []
     for c in manifest.get("clips", []):
-        v = verdicts.get(c["id"], {})
+        v = {k: val for k, val in verdicts.get(c["id"], {}).items() if val != ""}
         clips.append({**c, **v})
     return {
         "probe": manifest.get("probe", probe_id),
@@ -1262,6 +1302,9 @@ class ProbeRating(BaseModel):
     zone: str                  # core | niche | exclude
     score: int | None = None   # 1-5 optional quality score
     note: str = ""
+    intended_gender: int | None = None
+    audited_gender: int | None = None
+    touched_gender: bool | None = None
     intended_age: int | None = None
     audited_age: int | None = None
     touched_age: bool | None = None
