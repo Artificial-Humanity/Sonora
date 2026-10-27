@@ -10,6 +10,8 @@ too, to show they reach the engine with the same arguments as before.
 import hashlib
 import importlib
 import json
+import os
+import shutil
 import sys
 import types
 
@@ -255,6 +257,58 @@ def test_a_missing_or_relative_ref_file_is_refused(which, request, anchor, calls
     _out, rows = _run(mod, monkeypatch, tmp_path, lines)
     assert rows == []
     assert capsys.readouterr().out.count("CASTING FAILED") == 2
+
+
+def _never_cast(mod, monkeypatch):
+    monkeypatch.setattr(mod, "select_reference",
+                        lambda *a, **k: pytest.fail("a line that pins ref_file was cast"))
+
+
+@pytest.mark.parametrize("falsy", [{}, None], ids=["empty", "null"])
+@pytest.mark.parametrize("which", ["chatterbox", "zonos"])
+def test_a_falsy_ref_file_is_a_casting_failure_not_a_silent_cast(
+        which, falsy, request, calls, monkeypatch, tmp_path, capsys):
+    mod = request.getfixturevalue(which)
+    _never_cast(mod, monkeypatch)
+    make = _cbx_line if which == "chatterbox" else _zon_line
+    out, rows = _run(mod, monkeypatch, tmp_path, [make(ref_file=falsy)])
+    assert rows == [] and not list(out.glob("*.wav"))
+    assert "CASTING FAILED" in capsys.readouterr().out
+    assert [c[0] for c in calls] == ["load"], calls
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read a mode-000 file")
+@pytest.mark.parametrize("which", ["chatterbox", "zonos"])
+def test_an_unreadable_ref_file_fails_its_clip_and_the_bank_goes_on(
+        which, request, anchor, calls, monkeypatch, tmp_path, capsys):
+    mod = request.getfixturevalue(which)
+    make = _cbx_line if which == "chatterbox" else _zon_line
+    locked = tmp_path / "anchors" / "locked.wav"
+    shutil.copy(anchor["path"], locked)
+    lines = [make(id="a", ref_file=dict(anchor, path=str(locked))), make(id="b", ref_file=anchor)]
+    locked.chmod(0)
+    try:
+        _out, rows = _run(mod, monkeypatch, tmp_path, lines)
+    finally:
+        locked.chmod(0o644)
+    printed = capsys.readouterr().out
+    assert [r["id"] for r in rows] == ["b"], "an unreadable reference stopped the bank"
+    assert printed.count("CASTING FAILED") == 1 and "cannot be read" in printed
+
+
+@pytest.mark.parametrize("which", ["chatterbox", "zonos"])
+def test_a_ref_file_symlinked_out_of_the_root_is_refused(
+        which, request, anchor, calls, monkeypatch, tmp_path, tmp_path_factory, capsys):
+    mod = request.getfixturevalue(which)
+    make = _cbx_line if which == "chatterbox" else _zon_line
+    outside = tmp_path_factory.mktemp("outside") / "M4-s3.wav"
+    shutil.copy(anchor["path"], outside)
+    link = tmp_path / "anchors" / "link.wav"
+    link.symlink_to(outside)
+    _out, rows = _run(mod, monkeypatch, tmp_path, [make(ref_file=dict(anchor, path=str(link)))])
+    printed = capsys.readouterr().out
+    assert rows == [] and "CASTING FAILED" in printed and "outside" in printed
+    assert [c[0] for c in calls] == ["load"], calls
 
 
 def test_pinned_reference_file_checks_the_sha_on_every_call(anchor, tmp_path):

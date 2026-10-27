@@ -33,9 +33,11 @@ sha256 equals its pin in ANCHORS. It writes `<out-root>/<cell>/bank.json` and `p
   pinned_reference_file`): the renderer checks its sha256 before every clip and applies no casting,
   F0 ceiling or damping.
 * **Direction** is `book_ingest.build_direction` for each line with the tag in DIRECTION_TAGS and
-  lane `Neutral`, and must come out the same for all 300 lines or the plan refuses. The tags hold
-  nothing but the engine, so what the lines get is build_direction's defaults under the Neutral lane
-  rules; `plan_meta.json` records the tag and the result.
+  lane `Neutral`, and must come out the same for all 300 lines, with every value the tag sets kept
+  exactly (no clamp may move it), or the plan refuses. Chatterbox's tag holds nothing, so it gets
+  build_direction's defaults under the Neutral lane rules (exaggeration 0.4, cfg_weight 0.5). Zonos's
+  tag holds the lead resident's decision (DIRECTION_TAGS, ZONOS_DIRECTION_DECISION): pitch_std 28,
+  speaking_rate 14, emotion off. `plan_meta.json` records the tag, the decision and the result.
 * **Seeds:** line i (1-based render order) has seed `SEED_BASE + i` in every cell, so the same line
   is drawn from the same seed whichever voice and engine render it. The renderers call
   `torch.manual_seed(seed)` before each clip.
@@ -45,12 +47,16 @@ sha256 equals its pin in ANCHORS. It writes `<out-root>/<cell>/bank.json` and `p
   commit, which synth_bank.sh puts on PYTHONPATH), what the throughput fields time, and BATCHED_RUN.
 
 `plan` refuses to replace a cell's `bank.json` with a different one, and to re-plan a cell whose
-`audio/` already holds a manifest at another commit: a resumed render would mix two plans.
+`audio/` already holds a manifest at another commit: a resumed render would mix two plans. Such a
+cell is resumed with `render` against its existing plan instead (below).
 
-`render` re-runs every check `plan` made, rebuilds the cell's bank and refuses unless it equals the
-`bank.json` on disk, unless `plan_meta.json` names this checkout's HEAD, and unless the tree is clean
-(`--allow-dirty` overrides the last and is recorded). It then prints the synth_bank.sh command, and
-runs it only with `--run`, appending the command, commit and exit status to the cell's
+`render` re-runs every check `plan` made, refuses unless no file in RENDER_AFFECTING_PATHS differs
+between the commit `plan_meta.json` names and this checkout's HEAD (`git diff --quiet`), rebuilds
+the cell's bank and refuses unless it equals the `bank.json` on disk, and refuses unless the tree is
+clean (`--allow-dirty` overrides the last and is recorded). A HEAD that moved on only outside those
+files (a pull of unrelated work into the shared checkout, mid-run) renders exactly what the plan did,
+so a multi-day run is not stopped by it. It then prints the synth_bank.sh command, and runs it only
+with `--run`, appending the command, both commits and the exit status to the cell's
 `render_log.jsonl`. synth_bank.sh needs BANK and OUT under /data and the checkout's `.venv`, so
 `--run` refuses without them; the printed command only warns. A run that stops resumes: the
 renderers skip a clip whose wav exists.
@@ -102,9 +108,20 @@ ANCHORS = (
 )
 ENGINES = ("chatterbox", "zonos")
 LANE = "Neutral"
-# The tag handed to build_direction for every line. Nothing but the engine: the values are
-# build_direction's, under its Neutral lane rules (module docstring, Direction).
-DIRECTION_TAGS = {"chatterbox": {}, "zonos": {}}
+# The tag handed to build_direction for every line (with the engine added), under LANE. Every
+# value set here must come out of build_direction unchanged, or the plan refuses.
+#   chatterbox: nothing, so build_direction's defaults under the Neutral lane rules apply
+#     (exaggeration 0.5 capped to NARRATION_MAX_EXAGGERATION 0.4, cfg_weight 0.5).
+#   zonos: ZONOS_DIRECTION_DECISION. build_direction's own defaults (pitch_std 45, speaking_rate
+#     15) sit outside zonos.md's Neutral row for pitch_std (20-35), so they are not used.
+DIRECTION_TAGS = {"chatterbox": {},
+                  "zonos": {"pitch_std": 28.0, "speaking_rate": 14.0, "emotion": None}}
+ZONOS_DIRECTION_DECISION = (
+    "pitch_std 28.0, speaking_rate 14.0, emotion None (off) on every Zonos line of the 1,200-line "
+    "run (both Zonos cells): the Sonora lead resident's decision for Step 1c-i (2026-10-27). It is the most-used audited Neutral narration "
+    "setting in delivery-v1-narration and delivery-v1-narration-r2, and it sits inside "
+    "scripts/assets/director_skills/zonos.md's Neutral row (pitch_std 20-35, speaking_rate 14-15, "
+    "emotion omitted).")
 SEED_BASE = 1_000_000
 SEED_RULE = "seed = SEED_BASE + render_index (1-based), the same for a line in every cell"
 VERSION = "1ci-v1"
@@ -118,6 +135,67 @@ ZONOS_SOURCE = "/data/toolchain/Zonos"
 # and runs its host steps (check_bank, loudness, the QC gate) with the checkout's venv.
 DATA_ROOT = "/data/"
 VENV_PYTHON = os.path.join(_SONORA_REPO, ".venv", "bin", "python")
+
+# Every tracked file whose content decides what `render` launches or what a cell's render
+# produces. `render` accepts a HEAD other than the plan commit only when none of these differ
+# between the two (`git diff --quiet <plan> HEAD -- <paths>`): the renders then come from the same
+# code as the plan, whatever else the shared checkout has pulled. The set is:
+#   * the launch path: synth_bank.sh, the pins it sources, and the two in-container steps run
+#     before each renderer (the ai-mgr user setup and the environment freeze);
+#   * the steps synth_bank.sh runs in probe mode: check_bank, the two engines' renderers, the
+#     loudness normaliser and the QC gate (which decides which clips are kept);
+#   * this tool and the modules its plan is built from (the bank, the direction, the text check);
+#   * every repo module those import at module level (matcha.delivery: the lane rules
+#     build_direction and ref_select apply; schemas; qc_gate's phonation and VAD measures).
+# test_render_1ci.py checks it: every listed path is tracked, every repo module imported at
+# module level by a listed file is listed or in NOT_RENDER_AFFECTING, and every script
+# synth_bank.sh or container_env.sh names is listed or in NOT_RENDER_AFFECTING.
+RENDER_AFFECTING_PATHS = (
+    "scripts/stages/synth_bank.sh",
+    "scripts/container_env.sh",
+    "scripts/container_as_ai_mgr.sh",
+    "scripts/capture_container_env.sh",
+    "scripts/stages/check_bank.py",
+    "scripts/stages/synth_chatterbox.py",
+    "scripts/stages/synth_zonos.py",
+    "scripts/stages/normalize_loudness.py",
+    "scripts/stages/qc_gate.py",
+    "scripts/tools/render_1ci.py",
+    "scripts/lib/book_ingest.py",
+    "scripts/lib/probe_text_bank.py",
+    "scripts/lib/ref_select.py",
+    "scripts/lib/synth_common.py",
+    "scripts/lib/schemas.py",
+    "scripts/lib/derive_vat_corpus.py",
+    "scripts/lib/silero_vad.py",
+    "matcha/__init__.py",
+    "matcha/delivery.py",
+)
+# Reached from the files above but not part of a 1c-i render, each with the reason.
+NOT_RENDER_AFFECTING = {
+    "scripts/lib/gemma_client.py": "book_ingest imports it for the director pass; plan never calls it",
+    "scripts/lib/gemma_server.py": "book_ingest imports it for the director pass; plan never calls it",
+    "scripts/stages/qc_verdict.py": "probe mode skips the direction check",
+    "scripts/stages/eiv_score.sh": "probe mode skips the direction check",
+    "scripts/stages/qc_engine_defects.py": "probe mode skips the defect detectors (PROBE_MODE_GAP)",
+    "scripts/stages/register_audition.py": "probe mode skips the audition queue",
+    "scripts/stages/librivox_align.sh": "another orchestrator; container_env.sh's header names it",
+    "scripts/stages/synth_dia.py": "another engine's block",
+    "scripts/stages/synth_moss_vg.py": "another engine's block",
+    "scripts/stages/synth_moss85.py": "another engine's block",
+    "scripts/stages/synth_qwen.py": "another engine's block",
+    "scripts/stages/synth_orpheus.py": "another engine's block",
+    "scripts/stages/synth_vibevoice.py": "another engine's block",
+}
+
+# KNOWN GAP, documented and not closed here. Probe mode skips qc_engine_defects.py, which reads
+# the campaign's rows in ratings.csv (a probe never enters it), so Zonos's leading-gap detector
+# ("a blip, then silence") does not run on any probe cell.
+PROBE_MODE_GAP = (
+    "probe mode skips scripts/stages/qc_engine_defects.py (it needs the campaign's ratings.csv "
+    "rows), so the Zonos leading-gap check ('blip then silence', qc_engine_defects."
+    "leading_gap_score) does NOT run on these cells; the 1c-i evaluator must run it on the "
+    "Zonos cells itself.")
 
 BATCHED_RUN = ("not available: the pre-registered 100-line batched Chatterbox throughput run needs a "
                "batch API, and chatterbox-tts 0.1.7's ChatterboxTTS.generate takes one text. It is "
@@ -167,7 +245,10 @@ def load_anchors():
         path = os.path.join(anchor_dir, row["file"])
         if not os.path.isfile(path):
             refuse("anchor clip %s does not exist." % path)
-        got = ref_select.file_sha256(path)
+        try:
+            got = ref_select.file_sha256(path)
+        except OSError as e:
+            refuse("anchor clip %s cannot be read: %s." % (path, e))
         if got != pin:
             refuse("anchor clip %s has sha256 %s, not the pinned %s." % (path, got, pin))
         spec = {"path": path, "sha256": pin, "text": row["text"], "id": anchor_id,
@@ -188,7 +269,9 @@ def cell_names():
 
 
 def direction_for(engine, rows):
-    """build_direction's payload for `engine` under LANE, refused unless every line gets the same."""
+    """build_direction's payload for `engine` under LANE, refused unless every line gets the same
+    and every value DIRECTION_TAGS sets comes out unchanged (a clamp that moved one would render
+    something other than what was decided)."""
     tag = dict(DIRECTION_TAGS[engine], engine=engine)
     out = [book_ingest.build_direction(tag, r["text"], lane=LANE) for r in rows]
     if any(e != engine for e, _d in out):
@@ -196,6 +279,11 @@ def direction_for(engine, rows):
     first = out[0][1]
     if any(d != first for _e, d in out):
         refuse("build_direction gave the %s lines more than one direction." % engine)
+    moved = {k: (v, first.get(k)) for k, v in DIRECTION_TAGS[engine].items()
+             if k not in first or first[k] != v or type(first[k]) is not type(v)}
+    if moved:
+        refuse("build_direction changed the %s direction DIRECTION_TAGS sets: %s." % (
+            engine, ", ".join("%s %r -> %r" % (k, a, b) for k, (a, b) in sorted(moved.items()))))
     return first
 
 
@@ -254,11 +342,14 @@ def plan_meta(anchor, engine, direction, git, n_lines):
                  "canonical_form": probe_text_bank.CANONICAL_FORM},
         "render_order": "the text bank's line order; render_index is 1-based",
         "direction": {"lane": LANE, "tag": dict(DIRECTION_TAGS[engine], engine=engine),
-                      "via": "book_ingest.build_direction", "direction": direction},
+                      "via": "book_ingest.build_direction", "direction": direction,
+                      "decision": (ZONOS_DIRECTION_DECISION if engine == "zonos" else
+                                   "build_direction's defaults under the Neutral lane rules")},
         "seeds": {"rule": SEED_RULE, "SEED_BASE": SEED_BASE, "first": seed_for(1),
                   "last": seed_for(n_lines)},
         "engine_pin": engine_pin(engine),
-        "synth_bank": {"env": PROBE_ENV, "out": "audio"},
+        "synth_bank": {"env": PROBE_ENV, "out": "audio", "known_gap": PROBE_MODE_GAP},
+        "render_affecting_paths": list(RENDER_AFFECTING_PATHS),
         "throughput": TIMING, "batched_run": BATCHED_RUN,
     }
 
@@ -270,6 +361,38 @@ def _has_manifest(audio):
 def _load_json(path):
     with open(path, encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def _git(*argv):
+    return subprocess.run(["git", "-C", _SONORA_REPO, *argv], capture_output=True, text=True)
+
+
+def render_inputs_changed(plan_commit, head):
+    """The RENDER_AFFECTING_PATHS that differ between `plan_commit` and `head`, [] when none do.
+
+    Refuses when git cannot compare the two (a commit this repository does not have) or when a
+    listed path is not tracked at `head`: `git diff` passes a pathspec that matches nothing, so a
+    misspelt entry would otherwise vouch for a file it never compared."""
+    if not isinstance(plan_commit, str) or not plan_commit:
+        refuse("plan_meta.json names no plan commit (%r). Plan into a new --out-root."
+               % (plan_commit,))
+    if plan_commit == head:
+        return []
+    paths = list(RENDER_AFFECTING_PATHS)
+    tracked = _git("ls-tree", "-r", "--name-only", head, "--", *paths)
+    if tracked.returncode != 0:
+        refuse("git cannot list %s's tree: %s" % (head, tracked.stderr.strip()))
+    missing = sorted(set(paths) - set(tracked.stdout.split()))
+    if missing:
+        refuse("RENDER_AFFECTING_PATHS names files %s does not track: %s." % (
+            head, ", ".join(missing)))
+    quiet = _git("diff", "--quiet", plan_commit, head, "--", *paths)
+    if quiet.returncode == 0:
+        return []
+    if quiet.returncode != 1:
+        refuse("git cannot compare the plan commit %s with this checkout's %s (%s). Render from "
+               "a checkout that has the plan commit." % (plan_commit, head, quiet.stderr.strip()))
+    return _git("diff", "--name-only", plan_commit, head, "--", *paths).stdout.split()
 
 
 def _require_clean(git, allow_dirty):
@@ -302,8 +425,13 @@ def cmd_plan(args):
         meta = os.path.join(cdir, "plan_meta.json")
         if _has_manifest(os.path.join(cdir, "audio")) and \
                 (not os.path.exists(meta) or _load_json(meta).get("commit") != git["commit"]):
-            refuse("%s/audio holds renders planned at another commit; re-planning would mix "
-                   "them. Plan into a new --out-root." % cdir)
+            refuse("%s/audio holds renders planned at another commit (%s; this checkout is %s); "
+                   "re-planning would mix two plans. To resume those renders, run `render %s` "
+                   "against the existing plan: it accepts this checkout when no file in "
+                   "RENDER_AFFECTING_PATHS differs from the plan commit, and otherwise names the "
+                   "files that do. To start over at this commit, plan into a new --out-root."
+                   % (cdir, _load_json(meta).get("commit") if os.path.exists(meta) else
+                      "no plan_meta.json", git["commit"], cell))
     for cell, (anchor, engine, bank) in cells.items():
         cdir = os.path.join(out_root, cell)
         os.makedirs(cdir, exist_ok=True)
@@ -342,11 +470,19 @@ def cmd_render(args):
             _load_json(os.path.join(cdir, "plan_meta.json"))
     except (OSError, ValueError) as e:
         refuse("%s has no readable plan (%s). Run `plan` first." % (cdir, e))
+    plan_commit = meta.get("commit")
+    changed = render_inputs_changed(plan_commit, git["commit"])
+    if changed:
+        refuse("%s was planned at %s, and this checkout is %s; these render-affecting files "
+               "differ between the two: %s. Render from a checkout at the plan commit (`git worktree "
+               "add --detach <dir> %s`; it needs its own .venv), or plan into a new --out-root "
+               "at this commit."
+               % (cdir, plan_commit, git["commit"], ", ".join(changed), plan_commit))
+    if plan_commit != git["commit"]:
+        print("HEAD %s is not the plan commit %s; no render-affecting file differs between them."
+              % (git["commit"], plan_commit))
     if on_disk != bank:
         refuse("%s/bank.json is not the bank these inputs and this code plan. Re-plan." % cdir)
-    if meta.get("commit") != git["commit"]:
-        refuse("%s was planned at %s, and this checkout is %s. Re-plan at this commit."
-               % (cdir, meta.get("commit"), git["commit"]))
     argv = render_command(out_root, args.cell, engine)
     line = _shell_line(argv)
     blockers = []
@@ -367,7 +503,8 @@ def cmd_render(args):
     started = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     code = subprocess.run(argv, env=dict(os.environ, **PROBE_ENV)).returncode
     append_jsonl(os.path.join(cdir, "render_log.jsonl"), [{
-        "command": line, "commit": git["commit"], "tree_clean": git["tree_clean"],
+        "command": line, "plan_commit": plan_commit, "head_commit": git["commit"],
+        "tree_clean": git["tree_clean"],
         "allow_dirty": bool(args.allow_dirty), "started_utc": started,
         "finished_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "exit_code": code}])

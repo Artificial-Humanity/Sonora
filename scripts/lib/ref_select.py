@@ -888,8 +888,17 @@ REF_FILE_KEYS = frozenset(REF_FILE_REQUIRED + ("id", "gender"))
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 
 
+def _under_ref_root(real):
+    """Whether a resolved path lies under REF_FILE_ROOT, itself resolved (the mount point may
+    be a symlink on the host, and the containers see what it points at)."""
+    root = _os.path.realpath(REF_FILE_ROOT)
+    return real == root or real.startswith(root.rstrip("/") + "/")
+
+
 def ref_file_problems(spec):
-    """What is wrong with a `ref_file` value as written, [] when nothing is. Reads no file."""
+    """What is wrong with a `ref_file` value, [] when nothing is. Reads no file's contents, but
+    resolves symlinks: the path's REALPATH must lie under REF_FILE_ROOT, not only its text.
+    A falsy value (`{}`, None) is a problem like any other non-pin, never "no pin"."""
     if not isinstance(spec, dict):
         return [f"ref_file must be an object, not {type(spec).__name__}"]
     problems = [f"ref_file has no `{k}`" for k in REF_FILE_REQUIRED if k not in spec]
@@ -899,6 +908,11 @@ def ref_file_problems(spec):
                                and _os.path.normpath(path) == path):
         problems.append(f"ref_file path {path!r} is not a normalised absolute path under "
                         f"{REF_FILE_ROOT}")
+    elif "path" in spec and not _under_ref_root(_os.path.realpath(path)):
+        # The containers mount only REF_FILE_ROOT, so a symlink out of it names a file the
+        # renderer cannot open there, or a different one; the resolved path is what counts.
+        problems.append(f"ref_file path {path!r} resolves to {_os.path.realpath(path)!r}, "
+                        f"outside {REF_FILE_ROOT}")
     if "sha256" in spec and not (isinstance(spec["sha256"], str)
                                  and _SHA256_HEX.fullmatch(spec["sha256"])):
         problems.append(f"ref_file sha256 {spec['sha256']!r} is not 64 lowercase hex digits")
@@ -922,10 +936,11 @@ def file_sha256(path):
 def pinned_reference_file(job):
     """Same return shape as select_reference, for a bank line that pins its reference by FILE.
 
-    Raises ValueError for a malformed `ref_file`, a line that also pins `ref_id`, or a file whose
-    sha256 differs from the one the line records, and LookupError for a missing file: the two
-    exceptions the renderers' per-clip casting guard already catches. The file is hashed on every
-    call, so a reference replaced mid-bank stops the clips after it.
+    Raises ValueError for a malformed `ref_file` (a falsy one included), a line that also pins
+    `ref_id`, or a file whose sha256 differs from the one the line records, and LookupError for a
+    missing or unreadable file: the two exceptions the renderers' per-clip casting guard already
+    catches, so each is that clip's CASTING FAILED and never stops the bank. The file is hashed
+    on every call, so a reference replaced mid-bank stops the clips after it.
     """
     spec = job["ref_file"]
     if job.get("ref_id"):
@@ -935,7 +950,10 @@ def pinned_reference_file(job):
         raise ValueError("; ".join(problems))
     if not _os.path.isfile(spec["path"]):
         raise LookupError(f"ref_file {spec['path']} does not exist")
-    got = file_sha256(spec["path"])
+    try:
+        got = file_sha256(spec["path"])
+    except OSError as exc:
+        raise LookupError(f"ref_file {spec['path']} cannot be read: {exc}") from exc
     if got != spec["sha256"]:
         raise ValueError(f"ref_file {spec['path']} has sha256 {got}, the line records "
                          f"{spec['sha256']}")

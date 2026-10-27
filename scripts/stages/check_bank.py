@@ -33,7 +33,6 @@ A line pinning both `ref_id` and `ref_file` is refused.
     .venv/bin/python scripts/stages/check_bank.py <bank.json>
 """
 import json
-import os
 import re
 import sys
 
@@ -80,7 +79,10 @@ def check(bank_path):
 
 
 def check_refs(bank_path):
-    """(id, engine, problem) for every `ref_file` that would not render as written."""
+    """(id, engine, problem) for every `ref_file` that would not render as written.
+
+    The key's presence is what makes a line a file pin, as in the renderers: a falsy value
+    (`{}`, null) is reported, never read as "no pin" and silently cast."""
     bank = json.load(open(bank_path, encoding="utf-8"))
     problems, hashed = [], {}          # a 300-line bank pins one file 300 times
     for line in bank.get("lines", []):
@@ -90,12 +92,18 @@ def check_refs(bank_path):
         found = ref_select.ref_file_problems(spec)
         if line.get("ref_id"):
             found.append(f"pins both ref_id={line['ref_id']!r} and ref_file")
-        if not found and not os.path.isfile(spec["path"]):
+        if not found and not _os.path.isfile(spec["path"]):
             found.append(f"ref_file {spec['path']} does not exist")
         elif not found:
             if spec["path"] not in hashed:
-                hashed[spec["path"]] = ref_select.file_sha256(spec["path"])
-            if hashed[spec["path"]] != spec["sha256"]:
+                try:
+                    hashed[spec["path"]] = ref_select.file_sha256(spec["path"])
+                except OSError as exc:
+                    hashed[spec["path"]] = exc
+            got = hashed[spec["path"]]
+            if isinstance(got, OSError):
+                found.append(f"ref_file {spec['path']} cannot be read: {got}")
+            elif got != spec["sha256"]:
                 found.append(f"ref_file {spec['path']} does not have sha256 {spec['sha256']}")
         problems += [(line.get("id", "?"), line.get("engine", "?"), p) for p in found]
     return problems

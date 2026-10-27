@@ -148,6 +148,9 @@ def test_a_well_formed_ref_file_passes(ref_root):
     (lambda s, clip: dict(s, text="  "), "text is empty"),
     (lambda s, clip: dict(s, speaker="x"), "unknown key `speaker`"),
     (lambda s, clip: "a/path.wav", "must be an object"),
+    # a falsy pin is an error, as in the renderers, never "no pin" (the line would be cast)
+    (lambda s, clip: {}, "has no `path`"),
+    (lambda s, clip: None, "must be an object"),
 ])
 def test_a_bad_ref_file_is_refused(ref_root, mutate, needle):
     clip, sha = ref_root
@@ -170,3 +173,34 @@ def test_a_bank_without_ref_file_is_untouched_by_the_ref_check():
                   dict(line(cid="c5", engine="zonos", text="a b c"), ref_id="pool_1")])
     assert check_bank.check_refs(bank) == []
     assert check_bank.main(["check_bank.py", bank]) == 0
+
+
+def test_a_ref_file_symlinked_out_of_the_root_is_refused(ref_root, tmp_path_factory):
+    """The REALPATH must be under REF_FILE_ROOT: the containers mount only that tree."""
+    clip, sha = ref_root
+    outside = tmp_path_factory.mktemp("outside") / "anchor.wav"
+    outside.write_bytes(clip.read_bytes())
+    link = clip.parent / "link-out.wav"
+    link.symlink_to(outside)
+    bank = _bank([_pinned({"path": str(link), "sha256": sha, "text": "t"})])
+    problems = check_bank.check_refs(bank)
+    assert any("outside" in p[2] and str(outside) in p[2] for p in problems), problems
+    assert check_bank.main(["check_bank.py", bank]) == 1
+    inside = clip.parent / "link-in.wav"              # control: a link that stays inside is fine
+    inside.symlink_to(clip)
+    assert check_bank.check_refs(_bank([_pinned({"path": str(inside), "sha256": sha,
+                                                 "text": "t"})])) == []
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read a mode-000 file")
+def test_an_unreadable_ref_file_is_a_problem_not_a_crash(ref_root):
+    clip, sha = ref_root
+    bank = _bank([_pinned({"path": str(clip), "sha256": sha, "text": "t"})])
+    clip.chmod(0)
+    try:
+        problems = check_bank.check_refs(bank)
+        code = check_bank.main(["check_bank.py", bank])
+    finally:
+        clip.chmod(0o644)
+    assert any("cannot be read" in p[2] for p in problems), problems
+    assert code == 1

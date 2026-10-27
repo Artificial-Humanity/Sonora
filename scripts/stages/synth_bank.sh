@@ -52,6 +52,9 @@ ENGINES=("$@")
 # campaign's rows in ratings.csv) and register_audition (it would append every clip to the
 # audition queue). Loudness normalisation and the mandatory QC gate still run, and their
 # failures stay fatal. Anything other than unset, 0 or 1 is refused rather than guessed at.
+# KNOWN GAP: because the defect detectors are skipped, Zonos's leading-gap check ("a blip, then
+# silence"; qc_engine_defects.leading_gap_score) does NOT run on a probe's Zonos clips. Whoever
+# evaluates the probe must run it (render_1ci.py records this in plan_meta.json, PROBE_MODE_GAP).
 PROBE="${SYNTH_BANK_PROBE:-0}"
 case "$PROBE" in 0|1) ;; *) echo "!! SYNTH_BANK_PROBE must be 0 or 1, not '$PROBE'" >&2; exit 2;; esac
 [ "$PROBE" = 1 ] && echo "== PROBE MODE: no direction check, no defect detectors, no audition queue =="

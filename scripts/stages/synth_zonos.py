@@ -209,7 +209,7 @@ def main():
             # under skip-if-exists retries only what failed.
             # A line may pin by FILE instead (`ref_file`, same contract, sha256-checked).
             try:
-                if job.get("ref_file"):
+                if "ref_file" in job:    # present = a file pin; a falsy one is refused
                     ref_wav, ref_text, ref_meta = pinned_reference_file(job)
                 elif job.get("ref_id"):
                     ref_wav, ref_text, ref_meta = pinned_reference(job["ref_id"])

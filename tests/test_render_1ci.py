@@ -4,9 +4,12 @@
 `synth_bank.sh`. These tests run `plan` and `render` against a fake text bank and fake anchor
 clips (the registered hashes are swapped for the fakes'), so they need neither /data nor a GPU.
 """
+import ast
 import hashlib
 import json
 import os
+import re
+import subprocess
 
 import pytest
 
@@ -121,15 +124,70 @@ def test_no_bank_carries_intended_labels(env):
         assert not any("intended" in ln for ln in _bank(env, cell)["lines"])
 
 
+# The values each engine's lines must carry, pinned here rather than derived: Zonos's are the lead
+# resident's decision (render_1ci.ZONOS_DIRECTION_DECISION), Chatterbox's are build_direction's
+# Neutral-lane defaults (0.5 capped to NARRATION_MAX_EXAGGERATION, cfg_weight 0.5).
+PINNED_DIRECTION = {
+    "zonos": {"pitch_std": 28.0, "speaking_rate": 14.0, "emotion": None},
+    "chatterbox": {"exaggeration": 0.4, "cfg_weight": 0.5},
+}
+
+
 @pytest.mark.parametrize("engine", ["chatterbox", "zonos"])
 def test_direction_is_build_directions_neutral_payload_on_every_line(env, engine):
     _plan(env)
-    want = book_ingest.build_direction({"engine": engine}, "any text", lane="Neutral")[1]
+    tag = dict(r1.DIRECTION_TAGS[engine], engine=engine)
+    want = book_ingest.build_direction(tag, "any text", lane="Neutral")[1]
+    assert {k: want[k] for k in PINNED_DIRECTION[engine]} == PINNED_DIRECTION[engine]
+    for k, v in PINNED_DIRECTION[engine].items():
+        assert type(want[k]) is type(v), (k, want[k])
     for anchor in ("M4-s3", "F6-s2"):
         cell = "%s_%s" % (anchor, engine)
         assert all(ln["direction"] == want for ln in _bank(env, cell)["lines"])
-        assert _meta(env, cell)["direction"]["direction"] == want
-        assert _meta(env, cell)["direction"]["lane"] == "Neutral"
+        meta = _meta(env, cell)["direction"]
+        assert meta["direction"] == want and meta["lane"] == "Neutral"
+        assert meta["tag"] == tag
+    assert "28.0" in _meta(env, "M4-s3_zonos")["direction"]["decision"]
+
+
+def _skill_row(engine, lane):
+    """{column: cell} for `lane`'s row in the narration table of the engine's director skill."""
+    text = (REPO / "scripts" / "assets" / "director_skills" / ("%s.md" % engine)).read_text(
+        encoding="utf-8")
+    lines = text.splitlines()
+    for i, ln in enumerate(lines):
+        cells = [c.strip().strip("`") for c in ln.strip().strip("|").split("|")]
+        if cells and cells[0] == "lane" and "pitch_std" in cells:
+            header = cells
+            for row in lines[i + 2:]:
+                vals = [c.strip() for c in row.strip().strip("|").split("|")]
+                if not row.startswith("|"):
+                    break
+                if vals[0] == lane:
+                    return dict(zip(header, vals))
+    raise AssertionError("no %s row in %s.md's lane table" % (lane, engine))
+
+
+def _span(cell):
+    lo, hi = re.fullmatch(r"\**(\d+(?:\.\d+)?)\s*[–-]\s*(\d+(?:\.\d+)?)\**", cell).groups()
+    return float(lo), float(hi)
+
+
+def test_the_zonos_direction_is_inside_zonos_mds_neutral_row():
+    row = _skill_row("zonos", "Neutral")
+    d = r1.DIRECTION_TAGS["zonos"]
+    lo, hi = _span(row["pitch_std"])
+    assert lo <= d["pitch_std"] <= hi, (d["pitch_std"], row)
+    lo, hi = _span(row["speaking_rate"])
+    assert lo <= d["speaking_rate"] <= hi, (d["speaking_rate"], row)
+    assert "omit" in row["emotion"].lower() and d["emotion"] is None
+
+
+def test_a_direction_build_direction_would_clamp_refuses(env, monkeypatch):
+    monkeypatch.setitem(r1.DIRECTION_TAGS, "zonos", dict(r1.DIRECTION_TAGS["zonos"], pitch_std=10.0))
+    with pytest.raises(SystemExit, match="changed the zonos direction"):
+        _plan(env)
+    assert not env["out"].exists()
 
 
 def test_a_direction_that_varies_by_line_refuses(env, monkeypatch):
@@ -188,6 +246,8 @@ def test_plan_meta_records_the_provenance(env):
     assert meta["synth_bank"]["env"] == {"SYNTH_BANK_PROBE": "1"}
     assert meta["engine_pin"]["source_checkout"] == r1.ZONOS_SOURCE
     assert "not available" in meta["batched_run"]
+    assert "leading-gap" in meta["synth_bank"]["known_gap"]
+    assert meta["render_affecting_paths"] == list(r1.RENDER_AFFECTING_PATHS)
     assert _meta(env, "F6-s2_chatterbox")["engine_pin"]["wheel"] == "chatterbox-tts==0.1.7"
 
 
@@ -253,8 +313,11 @@ def test_a_cell_with_renders_from_another_commit_is_not_replanned(env):
     (audio / "chatterbox_manifest.jsonl").write_text("{}\n")
     _plan(env)                                   # same commit: fine
     env["git"]["commit"] = "deadbeef"
-    with pytest.raises(SystemExit, match="another commit"):
+    with pytest.raises(SystemExit, match="another commit") as exc:
         _plan(env)
+    msg = str(exc.value)
+    assert "c0ffee" in msg and "deadbeef" in msg
+    assert "render %s" % CELLS[0] in msg and "new --out-root" in msg, "no way out named"
 
 
 # --- render -------------------------------------------------------------------------------
@@ -312,8 +375,8 @@ def test_render_refuses_another_commit_and_a_dirty_tree(env, no_exec):
     with pytest.raises(SystemExit, match="uncommitted"):
         r1.main(args)
     assert r1.main(args + ["--allow-dirty"]) == 0
-    env["git"].update(commit="deadbeef", tree_clean=True)
-    with pytest.raises(SystemExit, match="Re-plan at this commit"):
+    env["git"].update(commit="deadbeef", tree_clean=True)     # a commit git does not have
+    with pytest.raises(SystemExit, match="git cannot"):
         r1.main(args)
 
 
@@ -345,8 +408,164 @@ def test_render_run_executes_synth_bank_in_probe_mode_and_logs_it(env, no_exec, 
     assert argv == [r1.SYNTH_BANK, str(cdir / "bank.json"), str(cdir / "audio"), "zonos"]
     assert kw["env"]["SYNTH_BANK_PROBE"] == "1"
     log = [json.loads(x) for x in (cdir / "render_log.jsonl").read_text().splitlines()]
-    assert log[0]["exit_code"] == 0 and log[0]["commit"] == "c0ffee"
+    assert log[0]["exit_code"] == 0
+    assert log[0]["plan_commit"] == log[0]["head_commit"] == "c0ffee"
     assert log[0]["command"].startswith("SYNTH_BANK_PROBE=1 ")
+
+
+# --- render at a HEAD other than the plan commit ------------------------------------------
+
+def _g(repo, *argv):
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    return subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t",
+                           "-c", "commit.gpgsign=false", *argv], check=True, capture_output=True,
+                          text=True, env=env).stdout.strip()
+
+
+@pytest.fixture
+def repo(tmp_path, monkeypatch):
+    """A git repo holding every RENDER_AFFECTING_PATHS file and one unrelated file, wired in as
+    the checkout render_1ci compares commits in. Returns (path, commit-making function)."""
+    root = tmp_path / "repo"
+    for rel in list(r1.RENDER_AFFECTING_PATHS) + ["docs/unrelated.md"]:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("v0 %s\n" % rel)
+    _g(tmp_path, "init", "-q", str(root))
+    _g(root, "add", "-A")
+    _g(root, "commit", "-q", "-m", "plan")
+    monkeypatch.setattr(r1, "_SONORA_REPO", str(root))
+
+    def commit(rel, text):
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(text)
+        _g(root, "add", "-A")
+        _g(root, "commit", "-q", "-m", "change " + rel)
+        return _g(root, "rev-parse", "HEAD")
+    return root, commit
+
+
+def _run_ready(env, monkeypatch):
+    venv = env["root"] / "python"
+    venv.write_text("#!/bin/sh\n")
+    venv.chmod(0o755)
+    monkeypatch.setattr(r1, "DATA_ROOT", str(env["root"]) + "/")
+    monkeypatch.setattr(r1, "VENV_PYTHON", str(venv))
+
+
+def test_render_at_a_head_that_changed_only_unrelated_files_is_allowed_and_logs_both(
+        env, repo, no_exec, monkeypatch, capsys):
+    root, commit = repo
+    plan_commit = _g(root, "rev-parse", "HEAD")
+    env["git"]["commit"] = plan_commit
+    _plan(env)
+    head = commit("docs/unrelated.md", "pulled from main\n")
+    env["git"]["commit"] = head
+    _run_ready(env, monkeypatch)
+    assert r1.main(["render", "F6-s2_zonos", "--out-root", str(env["out"]), "--run"]) == 0
+    assert "no render-affecting file differs" in capsys.readouterr().out
+    assert len(no_exec) == 1
+    log = [json.loads(x) for x in
+           (env["out"] / "F6-s2_zonos" / "render_log.jsonl").read_text().splitlines()]
+    assert log[0]["plan_commit"] == plan_commit and log[0]["head_commit"] == head
+
+
+@pytest.mark.parametrize("rel", ["scripts/lib/ref_select.py", "scripts/stages/synth_bank.sh",
+                                 "matcha/delivery.py", "scripts/container_env.sh"])
+def test_render_at_a_head_that_changed_a_render_affecting_file_refuses_naming_it(
+        env, repo, no_exec, rel):
+    root, commit = repo
+    plan_commit = _g(root, "rev-parse", "HEAD")
+    env["git"]["commit"] = plan_commit
+    _plan(env)
+    commit("docs/unrelated.md", "pulled\n")
+    env["git"]["commit"] = commit(rel, "changed\n")
+    with pytest.raises(SystemExit, match="render-affecting files differ") as exc:
+        r1.main(["render", "M4-s3_chatterbox", "--out-root", str(env["out"])])
+    msg = str(exc.value)
+    assert plan_commit in msg and rel in msg and "docs/unrelated.md" not in msg
+    assert no_exec == []
+
+
+def test_render_refuses_when_a_listed_path_is_not_tracked(env, repo, no_exec, monkeypatch):
+    """A misspelt entry matches nothing, and `git diff --quiet` would call it unchanged."""
+    root, commit = repo
+    env["git"]["commit"] = _g(root, "rev-parse", "HEAD")
+    _plan(env)
+    env["git"]["commit"] = commit("docs/unrelated.md", "pulled\n")
+    monkeypatch.setattr(r1, "RENDER_AFFECTING_PATHS",
+                        r1.RENDER_AFFECTING_PATHS + ("scripts/lib/ref_selct.py",))
+    with pytest.raises(SystemExit, match="does not track: scripts/lib/ref_selct.py"):
+        r1.main(["render", "M4-s3_chatterbox", "--out-root", str(env["out"])])
+
+
+def test_every_render_affecting_path_is_tracked_here():
+    tracked = set(subprocess.run(["git", "-C", str(REPO), "ls-files"], capture_output=True,
+                                 text=True, check=True).stdout.split())
+    missing = [p for p in r1.RENDER_AFFECTING_PATHS if p not in tracked]
+    assert not missing, missing
+    assert len(r1.RENDER_AFFECTING_PATHS) == len(set(r1.RENDER_AFFECTING_PATHS))
+
+
+def _module_level_imports(path):
+    """Module names imported by statements that run at import time (not inside a function)."""
+    names, todo = [], list(ast.parse(path.read_text(encoding="utf-8")).body)
+    while todo:
+        node = todo.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if isinstance(node, ast.Import):
+            names += [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            names.append(node.module)
+        todo += [c for c in ast.iter_child_nodes(node) if isinstance(c, ast.stmt)]
+    return names
+
+
+def _repo_file(module):
+    """The tracked file a module name resolves to on render_1ci's search path, or None."""
+    parts = module.split(".")
+    for base in (REPO / "scripts" / "lib", REPO / "scripts" / "stages", REPO):
+        f = base.joinpath(*parts).with_suffix(".py")
+        if f.is_file():
+            return f
+    return None
+
+
+def test_the_render_affecting_paths_cover_every_repo_module_they_import():
+    listed = set(r1.RENDER_AFFECTING_PATHS)
+    seen, todo, unlisted = set(), [REPO / p for p in listed if p.endswith(".py")], []
+    assert len(todo) >= 10, "the enumeration found too few files to mean anything"
+    while todo:
+        f = todo.pop()
+        rel = f.relative_to(REPO).as_posix()
+        if rel in seen:
+            continue
+        seen.add(rel)
+        if rel not in listed:
+            if rel not in r1.NOT_RENDER_AFFECTING:
+                unlisted.append(rel)
+            continue                      # an excluded module's own imports are not followed
+        for module in _module_level_imports(f):
+            hit = _repo_file(module)
+            if hit is not None:
+                todo.append(hit)
+            if "." in module:              # a package's __init__ runs too
+                init = _repo_file(module.split(".")[0] + ".__init__")
+                if init is not None:
+                    todo.append(init)
+    assert not unlisted, "imported by a render-affecting file but in neither list: %s" % unlisted
+    assert {"scripts/lib/schemas.py", "matcha/delivery.py"} <= seen
+
+
+def test_every_script_synth_bank_names_is_classified():
+    src = "".join((REPO / rel).read_text(encoding="utf-8")
+                  for rel in ("scripts/stages/synth_bank.sh", "scripts/container_env.sh"))
+    named = set(re.findall(r"scripts/(?:stages|lib|tools)?/?[A-Za-z0-9_]+\.(?:py|sh)", src))
+    named = {n.replace("scripts//", "scripts/") for n in named}
+    assert len(named) >= 10, named
+    unclassified = sorted(n for n in named
+                          if n not in r1.RENDER_AFFECTING_PATHS and n not in r1.NOT_RENDER_AFFECTING)
+    assert not unclassified, unclassified
 
 
 # --- the rest -----------------------------------------------------------------------------
