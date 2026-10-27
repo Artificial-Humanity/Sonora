@@ -75,7 +75,8 @@ def qwen_base(monkeypatch, fake_torch, calls):
 
         def generate_voice_clone(self, text, language, voice_clone_prompt):
             calls.append(("clone", text, language, voice_clone_prompt))
-            return [np.zeros(2 * SR, dtype=np.float32)], SR     # 2.0 s
+            n = len(text) if isinstance(text, list) else 1
+            return [np.zeros(2 * SR, dtype=np.float32) for _ in range(n)], SR
 
     def load_qwen(model_dir):
         calls.append(("load", model_dir))
@@ -192,6 +193,48 @@ def test_no_qwen_base_jobs_spends_no_model_load(qwen_base, calls, monkeypatch, t
     line = _base_line(engine="qwen")
     _run(qwen_base, monkeypatch, tmp_path, [line])
     assert calls == [], calls
+
+
+def test_a_batched_bank_renders_chunks_with_one_seed_per_chunk(
+        qwen_base, anchor, calls, monkeypatch, tmp_path):
+    """Step 1c-ii throughput mode: one list call per chunk, amortised timing,
+    and every row recording the chunk seed that actually ran — never the
+    per-clip seed a batched RNG stream cannot honour."""
+    # prompt build (2 ticks) + chunk of 3 (2 ticks) + chunk of 1 (2 ticks)
+    _clock(monkeypatch, qwen_base, 0.0, 2.0, 2.0, 8.0, 10.0, 13.0)
+    lines = [_base_line(id="b%d" % i, seed=1000000 + i, ref_file=anchor)
+             for i in range(1, 5)]
+    bank = tmp_path / "bank.json"
+    bank.write_text(json.dumps({"version": "t1", "campaign": "t", "lines": lines,
+                                "batch_size": 3}))
+    out = tmp_path / "audio"
+    monkeypatch.setattr(sys, "argv",
+                        [qwen_base.__file__, "--bank", str(bank), "--out", str(out)])
+    qwen_base.main()
+    rows = [json.loads(x) for x in
+            (out / "qwen_base_manifest.jsonl").read_text().splitlines()]
+    assert [r["id"] for r in rows] == ["b1", "b2", "b3", "b4"]
+    clones = [c for c in calls if c[0] == "clone"]
+    assert [len(c[1]) if isinstance(c[1], list) else 1 for c in clones] == [3, 1]
+    assert [c for c in calls if c[0] == "seed"] == [("seed", 1000001), ("seed", 1000004)]
+    assert [r["seed"] for r in rows] == [1000001, 1000001, 1000001, 1000004]
+    assert [r["batch_size"] for r in rows] == [3, 3, 3, 1]
+    assert rows[0]["batch_seconds"] == 6.0 and rows[0]["render_seconds"] == 2.0
+    assert rows[3]["batch_seconds"] == 3.0 and rows[3]["render_seconds"] == 3.0
+    assert [r["prompt_cached"] for r in rows] == [False, True, True, True]
+    assert rows[0]["ref_condition_seconds"] == 2.0
+    assert all((out / ("%s.wav" % r["id"])).exists() for r in rows)
+
+
+def test_a_bogus_batch_size_is_refused(qwen_base, monkeypatch, tmp_path):
+    bank = tmp_path / "bank.json"
+    bank.write_text(json.dumps({"version": "t1", "campaign": "t",
+                                "lines": [_base_line()], "batch_size": 0}))
+    monkeypatch.setattr(sys, "argv",
+                        [qwen_base.__file__, "--bank", str(bank),
+                         "--out", str(tmp_path / "audio")])
+    with pytest.raises(SystemExit, match="batch_size must be a positive int"):
+        qwen_base.main()
 
 
 # --- qwen_custom: speaker guard, canonical case, provenance -------------------

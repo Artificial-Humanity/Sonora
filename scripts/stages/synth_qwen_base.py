@@ -29,6 +29,17 @@ The checkpoint loads through `qwen_load.load_qwen`, so the float32 waveform
 decoder refusal that guards VoiceDesign guards this engine too (both share the
 speech tokenizer).
 
+Batching (Step 1c-ii throughput, pre-registered as not gated): a bank may carry
+a top-level `batch_size` > 1. `generate_voice_clone` accepts a list of texts
+and broadcasts a one-item prompt list across them (CODE-VERIFIED in the same
+wheel), so consecutive jobs sharing one reference render in a single call.
+⚠ A batched call draws every clip from one RNG stream: per-clip seeds do NOT
+hold, the chunk is seeded once from its first line's seed (recorded as the
+row's `seed`), and batched rows carry `batch_size`/`batch_seconds` with
+`render_seconds` amortised per clip. Batched clips measure throughput only;
+they are never the measured cells. Absent `batch_size`, rendering is the
+batch-size-1 path above, unchanged.
+
 Container recipe: synth_bank.sh's qwen_base block (the qwen block's recipe:
 apt sox; --no-deps qwen-tts==0.1.1; transformers==4.57.3, soundfile, sox,
 onnxruntime, einops, librosa; --no-deps accelerate==1.12.0).
@@ -85,70 +96,118 @@ def main():
     if used:
         print(f"resume: {len(used)} reference(s) already spent", flush=True)
     prompts = {}      # (ref_wav, ref_text) -> the built voice-clone prompt
+    batch_size = bank.get("batch_size", 1)
+    if not isinstance(batch_size, int) or batch_size < 1:
+        raise SystemExit("REFUSING: bank batch_size must be a positive int, "
+                         "got %r." % (batch_size,))
+    if batch_size > 1:
+        print(f"BATCHED throughput mode: batch_size={batch_size} "
+              "(per-clip seeds do not hold; rows are throughput-only)", flush=True)
+
+    def resolved(job):
+        """(ref_wav, ref_text, ref_meta), or None after a printed CASTING FAILED.
+
+        Three-way reference resolution, the shared contract. Casting can raise
+        (exhausted pool, unknown ref_id, bad ref_file); uncaught it would kill
+        the engine's whole remaining bank, so the failure is per-clip and a
+        re-run retries only what failed (B-L2)."""
+        d = job["direction"]
+        try:
+            if "ref_file" in job:    # present = a file pin; a falsy one is refused
+                return pinned_reference_file(job)
+            if job.get("ref_id"):
+                return pinned_reference(job["ref_id"])
+            return select_reference(d.get("design", ""), job.get("intended", {}), used,
+                                    exclude=REF_BLACKLIST)
+        except (LookupError, ValueError) as exc:
+            print(job["id"], f"CASTING FAILED ({type(exc).__name__}: {exc}) "
+                             "— continuing", flush=True)
+            return None
+
+    def prompt_for(ref_wav, ref_text):
+        """(prompt, ref_cond_sec, prompt_cached), building and timing on a miss."""
+        key = (ref_wav, ref_text)
+        if key in prompts:
+            return prompts[key], 0.0, True
+        t0 = time.monotonic()
+        prompts[key] = model.create_voice_clone_prompt(
+            ref_audio=ref_wav, ref_text=ref_text, x_vector_only_mode=False)
+        torch.cuda.synchronize()
+        return prompts[key], time.monotonic() - t0, False
+
+    def write_row(mf, job, ref_text, ref_meta, wav, sr, prompt_cached,
+                  ref_cond_sec, render_sec, extra):
+        write_wav_atomic(os.path.join(args.out, f"{job['id']}.wav"), wav, sr)
+        row = dict(job)
+        row.update({
+            "engine": "qwen_base", "wav": f"{job['id']}.wav", "sr": sr,
+            "engine_license": "Apache-2.0 (Qwen3-TTS-12Hz-1.7B-Base)",
+            "speech_tokenizer_dtype": TOKENIZER_DTYPE,
+            "bank_version": bank["version"], "campaign": bank["campaign"],
+            "intended_age": design_age_band(job["direction"].get("design", "")),
+            "intended_gender": ref_meta["gender"],
+            "ref": ref_meta | {"ref_text": ref_text},
+            "prompt_cached": prompt_cached,
+            **render_timing(ref_cond_sec, render_sec, len(wav) / sr),
+            **extra,
+        })
+        mf.write(json.dumps(row) + "\n")
+        mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)
+        print(job["id"], f"{len(wav)/sr:.1f}s ref={ref_meta['id']} "
+                         f"prompt={'cached' if prompt_cached else 'built'}",
+              flush=True)
+
     with open(manifest_path, "a", encoding="utf-8") as mf:
+        pending = []
         for job in jobs:
             if os.path.exists(os.path.join(args.out, f"{job['id']}.wav")):
                 print(job["id"], "exists, skip", flush=True)
                 continue
-            d = job["direction"]
-            # Three-way reference resolution, the shared contract. Casting can
-            # raise (exhausted pool, unknown ref_id, bad ref_file); uncaught it
-            # would kill the engine's whole remaining bank, so the failure is
-            # per-clip and a re-run retries only what failed (B-L2).
-            try:
-                if "ref_file" in job:    # present = a file pin; a falsy one is refused
-                    ref_wav, ref_text, ref_meta = pinned_reference_file(job)
-                elif job.get("ref_id"):
-                    ref_wav, ref_text, ref_meta = pinned_reference(job["ref_id"])
-                else:
-                    ref_wav, ref_text, ref_meta = select_reference(
-                        d.get("design", ""), job.get("intended", {}), used,
-                        exclude=REF_BLACKLIST)
-            except (LookupError, ValueError) as exc:
-                print(job["id"], f"CASTING FAILED ({type(exc).__name__}: {exc}) "
-                                 "— continuing", flush=True)
-                continue
-
-            key = (ref_wav, ref_text)
-            prompt_cached = key in prompts
-            if prompt_cached:
-                ref_cond_sec = 0.0
-            else:
-                t0 = time.monotonic()
-                prompts[key] = model.create_voice_clone_prompt(
-                    ref_audio=ref_wav, ref_text=ref_text,
-                    x_vector_only_mode=False)
-                torch.cuda.synchronize()
-                ref_cond_sec = time.monotonic() - t0
+            ref = resolved(job)
+            if ref is not None:
+                pending.append((job, *ref))
+        i = 0
+        while i < len(pending):
+            job, ref_wav, ref_text, ref_meta = pending[i]
+            # Consecutive jobs sharing one reference form one chunk. At
+            # batch_size 1 every chunk is a single clip and this loop is the
+            # original per-clip path: resolve, prompt, seed, generate.
+            chunk = [pending[i]]
+            i += 1
+            while (i < len(pending) and len(chunk) < batch_size
+                   and pending[i][1] == ref_wav and pending[i][2] == ref_text):
+                chunk.append(pending[i])
+                i += 1
+            prompt, ref_cond_sec, prompt_cached = prompt_for(ref_wav, ref_text)
             # Immediately before generate, AFTER the cache lookup, so the RNG
             # state at the call does not depend on whether the prompt was built.
-            torch.manual_seed(job["seed"])
+            torch.manual_seed(chunk[0][0]["seed"])
             t1 = time.monotonic()
-            wavs, sr = model.generate_voice_clone(
-                text=job["text"], language="English",
-                voice_clone_prompt=prompts[key])
+            if len(chunk) == 1:
+                wavs, sr = model.generate_voice_clone(
+                    text=chunk[0][0]["text"], language="English",
+                    voice_clone_prompt=prompt)
+            else:
+                wavs, sr = model.generate_voice_clone(
+                    text=[c[0]["text"] for c in chunk], language="English",
+                    voice_clone_prompt=prompt)
             torch.cuda.synchronize()
-            render_sec = time.monotonic() - t1
-            wav = wavs[0]
-            write_wav_atomic(os.path.join(args.out, f"{job['id']}.wav"), wav, sr)
-
-            row = dict(job)
-            row.update({
-                "engine": "qwen_base", "wav": f"{job['id']}.wav", "sr": sr,
-                "engine_license": "Apache-2.0 (Qwen3-TTS-12Hz-1.7B-Base)",
-                "speech_tokenizer_dtype": TOKENIZER_DTYPE,
-                "bank_version": bank["version"], "campaign": bank["campaign"],
-                "intended_age": design_age_band(d.get("design", "")),
-                "intended_gender": ref_meta["gender"],
-                "ref": ref_meta | {"ref_text": ref_text},
-                "prompt_cached": prompt_cached,
-                **render_timing(ref_cond_sec, render_sec, len(wav) / sr),
-            })
-            mf.write(json.dumps(row) + "\n")
-            mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)
-            print(job["id"], f"{len(wav)/sr:.1f}s ref={ref_meta['id']} "
-                             f"prompt={'cached' if prompt_cached else 'built'}",
-                  flush=True)
+            batch_sec = time.monotonic() - t1
+            if len(wavs) != len(chunk):
+                raise SystemExit("REFUSING: generate_voice_clone returned %d wavs "
+                                 "for a chunk of %d texts." % (len(wavs), len(chunk)))
+            for n, ((cjob, _rw, _rt, cmeta), wav) in enumerate(zip(chunk, wavs)):
+                extra = {}
+                if batch_size > 1:
+                    # The seed that actually ran is the chunk's first line's;
+                    # row = dict(job) would otherwise record a per-clip seed
+                    # the batched RNG stream never honoured.
+                    extra = {"seed": chunk[0][0]["seed"], "batch_size": len(chunk),
+                             "batch_seconds": round(batch_sec, 4)}
+                write_row(mf, cjob, ref_text, cmeta, wav, sr,
+                          prompt_cached if n == 0 else True,
+                          ref_cond_sec if n == 0 else 0.0,
+                          batch_sec / len(chunk), extra)
     print("SYNTH-QWEN-BASE-DONE")
 
 

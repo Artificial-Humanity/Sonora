@@ -24,6 +24,12 @@ Never read emotions.txt from the repo root. Its 20 bare words look exactly like
 a controlled vocabulary, have no brackets and one typo, and are read aloud as
 text. Two community reports are people who fell for it.
 
+Throughput (Step 1c, Measures): each clip is timed with `time.monotonic()` and
+recorded in its manifest row through `synth_common.render_timing`, like the
+other probe renderers. There is no reference to condition on, so
+`ref_condition_seconds` is 0.0 and `render_seconds` covers `model.generate`
+plus the SNAC decode; the model and SNAC loads are in neither.
+
 Container recipe (smoke-proven 2026-07-28): pip transformers soundfile snac.
 Nothing exotic — this engine was always the least fragile of the four; what
 made its verdict worthless was the checkpoint and the prompt, not the plumbing.
@@ -31,6 +37,7 @@ made its verdict worthless was the checkpoint and the prompt, not the plumbing.
 import argparse
 import json
 import os
+import time
 
 import soundfile as sf
 import torch
@@ -50,7 +57,7 @@ _SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspa
 for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
-from synth_common import attempt_seed, write_wav_atomic  # noqa: E402
+from synth_common import attempt_seed, render_timing, write_wav_atomic  # noqa: E402
 
 MODEL_DIR = "/data/models/canopylabs/orpheus-3b-0.1-ft"
 SNAC_DIR = "hubertsiuzdak/snac_24khz"
@@ -162,12 +169,15 @@ def main():
             if attempt:
                 print(job["id"], f"attempt {attempt + 1} (seed {seed_used})", flush=True)
             torch.manual_seed(seed_used)
+            t1 = time.monotonic()
             with torch.no_grad():
                 out = model.generate(ids, max_new_tokens=token_budget(d["render_text"]),
                                      do_sample=True, temperature=0.6, top_p=0.95,
                                      repetition_penalty=REPETITION_PENALTY,
                                      eos_token_id=EOA)
             wav, n_codes = decode_audio(out[0].tolist(), snac, "cuda")
+            torch.cuda.synchronize()
+            render_sec = time.monotonic() - t1
             if wav is None:
                 print(job["id"], f"FAILED ({n_codes} codes < {MIN_CODES}: decoder "
                                  f"returns silence)", flush=True)
@@ -190,6 +200,7 @@ def main():
                 # "F"/"M" was silently dropped and hand-entered every time.
                 "intended_gender": "Female" if d["voice"] in FEMALE_VOICES else "Male",
                 "prompt": prompt,
+                **render_timing(0.0, render_sec, len(wav) / SR),
             })
             mf.write(json.dumps(row) + "\n")
             mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)
