@@ -535,7 +535,9 @@ def report_status(cell, status, synth_bank_code=None):
                      "(CASTING FAILED in its output) and carries on, so the cell is incomplete.")
     if status["wav_without_row"]:
         lines.append("%d missing id(s) have a wav but no manifest row (%s): a re-run skips an "
-                     "existing wav, so move those wavs aside first."
+                     "existing wav, so move those wavs into <cell>/audio/_superseded/ first "
+                     "(normalize_loudness skips that folder; any other subfolder of audio/ "
+                     "would be gain-adjusted again)."
                      % (len(status["wav_without_row"]), _some(status["wav_without_row"])))
     lines.append("Re-run `render %s --run` to resume: the renderers skip every clip whose wav "
                  "exists and render only the missing ones." % cell)
