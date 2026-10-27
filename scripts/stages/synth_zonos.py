@@ -21,6 +21,19 @@ Zyphra's own UI ships emotion OFF by default because it destabilises generation:
 if clips come back with dropped words or long silences, drop the emotion vector
 before suspecting anything else.
 
+A bank line may pin its reference by pool id (`ref_id`) or by file (`ref_file`, a
+sha256-checked path; `ref_select.pinned_reference_file`); casting and the excursion
+guard are then skipped, and the row's `ref` records what was used (for a file, its
+path and sha256).
+
+Throughput (Step 1c-i, Measures): each clip is timed with `time.monotonic()` in two
+parts, recorded in its manifest row. `ref_condition_seconds` is the conditioning: the
+speaker embedding of the reference (on CPU, see `_speaker_embedding`), `make_cond_dict`
+and `prepare_conditioning`, all redone for every clip as before. `render_seconds` is
+`generate` plus the autoencoder decode and the copy back to the CPU. `audio_seconds`
+is the clip's length and `rtf` is render_seconds / audio_seconds. The model load is
+not in either.
+
 NEVER pass vqscore_8, dnsmos_ovrl, speaker_noised or ctc_loss — those
 conditioners exist on the HYBRID checkpoint, not ours, and are silently ignored
 here (the **kwargs trap that cost us the Qwen voice design). cfg_scale must not
@@ -39,6 +52,7 @@ import argparse
 import json
 import os
 import sys
+import time
 
 import soundfile as sf
 import torch
@@ -59,10 +73,10 @@ _SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspa
 for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
-from synth_common import rebuild_used_set, write_wav_atomic  # noqa: E402
+from synth_common import rebuild_used_set, render_timing, write_wav_atomic  # noqa: E402
 from ref_select import (  # noqa: E402
     MAX_REF_EXCURSION as _REF_EXCURSION,
-    select_reference, pinned_reference, design_age_band,  # noqa: E402
+    select_reference, pinned_reference, pinned_reference_file, design_age_band,  # noqa: E402
                         REF_BLACKLIST)
 
 MODEL_DIR = "/data/models/Zyphra/Zonos-v0.1-transformer"
@@ -193,8 +207,11 @@ def main():
             # B-L2. Uncaught, a casting failure killed the engine's whole remaining bank
             # from that clip on. moss_vg's per-clip try/except is the pattern; a re-run
             # under skip-if-exists retries only what failed.
+            # A line may pin by FILE instead (`ref_file`, same contract, sha256-checked).
             try:
-                if job.get("ref_id"):
+                if "ref_file" in job:    # present = a file pin; a falsy one is refused
+                    ref_wav, ref_text, ref_meta = pinned_reference_file(job)
+                elif job.get("ref_id"):
                     ref_wav, ref_text, ref_meta = pinned_reference(job["ref_id"])
                 else:
                     ref_wav, ref_text, ref_meta = select_reference(
@@ -222,14 +239,21 @@ def main():
                 uncond = uncond | {"emotion"}
             else:
                 kw["emotion"] = emo
+            # Timed in two parts (module docstring, Throughput), in the order these calls
+            # always ran. The synchronize keeps queued conditioning work out of render_seconds.
+            t0 = time.monotonic()
             cond = make_cond_dict(text=job["text"], language="en-us",
                                   speaker=_speaker_embedding(model, ref_wav),
                                   pitch_std=d["pitch_std"],
                                   speaking_rate=rate,
                                   fmax=FMAX_CLONING,
                                   unconditional_keys=uncond, **kw)
-            codes = model.generate(model.prepare_conditioning(cond))
+            conditioning = model.prepare_conditioning(cond)
+            torch.cuda.synchronize()
+            t1 = time.monotonic()
+            codes = model.generate(conditioning)
             wav = model.autoencoder.decode(codes).squeeze().float().cpu().numpy()
+            t2 = time.monotonic()
             write_wav_atomic(os.path.join(args.out, f"{job['id']}.wav"), wav, sr_out)
 
             row = dict(job)
@@ -244,6 +268,7 @@ def main():
                 # `direction` carries what the director ASKED for; this is what the
                 # model was actually conditioned on. They differ when the clamp fires.
                 "applied_speaking_rate": rate,
+                **render_timing(t1 - t0, t2 - t1, len(wav) / sr_out),
             })
             mf.write(json.dumps(row) + "\n")
             mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)

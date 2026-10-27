@@ -22,6 +22,7 @@
 #         engines default to the survivor portfolio: chatterbox moss_vg orpheus qwen zonos
 #         (vibevoice + dia are SET ASIDE, owner 2026-07-29 — see ref_select.SET_ASIDE;
 #         their run blocks remain below, opt-in by name, for if they are reinstated)
+#         SYNTH_BANK_PROBE=1 renders a measurement probe, not a dataset pass (see below).
 # Output: <out_dir>/<id>.wav + <engine>_manifest.jsonl per engine.
 set -uo pipefail
 BANK="${1:?usage: synth_bank.sh <bank.json> <out_dir> [engine ...]}"
@@ -44,6 +45,19 @@ case "$OUT"  in /data/*) ;; *) echo "!! OUT must be an absolute /data path: $OUT
 case "$BANK$OUT" in *[\ \'\"]*) echo "!! BANK/OUT must not contain spaces or quotes" >&2; exit 2;; esac
 ENGINES=("$@")
 [ ${#ENGINES[@]} -eq 0 ] && ENGINES=(chatterbox moss_vg orpheus qwen zonos)
+
+# PROBE MODE (SYNTH_BANK_PROBE=1; Phase 1S Step 1c-i, scripts/tools/render_1ci.py). A probe's
+# clips are measured, not auditioned, so the three audition-path steps are skipped: the
+# direction check (qc_verdict + EIV scoring), the engine defect detectors (they read the
+# campaign's rows in ratings.csv) and register_audition (it would append every clip to the
+# audition queue). Loudness normalisation and the mandatory QC gate still run, and their
+# failures stay fatal. Anything other than unset, 0 or 1 is refused rather than guessed at.
+# KNOWN GAP: because the defect detectors are skipped, Zonos's leading-gap check ("a blip, then
+# silence"; qc_engine_defects.leading_gap_score) does NOT run on a probe's Zonos clips. Whoever
+# evaluates the probe must run it (render_1ci.py records this in plan_meta.json, PROBE_MODE_GAP).
+PROBE="${SYNTH_BANK_PROBE:-0}"
+case "$PROBE" in 0|1) ;; *) echo "!! SYNTH_BANK_PROBE must be 0 or 1, not '$PROBE'" >&2; exit 2;; esac
+[ "$PROBE" = 1 ] && echo "== PROBE MODE: no direction check, no defect detectors, no audition queue =="
 
 SONORA="$(cd "$(dirname "$0")/../.." && pwd)"   # Sonora repo root (mounted at /sonora)
 GPU="--device /dev/kfd --device /dev/dri --security-opt seccomp=unconfined --group-add video"
@@ -157,7 +171,7 @@ if has chatterbox; then
   # resemble-perth is imported and patched to a no-op by the renderer: the native
   # watermarker is unavailable here, and these clips are TRAIN-ONLY by owner decision.
   echo "== CHATTERBOX (train-only output) =="
-  run chatterbox "$SONORA_UVPIP --no-deps chatterbox-tts >/dev/null 2>&1;
+  run chatterbox "$SONORA_UVPIP --no-deps $SONORA_PIN_CHATTERBOX >/dev/null 2>&1;
        $SONORA_UVPIP librosa s3tokenizer diffusers resemble-perth conformer $SONORA_PIN_TRANSFORMERS safetensors soundfile omegaconf >/dev/null 2>&1;" \
       "python /sonora/scripts/stages/synth_chatterbox.py --bank $BANK --out $OUT" \
       || failed chatterbox
@@ -265,7 +279,9 @@ if ! "$PY" "$SONORA/scripts/stages/qc_gate.py" --campaign-dir "$CAMPAIGN_DIR"; t
   echo "  !! qc_gate FAILED — clips are rendered in $OUT but will NOT be queued."
   echo "  !! Fix the gate, then:"
   echo "  !!   $PY $SONORA/scripts/stages/qc_gate.py --campaign-dir $CAMPAIGN_DIR"
-  echo "  !!   $PY $SONORA/scripts/stages/register_audition.py --audio-dir $OUT --qc $CAMPAIGN_DIR/qc_measures.jsonl"
+  if [ "$PROBE" != 1 ]; then
+    echo "  !!   $PY $SONORA/scripts/stages/register_audition.py --audio-dir $OUT --qc $CAMPAIGN_DIR/qc_measures.jsonl"
+  fi
   exit 1
 fi
 QC_MEASURES="$CAMPAIGN_DIR/qc_measures.jsonl"
@@ -302,6 +318,9 @@ fi
 # instead of auditing every clip) is gated on exactly that measurement. A backfill can
 # still measure the drift; it cannot un-spend a round.
 echo "== qc verdicts (direction: intended vs measured) =="
+if [ "$PROBE" = 1 ]; then
+  echo "  probe mode — direction check (qc_verdict, EIV scoring) SKIPPED."
+else
 # Real-audio banks carry no `intended` labels at all (librivox-v1: 664 rows), so there is
 # nothing to confirm and no reason to spend a GPU labelling pass. Ask the verdict script
 # rather than re-deriving "is this campaign directed?" here, where the two answers could
@@ -351,6 +370,7 @@ case "$DIRECTED" in
     fi
     ;;
 esac
+fi
 
 # Engine-specific defect detectors (radio timbre for moss_vg, leading gap for zonos).
 # ADVISORY — they never drop a clip; they append ids to qc_flags.txt, which
@@ -368,9 +388,13 @@ esac
 # rendered and gated — but it is announced, because silently skipping the flag pass is
 # exactly how the coverage would go missing again.
 echo "== engine defect detectors =="
+if [ "$PROBE" = 1 ]; then
+  echo "  probe mode — defect detectors SKIPPED (they read ratings.csv, which a probe never enters)."
+else
 "$PY" "$SONORA/scripts/stages/qc_engine_defects.py" \
     --campaign "$(basename "$CAMPAIGN_DIR")" --append-flags \
   || echo "  !! qc_engine_defects failed — advisory flags NOT appended for this bank."
+fi
 
 # Register the rendered clips into the audition queue (ratings.csv SSOT) so they
 # reach the review surface. Idempotent, host-side (uv, not the GPU container); only
@@ -383,12 +407,20 @@ echo "== engine defect detectors =="
 # audition slot". That design was considered and rejected — the instrument tells the
 # ear what to check, it does not decide alone — and `_qc_triage` has never done it.)
 echo "== register audition =="
+if [ "$PROBE" = 1 ]; then
+  echo "  probe mode — register_audition SKIPPED: no clip enters the audition queue."
+else
 "$PY" "$SONORA/scripts/stages/register_audition.py" --audio-dir "$OUT" \
     ${QC_MEASURES:+--qc "$QC_MEASURES"} \
   || echo "  (register_audition failed — clips rendered but not queued; run it manually)"
+fi
 
 if [ "$FAILED_ENGINES" -gt 0 ]; then
   echo "!! $FAILED_ENGINES of ${#ENGINES[@]} engine(s) failed: $FAILED_ENGINE_NAMES"
-  echo "!! The bank is INCOMPLETE. Clips that did render were gated and queued."
+  if [ "$PROBE" = 1 ]; then
+    echo "!! The bank is INCOMPLETE. Clips that did render were gated (probe mode: not queued)."
+  else
+    echo "!! The bank is INCOMPLETE. Clips that did render were gated and queued."
+  fi
   exit 1
 fi

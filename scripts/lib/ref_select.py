@@ -876,6 +876,93 @@ def pinned_reference(ref_id: str):
     raise LookupError(f"no pool clip with id={ref_id}")
 
 
+# A reference pinned BY FILE: a bank line's `ref_file`, for a clip that is not in the pool.
+# Step 1c-i clones two Qwen anchors from `probes/qwen-1c0-anchors`, and `pinned_reference` can
+# only find a pool id. The semantics are a pinned id's (no casting, no F0 ceiling, no damping);
+# what is added is that the clip is named by an absolute path under REF_FILE_ROOT, the one tree
+# mounted into the render containers, and carries its sha256, checked before every render. The
+# fields are REF_FILE_REQUIRED plus the optional `id` and `gender` (both recorded in the row).
+REF_FILE_ROOT = "/data/"
+REF_FILE_REQUIRED = ("path", "sha256", "text")
+REF_FILE_KEYS = frozenset(REF_FILE_REQUIRED + ("id", "gender"))
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+
+
+def _under_ref_root(real):
+    """Whether a resolved path lies under REF_FILE_ROOT, itself resolved (the mount point may
+    be a symlink on the host, and the containers see what it points at)."""
+    root = _os.path.realpath(REF_FILE_ROOT)
+    return real == root or real.startswith(root.rstrip("/") + "/")
+
+
+def ref_file_problems(spec):
+    """What is wrong with a `ref_file` value, [] when nothing is. Reads no file's contents, but
+    resolves symlinks: the path's REALPATH must lie under REF_FILE_ROOT, not only its text.
+    A falsy value (`{}`, None) is a problem like any other non-pin, never "no pin"."""
+    if not isinstance(spec, dict):
+        return [f"ref_file must be an object, not {type(spec).__name__}"]
+    problems = [f"ref_file has no `{k}`" for k in REF_FILE_REQUIRED if k not in spec]
+    problems += [f"ref_file has an unknown key `{k}`" for k in sorted(set(spec) - REF_FILE_KEYS)]
+    path = spec.get("path")
+    if "path" in spec and not (isinstance(path, str) and path.startswith(REF_FILE_ROOT)
+                               and _os.path.normpath(path) == path):
+        problems.append(f"ref_file path {path!r} is not a normalised absolute path under "
+                        f"{REF_FILE_ROOT}")
+    elif "path" in spec and not _under_ref_root(_os.path.realpath(path)):
+        # The containers mount only REF_FILE_ROOT, so a symlink out of it names a file the
+        # renderer cannot open there, or a different one; the resolved path is what counts.
+        problems.append(f"ref_file path {path!r} resolves to {_os.path.realpath(path)!r}, "
+                        f"outside {REF_FILE_ROOT}")
+    if "sha256" in spec and not (isinstance(spec["sha256"], str)
+                                 and _SHA256_HEX.fullmatch(spec["sha256"])):
+        problems.append(f"ref_file sha256 {spec['sha256']!r} is not 64 lowercase hex digits")
+    if "text" in spec and not (isinstance(spec["text"], str) and spec["text"].strip()):
+        problems.append("ref_file text is empty")
+    problems += [f"ref_file {k} must be a string" for k in ("id", "gender")
+                 if k in spec and not isinstance(spec[k], str)]
+    return problems
+
+
+def file_sha256(path):
+    import hashlib
+
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def pinned_reference_file(job):
+    """Same return shape as select_reference, for a bank line that pins its reference by FILE.
+
+    Raises ValueError for a malformed `ref_file` (a falsy one included), a line that also pins
+    `ref_id`, or a file whose sha256 differs from the one the line records, and LookupError for a
+    missing or unreadable file: the two exceptions the renderers' per-clip casting guard already
+    catches, so each is that clip's CASTING FAILED and never stops the bank. The file is hashed
+    on every call, so a reference replaced mid-bank stops the clips after it.
+    """
+    spec = job["ref_file"]
+    if job.get("ref_id"):
+        raise ValueError(f"line pins both ref_id={job['ref_id']!r} and ref_file")
+    problems = ref_file_problems(spec)
+    if problems:
+        raise ValueError("; ".join(problems))
+    if not _os.path.isfile(spec["path"]):
+        raise LookupError(f"ref_file {spec['path']} does not exist")
+    try:
+        got = file_sha256(spec["path"])
+    except OSError as exc:
+        raise LookupError(f"ref_file {spec['path']} cannot be read: {exc}") from exc
+    if got != spec["sha256"]:
+        raise ValueError(f"ref_file {spec['path']} has sha256 {got}, the line records "
+                         f"{spec['sha256']}")
+    meta = {"id": spec.get("id") or _os.path.splitext(_os.path.basename(spec["path"]))[0],
+            "path": spec["path"], "sha256": got, "gender": spec.get("gender"),
+            "score": 0.0, "pinned": True, "pinned_by": "file"}
+    return spec["path"], spec["text"], meta
+
+
 def ref_f0(file: str):
     """Median F0 (Hz) of a pool clip, or None if unmeasured."""
     _load_acoustics()                      # populates _acoustics as a side effect
