@@ -527,7 +527,10 @@ def test_status_reports_the_counts_and_launches_nothing(env, no_exec, capsys):
     out, err = capsys.readouterr()
     assert "%s: %d of %d" % (cell, N - 1, N) in out and "1 line(s)" in out
     assert "missing 1 of %d clips: %s-%03d." % (N, cell, N) in err
-    _write_rows(audio, "zonos", ["%s-%03d" % (cell, N)] * 2)   # a reroll's second row
+    _write_rows(audio, "zonos", ["%s-001" % cell])             # a reroll: N rows, N - 1 ids
+    assert r1.main(args) == r1.PARTIAL_EXIT
+    assert "%s: %d of %d" % (cell, N - 1, N) in capsys.readouterr().out
+    _write_rows(audio, "zonos", ["%s-%03d" % (cell, N)] * 2)
     assert r1.main(args) == 0
     assert no_exec == []
     with pytest.raises(SystemExit, match="Run `plan` first"):
