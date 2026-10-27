@@ -179,5 +179,8 @@ def test_every_synth_bank_engine_container_gets_pydantic():
     assert run, "synth_bank.sh's run() helper is gone"
     body = run.group(1)
     assert "$SONORA_UVPIP $SONORA_PIN_PYDANTIC" in body, "run() no longer installs pydantic"
+    install = next(line for line in body.splitlines() if "$SONORA_PIN_PYDANTIC" in line)
+    assert "|| {" in install and "exit 1" in install, \
+        "a failed pydantic install must stop the engine, not fall through to an import error"
     assert body.index("$SONORA_PIN_PYDANTIC") < body.index("$2"), \
         "pydantic must be installed before the engine's own wheel list"
