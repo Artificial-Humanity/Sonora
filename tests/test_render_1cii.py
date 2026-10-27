@@ -188,6 +188,16 @@ def test_batched_refuses_a_batch_size_of_one(env):
         r2.main(["batched", "--out-root", str(env["out"]), "--batch-size", "1"])
 
 
+def test_render_refuses_a_tampered_batched_batch_size(env):
+    r2.main(["batched", "--out-root", str(env["out"]), "--batch-size", "4"])
+    meta_path = env["out"] / r2.BATCHED_CELL / "plan_meta.json"
+    meta = json.loads(meta_path.read_text())
+    meta["batch_size"] = 1
+    meta_path.write_text(json.dumps(meta))
+    with pytest.raises(SystemExit, match="batch_size"):
+        r2.main(["render", r2.BATCHED_CELL, "--out-root", str(env["out"])])
+
+
 def test_render_prints_the_batched_cells_command_after_its_checks(env, capsys):
     r2.main(["batched", "--out-root", str(env["out"]), "--batch-size", "4"])
     capsys.readouterr()

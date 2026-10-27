@@ -508,6 +508,12 @@ def cmd_render(args):
         meta = r1._load_json(os.path.join(cdir, "plan_meta.json"))
     except (OSError, ValueError) as e:
         refuse("%s has no readable plan (%s). Run `plan` (or `batched`) first." % (cdir, e))
+    if args.cell == BATCHED_CELL:
+        bs = meta.get("batch_size")
+        if isinstance(bs, bool) or not isinstance(bs, int) or bs < 2:
+            refuse("%s records batch_size %r; the batched cell needs an int "
+                   "batch_size >= 2. Re-plan it with `batched --batch-size N`."
+                   % (cdir, bs))
     # The batched bank cannot be rebuilt without its recorded batch size.
     cells = planned_cells(batch_size=meta.get("batch_size"))
     if args.cell not in cells:

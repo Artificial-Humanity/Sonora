@@ -88,6 +88,10 @@ def main():
     if not jobs:
         print("no qwen_base jobs in bank")
         return
+    batch_size = bank.get("batch_size", 1)
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
+        raise SystemExit("REFUSING: bank batch_size must be a positive int, "
+                         "got %r." % (batch_size,))
     model = load_qwen(MODEL_DIR)
     print(f"loaded ({len(jobs)} jobs)", flush=True)
 
@@ -96,10 +100,6 @@ def main():
     if used:
         print(f"resume: {len(used)} reference(s) already spent", flush=True)
     prompts = {}      # (ref_wav, ref_text) -> the built voice-clone prompt
-    batch_size = bank.get("batch_size", 1)
-    if not isinstance(batch_size, int) or batch_size < 1:
-        raise SystemExit("REFUSING: bank batch_size must be a positive int, "
-                         "got %r." % (batch_size,))
     if batch_size > 1:
         print(f"BATCHED throughput mode: batch_size={batch_size} "
               "(per-clip seeds do not hold; rows are throughput-only)", flush=True)

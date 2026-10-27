@@ -226,15 +226,18 @@ def test_a_batched_bank_renders_chunks_with_one_seed_per_chunk(
     assert all((out / ("%s.wav" % r["id"])).exists() for r in rows)
 
 
-def test_a_bogus_batch_size_is_refused(qwen_base, monkeypatch, tmp_path):
+@pytest.mark.parametrize("bad", [0, True])
+def test_a_bogus_batch_size_is_refused(qwen_base, calls, monkeypatch, tmp_path, bad):
     bank = tmp_path / "bank.json"
     bank.write_text(json.dumps({"version": "t1", "campaign": "t",
-                                "lines": [_base_line()], "batch_size": 0}))
+                                "lines": [_base_line()], "batch_size": bad}))
     monkeypatch.setattr(sys, "argv",
                         [qwen_base.__file__, "--bank", str(bank),
                          "--out", str(tmp_path / "audio")])
     with pytest.raises(SystemExit, match="batch_size must be a positive int"):
         qwen_base.main()
+    assert ("load", qwen_base.MODEL_DIR) not in calls and not any(
+        c[0] == "load" for c in calls), calls
 
 
 # --- qwen_custom: speaker guard, canonical case, provenance -------------------
