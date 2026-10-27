@@ -161,6 +161,30 @@ if has qwen; then
       || failed qwen
 fi
 
+# The two Qwen siblings (Phase 1S Step 1c-ii onboarding). Same container recipe as
+# the qwen block above — one wheel set serves all three checkpoints — and OFF by
+# default like every non-survivor: neither is in the production mix until Step
+# 1c-ii and an audition establish keep rates, so they run only when named.
+if has qwen_base; then
+  echo "== QWEN BASE (clone) =="
+  run qwen_base "apt-get -qq update >/dev/null 2>&1; apt-get -qq install -y sox >/dev/null 2>&1;
+       $SONORA_UVPIP --no-deps qwen-tts==0.1.1 >/dev/null 2>&1;
+       $SONORA_UVPIP $SONORA_PIN_TRANSFORMERS soundfile sox onnxruntime einops librosa >/dev/null 2>&1;
+       $SONORA_UVPIP --no-deps accelerate==1.12.0 >/dev/null 2>&1;" \
+      "python /sonora/scripts/stages/synth_qwen_base.py --bank $BANK --out $OUT" \
+      || failed qwen_base
+fi
+
+if has qwen_custom; then
+  echo "== QWEN CUSTOMVOICE =="
+  run qwen_custom "apt-get -qq update >/dev/null 2>&1; apt-get -qq install -y sox >/dev/null 2>&1;
+       $SONORA_UVPIP --no-deps qwen-tts==0.1.1 >/dev/null 2>&1;
+       $SONORA_UVPIP $SONORA_PIN_TRANSFORMERS soundfile sox onnxruntime einops librosa >/dev/null 2>&1;
+       $SONORA_UVPIP --no-deps accelerate==1.12.0 >/dev/null 2>&1;" \
+      "python /sonora/scripts/stages/synth_qwen_custom.py --bank $BANK --out $OUT" \
+      || failed qwen_custom
+fi
+
 # --- revisit engines (2026-07-28) -------------------------------------------------
 # Off by default and named explicitly, because their prior verdicts were void and a
 # clip is only worth what its provenance is worth: audition ONLY output from a fully

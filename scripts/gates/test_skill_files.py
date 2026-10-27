@@ -56,11 +56,12 @@ def skill(name):
 
 
 # --- the literal casting words every cloning engine's file publishes must parse ---
-# vibevoice, chatterbox and zonos all route voice_design through the SAME function
-# (ref_select.select_reference), so all three files make the same claims and all three
-# are checked. chatterbox and zonos joined on 2026-07-28, when their casting was wired
-# for the first time — until then neither engine had ever been passed a reference.
-CASTING_ENGINES = ("vibevoice", "chatterbox", "zonos")
+# vibevoice, chatterbox, zonos and qwen_base all route voice_design through the SAME
+# function (ref_select.select_reference), so all four files make the same claims and
+# all four are checked. chatterbox and zonos joined on 2026-07-28, when their casting
+# was wired for the first time — until then neither engine had ever been passed a
+# reference. qwen_base joined at its Step 1c-ii onboarding, for the same reason.
+CASTING_ENGINES = ("vibevoice", "chatterbox", "zonos", "qwen_base")
 
 
 def test_casting_words():
@@ -318,7 +319,8 @@ def test_wip_guard():
     from book_ingest import load_skill
 
     for engine in ("qwen", "moss_vg", "vibevoice", "dia",
-                   "chatterbox", "zonos", "orpheus", "longcat"):
+                   "chatterbox", "zonos", "orpheus", "longcat",
+                   "qwen_base", "qwen_custom"):
         try:
             check(bool(load_skill(engine)), f"{engine}.md loaded empty")
         except Exception as e:
@@ -396,9 +398,87 @@ def test_casting_schema_shapes():
         check(True, "")
 
 
+# --- qwen_custom.md: the closed speaker set it publishes must equal the code's --
+def test_qwen_custom_closed_set():
+    """CustomVoice's speaker set is closed by the checkpoint, not by us.
+
+    The shipped code raises on an unlisted name — at render time, inside a
+    container — so the file and book_ingest.QWEN_CUSTOM_* are what stand
+    between a director typo and a spent container start. They must agree
+    exactly, genders included: the gender split feeds intended_gender, which
+    the audition prefill and the casting norms consume.
+    """
+    from book_ingest import (QWEN_CUSTOM_FEMALE, QWEN_CUSTOM_MALE,
+                             QWEN_CUSTOM_SPEAKERS, _validate_casting,
+                             build_direction)
+
+    text = skill("qwen_custom")
+    # Generic extraction, never a pattern built from the known names: a regex
+    # of `(<known>|...)` can only ever find names already in the code, so an
+    # invented tenth speaker written into the doc in backticks would pass.
+    # Pull every backticked lowercase token off the lines that publish the
+    # set and require exact two-way equality instead.
+    backticked = r"`([a-z][a-z0-9_]*)`"
+    # the closed set is published as one line of nothing but backticked names
+    run_lines = [ln for ln in text.splitlines()
+                 if re.fullmatch(r"(?:`[a-z][a-z0-9_]*`\s*)+", ln.strip())]
+    check(len(run_lines) == 1,
+          f"qwen_custom.md must publish the closed set as exactly one "
+          f"backticked run line, found {len(run_lines)}")
+    in_doc = set(re.findall(backticked, run_lines[0])) if run_lines else set()
+    check(in_doc == set(QWEN_CUSTOM_SPEAKERS),
+          f"qwen_custom.md speaker set != QWEN_CUSTOM_SPEAKERS: "
+          f"doc-only {sorted(in_doc - set(QWEN_CUSTOM_SPEAKERS))}, "
+          f"missing from doc {sorted(set(QWEN_CUSTOM_SPEAKERS) - in_doc)}")
+    check(sorted(QWEN_CUSTOM_FEMALE + QWEN_CUSTOM_MALE) == sorted(QWEN_CUSTOM_SPEAKERS),
+          "the gender split must partition the closed set exactly")
+    seen_gender = set()
+    for line in text.splitlines():
+        low = line.strip().lower()
+        if low.startswith("- female:"):
+            seen_gender.add("female")
+            found = set(re.findall(backticked, line))
+            check(found == set(QWEN_CUSTOM_FEMALE),
+                  f"qwen_custom.md female line != QWEN_CUSTOM_FEMALE: "
+                  f"doc-only {sorted(found - set(QWEN_CUSTOM_FEMALE))}, "
+                  f"missing from doc {sorted(set(QWEN_CUSTOM_FEMALE) - found)}")
+        if low.startswith("- male:"):
+            seen_gender.add("male")
+            found = set(re.findall(backticked, line))
+            check(found == set(QWEN_CUSTOM_MALE),
+                  f"qwen_custom.md male line != QWEN_CUSTOM_MALE: "
+                  f"doc-only {sorted(found - set(QWEN_CUSTOM_MALE))}, "
+                  f"missing from doc {sorted(set(QWEN_CUSTOM_MALE) - found)}")
+    check(seen_gender == {"female", "male"},
+          f"qwen_custom.md must publish both gender lines, found {sorted(seen_gender)}")
+
+    # an invented speaker is rejected by the casting validator and fatal in
+    # build_direction — never silently recast to a different preset
+    check(not _validate_casting("qwen_custom", {"speaker": "julia", "instruct": "Calm."}),
+          "an unlisted CustomVoice speaker must be rejected")
+    check(_validate_casting("qwen_custom", {"speaker": "Ryan", "instruct": "Calm."}),
+          "a listed speaker in any case must validate (the shipped check folds case)")
+    try:
+        build_direction({"engine": "qwen_custom", "speaker": "julia"}, "The line.")
+        check(False, "build_direction accepted an unlisted qwen_custom speaker")
+    except ValueError:
+        check(True, "")
+    _, d = build_direction({"engine": "qwen_custom", "speaker": "Ryan",
+                            "instruct": "Calm."}, "The line.")
+    check(d == {"speaker": "ryan", "instruct": "Calm."},
+          f"build_direction must normalise the speaker case, got {d!r}")
+
+    # the Base clone drops instruct rather than recording direction it never got
+    _, d = build_direction({"engine": "qwen_base", "voice_design": "young woman",
+                            "instruct": "Read it angrily."}, "The line.")
+    check(d == {"design": "young woman"},
+          f"qwen_base payload must be casting only, got {d!r}")
+
+
 def main():
     for fn in (test_casting_words, test_dia_tag_vocabulary,
-               test_orpheus_closed_sets, test_zonos_emotion_off_is_representable,
+               test_orpheus_closed_sets, test_qwen_custom_closed_set,
+               test_zonos_emotion_off_is_representable,
                test_qwen_bands_claims,
                test_pause_thresholds_agree, test_relay_matrix_agrees,
                test_wip_guard, test_register_lexicon, test_casting_schema_shapes):

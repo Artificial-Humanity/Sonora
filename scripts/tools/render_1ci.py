@@ -202,6 +202,8 @@ NOT_RENDER_AFFECTING = {
     "scripts/stages/synth_moss_vg.py": "another engine's block",
     "scripts/stages/synth_moss85.py": "another engine's block",
     "scripts/stages/synth_qwen.py": "another engine's block",
+    "scripts/stages/synth_qwen_base.py": "another engine's block (Step 1c-ii's engine, not 1c-i's)",
+    "scripts/stages/synth_qwen_custom.py": "another engine's block (Step 1c-ii's engine, not 1c-i's)",
     "scripts/stages/synth_orpheus.py": "another engine's block",
     "scripts/stages/synth_vibevoice.py": "another engine's block",
 }

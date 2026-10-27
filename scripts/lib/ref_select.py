@@ -521,6 +521,11 @@ ENGINE_MIX_DIALOGUE = {
 MIN_SHARE = 0.05
 MAX_SHARE_NARRATION = 0.30
 
+# `qwen_base` and `qwen_custom` are deliberately absent from ENGINE_MIX and
+# every lane below: they remain out of the production mix until Phase 1S
+# Step 1c-ii and an audition establish keep rates. Their channels are
+# declared in ENGINE_CHANNELS so the capability veto is ready before any
+# share is.
 ENGINE_MIX_BY_LANE = {
     # All five clear 74%+; zonos, chatterbox and qwen are the reliable core.
     "Neutral": {
@@ -665,6 +670,16 @@ ENGINE_CHANNELS = {
     "qwen":       {"prose"},
     "moss_vg":    {"prose"},
     "moss85":     {"prose"},
+    # The two Qwen siblings onboarded for Phase 1S Step 1c-ii. Neither is in
+    # ENGINE_MIX or ENGINE_MIX_BY_LANE: they stay out of the production mix
+    # until Step 1c-ii and an audition establish keep rates, so the director
+    # never casts them (CASTABLE_ENGINES derives from ENGINE_MIX) and the lane
+    # sums and share floors above are untouched. Their channels are declared
+    # now so route_engines_for vetoes are correct the day a mix admits them:
+    # the Base clone takes no instruction at all, CustomVoice takes a closed
+    # speaker plus a short delivery clause.
+    "qwen_base":  {"reference"},
+    "qwen_custom": {"voice_set", "prose"},
     "chatterbox": {"coarse", "reference"},
     "zonos":      {"numeric", "reference"},
     "orpheus":    {"voice_set", "tags"},

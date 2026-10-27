@@ -462,6 +462,14 @@ def _direction_for(row):
 # "casting" = shapes reference selection but is not spoken direction.
 RELAY = {
     "vibevoice": {"design": "casting", "instruct": "no", "render_text": "no"},
+    # ⚠ ORDER IS LOAD-BEARING: _annotate_relay matches by prefix in table
+    # order, and both Qwen siblings start with "qwen" — below the "qwen" row
+    # they would silently inherit VoiceDesign's relay (instruct "yes" for a
+    # clone that has no instruction slot at all). qwen_base clones a
+    # reference: design is casting and no instruct exists. qwen_custom takes
+    # a closed preset speaker plus a short delivery instruct.
+    "qwen_base": {"design": "casting", "instruct": "no", "render_text": "no"},
+    "qwen_custom": {"design": "no", "instruct": "yes", "render_text": "no"},
     "qwen":      {"design": "no", "instruct": "yes", "render_text": "no"},
     # moss_vg = MOSS-VoiceGenerator, the instruction-TUNED sibling; it is the
     # engine that actually reads `instruction`. moss85 is the un-SFT'd flagship
