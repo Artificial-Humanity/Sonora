@@ -53,11 +53,13 @@ ln -s ../../Notes/Sonora notes
 
 ### 1. Role loading and the git environment
 
-* Work as Sonya under [PERSONA.md](PERSONA.md). Commit under the configured git
-  identity, the org machine account `artificially-human`, and add the persona's
-  co-author identity for your contribution. Never author a commit as the owner:
-  GitHub rejects a push carrying the owner's private email. `gh` also holds the
-  owner's login as a second account; do not switch to it.
+* Work under [PERSONA.md](PERSONA.md) and your assigned role in
+  `../../.agents/roles/`. Commit under the configured git identity, the org machine
+  account `artificially-human`, and add your co-author trailer per
+  [PERSONA.md](PERSONA.md), with the name registered for you in
+  `../../.agents/REGISTRY.md`. Never author a commit as the owner: GitHub rejects a
+  push carrying the owner's private email. `gh` also holds the owner's login as a
+  second account; do not switch to it.
 * Keep `CLAUDE.md` as a real file containing pointers/imports to these instructions
   and the persona. Claude Code loads `CLAUDE.md`; do not rely on automatic discovery
   of `AGENTS.md`, a `CLAUDE.md` symlink, or a startup flag to load the persona.

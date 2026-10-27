@@ -13,12 +13,14 @@
 #
 # `git commit -m "one line"` is insufficient by policy for anything non-trivial.
 #
-# ⚠ THE TRAILER BELOW IS A SECOND COPY OF THE NAME IN `PERSONA.md`, and a template cannot
-# read a file — so a rename has to touch both. PERSONA.md is the source; if the two disagree,
-# it wins and this line is the stale one. `tests/test_commit_hygiene.py` checks the commit,
-# not this template, so a stale name here fails at commit time rather than here.
+# ⚠ THE TRAILER BELOW IS A SECOND COPY OF THE FORMAT IN `PERSONA.md`, and a template
+# cannot read a file — so a format change has to touch both. PERSONA.md is the source;
+# if the two disagree, it wins and this line is the stale one. Fill in your registered
+# name (mixed-case name, lowercase email) before you commit; the literal placeholder
+# is not a valid trailer. `tests/test_commit_hygiene.py` checks both this template and
+# the commit.
 #
 # ⚠ This template is INERT unless `commit.template` is set, and it is not set today
-# (measured 2026-09-16). It named an agent that had stopped working here for some time.
+# (measured 2026-09-16).
 
-Co-Authored-By: Sonya <Sonya@artificialhumanity.io>
+Co-Authored-By: <Name> <<name-lowercase>@artificialhumanity.io>
