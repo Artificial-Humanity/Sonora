@@ -10,8 +10,8 @@ It is not loaded for you — only this file is — so nothing else will put it i
 ---
 
 ⚠ **THIS FILE IS A PASSTHROUGH AND NOTHING ELSE.** The rules are in `AGENTS.md`, the
-workflow is in `WORKFLOW.md`, and the commit-identity procedure and the identity are both in
-the persona above. **Anything restated here becomes a second copy to drift.**
+workflow is in `WORKFLOW.md`, and the commit-identity procedure and trailer format are
+both in the persona above. **Anything restated here becomes a second copy to drift.**
 
 ⚠ **The `@import` is the one line here that is not a pointer, and it has to be.** Claude Code
 auto-discovers `CLAUDE.md` and does **not** auto-discover `AGENTS.md`, so an import anywhere

@@ -74,9 +74,10 @@ def _agent():
     floor test below went red on `main` and every check under it SKIPPED. Nothing in that commit
     was wrong; the guard had made a claim about WORDING rather than about identity.
 
-    So it now reads the `Co-authored-by:` line the persona spells out verbatim — the artifact a
-    commit has to carry. That is far more stable than a sentence about it, because rewording it
-    changes what the rule REQUIRES rather than merely how it is described. ⚠ It is not immune:
+    So it now reads the `Co-authored-by:` line the persona spells out — the trailer format a
+    commit has to carry, with the committing agent's registered name filled in. That is far
+    more stable than a sentence about it, because rewording it changes what the rule REQUIRES
+    rather than merely how it is described. ⚠ It is not immune:
     the anchor is sensitive to Markdown formatting too, and an indented, bolded or backticked
     copy of the line REFUSES rather than matches. Refusing loudly is the intended failure — there
     is no fallback here by design — but it is the same class of event that broke the old parse,
@@ -114,19 +115,27 @@ def _parse_agent(text):
     # Line-anchored so a sentence mentioning the trailer mid-line is not mistaken for one.
     # ⚠ `\r?$` rather than `$`: a CRLF line ending would otherwise leave `\r` inside the
     # address, and the identity would differ from the commit's by one invisible byte.
-    hits = re.findall(r"^Co-authored-by:[ \t]*(.+?)[ \t]*<([^>]+)>[ \t]*\r?$",
+    # ⚠ The address group excludes whitespace, NOT `>`: the persona's template line
+    # `Co-authored-by: <Name> <<name-lowercase>@artificialhumanity.io>` carries the inner
+    # placeholder's own `>` BEFORE its `@`, so a `[^>]+@` group stops there and never
+    # matches (measured — the template case in `_PARSE_CASES` is the control). With
+    # `[^\s]+@[^\s]+` the template parses as
+    # `('<Name>', '<name-lowercase>@artificialhumanity.io')`, and a concrete line parses
+    # the same way.
+    hits = re.findall(r"^Co-authored-by:[ \t]*(.+?)[ \t]*<([^\s]+@[^\s]+)>[ \t]*\r?$",
                       text, re.M | re.I)
     if not hits:
         raise ValueError(
-            "PERSONA.md states no `Co-authored-by: Name <address>` line — identity cannot be "
-            "resolved. That line is the agent's identity here; a persona without one leaves "
-            "every commit check below with nothing to compare against")
+            "PERSONA.md states no `Co-authored-by: Name <address>` line — the trailer format "
+            "cannot be resolved. That line is the format every agent commit must match; a "
+            "persona without one leaves every commit check below with nothing to compare "
+            "against")
     if len(hits) > 1:
         # ⚠ NOT "take the first". A persona that documents a counterexample — an address NOT to
         # use — puts a second line here, and first-match would adopt whichever came first in the
         # file. Two candidates is an ambiguous document, and the refusal names both.
         raise ValueError(
-            "PERSONA.md states %d `Co-authored-by:` lines and identity must be unambiguous: %s"
+            "PERSONA.md states %d `Co-authored-by:` lines and the format must be unambiguous: %s"
             % (len(hits), ", ".join("%s <%s>" % h for h in hits)))
     name, email = hits[0]
     return name.strip(), email.strip()
@@ -148,6 +157,13 @@ BASE_BRANCH = "main"
 # ⚠ THE KEY, NOT THE WHOLE LINE. The name and address come from `PERSONA.md` above, so a rename
 # does not touch this file.
 TRAILER_KEY = "Co-Authored-By"
+
+# ⚠ THE FORMAT THE PERSONA MUST STATE. `PERSONA.md` is name-agnostic: it states this template,
+# and each agent fills in the name the workspace registry assigned at startup (mixed-case name,
+# lowercase address). The floor test below asserts the persona states exactly this template, so
+# a format change is a deliberate edit here and in the persona, never a silent drift in one.
+TRAILER_TEMPLATE = ("<Name>", "<name-lowercase>@artificialhumanity.io")
+AGENT_DOMAIN = "artificialhumanity.io"
 
 # ⚠ THE BOUNDARY, AND IT IS A COMMIT, NOT A DATE. Everything up to and including this SHA
 # predates the owner's decision and is deliberately exempt. A date would drift with the
@@ -251,7 +267,16 @@ def carries_agent_trailer(trailers, body, agent=None):
     `<%s>`, so `Co-Authored-By: Sonya` with no address is caught by NEITHER (measured). The real
     and sufficient reason is the last-paragraph one above.
     """
-    name, email = agent if agent else AGENT
+    # ⚠ TEMPLATE MODE IS THE DEFAULT. With no concrete `agent` — or with the persona's
+    # template itself — any registered agent's trailer counts: a mixed-case name whose
+    # lowercase form is the address local part on the agent domain. The literal template
+    # (`<Name> <<name-lowercase>@…>`) does NOT count; the name must be a real identifier.
+    # The local part is compared case-insensitively, so a trailer written before the
+    # lowercase-address rule (`Sonya <Sonya@…>`) still counts.
+    if agent is None or tuple(agent) == TRAILER_TEMPLATE:
+        return (_carries_template_trailer(trailers)
+                or _carries_template_trailer(body))
+    name, email = agent
     # ⚠ `.lower()` on both sides, not on the key alone: the name and address are compared as
     # written, and git itself does not case-fold those. This folds the whole comparison, which
     # is deliberately the looser of the two — the body check below is already `re.I`.
@@ -261,6 +286,22 @@ def carries_agent_trailer(trailers, body, agent=None):
     return any(re.fullmatch(pattern, line, re.I) for line in body.splitlines())
 
 
+# ⚠ Scoped `(?i:…)` on the key and the domain only: a file-level `re.I` would also fold the
+# name class, and a lowercase "name" is not a registered agent name. Line-anchored, like the
+# concrete check, so the phrase in mid-sentence prose is not a trailer.
+_TEMPLATE_TRAILER_RE = re.compile(
+    r"^(?i:Co-Authored-By):[ \t]*([A-Z][A-Za-z0-9_-]*)[ \t]*"
+    r"<([^>\s]+)@(?i:artificialhumanity\.io)>[ \t]*\r?$", re.M)
+
+
+def _carries_template_trailer(text):
+    """True if `text` holds a trailer that instantiates the persona's template."""
+    for name, local in _TEMPLATE_TRAILER_RE.findall(text or ""):
+        if local.lower() == name.lower():
+            return True
+    return False
+
+
 # ⚠ THE CONTROL FOR THE PARSE, and the reason `_parse_agent` is a separate function at all.
 # `_agent()` reads one fixed path, so the only document the suite can hand it is one that
 # currently parses — which is a guard with no broken case, the shape AGENTS.md §5c refuses.
@@ -268,6 +309,9 @@ def carries_agent_trailer(trailers, body, agent=None):
 _GOOD = "Co-authored-by: Sonya <Sonya@artificialhumanity.io>"
 _PARSE_CASES = [
     ("the canonical line", _GOOD, ("Sonya", "Sonya@artificialhumanity.io")),
+    ("the template line the persona states",
+     "Co-authored-by: <Name> <<name-lowercase>@artificialhumanity.io>",
+     ("<Name>", "<name-lowercase>@artificialhumanity.io")),
     ("the key in the other casing", "CO-AUTHORED-BY: A <a@b>", ("A", "a@b")),
     ("a CRLF line ending leaves no \\r in the address", "Co-authored-by: A <a@b>\r\n", ("A", "a@b")),
     ("prose around a real line is irrelevant", "text\n\n%s\n\nmore text" % _GOOD,
@@ -317,8 +361,11 @@ def test_the_persona_is_readable_and_this_file_is_not_guessing():
     lines down.
     """
     assert PERSONA_ERROR is None, "PERSONA.md could not be read: %s" % PERSONA_ERROR
-    assert AGENT and all(AGENT), "PERSONA.md gave an empty agent identity: %r" % (AGENT,)
-    assert "@" in AGENT[1], "the agent email looks wrong: %r" % (AGENT[1],)
+    assert AGENT and all(AGENT), "PERSONA.md gave an empty trailer format: %r" % (AGENT,)
+    assert AGENT == TRAILER_TEMPLATE, (
+        "PERSONA.md states %r, not the name-agnostic trailer template %r — a concrete "
+        "name in the persona binds every agent's commits to one identity" % (AGENT, TRAILER_TEMPLATE))
+    assert "@" in AGENT[1], "the template address looks wrong: %r" % (AGENT[1],)
 
 
 # ⚠ EVERYTHING BELOW THAT USES `AGENT` IS SKIPPED WHEN THE PERSONA IS UNPARSEABLE, and
@@ -349,10 +396,11 @@ def test_the_commit_template_states_the_same_identity_as_the_persona():
     with open(path, encoding="utf-8") as f:
         template = f.read()
     assert _parse_agent(template) == AGENT, (
-        ".gitmessage states a different agent identity from PERSONA.md:\n"
+        ".gitmessage states a different trailer format from PERSONA.md:\n"
         "  .gitmessage: %r\n  PERSONA.md : %r\n"
-        "PERSONA.md is the source — a rename has to touch both, and this is the check that "
-        "says so at commit time rather than after the commit." % (_parse_agent(template), AGENT))
+        "PERSONA.md is the source — a format change has to touch both, and this is the "
+        "check that says so at commit time rather than after the commit."
+        % (_parse_agent(template), AGENT))
 
 
 
@@ -363,13 +411,15 @@ def test_every_commit_carries_the_agent_trailer():
     bad = [f"  {_short(sha)}  {name}" for sha, name, _e, trailers, body in _commits()
            if not carries_agent_trailer(trailers, body)]
     assert not bad, (
-        "unmerged commits on this branch carry no `%s: %s <%s>` trailer:\n"
+        "unmerged commits on this branch carry no trailer in the persona's format "
+        "(`%s: %s <%s>`, with the committing agent's registered name filled in):\n"
         % (TRAILER_KEY, AGENT[0], AGENT[1]) + "\n".join(bad)
         + "\n\n⚠ READ WHICH OF THESE TWO IT IS BEFORE ACTING.\n"
         "  * An AGENT wrote them and forgot the trailer. Add it while the commit is still "
-        "unpushed:\n"
-        f"      git commit --amend --no-edit --trailer \"{TRAILER_KEY}: {AGENT[0]} "
-        f"<{AGENT[1]}>\"\n"
+        "unpushed, replacing both placeholders below with the committing agent's "
+        "registered name and its lowercase form:\n"
+        f"      git commit --amend --no-edit --trailer \"{TRAILER_KEY}: "
+        f"<your registered name> <<your registered name in lowercase>@{AGENT_DOMAIN}>\"\n"
         "  * The OWNER hand-committed on an agent's branch. Then the absence is CORRECT and "
         "must not be 'fixed' — their own commits are theirs alone. Move the commit to its own "
         "branch, or add its SHA to an exemption here as a deliberate decision.\n"
@@ -385,10 +435,12 @@ def test_no_commit_is_authored_as_the_agent():
     habit — or an agent arriving from a sibling repo where it is still correct — re-authors a
     commit to itself and the author line stops naming the account that made it. Nothing warns.
     """
+    # ⚠ ANY agent address, not one name: the persona states a format, so an author line on
+    # the agent domain is an agent authoring as itself, whichever agent it is.
     bad = [f"  {_short(sha)}  {name} <{email}>" for sha, name, email, _t, _b in _commits()
-           if (name, email) == AGENT]
+           if email.lower().endswith("@" + AGENT_DOMAIN)]
     assert not bad, (
-        "commits are AUTHORED as the agent, but the author line here stays the configured "
+        "commits are AUTHORED as an agent, but the author line here stays the configured "
         "identity and the agent goes in a trailer:\n" + "\n".join(bad)
         + "\n\nThis is the pre-2026-09-16 convention, or a habit carried from a sibling repo. "
         "Re-author to the configured identity and add the trailer instead.")
@@ -421,6 +473,10 @@ def test_the_grandfather_boundary_still_exists_and_is_named():
 
 
 OWNER = ("lmcfarlin", "owner@example.invalid")
+
+# A concrete agent identity for fixtures that need one. `AGENT` is the persona's template,
+# whose placeholder name and address are not an author a fixture can commit as.
+_EXAMPLE_AGENT = ("Example", "example@artificialhumanity.io")
 
 
 def _git(repo, *args, **kw):
@@ -470,7 +526,7 @@ def landed_branch(tmp_path):
     _git(repo, "branch", "work")
     owner_on_base = _commit(repo, "owner hand-commit on base", OWNER)
     _git(repo, "checkout", "-q", "work")
-    dev = _commit(repo, "agent work on the branch", AGENT)
+    dev = _commit(repo, "agent work on the branch", _EXAMPLE_AGENT)
     # Catching the branch up on base. `git merge` takes the CONFIGURED identity — no `-c`
     # pair, exactly as a hand merge does — so this commit is owner-authored and sits
     # squarely inside `base..HEAD`.
@@ -608,3 +664,36 @@ def test_the_trailer_detection_actually_fires(tmp_path, shape, message, should_f
         "is checking nothing.")
     assert carries_agent_trailer(trailers, body, _PROBE) is should_fire, (
         f"shape {shape}: detection returned the wrong answer")
+
+
+# ⚠ THE TEMPLATE MODE'S OWN CONTROL. The probe test above passes a concrete agent, so it
+# cannot see the default path the branch checks use. Each row is a body whose only trailer
+# candidate is the line shown; the last column is the answer the format requires.
+_TEMPLATE_CASES = [
+    ("a registered name, lowercase address",
+     "Co-Authored-By: Sammy <sammy@artificialhumanity.io>", True),
+    ("a pre-rule capitalised local part still counts",
+     "Co-authored-by: Sonya <Sonya@artificialhumanity.io>", True),
+    ("an all-caps registered name",
+     "Co-Authored-By: JARVIS <jarvis@artificialhumanity.io>", True),
+    ("the literal template is not a trailer",
+     "Co-Authored-By: <Name> <<name-lowercase>@artificialhumanity.io>", False),
+    ("a name that does not match the address",
+     "Co-Authored-By: Sammy <sonya@artificialhumanity.io>", False),
+    ("another domain is not an agent trailer",
+     "Co-Authored-By: Sammy <sammy@example.com>", False),
+    ("a lowercase name is not a registered name",
+     "Co-Authored-By: sammy <sammy@artificialhumanity.io>", False),
+    ("the phrase in mid-sentence prose",
+     "This explains why a Co-Authored-By: Sammy <sammy@artificialhumanity.io> trailer "
+     "is used.", False),
+]
+
+
+@pytest.mark.parametrize("label,line,expected", _TEMPLATE_CASES,
+                         ids=[c[0] for c in _TEMPLATE_CASES])
+def test_the_template_mode_accepts_and_refuses(label, line, expected):
+    body = "fix: something\n\n%s\n" % line
+    assert carries_agent_trailer("", body) is expected, label
+    # The template passed explicitly is the same mode, not a concrete identity.
+    assert carries_agent_trailer("", body, TRAILER_TEMPLATE) is expected, label
