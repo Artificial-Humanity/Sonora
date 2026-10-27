@@ -161,3 +161,26 @@ def test_chatterbox_is_pinned_in_the_one_place():
     assert installs, "no lane installs chatterbox at all — is the scan reading the lanes?"
     for lane, n, line in installs:
         assert "chatterbox-tts" not in line, f"{lane}:{n} names chatterbox-tts locally"
+
+
+def test_every_synth_bank_engine_container_gets_pydantic():
+    """`schemas.py` imports pydantic at module scope and `ref_select` imports `schemas`, so a
+    renderer container without pydantic dies at import. pyproject.toml does not reach these
+    lanes (they install wheel lists), and the Phase 1S Step 1c-i smoke render found that out.
+    The install sits in synth_bank.sh's shared `run`, so no engine block can forget it, and the
+    pin is the release the host venv and the training container record."""
+    shared = _read(SHARED)
+    m = re.search(r'^SONORA_PIN_PYDANTIC="pydantic==([\d.]+)"', shared, re.M)
+    assert m, "the pydantic pin is gone from scripts/container_env.sh"
+    for env in ("environments/host-venv.txt", "environments/training-container.txt"):
+        assert f"pydantic=={m.group(1)}" in _read(pathlib.Path(env)).splitlines(), env
+    bank = _read(pathlib.Path("scripts/stages/synth_bank.sh"))
+    run = re.search(r"^run\(\)\{\n(.*?)\n\}", bank, re.S | re.M)
+    assert run, "synth_bank.sh's run() helper is gone"
+    body = run.group(1)
+    assert "$SONORA_UVPIP $SONORA_PIN_PYDANTIC" in body, "run() no longer installs pydantic"
+    install = next(line for line in body.splitlines() if "$SONORA_PIN_PYDANTIC" in line)
+    assert "|| {" in install and "exit 1" in install, \
+        "a failed pydantic install must stop the engine, not fall through to an import error"
+    assert body.index("$SONORA_PIN_PYDANTIC") < body.index("$2"), \
+        "pydantic must be installed before the engine's own wheel list"

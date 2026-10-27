@@ -53,8 +53,9 @@ dependencies = [
   "tqdm",
   "PyYAML",
   # ⚠ CORE, NOT TRANSITIVE, AND NOT OPTIONAL. `scripts/lib/schemas.py` imports it at module
-  # scope and `book_ingest` imports that, so it sits on the teacher-synthesis path every
-  # container takes. It was previously reachable ONLY through `fastapi`, which lives in the
+  # scope, and `ref_select` (imported by the chatterbox, zonos and vibevoice renderers) and
+  # `book_ingest` import that, so it sits on the teacher-synthesis path. It was previously
+  # reachable ONLY through `fastapi`, which lives in the
   # `vocalizer` extra below and by the `dev` extra, and pulled into the TRAINING CONTAINER
   # by `mlflow`. ⚠ The container route IS measured (by elimination: the prep chain adds only
   # `mlflow` before `-e .`, that chain installs no extras, and no core dependency requires
@@ -82,6 +83,11 @@ dependencies = [
   # that had it, had it by accident, through a DIFFERENT accident each time — and the case
   # for declaring it core is the lane that has neither: an eval or minimal image, where the
   # failure is an ImportError in a container and no test can see it.
+  #
+  # ⚠ DECLARING IT HERE DOES NOT REACH synth_bank.sh's ENGINE CONTAINERS. They install explicit
+  # wheel lists, never this file, so they take `SONORA_PIN_PYDANTIC` from
+  # scripts/container_env.sh. The Phase 1S Step 1c-i smoke render (2026-10-27) was the first
+  # synth_bank run since schemas.py landed, and it died at import without it.
   "pydantic>=2",
 ]
 
