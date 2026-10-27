@@ -234,6 +234,19 @@ def test_no_qwen_custom_jobs_spends_no_model_load(qwen_custom, calls, monkeypatc
     assert calls == [], calls
 
 
+def test_the_custom_renderer_speaker_sets_match_book_ingest(qwen_custom):
+    """The renderer duplicates the closed set on purpose (standalone, the
+    orpheus precedent), so nothing imports book_ingest at render time. The
+    price of that duplication is drift: a name added to one copy only would
+    silently skip clips, or mis-gender them via intended_gender, with every
+    other gate green. This assertion is the tie between the two copies."""
+    import book_ingest
+
+    assert set(qwen_custom.SPEAKERS) == set(book_ingest.QWEN_CUSTOM_SPEAKERS)
+    assert set(qwen_custom.FEMALE_SPEAKERS) == set(book_ingest.QWEN_CUSTOM_FEMALE)
+    assert set(qwen_custom.MALE_SPEAKERS) == set(book_ingest.QWEN_CUSTOM_MALE)
+
+
 # --- wiring traps: RELAY prefix order and the capability veto -----------------
 
 def _relay():

@@ -413,21 +413,44 @@ def test_qwen_custom_closed_set():
                              build_direction)
 
     text = skill("qwen_custom")
-    names = "|".join(QWEN_CUSTOM_SPEAKERS)
-    in_doc = set(re.findall(rf"`({names})`", text))
+    # Generic extraction, never a pattern built from the known names: a regex
+    # of `(<known>|...)` can only ever find names already in the code, so an
+    # invented tenth speaker written into the doc in backticks would pass.
+    # Pull every backticked lowercase token off the lines that publish the
+    # set and require exact two-way equality instead.
+    backticked = r"`([a-z][a-z0-9_]*)`"
+    # the closed set is published as one line of nothing but backticked names
+    run_lines = [ln for ln in text.splitlines()
+                 if re.fullmatch(r"(?:`[a-z][a-z0-9_]*`\s*)+", ln.strip())]
+    check(len(run_lines) == 1,
+          f"qwen_custom.md must publish the closed set as exactly one "
+          f"backticked run line, found {len(run_lines)}")
+    in_doc = set(re.findall(backticked, run_lines[0])) if run_lines else set()
     check(in_doc == set(QWEN_CUSTOM_SPEAKERS),
           f"qwen_custom.md speaker set != QWEN_CUSTOM_SPEAKERS: "
+          f"doc-only {sorted(in_doc - set(QWEN_CUSTOM_SPEAKERS))}, "
           f"missing from doc {sorted(set(QWEN_CUSTOM_SPEAKERS) - in_doc)}")
     check(sorted(QWEN_CUSTOM_FEMALE + QWEN_CUSTOM_MALE) == sorted(QWEN_CUSTOM_SPEAKERS),
           "the gender split must partition the closed set exactly")
+    seen_gender = set()
     for line in text.splitlines():
         low = line.strip().lower()
         if low.startswith("- female:"):
-            check(set(re.findall(rf"`({names})`", line)) == set(QWEN_CUSTOM_FEMALE),
-                  "qwen_custom.md female line != QWEN_CUSTOM_FEMALE")
+            seen_gender.add("female")
+            found = set(re.findall(backticked, line))
+            check(found == set(QWEN_CUSTOM_FEMALE),
+                  f"qwen_custom.md female line != QWEN_CUSTOM_FEMALE: "
+                  f"doc-only {sorted(found - set(QWEN_CUSTOM_FEMALE))}, "
+                  f"missing from doc {sorted(set(QWEN_CUSTOM_FEMALE) - found)}")
         if low.startswith("- male:"):
-            check(set(re.findall(rf"`({names})`", line)) == set(QWEN_CUSTOM_MALE),
-                  "qwen_custom.md male line != QWEN_CUSTOM_MALE")
+            seen_gender.add("male")
+            found = set(re.findall(backticked, line))
+            check(found == set(QWEN_CUSTOM_MALE),
+                  f"qwen_custom.md male line != QWEN_CUSTOM_MALE: "
+                  f"doc-only {sorted(found - set(QWEN_CUSTOM_MALE))}, "
+                  f"missing from doc {sorted(set(QWEN_CUSTOM_MALE) - found)}")
+    check(seen_gender == {"female", "male"},
+          f"qwen_custom.md must publish both gender lines, found {sorted(seen_gender)}")
 
     # an invented speaker is rejected by the casting validator and fatal in
     # build_direction — never silently recast to a different preset
