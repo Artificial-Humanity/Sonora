@@ -163,9 +163,25 @@ def test_prose_channel_is_only_the_instruct_engines():
     prose would silently restore the routing the relay audit closed.
     """
     prose = {e for e, ch in rs.ENGINE_CHANNELS.items() if "prose" in ch}
-    assert prose == {"qwen", "moss_vg", "moss85"}
+    # qwen_custom joined at Step 1c-ii onboarding: its `instruct` is a real
+    # (short, delivery-only) slot on the shipped API, verified in the wheel —
+    # not a casting field dressed as one. Its Base sibling is the trap in the
+    # other direction: a clone prompt looks instructable and is not.
+    assert prose == {"qwen", "moss_vg", "moss85", "qwen_custom"}
     assert "prose" not in rs.ENGINE_CHANNELS["vibevoice"]
     assert "prose" not in rs.ENGINE_CHANNELS["chatterbox"]
+    assert "prose" not in rs.ENGINE_CHANNELS["qwen_base"]
+
+
+def test_the_qwen_siblings_are_out_of_every_production_mix():
+    """Onboarded is not allocated. Until Step 1c-ii and an audition establish
+    keep rates, neither Qwen sibling may hold a share — a weight here would
+    spend production renders on unmeasured engines and re-sum every lane."""
+    for mix in (rs.ENGINE_MIX, *rs.ENGINE_MIX_BY_LANE.values()):
+        assert "qwen_base" not in mix
+        assert "qwen_custom" not in mix
+    assert "qwen_base" not in rs.SET_ASIDE
+    assert "qwen_custom" not in rs.SET_ASIDE
 
 
 def test_numeric_prosody_is_zonos_alone():

@@ -186,6 +186,15 @@ datasets:
     #     output, produced by models we run locally under their own weights licences. The
     #     WEIGHTS licence gates whether an engine may be used at all (notes/dataset-
     #     landscape.md); it does not attach to the audio those weights produce.
+    #     Recorded on that basis for the Step 1c-ii engines (onboarded, probe-only,
+    #     no audio in any corpus yet): `qwen_base` (Qwen/Qwen3-TTS-12Hz-1.7B-Base,
+    #     rev fd4b254389122332181a7c3db7f27e918eec64e3) and `qwen_custom`
+    #     (Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice,
+    #     rev 0c0e3051f131929182e2c023b9537f8b1c68adfe) are verified Apache-2.0
+    #     (model-card front matter + the Hub API's cardData, read 2026-10-21).
+    #     No `dirs:` entry is added for them here: this file classifies training
+    #     corpus directories, and a corpus rendered by either engine gets its
+    #     own entry in the change that stages it.
     #   * 103 LibriVox recordings — public domain, the same basis as `ljspeech`.
     # Checked 2026-08-10: **0 of the 832 staged clips resolve into `LibriTTS_R` or any
     # `emilia*` tree**, so no third-party corpus audio is laundered through this entry.

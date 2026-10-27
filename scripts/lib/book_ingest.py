@@ -911,11 +911,22 @@ ORPHEUS_CASTABLE = tuple(v for v in ORPHEUS_VOICES if v not in ORPHEUS_BANNED)
 # ~3% pooled) — the right place to land when casting is unusable.
 ORPHEUS_FALLBACK = "jess"
 
+# Qwen3-TTS-12Hz-1.7B-CustomVoice's closed speaker set: the nine `spk_id` entries in
+# its config.json, in config order (CODE-VERIFIED against qwen-tts 0.1.1, which
+# checks the name case-insensitively and raises on an unlisted one). Only ryan and
+# aiden are English-native; any female preset speaks English as a non-native
+# language, which Step 1c-ii reports as a limit rather than discovering by ear.
+QWEN_CUSTOM_SPEAKERS = ("aiden", "dylan", "eric", "ono_anna", "ryan",
+                        "serena", "sohee", "uncle_fu", "vivian")
+QWEN_CUSTOM_FEMALE = ("vivian", "serena", "ono_anna", "sohee")
+QWEN_CUSTOM_MALE = ("ryan", "aiden", "dylan", "eric", "uncle_fu")
+
 # Every engine build_direction knows how to assemble a payload for. dia and moss85
 # take no casting pass, so they are here but not in CASTING_SCHEMA. Anything absent
 # is a hard error rather than a silent rewrite — see build_direction().
 KNOWN_ENGINES = ("vibevoice", "dia", "qwen", "moss_vg", "moss85",
-                 "chatterbox", "zonos", "orpheus", "longcat")
+                 "chatterbox", "zonos", "orpheus", "longcat",
+                 "qwen_base", "qwen_custom")
 
 # The delivery lanes that are a NARRATOR reading, as opposed to a character
 # speaking. Kept here rather than imported from ref_select so build_direction has
@@ -967,6 +978,14 @@ CASTING_SCHEMA = {
                    "render_text": "string — the line verbatim, optionally with at most "
                                   "2 tags from " + " ".join(ORPHEUS_TAGS)},
     "longcat":    {"voice_design": "string"},
+    # Qwen Base clones a reference and takes no instruction at all, so like
+    # longcat its only director output is the casting call that selects the
+    # reference. CustomVoice is a closed speaker plus ONE short delivery
+    # clause — NOT VoiceDesign's 12-key block, which is unverified there.
+    "qwen_base":  {"voice_design": "string"},
+    "qwen_custom": {"speaker": "EXACTLY one of: " + "|".join(QWEN_CUSTOM_SPEAKERS),
+                    "instruct": "string — one short delivery clause, "
+                                "never a voice description"},
 }
 
 
@@ -999,6 +1018,9 @@ CASTING_JSON_SCHEMA = {
     "orpheus":    {"voice": {"type": "string", "enum": list(ORPHEUS_CASTABLE)},
                    "render_text": _STR},
     "longcat":    {"voice_design": _STR},
+    "qwen_base":  {"voice_design": _STR},
+    "qwen_custom": {"speaker": {"type": "string", "enum": list(QWEN_CUSTOM_SPEAKERS)},
+                    "instruct": _STR},
 }
 
 
@@ -1034,6 +1056,14 @@ def _validate_casting(engine, d):
     if engine == "chatterbox":
         return (_in_range(d.get("exaggeration"), 0.25, 1.0)
                 and _in_range(d.get("cfg_weight"), 0.2, 0.6))
+    if engine == "qwen_custom":
+        # The shipped code checks the name against config's nine spk_id entries
+        # (case-insensitively) and raises on an unlisted one — at RENDER time,
+        # inside the container, after the bank is built. Rejecting here makes
+        # the casting pass retry instead of spending a container start.
+        speaker = d.get("speaker")
+        return isinstance(speaker, str) \
+            and speaker.strip().lower() in QWEN_CUSTOM_SPEAKERS
     return True
 
 
@@ -1213,6 +1243,14 @@ def build_direction(tag, text, dia_guidance=3.0, lane=None):
       orpheus   -> a voice from a closed 8, prefixed onto the text by the renderer;
                    optional inline tags from a closed 8. Nothing else.
       longcat   -> nothing at all. Reference selection is the whole decision.
+      qwen_base -> nothing at all. `generate_voice_clone` has no `instruct`
+                   parameter; the voice AND its delivery come from the reference
+                   clip, so design casts the reference and nothing else reaches
+                   the model.
+      qwen_custom -> `generate_custom_voice(text, speaker, language, instruct)`:
+                   a speaker from the closed nine in QWEN_CUSTOM_SPEAKERS plus
+                   one short delivery clause. The 12-key VoiceDesign format is
+                   UNVERIFIED on this checkpoint and must not be sent.
     """
     engine = tag.get("engine", "vibevoice")
     if engine not in KNOWN_ENGINES:
@@ -1302,6 +1340,25 @@ def build_direction(tag, text, dia_guidance=3.0, lane=None):
     if engine == "longcat":
         # Nothing is directable. Casting the reference is the entire decision.
         return engine, {"design": vd}
+    if engine == "qwen_base":
+        # The clone has no instruction slot: delivery comes from the reference
+        # clip, the text and sampling. Anything in `instruct` would be a claim
+        # about direction the model never received, so it is dropped here
+        # rather than recorded in the payload.
+        return engine, {"design": vd}
+    if engine == "qwen_custom":
+        # Unlike Orpheus there is no fallback to scrub to: no preset is the
+        # measured-reliable default, and silently recasting to one would put a
+        # different voice on the clip than the bank records. An unlisted name
+        # is a bank-authoring error, so it is fatal here — the same shape as
+        # an unknown engine. Case is normalised because the shipped check is
+        # case-insensitive; the payload records the canonical spelling.
+        speaker = str(tag.get("speaker") or "").strip().lower()
+        if speaker not in QWEN_CUSTOM_SPEAKERS:
+            raise ValueError(
+                f"build_direction: qwen_custom speaker {tag.get('speaker')!r} is not "
+                f"one of the closed set ({', '.join(QWEN_CUSTOM_SPEAKERS)}).")
+        return engine, {"speaker": speaker, "instruct": ins}
     # dia: control is inline text. nari-labs generation guidelines say to repeat
     # the trailing speaker tag to improve end-of-audio quality (Dia improvises
     # tails otherwise) — see the docs' "Generation Guidelines".

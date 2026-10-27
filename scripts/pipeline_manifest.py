@@ -102,6 +102,8 @@ ORCHESTRATORS = {
             Stage(STAGES + "synth_moss_vg.py", "engine render — moss_vg (live, scrutinized tier)"),
             Stage(STAGES + "synth_orpheus.py", "engine render — orpheus (live, normal tier)"),
             Stage(STAGES + "synth_qwen.py", "engine render — qwen (live, trusted tier)"),
+            Stage(STAGES + "synth_qwen_base.py", "engine render — qwen_base (Step 1c-ii onboarding; probe-only until auditioned)"),
+            Stage(STAGES + "synth_qwen_custom.py", "engine render — qwen_custom (Step 1c-ii onboarding; probe-only until auditioned)"),
             Stage(STAGES + "synth_vibevoice.py", "engine render — vibevoice (benched; branch retained)"),
             Stage(STAGES + "synth_zonos.py", "engine render — zonos (live, normal tier)"),
             Stage(
