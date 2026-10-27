@@ -51,6 +51,15 @@ SONORA_PIN_TRANSFORMERS="transformers==4.57.3"
 # resolved.
 SONORA_PIN_PYLOUDNORM="pyloudnorm==0.2.0"
 
+# `pydantic` is imported at module scope by `scripts/lib/schemas.py`, which `ref_select` and
+# `book_ingest` import, so every synth_bank.sh renderer that imports `ref_select` (chatterbox,
+# zonos, vibevoice) needs it. Declaring it in pyproject.toml provisions the host venv and the
+# training container (`-e .`), NOT these throwaway lanes, which install explicit wheel lists:
+# the Phase 1S Step 1c-i smoke render (2026-10-27) died at import on
+# `ModuleNotFoundError: pydantic`. synth_bank.sh's `run` installs it in every engine container.
+# Same release as environments/host-venv.txt and environments/training-container.txt.
+SONORA_PIN_PYDANTIC="pydantic==2.13.4"
+
 # `chatterbox-tts`, installed `--no-deps` by synth_bank.sh's chatterbox block, was unpinned
 # until Phase 1S Step 1c-i. No campaign recorded which release it ran: every chatterbox
 # campaign predates the `_env/` freezes. 0.1.7 is the release in this host's uv cache

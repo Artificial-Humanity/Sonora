@@ -104,6 +104,7 @@ run(){
   docker run --rm $GPU $HF_ENV -e SONORA_ROCM_IMAGE="$IMG" \
     -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c "
     $SONORA_UV_BOOTSTRAP;
+    $SONORA_UVPIP $SONORA_PIN_PYDANTIC >/dev/null 2>&1 || { echo '!! pydantic install failed' >&2; exit 1; };
     $2
     bash /sonora/scripts/container_as_ai_mgr.sh &&
     $(capture_env_cmd "$1" "$ENV_DIR")

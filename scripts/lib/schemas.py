@@ -46,7 +46,11 @@ venv has neither and DOES have it, by the unidentified route above (issue #167, 
 this same paragraph). The case for declaring it core is that nothing guarantees it — not that
 any lane provably lacked it. `book_ingest` imports this module at
 module scope, which puts it on the teacher-synthesis path every container takes. The failure
-would have been an `ImportError` in a container, where no test could see it.
+would have been an `ImportError` in a container, where no test could see it. ⚠ And it was:
+`pyproject.toml` provisions the host venv and the training container, but synth_bank.sh's
+engine containers install explicit wheel lists, so the Phase 1S Step 1c-i smoke render
+(2026-10-27) died on `ModuleNotFoundError: pydantic`. They now install `SONORA_PIN_PYDANTIC`
+from scripts/container_env.sh.
 
 ⚠ VOCABULARIES ARE DERIVED, NEVER RE-SPELLED. Every controlled list below is imported from
 the module that owns it. A literal copied into this file would be exactly the defect the file
