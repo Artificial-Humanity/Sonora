@@ -392,7 +392,11 @@ def render_inputs_changed(plan_commit, head):
     if quiet.returncode != 1:
         refuse("git cannot compare the plan commit %s with this checkout's %s (%s). Render from "
                "a checkout that has the plan commit." % (plan_commit, head, quiet.stderr.strip()))
-    return _git("diff", "--name-only", plan_commit, head, "--", *paths).stdout.split()
+    changed = _git("diff", "--name-only", plan_commit, head, "--", *paths).stdout.split()
+    if not changed:
+        refuse("git diff --quiet says the render-affecting files differ between %s and %s, and "
+               "--name-only names none of them." % (plan_commit, head))
+    return changed
 
 
 def _require_clean(git, allow_dirty):
