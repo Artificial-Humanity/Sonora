@@ -24,11 +24,27 @@ reason to exist: orpheus takes inline <laugh>/<sigh> tags and dia takes [S1]
 speaker tags and parenthetical non-verbals. Those are stripped from both sides
 before comparing. What must not differ is the words.
 
+A line may also pin its reference by FILE (`ref_file`, Step 1c-i; see
+`ref_select.pinned_reference_file`). Each one is checked here as well: its fields, an
+absolute path under `ref_select.REF_FILE_ROOT`, a file that exists, and a sha256 equal to
+the file's, so a wrong anchor stops the bank before a GPU is booked rather than at clip 1.
+A line pinning both `ref_id` and `ref_file` is refused.
+
     .venv/bin/python scripts/stages/check_bank.py <bank.json>
 """
 import json
+import os
 import re
 import sys
+
+import os as _os  # noqa: E402
+import sys as _sys  # noqa: E402
+
+_SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):
+    if _p not in _sys.path:
+        _sys.path.insert(0, _p)
+import ref_select  # noqa: E402
 
 # Stripped from BOTH sides before comparing. Stripping only one side is its own
 # trap: it makes every legitimately-tagged orpheus line look divergent, and 19
@@ -63,13 +79,39 @@ def check(bank_path):
     return problems
 
 
+def check_refs(bank_path):
+    """(id, engine, problem) for every `ref_file` that would not render as written."""
+    bank = json.load(open(bank_path, encoding="utf-8"))
+    problems, hashed = [], {}          # a 300-line bank pins one file 300 times
+    for line in bank.get("lines", []):
+        if "ref_file" not in line:
+            continue
+        spec = line["ref_file"]
+        found = ref_select.ref_file_problems(spec)
+        if line.get("ref_id"):
+            found.append(f"pins both ref_id={line['ref_id']!r} and ref_file")
+        if not found and not os.path.isfile(spec["path"]):
+            found.append(f"ref_file {spec['path']} does not exist")
+        elif not found:
+            if spec["path"] not in hashed:
+                hashed[spec["path"]] = ref_select.file_sha256(spec["path"])
+            if hashed[spec["path"]] != spec["sha256"]:
+                found.append(f"ref_file {spec['path']} does not have sha256 {spec['sha256']}")
+        problems += [(line.get("id", "?"), line.get("engine", "?"), p) for p in found]
+    return problems
+
+
 def main(argv):
     if len(argv) != 2:
         print(__doc__.strip().splitlines()[-1].strip(), file=sys.stderr)
         return 2
-    problems = check(argv[1])
+    problems, refs = check(argv[1]), check_refs(argv[1])
+    if refs:
+        print(f"!! {len(refs)} reference problem(s) in pinned `ref_file`s:", file=sys.stderr)
+        for cid, engine, problem in refs:
+            print(f"     {cid} [{engine}]  {problem}", file=sys.stderr)
     if not problems:
-        return 0
+        return 1 if refs else 0
     print(f"!! {len(problems)} line(s) where the words sent to the model differ "
           f"from the words everything else records:", file=sys.stderr)
     for cid, engine, first in problems:

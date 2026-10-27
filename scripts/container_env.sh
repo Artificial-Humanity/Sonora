@@ -51,6 +51,15 @@ SONORA_PIN_TRANSFORMERS="transformers==4.57.3"
 # resolved.
 SONORA_PIN_PYLOUDNORM="pyloudnorm==0.2.0"
 
+# `chatterbox-tts`, installed `--no-deps` by synth_bank.sh's chatterbox block, was unpinned
+# until Phase 1S Step 1c-i. No campaign recorded which release it ran: every chatterbox
+# campaign predates the `_env/` freezes. 0.1.7 is the release in this host's uv cache
+# (2026-10-05) and the one whose `ChatterboxTTS` API (`prepare_conditionals`, `generate`)
+# synth_chatterbox.py was checked against. NOT yet dry-run inside the pinned image, and its
+# own metadata asks for transformers==5.2.0 while this lane installs $SONORA_PIN_TRANSFORMERS;
+# the first render's `_env` freeze records what resolved, and its smoke clip is the check.
+SONORA_PIN_CHATTERBOX="chatterbox-tts==0.1.7"
+
 # `pip install uv` is the documented bootstrap for these images and matches the training
 # container's own prep chain (see environments/training-container.txt). Everything after
 # it goes through uv, per AGENTS.md § 3 — `--python /opt/venv/bin/python`, never

@@ -18,6 +18,20 @@ built-in conds.pt fallback voice and casting was never exercised — that is the
 single biggest difference between this renderer and that void verdict. Only the
 first 6 s of a reference reach the speaker prompt (10 s the vocoder), and the
 pool window is 4-10 s, so references are used whole or truncated, never averaged.
+A bank line may pin its reference instead: by pool id (`ref_id`) or by file
+(`ref_file`, a sha256-checked path; `ref_select.pinned_reference_file`). Either way
+casting, the excursion ceiling and damping are skipped, and the row's `ref` records
+what was used (for a file, its path and sha256).
+
+Throughput (Step 1c-i, Measures): each clip is timed with `time.monotonic()` in two
+parts, recorded in its manifest row. `ref_condition_seconds` is the reference
+conditioning (`prepare_conditionals`: loading the reference, the speaker embedding,
+the prompt tokens), redone for every clip as `generate(audio_prompt_path=...)` always
+did. `render_seconds` is the `generate` call alone: text tokens, T3 sampling, S3Gen
+and the copy back to the CPU. `audio_seconds` is the clip's length and `rtf` is
+render_seconds / audio_seconds. The model load is not in either. The split calls
+`prepare_conditionals` then `generate` without `audio_prompt_path`, after the same
+`torch.manual_seed`, which is the order `generate` runs them in itself.
 
 Publication: every output is Perth-watermarked unconditionally and the native
 component is unavailable on this box, so the watermarker is patched to a no-op
@@ -35,6 +49,7 @@ import argparse
 import json
 import os
 import sys
+import time
 
 import soundfile as sf
 import torch
@@ -66,13 +81,13 @@ _SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspa
 for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib",))):
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
-from synth_common import rebuild_used_set, write_wav_atomic  # noqa: E402
+from synth_common import rebuild_used_set, render_timing, write_wav_atomic  # noqa: E402
 from ref_select import (  # noqa: E402
     MAX_REF_EXCURSION as _REF_EXCURSION,
     BRIGHT_REF_POLICY,
     bright_ref_exaggeration,
     bright_ref_selection_ceiling,
-    select_reference, pinned_reference, design_age_band,  # noqa: E402
+    select_reference, pinned_reference, pinned_reference_file, design_age_band,  # noqa: E402
                         REF_BLACKLIST)
 
 MODEL_DIR = "/data/models/ResembleAI/chatterbox"
@@ -234,8 +249,12 @@ def main():
             # whichever clip hit it — the same shape as the moss_vg split_with_sizes crash
             # that orphaned 7 clips on 2026-07-30, and the per-clip try/except there is the
             # pattern. A re-run under skip-if-exists retries only what failed.
+            # A line may pin by FILE instead (`ref_file`, same contract, sha256-checked).
+            pinned = bool(job.get("ref_id") or job.get("ref_file"))
             try:
-                if job.get("ref_id"):
+                if job.get("ref_file"):
+                    ref_wav, ref_text, ref_meta = pinned_reference_file(job)
+                elif job.get("ref_id"):
                     ref_wav, ref_text, ref_meta = pinned_reference(job["ref_id"])
                 else:
                     ref_wav, ref_text, ref_meta = select_reference(
@@ -253,16 +272,21 @@ def main():
             # artifact-probe-chatterbox would otherwise return exaggeration 0.3 for a
             # bank line that plainly reads 0.5, and skip-if-exists would hide the change
             # until someone cleared the directory.
-            ref_exc = None if job.get("ref_id") else ref_meta.get("ref_excursion_hz")
+            ref_exc = None if pinned else ref_meta.get("ref_excursion_hz")
             exag, damped = bright_ref_exaggeration(d["exaggeration"], ref_exc)
             if damped:
                 print(job["id"], f"DAMP exaggeration {d['exaggeration']} -> {exag} "
                                  f"(ref excursion {ref_exc} Hz)", flush=True)
             torch.manual_seed(job["seed"])
-            wav = model.generate(text, audio_prompt_path=ref_wav,
-                                 exaggeration=exag,
-                                 cfg_weight=d["cfg_weight"])
+            # Timed in two parts (module docstring, Throughput). The synchronize keeps
+            # conditioning work still queued on the GPU out of render_seconds.
+            t0 = time.monotonic()
+            model.prepare_conditionals(ref_wav, exaggeration=exag)
+            torch.cuda.synchronize()
+            t1 = time.monotonic()
+            wav = model.generate(text, exaggeration=exag, cfg_weight=d["cfg_weight"])
             wav = wav.squeeze(0).cpu().numpy()
+            t2 = time.monotonic()
             write_wav_atomic(os.path.join(args.out, f"{job['id']}.wav"), wav, model.sr)
 
             row = dict(job)
@@ -282,6 +306,7 @@ def main():
                 # clip, and "was this render damped" is the question an audit of the
                 # split-artifact finding actually asks.
                 "bright_ref_damped": damped,
+                **render_timing(t1 - t0, t2 - t1, len(wav) / model.sr),
             })
             mf.write(json.dumps(row) + "\n")
             mf.flush()   # a mid-bank abort must not orphan wavs (2026-07-25)

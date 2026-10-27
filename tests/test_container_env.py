@@ -148,3 +148,16 @@ def test_the_capture_records_torch_separately():
     build. A `pip freeze` alone leaves the hole exactly where the ROCm-vs-CUDA question
     gets asked."""
     assert "# torch:" in _read(CAPTURE)
+
+
+def test_chatterbox_is_pinned_in_the_one_place():
+    """synth_bank.sh installed `chatterbox-tts` unversioned until Phase 1S Step 1c-i, so each
+    chatterbox render took whatever release was newest. The pin lives in the table; a lane that
+    names the wheel itself bypasses it."""
+    m = re.search(r'^SONORA_PIN_CHATTERBOX="chatterbox-tts==([\d.]+)"', _read(SHARED), re.M)
+    assert m, "the chatterbox-tts pin is gone from scripts/container_env.sh"
+    installs = [(lane, n, line) for lane in LANES for n, line in _code_lines(lane)
+                if "chatterbox-tts" in line or "$SONORA_PIN_CHATTERBOX" in line]
+    assert installs, "no lane installs chatterbox at all — is the scan reading the lanes?"
+    for lane, n, line in installs:
+        assert "chatterbox-tts" not in line, f"{lane}:{n} names chatterbox-tts locally"

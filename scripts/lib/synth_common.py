@@ -860,6 +860,19 @@ def attempt_seed(out_dir, job_id, base_seed):
     return base_seed + attempt, attempt
 
 
+def render_timing(condition_seconds, render_seconds, audio_seconds):
+    """The throughput fields a renderer adds to a manifest row (Phase 1S Step 1c-i, Measures).
+
+    `render_seconds` is the engine's generate call, `ref_condition_seconds` the reference
+    conditioning timed separately, each by `time.monotonic()`; what each covers is in the
+    renderer's docstring. `rtf` is render_seconds / audio_seconds, None for an empty clip.
+    """
+    return {"ref_condition_seconds": round(condition_seconds, 4),
+            "render_seconds": round(render_seconds, 4),
+            "audio_seconds": round(audio_seconds, 4),
+            "rtf": round(render_seconds / audio_seconds, 4) if audio_seconds > 0 else None}
+
+
 def rebuild_used_set(manifest_path, key="ref_id"):
     """Reference ids already spent in this campaign, from the manifest.
 
