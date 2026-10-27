@@ -189,6 +189,14 @@ test = [
   # is a workstation tool. `tests/test_no_first_party_import_is_optional._EXTERNAL_OPTIONALS`
   # still excuses it for that reason, which is now "test group only" rather than "undeclared".
   "pyloudnorm",
+  # ⚠ NOT hygiene either — `scripts/lib/probe_text_bank.read_epub` parses the Standard Ebooks
+  # epubs with BeautifulSoup's "lxml-xml" parser, and `tests/test_probe_text_bank.py` drives it
+  # on synthetic epubs (13 cases). Without these the cases fail on a ModuleNotFoundError rather
+  # than skipping, which is how PR #109's first CI run went red while the host venv (which has
+  # both, `environments/host-venv.txt`) passed. Workstation tool only: they stay OUT of
+  # `[project.dependencies]`, as pyloudnorm does.
+  "beautifulsoup4",
+  "lxml",
 ]
 
 [project.scripts]
