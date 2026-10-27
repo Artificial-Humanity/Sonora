@@ -10,6 +10,7 @@ import json
 import os
 import re
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -322,18 +323,38 @@ def test_a_cell_with_renders_from_another_commit_is_not_replanned(env):
 
 # --- render -------------------------------------------------------------------------------
 
+class Launches(list):
+    """The synth_bank.sh launches recorded by `no_exec`, and what the fake does on each: exit
+    with `code`, and (when `write`) append a manifest row for every bank id not in `drop`."""
+    code = 0
+    write = True
+    drop = ()
+
+
+def _write_rows(audio, engine, ids):
+    audio.mkdir(parents=True, exist_ok=True)
+    with open(audio / ("%s_manifest.jsonl" % engine), "a") as fh:
+        for i in ids:
+            fh.write(json.dumps({"id": i, "engine": engine}) + "\n")
+
+
 @pytest.fixture
 def no_exec(monkeypatch):
-    """Records each synth_bank.sh launch instead of running it; anything else runs."""
-    calls, real = [], r1.subprocess.run
+    """Records each synth_bank.sh launch instead of running it; anything else runs. By default
+    the fake renders the whole bank (one manifest row per id) and exits 0."""
+    calls, real = Launches(), r1.subprocess.run
 
     def fake_run(argv, **kw):
         if argv[0] != r1.SYNTH_BANK:
             return real(argv, **kw)
         calls.append((argv, kw))
+        if calls.write:
+            ids = [ln["id"] for ln in json.loads(open(argv[1]).read())["lines"]]
+            _write_rows(Path(argv[2]), argv[3],
+                        [i for i in ids if i not in calls.drop])
 
         class Done:
-            returncode = 0
+            returncode = calls.code
         return Done()
     monkeypatch.setattr(r1.subprocess, "run", fake_run)
     return calls
@@ -411,6 +432,153 @@ def test_render_run_executes_synth_bank_in_probe_mode_and_logs_it(env, no_exec, 
     assert log[0]["exit_code"] == 0
     assert log[0]["plan_commit"] == log[0]["head_commit"] == "c0ffee"
     assert log[0]["command"].startswith("SYNTH_BANK_PROBE=1 ")
+    assert (log[0]["rendered"], log[0]["expected"], log[0]["missing"]) == (N, N, [])
+
+
+# --- a partly rendered cell ---------------------------------------------------------------
+
+def _log(env, cell):
+    return [json.loads(x) for x in
+            (env["out"] / cell / "render_log.jsonl").read_text().splitlines()]
+
+
+def _run(env, cell):
+    return r1.main(["render", cell, "--out-root", str(env["out"]), "--run"])
+
+
+def test_render_run_with_missing_rows_exits_non_zero_naming_them(env, no_exec, monkeypatch,
+                                                                 capsys):
+    """A renderer's CASTING FAILED skips the clip and exits 0; synth_bank.sh then exits 0."""
+    _plan(env)
+    _run_ready(env, monkeypatch)
+    cell = "F6-s2_chatterbox"
+    no_exec.drop = ("%s-017" % cell, "%s-250" % cell)
+    assert _run(env, cell) == r1.PARTIAL_EXIT != 0
+    err = capsys.readouterr().err
+    assert "PARTIAL RENDER: %s is missing 2 of %d clips: %s-017, %s-250." % (cell, N, cell, cell) \
+        in err
+    assert "synth_bank.sh exited 0" in err and "Re-run `render %s --run`" % cell in err
+    log, = _log(env, cell)
+    assert log["exit_code"] == 0
+    assert (log["rendered"], log["expected"]) == (N - 2, N)
+    assert log["missing"] == ["%s-017" % cell, "%s-250" % cell]
+
+
+def test_many_missing_ids_are_listed_first_n_plus_a_count(env, no_exec, monkeypatch, capsys):
+    _plan(env)
+    _run_ready(env, monkeypatch)
+    cell = "M4-s3_zonos"
+    no_exec.drop = tuple("%s-%03d" % (cell, i) for i in range(1, 26))
+    assert _run(env, cell) == r1.PARTIAL_EXIT
+    err = capsys.readouterr().err
+    assert "missing 25 of %d clips: %s-001, " % (N, cell) in err
+    assert "%s-010 and 15 more." % cell in err and "%s-011" % cell not in err
+    assert len(_log(env, cell)[0]["missing"]) == 25
+
+
+def test_a_resumed_run_that_completes_the_cell_exits_zero(env, no_exec, monkeypatch):
+    _plan(env)
+    _run_ready(env, monkeypatch)
+    cell = "M4-s3_chatterbox"
+    no_exec.drop = ("%s-100" % cell,)
+    assert _run(env, cell) == r1.PARTIAL_EXIT
+    no_exec.drop = ()                       # the re-run renders the clip that failed
+    assert _run(env, cell) == 0
+    assert [x["rendered"] for x in _log(env, cell)] == [N - 1, N]
+
+
+def test_a_failing_synth_bank_keeps_its_exit_status(env, no_exec, monkeypatch, capsys):
+    _plan(env)
+    _run_ready(env, monkeypatch)
+    no_exec.code = 1
+    assert _run(env, "F6-s2_zonos") == 1                       # every row written
+    no_exec.write = False                                       # and with every row missing
+    assert _run(env, "M4-s3_zonos") == 1
+    err = capsys.readouterr().err
+    assert "synth_bank.sh exited 1." in err and "missing %d of %d" % (N, N) in err
+    assert "synth_bank.sh exited 0" not in err
+    assert _log(env, "M4-s3_zonos")[0]["rendered"] == 0
+
+
+def test_a_missing_clip_with_a_wav_but_no_row_says_a_rerun_will_not_fix_it(
+        env, no_exec, monkeypatch, capsys):
+    _plan(env)
+    _run_ready(env, monkeypatch)
+    cell = "F6-s2_zonos"
+    no_exec.drop = ("%s-005" % cell,)
+    (env["out"] / cell / "audio").mkdir(parents=True)
+    (env["out"] / cell / "audio" / ("%s-005.wav" % cell)).write_bytes(b"orphan")
+    assert _run(env, cell) == r1.PARTIAL_EXIT
+    assert "have a wav but no manifest row (%s-005)" % cell in capsys.readouterr().err
+    assert _log(env, cell)[0]["wav_without_row"] == ["%s-005" % cell]
+
+
+def test_status_reports_the_counts_and_launches_nothing(env, no_exec, capsys):
+    _plan(env)
+    cell = "M4-s3_zonos"
+    args = ["status", cell, "--out-root", str(env["out"])]
+    assert r1.main(args) == r1.PARTIAL_EXIT                    # nothing rendered yet
+    assert "%s: 0 of %d bank ids" % (cell, N) in capsys.readouterr().out
+    audio = env["out"] / cell / "audio"
+    _write_rows(audio, "zonos", ["%s-%03d" % (cell, i) for i in range(1, N)])
+    with open(audio / "zonos_manifest.jsonl", "a") as fh:
+        fh.write('{"id": "cut sho\n')                          # a write cut short
+    assert r1.main(args) == r1.PARTIAL_EXIT
+    out, err = capsys.readouterr()
+    assert "%s: %d of %d" % (cell, N - 1, N) in out and "1 line(s)" in out
+    assert "missing 1 of %d clips: %s-%03d." % (N, cell, N) in err
+    _write_rows(audio, "zonos", ["%s-%03d" % (cell, N)] * 2)   # a reroll's second row
+    assert r1.main(args) == 0
+    assert no_exec == []
+    with pytest.raises(SystemExit, match="Run `plan` first"):
+        r1.main(["status", cell, "--out-root", str(env["root"] / "nowhere")])
+
+
+def test_render_without_run_prints_the_counts_of_a_started_cell(env, no_exec, capsys):
+    _plan(env)
+    cell = "F6-s2_chatterbox"
+    _write_rows(env["out"] / cell / "audio", "chatterbox", ["%s-001" % cell])
+    assert r1.main(["render", cell, "--out-root", str(env["out"])]) == 0
+    out = capsys.readouterr()
+    assert "%s: 1 of %d bank ids" % (cell, N) in out.out and "PARTIAL RENDER" in out.err
+    assert no_exec == []
+
+
+# --- the engine pin -----------------------------------------------------------------------
+
+def test_render_refuses_a_changed_chatterbox_pin_naming_both(env, no_exec, tmp_path, monkeypatch):
+    pins = tmp_path / "container_env.sh"
+    pins.write_text('SONORA_PIN_CHATTERBOX="chatterbox-tts==0.1.7"\n')
+    monkeypatch.setattr(r1, "CONTAINER_ENV", str(pins))
+    _plan(env)
+    args = ["render", "M4-s3_chatterbox", "--out-root", str(env["out"])]
+    assert r1.main(args) == 0                                   # unchanged: passes
+    pins.write_text('SONORA_PIN_CHATTERBOX="chatterbox-tts==0.1.8"\n')
+    with pytest.raises(SystemExit, match="engine pin") as exc:
+        r1.main(args)
+    assert "chatterbox-tts==0.1.7" in str(exc.value) and "chatterbox-tts==0.1.8" in str(exc.value)
+    assert no_exec == []
+
+
+def test_render_refuses_a_moved_zonos_checkout_naming_both(env, no_exec, tmp_path, monkeypatch):
+    zonos = tmp_path / "zonos-src"
+    zonos.mkdir()
+    _g(tmp_path, "init", "-q", str(zonos))
+    (zonos / "a.py").write_text("v0\n")
+    _g(zonos, "add", "-A")
+    _g(zonos, "commit", "-q", "-m", "v0")
+    planned = _g(zonos, "rev-parse", "HEAD")
+    monkeypatch.setattr(r1, "ZONOS_SOURCE", str(zonos))
+    _plan(env)
+    args = ["render", "F6-s2_zonos", "--out-root", str(env["out"])]
+    assert r1.main(args) == 0                                   # unchanged: passes
+    (zonos / "a.py").write_text("v1\n")
+    _g(zonos, "commit", "-q", "-am", "v1")
+    moved = _g(zonos, "rev-parse", "HEAD")
+    with pytest.raises(SystemExit, match="engine pin") as exc:
+        r1.main(args)
+    assert planned in str(exc.value) and moved in str(exc.value)
+    assert no_exec == []
 
 
 # --- render at a HEAD other than the plan commit ------------------------------------------
@@ -496,6 +664,36 @@ def test_render_refuses_when_a_listed_path_is_not_tracked(env, repo, no_exec, mo
                         r1.RENDER_AFFECTING_PATHS + ("scripts/lib/ref_selct.py",))
     with pytest.raises(SystemExit, match="does not track: scripts/lib/ref_selct.py"):
         r1.main(["render", "M4-s3_chatterbox", "--out-root", str(env["out"])])
+
+
+def test_render_refuses_a_plan_commit_git_cannot_compare(env, repo, no_exec):
+    """HEAD is listable but the plan commit is unknown: `git diff --quiet` exits 128, which must
+    be refused, never read as "unchanged"."""
+    root, _commit = repo
+    env["git"]["commit"] = "0123456789abcdef0123456789abcdef01234567"   # not in this repo
+    _plan(env)
+    env["git"]["commit"] = _g(root, "rev-parse", "HEAD")
+    with pytest.raises(SystemExit, match="git cannot compare the plan commit 0123456789abcdef"):
+        r1.main(["render", "M4-s3_chatterbox", "--out-root", str(env["out"])])
+    assert no_exec == []
+
+
+def test_render_refuses_when_quiet_and_name_only_disagree(env, repo, no_exec, monkeypatch):
+    """`--quiet` says the render-affecting files differ, `--name-only` names none: refused."""
+    root, commit = repo
+    env["git"]["commit"] = _g(root, "rev-parse", "HEAD")
+    _plan(env)
+    env["git"]["commit"] = commit("scripts/lib/ref_select.py", "changed\n")
+    real = r1._git
+
+    def no_names(*argv):
+        if argv[0] == "diff" and "--name-only" in argv:
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return real(*argv)
+    monkeypatch.setattr(r1, "_git", no_names)
+    with pytest.raises(SystemExit, match="--name-only names none of them"):
+        r1.main(["render", "M4-s3_chatterbox", "--out-root", str(env["out"])])
+    assert no_exec == []
 
 
 def test_every_render_affecting_path_is_tracked_here():

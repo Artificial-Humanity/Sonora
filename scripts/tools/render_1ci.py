@@ -51,15 +51,33 @@ sha256 equals its pin in ANCHORS. It writes `<out-root>/<cell>/bank.json` and `p
 cell is resumed with `render` against its existing plan instead (below).
 
 `render` re-runs every check `plan` made, refuses unless no file in RENDER_AFFECTING_PATHS differs
-between the commit `plan_meta.json` names and this checkout's HEAD (`git diff --quiet`), rebuilds
-the cell's bank and refuses unless it equals the `bank.json` on disk, and refuses unless the tree is
-clean (`--allow-dirty` overrides the last and is recorded). A HEAD that moved on only outside those
-files (a pull of unrelated work into the shared checkout, mid-run) renders exactly what the plan did,
-so a multi-day run is not stopped by it. It then prints the synth_bank.sh command, and runs it only
-with `--run`, appending the command, both commits and the exit status to the cell's
-`render_log.jsonl`. synth_bank.sh needs BANK and OUT under /data and the checkout's `.venv`, so
-`--run` refuses without them; the printed command only warns. A run that stops resumes: the
-renderers skip a clip whose wav exists.
+between the commit `plan_meta.json` names and this checkout's HEAD (`git diff --quiet`; a plan
+commit git cannot compare with HEAD is refused too), refuses unless the engine pin it derives now
+(`engine_pin`, the same way `plan` did) equals `plan_meta.engine_pin`, rebuilds the cell's bank and
+refuses unless it equals the `bank.json` on disk, and refuses unless the tree is clean
+(`--allow-dirty` overrides the last and is recorded). A HEAD that moved on only outside those files
+(a pull of unrelated work into the shared checkout between cells) is accepted, so a multi-day
+campaign is not stopped by it. What this guarantees: the bank, the render-affecting files and the
+engine pin are checked once, when the cell is launched.
+
+⚠ THE GATE RUNS ONLY AT LAUNCH. synth_bank.sh and the renderers read their code from this checkout
+while the cell runs, and nothing re-checks it. A pull into the shared checkout, or a change to the
+Zonos source checkout, during a running cell is NOT detected, and the clips after it come from the
+new code. Do not pull or change either checkout while a cell is rendering.
+
+`render` then prints the synth_bank.sh command, and runs it only with `--run`, appending the
+command, both commits, the exit status and the cell's rendered/expected/missing counts to the
+cell's `render_log.jsonl`. synth_bank.sh needs BANK and OUT under /data and the checkout's `.venv`,
+so `--run` refuses without them; the printed command only warns.
+
+⚠ A PARTLY FAILED CELL. A renderer whose reference fails for one clip (CASTING FAILED) prints it,
+writes no manifest row for that clip and carries on, so synth_bank.sh can exit 0 with clips
+missing; only a cell where every clip fails is stopped by the QC gate. After synth_bank.sh returns,
+`render --run` therefore counts the unique bank ids in `<cell>/audio/<engine>_manifest.jsonl`
+against the bank, and exits non-zero (PARTIAL_EXIT when synth_bank.sh itself exited 0), naming the
+missing ids, when any are missing. Re-running `render --run` resumes: the renderers skip a clip
+whose wav exists and render only the rest. `status <cell>` reports the same counts without
+launching anything, and `render` without `--run` prints them when the cell has a manifest.
 
 ⚠ THROUGHPUT IS LOGGED BY THE RENDERERS, NOT HERE. Every manifest row carries `render_seconds` (the
 engine's generate call), `ref_condition_seconds` (the reference conditioning, timed separately),
@@ -393,6 +411,7 @@ def render_inputs_changed(plan_commit, head):
         refuse("git cannot compare the plan commit %s with this checkout's %s (%s). Render from "
                "a checkout that has the plan commit." % (plan_commit, head, quiet.stderr.strip()))
     changed = _git("diff", "--name-only", plan_commit, head, "--", *paths).stdout.split()
+    # A disagreement between the two calls is refused, never read as "unchanged".
     if not changed:
         refuse("git diff --quiet says the render-affecting files differ between %s and %s, and "
                "--name-only names none of them." % (plan_commit, head))
@@ -451,6 +470,74 @@ def cmd_plan(args):
     print("batched run: " + BATCHED_RUN)
 
 
+# `render --run` and `status` exit with this when the cell's manifest lacks a row for some bank id
+# and synth_bank.sh did not already fail (a synth_bank.sh failure keeps its own exit status).
+PARTIAL_EXIT = 3
+MISSING_SHOWN = 10          # missing ids printed by name; the rest are counted
+
+
+def manifest_status(cdir, engine, bank):
+    """How much of `bank` the cell's `<engine>_manifest.jsonl` holds.
+
+    {"manifest", "expected", "rendered", "missing", "wav_without_row", "unreadable_lines"}:
+    `rendered` counts the unique bank ids with a row, `missing` lists the others in bank order, and
+    `wav_without_row` the missing ids whose wav exists anyway (a renderer skips an existing wav, so
+    a re-run never gives those a row). A line that does not parse (a write cut short) is counted in
+    `unreadable_lines` and gives no id."""
+    audio = os.path.join(cdir, "audio")
+    path = os.path.join(audio, "%s_manifest.jsonl" % engine)
+    expected = [ln["id"] for ln in bank["lines"]]
+    got, unreadable = set(), 0
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as fh:
+            for raw in fh:
+                if not raw.strip():
+                    continue
+                try:
+                    row = json.loads(raw)
+                except ValueError:
+                    unreadable += 1
+                    continue
+                if isinstance(row, dict) and isinstance(row.get("id"), str):
+                    got.add(row["id"])
+    missing = [i for i in expected if i not in got]
+    return {"manifest": path, "expected": len(expected), "rendered": len(expected) - len(missing),
+            "missing": missing,
+            "wav_without_row": [i for i in missing
+                                if os.path.exists(os.path.join(audio, i + ".wav"))],
+            "unreadable_lines": unreadable}
+
+
+def _some(ids):
+    shown = ", ".join(ids[:MISSING_SHOWN])
+    return shown + (" and %d more" % (len(ids) - MISSING_SHOWN) if len(ids) > MISSING_SHOWN else "")
+
+
+def report_status(cell, status, synth_bank_code=None):
+    """Print the cell's rendered/expected line, and for a short cell what is missing and the fix.
+    Returns 0 for a complete cell, else PARTIAL_EXIT."""
+    print("%s: %d of %d bank ids have a manifest row (%s)" % (
+        cell, status["rendered"], status["expected"], status["manifest"]))
+    if status["unreadable_lines"]:
+        print("WARNING: %d line(s) of %s do not parse and were not counted."
+              % (status["unreadable_lines"], status["manifest"]))
+    if not status["missing"]:
+        return 0
+    lines = ["PARTIAL RENDER: %s is missing %d of %d clips: %s." % (
+        cell, len(status["missing"]), status["expected"], _some(status["missing"]))]
+    if synth_bank_code == 0:
+        lines.append("synth_bank.sh exited 0, but a renderer skips a clip whose reference fails "
+                     "(CASTING FAILED in its output) and carries on, so the cell is incomplete.")
+    if status["wav_without_row"]:
+        lines.append("%d missing id(s) have a wav but no manifest row (%s): a re-run skips an "
+                     "existing wav, so move those wavs aside first."
+                     % (len(status["wav_without_row"]), _some(status["wav_without_row"])))
+    lines.append("Re-run `render %s --run` to resume: the renderers skip every clip whose wav "
+                 "exists and render only the missing ones." % cell)
+    print("\n".join(lines), file=_sys.stderr)
+    return PARTIAL_EXIT
+
+
 def render_command(out_root, cell, engine):
     cdir = os.path.join(out_root, cell)
     return [SYNTH_BANK, os.path.join(cdir, "bank.json"), os.path.join(cdir, "audio"), engine]
@@ -485,6 +572,13 @@ def cmd_render(args):
     if plan_commit != git["commit"]:
         print("HEAD %s is not the plan commit %s; no render-affecting file differs between them."
               % (git["commit"], plan_commit))
+    pin_now = engine_pin(engine)
+    if meta.get("engine_pin") != pin_now:
+        refuse("%s was planned with the %s engine pin %s, and it is now %s; the engine code is "
+               "not the code the plan recorded. Restore the planned pin, or plan into a new "
+               "--out-root with this one."
+               % (cdir, engine, json.dumps(meta.get("engine_pin"), sort_keys=True),
+                  json.dumps(pin_now, sort_keys=True)))
     if on_disk != bank:
         refuse("%s/bank.json is not the bank these inputs and this code plan. Re-plan." % cdir)
     argv = render_command(out_root, args.cell, engine)
@@ -500,19 +594,40 @@ def cmd_render(args):
     for b in blockers:
         print("WARNING: " + b)
     if not args.run:
+        if _has_manifest(os.path.join(cdir, "audio")):
+            report_status(args.cell, manifest_status(cdir, engine, bank))
         print("(printed only; --run executes it. The GPU is booked separately.)")
         return 0
     if blockers:
         refuse("--run with the blockers above.")
     started = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
     code = subprocess.run(argv, env=dict(os.environ, **PROBE_ENV)).returncode
+    status = manifest_status(cdir, engine, bank)
     append_jsonl(os.path.join(cdir, "render_log.jsonl"), [{
         "command": line, "plan_commit": plan_commit, "head_commit": git["commit"],
         "tree_clean": git["tree_clean"],
         "allow_dirty": bool(args.allow_dirty), "started_utc": started,
         "finished_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-        "exit_code": code}])
-    return code
+        "exit_code": code, "rendered": status["rendered"], "expected": status["expected"],
+        "missing": status["missing"], "wav_without_row": status["wav_without_row"]}])
+    if code != 0:
+        print("synth_bank.sh exited %d." % code, file=_sys.stderr)
+    partial = report_status(args.cell, status, synth_bank_code=code)
+    return code if code != 0 else partial
+
+
+def cmd_status(args):
+    """The cell's rendered/expected counts from its bank.json and manifest; launches nothing and
+    re-checks no plan input (`render` does that)."""
+    if args.cell not in cell_names():
+        refuse("no cell %r; the cells are %s." % (args.cell, ", ".join(cell_names())))
+    cdir = os.path.join(os.path.abspath(args.out_root), args.cell)
+    try:
+        bank, meta = _load_json(os.path.join(cdir, "bank.json")), \
+            _load_json(os.path.join(cdir, "plan_meta.json"))
+    except (OSError, ValueError) as e:
+        refuse("%s has no readable plan (%s). Run `plan` first." % (cdir, e))
+    return report_status(args.cell, manifest_status(cdir, meta.get("engine"), bank))
 
 
 def cmd_batched(_args):
@@ -526,14 +641,24 @@ def main(argv=None):
     p = sub.add_parser("plan", help="verify the inputs and write the four campaign dirs")
     p.add_argument("--out-root", required=True)
     p.add_argument("--allow-dirty", action="store_true")
-    r = sub.add_parser("render", help="print (or with --run, execute) one cell's synth_bank.sh")
+    r = sub.add_parser(
+        "render", help="print (or with --run, execute) one cell's synth_bank.sh",
+        description="The checks (plan inputs, render-affecting files, engine pin, bank) run once, "
+                    "at launch: a pull into the shared checkout or a change to the Zonos source "
+                    "while the cell runs is not detected, so do not pull mid-cell. --run exits "
+                    "%d when synth_bank.sh exits 0 but bank ids have no manifest row; re-running "
+                    "resumes." % PARTIAL_EXIT)
     r.add_argument("cell", help="one of: " + ", ".join(cell_names()))
     r.add_argument("--out-root", required=True)
     r.add_argument("--run", action="store_true", help="execute it (GPU); default: print only")
     r.add_argument("--allow-dirty", action="store_true")
+    s = sub.add_parser("status", help="one cell's rendered/expected counts; launches nothing")
+    s.add_argument("cell", help="one of: " + ", ".join(cell_names()))
+    s.add_argument("--out-root", required=True)
     sub.add_parser("batched", help="the pre-registered batched run (not available; says why)")
     args = ap.parse_args(argv)
-    return {"plan": cmd_plan, "render": cmd_render, "batched": cmd_batched}[args.cmd](args)
+    return {"plan": cmd_plan, "render": cmd_render, "status": cmd_status,
+            "batched": cmd_batched}[args.cmd](args)
 
 
 if __name__ == "__main__":
