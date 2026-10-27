@@ -124,9 +124,9 @@ def main():
                              "— continuing", flush=True)
             return None
 
-    def prompt_for(ref_wav, ref_text):
+    def prompt_for(ref_wav, ref_text, sha256):
         """(prompt, ref_cond_sec, prompt_cached), building and timing on a miss."""
-        key = (ref_wav, ref_text)
+        key = (ref_wav, ref_text, sha256)
         if key in prompts:
             return prompts[key], 0.0, True
         t0 = time.monotonic()
@@ -157,28 +157,33 @@ def main():
                          f"prompt={'cached' if prompt_cached else 'built'}",
               flush=True)
 
-    with open(manifest_path, "a", encoding="utf-8") as mf:
-        pending = []
+    def pending_jobs():
         for job in jobs:
             if os.path.exists(os.path.join(args.out, f"{job['id']}.wav")):
                 print(job["id"], "exists, skip", flush=True)
                 continue
             ref = resolved(job)
             if ref is not None:
-                pending.append((job, *ref))
-        i = 0
-        while i < len(pending):
-            job, ref_wav, ref_text, ref_meta = pending[i]
-            # Consecutive jobs sharing one reference form one chunk. At
-            # batch_size 1 every chunk is a single clip and this loop is the
-            # original per-clip path: resolve, prompt, seed, generate.
-            chunk = [pending[i]]
-            i += 1
-            while (i < len(pending) and len(chunk) < batch_size
-                   and pending[i][1] == ref_wav and pending[i][2] == ref_text):
-                chunk.append(pending[i])
-                i += 1
-            prompt, ref_cond_sec, prompt_cached = prompt_for(ref_wav, ref_text)
+                yield (job, *ref)
+
+    with open(manifest_path, "a", encoding="utf-8") as mf:
+        # Lazy, just-in-time resolution: clip k+1 is resolved only after clip k
+        # renders (per chunk when batched), so pinned_reference_file re-hashes
+        # the anchor each time and a mid-bank replacement stops later clips.
+        pending = pending_jobs()
+        peek = next(pending, None)
+        while peek is not None:
+            job, ref_wav, ref_text, ref_meta = peek
+            chunk = [peek]
+            peek = None
+            while len(chunk) < batch_size:
+                peek = next(pending, None)
+                if peek is None or peek[1] != ref_wav or peek[2] != ref_text:
+                    break
+                chunk.append(peek)
+                peek = None
+            prompt, ref_cond_sec, prompt_cached = prompt_for(
+                ref_wav, ref_text, ref_meta.get("sha256"))
             # Immediately before generate, AFTER the cache lookup, so the RNG
             # state at the call does not depend on whether the prompt was built.
             torch.manual_seed(chunk[0][0]["seed"])
@@ -208,6 +213,8 @@ def main():
                           prompt_cached if n == 0 else True,
                           ref_cond_sec if n == 0 else 0.0,
                           batch_sec / len(chunk), extra)
+            if peek is None:
+                peek = next(pending, None)
     print("SYNTH-QWEN-BASE-DONE")
 
 

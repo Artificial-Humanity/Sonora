@@ -67,14 +67,20 @@ def _fresh(name):
 @pytest.fixture
 def qwen_base(monkeypatch, fake_torch, calls):
     """synth_qwen_base imported against a stub Base model that records its calls."""
+    hooks = []
 
     class Model:
+        def __init__(self):
+            self.hooks = hooks
+
         def create_voice_clone_prompt(self, ref_audio, ref_text, x_vector_only_mode):
             calls.append(("prompt", ref_audio, ref_text, x_vector_only_mode))
             return ("prompt-for", ref_audio)
 
         def generate_voice_clone(self, text, language, voice_clone_prompt):
             calls.append(("clone", text, language, voice_clone_prompt))
+            for hook in list(self.hooks):
+                hook()
             n = len(text) if isinstance(text, list) else 1
             return [np.zeros(2 * SR, dtype=np.float32) for _ in range(n)], SR
 
@@ -84,7 +90,9 @@ def qwen_base(monkeypatch, fake_torch, calls):
 
     monkeypatch.setitem(sys.modules, "qwen_load",
                         _module("qwen_load", TOKENIZER_DTYPE="float32", load_qwen=load_qwen))
-    yield from _fresh("synth_qwen_base")
+    for mod in _fresh("synth_qwen_base"):
+        mod.clone_hooks = hooks
+        yield mod
 
 
 @pytest.fixture
@@ -185,6 +193,25 @@ def test_a_base_casting_failure_loses_one_clip_not_the_bank(
              _base_line(id="b2", seed=1000002, ref_file=anchor)]
     _out, rows = _run(qwen_base, monkeypatch, tmp_path, lines)
     assert [r["id"] for r in rows] == ["b2"]
+    assert "CASTING FAILED" in capsys.readouterr().out
+    assert [c[0] for c in calls].count("clone") == 1
+
+
+def test_a_reference_replaced_mid_bank_stops_the_clips_after_it(
+        qwen_base, anchor, calls, monkeypatch, tmp_path, capsys):
+    # Only clip 1 renders: prompt build (2 ticks) + its render (2 ticks);
+    # the spare pair would let a wrongly-rendered clip 2 finish and fail below.
+    _clock(monkeypatch, qwen_base, 0.0, 1.0, 1.0, 2.0, 3.0, 4.0)
+
+    def mutate():
+        with open(anchor["path"], "ab") as f:
+            f.write(b"x")
+
+    qwen_base.clone_hooks.append(mutate)
+    lines = [_base_line(ref_file=anchor),
+             _base_line(id="b2", seed=1000002, ref_file=anchor)]
+    _out, rows = _run(qwen_base, monkeypatch, tmp_path, lines)
+    assert [r["id"] for r in rows] == ["b1"]
     assert "CASTING FAILED" in capsys.readouterr().out
     assert [c[0] for c in calls].count("clone") == 1
 
