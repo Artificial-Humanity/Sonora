@@ -80,8 +80,14 @@ CHECKS = {
         "libri_arms": ("S1", "E"),
         "contrasts": (("S1", "E"),),
         "floor_ref": "S1", "min_units": 16},
+    # Arm Q (Notes: Sonora/phase-1s-step1-preregistration.md § Step 2): a synthetic 90-speaker
+    # corpus against S1 and the dense real speakers F1; unit = one (S1, F1, Q) triplet.
+    9: {"arms": ("S1", "F1", "Q"), "vctk_arms": (),
+        "libri_arms": ("S1", "F1"), "q_arms": ("Q",),
+        "contrasts": (("S1", "Q"), ("F1", "Q"), ("S1", "F1")),
+        "floor_ref": "S1", "min_units": 16},
 }
-HUM_FIX_CHECKS = (5, 6, 7, 8)
+HUM_FIX_CHECKS = (5, 6, 7, 8, 9)
 # Check 4 is registered against ONE S1 checkpoint: the step that ended its tenth epoch.
 # `select --check 4` (dry run included) refuses any other.
 CHECK4_S1_SHA256 = "857f62d7ac47770d94f971cf4bae80d3078e42fd028d45465fe30bd0e2a0d0d5"
@@ -89,6 +95,9 @@ CHECK4_S1_SHA256 = "857f62d7ac47770d94f971cf4bae80d3078e42fd028d45465fe30bd0e2a0
 # registered byte for byte. `select` (dry run included) and `render` refuse any other.
 CONTROL_SHA256 = {"C0": "d0d6b49b2e92a59e1caf43b82f0359c4c0940d7960b428caadee1091ab24b879",
                   "S1": CHECK4_S1_SHA256}
+# Check 9's F1 control: staged_f1's registered final checkpoint, byte for byte. Check 7 TRAINS F1,
+# so F1 is a control only for check 9 (a control of 5-8 would compare check 7's own new arm).
+CHECK9_F1_SHA256 = "250471d813c1f3189f1bda40332326374efa1ed2cbdaeed2321a711188273d56"
 # The hum-fix batch's registered selection inputs: `--hnr-json` (speaker_hnr_all.json) and
 # `--vctk-hnr-from` (baseline_bench/speakers.json) and `--s1-hnr-json`
 # (speaker_hnr_s1_rest.json). Checks 5-8 refuse any other.
@@ -102,7 +111,7 @@ F1_MAX_HNR_GAP = Fraction(1, 2)     # check 7: an S1 voice and its F1 voice, dB,
 # round-trips its own 22.05 kHz copies, which for train-clean-360 / other-500 are not S1's.
 FAMILY = {"stock": "vctk22", "C0": "vctk22", "S1": "libri22", "L": "orig22",
           "S2": "libri24", "R": "libri24", "derisk": "libri24",
-          "D1": "vctk22", "G": "libri22", "F1": "f1_22", "E": "libri22"}
+          "D1": "vctk22", "G": "libri22", "F1": "f1_22", "E": "libri22", "Q": "q_22"}
 _TEN = re.compile(r"^checkpoint_epoch=009_step=\d{7}\.ckpt$")
 # An arm whose final checkpoint is NOT the step that ended its tenth epoch, by exact file name
 # (Notes: Sonora/hum-fix-batch-preregistration.md). Every other arm's final is that step
@@ -210,13 +219,14 @@ def check_registered_ckpts(check, digests):
     (a dry run). Checks 1-4 pass."""
     if check not in HUM_FIX_CHECKS:
         return
-    for arm, want in sorted(CONTROL_SHA256.items()):
+    controls = dict(CONTROL_SHA256, **({"F1": CHECK9_F1_SHA256} if check == 9 else {}))
+    for arm, want in sorted(controls.items()):
         if arm in digests and digests[arm] != want:
             raise ValueError("check %d's %s checkpoint is not the registered one (sha256 %s)."
                              % (check, arm, want))
-    for arm in ("D1", "G", "F1", "E"):
-        for ctrl, want in sorted(CONTROL_SHA256.items()):
-            if digests.get(arm) is not None and digests[arm] == want:
+    for arm in ("D1", "G", "F1", "E", "Q"):
+        for ctrl, want in sorted(controls.items()):
+            if ctrl != arm and digests.get(arm) is not None and digests[arm] == want:
                 raise ValueError("check %d's %s checkpoint is %s's (sha256 %s)."
                                  % (check, arm, ctrl, want))
 
@@ -248,6 +258,64 @@ def pair_f1(s1, f1, max_gap=F1_MAX_HNR_GAP):
             used.add(best[1])
             pairs.append((s, best[1]))
     return pairs
+
+
+def _ln_f0_gap(f0_a, f0_b):
+    return abs(math.log(f0_a) - math.log(f0_b))
+
+
+def _nearest(voice_hnr, pool, used, window):
+    """The unused pool voice whose HNR is within `window` dB (exact, inclusive) of `voice_hnr`
+    and minimises |ln F0| difference, ties to the smaller HNR gap, then the lower tie id. `pool`
+    is {id: (HNR, F0, tie id)}; -> (id, gap) or None."""
+    h, f0 = voice_hnr
+    best = None
+    for v, (fh, ff0, tie) in pool.items():
+        gap = abs(_exact(h) - _exact(fh))
+        if v in used or gap > window:
+            continue
+        k = (_ln_f0_gap(f0, ff0), gap, tie)
+        if best is None or k < best[0]:
+            best = (k, v, gap)
+    return None if best is None else (best[1], best[2])
+
+
+def pair_q_triplets(s1, f1, q, max_gap=F1_MAX_HNR_GAP, fallback_gap=Fraction(1, 1),
+                    min_triplets=16):
+    """Check 9's (S1, F1, Q) triplets, as registered (phonemizer-free, numbers only).
+
+    `s1` is {voice: (HNR dB, F0 Hz)}; `f1` is {voice: (HNR dB, F0 Hz, LibriTTS id)}; `q` is
+    {voice: (HNR dB, F0 Hz, Q table index)}. S1 voices are taken in ascending (HNR, id) order.
+    Each takes the unused F1 voice and the unused Q voice
+    within `max_gap` dB HNR that minimise |ln F0 difference| (ties: smaller HNR gap, then lower
+    id). An arm with no candidate within `max_gap` is retried within `fallback_gap` and that arm's
+    entry records `widened: True`. An S1 voice with no candidate in either arm within
+    `fallback_gap` is skipped and consumes nothing. Fewer than `min_triplets` complete triplets is
+    a refusal.
+
+    -> [{"s1": id, "f1": id, "q": id, "widened": {"F1": bool, "Q": bool}}]."""
+    used_f1, used_q, out = set(), set(), []
+    for s in sorted(s1, key=lambda v: (s1[v][0], v)):
+        pick = {}
+        widened = {}
+        for arm, pool, used in (("F1", f1, used_f1), ("Q", q, used_q)):
+            hit = _nearest(s1[s], pool, used, max_gap)
+            if hit is None:
+                hit = _nearest(s1[s], pool, used, fallback_gap)
+                widened[arm] = True
+            else:
+                widened[arm] = False
+            if hit is None:
+                break
+            pick[arm] = hit[0]
+        if len(pick) == 2:
+            used_f1.add(pick["F1"])
+            used_q.add(pick["Q"])
+            out.append({"s1": s, "f1": pick["F1"], "q": pick["Q"], "widened": widened})
+    if len(out) < min_triplets:
+        raise ValueError("%d complete (S1, F1, Q) triplets; the registered minimum is %d."
+                         % (len(out), min_triplets))
+    return out
 
 
 def reading(check, gaps, floors):
@@ -284,6 +352,11 @@ def reading(check, gaps, floors):
     "Not shown" is never "absent".
     """
     spec = CHECKS[check]
+    if check == 9:
+        # Check 9's units are triplets: every arm, and every contrast, is read on the units rated
+        # in all three arms, so the contrasts share one unit set.
+        common = set.intersection(*(set(gaps[a]) for a in spec["arms"]))
+        gaps = {a: {u: gaps[a][u] for u in common} for a in spec["arms"]}
     level = {a: test([gaps[a][u] for u in sorted(gaps[a])]) for a in spec["arms"]}
     contrasts = {}
     for a, b in spec["contrasts"]:
@@ -319,6 +392,15 @@ def reading(check, gaps, floors):
             shown.append("restoration")
         outcome = "shown" if shown else "not_shown"
         extra["n_deciding"] = 2
+    elif check == 9:
+        rated_all = len(set(gaps["S1"]) & set(gaps["F1"]) & set(gaps["Q"]))
+        valid = fl and up(level["S1"]) and rated_all >= spec["min_units"]
+        if up(contrasts["S1-Q"]):
+            shown.append("synthetic_reduces_hum")
+        if up(contrasts["F1-Q"]):
+            shown.append("synthetic_beats_dense_real")
+        outcome = "shown" if shown else "not_shown"
+        extra["n_deciding"] = 3
     elif check == 5:
         valid = fl and contrasts["D1-C0"][2] >= spec["min_units"]
         if up(contrasts["D1-C0"]):
@@ -339,5 +421,6 @@ def reading(check, gaps, floors):
     # checks 4-8 both arms' own gaps (each reported with its p).
     return dict({"level": level, "contrasts": contrasts, "floors_ok": fl,
                  "valid": bool(valid), "outcome": outcome, "shown": shown,
-                 "n_tests": len(contrasts) + {3: 1, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2}.get(check, 0)},
+                 "n_tests": len(contrasts)
+                 + {3: 1, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2, 9: 3}.get(check, 0)},
                 **extra)

@@ -1,4 +1,4 @@
-"""Unblind one staged-rebuild or hum-fix check (1-8) and apply its pre-registered reading.
+"""Unblind one staged-rebuild or hum-fix check (1-9) and apply its pre-registered reading.
 
 Reads the key written by `render_ear_staged.py render` and the app's verdicts, and prints
 each arm's gap (model minus round trip) with its floor, the check's contrasts, the number
@@ -10,8 +10,8 @@ of tests (uncorrected), and the outcome from `staged_bench.reading`. Exact; no r
 
 Checks 5-7 are one listening session over three test folders (A, B, C), and are read only when
 every item of all three is rated: name the folders with --session-tests (this check's --test
-among them). Check 8 (D) is a single-folder session and is read only when every item of --test
-is rated. --session-closed reads a hum-fix check anyway, leaving out the items not fully rated.
+among them). Checks 8 (D) and 9 (Q) are single-folder sessions and are read only when every
+item of --test is rated. --session-closed reads a hum-fix check anyway, leaving out the items not fully rated.
 """
 
 import argparse
@@ -76,6 +76,13 @@ OUTCOME = {
     (8, "invalid"): ("S1's own excess is not shown, or the round-trip floors are not comparable "
                      "(E's within 1 point of S1's, both under 4), or fewer than 16 voices were "
                      "rated in both arms: no reading. The owner decides."),
+    (9, "shown"): "",
+    (9, "not_shown"): ("neither S1 over Q nor F1 over Q is shown: the synthetic corpus is not "
+                       "shown to hum less than S1 or than the dense real speakers. Not shown is "
+                       "not absent."),
+    (9, "invalid"): ("S1's own excess is not shown, or the round-trip floors are not comparable "
+                     "(F1's and Q's within 1 point of S1's, all under 4), or fewer than 16 "
+                     "triplets were rated in all three arms: no reading. The owner decides."),
 }
 SHOWN = {
     "fine_tuning": ("C0 hums more than stock: fine-tuning itself adds the hum. The cause is "
@@ -104,6 +111,13 @@ SHOWN = {
                       "the espeak input stock's text encoder learned adds hum. This does not "
                       "show op_g2p is worse in itself (S1 re-learns its input, E does not); "
                       "candidate fixes each need their own run."),
+    "synthetic_reduces_hum": ("S1 hums more than Q: a synthetic corpus with no LibriVox audio in "
+                              "the chain hums less than LibriTTS-R. The recording domain is the "
+                              "candidate cause, not the speakers alone; F1 and Q are compared "
+                              "below."),
+    "synthetic_beats_dense_real": ("F1 hums more than Q: at matched speaker density (90 speakers, "
+                                   "300+ clips each), the synthetic corpus hums less than dense "
+                                   "LibriTTS-R. This separates the recording domain from density."),
 }
 # How each check's tests are counted in the print-out.
 TESTS = {4: ("three p-values reported (S1's excess, S1 − L, L's excess), two of them "
@@ -115,7 +129,10 @@ TESTS = {4: ("three p-values reported (S1's excess, S1 − L, L's excess), two o
          7: ("three p-values reported (S1's excess, S1 − F1, F1's excess), two of them "
              "deciding the reading (S1's excess and S1 − F1); uncorrected"),
          8: ("three p-values reported (S1's excess, S1 − E, E's excess), two of them "
-             "deciding the reading (S1's excess and S1 − E); uncorrected")}
+             "deciding the reading (S1's excess and S1 − E); uncorrected"),
+         9: ("six p-values reported (S1 − Q, F1 − Q, S1 − F1, and S1's, F1's and Q's own "
+             "excess); three of them deciding the reading (S1's excess for validity, S1 − Q "
+             "and F1 − Q); uncorrected")}
 
 
 def unrated(test_dir):
@@ -139,12 +156,12 @@ def require_session_rated(args):
     if args.check not in sb.HUM_FIX_CHECKS:
         if args.session_tests or args.session_closed:
             raise SystemExit("REFUSING: --session-tests and --session-closed are for checks "
-                             "5-8.")
+                             "5-9.")
         return
-    if args.check == 8:
+    if args.check in (8, 9):
         if args.session_tests:
             raise SystemExit("REFUSING: --session-tests is for checks 5-7 (the three-check "
-                             "session); check 8 is a single-folder session.")
+                             "session); check %d is a single-folder session." % args.check)
         meta = Path(args.test) / "render_meta.json"
         if not meta.is_file():
             raise SystemExit("REFUSING: no %s — which check this folder was rendered for is "
@@ -204,7 +221,7 @@ def main(argv=None):
     ap.add_argument("--session-tests", nargs=3, metavar="DIR",
                     help="checks 5-7: the session's three test folders, this check's among them")
     ap.add_argument("--session-closed", action="store_true",
-                    help="checks 5-8: read the check although items are not fully rated; they "
+                    help="checks 5-9: read the check although items are not fully rated; they "
                          "are left out")
     args = ap.parse_args(argv)
     arms = sb.CHECKS[args.check]["arms"]
@@ -242,6 +259,15 @@ def main(argv=None):
     if rated < len(truth):
         print("⚠ %d of %d items not fully rated; they are left out.\n"
               % (len(truth) - rated, len(truth)))
+    if args.check == 9:
+        # Check 9's contrasts share one unit set: the units rated in all three arms (a unit with
+        # S1 and F1 but no Q is left out of the floors and of every printed count).
+        common = set.intersection(*(set(gaps[a]) for a in arms))
+        gaps = {a: {u: gaps[a][u] for u in common} for a in arms}
+        model_u = {a: {u: model_u[a][u] for u in common} for a in arms}
+        rt_u = {a: {u: rt_u[a][u] for u in common} for a in arms}
+        sev = {a: [model_u[a][u] for u in sorted(common)] for a in arms}
+        floor = {a: [rt_u[a][u] for u in sorted(common)] for a in arms}
     if not all(floor.values()) and "min_units" in sb.CHECKS[args.check]:
         # Pre-registered: fewer than 16 voices rated in both arms is INVALID, not a crash.
         print("OUTCOME: INVALID — %s" % OUTCOME[(args.check, "invalid")])
