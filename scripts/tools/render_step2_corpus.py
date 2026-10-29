@@ -226,6 +226,7 @@ def cmd_plan(args):
                 "seed_rule": "seed = %d + 1000 * speaker index + speaker line index"
                              % SEED_BASE}
         _refuse_existing(cdir, bank, meta)
+        _os.makedirs(cdir, exist_ok=True)
         write_json_atomic(_os.path.join(cdir, "bank.json"), bank)
         write_json_atomic(_os.path.join(cdir, "plan.json"), meta)
         print("%s: %d lines (%s)" % (speaker["name"], len(bank["lines"]), speaker["engine"]))
