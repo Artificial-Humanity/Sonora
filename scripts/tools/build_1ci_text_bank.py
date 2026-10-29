@@ -131,7 +131,8 @@ def _same_url(a, b):
     return (a or "").rstrip("/").lower() == (b or "").rstrip("/").lower()
 
 
-def discover_books(root, holdout_keys, holdout_pg_ids, ledger):
+def discover_books(root, holdout_keys, holdout_pg_ids, ledger,
+                   min_clip_seconds=ptb.MIN_CLIP_SECONDS, max_clip_seconds=ptb.MAX_CLIP_SECONDS):
     """-> {"used", "skipped", "excluded_books", "excluded_documents", "ledger_excluded",
     "rejections", "denylist_hits", "candidates"}."""
     r = {"used": {}, "skipped": [], "excluded_books": [], "excluded_documents": [],
@@ -167,7 +168,8 @@ def discover_books(root, holdout_keys, holdout_pg_ids, ledger):
             r["ledger_excluded"].append({"book": slug, "title": meta["title"],
                                          "source_url": meta["identifier"], **ledger_record})
             continue
-        cands, rej, docs, deny = ptb.book_candidates(slug, book, holdout_keys)
+        cands, rej, docs, deny = ptb.book_candidates(slug, book, holdout_keys,
+                                                     min_clip_seconds, max_clip_seconds)
         r["excluded_documents"] += docs
         r["denylist_hits"] += deny
         for k, v in rej.items():
