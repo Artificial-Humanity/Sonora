@@ -78,10 +78,11 @@ def est_seconds(text):
     return len(text) / CHARS_PER_SEC
 
 
-def within_length(text):
-    """True when the estimated speech is inside the registered bounds, both edges included."""
+def within_length(text, min_clip_seconds=MIN_CLIP_SECONDS, max_clip_seconds=MAX_CLIP_SECONDS):
+    """True when the estimated speech is inside the bounds, both edges included. The defaults are
+    Step 1c-i's; Step 2b passes its own (`build_step2_text_bank.py`)."""
     s = est_seconds(text)
-    return MIN_CLIP_SECONDS <= s <= MAX_CLIP_SECONDS
+    return min_clip_seconds <= s <= max_clip_seconds
 
 
 # ---------------------------------------------------------------- text
@@ -158,14 +159,14 @@ def has_quote(text):
     return bool(_QUOTE_RE.search(text))
 
 
-def sentence_rejection(text):
+def sentence_rejection(text, min_clip_seconds=MIN_CLIP_SECONDS, max_clip_seconds=MAX_CLIP_SECONDS):
     """None when `text` is a usable bank line, otherwise the first reason it is not.
 
     `text` is the cleaned, `normalize_speakable`-expanded sentence; the length is measured on it,
-    because that is what an engine reads.
+    because that is what an engine reads. The length bounds default to Step 1c-i's.
     """
-    if not within_length(text):
-        return "too_short" if est_seconds(text) < MIN_CLIP_SECONDS else "too_long"
+    if not within_length(text, min_clip_seconds, max_clip_seconds):
+        return ("too_short" if est_seconds(text) < min_clip_seconds else "too_long")
     if has_quote(text):
         return "quotation"
     if not is_complete_utterance(text):
@@ -515,7 +516,8 @@ def holdout_match(book, holdout_keys, holdout_pg_ids):
     return None
 
 
-def book_candidates(slug, book, holdout_keys):
+def book_candidates(slug, book, holdout_keys, min_clip_seconds=MIN_CLIP_SECONDS,
+                    max_clip_seconds=MAX_CLIP_SECONDS):
     """Candidate lines from one parsed book: (candidates, rejections, excluded_sections,
     denylist_hits).
 
@@ -542,7 +544,7 @@ def book_candidates(slug, book, holdout_keys):
                     rejections["denylist"] = rejections.get("denylist", 0) + 1
                     deny.append({"book": slug, "text": s, "reason": DENYLIST[s]})
                     continue
-                why = sentence_rejection(s)
+                why = sentence_rejection(s, min_clip_seconds, max_clip_seconds)
                 if why:
                     rejections[why] = rejections.get(why, 0) + 1
                     continue
@@ -726,13 +728,13 @@ def select_lines(candidates, *, n=BANK_SIZE, seed=DEFAULT_SEED, max_per_book=MAX
     return ordered, stats
 
 
-def bank_rows(lines, books):
+def bank_rows(lines, books, id_prefix=ID_PREFIX):
     """lines.jsonl rows: id, text, book, title, source_url, est_seconds, chars. `books` maps a slug
-    to its {title, source_url}."""
+    to its {title, source_url}. Ids are `id_prefix` plus the 1-based bank position."""
     rows = []
     for i, c in enumerate(lines, 1):
         b = books[c["book"]]
-        rows.append({"id": f"{ID_PREFIX}{i:04d}", "text": c["text"], "book": c["book"],
+        rows.append({"id": f"{id_prefix}{i:04d}", "text": c["text"], "book": c["book"],
                      "title": b["title"], "source_url": b["source_url"],
                      "est_seconds": round(est_seconds(c["text"]), 3), "chars": len(c["text"])})
     return rows
