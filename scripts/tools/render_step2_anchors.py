@@ -11,8 +11,9 @@ Pre-registered in Notes: Sonora/phase-1s-step1-preregistration.md § Step 2 — 
   On a whole-plan render it also writes `qwen_voicedesign_manifest.jsonl`, the campaign manifest
   `qc_gate.py` reads (`wav` beside `file`).
 * `embed` extracts Zonos SpeakerEmbeddingLDA and SpeechBrain ECAPA-TDNN embeddings of every rendered
-  clip and of the locked anchors into `speaker_embeddings.jsonl`. It runs under the litert venv
-  (`/data/toolchain/litert-conversion/.venv/bin/python`), which carries torch and speechbrain.
+  clip and of the locked anchors into `speaker_embeddings.jsonl`. It runs under the torch-capable
+  interpreter `scripts/litert_export/run.sh` selects (`$SONORA_LITERT_PY`), which carries torch and
+  speechbrain.
 * `admit-filter` applies the three automated gates: QC hard-pass, core F0 band, and distinctness
   (cosine < 0.85 on both models against the locked anchors of the same gender and every earlier
   admitted candidate of that gender, in plan order). It writes `admission_report.json` and
@@ -31,7 +32,7 @@ Commands (GPU render: run it in a JARVIS slot, as render_qwen_1c0.py documents):
         --out /data/model-training/datasets/probes/qwen-step2-anchors
     # the QC gate, against the campaign manifest measure wrote (GPU, ASR):
     #   python scripts/stages/qc_gate.py --campaign-dir /data/model-training/datasets/probes/qwen-step2-anchors
-    /data/toolchain/litert-conversion/.venv/bin/python scripts/tools/render_step2_anchors.py embed \\
+    "$SONORA_LITERT_PY" scripts/tools/render_step2_anchors.py embed \\
         --out /data/model-training/datasets/probes/qwen-step2-anchors
     .venv/bin/python scripts/tools/render_step2_anchors.py admit-filter \\
         --out /data/model-training/datasets/probes/qwen-step2-anchors
