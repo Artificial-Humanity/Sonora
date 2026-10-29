@@ -268,3 +268,84 @@ def test_cmd_admit_filter_refuses_a_partial_measure_on_disk(tmp_path):
     with pytest.raises(SystemExit, match="whole-plan"):
         s2.cmd_admit_filter(args)
     assert not (tmp_path / "admission_report.json").exists()
+
+
+def test_the_grid_is_mixed_radix_and_its_first_57_are_distinct_per_gender():
+    axes = [s2.grid_axes(i) for i in range(72)]
+    assert len(set(axes)) == 72
+    assert len(set(axes[:57])) == 57
+    assert all(a < 3 and r < 3 and t < 4 and o < 2 for a, r, t, o in axes)
+
+
+def test_every_age_band_reads_all_three_sentences():
+    items = [it for it in s2.plan_items() if it["gender"] == "Female"]
+    for band in {it["band"] for it in items}:
+        sents = {it["text"] for it in items if it["band"] == band}
+        assert sents == set(rq.SENTENCES), band
+
+
+def test_both_tones_and_all_textures_appear_within_each_age_band():
+    items = [it for it in s2.plan_items() if it["gender"] == "Male"]
+    for band in {it["band"] for it in items}:
+        sub = [it for it in items if it["band"] == band]
+        assert {it["instruct"].split("tone: ")[1].split(".")[0] for it in sub} == \
+            {t for t, _p in s2.TONES}
+
+
+def test_the_qc_manifest_adds_wav_beside_file_and_nothing_else():
+    rows = [{"id": "s2a-M01", "file": "clips/s2a-M01.wav", "text": "t", "seed": 1}]
+    out = s2.qc_manifest_rows(rows)
+    assert out == [{"id": "s2a-M01", "file": "clips/s2a-M01.wav", "text": "t", "seed": 1,
+                    "wav": "clips/s2a-M01.wav"}]
+    assert "wav" not in rows[0]
+
+
+def test_embed_clips_refuses_a_missing_wav_and_lists_the_anchors(tmp_path):
+    rows = [{"id": "s2a-M01", "file": "clips/s2a-M01.wav"}]
+    (tmp_path / "clips").mkdir()
+    (tmp_path / "clips" / "s2a-M01.wav").write_bytes(b"")
+    anchors = tmp_path / "anchors"
+    (anchors / "clips").mkdir(parents=True)
+    for cid in s2.LOCKED_ANCHORS:
+        (anchors / "clips" / (cid + ".wav")).write_bytes(b"")
+    clips = s2.embed_clips(rows, str(tmp_path), str(anchors))
+    assert [cid for cid, _p in clips] == ["s2a-M01", "M4-s3", "F6-s2"]
+    (anchors / "clips" / "F6-s2.wav").unlink()
+    with pytest.raises(SystemExit, match="missing"):
+        s2.embed_clips(rows, str(tmp_path), str(anchors))
+
+
+def test_embed_rows_takes_one_row_per_clip_with_both_models():
+    clips = [("a", "/x/a.wav"), ("M4-s3", "/y/M4-s3.wav")]
+    out = s2.embed_rows(clips, lambda p: [1.0, 2.0], lambda p: [3.0])
+    assert out == [{"id": "a", "zonos_lda": [1.0, 2.0], "ecapa": [3.0]},
+                   {"id": "M4-s3", "zonos_lda": [1.0, 2.0], "ecapa": [3.0]}]
+
+
+def test_ecapa_refuses_a_checkpoint_that_differs_from_its_pin(tmp_path):
+    (tmp_path / "embedding_model.ckpt").write_bytes(b"not the pinned bytes")
+    with pytest.raises(SystemExit, match="sha256"):
+        s2.verify_ecapa_hashes(str(tmp_path), {"embedding_model.ckpt": "0" * 64})
+
+
+def test_the_admitted_manifest_holds_only_admitted_clips_in_plan_order(tmp_path):
+    plan = s2.plan_items()
+    ids = [it["id"] for it in plan]
+    rows = {i: {"id": i, "file": "clips/%s.wav" % i, "group": "step2 anchor pool", "gender": "Male"}
+            for i in ids}
+    measures = {i: {"id": i, "zone": "core"} for i in ids}
+    report = {"admitted": {"Male": ["s2a-M03", "s2a-M01"], "Female": []}}
+    m = s2.probe_manifest(report, plan, rows, measures, "qwen-step2-anchors", "probes/qwen-step2-anchors")
+    assert [c["id"] for c in m["clips"]] == ["s2a-M01", "s2a-M03"]
+    c = m["clips"][0]
+    assert c["wav"] == "probes/qwen-step2-anchors/clips/s2a-M01.wav"
+    assert c["acoustics"] == {"id": "s2a-M01", "zone": "core"}
+    assert c["group"] == "step2 anchor pool"
+    assert m["probe"] == "qwen-step2-anchors"
+
+
+def test_the_audition_relpath_is_under_the_data_root_or_refused(tmp_path):
+    assert s2.audition_relpath("/data/model-training/datasets/probes/qwen-step2-anchors") == \
+        "probes/qwen-step2-anchors"
+    with pytest.raises(SystemExit, match="outside"):
+        s2.audition_relpath(str(tmp_path))

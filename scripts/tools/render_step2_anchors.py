@@ -8,10 +8,17 @@ Pre-registered in Notes: Sonora/phase-1s-step1-preregistration.md § Step 2 — 
 * `render` renders them with Qwen3-TTS-12Hz-1.7B-VoiceDesign, batch size 1, one seed before each
   clip, -23.0 LUFS, into a probe folder `audition/app` reads (manifest.jsonl, clips/, render_meta.json).
 * `measure` runs render_qwen_1c0's pYIN F0 and phonation measures and `qwen_bands.admit` on each clip.
+  On a whole-plan render it also writes `qwen_voicedesign_manifest.jsonl`, the campaign manifest
+  `qc_gate.py` reads (`wav` beside `file`).
+* `embed` extracts Zonos SpeakerEmbeddingLDA and SpeechBrain ECAPA-TDNN embeddings of every rendered
+  clip and of the locked anchors into `speaker_embeddings.jsonl`. It runs under the litert venv
+  (`/data/toolchain/litert-conversion/.venv/bin/python`), which carries torch and speechbrain.
 * `admit-filter` applies the three automated gates: QC hard-pass, core F0 band, and distinctness
-  (cosine < 0.85 on both Zonos SpeakerEmbeddingLDA and SpeechBrain ECAPA-TDNN against the locked
-  anchors of the same gender and every earlier admitted candidate of that gender, in plan order).
-  The owner's ear check (`hum == 0`, core verdict) is the fourth gate and happens outside this tool.
+  (cosine < 0.85 on both models against the locked anchors of the same gender and every earlier
+  admitted candidate of that gender, in plan order). It writes `admission_report.json` and
+  `manifest.json`, which the audition app serves: the admitted clips only. `manifest.jsonl` keeps
+  all 114 raw clips. The owner's ear check (`hum == 0`, core verdict) is the fourth gate and happens
+  outside this tool.
 
 Commands (GPU render: run it in a JARVIS slot, as render_qwen_1c0.py documents):
 
@@ -22,17 +29,21 @@ Commands (GPU render: run it in a JARVIS slot, as render_qwen_1c0.py documents):
     #     --out /data/model-training/datasets/probes/qwen-step2-anchors
     .venv/bin/python scripts/tools/render_step2_anchors.py measure \\
         --out /data/model-training/datasets/probes/qwen-step2-anchors
+    # the QC gate, against the campaign manifest measure wrote (GPU, ASR):
+    #   python scripts/stages/qc_gate.py --campaign-dir /data/model-training/datasets/probes/qwen-step2-anchors
+    /data/toolchain/litert-conversion/.venv/bin/python scripts/tools/render_step2_anchors.py embed \\
+        --out /data/model-training/datasets/probes/qwen-step2-anchors
     .venv/bin/python scripts/tools/render_step2_anchors.py admit-filter \\
-        --out /data/model-training/datasets/probes/qwen-step2-anchors \\
-        --qc-jsonl <qc_measures.jsonl> --embeddings-jsonl <embeddings.jsonl>
+        --out /data/model-training/datasets/probes/qwen-step2-anchors
 
-`--embeddings-jsonl` rows are {"id", "zonos_lda": [floats], "ecapa": [floats]} for every candidate
-that passed QC and the F0 band, and for each locked anchor (M4-s3, F6-s2).
+`speaker_embeddings.jsonl` rows are {"id", "zonos_lda": [floats], "ecapa": [floats]}: every rendered
+clip, and the locked anchors M4-s3 and F6-s2.
 """
 import argparse
 import json
 import math
 import os
+import posixpath
 import sys as _sys  # noqa: E402
 import os as _os  # noqa: E402
 
@@ -73,17 +84,51 @@ PITCH_RUNGS = ("Low", "Medium", "High")
 _WORD = {"Male": "male", "Female": "female"}
 _NOUN = {"Male": "man", "Female": "woman"}
 
+# The embedding models and the audio root the audition app resolves links against (its DATA_ROOT).
+ZONOS_PATH = "/data/toolchain/Zonos"
+ECAPA_SNAP = (
+    "/home/lmcfarlin/.cache/huggingface/hub/models--speechbrain--spkrec-ecapa-voxceleb"
+    "/snapshots/0f99f2d0ebe89ac095bcc5903c4dd8f72b367286"
+)
+ECAPA_EXPECTED_SHA256 = {
+    "embedding_model.ckpt": "0575cb64845e6b9a10db9bcb74d5ac32b326b8dc90352671d345e2ee3d0126a2",
+    "mean_var_norm_emb.ckpt": "cd70225b05b37be64fc5a95e24395d804231d43f74b2e1e5a513db7b69b34c33",
+    "classifier.ckpt": "fd9e3634fe68bd0a427c95e354c0c677374f62b3f434e45b78599950d860d535",
+    "hyperparams.yaml": "6f78854fa04ba59e761437b76a2575d3aba5e5016de3e9b69f0c9a5077fb1a41",
+    "label_encoder.txt": "e13c3a167bb4112685670ee896d20e2b565af16b3a4ceeaa8689fa4d22adb8b9",
+}
+DEFAULT_ANCHORS_DIR = "/data/model-training/datasets/probes/qwen-1c0-anchors"
+AUDITION_DATA_ROOT = "/data/model-training/datasets"
+QC_MANIFEST = "qwen_voicedesign_manifest.jsonl"
+SPEAKER_EMBEDDINGS = "speaker_embeddings.jsonl"
+
+
+def grid_axes(i):
+    """(age, pitch rung, texture, tone) indices of candidate `i`: mixed-radix over AGE_BANDS,
+    PITCH_RUNGS, TEXTURES and TONES, so the first 3 * 3 * 4 * 2 = 72 indices are distinct
+    combinations and age varies fastest."""
+    age, rest = i % len(AGE_BANDS), i // len(AGE_BANDS)
+    rung, rest = rest % len(PITCH_RUNGS), rest // len(PITCH_RUNGS)
+    texture, rest = rest % len(TEXTURES), rest // len(TEXTURES)
+    return age, rung, texture, rest % len(TONES)
+
 
 def candidate_keys(gender, i):
     """The 12-key instruct's keys for candidate `i` of `gender`, its owner age band and pitch rung."""
-    prefix, age = AGE_BANDS[i % len(AGE_BANDS)]
-    rung = PITCH_RUNGS[(i // len(AGE_BANDS)) % len(PITCH_RUNGS)]
-    tone, personality = TONES[i % len(TONES)]
-    keys = dict(rq.FIXED, gender=gender, age=age, texture=TEXTURES[i % len(TEXTURES)],
-                tone=tone, personality=personality,
-                pitch="%s %s pitch, stable" % (rung, _WORD[gender]))
+    a, r, t, o = grid_axes(i)
+    prefix, age = AGE_BANDS[a]
+    rung = PITCH_RUNGS[r]
+    tone, personality = TONES[o]
+    keys = dict(rq.FIXED, gender=gender, age=age, texture=TEXTURES[t], tone=tone,
+                personality=personality, pitch="%s %s pitch, stable" % (rung, _WORD[gender]))
     band = ("%s %s" % (prefix, _NOUN[gender])).strip().capitalize()
     return keys, band, rung
+
+
+def sentence_index(i):
+    """0-based index into rq.SENTENCES. Offsetting by the age band's cycle gives every age band all
+    three sentences, not one each."""
+    return (i + i // len(AGE_BANDS)) % len(rq.SENTENCES)
 
 
 def plan_items():
@@ -92,12 +137,12 @@ def plan_items():
     for g, gender, _word, gd in rq.GENDERS:
         for i in range(PER_GENDER):
             keys, band, rung = candidate_keys(gender, i)
+            s = sentence_index(i)
             items.append({"id": "s2a-%s%02d" % (g, i + 1), "group": "step2 anchor pool",
                           "rung": None, "label": "%s, %s pitch" % (band, rung.lower()),
                           "band": band, "gender": gender,
                           "seed": SEED_BASE + 1000 * gd + i,
-                          "sentence": i % len(rq.SENTENCES) + 1,
-                          "text": rq.SENTENCES[i % len(rq.SENTENCES)],
+                          "sentence": s + 1, "text": rq.SENTENCES[s],
                           "instruct": rq.build_instruct(keys)})
     return items
 
@@ -229,6 +274,12 @@ def rendered(out, ids=None):
     return [by_id[i] for i in want], meta
 
 
+def qc_manifest_rows(rows):
+    """The campaign manifest `qc_gate.py` reads: each manifest row with `wav` beside `file`. qc_gate
+    resolves `wav` against the campaign dir, which is this probe's folder."""
+    return [dict(r, wav=r["file"]) for r in rows]
+
+
 def cmd_measure(args):
     import soundfile as sf
 
@@ -245,6 +296,10 @@ def cmd_measure(args):
         out.append(dict(row, gender=r.get("gender"), **rq.admission(r.get("gender"), row)))
     write_text_atomic(os.path.join(args.out, "measures.jsonl"),
                       "".join(json.dumps(o) + "\n" for o in out))
+    if args.ids is None:
+        write_text_atomic(os.path.join(args.out, QC_MANIFEST),
+                          "".join(json.dumps(r, ensure_ascii=False) + "\n"
+                                  for r in qc_manifest_rows(rows)))
     m = rq.measure_meta(meta["commit"], srs, PROBE, meta.get("ids"))
     write_json_atomic(os.path.join(args.out, "measure_meta.json"), dict(m, tool=TOOL))
     zones = [o["zone"] for o in out]
@@ -252,6 +307,83 @@ def cmd_measure(args):
           "%d unmeasured" % (len(out), sum(bool(o["f0_out_of_range"]) for o in out),
                              zones.count("core"), zones.count("niche"),
                              zones.count("unmeasured")))
+
+
+def verify_ecapa_hashes(snap, expected):
+    """Refuses an ECAPA checkpoint whose bytes differ from the pinned sha256 (as the 1c-i extraction
+    does), so an embedding never comes from an unpinned model."""
+    import hashlib
+
+    for fname, want in expected.items():
+        got = hashlib.sha256(open(os.path.join(snap, fname), "rb").read()).hexdigest()
+        if got != want:
+            raise SystemExit("REFUSING: ECAPA %s sha256 %s, pinned %s." % (fname, got, want))
+
+
+def embed_clips(rows, out, anchors_dir):
+    """-> [(id, wav path)] for every rendered clip of `rows` and each locked anchor. Refuses a
+    missing wav, so an embedding file is never written with a hole in it."""
+    clips = [(r["id"], os.path.join(out, r["file"])) for r in rows]
+    clips += [(cid, os.path.join(anchors_dir, "clips", cid + ".wav")) for cid in LOCKED_ANCHORS]
+    missing = [p for _cid, p in clips if not os.path.isfile(p)]
+    if missing:
+        raise SystemExit("REFUSING: %d wav(s) missing for embedding, e.g. %s." % (len(missing),
+                                                                                 missing[0]))
+    return clips
+
+
+def embed_rows(clips, lda, ecapa):
+    """-> one {"id", "zonos_lda", "ecapa"} row per (id, path), in order. `lda` and `ecapa` take a
+    wav path and return its embedding as a list of floats."""
+    return [{"id": cid, "zonos_lda": lda(path), "ecapa": ecapa(path)} for cid, path in clips]
+
+
+def load_embedders():
+    """The two embedding models, loaded lazily: the planner, the gates and their tests import none
+    of torch, soundfile, speechbrain or Zonos. Pinned to the same ECAPA snapshot the 1c-i
+    extraction used (extract_and_analyse.py), and refuses any other checkpoint bytes."""
+    import soundfile as sf
+    import torch
+    import torchaudio
+
+    verify_ecapa_hashes(ECAPA_SNAP, ECAPA_EXPECTED_SHA256)
+    _sys.path.insert(0, ZONOS_PATH)
+    from speechbrain.inference.speaker import EncoderClassifier
+    from zonos.speaker_cloning import SpeakerEmbeddingLDA
+
+    lda_model = SpeakerEmbeddingLDA(device="cpu")
+    ecapa_model = EncoderClassifier.from_hparams(source=ECAPA_SNAP, savedir=ECAPA_SNAP,
+                                                 run_opts={"device": "cpu"})
+
+    def lda(path):
+        x, sr = sf.read(path, dtype="float32", always_2d=True)
+        with torch.no_grad():
+            _, emb = lda_model(torch.from_numpy(x.T), sr)
+        return [round(float(v), 6) for v in emb.flatten()]
+
+    def ecapa(path):
+        x, sr = sf.read(path, dtype="float32", always_2d=True)
+        mono = torch.from_numpy(x.mean(axis=1)).unsqueeze(0)
+        if sr != 16000:
+            mono = torchaudio.functional.resample(mono, sr, 16000)
+        with torch.no_grad():
+            emb = ecapa_model.encode_batch(mono)
+        return [round(float(v), 6) for v in emb.flatten()]
+
+    return lda, ecapa
+
+
+def cmd_embed(args):
+    from synth_common import write_text_atomic
+
+    rows, _meta = rendered(args.out)
+    clips = embed_clips(rows, args.out, args.anchors_dir)
+    lda, ecapa = load_embedders()
+    out = embed_rows(clips, lda, ecapa)
+    write_text_atomic(os.path.join(args.out, SPEAKER_EMBEDDINGS),
+                      "".join(json.dumps(o) + "\n" for o in out))
+    print("%d embeddings (%d rendered, %d locked anchors) -> %s"
+          % (len(out), len(rows), len(LOCKED_ANCHORS), SPEAKER_EMBEDDINGS))
 
 
 def admit(candidates, qc, embeddings, locked):
@@ -353,6 +485,34 @@ def plan_measures(measures, meta, plan):
     return [by_id[it["id"]] for it in plan]
 
 
+def audition_relpath(out):
+    """`out`'s path relative to the audition app's DATA_ROOT, which the admitted manifest's audio
+    links are built from. Refuses a folder outside it: its links would not resolve."""
+    rel = os.path.relpath(os.path.abspath(out), AUDITION_DATA_ROOT)
+    if rel == os.pardir or rel.startswith(os.pardir + os.sep):
+        raise SystemExit("REFUSING: %s is outside the audition data root %s; the admitted "
+                         "manifest's audio links would not resolve." % (out, AUDITION_DATA_ROOT))
+    return rel.replace(os.sep, "/")
+
+
+def probe_manifest(report, plan, rows_by_id, measures_by_id, probe_id, data_rel):
+    """The audition app's manifest of the ADMITTED clips only, in plan order, in the shape
+    `_load_probe_manifest` serves from a manifest.json. Each clip is its manifest row with `group`,
+    `wav` (relative to the audition data root) and `acoustics` (its measures row)."""
+    admitted = set(report["admitted"]["Male"]) | set(report["admitted"]["Female"])
+    clips = []
+    for it in plan:
+        cid = it["id"]
+        if cid not in admitted:
+            continue
+        rec = rows_by_id[cid]
+        clips.append(dict(rec, group=rec.get("group") or rec.get("rung") or "",
+                          wav=posixpath.join(data_rel, rec["file"]),
+                          acoustics=measures_by_id[cid]))
+    return {"probe": probe_id, "title": "Calibration Probe — %s (admitted)" % probe_id,
+            "clips": clips}
+
+
 def cmd_admit_filter(args):
     from synth_common import write_json_atomic
 
@@ -367,18 +527,26 @@ def cmd_admit_filter(args):
     qc_path = args.qc_jsonl or os.path.join(args.out, "qc_measures.jsonl")
     if not os.path.exists(qc_path):
         raise SystemExit("REFUSING: no QC measures at %s; run the QC gate first." % qc_path)
+    embeddings_path = args.embeddings_jsonl or os.path.join(args.out, SPEAKER_EMBEDDINGS)
+    if not os.path.exists(embeddings_path):
+        raise SystemExit("REFUSING: no embeddings at %s; run embed first." % embeddings_path)
     plan = plan_items()
     candidates = plan_measures(rq._read_jsonl(measures_path), meta, plan)
-    qc = {r["id"]: r for r in rq._read_jsonl(qc_path)}
-    embeddings = {r["id"]: r for r in rq._read_jsonl(args.embeddings_jsonl)}
+    rows, _meta = rendered(args.out)
+    data_rel = audition_relpath(args.out)
+    qc ={r["id"]: r for r in rq._read_jsonl(qc_path)}
+    embeddings = {r["id"]: r for r in rq._read_jsonl(embeddings_path)}
     report = admit(candidates, qc, embeddings, LOCKED_ANCHORS)
     write_json_atomic(os.path.join(args.out, "admission_report.json"), dict(
         report, tool=TOOL, probe=PROBE, distinct_cos_bound=DISTINCT_COS,
         embedding_models=list(EMBEDDING_KEYS), locked_anchors=LOCKED_ANCHORS, need=NEED,
         inputs={"measures_sha256": rq._sha256(measures_path),
                 "qc_sha256": rq._sha256(qc_path),
-                "embeddings_sha256": rq._sha256(args.embeddings_jsonl),
+                "embeddings_sha256": rq._sha256(embeddings_path),
                 "anchors": LOCKED_ANCHORS}))
+    write_json_atomic(os.path.join(args.out, "manifest.json"), probe_manifest(
+        report, plan, {r["id"]: r for r in rows}, {m["id"]: m for m in candidates},
+        os.path.basename(os.path.abspath(args.out)), data_rel))
     print("candidates %d; passed QC %d; passed F0 band %d; admitted Female %d, Male %d"
           % (report["counts"]["candidates"], report["counts"]["passed_qc"],
              report["counts"]["passed_f0"], len(report["admitted"]["Female"]),
@@ -407,10 +575,17 @@ def main(argv=None):
     p.add_argument("--ids", nargs="+", help="measure only the ids the render recorded")
     p.set_defaults(fn=cmd_measure)
 
+    p = sub.add_parser("embed", help="Zonos LDA and ECAPA-TDNN embeddings (litert venv)")
+    p.add_argument("--out", required=True)
+    p.add_argument("--anchors-dir", default=DEFAULT_ANCHORS_DIR,
+                   help="the folder holding clips/M4-s3.wav and clips/F6-s2.wav")
+    p.set_defaults(fn=cmd_embed)
+
     p = sub.add_parser("admit-filter", help="the three automated gates")
     p.add_argument("--out", required=True)
     p.add_argument("--qc-jsonl", help="qc_measures.jsonl (default: OUT/qc_measures.jsonl)")
-    p.add_argument("--embeddings-jsonl", required=True)
+    p.add_argument("--embeddings-jsonl",
+                   help="speaker embeddings (default: OUT/speaker_embeddings.jsonl)")
     p.set_defaults(fn=cmd_admit_filter)
 
     args = ap.parse_args(argv)
