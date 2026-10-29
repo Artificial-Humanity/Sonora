@@ -111,3 +111,18 @@ def test_write_refuses_to_replace_a_different_bank_and_keeps_an_identical_one(tm
     other = [dict(r, text=r["text"] + " x") for r in rows]
     with pytest.raises(SystemExit):
         s2.write(out, other, s2.speaker_files(other), meta)
+
+
+def test_write_restores_a_missing_speaker_file_and_refuses_a_differing_one(tmp_path):
+    rows = [dict(_row(k), book="b", title="t", source_url="u", est_seconds=5.0, chars=60)
+            for k in range(s2.TARGET)]
+    spk = s2.speaker_files(rows)
+    meta = {"sha256": "x", "speaker_sha256": {f"spk_{s:02d}": "y" for s in range(s2.N_SPEAKERS)}}
+    out = tmp_path / "bank"
+    s2.write(out, rows, spk, meta)
+    (out / "speakers" / "spk_07.jsonl").unlink()
+    assert "1 missing" in s2.write(out, rows, spk, meta)
+    assert (out / "speakers" / "spk_07.jsonl").exists()
+    (out / "speakers" / "spk_03.jsonl").write_text("tampered\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        s2.write(out, rows, spk, meta)

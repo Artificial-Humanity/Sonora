@@ -683,6 +683,9 @@ def select_lines(candidates, *, n=BANK_SIZE, seed=DEFAULT_SEED, max_per_book=MAX
     cursor, turn = dict.fromkeys(queues, 0), dict.fromkeys(books_of, 0)
     per_book, per_author = dict.fromkeys(queues, 0), dict.fromkeys(books_of, 0)
     taken, shingles, near_dups = [], [], 0
+    # shingle -> indices into `shingles`. Two sentences with no shared shingle have Jaccard 0, below
+    # NEAR_DUP_JACCARD, so only the sentences sharing one with a candidate need comparing.
+    by_shingle = {}
 
     def take_from(book):
         nonlocal near_dups
@@ -691,9 +694,12 @@ def select_lines(candidates, *, n=BANK_SIZE, seed=DEFAULT_SEED, max_per_book=MAX
             c = q[cursor[book]]
             cursor[book] += 1
             sh = _shingles(c["text"])
-            if any(_jaccard(sh, s) >= NEAR_DUP_JACCARD for s in shingles):
+            near = {j for t in sh for j in by_shingle.get(t, ())}
+            if any(_jaccard(sh, shingles[j]) >= NEAR_DUP_JACCARD for j in near):
                 near_dups += 1
                 continue
+            for t in sh:
+                by_shingle.setdefault(t, []).append(len(shingles))
             taken.append(c)
             shingles.append(sh)
             per_book[book] += 1

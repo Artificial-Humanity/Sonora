@@ -139,9 +139,17 @@ def build(args):
                    "excluded": found["ledger_excluded"]},
         "holdout": {"file": str(args.holdout),
                     "sha256": b1._sha256(pathlib.Path(args.holdout).read_bytes()),
+                    "chapters_txt": str(args.chapters),
+                    "chapters_txt_sha256": b1._sha256(pathlib.Path(args.chapters).read_bytes()),
+                    "books_txt": str(args.books_txt),
+                    "books_txt_sha256": b1._sha256(pathlib.Path(args.books_txt).read_bytes()),
+                    "n_chapters": sum(len(s["chapters"]) for s in sources),
                     "source_books": [{k: s[k] for k in ("book_id", "title", "author",
                                                         "project_titles")} for s in sources],
                     "pg_ids": holdout_pg_ids},
+        "denylist": {"entries": [{"text": t, "reason": why} for t, why in ptb.DENYLIST.items()],
+                     "hits": found["denylist_hits"],
+                     "unmatched": b1.unmatched_denylist(found["denylist_hits"])},
         "exclusions": {"books": found["excluded_books"],
                        "documents": found["excluded_documents"]},
     }
@@ -149,23 +157,37 @@ def build(args):
 
 
 def write(out, rows, spk, meta):
-    """Write lines.jsonl, speakers/ and meta.json. Refuses to replace a different bank. -> status."""
+    """Write lines.jsonl, speakers/ and meta.json. Refuses to replace a different bank: a differing
+    lines.jsonl, a differing speaker file, or a meta.json without its lines.jsonl. An identical bank
+    is left as it is; missing speaker files are written, and meta.json is kept. -> a status line."""
     out = pathlib.Path(out)
     text = ptb.lines_jsonl(rows)
     lines_path, meta_path = out / "lines.jsonl", out / "meta.json"
-    if lines_path.exists():
-        if lines_path.read_text(encoding="utf-8") != text:
-            b1.refuse(f"REFUSING: {lines_path} exists and differs from this run's bank "
-                      f"(sha256 {meta['sha256']}). Choose another --out.")
-        if meta_path.exists():
-            return f"unchanged: {lines_path} is identical; left it and its meta.json as they are"
-    elif meta_path.exists():
+    spk_dir = out / "speakers"
+    body = {s: ptb.lines_jsonl(spk[s]) for s in range(N_SPEAKERS)}
+    spk_path = {s: spk_dir / f"spk_{s:02d}.jsonl" for s in range(N_SPEAKERS)}
+    have_lines = lines_path.exists()
+    if have_lines and lines_path.read_text(encoding="utf-8") != text:
+        b1.refuse(f"REFUSING: {lines_path} exists and differs from this run's bank "
+                  f"(sha256 {meta['sha256']}). Choose another --out.")
+    if not have_lines and meta_path.exists():
         b1.refuse(f"REFUSING: {meta_path} exists without a lines.jsonl beside it.")
+    for s, p in spk_path.items():
+        if p.exists() and p.read_text(encoding="utf-8") != body[s]:
+            b1.refuse(f"REFUSING: {p} exists and differs from this run's speaker {s} "
+                      f"(sha256 {meta['speaker_sha256'][f'spk_{s:02d}']}). Choose another --out.")
+    # Every check has passed; from here only missing files are written.
     out.mkdir(parents=True, exist_ok=True)
-    (out / "speakers").mkdir(exist_ok=True)
-    write_text_atomic(lines_path, text)
-    for s in range(N_SPEAKERS):
-        write_text_atomic(out / "speakers" / f"spk_{s:02d}.jsonl", ptb.lines_jsonl(spk[s]))
+    spk_dir.mkdir(exist_ok=True)
+    if not have_lines:
+        write_text_atomic(lines_path, text)
+    missing = [s for s, p in spk_path.items() if not p.exists()]
+    for s in missing:
+        write_text_atomic(spk_path[s], body[s])
+    if have_lines and meta_path.exists():
+        if not missing:
+            return f"unchanged: {lines_path} and its speaker files are identical; left meta.json"
+        return f"unchanged lines; wrote {len(missing)} missing speaker file(s), left meta.json"
     write_json_atomic(meta_path, meta)
     return f"wrote {lines_path}, {N_SPEAKERS} speaker files and {meta_path}"
 
@@ -218,6 +240,9 @@ def main(argv=None):
                   "meta.json's commit would not name the code that ran. Commit first, or pass "
                   "--allow-dirty.")
     rows, spk, meta = build(args)
+    if meta["denylist"]["unmatched"]:
+        print("WARNING: denylist entries matched no sentence (has a source edition changed?): "
+              + "; ".join(repr(t[:60]) for t in meta["denylist"]["unmatched"]), file=_sys.stderr)
     print(write(args.out, rows, spk, meta))
     print(f"sha256 {meta['sha256']}  lines {len(rows)}  books {len(meta['books_used'])}  "
           f"authors {meta['selection']['n_authors']}")
