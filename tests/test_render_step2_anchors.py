@@ -1,6 +1,7 @@
 """Phase 1S Step 2a's anchor pool is the pre-registered one: 114 grounded adult core-band candidates
 with seeds disjoint from every earlier probe, the three automated gates filter in the registered
 order and bound, a resume cannot mix two renders, and the admission report names what it filtered."""
+import argparse
 import importlib.util
 import json
 import pathlib
@@ -74,10 +75,10 @@ def test_each_candidate_reads_one_of_the_three_authored_sentences():
 
 def test_the_plan_selects_ids_and_refuses_unknown_ones():
     items = s2.plan_items()
-    assert s2.select_ids(items, ["s2a-M01"])[0]["id"] == "s2a-M01"
-    assert s2.subset_ids(items, None) is None
+    assert rq.select_ids(items, ["s2a-M01"])[0]["id"] == "s2a-M01"
+    assert rq.subset_ids(items, None) is None
     with pytest.raises(SystemExit):
-        s2.select_ids(items, ["s2a-M99"])
+        rq.select_ids(items, ["s2a-M99"])
 
 
 def test_admission_filters_qc_then_f0_then_distinctness_in_order():
@@ -159,6 +160,9 @@ def test_the_recommendation_is_capped_and_shortfall_is_named():
     emb["F6-s2"] = _emb(0, 1)
     report = s2.admit(candidates, qc, emb, {"F6-s2": "Female"})
     assert len(report["recommended"]["Female"]) <= s2.NEED["Female"]
+    # Every later clip sits within the bound of F00, so only F00 is admitted and the rest is short.
+    assert report["admitted"]["Female"] == ["F00"]
+    assert report["shortfall"]["Female"] == s2.NEED["Female"] - 1
     assert report["shortfall"]["Male"] == s2.NEED["Male"]
 
 
@@ -177,3 +181,90 @@ def test_a_measure_refuses_a_render_of_another_probe(tmp_path):
     (tmp_path / "render_meta.json").write_text(json.dumps({"commit": "x", "probe": "1cii", "ids": None}))
     with pytest.raises(SystemExit, match="probe"):
         s2.rendered(str(tmp_path))
+
+
+def _audition(tmp_path, monkeypatch):
+    """audition/app/main.py imported with `tmp_path` as its data root and ratings dir."""
+    root = tmp_path.resolve()
+    monkeypatch.setenv("AUDITION_DATA_ROOT", str(root))
+    monkeypatch.setenv("AUDITION_RATINGS_DIR", str(root))
+    spec = importlib.util.spec_from_file_location("audition_main_s2a",
+                                                  REPO / "audition/app/main.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_a_manifest_row_names_its_clip_by_file_and_audition_resolves_it(tmp_path, monkeypatch):
+    it = s2.plan_items()[0]
+    row = s2.manifest_row(it, n_samples=48000, sr=24000, wall=1.2345, peak_limited=False,
+                          commit="c0", dtype="float32")
+    assert "wav" not in row
+    assert row["file"] == "clips/%s.wav" % it["id"]
+    assert row["seconds"] == 2.0
+    probe = tmp_path / "probes" / "qwen-step2-anchors"
+    clip_path = probe / "clips" / ("%s.wav" % it["id"])
+    clip_path.parent.mkdir(parents=True)
+    clip_path.write_bytes(b"RIFF")
+    (probe / "manifest.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+    audition = _audition(tmp_path, monkeypatch)
+    clip = audition._load_probe_manifest("qwen-step2-anchors", probe)["clips"][0]
+    assert clip["wav"] == "probes/qwen-step2-anchors/clips/%s.wav" % it["id"]
+    assert audition._resolve_audio(clip["wav"]) == clip_path.resolve()
+
+
+@pytest.mark.parametrize("field", ("zonos_lda", "ecapa"))
+def test_a_nan_candidate_embedding_refuses_rather_than_admitting(field):
+    cand = {"zonos_lda": [1.0, 0.0], "ecapa": [1.0, 0.0]}
+    cand[field] = [float("nan"), 0.0]
+    emb = {"M4-s3": _emb(0, 1), "cand-nan": cand}
+    qc = {"cand-nan": {"id": "cand-nan", "hard_pass": True}}
+    with pytest.raises(SystemExit, match="cand-nan"):
+        s2.admit([_meas("cand-nan", "Male")], qc, emb, {"M4-s3": "Male"})
+
+
+def test_a_nan_reference_embedding_refuses_rather_than_admitting():
+    emb = {"M4-s3": {"zonos_lda": [float("nan"), 0.0], "ecapa": [1.0, 0.0]}, "cand": _emb(1, 0)}
+    qc = {"cand": {"id": "cand", "hard_pass": True}}
+    with pytest.raises(SystemExit, match="M4-s3"):
+        s2.admit([_meas("cand", "Male")], qc, emb, {"M4-s3": "Male"})
+
+
+def _measure_row(cid):
+    return {"id": cid, "gender": "Male", "zone": "core", "f0_out_of_range": False}
+
+
+def test_admit_filter_takes_only_a_whole_plan_measure_in_plan_order():
+    plan = s2.plan_items()
+    rows = [_measure_row(it["id"]) for it in reversed(plan)]
+    got = s2.plan_measures(rows, {"ids": None}, plan)
+    assert [r["id"] for r in got] == [it["id"] for it in plan]
+
+
+def test_admit_filter_refuses_a_measure_of_a_subset():
+    plan = s2.plan_items()
+    rows = [_measure_row(it["id"]) for it in plan]
+    with pytest.raises(SystemExit, match="whole-plan"):
+        s2.plan_measures(rows, {"ids": ["s2a-M01"]}, plan)
+
+
+def test_admit_filter_refuses_a_plan_id_with_no_measures_row():
+    plan = s2.plan_items()
+    rows = [_measure_row(it["id"]) for it in plan[1:]]
+    with pytest.raises(SystemExit, match="no measures row"):
+        s2.plan_measures(rows, {"ids": None}, plan)
+
+
+def test_cmd_admit_filter_refuses_a_partial_measure_on_disk(tmp_path):
+    ids = ["s2a-M01", "s2a-M02"]
+    (tmp_path / "measures.jsonl").write_text(
+        "".join(json.dumps(_measure_row(i)) + "\n" for i in ids), encoding="utf-8")
+    (tmp_path / "measure_meta.json").write_text(json.dumps({"ids": ids}), encoding="utf-8")
+    (tmp_path / "qc_measures.jsonl").write_text(
+        "".join(json.dumps({"id": i, "hard_pass": True}) + "\n" for i in ids), encoding="utf-8")
+    emb = tmp_path / "embeddings.jsonl"
+    emb.write_text("", encoding="utf-8")
+    args = argparse.Namespace(out=str(tmp_path), qc_jsonl=None, embeddings_jsonl=str(emb))
+    with pytest.raises(SystemExit, match="whole-plan"):
+        s2.cmd_admit_filter(args)
+    assert not (tmp_path / "admission_report.json").exists()

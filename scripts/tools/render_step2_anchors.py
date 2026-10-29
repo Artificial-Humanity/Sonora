@@ -31,6 +31,7 @@ that passed QC and the F0 band, and for each locked anchor (M4-s3, F6-s2).
 """
 import argparse
 import json
+import math
 import os
 import sys as _sys  # noqa: E402
 import os as _os  # noqa: E402
@@ -101,19 +102,6 @@ def plan_items():
     return items
 
 
-def select_ids(items, ids):
-    return rq.select_ids(items, ids)
-
-
-def subset_ids(items, ids):
-    return rq.subset_ids(items, ids)
-
-
-def _read_jsonl(path):
-    with open(path, encoding="utf-8") as fh:
-        return [json.loads(line) for line in fh if line.strip()]
-
-
 def cmd_plan(args):
     items = plan_items()
     for it in items:
@@ -142,13 +130,23 @@ def resume_state(out, meta, plan):
         raise SystemExit("REFUSING: resuming %s, but this run's %s differ from its "
                          "render_meta.json. Render into a new --out." % (out, ", ".join(differ)))
     rows, repaired, dropped = rq.read_manifest(manifest)
-    rq.check_rows(rows, out, select_ids(plan, meta["ids"]), commit=meta["commit"])
+    rq.check_rows(rows, out, rq.select_ids(plan, meta["ids"]), commit=meta["commit"])
     if dropped is not None:
         print("WARNING: dropping a truncated final manifest line (%d chars); that clip is "
               "rendered again." % len(dropped), flush=True)
     if repaired is not None:
         write_text_atomic(manifest, repaired)
     return {r["id"] for r in rows}
+
+
+def manifest_row(it, *, n_samples, sr, wall, peak_limited, commit, dtype):
+    """The manifest row of one rendered clip. Its audio key is `file` alone, as render_qwen_1c0
+    writes it. Do not add a `wav` key: audition/app/main.py's `_resolve_audio` resolves `wav`
+    against RATINGS_DIR and DATA_ROOT only, so a `clips/...` value 404s there, and the probe
+    fallback that finds `clips/<id>.wav` under the probe folder runs only when `wav` is absent."""
+    return dict(it, file="clips/%s.wav" % it["id"], sr=sr, seconds=round(n_samples / sr, 3),
+                wall_s=round(wall, 2), peak_limited=bool(peak_limited), commit=commit,
+                speech_tokenizer_dtype=dtype)
 
 
 def cmd_render(args):
@@ -159,12 +157,12 @@ def cmd_render(args):
     from synth_common import write_json_atomic, write_wav_atomic
 
     plan = plan_items()
-    items = select_ids(plan, args.ids)
+    items = rq.select_ids(plan, args.ids)
     version = rq.require_qwen_tts(importlib.metadata.version)
     meta = {"tool": TOOL, "probe": PROBE, "commit": args.commit, "model_dir": rq.MODEL_DIR,
             "qwen_tts": version, "speech_tokenizer_dtype": TOKENIZER_DTYPE,
             "weights_sha256": rq.weights_sha256(rq.MODEL_DIR), "lufs": rq.LUFS, "batch_size": 1,
-            "language": rq.LANGUAGE, "ids": subset_ids(plan, args.ids), "items": len(items)}
+            "language": rq.LANGUAGE, "ids": rq.subset_ids(plan, args.ids), "items": len(items)}
     done = resume_state(args.out, meta, plan)
     todo = [it for it in items if it["id"] not in done]
     if not todo:
@@ -190,10 +188,8 @@ def cmd_render(args):
             wall = time.monotonic() - t0
             audio, bound = match_loudness(wavs[0], sr, rq.LUFS)
             write_wav_atomic(os.path.join(clips, it["id"] + ".wav"), audio, sr)
-            row = dict(it, file="clips/%s.wav" % it["id"], wav="clips/%s.wav" % it["id"], sr=sr,
-                       seconds=round(len(audio) / sr, 3), wall_s=round(wall, 2),
-                       peak_limited=bool(bound), commit=args.commit,
-                       speech_tokenizer_dtype=TOKENIZER_DTYPE)
+            row = manifest_row(it, n_samples=len(audio), sr=sr, wall=wall, peak_limited=bound,
+                               commit=args.commit, dtype=TOKENIZER_DTYPE)
             mf.write(json.dumps(row, ensure_ascii=False) + "\n")
             mf.flush()
             print("%-8s %5.1fs audio  %5.1fs wall" % (it["id"], row["seconds"], wall), flush=True)
@@ -220,10 +216,10 @@ def rendered(out, ids=None):
         raise SystemExit("REFUSING: %s's render_meta.json records probe %s, not %s."
                          % (out, meta.get("probe"), PROBE))
     plan = plan_items()
-    if meta.get("ids") != subset_ids(plan, ids):
+    if meta.get("ids") != rq.subset_ids(plan, ids):
         raise SystemExit("REFUSING: %s's render_meta.json records ids %s; measure those ids."
                          % (out, meta.get("ids")))
-    items = select_ids(plan, ids)
+    items = rq.select_ids(plan, ids)
     rq.check_rows(rows, out, items, commit=commit)
     want = [it["id"] for it in items]
     if {r["id"] for r in rows} != set(want):
@@ -295,10 +291,12 @@ def admit(candidates, qc, embeddings, locked):
             if ref not in embeddings:
                 raise SystemExit("REFUSING: no embedding for reference %s." % ref)
             for key in EMBEDDING_KEYS:
-                cos = _cosine(embeddings[cid][key], embeddings[ref][key])
+                cos = _cosine(embeddings[cid][key], embeddings[ref][key],
+                              "candidate %s vs %s (%s)" % (cid, ref, key))
                 if worst is None or cos > worst[0]:
                     worst = (cos, ref, key)
-        if worst is not None and worst[0] >= DISTINCT_COS:
+        # Gated on "not below", so a NaN cosine (which compares false to everything) can never admit.
+        if worst is not None and not worst[0] < DISTINCT_COS:
             filtered.append({"id": cid, "gender": g, "stage": "distinct",
                              "reason": "cosine %.4f to %s on %s (bound < %g)"
                                        % (worst[0], worst[1], worst[2], DISTINCT_COS)})
@@ -312,24 +310,47 @@ def admit(candidates, qc, embeddings, locked):
             "shortfall": {g: max(0, NEED[g] - len(admitted[g])) for g in GENDERS}}
 
 
-def _cosine(a, b):
-    import math
+def _cosine(a, b, who):
+    """The cosine of two embeddings. `who` names the pair in any refusal.
 
+    Refuses a non-finite value: a NaN compares false against every bound, so it would otherwise
+    read as distinct. Refuses a zero-length vector too. rq's `_cosine` has no such guard (it
+    divides by zero), so the admission gates use this one."""
     if len(a) != len(b):
-        raise SystemExit("REFUSING: embeddings differ in length (%d vs %d)." % (len(a), len(b)))
-    dot = sum(x * y for x, y in zip(a, b))
+        raise SystemExit("REFUSING: %s: embeddings differ in length (%d vs %d)."
+                         % (who, len(a), len(b)))
+    if not all(math.isfinite(x) for x in list(a) + list(b)):
+        raise SystemExit("REFUSING: %s: an embedding has a non-finite value." % who)
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     if na == 0 or nb == 0:
-        raise SystemExit("REFUSING: a zero-length embedding has no cosine.")
-    return dot / (na * nb)
+        raise SystemExit("REFUSING: %s: a zero-length embedding has no cosine." % who)
+    cos = sum(x * y for x, y in zip(a, b)) / (na * nb)
+    if not math.isfinite(cos):
+        raise SystemExit("REFUSING: %s: the cosine is not finite." % who)
+    return cos
 
 
-def _sha256_file(path):
-    import hashlib
+def plan_measures(measures, meta, plan):
+    """-> the measures rows of the whole plan, in plan order.
 
-    with open(path, "rb") as fh:
-        return hashlib.sha256(fh.read()).hexdigest()
+    Refuses a measure of a subset (`measure --ids`): admit-filter would then report the candidates
+    it never measured as absent rather than as skipped, and a shortfall would read as a verdict.
+    Refuses a plan id with no row, and a duplicated row."""
+    if meta.get("ids") is not None:
+        raise SystemExit("REFUSING: measure_meta.json records ids %s; admit-filter needs a "
+                         "whole-plan measure (ids null)." % (meta.get("ids"),))
+    by_id = {}
+    for m in measures:
+        if m["id"] in by_id:
+            raise SystemExit("REFUSING: measures.jsonl has two rows for %s." % m["id"])
+        by_id[m["id"]] = m
+    missing = [it["id"] for it in plan if it["id"] not in by_id]
+    if missing:
+        raise SystemExit("REFUSING: %d of %d plan ids have no measures row (missing %s)."
+                         % (len(missing), len(plan), ", ".join(missing[:5])
+                            + (" ..." if len(missing) > 5 else "")))
+    return [by_id[it["id"]] for it in plan]
 
 
 def cmd_admit_filter(args):
@@ -338,31 +359,26 @@ def cmd_admit_filter(args):
     measures_path = os.path.join(args.out, "measures.jsonl")
     if not os.path.exists(measures_path):
         raise SystemExit("REFUSING: no %s; run measure first." % measures_path)
+    meta_path = os.path.join(args.out, "measure_meta.json")
+    if not os.path.exists(meta_path):
+        raise SystemExit("REFUSING: no %s; run measure first." % meta_path)
+    with open(meta_path, encoding="utf-8") as fh:
+        meta = json.load(fh)
     qc_path = args.qc_jsonl or os.path.join(args.out, "qc_measures.jsonl")
     if not os.path.exists(qc_path):
         raise SystemExit("REFUSING: no QC measures at %s; run the QC gate first." % qc_path)
-    if args.anchors_json:
-        with open(args.anchors_json, encoding="utf-8") as fh:
-            locked = json.load(fh)
-        bad = sorted(k for k, v in locked.items() if v not in GENDERS)
-        if bad:
-            raise SystemExit("REFUSING: --anchors-json genders for %s are not in %s."
-                             % (", ".join(bad), GENDERS))
-    else:
-        locked = dict(LOCKED_ANCHORS)
-    order = {it["id"]: n for n, it in enumerate(plan_items())}
-    measures = sorted(_read_jsonl(measures_path), key=lambda m: order.get(m["id"], len(order)))
-    candidates = [m for m in measures if m["id"] in order]
-    qc = {r["id"]: r for r in _read_jsonl(qc_path)}
-    embeddings = {r["id"]: r for r in _read_jsonl(args.embeddings_jsonl)}
-    report = admit(candidates, qc, embeddings, locked)
+    plan = plan_items()
+    candidates = plan_measures(rq._read_jsonl(measures_path), meta, plan)
+    qc = {r["id"]: r for r in rq._read_jsonl(qc_path)}
+    embeddings = {r["id"]: r for r in rq._read_jsonl(args.embeddings_jsonl)}
+    report = admit(candidates, qc, embeddings, LOCKED_ANCHORS)
     write_json_atomic(os.path.join(args.out, "admission_report.json"), dict(
         report, tool=TOOL, probe=PROBE, distinct_cos_bound=DISTINCT_COS,
-        embedding_models=list(EMBEDDING_KEYS), locked_anchors=locked, need=NEED,
-        inputs={"measures_sha256": _sha256_file(measures_path),
-                "qc_sha256": _sha256_file(qc_path),
-                "embeddings_sha256": _sha256_file(args.embeddings_jsonl),
-                "anchors": locked}))
+        embedding_models=list(EMBEDDING_KEYS), locked_anchors=LOCKED_ANCHORS, need=NEED,
+        inputs={"measures_sha256": rq._sha256(measures_path),
+                "qc_sha256": rq._sha256(qc_path),
+                "embeddings_sha256": rq._sha256(args.embeddings_jsonl),
+                "anchors": LOCKED_ANCHORS}))
     print("candidates %d; passed QC %d; passed F0 band %d; admitted Female %d, Male %d"
           % (report["counts"]["candidates"], report["counts"]["passed_qc"],
              report["counts"]["passed_f0"], len(report["admitted"]["Female"]),
@@ -395,7 +411,6 @@ def main(argv=None):
     p.add_argument("--out", required=True)
     p.add_argument("--qc-jsonl", help="qc_measures.jsonl (default: OUT/qc_measures.jsonl)")
     p.add_argument("--embeddings-jsonl", required=True)
-    p.add_argument("--anchors-json", help="{id: gender} of the locked anchors (default: M4-s3, F6-s2)")
     p.set_defaults(fn=cmd_admit_filter)
 
     args = ap.parse_args(argv)
