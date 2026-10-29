@@ -26,7 +26,7 @@ def gaps(**arms):
 # ---------------------------------------------------------------- registration
 
 def test_the_three_checks_and_their_arms():
-    assert sb.HUM_FIX_CHECKS == (5, 6, 7, 8)
+    assert sb.HUM_FIX_CHECKS == (5, 6, 7, 8, 9)      # check 9 (arm Q) joins the hum-fix batch
     a, b, c, d = (sb.CHECKS[k] for k in (5, 6, 7, 8))
     assert a["arms"] == ("C0", "D1") and a["vctk_arms"] == ("C0", "D1") and a["libri_arms"] == ()
     assert a["contrasts"] == (("D1", "C0"),) and a["floor_ref"] == "C0"
@@ -650,7 +650,12 @@ def _libri_world(tmp_path, monkeypatch, check, n_s1, *, symbol=None, n_f1=0, f1_
 
 def test_the_inputs_each_hum_fix_check_must_have_registered():
     assert rs.HUM_FIX_INPUTS == {5: ("vctk_hnr_from",), 6: ("s1_hnr_json",),
-                                 7: ("hnr_json", "s1_hnr_json"), 8: ("s1_hnr_json",)}
+                                 7: ("hnr_json", "s1_hnr_json"), 8: ("s1_hnr_json",),
+                                 9: ("hnr_json", "s1_hnr_json", "q_hnr_json")}
+    # Check 9's Q HNR table is measured from data/q_synth_22k and not yet pinned: until it is,
+    # the one unregistered input is named here and select refuses it.
+    pending = {n for c in rs.HUM_FIX_INPUTS for n in rs.HUM_FIX_INPUTS[c]} - set(sb.INPUT_SHA256)
+    assert pending == {"q_hnr_json"}
 
 
 @pytest.mark.parametrize("check", [6, 7, 8])

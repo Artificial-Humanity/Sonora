@@ -1,0 +1,29 @@
+# @package _global_
+
+# Hum-fix batch, Check 9, arm Q (Notes: Sonora/phase-1s-step1-preregistration.md § Step 2 — Arm Q):
+# S1's recipe trained on the 90-speaker synthetic corpus, with no LibriVox audio in the chain. Does
+# a synthetic corpus hum less than S1 and F1? 10 epochs.
+#
+# Launch: set SONORA_CKPT_EVERY_N_STEPS to the corpus's steps per epoch (ceil(train rows / 32),
+# recorded in data/q_synth_22k/provenance.json as steps_per_epoch), so each epoch ends in a
+# checkpoint named checkpoint_epoch=009_step=<10 x steps per epoch - 1>.ckpt.
+#
+# Warm start: scripts/lib/make_warmstart.py --experiment staged_q --donor matcha_vctk.ckpt
+#   -> /data/model-training/sonora/warmstart/staged_q_init.ckpt (a fresh 90-row speaker table,
+#   as F1's was made)
+
+defaults:
+  - override /data: q_synth.yaml
+
+tags: ["staged", "Q", "q_synth", "hum"]
+
+run_name: staged_q
+
+model:
+  use_vat: false
+
+data:
+  bucket_multiplier: 0      # July's length-blind shuffle (owner ruling, 2026-10-06)
+
+trainer:
+  max_epochs: 10

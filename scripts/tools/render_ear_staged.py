@@ -109,7 +109,7 @@ DATA = ROOT + "/data"
 FIXED = {"stock": ROOT + "/warmstart/matcha_vctk.ckpt",
          "derisk": ROOT + "/logs/train/derisk_energy/runs/2026-07-15_00-20-31/checkpoints/"
                           "checkpoint_epoch=099.ckpt"}
-NEW = ("R", "C0", "S1", "S2", "L", "D1", "G", "F1", "E")
+NEW = ("R", "C0", "S1", "S2", "L", "D1", "G", "F1", "E", "Q")
 # arm: (data config holding its mel statistics, n_spks, use_vat). D1's vctk_d1.yaml takes its
 # statistics from vctk.yaml, which is read here because render does not compose defaults.
 EXPECT = {"stock": ("vctk", 109, False), "C0": ("vctk", 109, False),
@@ -117,19 +117,25 @@ EXPECT = {"stock": ("vctk", 109, False), "C0": ("vctk", 109, False),
           "R": ("libritts_r_vat", 247, True), "derisk": ("libritts_r_vat", 247, True),
           "L": ("libritts_22k", 247, False),
           "D1": ("vctk", 109, False), "G": ("libritts_r_22k_g", 247, False),
-          "F1": ("f1_dense", 90, False), "E": ("libritts_r_22k_e", 247, False)}
+          "F1": ("f1_dense", 90, False), "E": ("libritts_r_22k_e", 247, False),
+          "Q": ("q_synth", 90, False)}
 # A 22.05 kHz LibriTTS arm's round trip: its own corpus's copy of the 24 kHz LibriTTS-R row.
 RT_22K = {"libri22": lambda w: sd.to_22k(w), "orig22": lambda w: sd.to_l22k(w),
-          "f1_22": lambda w: sd.libri_r_22k(w)}
+          "f1_22": lambda w: sd.libri_r_22k(w),
+          # Q's clips are the 22.05 kHz corpus copies already: the round trip is the clip itself.
+          "q_22": lambda w: w}
 # The phonemes an arm synthesises from the speakers file's phonemes: G moves `ᵻ` (our id 176,
 # stock's untrained "'") to `ᵊ` (our 177, stock's trained `ᵻ`), as its filelist does; E's are
 # already mapped in `train_e.txt` and `check8_speakers.json`.
 PHONEMES = {"G": lambda p: p.replace(sd.G_FROM, sd.G_TO)}
 SELECT_SEED = {c: (20261012 if c in sb.HUM_FIX_CHECKS else 20261006) for c in sb.CHECKS}
-HUM_FIX_SALT = {5: "hum-fix-A-v1", 6: "hum-fix-B-v1", 7: "hum-fix-C-v1", 8: "hum-fix-D-v1"}
-# The registered inputs each hum-fix check reads (`staged_bench.INPUT_SHA256`).
+SELECT_SEED[9] = 20261029
+HUM_FIX_SALT = {5: "hum-fix-A-v1", 6: "hum-fix-B-v1", 7: "hum-fix-C-v1", 8: "hum-fix-D-v1",
+                9: "hum-fix-Q-v1"}
+# The registered inputs each hum-fix check reads (`staged_bench.INPUT_SHA256`). Check 9's Q HNR
+# table is measured from data/q_synth_22k and must be pinned there before check 9 is selected.
 HUM_FIX_INPUTS = {5: ("vctk_hnr_from",), 6: ("s1_hnr_json",), 7: ("hnr_json", "s1_hnr_json"),
-                  8: ("s1_hnr_json",)}
+                  8: ("s1_hnr_json",), 9: ("hnr_json", "s1_hnr_json", "q_hnr_json")}
 MIN_CLIPS = 2           # checks 5-8: recordings of 4-8 s a voice needs to be eligible
 ORIG_MAX_DRIFT = Fraction(1, 10)     # check 4: original vs LibriTTS-R length, seconds, strict
 PRIOR = [ROOT + "/pitch_error/_*.json", ROOT + "/eartest/_keys/*.key.json",
@@ -206,9 +212,13 @@ def arm_phonemes(arm, phonemes):
 
 
 def voice_index(it, arm):
-    """The speaker row a LibriTTS arm synthesises with: F1's own table index, else the v7 (=
-    S1) index the unit names."""
-    return it["f1"]["f1_sid"] if arm == "F1" else it["libri"]
+    """The speaker row an arm synthesises with: F1's own table index, Q's corpus index, else the
+    v7 (= S1) index the unit names."""
+    if arm == "F1":
+        return it["f1"]["f1_sid"]
+    if arm == "Q":
+        return it["q"]["sid"]
+    return it["libri"]
 
 
 def select_seed(check, seed):
@@ -306,9 +316,14 @@ def require_drawn_before(check, docs, dry_run):
 
 
 def require_registered_inputs(args):
-    """Checks 5-7 read the registered HNR inputs (`staged_bench.INPUT_SHA256`)."""
+    """Checks 5-9 read the registered HNR inputs (`staged_bench.INPUT_SHA256`). A name not yet
+    pinned there refuses: an unregistered input is not an input the check may read."""
     for name in HUM_FIX_INPUTS[args.check]:
         path = getattr(args, name)
+        if name not in sb.INPUT_SHA256:
+            raise SystemExit("REFUSING: check %d's --%s is not pinned in staged_bench.INPUT_SHA256 "
+                             "yet; pin it once it is measured." % (args.check,
+                                                                   name.replace("_", "-")))
         if sha256(path) != sb.INPUT_SHA256[name]:
             raise SystemExit("REFUSING: check %d's --%s %s is not the registered file "
                              "(sha256 %s)." % (args.check, name.replace("_", "-"), path,
@@ -325,6 +340,75 @@ def speakers_rule(args, c, n_units):
                args.max_seconds, args.max_gap, spread, args.target_seconds, args.seed))
 
 
+def q_clips(args, qhnr, rec):
+    """{Q voice (its corpus index): [(22.05 kHz corpus clip, seconds)]} from q_synth's train
+    filelist, and {voice: (corpus index,)} and {wav22: (row, phonemes)}. A Q voice's clip is the
+    22.05 kHz copy itself, so its length is read from that file. Every Q speaker in the corpus
+    must have an entry in `qhnr` (registered: all 90 do, once measured)."""
+    table_path = Path(DATA) / "q_synth_22k" / "speakers.json"
+    rec("q_speakers", table_path)
+    rec("q_synth_22k/train_op.txt", Path(DATA) / "q_synth_22k" / "train_op.txt")
+    rows = corpus_rows("q_synth_22k")
+    clips, row_of = {}, {}
+    for w22 in sorted(rows):
+        sid, phon = rows[w22]
+        if sid not in qhnr:
+            raise SystemExit("REFUSING: Q voice %d has no entry in %s." % (sid, args.q_hnr_json))
+        if not Path(w22).is_file():
+            raise SystemExit("REFUSING: Q clip %s is missing." % w22)
+        sec = exact_duration(w22)
+        if args.min_seconds <= sec <= args.max_seconds:
+            clips.setdefault(sid, []).append((w22, sec))
+            row_of[w22] = (w22, phon)
+    return clips, row_of
+
+
+def select_e(args, c, rng, lheard, rec):
+    """Check 9: the S1 voices of check 7's rule, 20 spread over HNR, each with an unused F1 voice
+    and an unused Q voice from `staged_bench.pair_q_triplets` (HNR within 0.5 dB, widened to 1.0
+    dB per arm where needed and recorded). Fewer than 16 triplets is refused: the check is not
+    run and the owner decides."""
+    s1h, allh = hnr_table(args.s1_hnr_json), hnr_table(args.hnr_json)
+    qh = hnr_table(args.q_hnr_json)
+    rec("s1_hnr_json", args.s1_hnr_json)
+    rec("hnr_json", args.hnr_json)
+    rec("q_hnr_json", args.q_hnr_json)
+    rows, clips = s1_clips(args, lheard, s1h, False, rec)
+    pool = {s: s1h[s]["hnr"] for s, cl in clips.items() if len(cl) >= MIN_CLIPS}
+    print("%d S1 voices eligible (%d heard)" % (len(pool), len(lheard)))
+    voices = pick_voices(pool, args.n, args.check)
+    fclips, who, row_of = f1_clips(args, lheard | set(voices), allh, rec)
+    f1_pool = {v: (allh[v]["hnr"], allh[v]["f0"], who[v][0])
+               for v, cl in fclips.items() if len(cl) >= MIN_CLIPS}
+    qclips, qrow_of = q_clips(args, qh, rec)
+    q_pool = {v: (qh[v]["hnr"], qh[v]["f0"], v)
+              for v, cl in qclips.items() if len(cl) >= MIN_CLIPS}
+    print("%d F1 voices eligible; %d Q voices eligible" % (len(f1_pool), len(q_pool)))
+    triplets = sb.pair_q_triplets({s: (s1h[s]["hnr"], s1h[s]["f0"]) for s in voices}, f1_pool,
+                                  q_pool, min_triplets=c["min_units"])
+    items = []
+    for i, t in enumerate(triplets):
+        s, v, q = t["s1"], t["f1"], t["q"]
+        w1 = lb.assign_clips({s: clips[s]}, ("S1",), rng, args.target_seconds)[s]["S1"]
+        wf = lb.assign_clips({v: fclips[v]}, ("F1",), rng, args.target_seconds)[v]["F1"]
+        wq = lb.assign_clips({q: qclips[q]}, ("Q",), rng, args.target_seconds)[q]["Q"]
+        lid, sid = who[v]
+        items.append(dict(s1_unit(i, s, s1h), f1={
+            "libri": v, "libritts_id": lid, "f1_sid": sid, "hnr": allh[v]["hnr"],
+            "f0": allh[v]["f0"], "partition": allh[v].get("partition")},
+            q={"sid": q, "hnr": qh[q]["hnr"], "f0": qh[q]["f0"], "widened": t["widened"]},
+            arms={"S1": {"source": w1, "seconds": round(dict(clips[s])[w1], 2),
+                         "phonemes": rows[w1][1]},
+                  "F1": {"source": wf, "seconds": round(dict(fclips[v])[wf], 2),
+                         "phonemes": row_of[wf][1], "row": row_of[wf][0]},
+                  "Q": {"source": wq, "seconds": round(float(dict(qclips[q])[wq]), 2),
+                        "phonemes": qrow_of[wq][1], "row": qrow_of[wq][0]}}))
+    unpaired = [s for s in sorted(voices, key=lambda s: (s1h[s]["hnr"], s))
+                if s not in {t["s1"] for t in triplets}]
+    return items, {"eligible": len(pool), "f1_eligible": len(f1_pool),
+                   "q_eligible": len(q_pool), "unpaired": unpaired}
+
+
 def truth_entry(check, arm, it, sides):
     """One item's record in the key's truth. A VCTK name goes under `vctk_spk`, never `spk`:
     later benches read `spk` from every key in `_keys/` as a LibriTTS-R index to exclude.
@@ -333,6 +417,9 @@ def truth_entry(check, arm, it, sides):
     (`f1_sid`) beside it; check 7 records each voice's partition and F0."""
     if sb.FAMILY[arm] == "vctk22":
         who, hnr = {"vctk_spk": it["vctk"]}, it["vctk_hnr"]
+    elif arm == "Q":
+        # A Q voice is not a LibriTTS-R speaker: under `q_spk`, never `spk`.
+        who, hnr = {"q_spk": it["q"]["sid"]}, it["q"]["hnr"]
     elif arm == "F1":
         who, hnr = {"spk": it["f1"]["libri"]}, it["f1"]["hnr"]
     else:
@@ -348,6 +435,8 @@ def truth_entry(check, arm, it, sides):
             f1 = it["f1"]
             entry.update(f1_sid=f1["f1_sid"], libritts_id=f1["libritts_id"],
                          partition=f1["partition"], f0=f1["f0"])
+        elif arm == "Q":
+            entry.update(f0=it["q"]["f0"], widened=it["q"]["widened"])
         elif check == 7:
             entry.update(partition=it["partition"], f0=it["libri_f0"])
     return entry
@@ -784,7 +873,13 @@ def hum_fix_rule(args, c, n_units):
               % (rng, rng, float(sb.F1_MAX_HNR_GAP)),
            8: "unheard S1 voices with an entry in --s1-hnr-json and >= 2 S1 train recordings "
               "of %s (24 kHz LibriTTS-R file), spread over HNR; E synthesises its train_e.txt "
-              "phonemes (english_cleaners2 via upstream_as_ours)" % rng}[args.check]
+              "phonemes (english_cleaners2 via upstream_as_ours)" % rng,
+           9: "unheard S1 voices with an entry in --s1-hnr-json and >= 2 S1 train recordings "
+              "of %s, spread over HNR; in ascending (HNR, S1 index) order each takes an unused "
+              "unheard F1 voice (>= 2 F1 train recordings of %s) and an unused Q voice (>= 2 "
+              "Q corpus clips of %s, HNR and F0 from --q-hnr-json) within %s dB HNR, widened to "
+              "1.0 dB per arm where needed and recorded; an S1 voice without both is skipped"
+              % (rng, rng, rng, float(sb.F1_MAX_HNR_GAP))}[args.check]
     return ("check %d (hum-fix %s): arms %s; %d units; %s; every one if %d or fewer (at least "
             "%d); clips nearest %.1fs by assign_clips, a distinct training recording per arm; "
             "seed %d." % (args.check, "ABCD"[args.check - 5], "/".join(c["arms"]), n_units, who,
@@ -803,6 +898,8 @@ def select_hum_fix(args, c, ckpts, rng, vheard, lheard, out_path):
         items, counts = select_b(args, c, rng, lheard, rec)
     elif args.check == 7:
         items, counts = select_c(args, c, rng, lheard, rec)
+    elif args.check == 9:
+        items, counts = select_e(args, c, rng, lheard, rec)
     else:
         items, counts = select_d(args, c, rng, lheard, rec)
     for it in items:
@@ -1010,6 +1107,8 @@ def main():
                    default=rfs.BASELINE_DIR + "/vctk_audio_sid_text_train_filelist.txt.cleaned")
     s.add_argument("--vctk-hnr-from", default=rfs.BASELINE_DIR + "/speakers.json")
     s.add_argument("--hnr-json", default=ROOT + "/pitch_error/speaker_hnr_all.json")
+    s.add_argument("--q-hnr-json", default=ROOT + "/pitch_error/speaker_hnr_q.json",
+                   help="check 9: the Q voices' HNR and F0 (measure_speaker_hnr.py on the corpus)")
     s.add_argument("--s1-hnr-json", default=ROOT + "/pitch_error/speaker_hnr_s1_rest.json",
                    help="checks 6-8: the S1 voices' HNR and F0 (keys are S1 = v7 indices)")
     s.add_argument("--prior", nargs="+", default=None,

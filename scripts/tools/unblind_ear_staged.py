@@ -1,4 +1,4 @@
-"""Unblind one staged-rebuild or hum-fix check (1-8) and apply its pre-registered reading.
+"""Unblind one staged-rebuild or hum-fix check (1-9) and apply its pre-registered reading.
 
 Reads the key written by `render_ear_staged.py render` and the app's verdicts, and prints
 each arm's gap (model minus round trip) with its floor, the check's contrasts, the number
@@ -76,6 +76,13 @@ OUTCOME = {
     (8, "invalid"): ("S1's own excess is not shown, or the round-trip floors are not comparable "
                      "(E's within 1 point of S1's, both under 4), or fewer than 16 voices were "
                      "rated in both arms: no reading. The owner decides."),
+    (9, "shown"): "",
+    (9, "not_shown"): ("neither S1 over Q nor F1 over Q is shown: the synthetic corpus is not "
+                       "shown to hum less than S1 or than the dense real speakers. Not shown is "
+                       "not absent."),
+    (9, "invalid"): ("S1's own excess is not shown, or the round-trip floors are not comparable "
+                     "(F1's and Q's within 1 point of S1's, all under 4), or fewer than 16 "
+                     "triplets were rated in all three arms: no reading. The owner decides."),
 }
 SHOWN = {
     "fine_tuning": ("C0 hums more than stock: fine-tuning itself adds the hum. The cause is "
@@ -104,6 +111,13 @@ SHOWN = {
                       "the espeak input stock's text encoder learned adds hum. This does not "
                       "show op_g2p is worse in itself (S1 re-learns its input, E does not); "
                       "candidate fixes each need their own run."),
+    "synthetic_reduces_hum": ("S1 hums more than Q: a synthetic corpus with no LibriVox audio in "
+                              "the chain hums less than LibriTTS-R. The recording domain is the "
+                              "candidate cause, not the speakers alone; F1 and Q are compared "
+                              "below."),
+    "synthetic_beats_dense_real": ("F1 hums more than Q: at matched speaker density (90 speakers, "
+                                   "300+ clips each), the synthetic corpus hums less than dense "
+                                   "LibriTTS-R. This separates the recording domain from density."),
 }
 # How each check's tests are counted in the print-out.
 TESTS = {4: ("three p-values reported (S1's excess, S1 − L, L's excess), two of them "
@@ -115,7 +129,10 @@ TESTS = {4: ("three p-values reported (S1's excess, S1 − L, L's excess), two o
          7: ("three p-values reported (S1's excess, S1 − F1, F1's excess), two of them "
              "deciding the reading (S1's excess and S1 − F1); uncorrected"),
          8: ("three p-values reported (S1's excess, S1 − E, E's excess), two of them "
-             "deciding the reading (S1's excess and S1 − E); uncorrected")}
+             "deciding the reading (S1's excess and S1 − E); uncorrected"),
+         9: ("six p-values reported (S1 − Q, F1 − Q, S1 − F1, and S1's, F1's and Q's own "
+             "excess); three of them deciding the reading (S1's excess for validity, S1 − Q "
+             "and F1 − Q); uncorrected")}
 
 
 def unrated(test_dir):
@@ -141,10 +158,10 @@ def require_session_rated(args):
             raise SystemExit("REFUSING: --session-tests and --session-closed are for checks "
                              "5-8.")
         return
-    if args.check == 8:
+    if args.check in (8, 9):
         if args.session_tests:
             raise SystemExit("REFUSING: --session-tests is for checks 5-7 (the three-check "
-                             "session); check 8 is a single-folder session.")
+                             "session); check %d is a single-folder session." % args.check)
         meta = Path(args.test) / "render_meta.json"
         if not meta.is_file():
             raise SystemExit("REFUSING: no %s — which check this folder was rendered for is "
