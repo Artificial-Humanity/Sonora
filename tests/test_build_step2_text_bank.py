@@ -102,10 +102,12 @@ def test_write_refuses_to_replace_a_different_bank_and_keeps_an_identical_one(tm
     out = tmp_path / "bank"
     s2.write(out, rows, spk, meta)
     assert len(list((out / "speakers").glob("spk_*.jsonl"))) == s2.N_SPEAKERS
+    mtime = (out / "meta.json").stat().st_mtime_ns
     first = json.loads((out / "speakers" / "spk_00.jsonl").read_text().splitlines()[0])
     assert first["speaker_index"] == 0 and first["role"] == "primary"
     assert first["speaker_line_index"] == 1
-    s2.write(out, rows, spk, meta)                       # identical: accepted
+    assert "unchanged" in s2.write(out, rows, spk, meta)  # identical: accepted, meta kept
+    assert (out / "meta.json").stat().st_mtime_ns == mtime
     other = [dict(r, text=r["text"] + " x") for r in rows]
     with pytest.raises(SystemExit):
         s2.write(out, other, s2.speaker_files(other), meta)

@@ -16,8 +16,12 @@ OUTPUTS in --out:
   lines.jsonl           all 36,000 selected lines in canonical bank order (ids 2b-0001 ..).
   speakers/spk_NN.jsonl the 400 lines of speaker NN (00-89): 360 `primary` and 40 `reserve`, each
                         tagged with `speaker_index`, `role`, and `speaker_line_index` (1..400).
-  meta.json             commit, tree state, seed, constants, sha256 of lines.jsonl and of every
-                        speaker file, books used, holdout and ledger exclusions, pool statistics.
+  meta.json             commit, tree state, seed, constants, the canonical text sha256 of lines.jsonl
+                        and of every speaker's text, the byte sha256 of each file, books used,
+                        holdout and ledger exclusions, pool statistics.
+
+Each file is written atomically; the set is not (lines first, then speakers, then meta). A rerun
+with the same inputs rewrites identical bytes, so an interrupted write is recovered by rerunning.
 
 ASSIGNMENT. Line k of the canonical order goes to speaker k mod 90 at speaker line k div 90 + 1.
 So every speaker takes lines spread across the whole bank, the first 360 of its 400 are primary,
@@ -77,6 +81,10 @@ def speaker_files(rows):
     return spk
 
 
+def _bytes_sha256(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
 def build(args):
     """-> (canonical rows, speaker files, meta). Refuses (BankError) when the pool cannot make
     TARGET distinct lines under the per-book ceiling."""
@@ -89,7 +97,7 @@ def build(args):
                               max_clip_seconds=MAX_CLIP_SECONDS)
     used, candidates = found["used"], found["candidates"]
     try:
-        lines, stats = ptb.select_lines(candidates, n=args.n, seed=args.seed,
+        lines, stats = ptb.select_lines(candidates, n=TARGET, seed=args.seed,
                                         max_per_book=args.max_per_book)
     except ptb.BankError as e:
         b1.refuse(f"REFUSING: {e}.")
@@ -105,8 +113,11 @@ def build(args):
         "seed": args.seed, "n_lines": len(rows), "n_speakers": N_SPEAKERS,
         "lines_per_speaker": LINES_PER_SPEAKER, "reserve_per_speaker": RESERVE_PER_SPEAKER,
         "sha256": ptb.canonical_sha256(rows), "canonical_form": ptb.CANONICAL_FORM,
+        "lines_jsonl_sha256": _bytes_sha256(ptb.lines_jsonl(rows)),
         "speaker_sha256": {f"spk_{s:02d}": ptb.canonical_sha256(spk[s])
                            for s in range(N_SPEAKERS)},
+        "speaker_file_sha256": {f"spk_{s:02d}": _bytes_sha256(ptb.lines_jsonl(spk[s]))
+                                for s in range(N_SPEAKERS)},
         "constants": {"CHARS_PER_SEC": ptb.CHARS_PER_SEC,
                       "MIN_CLIP_SECONDS": MIN_CLIP_SECONDS, "MAX_CLIP_SECONDS": MAX_CLIP_SECONDS,
                       "TARGET": TARGET, "max_per_book": args.max_per_book,
@@ -146,6 +157,8 @@ def write(out, rows, spk, meta):
         if lines_path.read_text(encoding="utf-8") != text:
             b1.refuse(f"REFUSING: {lines_path} exists and differs from this run's bank "
                       f"(sha256 {meta['sha256']}). Choose another --out.")
+        if meta_path.exists():
+            return f"unchanged: {lines_path} is identical; left it and its meta.json as they are"
     elif meta_path.exists():
         b1.refuse(f"REFUSING: {meta_path} exists without a lines.jsonl beside it.")
     out.mkdir(parents=True, exist_ok=True)
@@ -193,7 +206,6 @@ def main(argv=None):
                     type=pathlib.Path)
     ap.add_argument("--ledger", default=b1.LEDGER, type=pathlib.Path)
     ap.add_argument("--seed", default=DEFAULT_SEED, type=int)
-    ap.add_argument("--n", default=TARGET, type=int)
     ap.add_argument("--max-per-book", default=MAX_PER_BOOK, type=int)
     ap.add_argument("--allow-dirty", action="store_true",
                     help="build from a checkout with uncommitted changes (recorded in meta.json)")
