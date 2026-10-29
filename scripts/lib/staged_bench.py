@@ -80,8 +80,8 @@ CHECKS = {
         "libri_arms": ("S1", "E"),
         "contrasts": (("S1", "E"),),
         "floor_ref": "S1", "min_units": 16},
-    # Arm Q (Notes: Sonora/phase-1s-step1-preregistration.md § Step 2): a synthetic 90-speaker corpus
-    # against S1 and the dense real speakers F1, unit = one (S1, F1, Q) triplet.
+    # Arm Q (Notes: Sonora/phase-1s-step1-preregistration.md § Step 2): a synthetic 90-speaker
+    # corpus against S1 and the dense real speakers F1; unit = one (S1, F1, Q) triplet.
     9: {"arms": ("S1", "F1", "Q"), "vctk_arms": (),
         "libri_arms": ("S1", "F1"), "q_arms": ("Q",),
         "contrasts": (("S1", "Q"), ("F1", "Q"), ("S1", "F1")),
@@ -285,7 +285,8 @@ def pair_q_triplets(s1, f1, q, max_gap=F1_MAX_HNR_GAP, fallback_gap=Fraction(1, 
     """Check 9's (S1, F1, Q) triplets, as registered (phonemizer-free, numbers only).
 
     `s1` is {voice: (HNR dB, F0 Hz)}; `f1` is {voice: (HNR dB, F0 Hz, LibriTTS id)}; `q` is
-    {voice: (HNR dB, F0 Hz, Q table index)}. S1 voices are taken in ascending (HNR, id) order. Each takes the unused F1 voice and the unused Q voice
+    {voice: (HNR dB, F0 Hz, Q table index)}. S1 voices are taken in ascending (HNR, id) order.
+    Each takes the unused F1 voice and the unused Q voice
     within `max_gap` dB HNR that minimise |ln F0 difference| (ties: smaller HNR gap, then lower
     id). An arm with no candidate within `max_gap` is retried within `fallback_gap` and that arm's
     entry records `widened: True`. An S1 voice with no candidate in either arm within
@@ -351,6 +352,11 @@ def reading(check, gaps, floors):
     "Not shown" is never "absent".
     """
     spec = CHECKS[check]
+    if check == 9:
+        # Check 9's units are triplets: every arm, and every contrast, is read on the units rated
+        # in all three arms, so the contrasts share one unit set.
+        common = set.intersection(*(set(gaps[a]) for a in spec["arms"]))
+        gaps = {a: {u: gaps[a][u] for u in common} for a in spec["arms"]}
     level = {a: test([gaps[a][u] for u in sorted(gaps[a])]) for a in spec["arms"]}
     contrasts = {}
     for a, b in spec["contrasts"]:
@@ -415,5 +421,6 @@ def reading(check, gaps, floors):
     # checks 4-8 both arms' own gaps (each reported with its p).
     return dict({"level": level, "contrasts": contrasts, "floors_ok": fl,
                  "valid": bool(valid), "outcome": outcome, "shown": shown,
-                 "n_tests": len(contrasts) + {3: 1, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2, 9: 3}.get(check, 0)},
+                 "n_tests": len(contrasts)
+                 + {3: 1, 4: 2, 5: 2, 6: 2, 7: 2, 8: 2, 9: 3}.get(check, 0)},
                 **extra)

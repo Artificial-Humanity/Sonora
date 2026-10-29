@@ -11,6 +11,7 @@ from scripts_layout import SCRIPTS
 SCRIPTS.on_path()
 
 import staged_bench as sb  # noqa: E402
+import render_ear_staged  # noqa: E402
 
 
 def _voices(n, hnr0, f00, step_hnr=0.0, step_f0=0.0):
@@ -132,3 +133,27 @@ def test_floors_not_comparable_is_invalid():
 def test_s1_own_excess_must_be_positive_for_validity():
     r = sb.reading(9, _gaps(20, 0.0, 0.0, 0.0), FLOORS)
     assert r["valid"] is False
+
+
+def test_require_drawn_before_needs_check8_for_check9():
+    with pytest.raises(SystemExit, match="check 8"):
+        render_ear_staged.require_drawn_before(9, [], dry_run=False)
+    doc8 = {"check": 8, "dry_run": False}
+    render_ear_staged.require_drawn_before(9, [doc8], dry_run=False)
+
+
+def test_check9_reads_only_units_rated_in_all_three_arms():
+    gaps = {"S1": {0: 1.0, 1: 1.0, 2: 1.0}, "F1": {0: 0.5, 1: 0.5}, "Q": {0: 0.0, 1: 0.0}}
+    r = sb.reading(9, gaps, {"S1": Fraction(1, 2), "F1": Fraction(1, 2), "Q": Fraction(1, 2)})
+    assert r["level"]["S1"][2] == 2 and r["contrasts"]["S1-Q"][2] == 2
+    assert r["valid"] is False                            # 2 units, not 16
+
+
+def test_truth_entry_names_a_q_voice_under_q_spk_never_spk():
+    it = {"unit": 0, "q": {"sid": 12, "hnr": 10.0, "f0": 120.0, "widened": {"F1": False,
+                                                                           "Q": True}},
+          "arms": {"Q": {"source": "/x/q.wav", "phonemes": "p"}}, "libri": 5,
+          "libri_hnr": 9.0, "vctk": "p225", "vctk_hnr": 1.0}
+    entry = render_ear_staged.truth_entry(9, "Q", it, [(0, "Q"), (1, "S1")])
+    assert entry["q_spk"] == 12 and "spk" not in entry
+    assert entry["widened"] == {"F1": False, "Q": True}

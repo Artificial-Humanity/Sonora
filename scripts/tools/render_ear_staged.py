@@ -302,10 +302,11 @@ def require_registered_spec(check, spec):
 def require_drawn_before(check, docs, dry_run):
     """The hum-fix checks are selected in order A, B, C, D, each excluded by the next. The
     required glob cannot tell whether the previous check's file is there (checks 1-4 already
-    match it), so: check 8 needs a check-7 speakers file among the priors, check 7 needs a
-    check-6 speakers file (a dry run may use a dry-run file; a real selection may not), and a
-    real check 6 needs check 5's. Check 6's dry run takes no check-5 file."""
-    want = {6: 5, 7: 6, 8: 7}.get(check)
+    match it), so: check 9 needs a check-8 speakers file among the priors, check 8 needs a
+    check-7 speakers file, check 7 needs a check-6 speakers file (a dry run may use a dry-run
+    file; a real selection may not), and a real check 6 needs check 5's. Check 6's dry run takes
+    no check-5 file."""
+    want = {6: 5, 7: 6, 8: 7, 9: 8}.get(check)
     if want is None or (check == 6 and dry_run):
         return
     if not any(isinstance(d, dict) and d.get("check") == want and (dry_run or not d.get("dry_run"))
@@ -384,8 +385,11 @@ def select_e(args, c, rng, lheard, rec):
     q_pool = {v: (qh[v]["hnr"], qh[v]["f0"], v)
               for v, cl in qclips.items() if len(cl) >= MIN_CLIPS}
     print("%d F1 voices eligible; %d Q voices eligible" % (len(f1_pool), len(q_pool)))
-    triplets = sb.pair_q_triplets({s: (s1h[s]["hnr"], s1h[s]["f0"]) for s in voices}, f1_pool,
-                                  q_pool, min_triplets=c["min_units"])
+    try:
+        triplets = sb.pair_q_triplets({s: (s1h[s]["hnr"], s1h[s]["f0"]) for s in voices},
+                                      f1_pool, q_pool, min_triplets=c["min_units"])
+    except ValueError as e:
+        raise SystemExit("REFUSING: %s The check is not run, and the owner decides." % e)
     items = []
     for i, t in enumerate(triplets):
         s, v, q = t["s1"], t["f1"], t["q"]
@@ -989,9 +993,20 @@ def render(args):
     def load_arm(arm):
         corpus, n_spks, use_vat = EXPECT[arm]
         model = load_matcha(arm, spec["ckpts"][arm][0], ear_bench.DEVICE)
-        want = yaml.safe_load((Path("configs/data") / ("%s.yaml" % corpus)).read_text())
-        want = (float(want["data_statistics"]["mel_mean"]),
-                float(want["data_statistics"]["mel_std"]))
+        if arm == "Q":
+            # Q's statistics are written by `mel-stats` from its own corpus. The config's values
+            # are a placeholder, so the gate reads the written file and refuses without it.
+            stats_path = Path(DATA) / "q_synth_22k" / "mel_statistics.json"
+            if not stats_path.is_file():
+                raise SystemExit("REFUSING: Q's mel statistics %s are not written yet; run "
+                                 "`render_step2_corpus.py mel-stats`." % stats_path)
+            with stats_path.open(encoding="utf-8") as fh:
+                stats = json.load(fh)
+            want = (float(stats["mel_mean"]), float(stats["mel_std"]))
+        else:
+            want = yaml.safe_load((Path("configs/data") / ("%s.yaml" % corpus)).read_text())
+            want = (float(want["data_statistics"]["mel_mean"]),
+                    float(want["data_statistics"]["mel_std"]))
         got = (float(model.mel_mean), float(model.mel_std))
         if abs(got[0] - want[0]) > 1e-3 or abs(got[1] - want[1]) > 1e-3:
             raise SystemExit("REFUSING: %s normalises with %r; %s has %r."

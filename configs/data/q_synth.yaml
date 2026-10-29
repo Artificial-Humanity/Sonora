@@ -20,9 +20,10 @@ win_length: 1024
 f_min: 0
 f_max: 8000
 data_statistics:
-  # PLACEHOLDER: F1's values, until `render_step2_corpus.py mel-stats` writes
-  # data/q_synth_22k/mel_statistics.json. Replace both numbers from that file before any training
-  # run; a placeholder here would train Q on F1's mel normalisation.
+  # PLACEHOLDER: F1's values. render_ear_staged's Q gate reads data/q_synth_22k/mel_statistics.json
+  # (written by `render_step2_corpus.py mel-stats`, the statistics prep_staged_corpora.py stats
+  # computes for S1 and F1) and refuses without it, so these values are never the Q gate's.
+  # Training Q must use the written file's numbers, set here before the run.
   mel_mean: -5.145988
   mel_std: 2.322516
 seed: ${seed}

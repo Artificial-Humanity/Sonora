@@ -10,8 +10,8 @@ of tests (uncorrected), and the outcome from `staged_bench.reading`. Exact; no r
 
 Checks 5-7 are one listening session over three test folders (A, B, C), and are read only when
 every item of all three is rated: name the folders with --session-tests (this check's --test
-among them). Check 8 (D) is a single-folder session and is read only when every item of --test
-is rated. --session-closed reads a hum-fix check anyway, leaving out the items not fully rated.
+among them). Checks 8 (D) and 9 (Q) are single-folder sessions and are read only when every
+item of --test is rated. --session-closed reads a hum-fix check anyway, leaving out the items not fully rated.
 """
 
 import argparse
