@@ -441,7 +441,7 @@ def truth_entry(check, arm, it, sides):
                          partition=f1["partition"], f0=f1["f0"])
         elif arm == "Q":
             entry.update(f0=it["q"]["f0"], widened=it["q"]["widened"])
-        elif check == 7:
+        elif check in (7, 9):
             entry.update(partition=it["partition"], f0=it["libri_f0"])
     return entry
 
@@ -886,7 +886,7 @@ def hum_fix_rule(args, c, n_units):
               % (rng, rng, rng, float(sb.F1_MAX_HNR_GAP))}[args.check]
     return ("check %d (hum-fix %s): arms %s; %d units; %s; every one if %d or fewer (at least "
             "%d); clips nearest %.1fs by assign_clips, a distinct training recording per arm; "
-            "seed %d." % (args.check, "ABCD"[args.check - 5], "/".join(c["arms"]), n_units, who,
+            "seed %d." % (args.check, "ABCDQ"[args.check - 5], "/".join(c["arms"]), n_units, who,
                           args.n, c["min_units"], args.target_seconds, args.seed))
 
 
@@ -913,11 +913,18 @@ def select_hum_fix(args, c, ckpts, rng, vheard, lheard, out_path):
             pair = "\n           S1 v7 %d (%s) HNR %.2f F0 %.0f | F1 v7 %d (LibriTTS %d, %s) HNR %.2f " \
                    "F0 %.0f" % (it["libri"], it["partition"], it["libri_hnr"], it["libri_f0"],
                                 f["libri"], f["libritts_id"], f["partition"], f["hnr"], f["f0"])
+            if "q" in it:
+                q = it["q"]
+                pair += " | Q %d HNR %.2f F0 %.0f%s" % (
+                    q["sid"], q["hnr"], q["f0"],
+                    " (widened: %s)" % ", ".join(a for a, w in sorted(q["widened"].items())
+                                                 if w) if any(q["widened"].values()) else "")
         print("  unit %2d  %s%s" % (it["unit"], "  ".join(
             "%s %s %.1fs" % (a, Path(str(x["source"])).stem, x["seconds"])
             for a, x in sorted(it["arms"].items())), pair))
     if "unpaired" in counts:
-        print("S1 voices without an F1 partner (skipped): %s" % counts["unpaired"])
+        what = "an F1+Q triplet" if args.check == 9 else "an F1 partner"
+        print("S1 voices without %s (skipped): %s" % (what, counts["unpaired"]))
     out = dict({"check": args.check, "rule": hum_fix_rule(args, c, len(items)),
                 "ckpts": {a: [p, sha256(p)] if p else None for a, p in ckpts.items()},
                 "inputs": dict(inputs, prior=args.prior, prior_optional=args.prior_optional)},

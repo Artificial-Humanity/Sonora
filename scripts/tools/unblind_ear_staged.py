@@ -156,7 +156,7 @@ def require_session_rated(args):
     if args.check not in sb.HUM_FIX_CHECKS:
         if args.session_tests or args.session_closed:
             raise SystemExit("REFUSING: --session-tests and --session-closed are for checks "
-                             "5-8.")
+                             "5-9.")
         return
     if args.check in (8, 9):
         if args.session_tests:
@@ -221,7 +221,7 @@ def main(argv=None):
     ap.add_argument("--session-tests", nargs=3, metavar="DIR",
                     help="checks 5-7: the session's three test folders, this check's among them")
     ap.add_argument("--session-closed", action="store_true",
-                    help="checks 5-8: read the check although items are not fully rated; they "
+                    help="checks 5-9: read the check although items are not fully rated; they "
                          "are left out")
     args = ap.parse_args(argv)
     arms = sb.CHECKS[args.check]["arms"]
@@ -259,6 +259,15 @@ def main(argv=None):
     if rated < len(truth):
         print("⚠ %d of %d items not fully rated; they are left out.\n"
               % (len(truth) - rated, len(truth)))
+    if args.check == 9:
+        # Check 9's contrasts share one unit set: the units rated in all three arms (a unit with
+        # S1 and F1 but no Q is left out of the floors and of every printed count).
+        common = set.intersection(*(set(gaps[a]) for a in arms))
+        gaps = {a: {u: gaps[a][u] for u in common} for a in arms}
+        model_u = {a: {u: model_u[a][u] for u in common} for a in arms}
+        rt_u = {a: {u: rt_u[a][u] for u in common} for a in arms}
+        sev = {a: [model_u[a][u] for u in sorted(common)] for a in arms}
+        floor = {a: [rt_u[a][u] for u in sorted(common)] for a in arms}
     if not all(floor.values()) and "min_units" in sb.CHECKS[args.check]:
         # Pre-registered: fewer than 16 voices rated in both arms is INVALID, not a crash.
         print("OUTCOME: INVALID — %s" % OUTCOME[(args.check, "invalid")])

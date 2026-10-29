@@ -157,3 +157,22 @@ def test_truth_entry_names_a_q_voice_under_q_spk_never_spk():
     entry = render_ear_staged.truth_entry(9, "Q", it, [(0, "Q"), (1, "S1")])
     assert entry["q_spk"] == 12 and "spk" not in entry
     assert entry["widened"] == {"F1": False, "Q": True}
+
+
+def test_hum_fix_rule_names_check9_without_an_index_error():
+    args = type("A", (), {"check": 9, "min_seconds": 4.0, "max_seconds": 8.0,
+                          "target_seconds": 6.0, "n": 20, "seed": 20261029})()
+    text = render_ear_staged.hum_fix_rule(args, sb.CHECKS[9], 20)
+    assert text.startswith("check 9 (hum-fix Q): arms S1/F1/Q")
+    assert "--q-hnr-json" in text and "1.0 dB" in text
+
+
+def test_truth_entry_gives_s1_in_check9_its_partition_and_f0():
+    it = {"unit": 0, "libri": 5, "libri_hnr": 9.0, "libri_f0": 130.0, "partition": "train-other",
+          "f1": {"libri": 7, "libritts_id": 99, "f1_sid": 3, "hnr": 9.1, "f0": 128.0,
+                 "partition": "train-clean-360"},
+          "q": {"sid": 12, "hnr": 9.2, "f0": 131.0, "widened": {"F1": False, "Q": False}},
+          "arms": {"S1": {"source": ("/data/model-training/datasets/LibriTTS_R/train-clean-100/"
+                                     "19/198/19_198_000000_000000_22k.wav")}}}
+    entry = render_ear_staged.truth_entry(9, "S1", it, [(0, "S1"), (1, "F1")])
+    assert entry["spk"] == 5 and entry["partition"] == "train-other" and entry["f0"] == 130.0
