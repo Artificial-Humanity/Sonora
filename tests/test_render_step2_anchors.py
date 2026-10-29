@@ -290,6 +290,8 @@ def test_both_tones_and_all_textures_appear_within_each_age_band():
         sub = [it for it in items if it["band"] == band]
         assert {it["instruct"].split("tone: ")[1].split(".")[0] for it in sub} == \
             {t for t, _p in s2.TONES}
+        assert {it["instruct"].split("texture: ")[1].split(".")[0] for it in sub} == \
+            set(s2.TEXTURES)
 
 
 def test_the_qc_manifest_adds_wav_beside_file_and_nothing_else():

@@ -315,7 +315,8 @@ def verify_ecapa_hashes(snap, expected):
     import hashlib
 
     for fname, want in expected.items():
-        got = hashlib.sha256(open(os.path.join(snap, fname), "rb").read()).hexdigest()
+        with open(os.path.join(snap, fname), "rb") as fh:
+            got = hashlib.sha256(fh.read()).hexdigest()
         if got != want:
             raise SystemExit("REFUSING: ECAPA %s sha256 %s, pinned %s." % (fname, got, want))
 
@@ -373,6 +374,13 @@ def load_embedders():
     return lda, ecapa
 
 
+def file_sha256(path):
+    import hashlib
+
+    with open(path, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+
+
 def cmd_embed(args):
     from synth_common import write_text_atomic
 
@@ -380,6 +388,8 @@ def cmd_embed(args):
     clips = embed_clips(rows, args.out, args.anchors_dir)
     lda, ecapa = load_embedders()
     out = embed_rows(clips, lda, ecapa)
+    # Provenance: which bytes of each wav were embedded, so admission can show it.
+    out = [dict(o, wav_sha256=file_sha256(path)) for o, (_cid, path) in zip(out, clips)]
     write_text_atomic(os.path.join(args.out, SPEAKER_EMBEDDINGS),
                       "".join(json.dumps(o) + "\n" for o in out))
     print("%d embeddings (%d rendered, %d locked anchors) -> %s"
@@ -534,7 +544,7 @@ def cmd_admit_filter(args):
     candidates = plan_measures(rq._read_jsonl(measures_path), meta, plan)
     rows, _meta = rendered(args.out)
     data_rel = audition_relpath(args.out)
-    qc ={r["id"]: r for r in rq._read_jsonl(qc_path)}
+    qc = {r["id"]: r for r in rq._read_jsonl(qc_path)}
     embeddings = {r["id"]: r for r in rq._read_jsonl(embeddings_path)}
     report = admit(candidates, qc, embeddings, LOCKED_ANCHORS)
     write_json_atomic(os.path.join(args.out, "admission_report.json"), dict(
