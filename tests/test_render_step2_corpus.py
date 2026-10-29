@@ -94,6 +94,7 @@ def test_qc_passing_keeps_only_hard_pass_clips(tmp_path):
     rows = [{"id": "a", "wav": "a.wav", "text": "A."}, {"id": "b", "wav": "b.wav", "text": "B."}]
     (spk / "audio" / "qwen_base_manifest.jsonl").write_text(
         "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    (spk / "audio" / "a.wav").write_bytes(b"x")
     (spk / "qc_measures.jsonl").write_text(
         json.dumps({"id": "a", "hard_pass": True}) + "\n"
         + json.dumps({"id": "b", "hard_pass": False}) + "\n", encoding="utf-8")
@@ -128,3 +129,74 @@ def test_resample_to_gives_22050_pcm16(tmp_path):
     assert info.samplerate == 22050 and info.subtype == "PCM_16"
     assert clipped == 0
     assert math.isclose(info.frames / info.samplerate, 1.0, rel_tol=0.01)
+
+
+def test_a_non_integer_hum_is_a_refusal_naming_the_id(capsys):
+    with pytest.raises(SystemExit):
+        s2c._admitted_passing(["x1"], {"x1": {"zone": "core", "hum": "0.0"}})
+    assert "x1" in capsys.readouterr().err
+
+
+def test_a_passing_row_with_no_wav_is_a_refusal(tmp_path, capsys):
+    spk = tmp_path / "spk_00"
+    (spk / "audio").mkdir(parents=True)
+    (spk / "audio" / "qwen_base_manifest.jsonl").write_text(
+        json.dumps({"id": "a", "wav": "missing.wav", "text": "A."}) + "\n", encoding="utf-8")
+    (spk / "qc_measures.jsonl").write_text(json.dumps({"id": "a", "hard_pass": True}) + "\n",
+                                           encoding="utf-8")
+    with pytest.raises(SystemExit):
+        s2c.qc_passing(str(spk), "qwen_base")
+    assert "missing.wav" in capsys.readouterr().err
+
+
+def test_build_corpus_refuses_the_locked_five_table(tmp_path, capsys):
+    five = [s for s in _table() if s["index"] in s2c.LOCKED_SPEAKERS]
+    (tmp_path / "speakers_locked5.json").write_text(json.dumps({"speakers": five}), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        s2c.cmd_build_corpus(type("A", (), {"raw_root": str(tmp_path), "out_dir": str(tmp_path / "o")})())
+    assert "no speakers.json" in capsys.readouterr().err
+
+
+def test_plan_refuses_a_text_bank_that_is_not_the_frozen_one(tmp_path, capsys):
+    (tmp_path / "meta.json").write_text(json.dumps({"sha256": "0" * 64}), encoding="utf-8")
+    args = type("A", (), {"text_dir": str(tmp_path), "out_root": str(tmp_path), "speakers": None,
+                          "include_reserve": False, "allow_dirty": True})()
+    with pytest.raises(SystemExit):
+        s2c.cmd_plan(args)
+    assert "frozen bank" in capsys.readouterr().err
+
+
+def test_the_bank_hash_matches_the_plan_and_a_change_is_detected():
+    t = _table()
+    rows = [{"id": "2b-0001", "text": "Line.", "role": "primary", "speaker_line_index": 1}]
+    bank = {"version": s2c.VERSION, "campaign": "c", "lines": bank_lines_for(t[0], rows)}
+    h = s2c._file_sha_of_json(bank)
+    assert h == s2c._file_sha_of_json(json.loads(json.dumps(bank)))
+    bank["lines"][0]["seed"] += 1
+    assert h != s2c._file_sha_of_json(bank)
+
+
+def bank_lines_for(speaker, rows):
+    return s2c.bank_lines(speaker, rows)[0]
+
+
+def test_locked_five_lock_writes_exactly_the_five_speakers(tmp_path, monkeypatch):
+    anchors = tmp_path / "anchors"
+    anchors.mkdir()
+    (anchors / "clips").mkdir()
+    locked = tmp_path / "locked"
+    (locked / "clips").mkdir(parents=True)
+    rows = [{"id": "M4-s3", "file": "clips/M4-s3.wav", "text": "M.", "gender": "Male"},
+            {"id": "F6-s2", "file": "clips/F6-s2.wav", "text": "F.", "gender": "Female"}]
+    (locked / "manifest.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows),
+                                           encoding="utf-8")
+    (locked / "clips" / "M4-s3.wav").write_bytes(b"m")
+    (locked / "clips" / "F6-s2.wav").write_bytes(b"f")
+    out = tmp_path / "out"
+    out.mkdir()
+    args = type("A", (), {"anchors_dir": str(anchors), "locked_dir": str(locked),
+                          "out_root": str(out), "locked_five_only": True})()
+    s2c.cmd_lock_speakers(args)
+    written = json.loads((out / "speakers_locked5.json").read_text())
+    assert [s["index"] for s in written["speakers"]] == list(s2c.LOCKED_SPEAKERS)
+    assert not (out / "speakers.json").exists()

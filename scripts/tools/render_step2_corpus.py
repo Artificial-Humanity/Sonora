@@ -109,12 +109,21 @@ def build_speakers(male_refs, female_refs, locked):
     return table
 
 
+def _hum(cid, v):
+    """A verdict's hum as an int. Refuses a value that is not a whole number (`0.0`, `yes`)."""
+    raw = v.get("hum") or "0"
+    try:
+        return int(raw)
+    except ValueError:
+        refuse("REFUSING: %s has hum %r in verdicts.csv; it must be a whole number." % (cid, raw))
+
+
 def _admitted_passing(admitted, verdicts):
     """The admitted ids (plan order) whose verdict is core with no hum, in that order."""
     out = []
     for cid in admitted:
         v = verdicts.get(cid)
-        if v and v.get("zone") == "core" and int(v.get("hum") or 0) == 0:
+        if v and v.get("zone") == "core" and _hum(cid, v) == 0:
             out.append(cid)
     return out
 
@@ -316,7 +325,10 @@ def qc_passing(spk_dir, engine):
     for cid, row in man.items():
         q = qc.get(cid)
         if q and q.get("hard_pass") is True:
-            out.append((cid, _os.path.join(spk_dir, "audio", row["wav"]), row["text"]))
+            wav = _os.path.join(spk_dir, "audio", row["wav"])
+            if not _os.path.isfile(wav):
+                refuse("REFUSING: %s has a QC-passing row %s with no wav at %s." % (spk_dir, cid, wav))
+            out.append((cid, wav, row["text"]))
     return sorted(out)
 
 
@@ -359,7 +371,13 @@ def cmd_build_corpus(args):
     from baseline_bench import original_matcha_symbols
     from matcha.text.op_g2p import OpenPhonemizerG2P
 
+    if not _os.path.exists(_os.path.join(args.raw_root, "speakers.json")):
+        refuse("REFUSING: %s has no speakers.json; the corpus is the full 90-speaker table, not "
+               "the locked five." % args.raw_root)
     speakers = load_speakers(args.raw_root)
+    if len(speakers) != N_SPEAKERS:
+        refuse("REFUSING: %d speakers in %s; the corpus is %d." % (len(speakers), args.raw_root,
+                                                                 N_SPEAKERS))
     short = {}
     per = {}
     for s in speakers:
@@ -415,7 +433,7 @@ def cmd_build_corpus(args):
 def cmd_mel_stats(args):
     from matcha.data.text_mel_datamodule import TextMelDataModule
     from matcha.utils.generate_data_statistics import compute_data_statistics
-    from lib import staged_data as sd
+    import staged_data as sd                       # scripts/lib is on sys.path
 
     out = _os.path.abspath(args.out_dir)
     dm = TextMelDataModule(
