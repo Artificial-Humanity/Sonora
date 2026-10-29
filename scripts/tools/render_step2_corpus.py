@@ -11,8 +11,9 @@ Subcommands, in order:
                     verdicts. Refuses if a gender has fewer passing anchors than it needs.
 * `plan`            writes spk_NN/bank.json and plan.json per speaker, from the Step 2b speaker files.
 * `render`          prints (or with --run executes) the synth_bank.sh call for each speaker, in
-                    DATASET mode: SYNTH_BANK_PROBE=0, which keeps the direction check, the defect
-                    detectors and the QC gate that a probe skips. The GPU is booked separately.
+                    SYNTH_BANK_PROBE=1 (render_1ci's PROBE_ENV). That skips register_audition, which
+                    would queue every clip into the ratings. normalize_loudness and qc_gate run in
+                    both modes. The GPU is booked separately.
 * `build-corpus`    verifies every speaker has >= 310 QC-passing clips, then writes `q_synth_22k`:
                     22.05 kHz PCM_16 copies, train_op.txt and val_op.txt, speakers.json, and
                     provenance.json. mel_statistics.json comes from `mel-stats`, which needs torch
@@ -52,6 +53,7 @@ N_SPEAKERS = 90
 NEED = {"Male": 42, "Female": 43}                 # new anchors per gender (Step 2a's need)
 LOCKED_SPEAKERS = (0, 1, 87, 88, 89)              # the five that need no owner rating
 PRIMARY = 360
+SPEAKER_LINES = 400                               # primary plus reserve
 SEED_BASE = 2_000_000                             # seed = SEED_BASE + 1000 * s + speaker line index
 SPLIT_SEED = 1234
 VAL_PER_SPEAKER = 10
@@ -180,6 +182,13 @@ def load_speakers(out_root, subset=None):
         table = json.load(open(_os.path.join(out_root, "speakers_locked5.json"),
                                encoding="utf-8"))["speakers"]
     if subset is not None:
+        indices = {t["index"] for t in table}
+        if len(set(subset)) != len(subset):
+            refuse("REFUSING: --speakers names a speaker more than once: %s." % sorted(subset))
+        unknown = sorted(set(subset) - indices)
+        if unknown:
+            refuse("REFUSING: --speakers %s not in the loaded table (%s)."
+                   % (unknown, _os.path.basename(out_root)))
         table = [t for t in table if t["index"] in subset]
     return table
 
@@ -248,13 +257,23 @@ def _file_sha_of_json(obj):
 
 
 def _refuse_existing(cdir, bank, meta):
+    """Refuse a bank.json that differs from this plan, except the one upgrade: a 360-line primary
+    plan grown to its 400 lines with --include-reserve, whose first 360 lines are the same. The
+    rendered clips stay; the reserve lines render next (synth_qwen skips a clip whose wav exists)."""
     if not _os.path.exists(_os.path.join(cdir, "bank.json")):
         return
     try:
-        on_disk = json.load(open(_os.path.join(cdir, "bank.json"), encoding="utf-8"))
+        with open(_os.path.join(cdir, "bank.json"), encoding="utf-8") as fh:
+            on_disk = json.load(fh)
     except (OSError, ValueError) as e:
         refuse("REFUSING: %s/bank.json cannot be read (%s)." % (cdir, e))
-    if on_disk != bank:
+    if on_disk == bank:
+        return
+    grown = (meta.get("include_reserve") is True
+             and len(on_disk["lines"]) == PRIMARY
+             and len(bank["lines"]) == SPEAKER_LINES
+             and bank["lines"][:PRIMARY] == on_disk["lines"])
+    if not grown:
         refuse("REFUSING: %s/bank.json differs from this plan; plan into a new --out-root."
                % cdir)
 
@@ -279,6 +298,9 @@ def cmd_render(args):
         except (OSError, ValueError) as e:
             refuse("REFUSING: %s has no readable plan (%s). Run `plan` first." % (cdir, e))
         changed = r2.render_inputs_changed(meta["commit"], git["commit"])
+        if meta["commit"] != git["commit"] and r1._git(
+                "diff", "--quiet", meta["commit"], git["commit"], "--", TOOL).returncode == 1:
+            changed = changed + [TOOL]           # this tool's own code is render-affecting too
         if changed:
             refuse("REFUSING: %s was planned at %s, HEAD is %s; render-affecting files differ: %s."
                    % (cdir, meta["commit"], git["commit"], ", ".join(changed)))
@@ -287,8 +309,9 @@ def cmd_render(args):
         if _file_sha_of_json(bank) != meta["bank_sha256"]:
             refuse("REFUSING: %s/bank.json changed since its plan." % cdir)
         argv = render_argv(out_root, speaker)
-        env = {"SYNTH_BANK_PROBE": "0"}           # dataset mode: never a probe
-        print("SYNTH_BANK_PROBE=0 " + " ".join(shlex.quote(a) for a in argv))
+        env = dict(r1.PROBE_ENV)                 # register_audition is skipped; QC still runs
+        print(" ".join("%s=%s" % kv for kv in env.items()) + " " + " ".join(
+            shlex.quote(a) for a in argv))
         if not args.run:
             continue
         started = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")

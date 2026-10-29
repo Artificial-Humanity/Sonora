@@ -200,3 +200,44 @@ def test_locked_five_lock_writes_exactly_the_five_speakers(tmp_path, monkeypatch
     written = json.loads((out / "speakers_locked5.json").read_text())
     assert [s["index"] for s in written["speakers"]] == list(s2c.LOCKED_SPEAKERS)
     assert not (out / "speakers.json").exists()
+
+
+def test_the_render_env_is_the_probe_flag_so_register_audition_is_skipped():
+    import render_1ci as r1
+    assert s2c.r1.PROBE_ENV == {"SYNTH_BANK_PROBE": "1"}
+    assert r1.PROBE_ENV == {"SYNTH_BANK_PROBE": "1"}
+
+
+def test_a_360_plan_grows_to_400_with_reserve_and_nothing_else(tmp_path):
+    t = _table()
+    rows = [{"id": "2b-%04d" % k, "text": "L%d." % k, "role": "primary",
+             "speaker_line_index": k} for k in range(1, 361)]
+    primary = s2c.bank_lines(t[0], rows)[0]
+    cdir = tmp_path / "spk_00"
+    cdir.mkdir()
+    bank360 = {"version": "v", "campaign": "c", "lines": primary}
+    (cdir / "bank.json").write_text(json.dumps(bank360), encoding="utf-8")
+    reserve = [{"id": "2b-%04d" % k, "text": "R%d." % k, "role": "reserve",
+                "speaker_line_index": k} for k in range(361, 401)]
+    bank400 = {"version": "v", "campaign": "c",
+               "lines": s2c.bank_lines(t[0], rows + reserve)[0]}
+    s2c._refuse_existing(str(cdir), bank400, {"include_reserve": True})   # no SystemExit
+    # Not a growth without the flag, and not a changed primary line:
+    with pytest.raises(SystemExit):
+        s2c._refuse_existing(str(cdir), bank400, {"include_reserve": False})
+    changed = json.loads(json.dumps(bank400))
+    changed["lines"][0]["seed"] += 1
+    with pytest.raises(SystemExit):
+        s2c._refuse_existing(str(cdir), changed, {"include_reserve": True})
+
+
+def test_load_speakers_refuses_unknown_and_duplicate_indices(tmp_path, capsys):
+    (tmp_path / "speakers_locked5.json").write_text(
+        json.dumps({"speakers": [s for s in _table() if s["index"] in s2c.LOCKED_SPEAKERS]}),
+        encoding="utf-8")
+    assert [s["index"] for s in s2c.load_speakers(str(tmp_path), [0, 89])] == [0, 89]
+    with pytest.raises(SystemExit):
+        s2c.load_speakers(str(tmp_path), [2])
+    assert "not in the loaded table" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        s2c.load_speakers(str(tmp_path), [0, 0])
