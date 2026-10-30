@@ -59,6 +59,7 @@ ARMS = {
     "staged_d1": ("vctk_d1", 22050, 8000, 109, False, WS + "/staged_c0_init.ckpt"),
     "staged_g": ("libritts_r_22k_g", 22050, 8000, 247, False, WS + "/staged_s1_init.ckpt"),
     "staged_f1": ("f1_dense", 22050, 8000, 90, False, WS + "/staged_f1_init.ckpt"),
+    "staged_q": ("q_synth_22k", 22050, 8000, 90, False, WS + "/staged_q_init.ckpt"),
     "staged_e": ("libritts_r_22k_e", 22050, 8000, 247, False, WS + "/staged_s1_init.ckpt"),
 }
 # max_epochs where it is not 10: D1 is matched to S1 in optimizer steps (26 x 355 = 9,230)

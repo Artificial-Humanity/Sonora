@@ -35,6 +35,8 @@ ARMS = {
     "staged_g": ("libritts_r_22k_g", False, None, None),
     "staged_f1": ("f1_dense", False, None, None),
     "staged_e": ("libritts_r_22k_e", False, None, None),
+    # Step 2c's Arm Q (Notes: Sonora/phase-1s-step1-preregistration.md § Step 2)
+    "staged_q": ("q_synth", False, None, None),
 }
 # max_epochs where it is not 10: D1 is matched to S1 in optimizer steps (26 x 355 = 9,230)
 EPOCHS = {"staged_d1": 26}
@@ -214,6 +216,27 @@ def test_f1_is_s1s_experiment_on_f1s_data_from_its_own_warm_start():
 
 @pytest.mark.skipif(not Path("/data/model-training/sonora/data/f1_dense/mel_statistics.json")
                     .is_file(), reason="/data not mounted")
+def test_q_is_f1s_config_on_its_own_corpus_and_statistics():
+    f1, q = y(DATA_CFG / "f1_dense.yaml"), y(DATA_CFG / "q_synth.yaml")
+    # Q's statistics are a placeholder until `mel-stats` writes them, so they are not compared
+    # against F1's; the keys are, and the file is named as the placeholder it is.
+    assert _differ(f1, q) == {"name", "train_filelist_path", "valid_filelist_path"}
+    assert q["name"] == "q_synth_22k" and q["n_spks"] == 90
+    assert q["train_filelist_path"] == "data/q_synth_22k/train_op.txt"
+    assert q["valid_filelist_path"] == "data/q_synth_22k/val_op.txt"
+    assert set(q["data_statistics"]) == {"mel_mean", "mel_std"}
+
+
+def test_q_is_f1s_experiment_on_qs_data_from_its_own_warm_start():
+    f1, q = y(EXP / "staged_f1.yaml"), y(EXP / "staged_q.yaml")
+    assert _without(q, "defaults", "tags", "run_name") == \
+        _without(f1, "defaults", "tags", "run_name")
+    assert q["defaults"] == [{"override /data": "q_synth.yaml"}]
+    text = (EXP / "staged_q.yaml").read_text(encoding="utf-8")
+    assert "make_warmstart.py --experiment staged_q --donor matcha_vctk.ckpt" in text
+    assert "staged_q_init.ckpt" in text
+
+
 def test_f1_statistics_are_the_measured_ones():
     got = json.loads(Path("/data/model-training/sonora/data/f1_dense/mel_statistics.json")
                      .read_text())
@@ -223,7 +246,8 @@ def test_f1_statistics_are_the_measured_ones():
 
 
 @pytest.mark.parametrize("arm,base", [("staged_d1", "staged_c0"), ("staged_g", "staged_s1"),
-                                      ("staged_f1", "staged_s1"), ("staged_e", "staged_s1")])
+                                      ("staged_f1", "staged_s1"), ("staged_e", "staged_s1"),
+                                      ("staged_q", "staged_s1")])
 def test_each_batch_arm_overrides_only_its_base_arms_data(arm, base):
     a, b = y(EXP / ("%s.yaml" % arm))["defaults"], y(EXP / ("%s.yaml" % base))["defaults"]
     keep = lambda d: [x for x in d if not (isinstance(x, dict) and "override /data" in x)]

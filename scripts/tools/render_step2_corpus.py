@@ -392,10 +392,13 @@ def qc_passing(spk_dir, engine):
                 r = json.loads(line)
                 qc[r["id"]] = r
     man = _manifest_rows(_os.path.join(spk_dir, "audio"), name="%s_manifest.jsonl" % engine)
+    import staged_data as sd
     out = []
     for cid, row in man.items():
         q = qc.get(cid)
-        if q and q.get("hard_pass") is True:
+        # The pre-registered duration bounds (Step 2c: 1-16 s, as S1 and F1): a clip outside them
+        # is not kept even when it passes the QC gate, whose own ceiling is 30 s.
+        if q and q.get("hard_pass") is True and sd.f1_length_ok(float(q.get("duration") or 0.0)):
             wav = _os.path.join(spk_dir, "audio", row["wav"])
             if not _os.path.isfile(wav):
                 refuse("REFUSING: %s has a QC-passing row %s with no wav at %s." % (spk_dir, cid, wav))
