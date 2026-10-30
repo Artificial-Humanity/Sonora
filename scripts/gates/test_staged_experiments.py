@@ -59,6 +59,7 @@ ARMS = {
     "staged_d1": ("vctk_d1", 22050, 8000, 109, False, WS + "/staged_c0_init.ckpt"),
     "staged_g": ("libritts_r_22k_g", 22050, 8000, 247, False, WS + "/staged_s1_init.ckpt"),
     "staged_f1": ("f1_dense", 22050, 8000, 90, False, WS + "/staged_f1_init.ckpt"),
+    "staged_q": ("q_synth_22k", 22050, 8000, 90, False, WS + "/staged_q_init.ckpt"),
     "staged_e": ("libritts_r_22k_e", 22050, 8000, 247, False, WS + "/staged_s1_init.ckpt"),
 }
 # max_epochs where it is not 10: D1 is matched to S1 in optimizer steps (26 x 355 = 9,230)
@@ -125,6 +126,14 @@ def check_arm(exp):
     want = (name, sr, fmax, n_spks, use_vat, EPOCHS.get(exp, 10), exp)
     assert got == want, f"{exp}: composed {got}, pre-registered {want}"
     model = instantiate(cfg.model)
+    if exp == "staged_q" and not _os.path.isfile(warm):
+        # Arm Q's warm start and corpus are written in Step 2c, after its 85 anchors are locked and
+        # rendered. Until then the disk half is PENDING, not passed: composition, the pre-registered
+        # hyper-parameters and the model's construction above are still verified. Delete this
+        # branch once staged_q_init.ckpt exists.
+        print(f"  PENDING  {exp}: {warm.rsplit('/', 1)[-1]} and its corpus are written in Step 2c; "
+              "the warm-start and datamodule checks did not run")
+        return {k: plain(v) for k, v in model.hparams.items()}
     w = torch.load(warm, map_location="cpu", weights_only=False)
     assert (w["epoch"], w["global_step"]) == (0, 0), f"{warm} is not an epoch-0 warm start"
     model.load_state_dict(w["state_dict"], strict=True)

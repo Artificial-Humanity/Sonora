@@ -108,6 +108,17 @@ datasets:
     dirs: [LibriTTS, libritts_22k]
     license: CC-BY-4.0
     class: permissive
+  q_synth:
+    # OURS — the Step 2c synthetic corpus (Arm Q, Notes: Sonora/phase-1s-step1-preregistration.md
+    # § Step 2). 90 speakers of audio rendered locally by Qwen3-TTS-12Hz-1.7B-Base
+    # (qwen_base), Qwen3-TTS-12Hz-1.7B-CustomVoice (qwen_custom) and Orpheus-3B-0.1-ft (orpheus,
+    # its README states apache-2.0), on Standard Ebooks CC0 text. The engine weights' licences
+    # gate their use; they do not attach to the audio they produce (see
+    # sonora_expressive_registers below). `q_synth_raw` is the 24 kHz source of these same clips.
+    # license: Apache-2.0 (ours — synthetic audio on Standard Ebooks CC0 text, rendered locally)
+    dirs: [q_synth_22k, q_synth_raw]
+    license: Apache-2.0
+    class: permissive
   merged_vat_corpora:
     # Corpus directories that hold FILELISTS ONLY — no audio — and point at more than one
     # source dataset. `libritts_r_emilia_vat_v5` (2026-08-08, Phase 1 #1) is v4's LibriTTS-R
@@ -192,9 +203,7 @@ datasets:
     #     (Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice,
     #     rev 0c0e3051f131929182e2c023b9537f8b1c68adfe) are verified Apache-2.0
     #     (model-card front matter + the Hub API's cardData, read 2026-10-21).
-    #     No `dirs:` entry is added for them here: this file classifies training
-    #     corpus directories, and a corpus rendered by either engine gets its
-    #     own entry in the change that stages it.
+    #     The corpus they render is declared under `q_synth` (Step 2c, Arm Q), below.
     #   * 103 LibriVox recordings — public domain, the same basis as `ljspeech`.
     # Checked 2026-08-10: **0 of the 832 staged clips resolve into `LibriTTS_R` or any
     # `emilia*` tree**, so no third-party corpus audio is laundered through this entry.

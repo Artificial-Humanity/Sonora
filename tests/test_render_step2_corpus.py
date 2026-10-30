@@ -96,8 +96,8 @@ def test_qc_passing_keeps_only_hard_pass_clips(tmp_path):
         "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
     (spk / "audio" / "a.wav").write_bytes(b"x")
     (spk / "qc_measures.jsonl").write_text(
-        json.dumps({"id": "a", "hard_pass": True}) + "\n"
-        + json.dumps({"id": "b", "hard_pass": False}) + "\n", encoding="utf-8")
+        json.dumps({"id": "a", "hard_pass": True, "duration": 6.0}) + "\n"
+        + json.dumps({"id": "b", "hard_pass": False, "duration": 6.0}) + "\n", encoding="utf-8")
     kept = s2c.qc_passing(str(spk), "qwen_base")
     assert [k[0] for k in kept] == ["a"]
 
@@ -142,8 +142,8 @@ def test_a_passing_row_with_no_wav_is_a_refusal(tmp_path, capsys):
     (spk / "audio").mkdir(parents=True)
     (spk / "audio" / "qwen_base_manifest.jsonl").write_text(
         json.dumps({"id": "a", "wav": "missing.wav", "text": "A."}) + "\n", encoding="utf-8")
-    (spk / "qc_measures.jsonl").write_text(json.dumps({"id": "a", "hard_pass": True}) + "\n",
-                                           encoding="utf-8")
+    (spk / "qc_measures.jsonl").write_text(
+        json.dumps({"id": "a", "hard_pass": True, "duration": 6.0}) + "\n", encoding="utf-8")
     with pytest.raises(SystemExit):
         s2c.qc_passing(str(spk), "qwen_base")
     assert "missing.wav" in capsys.readouterr().err
@@ -330,3 +330,30 @@ def test_mel_stats_refuses_an_out_dir_prep_would_not_write_to(tmp_path, capsys):
     with pytest.raises(SystemExit):
         s2c.cmd_mel_stats(args)
     assert "not that" in capsys.readouterr().err
+
+
+def test_a_passing_row_with_no_duration_is_not_kept(tmp_path):
+    spk = tmp_path / "spk_00"
+    (spk / "audio").mkdir(parents=True)
+    (spk / "audio" / "qwen_base_manifest.jsonl").write_text(
+        json.dumps({"id": "a", "wav": "a.wav", "text": "A."}) + "\n", encoding="utf-8")
+    (spk / "audio" / "a.wav").write_bytes(b"x")
+    (spk / "qc_measures.jsonl").write_text(
+        json.dumps({"id": "a", "hard_pass": True}) + "\n", encoding="utf-8")
+    assert s2c.qc_passing(str(spk), "qwen_base") == []
+
+
+def test_qc_passing_keeps_only_clips_within_the_1_to_16_second_bounds(tmp_path):
+    spk = tmp_path / "spk_00"
+    (spk / "audio").mkdir(parents=True)
+    ids = {"short": 0.99, "floor": 1.0, "ceiling": 16.0, "long": 16.01, "mid": 6.0}
+    rows = [{"id": cid, "wav": cid + ".wav", "text": "T."} for cid in ids]
+    (spk / "audio" / "qwen_base_manifest.jsonl").write_text(
+        "".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+    for cid in ids:
+        (spk / "audio" / (cid + ".wav")).write_bytes(b"x")
+    (spk / "qc_measures.jsonl").write_text(
+        "".join(json.dumps({"id": cid, "hard_pass": True, "duration": d}) + "\n"
+                for cid, d in ids.items()), encoding="utf-8")
+    kept = [k[0] for k in s2c.qc_passing(str(spk), "qwen_base")]
+    assert kept == ["ceiling", "floor", "mid"]

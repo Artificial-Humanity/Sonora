@@ -780,6 +780,11 @@ def test_an_unreadable_checkpoint_is_could_not_run_not_refused():
     ("data/libritts_r_22k/train_g.txt", "libritts_r"),
     ("data/libritts_r_22k/train_e.txt", "libritts_r"),
     ("data/f1_dense/train_op.txt", "libritts_r"),
+    # Step 2c (Arm Q): our synthetic corpus, its 22.05 kHz copies and its 24 kHz sources
+    ("data/q_synth_22k/train_op.txt", "q_synth"),
+    ("data/q_synth_22k/val_op.txt", "q_synth"),
+    ("/data/model-training/sonora/data/q_synth_22k/wavs/spk_00/spk_00-001.wav", "q_synth"),
+    ("/data/model-training/datasets/q_synth_raw/spk_00/audio/spk_00-001.wav", "q_synth"),
     ("/data/model-training/datasets/LibriTTS_R/train-clean-360_22k/100/121669/x.wav",
      "libritts_r"),
     ("/data/model-training/datasets/LibriTTS_R/train-other-500_22k/1006/135212/x.wav",
