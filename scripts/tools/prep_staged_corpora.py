@@ -446,7 +446,8 @@ def stats(args):
         **dict(zip(sd.MEL_KEYS, sd.STOCK_MEL)))
     dm.setup()
     params = compute_data_statistics(dm.train_dataloader(), sd.STOCK_MEL[1])
-    (d / "mel_statistics.json").write_text(json.dumps(params))
+    from synth_common import write_json_atomic
+    write_json_atomic(d / "mel_statistics.json", params)
     print("mel_statistics:", json.dumps(params))
 
 

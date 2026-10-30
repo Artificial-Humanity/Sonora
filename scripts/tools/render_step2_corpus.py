@@ -233,6 +233,7 @@ def cmd_plan(args):
                % (args.text_dir, text_meta.get("sha256"), TEXT_SHA))
     git = r1.tool_commit()
     r1._require_clean(git, args.allow_dirty)
+    planned = []
     for speaker in load_speakers(args.out_root, args.speakers):
         bank, rows, summary = speaker_bank(speaker, args.text_dir, args.include_reserve)
         cdir = _os.path.join(args.out_root, speaker["name"])
@@ -244,7 +245,9 @@ def cmd_plan(args):
                 "bank_sha256": _file_sha_of_json(bank),
                 "seed_rule": "seed = %d + 1000 * speaker index + speaker line index"
                              % SEED_BASE}
-        meta = _refuse_existing(cdir, bank, meta)
+        # Every speaker is checked before any is written: a refusal leaves no plan half-rewritten.
+        planned.append((speaker, cdir, bank, _refuse_existing(cdir, bank, meta)))
+    for speaker, cdir, bank, meta in planned:
         _os.makedirs(cdir, exist_ok=True)
         write_json_atomic(_os.path.join(cdir, "bank.json"), bank)
         write_json_atomic(_os.path.join(cdir, "plan.json"), meta)
@@ -287,11 +290,14 @@ def _refuse_existing(cdir, bank, meta):
                 on_disk = json.load(fh)
         except (OSError, ValueError) as e:
             refuse("REFUSING: %s/bank.json cannot be read (%s)." % (cdir, e))
+    disk_lines = on_disk.get("lines") if isinstance(on_disk, dict) else None
+    if on_disk is not None and not isinstance(disk_lines, list):
+        refuse("REFUSING: %s/bank.json has no lines list; plan into a new --out-root." % cdir)
     grown = (on_disk is not None and on_disk != bank
              and meta.get("include_reserve") is True
-             and len(on_disk["lines"]) == PRIMARY
+             and len(disk_lines) == PRIMARY
              and len(bank["lines"]) == SPEAKER_LINES
-             and bank["lines"][:PRIMARY] == on_disk["lines"])
+             and bank["lines"][:PRIMARY] == disk_lines)
     if on_disk is not None and on_disk != bank and not grown:
         refuse("REFUSING: %s/bank.json differs from this plan; plan into a new --out-root."
                % cdir)

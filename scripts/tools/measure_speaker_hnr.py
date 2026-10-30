@@ -205,12 +205,17 @@ def main():
         raise SystemExit("REFUSING: no %s." % fp)
     rows = [(n, line.split("|")) for n, line in
             enumerate(fp.read_text(encoding="utf-8").splitlines(), 1) if line.strip()]
+    if not rows:
+        raise SystemExit("REFUSING: %s is empty." % fp)
     widths = {len(p) for _n, p in rows}
     if widths not in ({3}, {4}):
         raise SystemExit("REFUSING: %s mixes field counts %s; a filelist is all 3-field or all "
                          "4-field." % (fp, sorted(widths)))
     three = widths == {3}
     raw_root = raw_root_of(args, args.corpus, three)
+    if three and args.dataset is not None:
+        raise SystemExit("REFUSING: --dataset filters 4-field (VAT) corpora; this corpus is 3-field, "
+                         "and its rows are not keyed by dataset.")
     dataset = args.dataset if args.dataset is not None else (None if three else "LibriTTS_R")
     by_spk = defaultdict(list)
     for lineno, parts in rows:
@@ -233,6 +238,12 @@ def main():
     listed = read_speakers_file(args.speakers_from) if args.speakers_from else None
     rng = random.Random(args.seed)
     chosen = choose_speakers(by_spk, args.min_rows, args.speakers_sampled, rng, listed)
+    if raw_root is not None:
+        # Every row of a chosen speaker, not only the sampled clips: a missing or non-24 kHz
+        # source refuses whether or not the draw happens to reach it. Header-only; no rng draw.
+        for s in chosen:
+            for wav22 in by_spk[s]:
+                source_24k(wav22, raw_root)
 
     out, skipped = {}, []
     for n, s in enumerate(chosen):

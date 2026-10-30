@@ -104,3 +104,29 @@ def test_raw_24khz_flag_is_refused_on_a_vat_corpus(tmp_path, monkeypatch):
                                       encoding="utf-8")
     with pytest.raises(SystemExit, match="4-field"):
         _run(monkeypatch, tmp_path, vat, "--raw-24k-root", str(tmp_path))
+
+
+def test_a_missing_source_on_an_unsampled_row_is_still_refused(tmp_path, monkeypatch):
+    corpus, raw = _layout(tmp_path)
+    (raw / "spk_01" / "audio" / "spk_01-002.wav").unlink()
+    out = tmp_path / "hnr.json"
+    argv = ["measure_speaker_hnr.py", "--corpus", str(corpus), "--min-rows", "1",
+            "--clips-per-speaker", "1", "--seed", "20261029", "--json", str(out)]
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit, match="missing"):
+        mh.main()
+    assert not out.exists()
+
+
+def test_dataset_is_refused_on_a_3field_corpus(tmp_path, monkeypatch):
+    corpus, _raw = _layout(tmp_path)
+    with pytest.raises(SystemExit, match="3-field"):
+        _run(monkeypatch, tmp_path, corpus, "--dataset", "LibriTTS_R")
+
+
+def test_an_empty_filelist_is_refused_by_name(tmp_path, monkeypatch):
+    corpus = tmp_path / "empty"
+    corpus.mkdir()
+    (corpus / "train_op.txt").write_text("\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="is empty"):
+        _run(monkeypatch, tmp_path, corpus)
