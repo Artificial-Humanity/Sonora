@@ -226,8 +226,6 @@ def test_f1_is_s1s_experiment_on_f1s_data_from_its_own_warm_start():
     assert "staged_f1_init.ckpt" in text
 
 
-@pytest.mark.skipif(not Path("/data/model-training/sonora/data/f1_dense/mel_statistics.json")
-                    .is_file(), reason="/data not mounted")
 def test_q_is_f1s_experiment_on_qs_data_from_its_own_warm_start():
     f1, q = y(EXP / "staged_f1.yaml"), y(EXP / "staged_q.yaml")
     assert _without(q, "defaults", "tags", "run_name") == \
@@ -238,6 +236,8 @@ def test_q_is_f1s_experiment_on_qs_data_from_its_own_warm_start():
     assert "staged_q_init.ckpt" in text
 
 
+@pytest.mark.skipif(not Path("/data/model-training/sonora/data/f1_dense/mel_statistics.json")
+                    .is_file(), reason="/data not mounted")
 def test_f1_statistics_are_the_measured_ones():
     got = json.loads(Path("/data/model-training/sonora/data/f1_dense/mel_statistics.json")
                      .read_text())

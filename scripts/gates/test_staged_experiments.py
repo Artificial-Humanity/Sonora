@@ -126,6 +126,14 @@ def check_arm(exp):
     want = (name, sr, fmax, n_spks, use_vat, EPOCHS.get(exp, 10), exp)
     assert got == want, f"{exp}: composed {got}, pre-registered {want}"
     model = instantiate(cfg.model)
+    if exp == "staged_q" and not _os.path.isfile(warm):
+        # Arm Q's warm start and corpus are written in Step 2c, after its 85 anchors are locked and
+        # rendered. Until then the disk half is PENDING, not passed: composition, the pre-registered
+        # hyper-parameters and the model's construction above are still verified. Delete this
+        # branch once staged_q_init.ckpt exists.
+        print(f"  PENDING  {exp}: {warm.rsplit('/', 1)[-1]} and its corpus are written in Step 2c; "
+              "the warm-start and datamodule checks did not run")
+        return {k: plain(v) for k, v in model.hparams.items()}
     w = torch.load(warm, map_location="cpu", weights_only=False)
     assert (w["epoch"], w["global_step"]) == (0, 0), f"{warm} is not an epoch-0 warm start"
     model.load_state_dict(w["state_dict"], strict=True)
