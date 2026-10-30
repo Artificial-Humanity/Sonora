@@ -204,6 +204,18 @@ def test_f1_is_s1s_config_on_its_own_corpus_table_and_statistics():
     assert f1["valid_filelist_path"] == "data/f1_dense/val_op.txt"
 
 
+def test_q_is_f1s_config_on_its_own_corpus_and_statistics():
+    f1, q = y(DATA_CFG / "f1_dense.yaml"), y(DATA_CFG / "q_synth.yaml")
+    # Q's statistics are set once `mel-stats` writes them, so they are compared by key, not by
+    # value: the file's values are a placeholder until then.
+    assert _differ(f1, q) - {"data_statistics"} == \
+        {"name", "train_filelist_path", "valid_filelist_path"}
+    assert q["name"] == "q_synth_22k" and q["n_spks"] == 90
+    assert q["train_filelist_path"] == "data/q_synth_22k/train_op.txt"
+    assert q["valid_filelist_path"] == "data/q_synth_22k/val_op.txt"
+    assert set(q["data_statistics"]) == {"mel_mean", "mel_std"}
+
+
 def test_f1_is_s1s_experiment_on_f1s_data_from_its_own_warm_start():
     s1, f1 = y(EXP / "staged_s1.yaml"), y(EXP / "staged_f1.yaml")
     assert _without(f1, "defaults", "tags", "run_name") == \
@@ -216,17 +228,6 @@ def test_f1_is_s1s_experiment_on_f1s_data_from_its_own_warm_start():
 
 @pytest.mark.skipif(not Path("/data/model-training/sonora/data/f1_dense/mel_statistics.json")
                     .is_file(), reason="/data not mounted")
-def test_q_is_f1s_config_on_its_own_corpus_and_statistics():
-    f1, q = y(DATA_CFG / "f1_dense.yaml"), y(DATA_CFG / "q_synth.yaml")
-    # Q's statistics are a placeholder until `mel-stats` writes them, so they are not compared
-    # against F1's; the keys are, and the file is named as the placeholder it is.
-    assert _differ(f1, q) == {"name", "train_filelist_path", "valid_filelist_path"}
-    assert q["name"] == "q_synth_22k" and q["n_spks"] == 90
-    assert q["train_filelist_path"] == "data/q_synth_22k/train_op.txt"
-    assert q["valid_filelist_path"] == "data/q_synth_22k/val_op.txt"
-    assert set(q["data_statistics"]) == {"mel_mean", "mel_std"}
-
-
 def test_q_is_f1s_experiment_on_qs_data_from_its_own_warm_start():
     f1, q = y(EXP / "staged_f1.yaml"), y(EXP / "staged_q.yaml")
     assert _without(q, "defaults", "tags", "run_name") == \

@@ -397,7 +397,8 @@ def qc_passing(spk_dir, engine):
     for cid, row in man.items():
         q = qc.get(cid)
         # The pre-registered duration bounds (Step 2c: 1-16 s, as S1 and F1): a clip outside them
-        # is not kept even when it passes the QC gate, whose own ceiling is 30 s.
+        # is not kept even when it passes the QC gate, whose own ceiling is 30 s. A row with no
+        # `duration` reads as 0 s and is not kept: fail closed, not silently trusted.
         if q and q.get("hard_pass") is True and sd.f1_length_ok(float(q.get("duration") or 0.0)):
             wav = _os.path.join(spk_dir, "audio", row["wav"])
             if not _os.path.isfile(wav):
