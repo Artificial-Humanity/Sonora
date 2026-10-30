@@ -318,6 +318,13 @@ def pair_q_triplets(s1, f1, q, max_gap=F1_MAX_HNR_GAP, fallback_gap=Fraction(1, 
     return out
 
 
+def rated_in_all(gaps, arms):
+    """The units rated in every arm of `arms`: the intersection of each arm's unit keys. Check 9
+    reads its floors, levels and contrasts on this set, so a triplet with a missing arm counts
+    nowhere."""
+    return set.intersection(*(set(gaps[a]) for a in arms))
+
+
 def reading(check, gaps, floors):
     """The pre-registered reading of one check.
 
@@ -355,7 +362,7 @@ def reading(check, gaps, floors):
     if check == 9:
         # Check 9's units are triplets: every arm, and every contrast, is read on the units rated
         # in all three arms, so the contrasts share one unit set.
-        common = set.intersection(*(set(gaps[a]) for a in spec["arms"]))
+        common = rated_in_all(gaps, spec["arms"])
         gaps = {a: {u: gaps[a][u] for u in common} for a in spec["arms"]}
     level = {a: test([gaps[a][u] for u in sorted(gaps[a])]) for a in spec["arms"]}
     contrasts = {}

@@ -262,7 +262,7 @@ def main(argv=None):
     if args.check == 9:
         # Check 9's contrasts share one unit set: the units rated in all three arms (a unit with
         # S1 and F1 but no Q is left out of the floors and of every printed count).
-        common = set.intersection(*(set(gaps[a]) for a in arms))
+        common = sb.rated_in_all(gaps, arms)
         gaps = {a: {u: gaps[a][u] for u in common} for a in arms}
         model_u = {a: {u: model_u[a][u] for u in common} for a in arms}
         rt_u = {a: {u: rt_u[a][u] for u in common} for a in arms}

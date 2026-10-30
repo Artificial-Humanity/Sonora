@@ -31,6 +31,11 @@ Usage:
         --speakers-sampled 400 --clips-per-speaker 5 \
         --json /tmp/speaker_hnr.json
 
+A 3-field corpus (`wav|spk|phonemes`, no VAT: data/q_synth_22k) is measured on its 24 kHz
+SOURCE clips, not its 22.05 kHz copies. The source of `<corpus>/wavs/<spk_dir>/<id>.wav` is
+`<raw_root>/<spk_dir>/audio/<id>.wav`, where `raw_root` is the corpus's provenance.json
+`raw_root` (or `--raw-24k-root`). A missing source or one that is not 24000 Hz refuses.
+
 `--speakers-from FILE` measures exactly the speaker indices listed in FILE (whitespace-
 separated integers, `#` comments) instead of drawing `--speakers-sampled` of them. A listed
 speaker with no row, or fewer than `--min-rows`, is refused rather than skipped, and the
@@ -114,6 +119,42 @@ def read_speakers_file(path):
     return ids
 
 
+RAW_RATE = 24000
+
+
+def raw_root_of(args, corpus_dir, three):
+    """-> the 24 kHz raw root of a 3-field corpus, or None for a 4-field corpus. A 3-field
+    corpus names it in its provenance.json or on the command line; a 4-field corpus takes none."""
+    if not three:
+        if args.raw_24k_root:
+            raise SystemExit("REFUSING: --raw-24k-root is for 3-field corpora; this one is "
+                             "4-field (VAT).")
+        return None
+    if args.raw_24k_root:
+        return str(args.raw_24k_root)
+    prov = Path(corpus_dir) / "provenance.json"
+    if not prov.is_file():
+        raise SystemExit("REFUSING: %s is 3-field and has no provenance.json naming its raw_root; "
+                         "pass --raw-24k-root." % corpus_dir)
+    root = json.loads(prov.read_text(encoding="utf-8")).get("raw_root")
+    if not root:
+        raise SystemExit("REFUSING: %s records no raw_root; pass --raw-24k-root." % prov)
+    return root
+
+
+def source_24k(wav22, raw_root):
+    """The 24 kHz source of a 3-field corpus clip `<corpus>/wavs/<spk_dir>/<id>.wav`:
+    `<raw_root>/<spk_dir>/audio/<id>.wav`. Refuses when it is missing or not 24000 Hz."""
+    spk_dir, stem = Path(wav22).parent.name, Path(wav22).stem
+    src = Path(raw_root) / spk_dir / "audio" / (stem + ".wav")
+    if not src.is_file():
+        raise SystemExit("REFUSING: 24 kHz source %s for %s is missing." % (src, wav22))
+    rate = sf.info(str(src)).samplerate
+    if rate != RAW_RATE:
+        raise SystemExit("REFUSING: 24 kHz source %s is %d Hz, not %d." % (src, rate, RAW_RATE))
+    return str(src)
+
+
 def choose_speakers(by_spk, min_rows, speakers_sampled, rng, listed=None):
     """The speakers to measure, ascending. Without `listed`: a draw of `speakers_sampled`
     from those with at least `min_rows` rows (the tool's original behaviour, rng use
@@ -139,7 +180,12 @@ def main():
     ap.add_argument("--min-rows", type=int, default=100)
     ap.add_argument("--speakers-sampled", type=int, default=400)
     ap.add_argument("--clips-per-speaker", type=int, default=5)
-    ap.add_argument("--dataset", default="LibriTTS_R")
+    ap.add_argument("--dataset", default=None,
+                    help="4-field (VAT) corpora: keep only this dataset (default LibriTTS_R). "
+                         "3-field corpora are not filtered by dataset.")
+    ap.add_argument("--raw-24k-root", default=None,
+                    help="3-field corpora: the raw_root holding each clip's 24 kHz source "
+                         "(default: the corpus provenance.json's raw_root)")
     ap.add_argument("--fmin", type=float, default=55.0)
     ap.add_argument("--fmax", type=float, default=350.0)
     ap.add_argument("--rms-floor", type=float, default=0.01)
@@ -157,18 +203,22 @@ def main():
     fp = Path(args.corpus) / ("%s_op.txt" % args.split)
     if not fp.is_file():
         raise SystemExit("REFUSING: no %s." % fp)
+    rows = [(n, line.split("|")) for n, line in
+            enumerate(fp.read_text(encoding="utf-8").splitlines(), 1) if line.strip()]
+    widths = {len(p) for _n, p in rows}
+    if widths not in ({3}, {4}):
+        raise SystemExit("REFUSING: %s mixes field counts %s; a filelist is all 3-field or all "
+                         "4-field." % (fp, sorted(widths)))
+    three = widths == {3}
+    raw_root = raw_root_of(args, args.corpus, three)
+    dataset = args.dataset if args.dataset is not None else (None if three else "LibriTTS_R")
     by_spk = defaultdict(list)
-    for lineno, line in enumerate(fp.read_text(encoding="utf-8").splitlines(), 1):
-        if not line.strip():
-            continue
-        parts = line.split("|")
-        if len(parts) != 4:
-            raise SystemExit("REFUSING: %s line %d has %d fields, wanted 4."
-                             % (fp, lineno, len(parts)))
-        if len(parts[3].split(",")) != VAT_DIM:
-            raise SystemExit("REFUSING: %s line %d is %d-wide and this checkout states "
-                             "VAT_DIM as %d." % (fp, lineno, len(parts[3].split(",")),
-                                                 VAT_DIM))
+    for lineno, parts in rows:
+        if not three:
+            if len(parts[3].split(",")) != VAT_DIM:
+                raise SystemExit("REFUSING: %s line %d is %d-wide and this checkout states "
+                                 "VAT_DIM as %d." % (fp, lineno, len(parts[3].split(",")),
+                                                     VAT_DIM))
         # ⚠⚠ THIS TESTED THE WRONG THING until 2026-09-21. It read
         # `partition_of(parts[0]) == "(unkeyed)"`, and `partition_of` returns the DATASET
         # NAME for a non-LibriTTS row — so an Emilia row came back "emilia_kept_24k",
@@ -176,7 +226,7 @@ def main():
         # 1526-speaker survey of 2026-09-21 came out all-LibriTTS-R anyway, because
         # Emilia's 10,653 rows spread too thinly for any of its speakers to clear
         # --min-rows — by luck of the corpus, not by this line.
-        if args.dataset and dataset_of(parts[0]) != args.dataset:
+        if dataset and dataset_of(parts[0]) != dataset:
             continue
         by_spk[int(parts[1])].append(parts[0])
 
@@ -187,8 +237,12 @@ def main():
     out, skipped = {}, []
     for n, s in enumerate(chosen):
         f0s, hnrs, parts = [], [], []
-        for wav in rng.sample(by_spk[s], min(args.clips_per_speaker, len(by_spk[s]))):
-            if not os.path.exists(wav):
+        for wav22 in rng.sample(by_spk[s], min(args.clips_per_speaker, len(by_spk[s]))):
+            if raw_root is not None:
+                wav = source_24k(wav22, raw_root)
+            elif os.path.exists(wav22):
+                wav = wav22
+            else:
                 continue
             x, sr = sf.read(wav, dtype="float64")
             if x.ndim > 1:
@@ -231,7 +285,7 @@ def main():
     doc = {"corpus": args.corpus, "split": args.split, "fmin": args.fmin,
            "fmax": args.fmax, "min_rows": args.min_rows,
            "rms_floor": args.rms_floor, "periodicity": args.periodicity,
-           "dataset": args.dataset, "filelist": str(fp), "seed": args.seed,
+           "dataset": dataset, "raw_root": raw_root, "filelist": str(fp), "seed": args.seed,
            "speakers_sampled": args.speakers_sampled,
            "clips_per_speaker": args.clips_per_speaker, "skipped": skipped,
            "median_f0": mf, "median_hnr": mh,

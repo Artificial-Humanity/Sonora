@@ -33,7 +33,8 @@ import sys as _sys
 import datetime
 
 _SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
-for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in ("lib", "tools"))):
+for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b)
+                           for _b in ("", "lib", "tools"))):
     if _p not in _sys.path:
         _sys.path.insert(0, _p)
 
@@ -243,7 +244,7 @@ def cmd_plan(args):
                 "bank_sha256": _file_sha_of_json(bank),
                 "seed_rule": "seed = %d + 1000 * speaker index + speaker line index"
                              % SEED_BASE}
-        _refuse_existing(cdir, bank, meta)
+        meta = _refuse_existing(cdir, bank, meta)
         _os.makedirs(cdir, exist_ok=True)
         write_json_atomic(_os.path.join(cdir, "bank.json"), bank)
         write_json_atomic(_os.path.join(cdir, "plan.json"), meta)
@@ -256,26 +257,70 @@ def _file_sha_of_json(obj):
     return hashlib.sha256(json.dumps(obj, sort_keys=True).encode("utf-8")).hexdigest()
 
 
+def changed_since(plan_commit, head):
+    """The render-affecting files that differ between the plan commit and HEAD: this tool's own
+    code (TOOL) and render_1cii's list, as cmd_render checks them. [] when none, or when the
+    commits are equal. An uncomparable commit refuses."""
+    if plan_commit == head:
+        return []
+    changed = list(r2.render_inputs_changed(plan_commit, head))
+    if r1._git("diff", "--quiet", plan_commit, head, "--", TOOL).returncode == 1:
+        changed.append(TOOL)
+    return changed
+
+
 def _refuse_existing(cdir, bank, meta):
-    """Refuse a bank.json that differs from this plan, except the one upgrade: a 360-line primary
-    plan grown to its 400 lines with --include-reserve, whose first 360 lines are the same. The
-    rendered clips stay; the reserve lines render next (synth_qwen skips a clip whose wav exists)."""
-    if not _os.path.exists(_os.path.join(cdir, "bank.json")):
-        return
-    try:
-        with open(_os.path.join(cdir, "bank.json"), encoding="utf-8") as fh:
-            on_disk = json.load(fh)
-    except (OSError, ValueError) as e:
-        refuse("REFUSING: %s/bank.json cannot be read (%s)." % (cdir, e))
-    if on_disk == bank:
-        return
-    grown = (meta.get("include_reserve") is True
+    """The re-plan guard. -> the plan.json meta to write.
+
+    A speaker folder's plan and renders must stay one plan: a re-plan may not overwrite the commit
+    or engine pin the audio was rendered under. Refused: renders with no readable plan.json; an
+    engine pin that changed; a bank that differs, except the 360 -> 400 `--include-reserve` growth
+    (its first 360 lines unchanged); renders from another commit when the bank is not growing;
+    and a growth across render-affecting code. A growth keeps the plan's original commit, so
+    cmd_render keeps checking the audio against the commit it was first planned under."""
+    bank_path, plan_path = _os.path.join(cdir, "bank.json"), _os.path.join(cdir, "plan.json")
+    renders = r1._has_manifest(_os.path.join(cdir, "audio"))
+    on_disk = None
+    if _os.path.exists(bank_path):
+        try:
+            with open(bank_path, encoding="utf-8") as fh:
+                on_disk = json.load(fh)
+        except (OSError, ValueError) as e:
+            refuse("REFUSING: %s/bank.json cannot be read (%s)." % (cdir, e))
+    grown = (on_disk is not None and on_disk != bank
+             and meta.get("include_reserve") is True
              and len(on_disk["lines"]) == PRIMARY
              and len(bank["lines"]) == SPEAKER_LINES
              and bank["lines"][:PRIMARY] == on_disk["lines"])
-    if not grown:
+    if on_disk is not None and on_disk != bank and not grown:
         refuse("REFUSING: %s/bank.json differs from this plan; plan into a new --out-root."
                % cdir)
+    if not _os.path.exists(plan_path):
+        if renders:
+            refuse("REFUSING: %s/audio holds renders but plan.json is missing; the commit and "
+                   "engine they were rendered under are not recorded." % cdir)
+        return meta
+    try:
+        with open(plan_path, encoding="utf-8") as fh:
+            old = json.load(fh)
+    except (OSError, ValueError) as e:
+        refuse("REFUSING: %s/plan.json cannot be read (%s)." % (cdir, e))
+    if old.get("engine_pin") != meta["engine_pin"]:
+        refuse("REFUSING: %s was planned with engine pin %s, and it is now %s. Plan into a new "
+               "--out-root." % (cdir, json.dumps(old.get("engine_pin"), sort_keys=True),
+                                json.dumps(meta["engine_pin"], sort_keys=True)))
+    if grown:
+        bad = changed_since(old.get("commit"), meta["commit"])
+        if bad:
+            refuse("REFUSING: %s was planned at %s and the 360 -> 400 growth would run at %s; "
+                   "render-affecting files differ: %s. Plan into a new --out-root."
+                   % (cdir, old.get("commit"), meta["commit"], ", ".join(bad)))
+        return dict(meta, commit=old.get("commit"))
+    if renders and old.get("commit") != meta["commit"]:
+        refuse("REFUSING: %s/audio holds renders planned at %s; this checkout is %s, and "
+               "re-planning would mix two plans. Render against the existing plan, or plan into "
+               "a new --out-root." % (cdir, old.get("commit"), meta["commit"]))
+    return meta
 
 
 def render_argv(out_root, speaker):
@@ -297,10 +342,7 @@ def cmd_render(args):
                 bank = json.load(fh)
         except (OSError, ValueError) as e:
             refuse("REFUSING: %s has no readable plan (%s). Run `plan` first." % (cdir, e))
-        changed = r2.render_inputs_changed(meta["commit"], git["commit"])
-        if meta["commit"] != git["commit"] and r1._git(
-                "diff", "--quiet", meta["commit"], git["commit"], "--", TOOL).returncode == 1:
-            changed = changed + [TOOL]           # this tool's own code is render-affecting too
+        changed = changed_since(meta["commit"], git["commit"])
         if changed:
             refuse("REFUSING: %s was planned at %s, HEAD is %s; render-affecting files differ: %s."
                    % (cdir, meta["commit"], git["commit"], ", ".join(changed)))
@@ -365,18 +407,20 @@ def _manifest_rows(dirpath, name="manifest.jsonl"):
     return rows
 
 
+def prep():
+    """prep_staged_corpora, the one home of the 22.05 kHz resample and the mel statistics."""
+    import prep_staged_corpora
+    return prep_staged_corpora
+
+
 def resample_to(wav_in, dst):
-    """A 24 kHz wav -> 22.05 kHz PCM_16, as prep_staged_corpora.resample_to; returns 1 if clipped."""
-    import numpy as np
+    """A 24 kHz wav -> 22.05 kHz PCM_16 at `dst`, via prep_staged_corpora.resample_to. Returns 1
+    if a sample was clipped."""
     import soundfile as sf
-    import soxr
     x, sr = sf.read(wav_in, dtype="float64")
     if x.ndim > 1:
         x = x.mean(axis=1)
-    y = soxr.resample(np.asarray(x, dtype="float64"), sr, SAMPLE_RATE)
-    _os.makedirs(_os.path.dirname(dst), exist_ok=True)
-    sf.write(dst, np.clip(y, -1.0, 1.0), SAMPLE_RATE, "PCM_16")
-    return int(np.abs(y).max() > 1.0)
+    return prep().resample_to(x, sr, dst)
 
 
 def phonemes_checked(g2p, text, allowed):
@@ -445,6 +489,8 @@ def cmd_build_corpus(args):
         "tool": TOOL, "version": VERSION, "text_sha256": TEXT_SHA, "rows": counts,
         "speakers": N_SPEAKERS, "min_qc": MIN_QC, "val_per_speaker": VAL_PER_SPEAKER,
         "split_seed": SPLIT_SEED, "sample_rate": SAMPLE_RATE,
+        # The 24 kHz sources of these clips: measure_speaker_hnr.py reads them for the Q HNR table.
+        "raw_root": _os.path.abspath(args.raw_root),
         "phonemizer": "matcha.text.op_g2p.OpenPhonemizerG2P",
         "steps_per_epoch": math.ceil(counts["train"] / 32)})
     print("q_synth_22k: train %d, val %d rows; %d clips clipped; %d steps/epoch"
@@ -454,21 +500,14 @@ def cmd_build_corpus(args):
 
 
 def cmd_mel_stats(args):
-    from matcha.data.text_mel_datamodule import TextMelDataModule
-    from matcha.utils.generate_data_statistics import compute_data_statistics
-    import staged_data as sd                       # scripts/lib is on sys.path
-
-    out = _os.path.abspath(args.out_dir)
-    dm = TextMelDataModule(
-        name="q_synth_22k_stats", train_filelist_path=_os.path.join(out, "train_op.txt"),
-        valid_filelist_path=_os.path.join(out, "val_op.txt"), batch_size=256,
-        num_workers=args.workers, pin_memory=False, cleaners=["no_cleaners"], add_blank=True,
-        n_spks=N_SPEAKERS, data_statistics=None, seed=1234, load_durations=False,
-        load_vat=False, vat_dim=None, **dict(zip(sd.MEL_KEYS, sd.STOCK_MEL)))
-    dm.setup()
-    params = compute_data_statistics(dm.train_dataloader(), sd.STOCK_MEL[1])
-    write_json_atomic(_os.path.join(out, "mel_statistics.json"), params)
-    print("mel_statistics:", json.dumps(params))
+    """mel_statistics.json for q_synth_22k: prep_staged_corpora.stats, which writes it beside the
+    corpus's filelists under DATA. Refuses an --out-dir the library would not write to."""
+    import argparse as ap_
+    want = _os.path.join(prep().DATA, "q_synth_22k")
+    if _os.path.abspath(args.out_dir) != _os.path.abspath(want):
+        refuse("REFUSING: mel-stats writes to %s (prep_staged_corpora's DATA); --out-dir %s is "
+               "not that." % (want, args.out_dir))
+    prep().stats(ap_.Namespace(corpus="q_synth_22k", workers=args.workers))
     return 0
 
 

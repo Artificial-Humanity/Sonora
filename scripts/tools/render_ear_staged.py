@@ -364,16 +364,13 @@ def q_clips(args, qhnr, rec):
     return clips, row_of
 
 
-def select_e(args, c, rng, lheard, rec):
-    """Check 9: the S1 voices of check 7's rule, 20 spread over HNR, each with an unused F1 voice
-    and an unused Q voice from `staged_bench.pair_q_triplets` (HNR within 0.5 dB, widened to 1.0
-    dB per arm where needed and recorded). Fewer than 16 triplets is refused: the check is not
-    run and the owner decides."""
+def s1_f1_setup(args, lheard, rec):
+    """The S1 and F1 pools a paired check draws from (checks 7 and 9): the S1 voices eligible and
+    unheard, `pick_voices` spread over HNR, and the F1 voices eligible and unheard and not among
+    those S1 voices. -> the pools and the tables they came from, as one dict."""
     s1h, allh = hnr_table(args.s1_hnr_json), hnr_table(args.hnr_json)
-    qh = hnr_table(args.q_hnr_json)
     rec("s1_hnr_json", args.s1_hnr_json)
     rec("hnr_json", args.hnr_json)
-    rec("q_hnr_json", args.q_hnr_json)
     rows, clips = s1_clips(args, lheard, s1h, False, rec)
     pool = {s: s1h[s]["hnr"] for s, cl in clips.items() if len(cl) >= MIN_CLIPS}
     print("%d S1 voices eligible (%d heard)" % (len(pool), len(lheard)))
@@ -381,36 +378,58 @@ def select_e(args, c, rng, lheard, rec):
     fclips, who, row_of = f1_clips(args, lheard | set(voices), allh, rec)
     f1_pool = {v: (allh[v]["hnr"], allh[v]["f0"], who[v][0])
                for v, cl in fclips.items() if len(cl) >= MIN_CLIPS}
+    print("%d F1 voices eligible" % len(f1_pool))
+    return {"s1h": s1h, "allh": allh, "rows": rows, "clips": clips, "pool": pool,
+            "voices": voices, "fclips": fclips, "who": who, "row_of": row_of,
+            "f1_pool": f1_pool}
+
+
+def s1_f1_unit(args, rng, i, s, v, st):
+    """Unit `i` of a paired check: its S1 voice `s` and F1 voice `v` from the setup `st`, one
+    recording of each at the target length. The S1 recording is drawn before the F1 one."""
+    w1 = lb.assign_clips({s: st["clips"][s]}, ("S1",), rng, args.target_seconds)[s]["S1"]
+    wf = lb.assign_clips({v: st["fclips"][v]}, ("F1",), rng, args.target_seconds)[v]["F1"]
+    lid, sid = st["who"][v]
+    return dict(s1_unit(i, s, st["s1h"]), f1={
+        "libri": v, "libritts_id": lid, "f1_sid": sid, "hnr": st["allh"][v]["hnr"],
+        "f0": st["allh"][v]["f0"], "partition": st["allh"][v].get("partition")}, arms={
+        "S1": {"source": w1, "seconds": round(dict(st["clips"][s])[w1], 2),
+               "phonemes": st["rows"][w1][1]},
+        "F1": {"source": wf, "seconds": round(dict(st["fclips"][v])[wf], 2),
+               "phonemes": st["row_of"][wf][1], "row": st["row_of"][wf][0]}})
+
+
+def select_e(args, c, rng, lheard, rec):
+    """Check 9: the S1 voices of check 7's rule, 20 spread over HNR, each with an unused F1 voice
+    and an unused Q voice from `staged_bench.pair_q_triplets` (HNR within 0.5 dB, widened to 1.0
+    dB per arm where needed and recorded). Fewer than 16 triplets is refused: the check is not
+    run and the owner decides."""
+    st = s1_f1_setup(args, lheard, rec)
+    qh = hnr_table(args.q_hnr_json)
+    rec("q_hnr_json", args.q_hnr_json)
     qclips, qrow_of = q_clips(args, qh, rec)
     q_pool = {v: (qh[v]["hnr"], qh[v]["f0"], v)
               for v, cl in qclips.items() if len(cl) >= MIN_CLIPS}
-    print("%d F1 voices eligible; %d Q voices eligible" % (len(f1_pool), len(q_pool)))
+    print("%d Q voices eligible" % len(q_pool))
     try:
-        triplets = sb.pair_q_triplets({s: (s1h[s]["hnr"], s1h[s]["f0"]) for s in voices},
-                                      f1_pool, q_pool, min_triplets=c["min_units"])
+        triplets = sb.pair_q_triplets({s: (st["s1h"][s]["hnr"], st["s1h"][s]["f0"])
+                                       for s in st["voices"]},
+                                      st["f1_pool"], q_pool, min_triplets=c["min_units"])
     except ValueError as e:
         raise SystemExit("REFUSING: %s The check is not run, and the owner decides." % e)
     items = []
     for i, t in enumerate(triplets):
         s, v, q = t["s1"], t["f1"], t["q"]
-        w1 = lb.assign_clips({s: clips[s]}, ("S1",), rng, args.target_seconds)[s]["S1"]
-        wf = lb.assign_clips({v: fclips[v]}, ("F1",), rng, args.target_seconds)[v]["F1"]
+        unit = s1_f1_unit(args, rng, i, s, v, st)
         wq = lb.assign_clips({q: qclips[q]}, ("Q",), rng, args.target_seconds)[q]["Q"]
-        lid, sid = who[v]
-        items.append(dict(s1_unit(i, s, s1h), f1={
-            "libri": v, "libritts_id": lid, "f1_sid": sid, "hnr": allh[v]["hnr"],
-            "f0": allh[v]["f0"], "partition": allh[v].get("partition")},
-            q={"sid": q, "hnr": qh[q]["hnr"], "f0": qh[q]["f0"], "widened": t["widened"]},
-            arms={"S1": {"source": w1, "seconds": round(dict(clips[s])[w1], 2),
-                         "phonemes": rows[w1][1]},
-                  "F1": {"source": wf, "seconds": round(dict(fclips[v])[wf], 2),
-                         "phonemes": row_of[wf][1], "row": row_of[wf][0]},
-                  "Q": {"source": wq, "seconds": round(float(dict(qclips[q])[wq]), 2),
-                        "phonemes": qrow_of[wq][1], "row": qrow_of[wq][0]}}))
-    unpaired = [s for s in sorted(voices, key=lambda s: (s1h[s]["hnr"], s))
-                if s not in {t["s1"] for t in triplets}]
-    return items, {"eligible": len(pool), "f1_eligible": len(f1_pool),
-                   "q_eligible": len(q_pool), "unpaired": unpaired}
+        unit["q"] = {"sid": q, "hnr": qh[q]["hnr"], "f0": qh[q]["f0"], "widened": t["widened"]}
+        unit["arms"]["Q"] = {"source": wq, "seconds": round(float(dict(qclips[q])[wq]), 2),
+                             "phonemes": qrow_of[wq][1], "row": qrow_of[wq][0]}
+        items.append(unit)
+    made = {t["s1"] for t in triplets}
+    order = sorted(st["voices"], key=lambda s: (st["s1h"][s]["hnr"], s))
+    return items, {"eligible": len(st["pool"]), "f1_eligible": len(st["f1_pool"]),
+                   "q_eligible": len(q_pool), "unpaired": [s for s in order if s not in made]}
 
 
 def truth_entry(check, arm, it, sides):
@@ -797,38 +816,18 @@ def select_c(args, c, rng, lheard, rec):
     each paired with an F1 voice by `staged_bench.pair_f1`. An F1 voice is unheard, not one of
     these S1 voices, and has at least two F1 train recordings of 4-8 s. Fewer than 16 pairs
     is refused: the check is not run and the owner decides."""
-    s1h, allh = hnr_table(args.s1_hnr_json), hnr_table(args.hnr_json)
-    rec("s1_hnr_json", args.s1_hnr_json)
-    rec("hnr_json", args.hnr_json)
-    rows, clips = s1_clips(args, lheard, s1h, False, rec)
-    pool = {s: s1h[s]["hnr"] for s, cl in clips.items() if len(cl) >= MIN_CLIPS}
-    print("%d S1 voices eligible (%d heard)" % (len(pool), len(lheard)))
-    voices = pick_voices(pool, args.n, args.check)
-    fclips, who, row_of = f1_clips(args, lheard | set(voices), allh, rec)
-    f1_pool = {v: (allh[v]["hnr"], allh[v]["f0"], who[v][0])
-               for v, cl in fclips.items() if len(cl) >= MIN_CLIPS}
-    print("%d F1 voices eligible" % len(f1_pool))
-    pairs = sb.pair_f1({s: (s1h[s]["hnr"], s1h[s]["f0"]) for s in voices}, f1_pool)
+    st = s1_f1_setup(args, lheard, rec)
+    pairs = sb.pair_f1({s: (st["s1h"][s]["hnr"], st["s1h"][s]["f0"]) for s in st["voices"]},
+                       st["f1_pool"])
     least = c["min_units"]
     if len(pairs) < least:
         raise SystemExit("REFUSING: %d pairs; check %d needs at least %d. It is not run, and "
                          "the owner decides." % (len(pairs), args.check, least))
     paired = {s for s, _v in pairs}
-    items = []
-    for i, (s, v) in enumerate(pairs):
-        w1 = lb.assign_clips({s: clips[s]}, ("S1",), rng, args.target_seconds)[s]["S1"]
-        wf = lb.assign_clips({v: fclips[v]}, ("F1",), rng, args.target_seconds)[v]["F1"]
-        lid, sid = who[v]
-        items.append(dict(s1_unit(i, s, s1h), f1={
-            "libri": v, "libritts_id": lid, "f1_sid": sid, "hnr": allh[v]["hnr"],
-            "f0": allh[v]["f0"], "partition": allh[v].get("partition")}, arms={
-            "S1": {"source": w1, "seconds": round(dict(clips[s])[w1], 2),
-                   "phonemes": rows[w1][1]},
-            "F1": {"source": wf, "seconds": round(dict(fclips[v])[wf], 2),
-                   "phonemes": row_of[wf][1], "row": row_of[wf][0]}}))
-    return items, {"eligible": len(pool), "f1_eligible": len(f1_pool),
-                   "unpaired": [s for s in sorted(voices, key=lambda s: (s1h[s]["hnr"], s))
-                                if s not in paired]}
+    order = sorted(st["voices"], key=lambda s: (st["s1h"][s]["hnr"], s))
+    items = [s1_f1_unit(args, rng, i, s, v, st) for i, (s, v) in enumerate(pairs)]
+    return items, {"eligible": len(st["pool"]), "f1_eligible": len(st["f1_pool"]),
+                   "unpaired": [s for s in order if s not in paired]}
 
 
 def select_d(args, c, rng, lheard, rec):
