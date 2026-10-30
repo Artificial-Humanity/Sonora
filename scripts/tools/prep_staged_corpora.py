@@ -341,7 +341,10 @@ def f1(args):
 
 
 # corpus: its train/val filelists and speaker-table size, for `stats`
-STATS_CORPORA = {"libritts_r_22k": 247, "libritts_22k": 247, "f1_dense": 90}
+STATS_CORPORA = {"libritts_r_22k": 247, "libritts_22k": 247, "f1_dense": 90,
+                 "q_synth_22k": 90}
+# A corpus named by its config (configs/data/q_synth.yaml) rather than its directory.
+STATS_ALIASES = {"q_synth": "q_synth_22k"}
 E_EXPECT = {"train": 29441, "val": 910}         # check D: S1's row counts, exact
 E_VERSIONS = {"phonemizer": "3.4.0", "espeak_ng": "1.52.0"}  # owner ruling 2026-10-19
 
@@ -432,17 +435,19 @@ def stats(args):
     from matcha.data.text_mel_datamodule import TextMelDataModule
     from matcha.utils.generate_data_statistics import compute_data_statistics
 
-    d = Path(DATA) / args.corpus
+    corpus = STATS_ALIASES.get(args.corpus, args.corpus)
+    d = Path(DATA) / corpus
     dm = TextMelDataModule(
-        name="%s_stats" % args.corpus, train_filelist_path=str(d / "train_op.txt"),
+        name="%s_stats" % corpus, train_filelist_path=str(d / "train_op.txt"),
         valid_filelist_path=str(d / "val_op.txt"), batch_size=256, num_workers=args.workers,
         pin_memory=False, cleaners=["no_cleaners"], add_blank=True,
-        n_spks=STATS_CORPORA[args.corpus],
+        n_spks=STATS_CORPORA[corpus],
         data_statistics=None, seed=1234, load_durations=False, load_vat=False, vat_dim=None,
         **dict(zip(sd.MEL_KEYS, sd.STOCK_MEL)))
     dm.setup()
     params = compute_data_statistics(dm.train_dataloader(), sd.STOCK_MEL[1])
-    (d / "mel_statistics.json").write_text(json.dumps(params))
+    from synth_common import write_json_atomic
+    write_json_atomic(d / "mel_statistics.json", params)
     print("mel_statistics:", json.dumps(params))
 
 
@@ -450,8 +455,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=("vctk", "libritts", "original", "d1", "g", "f1", "e", "stats"))
     ap.add_argument("--workers", type=int, default=16)
-    ap.add_argument("--corpus", choices=sorted(STATS_CORPORA),
-                    default="libritts_r_22k", help="stats: S1's corpus, L's or F1's")
+    ap.add_argument("--corpus", choices=sorted(set(STATS_CORPORA) | set(STATS_ALIASES)),
+                    default="libritts_r_22k",
+                    help="stats: S1's corpus, L's, F1's or Q's (q_synth or q_synth_22k)")
     args = ap.parse_args()
     {"vctk": vctk, "libritts": libritts, "original": original, "d1": d1, "g": g, "f1": f1,
      "e": e, "stats": stats}[args.cmd](args)

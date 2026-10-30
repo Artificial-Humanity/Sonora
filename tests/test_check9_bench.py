@@ -176,3 +176,8 @@ def test_truth_entry_gives_s1_in_check9_its_partition_and_f0():
                                      "19/198/19_198_000000_000000_22k.wav")}}}
     entry = render_ear_staged.truth_entry(9, "S1", it, [(0, "S1"), (1, "F1")])
     assert entry["spk"] == 5 and entry["partition"] == "train-other" and entry["f0"] == 130.0
+
+
+def test_rated_in_all_is_the_three_arm_intersection():
+    gaps = {"S1": {0: 1.0, 1: 1.0, 2: 1.0}, "F1": {0: 0.5, 1: 0.5}, "Q": {0: 0.0, 2: 0.0}}
+    assert sb.rated_in_all(gaps, ("S1", "F1", "Q")) == {0}

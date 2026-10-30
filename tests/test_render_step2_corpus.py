@@ -217,18 +217,20 @@ def test_a_360_plan_grows_to_400_with_reserve_and_nothing_else(tmp_path):
     cdir.mkdir()
     bank360 = {"version": "v", "campaign": "c", "lines": primary}
     (cdir / "bank.json").write_text(json.dumps(bank360), encoding="utf-8")
+    (cdir / "plan.json").write_text(json.dumps(_meta(commit="aaa")), encoding="utf-8")
     reserve = [{"id": "2b-%04d" % k, "text": "R%d." % k, "role": "reserve",
                 "speaker_line_index": k} for k in range(361, 401)]
     bank400 = {"version": "v", "campaign": "c",
                "lines": s2c.bank_lines(t[0], rows + reserve)[0]}
-    s2c._refuse_existing(str(cdir), bank400, {"include_reserve": True})   # no SystemExit
+    grow = _meta(commit="aaa", include_reserve=True)
+    s2c._refuse_existing(str(cdir), bank400, grow)                       # no SystemExit
     # Not a growth without the flag, and not a changed primary line:
     with pytest.raises(SystemExit):
-        s2c._refuse_existing(str(cdir), bank400, {"include_reserve": False})
+        s2c._refuse_existing(str(cdir), bank400, _meta(commit="aaa", include_reserve=False))
     changed = json.loads(json.dumps(bank400))
     changed["lines"][0]["seed"] += 1
     with pytest.raises(SystemExit):
-        s2c._refuse_existing(str(cdir), changed, {"include_reserve": True})
+        s2c._refuse_existing(str(cdir), changed, grow)
 
 
 def test_load_speakers_refuses_unknown_and_duplicate_indices(tmp_path, capsys):
@@ -241,3 +243,90 @@ def test_load_speakers_refuses_unknown_and_duplicate_indices(tmp_path, capsys):
     assert "not in the loaded table" in capsys.readouterr().err
     with pytest.raises(SystemExit):
         s2c.load_speakers(str(tmp_path), [0, 0])
+
+
+def _speaker_dir(tmp_path, bank, meta, renders=False):
+    cdir = tmp_path / "spk_00"
+    (cdir / "audio").mkdir(parents=True)
+    (cdir / "bank.json").write_text(json.dumps(bank), encoding="utf-8")
+    (cdir / "plan.json").write_text(json.dumps(meta), encoding="utf-8")
+    if renders:
+        (cdir / "audio" / "qwen_base_manifest.jsonl").write_text("{}\n", encoding="utf-8")
+    return cdir
+
+
+def _meta(commit="aaa", pin=None, include_reserve=False):
+    return {"commit": commit, "engine_pin": pin or {"wheel": "w"},
+            "include_reserve": include_reserve}
+
+
+def test_renders_without_a_readable_plan_are_refused(tmp_path, capsys):
+    cdir = tmp_path / "spk_00"
+    (cdir / "audio").mkdir(parents=True)
+    (cdir / "audio" / "qwen_base_manifest.jsonl").write_text("{}\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        s2c._refuse_existing(str(cdir), {"lines": []}, _meta())
+    assert "plan.json is missing" in capsys.readouterr().err
+
+
+def test_a_changed_engine_pin_is_refused(tmp_path, capsys):
+    bank = {"lines": []}
+    cdir = _speaker_dir(tmp_path, bank, _meta(pin={"wheel": "old"}))
+    with pytest.raises(SystemExit):
+        s2c._refuse_existing(str(cdir), bank, _meta(pin={"wheel": "new"}))
+    assert "engine pin" in capsys.readouterr().err
+
+
+def test_an_identical_bank_with_renders_from_another_commit_is_refused(tmp_path, capsys):
+    bank = {"lines": []}
+    cdir = _speaker_dir(tmp_path, bank, _meta(commit="aaa"), renders=True)
+    with pytest.raises(SystemExit):
+        s2c._refuse_existing(str(cdir), bank, _meta(commit="bbb"))
+    assert "mix two plans" in capsys.readouterr().err
+
+
+def test_an_identical_bank_with_no_renders_takes_the_new_commit(tmp_path):
+    bank = {"lines": []}
+    cdir = _speaker_dir(tmp_path, bank, _meta(commit="aaa"))
+    assert s2c._refuse_existing(str(cdir), bank, _meta(commit="bbb"))["commit"] == "bbb"
+
+
+def _grow(tmp_path, monkeypatch, changed):
+    t = _table()
+    rows = [{"id": "2b-%04d" % k, "text": "L%d." % k, "role": "primary",
+             "speaker_line_index": k} for k in range(1, 361)]
+    reserve = [{"id": "2b-%04d" % k, "text": "R%d." % k, "role": "reserve",
+                "speaker_line_index": k} for k in range(361, 401)]
+    bank360 = {"version": "v", "campaign": "c", "lines": s2c.bank_lines(t[0], rows)[0]}
+    bank400 = {"version": "v", "campaign": "c",
+               "lines": s2c.bank_lines(t[0], rows + reserve)[0]}
+    cdir = _speaker_dir(tmp_path, bank360, _meta(commit="aaa"), renders=True)
+    monkeypatch.setattr(s2c, "changed_since", lambda a, b: changed)
+    return cdir, bank400
+
+
+def test_a_growth_keeps_the_original_commit(tmp_path, monkeypatch):
+    cdir, bank400 = _grow(tmp_path, monkeypatch, changed=[])
+    out = s2c._refuse_existing(str(cdir), bank400,
+                               _meta(commit="bbb", include_reserve=True))
+    assert out["commit"] == "aaa"
+
+
+def test_a_growth_across_render_affecting_code_is_refused(tmp_path, monkeypatch, capsys):
+    cdir, bank400 = _grow(tmp_path, monkeypatch, changed=["scripts/tools/render_step2_corpus.py"])
+    with pytest.raises(SystemExit):
+        s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True))
+    assert "render-affecting" in capsys.readouterr().err
+
+
+def test_the_q_corpus_is_registered_in_prep_with_its_config_alias():
+    import prep_staged_corpora as prep
+    assert prep.STATS_CORPORA["q_synth_22k"] == 90
+    assert prep.STATS_ALIASES["q_synth"] == "q_synth_22k"
+
+
+def test_mel_stats_refuses_an_out_dir_prep_would_not_write_to(tmp_path, capsys):
+    args = type("A", (), {"out_dir": str(tmp_path), "workers": 1})()
+    with pytest.raises(SystemExit):
+        s2c.cmd_mel_stats(args)
+    assert "not that" in capsys.readouterr().err
