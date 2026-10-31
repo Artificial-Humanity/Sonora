@@ -81,7 +81,7 @@ class BaseLightningClass(LightningModule, ABC):
         }
 
     def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        self.ckpt_loaded_epoch = checkpoint["epoch"]  # pylint: disable=attribute-defined-outside-init
+        self.ckpt_loaded_epoch = checkpoint.get("epoch", 0)  # pylint: disable=attribute-defined-outside-init
         # The corpora of every earlier stage, so a warm-started descendant still names the
         # data its donor was trained on when the publish wall reads it at export (#421).
         #
@@ -242,14 +242,16 @@ class BaseLightningClass(LightningModule, ABC):
                         step=self.global_step,
                     )
 
+            # A one-item first batch (batch_size=1 or a one-clip val set) has no second clip.
+            n_clips = min(2, one_batch["x"].shape[0])
             if self.current_epoch == 0:
                 log.debug("Plotting original samples")
-                for i in range(2):
+                for i in range(n_clips):
                     y = one_batch["y"][i].unsqueeze(0).to(self.device)
                     log_image(f"original/{i}", y)
 
             log.debug("Synthesising...")
-            for i in range(2):
+            for i in range(n_clips):
                 x = one_batch["x"][i].unsqueeze(0).to(self.device)
                 x_lengths = one_batch["x_lengths"][i].unsqueeze(0).to(self.device)
                 spks = one_batch["spks"][i].unsqueeze(0).to(self.device) if one_batch["spks"] is not None else None

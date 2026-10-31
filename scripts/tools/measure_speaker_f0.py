@@ -181,7 +181,7 @@ def main():
     eligible = sorted(s for s, v in rows.items() if len(v) >= args.min_rows)
     if not eligible:
         _empty("no speaker in %s has %d rows — the most any has is %d"
-               % (path, args.min_rows, max(len(v) for v in rows.values())))
+               % (path, args.min_rows, max((len(v) for v in rows.values()), default=0)))
 
     rng = random.Random(args.seed)
     # ⚠ COPY, NOT AN ALIAS. `--also` appends to `chosen`, and with a bare assignment
@@ -210,7 +210,12 @@ def main():
     for s in chosen:
         vals = []
         for fp in rng.sample(rows[s], min(args.clips_per_speaker, len(rows[s]))):
-            v = clip_f0(fp, args.fmin, args.fmax, args.rms_floor, args.periodicity)
+            try:
+                v = clip_f0(fp, args.fmin, args.fmax, args.rms_floor, args.periodicity)
+            except (RuntimeError, OSError):
+                # soundfile raises LibsndfileError (a RuntimeError) on an unreadable wav; one bad
+                # clip counts with the unvoiced ones instead of aborting the whole sweep.
+                v = float("nan")
             if np.isfinite(v):
                 vals.append(v)
         if not vals:

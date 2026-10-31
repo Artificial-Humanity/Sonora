@@ -91,6 +91,7 @@ class MultiHeadAttention(nn.Module):
         self.n_heads = n_heads
         self.head_dim = channels // n_heads
         self.rope_dim = self.head_dim // 2
+        assert self.rope_dim % 2 == 0, f"RoPE width {self.rope_dim} (head_dim {self.head_dim} // 2) must be even"
         self.p_dropout = p_dropout
         self.conv_q = nn.Conv1d(channels, channels, 1)
         self.conv_k = nn.Conv1d(channels, channels, 1)

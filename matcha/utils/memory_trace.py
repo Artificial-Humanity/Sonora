@@ -162,6 +162,7 @@ class MemoryTrace(Callback):
             "phase": "start",
             "age_s": round(self._t_step_start - self._t0, 1),
             "step": int(trainer.global_step),
+            "batch_idx": int(batch_idx),
             "batch": int(y.shape[0]) if y is not None else None,
             "frames": int(y.shape[-1]) if y is not None else None,
         })
@@ -170,7 +171,7 @@ class MemoryTrace(Callback):
         if self._fh is None:
             return
         try:
-            self._write(self._end_record(trainer, batch))
+            self._write(self._end_record(trainer, batch, batch_idx))
         except Exception as e:  # noqa: BLE001 - a trace must never end the run
             log.warning("MemoryTrace: disabled after %s: %s", type(e).__name__, e)
             self._fh = None
@@ -191,14 +192,18 @@ class MemoryTrace(Callback):
             log.warning("MemoryTrace: disabled after %s: %s", type(e).__name__, e)
             self._fh = None
 
-    def _end_record(self, trainer, batch) -> dict[str, Any]:  # noqa: ANN001
+    def _end_record(self, trainer, batch, batch_idx) -> dict[str, Any]:  # noqa: ANN001
         now = time.monotonic()
         y = batch.get("y") if isinstance(batch, dict) else None
         rec: dict[str, Any] = {
             "phase": "end",
             "utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "age_s": round(now - self._t0, 1),
+            # `step` is read AFTER Lightning increments global_step, so it is one ahead of the
+            # matching `start` line (and equal to the previous one under gradient accumulation).
+            # Join start/end lines on `batch_idx`, which both carry unchanged.
             "step": int(trainer.global_step),
+            "batch_idx": int(batch_idx),
             "step_s": round(now - self._t_step_start, 3) if self._t_step_start else None,
             "batch": int(y.shape[0]) if y is not None else None,
             "frames": int(y.shape[-1]) if y is not None else None,
