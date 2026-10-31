@@ -327,6 +327,25 @@ def test_a_cell_with_renders_from_another_commit_is_not_replanned(env):
     assert "render %s" % CELLS[0] in msg and "new --out-root" in msg, "no way out named"
 
 
+def test_a_cell_with_renders_is_not_replanned_under_a_changed_engine_pin(env, monkeypatch):
+    """Audit M-6: plan rewrote plan_meta.engine_pin unconditionally, so the render launch gate then
+    passed a half-rendered cell on different engine code."""
+    _plan(env)
+    audio = env["out"] / "M4-s3_zonos" / "audio"
+    audio.mkdir()
+    (audio / "zonos_manifest.jsonl").write_text("{}\n")
+    before = (env["out"] / "M4-s3_zonos" / "plan_meta.json").read_text()
+    real = r1.engine_pin
+    monkeypatch.setattr(r1, "engine_pin", lambda e: dict(real(e), commit="moved") if e == "zonos" else real(e))
+    with pytest.raises(SystemExit, match="engine pin"):
+        _plan(env)
+    assert (env["out"] / "M4-s3_zonos" / "plan_meta.json").read_text() == before
+    # A cell with no renders may be re-planned under the new pin:
+    (audio / "zonos_manifest.jsonl").unlink()
+    _plan(env)
+    assert _meta(env, "M4-s3_zonos")["engine_pin"]["commit"] == "moved"
+
+
 # --- render -------------------------------------------------------------------------------
 
 class Launches(list):

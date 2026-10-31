@@ -795,7 +795,6 @@ function probeCardEl(probeId, c, updateProbeStat){
       ${ac.hnr_db!=null?`<span class="tag">HNR ${(+ac.hnr_db).toFixed(1)} dB</span>`:''}
       ${c.zone?`<span class="badge set">Zone: ${esc(c.zone)}</span>`:''}
     </div>
-    ${c.instruct?`<div class="direction"><div><b>instruct</b>${esc(c.instruct)}</div></div>`:''}
     <audio controls preload="none" src="${AUDIO(c.wav)}"></audio>
     <div class="panels">
       <div class="panel voice">

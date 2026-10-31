@@ -472,3 +472,14 @@ def test_audition_probe_mode_reads_manifest_jsonl_and_measures_jsonl(tmp_path, m
     assert vrows[0]["touched_age"] == "1"
 
 
+
+
+def test_the_probe_card_does_not_show_the_prompt_instruct():
+    """Audit M-7: render_qwen_1c0's contract is that nothing from the prompt is shown to the
+    listener (the instruct carries the pitch rung and age band), but the card rendered it."""
+    html = (pathlib.Path(__file__).resolve().parent.parent / "audition" / "app" / "static"
+            / "index.html").read_text(encoding="utf-8")
+    start = html.index("function probeCardEl(")
+    card = html[start:html.index("\nfunction ", start + 1)] if "\nfunction " in html[start + 1:] else html[start:]
+    assert "c.instruct" not in card
+    assert "esc(c.id)" in card          # the slice is the card, not an empty match

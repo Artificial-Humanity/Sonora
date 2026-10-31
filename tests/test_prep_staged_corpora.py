@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from scripts_layout import SCRIPTS
+from scripts_layout import REPO, SCRIPTS
 
 SCRIPTS.on_path()
 import prep_staged_corpora as prep  # noqa: E402
@@ -269,3 +269,38 @@ def test_espeak_phonemize_matches_english_cleaners2(monkeypatch):
     got = prep._espeak_phonemize(sents, workers=4)
     assert got == expected
     assert seen[-1] == ([s[0][0] for s in seen[:-1]], 4)
+
+
+def test_stats_writes_mel_statistics_when_run_as_a_script(tmp_path):
+    """Audit I-1: `stats` imported `synth_common` bare, which only resolves when scripts/lib is on
+    sys.path. Run as the documented script, only scripts/tools is, so the import failed after the
+    slow statistics pass and nothing was written. The torch-side pieces are stubbed."""
+    import subprocess
+    import sys
+    code = """
+import argparse, sys, types
+sys.path.insert(0, %r)
+import prep_staged_corpora as prep
+assert not any(p.endswith('scripts/lib') for p in sys.path), sys.path
+prep.DATA = %r
+dm = types.ModuleType('matcha.data.text_mel_datamodule')
+class TextMelDataModule:
+    def __init__(self, **kw): pass
+    def setup(self): pass
+    def train_dataloader(self): return None
+dm.TextMelDataModule = TextMelDataModule
+gs = types.ModuleType('matcha.utils.generate_data_statistics')
+gs.compute_data_statistics = lambda loader, sigma: {'mel_mean': 1.0, 'mel_std': 2.0}
+for name, mod in (('matcha', types.ModuleType('matcha')), ('matcha.data', types.ModuleType('matcha.data')),
+                  ('matcha.utils', types.ModuleType('matcha.utils')),
+                  ('matcha.data.text_mel_datamodule', dm), ('matcha.utils.generate_data_statistics', gs)):
+    sys.modules[name] = mod
+prep.stats(argparse.Namespace(corpus='q_synth_22k', workers=1))
+""" % (str(REPO / "scripts" / "tools"), str(tmp_path))
+    (tmp_path / "q_synth_22k").mkdir()
+    env = {k: v for k, v in __import__("os").environ.items() if k != "PYTHONPATH"}
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env,
+                       cwd=str(tmp_path))
+    assert r.returncode == 0, r.stderr
+    got = json.loads((tmp_path / "q_synth_22k" / "mel_statistics.json").read_text())
+    assert got == {"mel_mean": 1.0, "mel_std": 2.0}

@@ -4,6 +4,7 @@ Pins the pre-registered readings of checks 1-4 (Notes: Sonora/staged-rebuild-
 preregistration.md), the one-sided test they rest on, which voices are excluded, and how
 items are served.
 """
+import json
 import random
 from fractions import Fraction
 
@@ -258,3 +259,19 @@ def test_check4_splits_s1_minus_l_into_model_and_round_trip_descriptively():
     rt = {"S1": {0: 1, 1: 1, 2: 0}, "L": {0: 2, 1: 1, 3: 0}}
     d = sb.split_contrast(model, rt, "S1", "L")
     assert d == {"model": (1.5, 2), "round_trip": (-0.5, 2)}     # units 0 and 1 only
+
+
+def test_qs_final_is_the_step_that_ends_its_tenth_epoch(tmp_path):
+    """Audit M-4: Q has no FINAL_CKPT entry, so any epoch=009 step checkpoint passed, including one
+    written mid-epoch by a mis-set SONORA_CKPT_EVERY_N_STEPS."""
+    prov = tmp_path / "provenance.json"
+    ck = "/x/checkpoints/checkpoint_epoch=009_step=%07d.ckpt"
+    assert sb.final_ckpt("Q", ck % 5, str(prov))                    # no corpus yet: the tenth-epoch rule
+    assert sb.q_final_step(str(prov)) is None
+    prov.write_text(json.dumps({"steps_per_epoch": 1000}), encoding="utf-8")
+    assert sb.q_final_step(str(prov)) == 9999
+    assert sb.final_ckpt("Q", ck % 9999, str(prov))
+    assert not sb.final_ckpt("Q", ck % 9500, str(prov))             # mid-epoch-9
+    assert not sb.final_ckpt("Q", "/x/checkpoints/checkpoint_epoch=008_step=0009999.ckpt", str(prov))
+    assert not sb.final_ckpt("Q", "/x/checkpoints/last.ckpt", str(prov))
+    assert sb.final_ckpt("S1", ck % 9500, str(prov))                # other arms are unchanged

@@ -447,7 +447,7 @@ def cmd_plan(args):
     out_root = os.path.abspath(args.out_root)
     cells, directions = planned_cells()
     # Every refusal before the first write, so a refused plan leaves nothing half-written.
-    for cell, (_a, _e, bank) in cells.items():
+    for cell, (_a, engine, bank) in cells.items():
         cdir = os.path.join(out_root, cell)
         if os.path.exists(os.path.join(cdir, "bank.json")) and \
                 _load_json(os.path.join(cdir, "bank.json")) != bank:
@@ -462,6 +462,16 @@ def cmd_plan(args):
                    "files that do. To start over at this commit, plan into a new --out-root."
                    % (cdir, _load_json(meta).get("commit") if os.path.exists(meta) else
                       "no plan_meta.json", git["commit"], cell))
+        # The engine pin can move with the commit unchanged (the Zonos checkout lives outside this
+        # repo); re-planning would rewrite plan_meta and let `render` resume on different engine code.
+        if _has_manifest(os.path.join(cdir, "audio")):
+            planned_pin = _load_json(meta).get("engine_pin")
+            if planned_pin != engine_pin(engine):
+                refuse("%s/audio holds renders planned with engine pin %s; it is now %s, and "
+                       "re-planning would let `render` resume on different engine code. Plan into "
+                       "a new --out-root."
+                       % (cdir, json.dumps(planned_pin, sort_keys=True),
+                          json.dumps(engine_pin(engine), sort_keys=True)))
     for cell, (anchor, engine, bank) in cells.items():
         cdir = os.path.join(out_root, cell)
         os.makedirs(cdir, exist_ok=True)
@@ -486,15 +496,18 @@ MISSING_SHOWN = 10          # missing ids printed by name; the rest are counted
 def manifest_status(cdir, engine, bank):
     """How much of `bank` the cell's `<engine>_manifest.jsonl` holds.
 
-    {"manifest", "expected", "rendered", "missing", "wav_without_row", "unreadable_lines"}:
-    `rendered` counts the unique bank ids with a row, `missing` lists the others in bank order, and
-    `wav_without_row` the missing ids whose wav exists anyway (a renderer skips an existing wav, so
-    a re-run never gives those a row). A line that does not parse (a write cut short) is counted in
-    `unreadable_lines` and gives no id."""
+    {"manifest", "expected", "rendered", "missing", "wav_without_row", "unreadable_lines",
+    "seed_mismatch"}: `rendered` counts the unique bank ids with a row, `missing` lists the others
+    in bank order, and `wav_without_row` the missing ids whose wav exists anyway (a renderer skips
+    an existing wav, so a re-run never gives those a row). A line that does not parse (a write cut
+    short) is counted in `unreadable_lines` and gives no id. `seed_mismatch` lists, in bank order,
+    the ids whose row records a seed other than the bank line's: the clip was not drawn from the
+    planned seed (synth_common.attempt_seed bumps it when a crashed clip is resumed), so the cell
+    is not comparable with one that was."""
     audio = os.path.join(cdir, "audio")
     path = os.path.join(audio, "%s_manifest.jsonl" % engine)
     expected = [ln["id"] for ln in bank["lines"]]
-    got, unreadable = set(), 0
+    got, row_seed, unreadable = set(), {}, 0
     if os.path.isfile(path):
         with open(path, encoding="utf-8") as fh:
             for raw in fh:
@@ -507,12 +520,16 @@ def manifest_status(cdir, engine, bank):
                     continue
                 if isinstance(row, dict) and isinstance(row.get("id"), str):
                     got.add(row["id"])
+                    if "seed" in row:
+                        row_seed[row["id"]] = row["seed"]
+    bank_seed = {ln["id"]: ln.get("seed") for ln in bank["lines"]}
+    seed_mismatch = [i for i in expected if i in row_seed and row_seed[i] != bank_seed[i]]
     missing = [i for i in expected if i not in got]
     return {"manifest": path, "expected": len(expected), "rendered": len(expected) - len(missing),
             "missing": missing,
             "wav_without_row": [i for i in missing
                                 if os.path.exists(os.path.join(audio, i + ".wav"))],
-            "unreadable_lines": unreadable}
+            "unreadable_lines": unreadable, "seed_mismatch": seed_mismatch}
 
 
 def _some(ids):
@@ -528,8 +545,15 @@ def report_status(cell, status, synth_bank_code=None):
     if status["unreadable_lines"]:
         print("WARNING: %d line(s) of %s do not parse and were not counted."
               % (status["unreadable_lines"], status["manifest"]))
+    mismatched = status.get("seed_mismatch") or []
+    if mismatched:
+        print("NON-COMPARABLE: %s has %d clip(s) whose manifest seed is not the bank's: %s. "
+              "They were not drawn from the planned seed (a crash-resume bumps it through "
+              "<audio>/.attempts.json), so this cell must not be compared with cells that were. "
+              "Move those wavs into <cell>/audio/_superseded/, remove their manifest rows and "
+              "re-render." % (cell, len(mismatched), _some(mismatched)), file=_sys.stderr)
     if not status["missing"]:
-        return 0
+        return PARTIAL_EXIT if mismatched else 0
     lines = ["PARTIAL RENDER: %s is missing %d of %d clips: %s." % (
         cell, len(status["missing"]), status["expected"], _some(status["missing"]))]
     if synth_bank_code == 0:

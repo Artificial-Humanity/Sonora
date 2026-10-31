@@ -32,6 +32,7 @@ No torch here, so the host test suite covers it.
 """
 
 import itertools
+import json
 import math
 import re
 import statistics as st
@@ -122,6 +123,9 @@ FINAL_CKPT = {"D1": "checkpoint_epoch=025_step=0009229.ckpt",
               "F1": "checkpoint_epoch=009_step=0009779.ckpt",
               "E": "checkpoint_epoch=009_step=0009209.ckpt"}
 _EPOCH = re.compile(r"^checkpoint_epoch=(\d{3})_step=\d{7}\.ckpt$")
+# Q's final is the step that ended its tenth epoch, 10 x steps_per_epoch - 1, and its steps per epoch
+# exist only once the corpus is built: render_step2_corpus.py build-corpus records it in provenance.json.
+Q_PROVENANCE = "/data/model-training/sonora/data/q_synth_22k/provenance.json"
 
 
 def one_sided_p(d):
@@ -198,11 +202,32 @@ def ten_epoch_ckpt(path):
     return bool(_TEN.match(Path(path).name))
 
 
-def final_ckpt(arm, path):
+def q_final_step(provenance=Q_PROVENANCE):
+    """The optimizer step that ends Q's tenth epoch, 10 x steps_per_epoch - 1, from the corpus's
+    provenance.json; None while the corpus is not built (no file)."""
+    try:
+        with open(provenance, encoding="utf-8") as fh:
+            per_epoch = json.load(fh)["steps_per_epoch"]
+    except FileNotFoundError:
+        return None
+    return 10 * per_epoch - 1
+
+
+def final_ckpt(arm, path, q_provenance=Q_PROVENANCE):
     """Is this `arm`'s registered final checkpoint? Its `FINAL_CKPT` name exactly, or, for an
-    arm not registered there, the step checkpoint that ended the tenth epoch."""
+    arm not registered there, the step checkpoint that ended the tenth epoch. For Q, whose name
+    is known only once its corpus exists, that checkpoint's step must also be the one that ends
+    the tenth epoch (`q_final_step`): a mid-epoch step checkpoint carries epoch=009 as well."""
     want = FINAL_CKPT.get(arm)
-    return Path(path).name == want if want else ten_epoch_ckpt(path)
+    if want:
+        return Path(path).name == want
+    if not ten_epoch_ckpt(path):
+        return False
+    if arm == "Q":
+        step = q_final_step(q_provenance)
+        if step is not None:
+            return int(Path(path).name.split("_step=")[1].split(".")[0]) == step
+    return True
 
 
 def final_epochs(arm):

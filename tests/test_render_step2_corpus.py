@@ -357,3 +357,246 @@ def test_qc_passing_keeps_only_clips_within_the_1_to_16_second_bounds(tmp_path):
                 for cid, d in ids.items()), encoding="utf-8")
     kept = [k[0] for k in s2c.qc_passing(str(spk), "qwen_base")]
     assert kept == ["ceiling", "floor", "mid"]
+
+
+# ---- audit 2026-10-31: I-2, M-1, M-2, M-5 -------------------------------------------------
+
+def _speaker_rows(n_primary=s2c.PRIMARY, n_total=s2c.SPEAKER_LINES):
+    return [{"id": "2b-%04d" % k, "text": "Line %d." % k, "speaker_index": 0,
+             "role": "primary" if k <= n_primary else "reserve", "speaker_line_index": k}
+            for k in range(1, n_total + 1)]
+
+
+def _text_dir(tmp_path, rows=None, record_sha=True):
+    """A frozen-bank directory for spk_00 only: meta.json hashing exactly the file it holds."""
+    import hashlib
+    rows = _speaker_rows() if rows is None else rows
+    raw = "".join(json.dumps(r) + "\n" for r in rows).encode("utf-8")
+    d = tmp_path / "text"
+    (d / "speakers").mkdir(parents=True)
+    (d / "speakers" / "spk_00.jsonl").write_bytes(raw)
+    meta = {"sha256": s2c.TEXT_SHA}
+    if record_sha:
+        meta["speaker_file_sha256"] = {"spk_00": hashlib.sha256(raw).hexdigest()}
+    (d / "meta.json").write_text(json.dumps(meta), encoding="utf-8")
+    return d
+
+
+def _plan_args(tmp_path, text_dir, include_reserve=False):
+    out = tmp_path / "raw"
+    out.mkdir(exist_ok=True)
+    locked5 = [s for s in _table() if s["index"] in s2c.LOCKED_SPEAKERS]
+    (out / "speakers_locked5.json").write_text(json.dumps({"speakers": locked5}), encoding="utf-8")
+    return type("A", (), {"text_dir": str(text_dir), "out_root": str(out), "speakers": [0],
+                          "include_reserve": include_reserve, "allow_dirty": True})()
+
+
+@pytest.fixture
+def plannable(monkeypatch):
+    monkeypatch.setattr(s2c.r1, "tool_commit", lambda: {"commit": "aaa", "tree_clean": True})
+    monkeypatch.setattr(s2c.r2, "engine_pin", lambda engine: {"wheel": "w"})
+
+
+def test_plan_writes_a_verified_speaker_file(tmp_path, plannable):
+    args = _plan_args(tmp_path, _text_dir(tmp_path))
+    assert s2c.cmd_plan(args) == 0
+    plan = json.loads((tmp_path / "raw" / "spk_00" / "plan.json").read_text())
+    assert plan["lines"] == s2c.PRIMARY and plan["text_sha256"] == s2c.TEXT_SHA
+
+
+def test_plan_refuses_a_speaker_file_that_is_not_the_one_meta_hashed(tmp_path, plannable, capsys):
+    d = _text_dir(tmp_path)
+    f = d / "speakers" / "spk_00.jsonl"
+    f.write_text(f.read_text().replace("Line 7.", "Line seven."), encoding="utf-8")
+    with pytest.raises(SystemExit):
+        s2c.cmd_plan(_plan_args(tmp_path, d))
+    assert "meta.json records" in capsys.readouterr().err
+    assert not (tmp_path / "raw" / "spk_00" / "plan.json").exists()
+
+
+def test_plan_refuses_a_truncated_speaker_file_even_when_its_hash_is_recorded(
+        tmp_path, plannable, capsys):
+    d = _text_dir(tmp_path, rows=_speaker_rows()[:10])          # meta hashes the truncated bytes
+    with pytest.raises(SystemExit):
+        s2c.cmd_plan(_plan_args(tmp_path, d))
+    assert "holds 10 rows" in capsys.readouterr().err
+
+
+def test_plan_refuses_wrong_roles_or_line_indices(tmp_path, plannable, capsys):
+    rows = _speaker_rows()
+    rows[5]["role"] = "reserve"                                  # 359 primary, 41 reserve
+    with pytest.raises(SystemExit):
+        s2c.cmd_plan(_plan_args(tmp_path, _text_dir(tmp_path, rows=rows)))
+    assert "360 primary then 40 reserve" in capsys.readouterr().err
+    rows = _speaker_rows()
+    rows[9]["speaker_line_index"] = 11
+    with pytest.raises(SystemExit):
+        s2c.cmd_plan(_plan_args(tmp_path, _text_dir(tmp_path / "b", rows=rows)))
+
+
+def test_plan_without_a_recorded_speaker_hash_still_checks_counts(tmp_path, plannable):
+    d = _text_dir(tmp_path, record_sha=False)
+    assert s2c.cmd_plan(_plan_args(tmp_path, d)) == 0
+
+
+def _lock_fixture(tmp_path):
+    """Admitted anchors for a full lock: 44 Male (42 needed) + 43 Female, all core and hum-free."""
+    anchors, locked = tmp_path / "anchors", tmp_path / "locked"
+    (anchors / "clips").mkdir(parents=True)
+    (locked / "clips").mkdir(parents=True)
+    rows, verdicts, admitted = [], ["id,zone,hum"], {"Male": [], "Female": []}
+    for gender, n in (("Male", 44), ("Female", 43)):
+        for i in range(n):
+            cid = "%s%02d" % (gender[0], i)
+            rows.append({"id": cid, "file": "clips/%s.wav" % cid, "text": "T.", "gender": gender})
+            (anchors / "clips" / (cid + ".wav")).write_bytes(cid.encode())
+            admitted[gender].append(cid)
+            verdicts.append("%s,core,0" % cid)
+    (anchors / "manifest.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows),
+                                            encoding="utf-8")
+    (anchors / "admission_report.json").write_text(json.dumps({"admitted": admitted}),
+                                                   encoding="utf-8")
+    (anchors / "verdicts.csv").write_text("\n".join(verdicts) + "\n", encoding="utf-8")
+    lrows = [{"id": "M4-s3", "file": "clips/M4-s3.wav", "text": "M."},
+             {"id": "F6-s2", "file": "clips/F6-s2.wav", "text": "F."}]
+    (locked / "manifest.jsonl").write_text("".join(json.dumps(r) + "\n" for r in lrows),
+                                           encoding="utf-8")
+    (locked / "clips" / "M4-s3.wav").write_bytes(b"m")
+    (locked / "clips" / "F6-s2.wav").write_bytes(b"f")
+    out = tmp_path / "out"
+    out.mkdir()
+    return anchors, locked, out
+
+
+def _lock_args(anchors, locked, out, force=False):
+    return type("A", (), {"anchors_dir": str(anchors), "locked_dir": str(locked),
+                          "out_root": str(out), "locked_five_only": False,
+                          "force_relock": force})()
+
+
+def test_relock_refuses_a_differing_speakers_json_unless_forced(tmp_path, capsys):
+    anchors, locked, out = _lock_fixture(tmp_path)
+    assert s2c.cmd_lock_speakers(_lock_args(anchors, locked, out)) == 0
+    first = (out / "speakers.json").read_text()
+    assert s2c.cmd_lock_speakers(_lock_args(anchors, locked, out)) == 0     # identical: not a change
+    # The owner re-rates M00 (hum 2): every later Male anchor shifts down one index.
+    v = (anchors / "verdicts.csv").read_text().replace("M00,core,0", "M00,core,2")
+    (anchors / "verdicts.csv").write_text(v, encoding="utf-8")
+    with pytest.raises(SystemExit):
+        s2c.cmd_lock_speakers(_lock_args(anchors, locked, out))
+    assert "--force-relock" in capsys.readouterr().err
+    assert (out / "speakers.json").read_text() == first
+    assert s2c.cmd_lock_speakers(_lock_args(anchors, locked, out, force=True)) == 0
+    assert (out / "speakers.json").read_text() != first
+
+
+def test_lock_refuses_when_plans_exist_but_speakers_json_is_gone(tmp_path, capsys):
+    anchors, locked, out = _lock_fixture(tmp_path)
+    (out / "spk_05").mkdir()
+    (out / "spk_05" / "plan.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        s2c.cmd_lock_speakers(_lock_args(anchors, locked, out))
+    assert "speaker plan(s)" in capsys.readouterr().err
+    assert not (out / "speakers.json").exists()
+
+
+def test_lock_all_90_succeeds_over_plans_made_from_the_locked_five(tmp_path):
+    """Step 2c order: lock --locked-five-only, plan/render spk_00, then the full lock."""
+    anchors, locked, out = _lock_fixture(tmp_path)
+    five = _lock_args(anchors, locked, out)
+    five.locked_five_only = True
+    assert s2c.cmd_lock_speakers(five) == 0
+    assert not (out / "speakers.json").exists()
+    spk0 = s2c.load_speakers(str(out), subset=[0])[0]
+    (out / spk0["name"]).mkdir()
+    (out / spk0["name"] / "plan.json").write_text(json.dumps({"speaker": spk0}), encoding="utf-8")
+    assert s2c.cmd_lock_speakers(_lock_args(anchors, locked, out)) == 0     # no --force-relock
+    table = json.loads((out / "speakers.json").read_text())["speakers"]
+    assert len(table) == s2c.N_SPEAKERS and spk0 in table
+
+
+@pytest.mark.parametrize("plan", [
+    "{",                                                    # unreadable
+    json.dumps({"lines": 360}),                             # no speaker
+    json.dumps({"speaker": {"name": "spk_00", "index": 0}}),    # not the table's entry
+    json.dumps({"speaker": {"name": "spk_nope"}}),          # a speaker the table does not have
+], ids=["unreadable", "no-speaker", "differs", "unknown"])
+def test_lock_all_90_refuses_an_unverified_plan(tmp_path, capsys, plan):
+    anchors, locked, out = _lock_fixture(tmp_path)
+    (out / "spk_00").mkdir()
+    (out / "spk_00" / "plan.json").write_text(plan, encoding="utf-8")
+    with pytest.raises(SystemExit):
+        s2c.cmd_lock_speakers(_lock_args(anchors, locked, out))
+    assert "speaker plan(s)" in capsys.readouterr().err
+    assert not (out / "speakers.json").exists()
+
+
+def test_a_growth_that_died_between_its_two_writes_is_finished_not_wedged(tmp_path, monkeypatch):
+    """The 400-line bank is on disk and plan.json still says 360 lines at the old commit."""
+    cdir, bank400 = _grow(tmp_path, monkeypatch, changed=[])
+    (cdir / "bank.json").write_text(json.dumps(bank400), encoding="utf-8")
+    plan = _meta(commit="aaa")
+    plan["lines"] = s2c.PRIMARY
+    (cdir / "plan.json").write_text(json.dumps(plan), encoding="utf-8")
+    out = s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True))
+    assert out["commit"] == "aaa"                       # the audio's commit, not HEAD
+    # Not without the flag, and not across render-affecting code:
+    with pytest.raises(SystemExit):
+        s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb"))
+    monkeypatch.setattr(s2c, "changed_since", lambda a, b: ["scripts/tools/render_step2_corpus.py"])
+    with pytest.raises(SystemExit):
+        s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True))
+
+
+def test_plan_writes_plan_json_before_bank_json(tmp_path, plannable, monkeypatch):
+    order = []
+    real = s2c.write_json_atomic
+    monkeypatch.setattr(s2c, "write_json_atomic",
+                        lambda path, obj: (order.append(path.rsplit("/", 1)[-1]), real(path, obj)))
+    s2c.cmd_plan(_plan_args(tmp_path, _text_dir(tmp_path)))
+    assert order == ["plan.json", "bank.json"]
+
+
+def _build_args(tmp_path, monkeypatch, texts):
+    """Run cmd_build_corpus on 90 speakers x 11 stub clips; `texts` maps a clip id to its text."""
+    import sys
+    import types
+    t = _table()
+    raw = tmp_path / "raw"
+    raw.mkdir(exist_ok=True)
+    (raw / "speakers.json").write_text(json.dumps({"speakers": t}), encoding="utf-8")
+    monkeypatch.setattr(s2c, "MIN_QC", 11)
+    monkeypatch.setattr(s2c, "qc_passing", lambda d, e: [
+        ("c%02d" % i, "/w/%02d.wav" % i, texts.get("c%02d" % i, "ok.")) for i in range(11)])
+    resampled = []
+    monkeypatch.setattr(s2c, "resample_to", lambda wav, dst: resampled.append(dst) or 0)
+    bb = types.ModuleType("baseline_bench")
+    bb.original_matcha_symbols = lambda: list("ok.")
+    g2p_mod = types.ModuleType("matcha.text.op_g2p")
+
+    class G2P:
+        def phonemize(self, text):
+            return text
+    g2p_mod.OpenPhonemizerG2P = G2P
+    for name, mod in (("baseline_bench", bb), ("matcha.text.op_g2p", g2p_mod)):
+        monkeypatch.setitem(sys.modules, name, mod)
+    return (type("A", (), {"raw_root": str(raw), "out_dir": str(tmp_path / "o")})(), resampled)
+
+
+def test_build_corpus_phonemizes_everything_before_resampling_anything(tmp_path, monkeypatch, capsys):
+    args, resampled = _build_args(tmp_path, monkeypatch, {"c10": "kk!"})    # '!' is not in the table
+    with pytest.raises(SystemExit):
+        s2c.cmd_build_corpus(args)
+    assert "outside the table" in capsys.readouterr().err
+    assert resampled == []
+    assert not (tmp_path / "o" / "train_op.txt").exists()
+
+
+def test_build_corpus_drops_a_stale_mel_statistics(tmp_path, monkeypatch):
+    args, resampled = _build_args(tmp_path, monkeypatch, {})
+    out = tmp_path / "o"
+    out.mkdir()
+    (out / "mel_statistics.json").write_text('{"mel_mean": 0, "mel_std": 1}', encoding="utf-8")
+    assert s2c.cmd_build_corpus(args) == 0
+    assert len(resampled) == 90 * 11
+    assert (out / "train_op.txt").exists() and not (out / "mel_statistics.json").exists()

@@ -34,6 +34,7 @@ import soundfile as sf
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib import staged_data as sd                             # noqa: E402
+from lib.synth_common import write_json_atomic               # noqa: E402
 
 DATA = "/data/model-training/sonora/data"     # the repo's data/ (absent in the container)
 BASELINE_DIR = "/data/model-training/sonora/baseline_bench"
@@ -446,7 +447,6 @@ def stats(args):
         **dict(zip(sd.MEL_KEYS, sd.STOCK_MEL)))
     dm.setup()
     params = compute_data_statistics(dm.train_dataloader(), sd.STOCK_MEL[1])
-    from synth_common import write_json_atomic
     write_json_atomic(d / "mel_statistics.json", params)
     print("mel_statistics:", json.dumps(params))
 
