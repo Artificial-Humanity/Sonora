@@ -72,7 +72,8 @@ class BASECFM(torch.nn.Module, ABC):
                 shape: (batch_size, 1, mel_timesteps)
             spks (torch.Tensor, optional): speaker ids. Defaults to None.
                 shape: (batch_size, spk_emb_dim)
-            cond: Not used but kept for future purposes
+            cond: VAT conditioning at mel resolution, passed to the estimator
+                (and zeroed for the unconditional CFG branch). None disables CFG.
         """
         t, _, dt = t_span[0], t_span[-1], t_span[1] - t_span[0]
 
@@ -83,7 +84,11 @@ class BASECFM(torch.nn.Module, ABC):
         for step in range(1, len(t_span)):
             dphi_dt = self.estimator(x, mask, mu, t, spks, cond)
             if guidance != 1.0 and cond is not None:
-                # CFG: uncond = vat 0, exactly the state vat_cond_dropout trained.
+                # CFG: the unconditional branch zeroes the decoder's `cond` but keeps `mu`
+                # from the CONDITIONAL encoder (see `MatchaTTS.synthesise`). That pairing is
+                # not a state `vat_cond_dropout` ever trained: there the dropped VAT is zeroed
+                # at the encoder's input too, so `mu` comes from zero VAT as well. The
+                # guidance scale and step count were tuned against this pairing.
                 dphi_uncond = self.estimator(x, mask, mu, t, spks, torch.zeros_like(cond))
                 dphi_dt = dphi_uncond + guidance * (dphi_dt - dphi_uncond)
 
@@ -134,6 +139,13 @@ class BASECFM(torch.nn.Module, ABC):
         # `mask` leaves gradients bit-identical (the pad positions were already zeroed on
         # the backward path) and changes only what is logged — but it DOES lower the
         # logged value, so diff/total curves are not comparable across this commit.
+        #
+        # That residual is not the whole train/val gap for a U-Net run. The U-Net's GroupNorm
+        # statistics (`Block1D`) and its additive 0/1 attention mask both depend on how many
+        # padded frames the batch carries, so its prediction on real frames differs between the
+        # bucketed train loader and the unbucketed val loader. The size of that second
+        # contribution is unmeasured. The DiT is padding-invariant, so val `diff_loss` of a
+        # U-Net run and a DiT run carries different loader artifacts and must not be compared.
         pred = self.estimator(y, mask, mu, t.squeeze(), spks, cond)
         loss = F.mse_loss(pred * mask, u * mask, reduction="sum") / (torch.sum(mask) * u.shape[1])
         return loss, y

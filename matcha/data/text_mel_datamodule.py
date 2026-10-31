@@ -419,6 +419,13 @@ class TextMelDataset(torch.utils.data.Dataset):
         mel = self.get_mel(filepath)
 
         durations = self.get_durations(filepath, text) if self.load_durations else None
+        if durations is not None:
+            # `generate_path` takes these as-is: a short sum leaves mel frames with no token
+            # (trained against mu_y = 0 under y_mask = 1), a long one silently drops tail tokens.
+            assert int(durations.sum()) == mel.shape[-1], (
+                f"Durations for {filepath} sum to {int(durations.sum())} frames "
+                f"but the mel has {mel.shape[-1]}"
+            )
 
         return {
             "x": text,

@@ -94,6 +94,25 @@ for i in range(3):
 steps = [r.get("step") for r in lines(d)]
 check("1 one flushed line per step", steps == [0, 1, 2], f"steps={steps}")
 
+# 1b. start and end lines of one batch share `batch_idx`, even when `step` skews. Real Lightning
+#     increments global_step BETWEEN the two hooks (end = start + 1; under accumulation, equal to
+#     the previous end), so joining on `step` pairs the wrong lines. Simulate that skew here.
+d = fresh()
+gtt, mi = host_files(d)
+cb, t = MemoryTrace(gtt_path=gtt, meminfo_path=mi), trainer(d)
+cb.on_train_start(t, None)
+for i in range(3):
+    cb.on_train_batch_start(t, None, batch(), i)
+    t.global_step += 1
+    cb.on_train_batch_end(t, None, None, batch(), i)
+recs = all_lines(d)
+starts = [r["batch_idx"] for r in recs if r.get("phase") == "start"]
+ends = [r["batch_idx"] for r in recs if r.get("phase") == "end"]
+steps = [(r["phase"], r["step"]) for r in recs]
+check("1b start/end carry batch_idx; step is kept", starts == ends == [0, 1, 2]
+      and steps == [("start", 0), ("end", 1), ("start", 1), ("end", 2), ("start", 2), ("end", 3)],
+      f"start={starts} end={ends} steps={steps}")
+
 # 2. batch shape, wall time, process age
 d = fresh()
 gtt, mi = host_files(d)

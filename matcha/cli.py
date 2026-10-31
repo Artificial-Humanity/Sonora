@@ -626,7 +626,9 @@ def batched_synthesis(args, device, model, vocoder, denoiser, texts, spk):
             **synthesis_conditioning(args, device),
         )
 
-        output["waveform"] = to_waveform(output["mel"], vocoder, denoiser, args.denoiser_strength)
+        # `to_waveform` ends in `.squeeze()`, which drops the batch dim of a 1-item final batch
+        # (len(texts) % batch_size == 1); restore it so `waveform[j]` below indexes an utterance.
+        output["waveform"] = to_waveform(output["mel"], vocoder, denoiser, args.denoiser_strength).reshape(b, -1)
         t = (dt.datetime.now() - start_t).total_seconds()
         rtf_w = t * args.sample_rate / (output["waveform"].shape[-1])
         print(f"[🍵-Batch: {i}] Matcha-TTS RTF: {output['rtf']:.4f}")

@@ -169,7 +169,10 @@ class MatchaTTS(BaseLightningClass):  # 🍵
         # Generate sample tracing the probability flow
         decoder_outputs = self.decoder(mu_y, y_mask, n_timesteps, temperature, spks, cond=vat_y,
                                        guidance=guidance)
-        decoder_outputs = decoder_outputs[:, :, :y_max_length]
+        # The estimator is masked, so padded frames keep the initial noise `z` through the
+        # Euler loop. Zero them (no-op at B == 1, where nothing is padded) before denormalising,
+        # and zero the denormalised mel too: denormalising zeros gives `mel_mean`, not zero.
+        decoder_outputs = decoder_outputs[:, :, :y_max_length] * y_mask[:, :, :y_max_length]
 
         t = (dt.datetime.now() - t).total_seconds()
         rtf = t * 22050 / (decoder_outputs.shape[-1] * 256)
@@ -178,7 +181,7 @@ class MatchaTTS(BaseLightningClass):  # 🍵
             "encoder_outputs": encoder_outputs,
             "decoder_outputs": decoder_outputs,
             "attn": attn[:, :, :y_max_length],
-            "mel": denormalize(decoder_outputs, self.mel_mean, self.mel_std),
+            "mel": denormalize(decoder_outputs, self.mel_mean, self.mel_std) * y_mask[:, :, :y_max_length],
             "mel_lengths": y_lengths,
             "rtf": rtf,
         }
@@ -256,7 +259,7 @@ class MatchaTTS(BaseLightningClass):  # 🍵
             max_offset = (y_lengths - out_size).clamp(0)
             offset_ranges = list(zip([0] * max_offset.shape[0], max_offset.cpu().numpy()))
             out_offset = torch.LongTensor(
-                [torch.tensor(random.choice(range(start, end)) if end > start else 0) for start, end in offset_ranges]
+                [torch.tensor(random.choice(range(start, end + 1)) if end > start else 0) for start, end in offset_ranges]
             ).to(y_lengths)
             attn_cut = torch.zeros(attn.shape[0], attn.shape[1], out_size, dtype=attn.dtype, device=attn.device)
             y_cut = torch.zeros(y.shape[0], self.n_feats, out_size, dtype=y.dtype, device=y.device)
@@ -270,7 +273,7 @@ class MatchaTTS(BaseLightningClass):  # 🍵
                 attn_cut[i, :, :y_cut_length] = attn[i, :, cut_lower:cut_upper]
 
             y_cut_lengths = torch.LongTensor(y_cut_lengths)
-            y_cut_mask = sequence_mask(y_cut_lengths).unsqueeze(1).to(y_mask)
+            y_cut_mask = sequence_mask(y_cut_lengths, out_size).unsqueeze(1).to(y_mask)
 
             attn = attn_cut
             y = y_cut

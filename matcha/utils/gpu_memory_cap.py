@@ -29,16 +29,19 @@ _GIB = 1024**3
 
 
 class GpuMemoryCap(Callback):
-    """Cap this process's caching allocator at `cap_gib` of device 0.
+    """Cap this process's caching allocator at `cap_gib` of the trainer's CUDA device.
 
     Args:
         cap_gib: the ceiling in GiB. None -> no cap. A value at or above the device's
             memory is refused with a warning rather than clamped: it would be a no-op, and a
-            no-op that reads as a cap is the failure this exists to prevent.
+            no-op that reads as a cap is the failure this exists to prevent. Zero or negative
+            is a ValueError at construction, not a failure inside `setup` after the model is built.
     """
 
     def __init__(self, cap_gib: float | None = None) -> None:
         super().__init__()
+        if cap_gib is not None and cap_gib <= 0:
+            raise ValueError(f"GpuMemoryCap: cap_gib must be positive or None, got {cap_gib}")
         self.cap_gib = cap_gib
         self.fraction: float | None = None
 
@@ -49,13 +52,18 @@ class GpuMemoryCap(Callback):
             log.warning("GpuMemoryCap: cap %.1f GiB configured but no GPU is visible; "
                         "no cap applied", self.cap_gib)
             return
-        total = torch.cuda.get_device_properties(0).total_memory
+        # The trainer's device, not device 0: `devices=[1]` would otherwise cap the wrong GPU.
+        root = getattr(getattr(trainer, "strategy", None), "root_device", None)
+        index = getattr(root, "index", None)
+        if index is None:
+            index = torch.cuda.current_device()
+        total = torch.cuda.get_device_properties(index).total_memory
         fraction = self.cap_gib * _GIB / total
         if fraction >= 1.0:
             log.warning("GpuMemoryCap: cap %.1f GiB is not below the device's %.1f GiB; "
                         "no cap applied", self.cap_gib, total / _GIB)
             return
-        torch.cuda.set_per_process_memory_fraction(fraction, 0)
+        torch.cuda.set_per_process_memory_fraction(fraction, index)
         self.fraction = fraction
         log.info("GpuMemoryCap: caching allocator capped at %.1f GiB of %.1f GiB (fraction %.4f)",
                  self.cap_gib, total / _GIB, fraction)
