@@ -275,3 +275,176 @@ def test_qs_final_is_the_step_that_ends_its_tenth_epoch(tmp_path):
     assert not sb.final_ckpt("Q", "/x/checkpoints/checkpoint_epoch=008_step=0009999.ckpt", str(prov))
     assert not sb.final_ckpt("Q", "/x/checkpoints/last.ckpt", str(prov))
     assert sb.final_ckpt("S1", ck % 9500, str(prov))                # other arms are unchanged
+
+
+# ------------------------------------------------------------------ the unblinder (audit 2026-10-31)
+
+import csv  # noqa: E402
+
+import unblind_ear_staged as ub  # noqa: E402
+
+
+def _session(tmp_path, check, model, rt, n=16, flip=lambda u: False, sev_for=None):
+    """A key, a test folder (items.json + verdicts.csv) and the argv that reads them. Arm `a` is
+    rated model[a] over a round trip of rt[a] on every unit; `flip(u)` serves the model on B.
+    `sev_for(u, a)` -> (model, rt) overrides a cell, with None for 'not rated'. Item `k` is
+    served as clips a_<k> and b_<k>, and the key's `clips` says which label each carries."""
+    arms = sb.CHECKS[check]["arms"]
+    items, clips, rows, served, i = {}, {}, [], [], 0
+    for u in range(n):
+        for a in arms:
+            k = "item_%02d" % i
+            i += 1
+            f = flip(u)
+            lab_a, lab_b = (a + "rt", a) if f else (a, a + "rt")
+            items[k] = {"arm": a, "unit": u, "hnr": 10.0 + u, "A_label": lab_a, "B_label": lab_b,
+                        "spk": u, "partition": "train-clean-100", "f0": 100.0 + u,
+                        "q_spk": u, "widened": {"F1": u % 2 == 0, "Q": False}}
+            clips["a_" + k], clips["b_" + k] = {"label": lab_a}, {"label": lab_b}
+            served.append({"id": k, "A": "a_" + k, "B": "b_" + k})
+            m, r = (sev_for(u, a) if sev_for else (model[a], rt[a] if isinstance(rt, dict) else rt))
+            rows.append({"item": k, "sev_a": "" if m is None else (r if f else m),
+                         "sev_b": "" if m is None else (m if f else r)})
+    test = tmp_path / "t"
+    (test / "verdicts").mkdir(parents=True)
+    (test / "items.json").write_text(json.dumps({"test": "t", "items": served}))
+    (test / "render_meta.json").write_text(json.dumps({"check": check}))
+    key = tmp_path / "k.json"
+    key.write_text(json.dumps({"check": check, "items": items, "clips": clips}))
+    _write_verdicts(test, rows)
+    return ["--check", str(check), "--key", str(key), "--test", str(test)], key
+
+
+def _write_verdicts(test, rows, encoding="utf-8"):
+    with (test / "verdicts" / "verdicts.csv").open("w", newline="", encoding=encoding) as f:
+        w = csv.DictWriter(f, fieldnames=["item", "sev_a", "sev_b"])
+        w.writeheader()
+        w.writerows(rows)
+
+
+def _swap_key_labels(key_path, items):
+    k = json.loads(key_path.read_text())
+    for i in items:
+        t = k["items"][i]
+        t["A_label"], t["B_label"] = t["B_label"], t["A_label"]
+    key_path.write_text(json.dumps(k))
+
+
+def test_a_key_that_matches_the_folder_is_read(tmp_path):
+    """The positive control for the refusals below."""
+    argv, _ = _session(tmp_path, 4, {"S1": 3, "L": 1}, {"S1": 1, "L": 1}, flip=lambda u: u % 2)
+    assert ub.main(argv)["outcome"] == "shown"
+
+
+def test_a_key_from_another_render_is_refused_not_read_as_a_confident_wrong_answer(tmp_path):
+    """I-1. Same ids, same items.json, but the key says the opposite side held each model: the
+    old unblinder mapped the listener's A to the wrong clip and printed a reading."""
+    argv, key = _session(tmp_path, 4, {"S1": 3, "L": 1}, {"S1": 1, "L": 1})
+    _swap_key_labels(key, ["item_00"])
+    with pytest.raises(SystemExit, match="not this folder's"):
+        ub.main(argv)
+
+
+def test_a_key_with_different_item_ids_than_the_folder_is_refused(tmp_path):
+    argv, key = _session(tmp_path, 4, {"S1": 3, "L": 1}, {"S1": 1, "L": 1})
+    k = json.loads(key.read_text())
+    k["items"]["item_99"] = k["items"].pop("item_00")
+    key.write_text(json.dumps(k))
+    with pytest.raises(SystemExit, match="not this folder's.*item_00"):
+        ub.main(argv)
+
+
+def test_a_folder_with_no_items_json_cannot_be_unblinded(tmp_path):
+    argv, _ = _session(tmp_path, 4, {"S1": 3, "L": 1}, {"S1": 1, "L": 1})
+    (tmp_path / "t" / "items.json").unlink()
+    with pytest.raises(SystemExit, match="items.json"):
+        ub.main(argv)
+
+
+def test_a_clip_name_the_key_does_not_know_is_refused(tmp_path):
+    argv, key = _session(tmp_path, 4, {"S1": 3, "L": 1}, {"S1": 1, "L": 1})
+    k = json.loads(key.read_text())
+    del k["clips"]["a_item_03"]
+    key.write_text(json.dumps(k))
+    with pytest.raises(SystemExit, match="item_03"):
+        ub.main(argv)
+
+
+def test_floors_are_read_on_the_units_rated_in_both_arms(tmp_path, capsys):
+    """M-2. E is unrated on 4 units where S1's round trip happens to be 5. On the 16 shared
+    units the floors are identical (0 and 0); on S1's whole column they were 1.00 against 0.00,
+    which read as INVALID."""
+    def cell(u, a):
+        if u >= 16:
+            return (None, None) if a == "E" else (3, 5)
+        return (3, 0) if a == "S1" else (1, 0)
+    argv, _ = _session(tmp_path, 8, None, None, n=20, sev_for=cell)
+    r = ub.main(argv + ["--session-closed"])
+    assert r["floors_ok"] is True and r["outcome"] == "shown", r
+    assert "not fully rated or not rated in every arm" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("bad", ["9", "-1", "3.5", "x"])
+def test_a_severity_outside_zero_to_five_or_not_whole_is_refused(tmp_path, bad):
+    """M-8. 9 was accepted and fed a reading; 3.0 crashed with a bare ValueError."""
+    argv, _ = _session(tmp_path, 4, {"S1": 3, "L": 1}, {"S1": 1, "L": 1})
+    rows = list(csv.DictReader((tmp_path / "t" / "verdicts" / "verdicts.csv").open()))
+    rows[0]["sev_a"] = bad
+    _write_verdicts(tmp_path / "t", rows)
+    with pytest.raises(SystemExit, match="whole number from 0 to 5"):
+        ub.main(argv)
+
+
+def test_a_whole_float_and_a_byte_order_mark_are_read(tmp_path):
+    argv, _ = _session(tmp_path, 4, {"S1": 3, "L": 1}, {"S1": 1, "L": 1})
+    rows = list(csv.DictReader((tmp_path / "t" / "verdicts" / "verdicts.csv").open()))
+    rows[0]["sev_a"] = "%s.0" % rows[0]["sev_a"]
+    _write_verdicts(tmp_path / "t", rows, encoding="utf-8-sig")
+    assert ub.main(argv)["outcome"] == "shown"
+
+
+def test_check9_prints_each_triplet_its_widened_flags_and_the_realised_gaps(tmp_path, capsys):
+    """M-12."""
+    argv, _ = _session(tmp_path, 9, {"S1": 3, "F1": 3, "Q": 1}, {"S1": 1, "F1": 1, "Q": 1})
+    ub.main(argv)
+    out = capsys.readouterr().out
+    assert "TRIPLETS" in out and "widened F1 yes Q no" in out and "widened F1 no Q no" in out
+    assert "F1 vs Q: |ΔHNR| mean 0.00 max 0.00 dB" in out and "8 of 16 triplets widened" in out
+
+
+def test_the_render_s_peak_limited_sides_are_reported(tmp_path, capsys):
+    """M-1, read side."""
+    argv, _ = _session(tmp_path, 4, {"S1": 3, "L": 1}, {"S1": 1, "L": 1})
+    (tmp_path / "t" / "render_meta.json").write_text(json.dumps({"check": 4,
+                                                                 "peak_limited_sides": 2}))
+    ub.main(argv)
+    assert "2 side(s) of this render hit the peak ceiling" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------ units cap, exact ties
+
+def test_side_plan_refuses_more_units_than_the_exact_test_can_read():
+    """M-3. 21 units used to be planned and rated and then crash at unblinding."""
+    assert len(sb.side_plan(sb.MAX_UNITS, ("a",), random.Random(0))) == sb.MAX_UNITS
+    with pytest.raises(ValueError, match="at most 20"):
+        sb.side_plan(sb.MAX_UNITS + 1, ("a",), random.Random(0))
+
+
+def test_a_geometric_f0_tie_goes_to_the_smaller_hnr_gap_not_to_float_rounding():
+    """M-4. 60 Hz is exactly between 50 and 72 on a log scale (50 x 72 = 60^2), but
+    |ln 60 - ln 50| computes smaller than |ln 60 - ln 72| in floats. The registered rule says
+    tie, so the smaller HNR gap decides: 72 (0.1 dB) over 50 (0.4 dB)."""
+    import math
+    assert abs(math.log(60) - math.log(50)) < abs(math.log(60) - math.log(72))   # the trap
+    s1 = {1: (5.0, 60.0)}
+    f1 = {10: (5.4, 50.0, 100), 11: (5.1, 72.0, 101)}
+    assert sb.pair_f1(s1, f1) == [(1, 11)]
+    q = {20: (5.4, 50.0, 0), 21: (5.1, 72.0, 1)}
+    got = sb.pair_q_triplets(s1, f1, q, min_triplets=1)
+    assert [(t["f1"], t["q"]) for t in got] == [(11, 21)]
+
+
+def test_a_genuinely_nearer_f0_still_wins_over_a_smaller_hnr_gap():
+    s1 = {1: (5.0, 60.0)}
+    f1 = {10: (5.4, 61.0, 100), 11: (5.0, 90.0, 101)}
+    assert sb.pair_f1(s1, f1) == [(1, 10)]

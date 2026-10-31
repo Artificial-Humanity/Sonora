@@ -793,3 +793,78 @@ def test_an_unreadable_checkpoint_is_could_not_run_not_refused():
 def test_the_staged_rebuild_corpora_are_declared_permissive(path, name):
     hit = wall.classify_path(path)
     assert hit is not None and hit[0] == name and hit[1] == "permissive", (path, hit)
+
+
+# --- audit 2026-10-31 I-2: nesting and duplicates ------------------------------------------
+
+def test_a_blocked_dataset_nested_under_a_permissive_parent_is_blocked():
+    """The outermost component used to decide: `ljspeech/expresso` classified as ljspeech."""
+    for path in ("/data/datasets/LJSpeech-1.1/expresso/wavs/x.wav",
+                 "/data/datasets/LJSpeech-1.1/Emilia/x.wav"):
+        hit = wall.classify_path(path)
+        assert hit is not None and hit[1] == "blocked", (path, hit)
+
+
+def test_a_permissive_dataset_under_a_blocked_parent_stays_blocked():
+    """The reverse order, which already held: the pair is order-independent now."""
+    hit = wall.classify_path("/data/datasets/expresso/LJSpeech-1.1/x.wav")
+    assert hit is not None and hit[1] == "blocked", hit
+
+
+def test_the_most_restrictive_hit_wins_for_the_publish_table_too(monkeypatch):
+    monkeypatch.setattr(wall, "_publish_cache", {
+        "outer": ("outer", "allowed", ""),
+        "inner": ("inner", "forbidden", "why"),
+    })
+    assert wall.publish_policy("/x/outer/inner/t.txt")[1] == "forbidden"
+    assert wall.publish_policy("/x/outer/t.txt")[1] == "allowed"
+
+
+def test_a_nested_blocked_dataset_is_refused_by_enforce(tmp_path):
+    fl = _filelist(tmp_path, "/data/datasets/LJSpeech-1.1/expresso/wavs")
+    with pytest.raises(wall.LicenseWallError, match="non-permissive"):
+        wall.enforce([fl])
+
+
+def test_a_directory_declared_by_two_entries_is_refused_at_load(tmp_path, monkeypatch):
+    p = tmp_path / "data_licenses.yaml"
+    p.write_text("datasets:\n"
+                 "  one:\n    dirs: [shared, one]\n    license: L\n    class: permissive\n"
+                 "  two:\n    dirs: [Shared]\n    license: L\n    class: blocked\n",
+                 encoding="utf-8")
+    monkeypatch.setattr(wall, "_MANIFEST_PATH", str(p))
+    with pytest.raises(wall.LicenseWallError, match="'Shared' is declared by both 'one' and 'two'"):
+        wall._manifest()
+    wall._publish_cache = None
+    with pytest.raises(wall.LicenseWallError, match="declared by both"):
+        wall._publish()
+
+
+def test_a_directory_repeated_inside_one_entry_is_not_a_duplicate(tmp_path, monkeypatch):
+    _manifest_file(tmp_path, monkeypatch,
+                   "    dirs: [bank, Bank]\n    license: L\n    class: permissive\n")
+    assert wall.classify_path("data/bank/t.txt")[0] == "bank"
+
+
+# --- audit 2026-10-31 I-3: a holdout row in a filelist whose name does not say so ----------
+
+# ⚠ The test names above avoid the marker: pytest builds `tmp_path` from them, and the
+# path check would fire before the row scan under test.
+def _train_filelist(tmp_path, audio_dir):
+    d = tmp_path / "libritts_r_full_vat_v7"
+    d.mkdir()
+    fl = d / "train_op.txt"
+    fl.write_text(f"{audio_dir}/a.wav|3|abc|0,0,0\n", encoding="utf-8")
+    return str(fl)
+
+
+def test_clean_dev_audio_in_an_ordinary_named_filelist_is_refused(tmp_path):
+    fl = _train_filelist(tmp_path, "/data/model-training/datasets/libritts_r_holdout_devclean/wavs")
+    with pytest.raises(RuntimeError, match="REFUSING to train") as e:
+        wall.refuse_holdout([fl])
+    assert "libritts_r_holdout_devclean/wavs" in str(e.value)
+
+
+def test_a_filelist_with_ordinary_audio_is_not_refused_by_the_row_scan(tmp_path):
+    """The positive control: the row scan must let a clean filelist through."""
+    wall.refuse_holdout([_train_filelist(tmp_path, "/data/datasets/emilia_kept_24k")])

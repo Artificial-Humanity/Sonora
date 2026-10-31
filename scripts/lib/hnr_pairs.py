@@ -43,7 +43,7 @@ def matched_pairs(spk, rows_of, max_f0_gap, hnr_lo, hnr_hi, row_ratio, match_par
             if match_partition and spk[a]["partition"] != spk[b]["partition"]:
                 continue
             ra, rb = rows_of(a), rows_of(b)
-            if row_ratio and max(ra, rb) / min(ra, rb) > row_ratio:
+            if row_ratio and (min(ra, rb) == 0 or max(ra, rb) / min(ra, rb) > row_ratio):
                 continue
             gap = abs(spk[a]["hnr"] - spk[b]["hnr"])
             if not (hnr_lo <= gap <= hnr_hi):

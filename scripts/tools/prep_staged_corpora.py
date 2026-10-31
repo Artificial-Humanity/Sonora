@@ -64,7 +64,16 @@ def resample_to(x, sr, dst):
     y = soxr.resample(np.asarray(x, dtype="float64"), sr, sd.TARGET_SR)
     clipped = int(np.abs(y).max() > 1.0)
     mkdir(os.path.dirname(dst))
-    sf.write(dst, np.clip(y, -1.0, 1.0), sd.TARGET_SR, "PCM_16")
+    # Write beside `dst` and rename: `done(dst)` trusts a valid header, so a worker killed
+    # mid-write (host OOM) must never leave a truncated WAV at `dst` for the next run to keep.
+    tmp = "%s.tmp.%d.wav" % (dst, os.getpid())
+    try:
+        sf.write(tmp, np.clip(y, -1.0, 1.0), sd.TARGET_SR, "PCM_16", format="WAV")
+        os.replace(tmp, dst)
+    except BaseException:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
     return clipped
 
 

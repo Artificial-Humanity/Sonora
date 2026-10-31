@@ -87,9 +87,9 @@ from matcha.utils.utils import intersperse
 # chosen by `__package__`, not by catching ImportError, so an ImportError raised inside
 # loudness.py surfaces as itself rather than as a missing flat `loudness`.
 if __package__:                         # imported as `lib.ear_bench` by the tools
-    from .loudness import match_loudness  # noqa: F401
+    from .loudness import match_loudness, match_pair_loudness  # noqa: F401
 else:                                   # imported flat, with scripts/lib on the path
-    from loudness import match_loudness  # noqa: F401
+    from loudness import match_loudness, match_pair_loudness  # noqa: F401
 
 DEVICE = torch.device("cpu")
 
@@ -145,6 +145,15 @@ def prove_writable(out):
                          "not be able to save verdicts even though this process can." % v)
 
 
+def judged_items(vcsv):
+    """The item ids in a verdicts.csv with any judgement: a `choice`, or either severity. A
+    defects-scale item with only its primary slider set has no derived `choice`, but it is
+    judged (`eartest/app/main.py`), so counting `choice` alone lets its A/B be re-pointed."""
+    with Path(vcsv).open(newline="", encoding="utf-8") as f:
+        return [r["item"] for r in csv.DictReader(f)
+                if r.get("choice") or r.get("sev_a") or r.get("sev_b")]
+
+
 def refuse_if_judged(out):
     """Refuse to render into a test that already has verdicts.
 
@@ -157,9 +166,7 @@ def refuse_if_judged(out):
     """
     vcsv = Path(out) / "verdicts" / "verdicts.csv"
     if vcsv.is_file():
-        with vcsv.open(newline="", encoding="utf-8") as f:
-            judged = [r["item"] for r in csv.DictReader(f)
-                      if r.get("choice") or r.get("sev_a") or r.get("sev_b")]
+        judged = judged_items(vcsv)
         if judged:
             raise SystemExit(f"REFUSING: {out} already has {len(judged)} judged item(s). "
                              f"A rerun would overwrite the audio they judged under the same "
@@ -291,8 +298,7 @@ class Bench:
         old = self.out / "items.json"
         vcsv = self.out / "verdicts" / "verdicts.csv"
         if old.is_file() and vcsv.is_file():
-            with vcsv.open(newline="", encoding="utf-8") as f:
-                judged = {r["item"] for r in csv.DictReader(f) if r.get("choice")}
+            judged = set(judged_items(vcsv))
             if judged:
                 was = {i["id"]: (i["A"], i["B"])
                        for i in json.loads(old.read_text())["items"]}
@@ -327,12 +333,12 @@ class Bench:
                         f"items.json and nothing else does. Serve the other arm into a "
                         f"NEW --out; the clip ids are salt-derived, so copying the "
                         f"already-rendered wavs across costs no GPU.")
-        old.write_text(json.dumps(manifest, indent=2))
         kp = Path(key_out) if key_out else (
             self.out.parent / "_keys" / f"{self.out.name}.key.json")
         if self.out.resolve() in kp.resolve().parents:
             raise SystemExit(f"REFUSING: the key {kp} is inside the served tree {self.out}, "
                              f"where the app could reach it.")
+        old.write_text(json.dumps(manifest, indent=2))
         kp.parent.mkdir(parents=True, exist_ok=True)
         kp.write_text(json.dumps(
             {"test_dir": str(self.out), "salt": self.salt, "clips": self.key} | meta,

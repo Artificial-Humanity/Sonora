@@ -520,3 +520,27 @@ def test_build_corpus_will_not_run_on_a_speaker_table_of_the_wrong_size(pipeline
         s2c.cmd_build_corpus(type("A", (), {"raw_root": str(short), "out_dir": str(tmp_path / "o")})())
     assert "89 speakers" in capsys.readouterr().err
     assert not (tmp_path / "o").exists()
+
+
+# ------------------------------------------------ the prefix proof is about the donor's rows
+
+def test_a_donor_map_with_a_gap_cannot_have_a_new_speaker_inside_the_copied_range():
+    """Audit 2026-10-31, M-7. {a: 0, c: 5} plus a new z at 1 passed as "2 keep their index; 1
+    appended", though `_widen` copies rows 0..5 and z's row 1 is another speaker's."""
+    ok, detail = mw._speaker_prefix_ok({"libritts_id_to_index": {"a": 0, "c": 5}},
+                                       {"libritts_id_to_index": {"a": 0, "c": 5, "z": 1}})
+    assert ok is False and "gaps" in detail
+
+
+def test_a_donor_map_smaller_than_the_checkpoint_table_is_refused():
+    donor = {"libritts_id_to_index": {"a": 0, "b": 1, "c": 2}}
+    new = {"libritts_id_to_index": {"a": 0, "b": 1, "c": 2, "d": 3}}
+    ok, detail = mw._speaker_prefix_ok(donor, new, donor_rows=247)
+    assert ok is False and "247 rows" in detail
+
+
+def test_a_dense_map_matching_the_checkpoint_table_passes_with_or_without_the_row_count():
+    donor = {"libritts_id_to_index": {"a": 0, "b": 1}}
+    new = {"libritts_id_to_index": {"a": 0, "b": 1, "c": 2}}
+    assert mw._speaker_prefix_ok(donor, new, donor_rows=2) == mw._speaker_prefix_ok(donor, new) == (
+        True, "2 donor speakers keep their index; 1 appended")

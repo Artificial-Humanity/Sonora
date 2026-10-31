@@ -123,8 +123,14 @@ def _index_map(speakers):
     return merged
 
 
-def _speaker_prefix_ok(donor_speakers, model_speakers):
-    """Is the donor's speaker index map a PREFIX of the model's? -> (ok, detail)."""
+def _speaker_prefix_ok(donor_speakers, model_speakers, donor_rows=None):
+    """Is the donor's speaker index map a PREFIX of the model's? -> (ok, detail).
+
+    `donor_rows` is the donor CHECKPOINT's `spk_emb.weight` row count, when known. `_widen`
+    copies rows 0..donor_rows-1, so the proof has to be about those rows: the donor map must
+    own exactly rows 0..n-1, and the checkpoint must have n rows. Without that, a map with a
+    gap ({a: 0, c: 5}) lets a new speaker take an index inside the copied range.
+    """
     if not donor_speakers or not model_speakers:
         return False, "no speaker map supplied (--donor-speakers)"
     old, new = _index_map(donor_speakers), _index_map(model_speakers)
@@ -140,6 +146,12 @@ def _speaker_prefix_ok(donor_speakers, model_speakers):
                        f"{moved[0]}: {old[moved[0]]} -> {new.get(moved[0])}")
     if len(new) < len(old):
         return False, f"the new map has FEWER speakers ({len(new)} < {len(old)})"
+    if sorted(old.values()) != list(range(len(old))):
+        return False, (f"the donor map is not the rows 0..{len(old) - 1}: it has gaps, so a "
+                       f"new speaker could sit inside the range that is copied")
+    if donor_rows is not None and donor_rows != len(old):
+        return False, (f"the donor map names {len(old)} speakers but the donor checkpoint's "
+                       f"speaker table has {donor_rows} rows")
     return True, f"{len(old)} donor speakers keep their index; {len(new) - len(old)} appended"
 
 
@@ -209,6 +221,9 @@ def main():
 
     # The proof, before anything is copied. The new corpus's map sits beside the filelist
     # the experiment already names, so there is nothing to pass for that half.
+    # weights_only=False unpickles arbitrary objects: acceptable for an in-house donor, never
+    # for a checkpoint of unknown origin.
+    donor = torch.load(args.donor, map_location="cpu", weights_only=False)
     allow_speakers = False
     if args.donor_speakers:
         new_path = os.path.join(os.path.dirname(cfg.data.train_filelist_path), "speakers.json")
@@ -219,7 +234,9 @@ def main():
                 new_spk = json.load(f)
         except OSError as exc:
             raise SystemExit(f"!! --donor-speakers: {exc}")
-        allow_speakers, detail = _speaker_prefix_ok(donor_spk, new_spk)
+        donor_rows = next((v.shape[0] for k, v in donor["state_dict"].items()
+                           if k.endswith("spk_emb.weight")), None)
+        allow_speakers, detail = _speaker_prefix_ok(donor_spk, new_spk, donor_rows)
         print(f"speaker map: {'PREFIX OK' if allow_speakers else 'REFUSED'} — {detail}")
         if not allow_speakers:
             raise SystemExit(
@@ -228,7 +245,6 @@ def main():
                 "people. Re-derive the\n   corpus preserving the index map, or drop "
                 "--donor-speakers to start the table fresh.")
 
-    donor = torch.load(args.donor, map_location="cpu", weights_only=False)
     # The donor's corpora ride into the init under `LINEAGE_KEY` (written by the module's
     # `on_save_checkpoint` when `trainer.save_checkpoint` runs below), so the fine-tune's
     # checkpoints still name what the donor was trained on when the publish wall reads them
@@ -281,7 +297,9 @@ def main():
     missing, unexpected = model.load_state_dict(donor_sd, strict=False)
     fresh = sorted(missing)
     skipped = sorted(unexpected)
-    print(f"warm tensors : {len(donor['state_dict']) - len(skipped) - len(fresh_dropped)} "
+    # `donor_sd` holds what was handed to the load: the fresh-prefix and shape-dropped tensors
+    # are already out of it, so they are not counted warm; `skipped` is what the model lacks.
+    print(f"warm tensors : {len(donor_sd) - len(skipped)} "
           f"({len(widened)} widened)")
     print(f"fresh tensors: {len(fresh)} (expected: FiLM/vat_trunk + spk_emb"
           f"{' + ' + ', '.join(args.fresh_prefix) if args.fresh_prefix else ''})")
