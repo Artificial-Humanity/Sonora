@@ -33,7 +33,6 @@ No torch here, so the host test suite covers it.
 
 import itertools
 import json
-import math
 import re
 import statistics as st
 from fractions import Fraction
@@ -128,11 +127,16 @@ _EPOCH = re.compile(r"^checkpoint_epoch=(\d{3})_step=\d{7}\.ckpt$")
 Q_PROVENANCE = "/data/model-training/sonora/data/q_synth_22k/provenance.json"
 
 
+# The exact sign-flip test enumerates 2^n assignments (1.3 s at n = 20), so a bench is capped at
+# this many units; `select` and `side_plan` refuse more up front, not at unblinding.
+MAX_UNITS = 20
+
+
 def one_sided_p(d):
     """Exact one-sided sign-flip p that the mean of paired differences `d` is above 0:
     the share of the 2^n sign assignments whose sum is at least the observed one."""
-    if len(d) > 20:
-        raise ValueError("exact enumeration is for n <= 20; got %d" % len(d))
+    if len(d) > MAX_UNITS:
+        raise ValueError("exact enumeration is for n <= %d; got %d" % (MAX_UNITS, len(d)))
     obs = sum(d)
     hits = total = 0
     for signs in itertools.product((1, -1), repeat=len(d)):
@@ -170,6 +174,9 @@ def heard_libri(docs):
 def side_plan(n, arms, rng):
     """{unit: {arm: model on A}}. Every item of a unit is served the same way round, half
     the units each way, so a listener's lean toward A or B cancels in every contrast."""
+    if n > MAX_UNITS:
+        raise ValueError("%d units; the exact test, which reads the session at unblinding, "
+                         "is for at most %d." % (n, MAX_UNITS))
     flips = [True] * (n // 2) + [False] * (n - n // 2)
     rng.shuffle(flips)
     return {u: {a: flips[u] for a in arms} for u in range(n)}
@@ -262,6 +269,13 @@ def _exact(x):
     return Fraction(repr(x))
 
 
+def _f0_ratio(a, b):
+    """max(a/b, b/a), exactly: orders voices by |ln a - ln b| (ln is monotone in the ratio)
+    with exact ties, which a float log gap breaks by rounding."""
+    r = _exact(float(a)) / _exact(float(b))
+    return max(r, 1 / r)
+
+
 def pair_f1(s1, f1, max_gap=F1_MAX_HNR_GAP):
     """Check 7's pairs, as registered. `s1` is {S1 voice: (HNR, F0)}, `f1` is {F1 voice:
     (HNR, F0, LibriTTS id)}; voices are v7 indices. In ascending (HNR, S1 index) order, each
@@ -276,17 +290,13 @@ def pair_f1(s1, f1, max_gap=F1_MAX_HNR_GAP):
             gap = abs(_exact(h) - _exact(fh))
             if v in used or gap > max_gap:
                 continue
-            k = (abs(math.log(f0) - math.log(ff0)), gap, lid)
+            k = (_f0_ratio(f0, ff0), gap, lid)
             if best is None or k < best[0]:
                 best = (k, v)
         if best is not None:
             used.add(best[1])
             pairs.append((s, best[1]))
     return pairs
-
-
-def _ln_f0_gap(f0_a, f0_b):
-    return abs(math.log(f0_a) - math.log(f0_b))
 
 
 def _nearest(voice_hnr, pool, used, window):
@@ -299,7 +309,7 @@ def _nearest(voice_hnr, pool, used, window):
         gap = abs(_exact(h) - _exact(fh))
         if v in used or gap > window:
             continue
-        k = (_ln_f0_gap(f0, ff0), gap, tie)
+        k = (_f0_ratio(f0, ff0), gap, tie)
         if best is None or k < best[0]:
             best = (k, v, gap)
     return None if best is None else (best[1], best[2])

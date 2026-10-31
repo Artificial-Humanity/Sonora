@@ -223,3 +223,13 @@ def test_an_empty_filelist_is_refused_by_name(tmp_path, monkeypatch):
     (corpus / "train_op.txt").write_text("\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="is empty"):
         _run3(monkeypatch, tmp_path, corpus)
+
+
+def test_a_speaker_with_fewer_clips_than_min_clips_is_skipped_not_measured(tmp_path, monkeypatch):
+    """Audit 2026-10-31, M-9: one usable clip entered the table as a speaker."""
+    c = _corpus(tmp_path, {3: 1, 5: 4})
+    out = tmp_path / "o.json"
+    _run(monkeypatch, ["--corpus", str(c), "--min-rows", "1", "--clips-per-speaker", "5",
+                       "--min-clips", "3", "--json", str(out)])
+    j = json.loads(out.read_text())
+    assert sorted(j["speakers"]) == ["5"] and j["skipped"] == [3] and j["min_clips"] == 3

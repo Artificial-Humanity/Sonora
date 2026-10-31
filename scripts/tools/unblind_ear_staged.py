@@ -17,6 +17,7 @@ item of --test is rated. --session-closed reads a hum-fix check anyway, leaving 
 import argparse
 import csv
 import json
+import math
 import statistics as st
 import sys
 from fractions import Fraction
@@ -144,10 +145,64 @@ def unrated(test_dir):
     ids = [i["id"] for i in json.loads(ipath.read_text())["items"]]
     done = {}
     if vpath.is_file():
-        with vpath.open(newline="", encoding="utf-8") as f:
+        with vpath.open(newline="", encoding="utf-8-sig") as f:
             for r in csv.DictReader(f):
                 done[r["item"]] = r.get("sev_a", "") != "" and r.get("sev_b", "") != ""
     return len(ids), [i for i in ids if not done.get(i)]
+
+
+def require_key_matches_folder(key, test_dir):
+    """Refuse unless `key` is the key of the clips `test_dir` serves. Item ids are item_00..
+    in every render of a check, so a key from another render (re-render after a crash, a new
+    seed or --out) passes every other guard and maps each verdict to the wrong side: a
+    confident, wrong reading. `items.json` says which opaque clip the listener heard on each
+    side; the key says which arm label that clip is."""
+    ipath = Path(test_dir) / "items.json"
+    if not ipath.is_file():
+        raise SystemExit("REFUSING: no %s — the key cannot be matched to the clips that were "
+                         "served." % ipath)
+    served = {i["id"]: i for i in json.loads(ipath.read_text())["items"]}
+    truth, clips = key["items"], key.get("clips", {})
+    if set(served) != set(truth):
+        raise SystemExit("REFUSING: the key is not this folder's: it has %d items, %s has %d, "
+                         "and they differ (e.g. %s)."
+                         % (len(truth), ipath, len(served),
+                            sorted(set(served) ^ set(truth))[:3]))
+    wrong = [i for i, t in sorted(truth.items())
+             if any(clips.get(served[i][side], {}).get("label") != t[side + "_label"]
+                    for side in ("A", "B"))]
+    if wrong:
+        raise SystemExit("REFUSING: the key is not this folder's: for %d of %d items the clip "
+                         "served on a side is not the arm the key records there (e.g. %s). "
+                         "Use the key written by the render that wrote %s."
+                         % (len(wrong), len(truth), ", ".join(wrong[:3]), ipath))
+
+
+def report_peak_limited(test_dir):
+    """Print the render's `peak_limited_sides` when non-zero. A side that hit the peak ceiling
+    was quieter than its target; the renderer then matched its pair at that level, but the
+    session was quieter than the registered -23 LUFS and the reader should know."""
+    meta = Path(test_dir) / "render_meta.json"
+    if not meta.is_file():
+        return
+    n = json.loads(meta.read_text()).get("peak_limited_sides") or 0
+    if n:
+        print("⚠ %d side(s) of this render hit the peak ceiling before reaching the target "
+              "loudness (render_meta.json); their pairs were matched at the quieter level.\n"
+              % n)
+
+
+def severity(row, field):
+    """A verdict's 0-5 severity as an int. "3.0" is read as 3; anything else is refused."""
+    raw = row[field].strip()
+    try:
+        v = float(raw)
+    except ValueError:
+        v = None
+    if v is None or v != int(v) or not 0 <= v <= 5:
+        raise SystemExit("REFUSING: %s=%r for %r is not a whole number from 0 to 5."
+                         % (field, row[field], row["item"]))
+    return int(v)
 
 
 def require_session_rated(args):
@@ -234,6 +289,8 @@ def main(argv=None):
     if {t["arm"] for t in truth.values()} != set(arms):
         raise SystemExit("REFUSING: the key's arms are not %s." % (arms,))
     require_session_rated(args)
+    require_key_matches_folder(key, args.test)
+    report_peak_limited(args.test)
     vpath = Path(args.test) / "verdicts" / "verdicts.csv"
     if not vpath.is_file():
         raise SystemExit("REFUSING: no %s — nothing was judged." % vpath)
@@ -242,7 +299,7 @@ def main(argv=None):
     sev = {a: [] for a in arms}
     floor = {a: [] for a in arms}
     model_u, rt_u = {a: {} for a in arms}, {a: {} for a in arms}
-    with vpath.open(newline="", encoding="utf-8") as f:
+    with vpath.open(newline="", encoding="utf-8-sig") as f:
         for r in csv.DictReader(f):
             if r["item"] not in truth:
                 raise SystemExit("REFUSING: verdict for %r has no entry in the key." % r["item"])
@@ -250,24 +307,27 @@ def main(argv=None):
                 continue
             t = truth[r["item"]]
             a = t["arm"]
-            s = {t["A_label"]: int(r["sev_a"]), t["B_label"]: int(r["sev_b"])}
+            s = {t["A_label"]: severity(r, "sev_a"), t["B_label"]: severity(r, "sev_b")}
             gaps[a][t["unit"]] = s[a] - s[a + "rt"]
             sev[a].append(s[a])
             floor[a].append(s[a + "rt"])
             model_u[a][t["unit"]], rt_u[a][t["unit"]] = s[a], s[a + "rt"]
-    rated = sum(len(v) for v in gaps.values())
-    if rated < len(truth):
-        print("⚠ %d of %d items not fully rated; they are left out.\n"
-              % (len(truth) - rated, len(truth)))
-    if args.check == 9:
-        # Check 9's contrasts share one unit set: the units rated in all three arms (a unit with
-        # S1 and F1 but no Q is left out of the floors and of every printed count).
+    if "min_units" in sb.CHECKS[args.check]:
+        # Checks 4-9 read the floors, levels and contrasts on one unit set: the units rated in
+        # every arm. A unit rated in one arm only (--session-closed) would otherwise sit in that
+        # arm's floor but in no contrast, and a lone high round-trip rating there could turn a
+        # comparable pair of floors into a false INVALID. (A unit with S1 and F1 but no Q is
+        # left out of the floors and of every printed count.)
         common = sb.rated_in_all(gaps, arms)
         gaps = {a: {u: gaps[a][u] for u in common} for a in arms}
         model_u = {a: {u: model_u[a][u] for u in common} for a in arms}
         rt_u = {a: {u: rt_u[a][u] for u in common} for a in arms}
         sev = {a: [model_u[a][u] for u in sorted(common)] for a in arms}
         floor = {a: [rt_u[a][u] for u in sorted(common)] for a in arms}
+    rated = sum(len(v) for v in gaps.values())
+    if rated < len(truth):
+        print("⚠ %d of %d items not fully rated or not rated in every arm; they are left out.\n"
+              % (len(truth) - rated, len(truth)))
     if not all(floor.values()) and "min_units" in sb.CHECKS[args.check]:
         # Pre-registered: fewer than 16 voices rated in both arms is INVALID, not a crash.
         print("OUTCOME: INVALID — %s" % OUTCOME[(args.check, "invalid")])
@@ -321,6 +381,8 @@ def main(argv=None):
                                            for a in arms)))
     if args.check == 7:
         print_pairs(truth)
+    if args.check == 9:
+        print_triplets(truth, sb.rated_in_all(gaps, arms))
     return r
 
 
@@ -338,6 +400,34 @@ def print_pairs(truth):
             if s else "S1 .",
             "F1 v7 %d (LibriTTS %d)  %-16s HNR %.2f  F0 %.0f"
             % (f["spk"], f["libritts_id"], f["partition"], f["hnr"], f["f0"]) if f else "F1 ."))
+
+
+def print_triplets(truth, units):
+    """Check 9's triplets (S1, F1, Q) on the units the readout used: each voice's HNR, F0 and
+    partition, the `widened` flags (0.5 dB window widened to 1.0), and the realised HNR/F0
+    gaps. The deciding F1 - Q contrast rests on voices matched only through S1, so their
+    realised gap is shown, not only the registered window."""
+    by = {}
+    for t in truth.values():
+        by.setdefault(t["unit"], {})[t["arm"]] = t
+    print("\nTRIPLETS (voice, HNR, F0; widened = the 0.5 dB window was widened to 1.0)")
+    dh, df = [], []
+    for u in sorted(units):
+        s, f, q = by[u]["S1"], by[u]["F1"], by[u]["Q"]
+        w = q.get("widened") or {}
+        dh.append(abs(f["hnr"] - q["hnr"]))
+        df.append(abs(math.log(f["f0"] / q["f0"])))
+        print("%4d  S1 %d %-16s %.2f %.0f  |  F1 %d %-16s %.2f %.0f  |  Q %s %.2f %.0f  |  "
+              "widened F1 %s Q %s  |ΔHNR F1-Q| %.2f"
+              % (u, s["spk"], s["partition"], s["hnr"], s["f0"], f["spk"], f["partition"],
+                 f["hnr"], f["f0"], q["q_spk"], q["hnr"], q["f0"],
+                 "yes" if w.get("F1") else "no", "yes" if w.get("Q") else "no", dh[-1]))
+    if dh:
+        print("F1 vs Q: |ΔHNR| mean %.2f max %.2f dB; |Δln F0| mean %.3f max %.3f; %d of %d "
+              "triplets widened"
+              % (st.mean(dh), max(dh), st.mean(df), max(df),
+                 sum(1 for u in units if any((by[u]["Q"].get("widened") or {}).values())),
+                 len(dh)))
 
 
 if __name__ == "__main__":

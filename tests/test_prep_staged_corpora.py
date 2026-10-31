@@ -304,3 +304,36 @@ prep.stats(argparse.Namespace(corpus='q_synth_22k', workers=1))
     assert r.returncode == 0, r.stderr
     got = json.loads((tmp_path / "q_synth_22k" / "mel_statistics.json").read_text())
     assert got == {"mel_mean": 1.0, "mel_std": 2.0}
+
+
+# ------------------------------------------------------------ resample_to: atomic (audit I-4)
+
+def test_resample_to_writes_a_22k_wav_and_leaves_no_temp_file(tmp_path):
+    dst = tmp_path / "out" / "a.wav"
+    x = 0.1 * np.sin(np.linspace(0, 200, 48000))
+    assert prep.resample_to(x, 48000, str(dst)) == 0
+    assert sf.info(dst).samplerate == sd.TARGET_SR and prep.done(str(dst))
+    assert [p.name for p in dst.parent.iterdir()] == ["a.wav"]
+
+
+def test_an_interrupted_write_leaves_nothing_at_dst(tmp_path, monkeypatch):
+    """A worker killed mid-write used to leave a valid-header stub that `done()` kept."""
+    dst = tmp_path / "a.wav"
+    real = sf.write
+
+    def dying_write(path, data, sr, subtype=None, **kw):
+        real(path, data[: len(data) // 3], sr, subtype, **kw)      # a third reaches the disk
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(prep.sf, "write", dying_write)
+    with pytest.raises(KeyboardInterrupt):
+        prep.resample_to(np.zeros(48000) + 0.1, 48000, str(dst))
+    assert not dst.exists() and not prep.done(str(dst))
+    assert list(tmp_path.iterdir()) == [], "the partial temp file was left behind"
+
+
+def test_a_rewrite_replaces_an_existing_copy_whole(tmp_path):
+    dst = tmp_path / "a.wav"
+    sf.write(dst, np.zeros(100), sd.TARGET_SR, "PCM_16")
+    prep.resample_to(np.zeros(48000) + 0.1, 48000, str(dst))
+    assert sf.info(dst).frames == 22050

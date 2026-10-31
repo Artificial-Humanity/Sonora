@@ -803,8 +803,11 @@ def _bench(tmp_path, check, model_sev, n=16, rt=1):
             items[k] = t
             rows.append({"item": k, "sev_a": model_sev[a], "sev_b": r})
     key = tmp_path / "k.json"
-    key.write_text(json.dumps({"check": check, "items": items}))
-    _folder(tmp_path / "t", rows)
+    clips = {}
+    for k, t in items.items():
+        clips["a_" + k], clips["b_" + k] = {"label": t["A_label"]}, {"label": t["B_label"]}
+    key.write_text(json.dumps({"check": check, "items": items, "clips": clips}))
+    _folder(tmp_path / "t", rows, served={k: ("a_" + k, "b_" + k) for k in items})
     argv = ["--check", str(check), "--key", str(key), "--test", str(tmp_path / "t")]
     if check in (5, 6, 7):              # checks 5-7: three-folder session
         _meta(tmp_path / "t", check)
@@ -823,14 +826,17 @@ def _meta(path, check):
     (path / "render_meta.json").write_text(json.dumps({"check": check, "pairs": 3}))
 
 
-def _folder(path, rows, check=None):
-    """A test folder: items.json naming each row's item, and verdicts.csv with the rows (and,
-    given a check, the render_meta.json of that check's bench)."""
+def _folder(path, rows, check=None, served=None):
+    """A test folder: items.json naming each row's item (`served` maps an item to the opaque
+    names on its A and B sides), and verdicts.csv with the rows (and, given a check, the
+    render_meta.json of that check's bench)."""
     (path / "verdicts").mkdir(parents=True)
     if check is not None:
         _meta(path, check)
     (path / "items.json").write_text(json.dumps(
-        {"test": path.name, "items": [{"id": r["item"], "A": "a", "B": "b"} for r in rows]}))
+        {"test": path.name,
+         "items": [{"id": r["item"], "A": (served or {}).get(r["item"], ("a", "b"))[0],
+                    "B": (served or {}).get(r["item"], ("a", "b"))[1]} for r in rows]}))
     with (path / "verdicts" / "verdicts.csv").open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["item", "sev_a", "sev_b"])
         w.writeheader()

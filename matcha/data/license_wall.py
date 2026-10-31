@@ -87,6 +87,16 @@ def _read_manifest():
                 f"data_licenses.yaml: entry {name!r} has publish: {policy!r}; it must be "
                 f"one of {sorted(_PUBLISH_VALUES)}."
             )
+    owner = {}
+    for name, entry in raw.items():
+        for d in entry["dirs"]:
+            other = owner.setdefault(d.lower(), name)
+            if other != name:
+                raise LicenseWallError(
+                    f"data_licenses.yaml: directory {d!r} is declared by both {other!r} and "
+                    f"{name!r}. A later entry would silently overwrite the earlier one's class, "
+                    "so a duplicate is refused at load."
+                )
     return raw
 
 
@@ -154,13 +164,27 @@ def _candidates(component):
         yield parts[2]
 
 
+# The values that mean "nothing to refuse" in the two tables: `class` and `publish`.
+_BENIGN = ("permissive", "allowed")
+
+
 def _lookup(path, table):
+    """The most restrictive declaration on any component of `path`, else the outermost one.
+
+    ⚠ EVERY COMPONENT IS READ, NOT THE FIRST THAT HITS. Returning on the outermost hit let a
+    blocked dataset nested under a permissive-named parent (`.../ljspeech/expresso/wavs`)
+    classify as the parent. A non-benign value anywhere on the path wins.
+    """
+    first = None
     for component in os.path.normpath(path).split(os.sep):
         for name in _candidates(component):
             hit = table.get(name.lower())
-            if hit:
+            if not hit:
+                continue
+            if hit[1] not in _BENIGN:
                 return hit
-    return None
+            first = first or hit
+    return first
 
 
 def classify_path(path):
@@ -446,10 +470,28 @@ HOLDOUT_MARKER = "holdout"
 
 
 def refuse_holdout(filelist_paths):
-    hits = [p for p in filelist_paths if HOLDOUT_MARKER in str(p).lower()]
+    """Refuse a filelist whose own path, or any audio path in its rows, names a HOLDOUT.
+
+    The rows matter because a merged corpus is a filelists-only directory whose audio lives
+    elsewhere: `libritts_r_full_vat_v7/train_op.txt` carries no marker while its rows can
+    point into `libritts_r_holdout_devclean/`. An unreadable filelist is checked by its path
+    alone; `enforce` is the guard that refuses one that cannot be opened.
+    """
+    hits = []
+    for p in filelist_paths:
+        if HOLDOUT_MARKER in str(p).lower():
+            hits.append(str(p))
+            continue
+        try:
+            with open(p, encoding="utf-8") as f:
+                rows = {os.path.dirname(line.split("|")[0]) for line in f if line.strip()}
+        except OSError:
+            continue
+        hits += ["%s (audio: %s)" % (p, d) for d in sorted(rows)
+                 if HOLDOUT_MARKER in d.lower()][:3]
     if hits:
         raise RuntimeError(
-            "REFUSING to train: a filelist path names a HOLDOUT.\n"
+            "REFUSING to train: a filelist path or its audio names a HOLDOUT.\n"
             + "".join(f"  {p}\n" for p in hits)
             + "  The clean holdout is the lineage's only never-trained measurement and\n"
               "  there is no second dev-clean to replace it. One epoch over it and every\n"

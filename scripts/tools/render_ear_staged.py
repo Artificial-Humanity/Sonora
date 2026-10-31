@@ -532,6 +532,9 @@ def load_prior(patterns, optional, skip):
 
 def select(args):
     c = sb.CHECKS[args.check]
+    if args.n > sb.MAX_UNITS:
+        raise SystemExit("REFUSING: --n %d; the exact test is for at most %d units."
+                         % (args.n, sb.MAX_UNITS))
     out_path = Path(args.out_speakers)
     if out_path.exists():
         raise SystemExit("REFUSING: %s exists. Voices are drawn once (pre-registration)."
@@ -1082,9 +1085,12 @@ def render(args):
         sides = [("A", hi), ("B", lo)] if swaps[it["unit"]][arm] else [("A", lo), ("B", hi)]
         item = {"id": pair_key, "set": "hum", "text": "(recording)",
                 "spk": "(blind)", "vat": [], "delivery_ui": "(blind)"}
+        # one loudness for the pair: a peak-bound side sets the level for both (M-1)
+        a_audio, b_audio, bound_sides = ear_bench.match_pair_loudness(
+            made[pair_key][sides[0][1]], made[pair_key][sides[1][1]], sr, args.lufs)
+        limited += bound_sides
         for side_key, lbl in sides:
-            a, bound = ear_bench.match_loudness(made[pair_key][lbl], sr, args.lufs)
-            limited += int(bound)
+            a = a_audio if side_key == "A" else b_audio
             nm = ear_bench.opaque(pair_key, side_key, args.salt)
             sf.write(str(clips / ("%s.wav" % nm)), a, sr, "PCM_24")
             bench.written += 1                 # render_meta.json and the summary count these
@@ -1105,8 +1111,8 @@ def render(args):
     k["check"], k["items"] = args.check, truth
     Path(args.key_out).write_text(json.dumps(k, indent=2))
     if limited:
-        print("\n⚠ %d side(s) hit the peak ceiling before reaching %.1f LUFS."
-              % (limited, args.lufs))
+        print("\n⚠ %d side(s) hit the peak ceiling before reaching %.1f LUFS; each such pair "
+              "was matched at its quieter side's level." % (limited, args.lufs))
     print("\nRENDERED %d items. Key: %s" % (len(served), args.key_out))
 
 

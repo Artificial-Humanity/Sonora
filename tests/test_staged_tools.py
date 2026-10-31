@@ -70,6 +70,20 @@ def test_an_optional_prior_pattern_may_match_nothing_and_the_output_is_skipped(t
                          tmp_path / "out.json") == [{}]
 
 
+def _clips(items):
+    """The key's `clips`: an opaque name per side of each item, and the label it carries."""
+    out = {}
+    for k, t in items.items():
+        out["a_" + k], out["b_" + k] = {"label": t["A_label"]}, {"label": t["B_label"]}
+    return out
+
+
+def _serve(test_dir, items):
+    """The test folder's items.json, naming the opaque clip on each side of each item."""
+    (test_dir / "items.json").write_text(json.dumps(
+        {"test": test_dir.name, "items": [{"id": k, "A": "a_" + k, "B": "b_" + k} for k in items]}))
+
+
 def _bench(tmp_path, check, model_sev, n=16, rt=1, swap=False):
     """A key + verdicts where arm `a` is rated model_sev[a] over a round trip of rt[a] (an int,
     or a per-unit list). swap=True serves the model on B for odd units."""
@@ -88,8 +102,9 @@ def _bench(tmp_path, check, model_sev, n=16, rt=1, swap=False):
             sev_a, sev_b = (r, model_sev[a]) if flip else (model_sev[a], r)
             rows.append({"item": k, "sev_a": sev_a, "sev_b": sev_b})
     key = tmp_path / "k.json"
-    key.write_text(json.dumps({"check": check, "items": items}))
+    key.write_text(json.dumps({"check": check, "items": items, "clips": _clips(items)}))
     (tmp_path / "t" / "verdicts").mkdir(parents=True)
+    _serve(tmp_path / "t", items)
     with (tmp_path / "t" / "verdicts" / "verdicts.csv").open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["item", "sev_a", "sev_b"])
         w.writeheader()
@@ -337,6 +352,14 @@ def test_select_check4_dry_run_marks_the_file_and_uses_the_filters(tmp_path, mon
 def test_a_real_select_check4_has_no_dry_run_key(tmp_path, monkeypatch):
     spec = _select(tmp_path, monkeypatch, 16, dry=False)
     assert "dry_run" not in spec and len(spec["items"]) == 16
+
+
+def test_select_refuses_more_units_than_the_exact_test_can_read_before_anything_else(
+        tmp_path, monkeypatch):
+    """Audit 2026-10-31, M-3: --n 24 used to be drawn, rendered and rated, then crash."""
+    with pytest.raises(SystemExit, match="at most 20"):
+        _select(tmp_path, monkeypatch, 17, more=["--n", "24"])
+    assert not (tmp_path / "scratch" / "speakers.json").exists()
 
 
 @pytest.mark.parametrize("n,used", [(16, 16), (20, 20), (22, 20)])

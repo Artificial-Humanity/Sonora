@@ -192,6 +192,11 @@ def main():
     ap.add_argument("--periodicity", type=float, default=0.3)
     ap.add_argument("--min-selftest-spread", type=float, default=3.0)
     ap.add_argument("--seed", type=int, default=1234)
+    ap.add_argument("--min-clips", type=int, default=1,
+                    help="a speaker with fewer usable clips than this is skipped, not measured "
+                         "(default 1: any usable clip). A speaker's F0 and HNR are medians "
+                         "over its clips, so one clip is a noisy estimate against a +-0.5 dB "
+                         "matching window.")
     ap.add_argument("--speakers-from", default=None, metavar="FILE",
                     help="measure exactly the speaker indices listed in FILE (whitespace-"
                          "separated); --speakers-sampled is then unused")
@@ -264,13 +269,15 @@ def main():
                 f0s.append(float(np.median(f)))
                 hnrs.append(float(np.median(h)))
                 parts.append(partition_of(wav))
-        if not f0s:
+        if len(f0s) < max(args.min_clips, 1):
             skipped.append(s)
             continue
         out[s] = {"f0": round(statistics.median(f0s), 2),
                   "hnr": round(statistics.median(hnrs), 3),
                   "rows": len(by_spk[s]),
-                  "partition": statistics.mode(parts), "clips": len(f0s)}
+                  # a tie goes to the first name in sorted order, not the first seen
+                  "partition": max(sorted(set(parts)), key=parts.count),
+                  "clips": len(f0s)}
         if (n + 1) % 50 == 0:
             print("    %d/%d speakers" % (n + 1, len(chosen)), flush=True)
 
@@ -296,6 +303,7 @@ def main():
     doc = {"corpus": args.corpus, "split": args.split, "fmin": args.fmin,
            "fmax": args.fmax, "min_rows": args.min_rows,
            "rms_floor": args.rms_floor, "periodicity": args.periodicity,
+           "min_clips": args.min_clips,
            "dataset": dataset, "raw_root": raw_root, "filelist": str(fp), "seed": args.seed,
            "speakers_sampled": args.speakers_sampled,
            "clips_per_speaker": args.clips_per_speaker, "skipped": skipped,
