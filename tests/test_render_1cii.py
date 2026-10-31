@@ -238,6 +238,50 @@ def test_status_reports_an_unrendered_cell(env, capsys):
     assert "0 of %d" % N in capsys.readouterr().out
 
 
+def _write_seeded_rows(env, cell, engine, seeds):
+    """Manifest rows for the first len(seeds) bank ids, each with the given seed (None: no key)."""
+    audio = env["out"] / cell / "audio"
+    audio.mkdir(parents=True, exist_ok=True)
+    bank = _bank(env, cell)
+    with open(audio / ("%s_manifest.jsonl" % engine), "w") as fh:
+        for line, seed in zip(bank["lines"], seeds):
+            row = {"id": line["id"], "engine": engine}
+            if seed is not None:
+                row["seed"] = seed
+            fh.write(json.dumps(row) + "\n")
+    return bank
+
+
+def test_a_cell_rendered_from_a_bumped_seed_is_not_complete(env, capsys):
+    """Audit I-3: synth_common.attempt_seed gives a crash-resumed clip seed + 1. Every id has a row,
+    so the cell used to read complete (exit 0) and its clips were compared across cells as if all
+    were drawn from the planned seed."""
+    _plan(env)
+    cell = "jess_orpheus"
+    bank = _bank(env, cell)
+    seeds = [ln["seed"] for ln in bank["lines"]]
+    _write_seeded_rows(env, cell, "orpheus", seeds)
+    args = ["status", cell, "--out-root", str(env["out"])]
+    assert r2.main(args) == 0                                   # every seed as planned
+    capsys.readouterr()
+    seeds[6] += 1                                               # clip 7 resumed after a crash
+    _write_seeded_rows(env, cell, "orpheus", seeds)
+    assert r2.main(args) == r1.PARTIAL_EXIT
+    cap = capsys.readouterr()
+    assert "%d of %d" % (N, N) in cap.out
+    assert "NON-COMPARABLE" in cap.err and bank["lines"][6]["id"] in cap.err
+    assert "PARTIAL RENDER" not in cap.err                      # nothing is missing
+    status = r1.manifest_status(str(env["out"] / cell), "orpheus", bank)
+    assert status["seed_mismatch"] == [bank["lines"][6]["id"]]
+
+
+def test_rows_without_a_seed_key_are_not_flagged(env):
+    _plan(env)
+    cell = "jess_orpheus"
+    bank = _write_seeded_rows(env, cell, "orpheus", [None] * N)
+    assert r1.manifest_status(str(env["out"] / cell), "orpheus", bank)["seed_mismatch"] == []
+
+
 # --- the render-affecting classification (render_1ci's test shape, both lists) -
 
 def test_every_render_affecting_path_is_tracked_here():

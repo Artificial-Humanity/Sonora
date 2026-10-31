@@ -112,8 +112,11 @@ datasets:
     # OURS — the Step 2c synthetic corpus (Arm Q, Notes: Sonora/phase-1s-step1-preregistration.md
     # § Step 2). 90 speakers of audio rendered locally by Qwen3-TTS-12Hz-1.7B-Base
     # (qwen_base), Qwen3-TTS-12Hz-1.7B-CustomVoice (qwen_custom) and Orpheus-3B-0.1-ft (orpheus,
-    # its README states apache-2.0), on Standard Ebooks CC0 text. The engine weights' licences
-    # gate their use; they do not attach to the audio they produce (see
+    # its README states apache-2.0), on Standard Ebooks CC0 text. The qwen_base speakers are
+    # cloned from reference anchors (2 locked from the 1c-0 probe, 85 from Step 2a) that
+    # Qwen3-TTS-12Hz-1.7B-VoiceDesign rendered (`scripts/stages/synth_qwen.py` stamps it
+    # Apache-2.0; that stamp is the record here, not a fresh read of the model card). The engine
+    # weights' licences gate their use; they do not attach to the audio they produce (see
     # sonora_expressive_registers below). `q_synth_raw` is the 24 kHz source of these same clips.
     # license: Apache-2.0 (ours — synthetic audio on Standard Ebooks CC0 text, rendered locally)
     dirs: [q_synth_22k, q_synth_raw]
@@ -197,8 +200,8 @@ datasets:
     #     output, produced by models we run locally under their own weights licences. The
     #     WEIGHTS licence gates whether an engine may be used at all (notes/dataset-
     #     landscape.md); it does not attach to the audio those weights produce.
-    #     Recorded on that basis for the Step 1c-ii engines (onboarded, probe-only,
-    #     no audio in any corpus yet): `qwen_base` (Qwen/Qwen3-TTS-12Hz-1.7B-Base,
+    #     Recorded on that basis for the Step 1c-ii engines (onboarded; their corpus audio
+    #     is the `q_synth` entry below, not this entry's): `qwen_base` (Qwen/Qwen3-TTS-12Hz-1.7B-Base,
     #     rev fd4b254389122332181a7c3db7f27e918eec64e3) and `qwen_custom`
     #     (Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice,
     #     rev 0c0e3051f131929182e2c023b9537f8b1c68adfe) are verified Apache-2.0

@@ -31,6 +31,7 @@ for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in 
         _sys.path.insert(0, _p)
 
 import functools  # noqa: E402
+import json  # noqa: E402
 
 import torch  # noqa: E402
 from hydra import compose, initialize_config_dir  # noqa: E402
@@ -134,6 +135,18 @@ def check_arm(exp):
         print(f"  PENDING  {exp}: {warm.rsplit('/', 1)[-1]} and its corpus are written in Step 2c; "
               "the warm-start and datamodule checks did not run")
         return {k: plain(v) for k, v in model.hparams.items()}
+    if exp == "staged_q":
+        # q_synth.yaml carries F1's statistics as a placeholder until `render_step2_corpus.py
+        # mel-stats` measures Q's; training on them would normalise Q's mels wrongly.
+        stats_path = f"{DATA}/{name}/mel_statistics.json"
+        assert _os.path.isfile(stats_path), f"{exp}: {stats_path} is not written; run mel-stats"
+        with open(stats_path, encoding="utf-8") as fh:
+            measured = json.load(fh)
+        for k in ("mel_mean", "mel_std"):
+            assert abs(cfg.data.data_statistics[k] - measured[k]) <= 1e-6, (
+                f"{exp}: data_statistics.{k} {cfg.data.data_statistics[k]} is not the measured "
+                f"{measured[k]} ({stats_path}); set q_synth.yaml's values before the run")
+        print(f"  ok  {exp}: data_statistics are the measured ones")
     w = torch.load(warm, map_location="cpu", weights_only=False)
     assert (w["epoch"], w["global_step"]) == (0, 0), f"{warm} is not an epoch-0 warm start"
     model.load_state_dict(w["state_dict"], strict=True)

@@ -270,6 +270,23 @@ def test_cmd_admit_filter_refuses_a_partial_measure_on_disk(tmp_path):
     assert not (tmp_path / "admission_report.json").exists()
 
 
+def test_admission_refuses_an_embedding_of_a_clip_replaced_since_embed(tmp_path):
+    """Audit M-9: `embed` records each wav's sha256 and nothing read it back."""
+    (tmp_path / "clips").mkdir()
+    (tmp_path / "clips" / "a.wav").write_bytes(b"as embedded")
+    (tmp_path / "clips" / "b.wav").write_bytes(b"as embedded too")
+    rows = [{"id": "a", "file": "clips/a.wav"}, {"id": "b", "file": "clips/b.wav"},
+            {"id": "gone", "file": "clips/gone.wav"}]
+    emb = {"a": {"wav_sha256": s2.file_sha256(str(tmp_path / "clips" / "a.wav"))},
+           "b": {"wav_sha256": s2.file_sha256(str(tmp_path / "clips" / "b.wav"))},
+           "gone": {"wav_sha256": "0" * 64}}
+    s2.check_embedded_wavs(rows, str(tmp_path), emb)                  # all current: no refusal
+    (tmp_path / "clips" / "b.wav").write_bytes(b"replaced by hand")
+    with pytest.raises(SystemExit, match="1 clip.*: b\\."):
+        s2.check_embedded_wavs(rows, str(tmp_path), emb)
+    s2.check_embedded_wavs(rows, str(tmp_path), {"b": {}})            # no recorded hash: not checked
+
+
 def test_the_grid_is_mixed_radix_and_its_first_57_are_distinct_per_gender():
     axes = [s2.grid_axes(i) for i in range(72)]
     assert len(set(axes)) == 72

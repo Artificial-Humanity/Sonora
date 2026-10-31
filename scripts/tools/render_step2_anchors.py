@@ -397,6 +397,22 @@ def cmd_embed(args):
           % (len(out), len(rows), len(LOCKED_ANCHORS), SPEAKER_EMBEDDINGS))
 
 
+def check_embedded_wavs(rows, out, embeddings):
+    """Refuse an embedding made from other bytes than the clip now on disk. Each embedding carries
+    the `wav_sha256` `embed` computed; a rendered clip whose wav exists and hashes differently was
+    replaced after `embed`, and its embedding no longer describes it. An embedding with no
+    `wav_sha256`, or a clip with no wav, is not checked here (`embed` itself refuses a missing wav)."""
+    stale = []
+    for r in rows:
+        want = (embeddings.get(r["id"]) or {}).get("wav_sha256")
+        path = os.path.join(out, r["file"])
+        if want and os.path.isfile(path) and file_sha256(path) != want:
+            stale.append(r["id"])
+    if stale:
+        raise SystemExit("REFUSING: %d clip(s) changed since `embed` (wav sha256 differs from the "
+                         "embedding's): %s. Re-run embed." % (len(stale), ", ".join(stale[:10])))
+
+
 def admit(candidates, qc, embeddings, locked):
     """The three automated gates, in plan order. Returns the report's dict.
 
@@ -547,6 +563,7 @@ def cmd_admit_filter(args):
     data_rel = audition_relpath(args.out)
     qc = {r["id"]: r for r in rq._read_jsonl(qc_path)}
     embeddings = {r["id"]: r for r in rq._read_jsonl(embeddings_path)}
+    check_embedded_wavs(rows, args.out, embeddings)
     report = admit(candidates, qc, embeddings, LOCKED_ANCHORS)
     write_json_atomic(os.path.join(args.out, "admission_report.json"), dict(
         report, tool=TOOL, probe=PROBE, distinct_cos_bound=DISTINCT_COS,

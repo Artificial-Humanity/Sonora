@@ -246,6 +246,16 @@ def test_f1_statistics_are_the_measured_ones():
     assert want["mel_std"] == pytest.approx(got["mel_std"], abs=1e-6)
 
 
+@pytest.mark.skipif(not Path("/data/model-training/sonora/data/q_synth_22k/mel_statistics.json")
+                    .is_file(), reason="/data not mounted or q_synth_22k not built")
+def test_q_statistics_are_the_measured_ones():
+    got = json.loads(Path("/data/model-training/sonora/data/q_synth_22k/mel_statistics.json")
+                     .read_text())
+    want = y(DATA_CFG / "q_synth.yaml")["data_statistics"]
+    assert want["mel_mean"] == pytest.approx(got["mel_mean"], abs=1e-6)
+    assert want["mel_std"] == pytest.approx(got["mel_std"], abs=1e-6)
+
+
 @pytest.mark.parametrize("arm,base", [("staged_d1", "staged_c0"), ("staged_g", "staged_s1"),
                                       ("staged_f1", "staged_s1"), ("staged_e", "staged_s1"),
                                       ("staged_q", "staged_s1")])

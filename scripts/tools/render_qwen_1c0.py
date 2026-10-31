@@ -68,7 +68,8 @@ clip's `acoustics`, and its `render_meta.json`. The card shows the row's `gender
 and, from `acoustics`, `f0_median_hz`, `f0_excursion_hz` and `hnr_db`; `cpp_db` rides along unshown.
 The owner's verdicts go to that folder's `verdicts.csv`. Nothing here touches `ratings.csv`. Nothing
 here pre-fills an attribute from the prompt either: a pitch value taken from the rung would tell the
-listener the answer.
+listener the answer. The row's `instruct` stays in the manifest (and in the API's clip JSON) but the
+card does not render it, for the same reason.
 
 ⚠ THE STEP 1B SPEAKER EMBEDDING IS A SEPARATE STEP. The spec's per-clip measures include the Zonos
 `SpeakerEmbeddingLDA` embedding; this tool does not compute it and takes no Zonos dependency. The

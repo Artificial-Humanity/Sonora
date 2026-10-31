@@ -31,6 +31,8 @@ import shlex
 import subprocess
 import sys as _sys
 import datetime
+import glob
+import hashlib
 
 _SONORA_REPO = _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b)
@@ -75,7 +77,6 @@ def spk_name(s):
 
 
 def _file_sha(path):
-    import hashlib
     with open(path, "rb") as fh:
         return hashlib.sha256(fh.read()).hexdigest()
 
@@ -169,10 +170,49 @@ def cmd_lock_speakers(args):
         refs[gender] = [ref_of(anchor_rows[cid], args.anchors_dir, gender)
                         for cid in passing[:NEED[gender]]]
     table = build_speakers(refs["Male"], refs["Female"], locked)
-    write_json_atomic(_os.path.join(args.out_root, "speakers.json"),
-                      {"version": VERSION, "speakers": table})
+    payload = {"version": VERSION, "speakers": table}
+    _guard_relock(args.out_root, payload, getattr(args, "force_relock", False))
+    write_json_atomic(_os.path.join(args.out_root, "speakers.json"), payload)
     print("wrote speakers.json (%d speakers)" % len(table))
     return 0
+
+
+def _guard_relock(out_root, payload, force):
+    """Refuse a speakers.json that would change the table once it is in use. A re-rating shifts every
+    later anchor -> index assignment, so plans and renders under spk_NN/ would name anchors that did
+    not produce their audio. An identical table is not a change, and neither is promoting
+    speakers_locked5.json to speakers.json under plans made from it."""
+    path = _os.path.join(out_root, "speakers.json")
+    existing = None
+    if _os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            existing = json.load(fh)
+    if force or existing == payload:
+        return
+    planned = sorted(glob.glob(_os.path.join(out_root, "spk_*", "plan.json")))
+    if existing is not None:
+        refuse("REFUSING: %s exists and differs from this lock; re-locking moves anchors between "
+               "speaker indices. Pass --force-relock if that is intended." % path)
+    if planned and not _plans_match(planned, payload["speakers"]):
+        refuse("REFUSING: %s has %d speaker plan(s) (first: %s) and no speakers.json; this lock may "
+               "not be the table they were planned from. Pass --force-relock if it is."
+               % (out_root, len(planned), planned[0]))
+
+
+def _plans_match(plans, speakers):
+    """True when every plan.json's `speaker` is the entry of that name in `speakers`. The real
+    workflow plans and renders the five pre-locked speakers from speakers_locked5.json before the
+    full lock writes speakers.json, so those plans are the table's own entries, not a different one."""
+    by_name = {t["name"]: t for t in speakers}
+    for path in plans:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                planned = json.load(fh)["speaker"]
+            if by_name.get(planned["name"]) != planned:
+                return False
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+    return True
 
 
 def load_speakers(out_root, subset=None):
@@ -215,10 +255,35 @@ def bank_lines(speaker, speaker_rows):
     return lines, summary
 
 
-def speaker_bank(speaker, text_dir, include_reserve):
-    """(bank dict, the text rows the bank holds, direction summary) for one speaker."""
+def _verified_speaker_rows(speaker, text_dir, text_meta):
+    """The speaker file's 400 rows, checked against the frozen bank: the file's bytes hash to
+    meta.json's `speaker_file_sha256` for it (when meta records one), and the rows are 360 `primary`
+    then 40 `reserve` at speaker line indices 1..400. Refuses otherwise, so the plan's TEXT_SHA
+    stamp is only ever put on the text it names."""
     path = _os.path.join(text_dir, "speakers", "%s.jsonl" % speaker["name"])
-    rows = [json.loads(l) for l in open(path, encoding="utf-8") if l.strip()]
+    with open(path, "rb") as fh:
+        raw = fh.read()
+    want = (text_meta.get("speaker_file_sha256") or {}).get(speaker["name"])
+    if want is not None and hashlib.sha256(raw).hexdigest() != want:
+        refuse("REFUSING: %s sha256 %s; meta.json records %s for %s."
+               % (path, hashlib.sha256(raw).hexdigest(), want, speaker["name"]))
+    rows = [json.loads(l) for l in raw.decode("utf-8").splitlines() if l.strip()]
+    roles = ["primary"] * PRIMARY + ["reserve"] * (SPEAKER_LINES - PRIMARY)
+    if (len(rows) != SPEAKER_LINES
+            or [r.get("role") for r in rows] != roles
+            or [r.get("speaker_line_index") for r in rows] != list(range(1, SPEAKER_LINES + 1))):
+        refuse("REFUSING: %s holds %d rows; the frozen bank is %d primary then %d reserve, at "
+               "speaker line indices 1..%d." % (path, len(rows), PRIMARY,
+                                                SPEAKER_LINES - PRIMARY, SPEAKER_LINES))
+    return rows
+
+
+def speaker_bank(speaker, text_dir, include_reserve, text_meta=None):
+    """(bank dict, the text rows the bank holds, direction summary) for one speaker."""
+    if text_meta is None:
+        with open(_os.path.join(text_dir, "meta.json"), encoding="utf-8") as fh:
+            text_meta = json.load(fh)
+    rows = _verified_speaker_rows(speaker, text_dir, text_meta)
     if not include_reserve:
         rows = [r for r in rows if r["role"] == "primary"]
     lines, summary = bank_lines(speaker, rows)
@@ -235,7 +300,7 @@ def cmd_plan(args):
     r1._require_clean(git, args.allow_dirty)
     planned = []
     for speaker in load_speakers(args.out_root, args.speakers):
-        bank, rows, summary = speaker_bank(speaker, args.text_dir, args.include_reserve)
+        bank, rows, summary = speaker_bank(speaker, args.text_dir, args.include_reserve, text_meta)
         cdir = _os.path.join(args.out_root, speaker["name"])
         meta = {"tool": TOOL, "version": VERSION, "commit": git["commit"],
                 "tree_clean": git["tree_clean"], "speaker": speaker,
@@ -249,14 +314,16 @@ def cmd_plan(args):
         planned.append((speaker, cdir, bank, _refuse_existing(cdir, bank, meta)))
     for speaker, cdir, bank, meta in planned:
         _os.makedirs(cdir, exist_ok=True)
-        write_json_atomic(_os.path.join(cdir, "bank.json"), bank)
+        # plan.json first: a crash between the two leaves the old bank under the new plan, which the
+        # next plan run reads as the same 360 -> 400 growth and finishes; the other order left a
+        # 400-line bank under a 360-line plan.
         write_json_atomic(_os.path.join(cdir, "plan.json"), meta)
+        write_json_atomic(_os.path.join(cdir, "bank.json"), bank)
         print("%s: %d lines (%s)" % (speaker["name"], len(bank["lines"]), speaker["engine"]))
     return 0
 
 
 def _file_sha_of_json(obj):
-    import hashlib
     return hashlib.sha256(json.dumps(obj, sort_keys=True).encode("utf-8")).hexdigest()
 
 
@@ -298,19 +365,25 @@ def _refuse_existing(cdir, bank, meta):
              and len(disk_lines) == PRIMARY
              and len(bank["lines"]) == SPEAKER_LINES
              and bank["lines"][:PRIMARY] == disk_lines)
+    old = None
+    if _os.path.exists(plan_path):
+        try:
+            with open(plan_path, encoding="utf-8") as fh:
+                old = json.load(fh)
+        except (OSError, ValueError) as e:
+            refuse("REFUSING: %s/plan.json cannot be read (%s)." % (cdir, e))
+    # A growth that died between its two writes: the 400-line bank is on disk, plan.json still says 360.
+    if (on_disk == bank and old is not None and meta.get("include_reserve") is True
+            and len(disk_lines) == SPEAKER_LINES and old.get("lines") == PRIMARY):
+        grown = True
     if on_disk is not None and on_disk != bank and not grown:
         refuse("REFUSING: %s/bank.json differs from this plan; plan into a new --out-root."
                % cdir)
-    if not _os.path.exists(plan_path):
+    if old is None:
         if renders:
             refuse("REFUSING: %s/audio holds renders but plan.json is missing; the commit and "
                    "engine they were rendered under are not recorded." % cdir)
         return meta
-    try:
-        with open(plan_path, encoding="utf-8") as fh:
-            old = json.load(fh)
-    except (OSError, ValueError) as e:
-        refuse("REFUSING: %s/plan.json cannot be read (%s)." % (cdir, e))
     if old.get("engine_pin") != meta["engine_pin"]:
         refuse("REFUSING: %s was planned with engine pin %s, and it is now %s. Plan into a new "
                "--out-root." % (cdir, json.dumps(old.get("engine_pin"), sort_keys=True),
@@ -473,6 +546,15 @@ def cmd_build_corpus(args):
     allowed = set(original_matcha_symbols())
     g2p = OpenPhonemizerG2P()
     out = _os.path.abspath(args.out_dir)
+    # Every row is phonemized before any clip is resampled: a symbol outside the table refuses the
+    # build now, not after thousands of resamples.
+    phonemes = {}
+    for s in speakers:
+        for cid, _wav, text in per[s["index"]]:
+            try:
+                phonemes[(s["index"], cid)] = phonemes_checked(g2p, text, allowed)
+            except ValueError as e:
+                refuse("REFUSING: %s" % e)
     train_lines, val_lines, counts = [], [], {"clipped": 0, "train": 0, "val": 0}
     for s in speakers:
         kept = per[s["index"]]
@@ -480,17 +562,19 @@ def cmd_build_corpus(args):
         by_id = {k[0]: k for k in kept}
         for split, ids in (("train", train_ids), ("val", val_ids)):
             for cid in ids:
-                _cid, wav, text = by_id[cid]
+                _cid, wav, _text = by_id[cid]
                 dst = _os.path.join(out, "wavs", s["name"], cid + ".wav")
                 counts["clipped"] += resample_to(wav, dst)
-                try:
-                    ph = phonemes_checked(g2p, text, allowed)
-                except ValueError as e:
-                    refuse("REFUSING: %s" % e)
+                ph = phonemes[(s["index"], cid)]
                 (train_lines if split == "train" else val_lines).append(
                     "%s|%d|%s" % (dst, s["index"], ph))
                 counts[split] += 1
     _os.makedirs(out, exist_ok=True)
+    # New filelists make an old mel_statistics.json describe a train set that is gone.
+    stale = _os.path.join(out, "mel_statistics.json")
+    if _os.path.exists(stale):
+        _os.unlink(stale)
+        print("removed stale %s; rerun mel-stats" % stale)
     write_text_atomic(_os.path.join(out, "train_op.txt"), "\n".join(train_lines) + "\n")
     write_text_atomic(_os.path.join(out, "val_op.txt"), "\n".join(val_lines) + "\n")
     write_json_atomic(_os.path.join(out, "speakers.json"),
@@ -530,6 +614,8 @@ def main(argv=None):
     p.add_argument("--locked-dir", default=LOCKED_DIR)
     p.add_argument("--out-root", default=RAW_ROOT)
     p.add_argument("--locked-five-only", action="store_true")
+    p.add_argument("--force-relock", action="store_true",
+                   help="overwrite a differing speakers.json, or lock over existing plans")
     p.set_defaults(fn=cmd_lock_speakers)
 
     p = sub.add_parser("plan", help="write spk_NN/bank.json and plan.json")
