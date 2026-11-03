@@ -600,3 +600,27 @@ def test_build_corpus_drops_a_stale_mel_statistics(tmp_path, monkeypatch):
     assert s2c.cmd_build_corpus(args) == 0
     assert len(resampled) == 90 * 11
     assert (out / "train_op.txt").exists() and not (out / "mel_statistics.json").exists()
+
+
+def test_qc_passing_uses_step2c_duration_bounds_not_audition_speech_ok_floor(tmp_path):
+    spk = tmp_path / "spk_04"
+    (spk / "audio").mkdir(parents=True)
+    all_ok = {g: True for g in s2c.STEP2C_QUALITY_GATES}
+    cases = [
+        ("short_clean", 3.6, dict(all_ok, speech_ok=False), False, False),
+        ("asr_bad", 5.2, dict(all_ok, asr_ok=False, speech_ok=True), False, False),
+        ("quarantined", 5.2, dict(all_ok, speech_ok=True), True, True),
+        ("too_short_dur", 0.9, dict(all_ok, speech_ok=False), False, False),
+    ]
+    (spk / "audio" / "qwen_base_manifest.jsonl").write_text(
+        "".join(json.dumps({"id": cid, "wav": cid + ".wav", "text": "T."}) + "\n"
+                for cid, _, _, _, _ in cases), encoding="utf-8")
+    for cid, _, _, _, _ in cases:
+        (spk / "audio" / (cid + ".wav")).write_bytes(b"x")
+    (spk / "qc_measures.jsonl").write_text(
+        "".join(json.dumps({"id": cid, "duration": dur, "gates": gates,
+                            "quarantined": quar, "hard_pass": hp}) + "\n"
+                for cid, dur, gates, quar, hp in cases), encoding="utf-8")
+    kept = [k[0] for k in s2c.qc_passing(str(spk), "qwen_base")]
+    assert kept == ["short_clean"]
+

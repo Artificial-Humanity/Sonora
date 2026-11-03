@@ -456,6 +456,36 @@ def split_rows(ids, seed=SPLIT_SEED, n_val=VAL_PER_SPEAKER):
     return [i for i in ids if i not in val], [i for i in ids if i in val]
 
 
+STEP2C_QUALITY_GATES = (
+    "pause_ok",
+    "duration_ok",
+    "asr_ok",
+    "tail_ok",
+    "length_ok",
+    "dnsmos_ok",
+    "measures_ok",
+)
+
+
+def _step2c_qc_ok(q):
+    """Whether a qc_measures row passes Step 2c's quality gates.
+
+    Step 2c bounds utterance duration with `staged_data.f1_length_ok` (1-16 s, matching S1 and F1)
+    rather than `qc_gate.py`'s audition-era `speech_ok >= 4.0 s` VAD speech floor (which rejects
+    clean 10-12 word sentences spoken in 3.1-3.9 s by faster anchor voices). When `q` carries a
+    `gates` dict from `qc_gate.py`, every gate in `STEP2C_QUALITY_GATES` (and any other gate
+    except `speech_ok`) must be `True` and `quarantined` must not be truthy; minimal test rows
+    without `gates` fall back to `q.get("hard_pass") is True`.
+    """
+    if not isinstance(q, dict) or q.get("quarantined"):
+        return False
+    gates = q.get("gates")
+    if isinstance(gates, dict):
+        return (all(gates.get(g) is True for g in STEP2C_QUALITY_GATES)
+                and all(v is True for k, v in gates.items() if k != "speech_ok"))
+    return q.get("hard_pass") is True
+
+
 def qc_passing(spk_dir, engine):
     """The speaker's QC-passing clips: (id, wav path, text), in id order."""
     qc = {}
@@ -472,7 +502,7 @@ def qc_passing(spk_dir, engine):
         # The pre-registered duration bounds (Step 2c: 1-16 s, as S1 and F1): a clip outside them
         # is not kept even when it passes the QC gate, whose own ceiling is 30 s. A row with no
         # `duration` reads as 0 s and is not kept: fail closed, not silently trusted.
-        if q and q.get("hard_pass") is True and sd.f1_length_ok(float(q.get("duration") or 0.0)):
+        if q and _step2c_qc_ok(q) and sd.f1_length_ok(float(q.get("duration") or 0.0)):
             wav = _os.path.join(spk_dir, "audio", row["wav"])
             if not _os.path.isfile(wav):
                 refuse("REFUSING: %s has a QC-passing row %s with no wav at %s." % (spk_dir, cid, wav))
