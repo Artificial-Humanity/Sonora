@@ -8,7 +8,7 @@ name: hi-fi_en-US_female
 train_filelist_path: data/hi-fi_en-US_female/train.txt
 valid_filelist_path: data/hi-fi_en-US_female/val.txt
 batch_size: 32
-cleaners: [english_cleaners_piper]
+cleaners: [english_cleaners2]
 data_statistics:  # Computed for this dataset
   mel_mean: -6.38385
   mel_std: 2.541796

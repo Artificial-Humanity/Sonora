@@ -50,7 +50,7 @@ def sequence_to_text(sequence):
 
 def _clean_text(text, cleaner_names):
     for name in cleaner_names:
-        cleaner = getattr(cleaners, name)
+        cleaner = getattr(cleaners, name, None)
         if not cleaner:
             raise UnknownCleanerException(f"Unknown cleaner: {name}")
         text = cleaner(text)

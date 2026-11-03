@@ -87,9 +87,10 @@ _NOUN = {"Male": "man", "Female": "woman"}
 
 # The embedding models and the audio root the audition app resolves links against (its DATA_ROOT).
 ZONOS_PATH = "/data/toolchain/Zonos"
-ECAPA_SNAP = (
+ECAPA_SNAP = os.environ.get(
+    "SONORA_ECAPA_SNAP",
     "/home/lmcfarlin/.cache/huggingface/hub/models--speechbrain--spkrec-ecapa-voxceleb"
-    "/snapshots/0f99f2d0ebe89ac095bcc5903c4dd8f72b367286"
+    "/snapshots/0f99f2d0ebe89ac095bcc5903c4dd8f72b367286",
 )
 ECAPA_EXPECTED_SHA256 = {
     "embedding_model.ckpt": "0575cb64845e6b9a10db9bcb74d5ac32b326b8dc90352671d345e2ee3d0126a2",

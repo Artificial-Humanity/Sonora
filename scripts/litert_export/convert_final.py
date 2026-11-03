@@ -176,7 +176,7 @@ def main():
     cfg = dict(symbols=symbols, n_vocab=178, n_channels=192, n_feats=80,
                MAX_TEXT=MAX_TEXT, MAX_MEL=MAX_MEL, mel_mean=mel_mean,
                mel_std=mel_std, hop=256, sample_rate=22050, length_scale=0.95,
-               sigma_min=1e-4, n_timesteps_default=10, time_embed_dim=1024,
+               sigma_min=1e-4, n_timesteps_default=10, time_embed_dim=160,
                in_channels=160)
     with open(os.path.join(ART, "config.json"), "w") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
