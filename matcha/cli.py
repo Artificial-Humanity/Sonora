@@ -636,11 +636,12 @@ def batched_synthesis(args, device, model, vocoder, denoiser, texts, spk):
         total_rtf.append(output["rtf"])
         total_rtf_w.append(rtf_w)
         for j in range(output["mel"].shape[0]):
-            base_name = f"utterance_{j:03d}_speaker_{args.spk:03d}" if args.spk is not None else f"utterance_{j:03d}"
+            idx = (i - 1) * args.batch_size + j
+            base_name = f"utterance_{idx:03d}_speaker_{args.spk:03d}" if args.spk is not None else f"utterance_{idx:03d}"
             length = output["mel_lengths"][j]
             new_dict = {"mel": output["mel"][j][:, :length], "waveform": output["waveform"][j][: length * 256]}
             location = save_to_folder(base_name, new_dict, args.output_folder, args.sample_rate)
-            print(f"[🍵-{j}] Waveform saved: {location}")
+            print(f"[🍵-{idx}] Waveform saved: {location}")
 
     print("".join(["="] * 100))
     print(f"[🍵] Average Matcha-TTS RTF: {np.mean(total_rtf):.4f} ± {np.std(total_rtf)}")

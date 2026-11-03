@@ -162,7 +162,8 @@ def main():
     print(f"Preprocessing: {cfg['name']} from training filelist: {cfg['train_filelist_path']}")
     print("Loading model...")
     device = get_device(args)
-    model = MatchaTTS.load_from_checkpoint(args.checkpoint_path, map_location=device)
+    model = MatchaTTS.load_from_checkpoint(args.checkpoint_path, map_location=device, weights_only=False)
+    model.eval()
 
     text_mel_datamodule = TextMelDataModule(**cfg)
     text_mel_datamodule.setup()

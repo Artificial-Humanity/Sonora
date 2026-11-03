@@ -5,7 +5,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-import torchaudio
+import soundfile as sf
+import soxr
 from torch.hub import download_url_to_file
 from tqdm import tqdm
 
@@ -97,10 +98,10 @@ def process_files(zipfile, outpath, resample=True):
             elif filename.endswith(".wav"):
                 filepart = filename.rsplit("/", maxsplit=1)[-1]
                 outfile = str(outpath / filepart)
-                arr, sr = torchaudio.load(filename)
-                if resample:
-                    arr = torchaudio.functional.resample(arr, orig_freq=sr, new_freq=22050)
-                torchaudio.save(outfile, arr, 22050)
+                arr, sr = sf.read(filename, dtype="float32")
+                if resample and sr != 22050:
+                    arr = soxr.resample(arr, sr, 22050)
+                sf.write(outfile, arr, 22050, subtype="PCM_16")
             else:
                 continue
 

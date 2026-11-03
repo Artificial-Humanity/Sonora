@@ -49,7 +49,7 @@ for _p in (_SONORA_REPO, *(_os.path.join(_SONORA_REPO, "scripts", _b) for _b in 
 from hydra import compose, initialize_config_dir
 from hydra.utils import instantiate
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = _SONORA_REPO
 # configs/paths/default.yaml resolves ${oc.env:PROJECT_ROOT}; train.py normally
 # sets it via rootutils. Do the same so compose() can resolve.
 os.environ.setdefault("PROJECT_ROOT", REPO)
