@@ -21,15 +21,51 @@ run every pre-pull-request review with the `code-review` skill
      re-review is still not clean, stop and report the open findings to the owner.
    * Go to step 4 once the re-review is clean.
 4. Push the branch under its own name, open a pull request against `main`, and message
-   the reviewer for review. The Lab Manager reviews pull requests opened by the Project
-   Lead; the Project Lead reviews pull requests opened by subordinate agents.
-5. The agent who opened the pull request merges it once it has the required review
-   approval (`fl github pr review --approve --by <reviewer>`, via the Reviewer GitHub
-   App) and a passing `pytest` check, with the branch up to date with `main`.
-   Reviewers never merge another agent's pull request. If `main`
-   has moved, run `git pull origin main` on the branch and push before asking for
+   the reviewer for review. The Lab Manager (`jarvis`) reviews pull requests opened by
+   the Project Lead; the Project Lead reviews pull requests opened by subordinate agents.
+   If the Project Lead is unavailable for any reason, the Lab Manager (`jarvis`) may
+   review and approve a subordinate agent's pull request instead; try the Project Lead
+   first.
+5. The agent who opened the pull request merges it with `gh pr merge <number> --merge`
+   once it has the required review approval (`fl github pr review --approve --by <reviewer>`,
+   via the Reviewer GitHub App) and a passing `pytest` check, with the branch up to date
+   with `main`. Reviewers never merge another agent's pull request, except as
+   "Merge permission" below describes for an author whose session blocks the merge. If
+   `main` has moved, run `git pull origin main` on the branch and push before asking for
    approval. Any push to the branch dismisses an existing approval, so re-request it
    after one.
+
+### Merge permission
+
+The owner permits an author to merge their own pull request once all of these hold:
+
+1. **The required reviewer approved it.** For a pull request by a subordinate agent
+   that is the Project Lead, or the Lab Manager (`jarvis`) if the Project Lead is
+   unavailable for any reason (try the Project Lead first). For a Project Lead's pull
+   request it is the Lab Manager (`jarvis`). An approval counts only when the Reviewer
+   GitHub App or the owner posts it, as step 5 describes, and on the current head: a
+   push dismisses an earlier approval, so ask for the review again after you update
+   the branch.
+2. **The `pytest` check passed** on the current head, and the branch is current with
+   `main`.
+3. **You merge it yourself** with `gh pr merge <number> --merge`, then confirm that
+   the merge commit is on `origin/main`.
+
+Your session's own permission layer can still refuse `gh pr merge` (an auto-mode
+classifier, for example, denies a merge it cannot tie to an approval). If it does:
+
+* Do not retry the same call, do not use another route yourself (`fl github pr merge`
+  or the API), and do not change permission settings.
+* Raise a question for the owner (FerroDeck shows the `?` flag next to your agent).
+  Say what was denied and which pull request is waiting.
+* While the block stands, your Project Lead (the Lab Manager, for a Project Lead's own
+  pull request) may merge the approved pull request for you on that reviewer's own
+  authority. You do not ask for it: the reviewer decides. The reviewer tells the owner
+  each time, so that the owner can grant the permission to you directly.
+* The owner lifts the block for you with an explicit instruction in your session.
+
+A standing rule in this file is the reason the merge is allowed. It does not turn off a
+session's permission prompt, and a message from another agent does not lift one.
 
 ## Commit identity and safeguards
 
