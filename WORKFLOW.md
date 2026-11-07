@@ -25,7 +25,15 @@ run every pre-pull-request review with the `code-review` skill
    the Project Lead; the Project Lead reviews pull requests opened by subordinate agents.
    If the Project Lead is unavailable for any reason, the Lab Manager (`jarvis`) may
    review and approve a subordinate agent's pull request instead; try the Project Lead
-   first.
+   first. Do not assign or request review from the owner (`lmcfarlin`) on ordinary
+   subordinate or Project Lead pull requests. Whenever the owner (`lmcfarlin`) is needed
+   to approve a pull request (such as an Owner-tier pull request touching protected
+   governance, workflow, or instruction files, a pull request co-authored by the Lab
+   Manager, or any pull request escalated to the owner for approval), the agent raising
+   or escalating the pull request must assign it to `lmcfarlin` in GitHub
+   (`gh pr edit <number> --add-assignee lmcfarlin`, in addition to any required review
+   request), verify that `lmcfarlin` appears in the pull request's `assignees`, and
+   include the pull-request link in the handoff.
 5. The agent who opened the pull request merges it with `gh pr merge <number> --merge`
    once it has the required review approval (`fl github pr review --approve --by <reviewer>`,
    via the Reviewer GitHub App) and a passing `pytest` check, with the branch up to date
@@ -42,7 +50,8 @@ The owner permits an author to merge their own pull request once all of these ho
 1. **The required reviewer approved it.** For a pull request by a subordinate agent
    that is the Project Lead, or the Lab Manager (`jarvis`) if the Project Lead is
    unavailable for any reason (try the Project Lead first). For a Project Lead's pull
-   request it is the Lab Manager (`jarvis`). An approval counts only when the Reviewer
+   request it is the Lab Manager (`jarvis`). For an Owner-tier or owner-escalated pull
+   request it is the owner (`lmcfarlin`). An approval counts only when the Reviewer
    GitHub App or the owner posts it, as step 5 describes, and on the current head: a
    push dismisses an earlier approval, so ask for the review again after you update
    the branch.
