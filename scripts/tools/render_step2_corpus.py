@@ -292,6 +292,9 @@ def speaker_bank(speaker, text_dir, include_reserve, text_meta=None):
 
 
 def cmd_plan(args):
+    replan_commit = bool(getattr(args, "replan_commit", False))
+    if replan_commit and not args.include_reserve:
+        refuse("REFUSING: --replan-commit requires --include-reserve.")
     text_meta = json.load(open(_os.path.join(args.text_dir, "meta.json"), encoding="utf-8"))
     if text_meta.get("sha256") != TEXT_SHA:
         refuse("REFUSING: %s/meta.json sha256 %s; the frozen bank is %s."
@@ -311,7 +314,8 @@ def cmd_plan(args):
                 "seed_rule": "seed = %d + 1000 * speaker index + speaker line index"
                              % SEED_BASE}
         # Every speaker is checked before any is written: a refusal leaves no plan half-rewritten.
-        planned.append((speaker, cdir, bank, _refuse_existing(cdir, bank, meta)))
+        planned.append((speaker, cdir, bank,
+                        _refuse_existing(cdir, bank, meta, replan_commit=replan_commit)))
     for speaker, cdir, bank, meta in planned:
         _os.makedirs(cdir, exist_ok=True)
         # plan.json first: a crash between the two leaves the old bank under the new plan, which the
@@ -339,15 +343,17 @@ def changed_since(plan_commit, head):
     return changed
 
 
-def _refuse_existing(cdir, bank, meta):
+def _refuse_existing(cdir, bank, meta, replan_commit=False):
     """The re-plan guard. -> the plan.json meta to write.
 
     A speaker folder's plan and renders must stay one plan: a re-plan may not overwrite the commit
     or engine pin the audio was rendered under. Refused: renders with no readable plan.json; an
     engine pin that changed; a bank that differs, except the 360 -> 400 `--include-reserve` growth
     (its first 360 lines unchanged); renders from another commit when the bank is not growing;
-    and a growth across render-affecting code. A growth keeps the plan's original commit, so
-    cmd_render keeps checking the audio against the commit it was first planned under."""
+    and a growth across render-affecting code (unless `replan_commit` explicitly advances the
+    plan commit while recording `prior_commits` and `replan_changed_paths`). A growth without
+    `replan_commit` keeps the plan's original commit, so cmd_render keeps checking the audio
+    against the commit it was first planned under."""
     bank_path, plan_path = _os.path.join(cdir, "bank.json"), _os.path.join(cdir, "plan.json")
     renders = r1._has_manifest(_os.path.join(cdir, "audio"))
     on_disk = None
@@ -388,13 +394,28 @@ def _refuse_existing(cdir, bank, meta):
         refuse("REFUSING: %s was planned with engine pin %s, and it is now %s. Plan into a new "
                "--out-root." % (cdir, json.dumps(old.get("engine_pin"), sort_keys=True),
                                 json.dumps(meta["engine_pin"], sort_keys=True)))
-    if grown:
+    reserve_replan = (replan_commit and meta.get("include_reserve") is True
+                      and on_disk == bank and len(disk_lines) == SPEAKER_LINES)
+    if grown or reserve_replan:
         bad = changed_since(old.get("commit"), meta["commit"])
         if bad:
-            refuse("REFUSING: %s was planned at %s and the 360 -> 400 growth would run at %s; "
-                   "render-affecting files differ: %s. Plan into a new --out-root."
-                   % (cdir, old.get("commit"), meta["commit"], ", ".join(bad)))
-        return dict(meta, commit=old.get("commit"))
+            if not replan_commit:
+                refuse("REFUSING: %s was planned at %s and the 360 -> 400 growth would run at %s; "
+                       "render-affecting files differ: %s. Plan into a new --out-root."
+                       % (cdir, old.get("commit"), meta["commit"], ", ".join(bad)))
+            updated = dict(meta)
+            prior = list(old.get("prior_commits") or [])
+            if old.get("commit") and old.get("commit") != meta["commit"]:
+                prior.append(old["commit"])
+            if prior:
+                updated["prior_commits"] = prior
+            updated["replan_changed_paths"] = bad
+            return updated
+        kept = dict(meta, commit=old.get("commit"))
+        for k in ("prior_commits", "replan_changed_paths"):
+            if k in old:
+                kept[k] = old[k]
+        return kept
     if renders and old.get("commit") != meta["commit"]:
         refuse("REFUSING: %s/audio holds renders planned at %s; this checkout is %s, and "
                "re-planning would mix two plans. Render against the existing plan, or plan into "
@@ -623,6 +644,8 @@ def main(argv=None):
     p.add_argument("--out-root", default=RAW_ROOT)
     p.add_argument("--speakers", nargs="+", type=int)
     p.add_argument("--include-reserve", action="store_true")
+    p.add_argument("--replan-commit", action="store_true",
+                   help="advance plan.json commit when growing across render-affecting code")
     p.add_argument("--allow-dirty", action="store_true")
     p.set_defaults(fn=cmd_plan)
 

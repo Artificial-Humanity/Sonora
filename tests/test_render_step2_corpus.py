@@ -319,6 +319,28 @@ def test_a_growth_across_render_affecting_code_is_refused(tmp_path, monkeypatch,
     assert "render-affecting" in capsys.readouterr().err
 
 
+def test_replan_commit_requires_include_reserve(tmp_path, plannable, capsys):
+    args = _plan_args(tmp_path, _text_dir(tmp_path), include_reserve=False)
+    args.replan_commit = True
+    with pytest.raises(SystemExit):
+        s2c.cmd_plan(args)
+    assert "--include-reserve" in capsys.readouterr().err
+
+
+def test_replan_commit_advances_commit_and_records_prior_provenance(tmp_path, monkeypatch):
+    cdir, bank400 = _grow(tmp_path, monkeypatch, changed=["scripts/stages/synth_bank.sh"])
+    out = s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True),
+                               replan_commit=True)
+    assert out["commit"] == "bbb"
+    assert out["prior_commits"] == ["aaa"]
+    assert out["replan_changed_paths"] == ["scripts/stages/synth_bank.sh"]
+    # An engine pin change must still be refused even with replan_commit=True:
+    with pytest.raises(SystemExit):
+        s2c._refuse_existing(str(cdir), bank400,
+                               _meta(commit="bbb", pin={"wheel": "other"}, include_reserve=True),
+                               replan_commit=True)
+
+
 def test_the_q_corpus_is_registered_in_prep_with_its_config_alias():
     import prep_staged_corpora as prep
     assert prep.STATS_CORPORA["q_synth_22k"] == 90

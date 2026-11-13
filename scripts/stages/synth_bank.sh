@@ -43,6 +43,17 @@ while [ "$OUT" != "${OUT%/}" ]; do OUT="${OUT%/}"; done
 case "$BANK" in /data/*) ;; *) echo "!! BANK must be an absolute /data path: $BANK" >&2; exit 2;; esac
 case "$OUT"  in /data/*) ;; *) echo "!! OUT must be an absolute /data path: $OUT"  >&2; exit 2;; esac
 case "$BANK$OUT" in *[\ \'\"]*) echo "!! BANK/OUT must not contain spaces or quotes" >&2; exit 2;; esac
+
+# Persist MIOpen's user find-db and compiled binary kernel cache under /data so
+# throwaway render containers stay warm across speakers (ai-mgr uid 105, gid 109).
+: "${MIOPEN_USER_DB_PATH:=/data/model-training/sonora/miopen-ai-mgr}"
+: "${MIOPEN_CUSTOM_CACHE_DIR:=/data/model-training/sonora/miopen-ai-mgr}"
+case "$MIOPEN_USER_DB_PATH" in /data/*) ;; *) echo "!! MIOPEN_USER_DB_PATH must be under /data: $MIOPEN_USER_DB_PATH" >&2; exit 2;; esac
+case "$MIOPEN_CUSTOM_CACHE_DIR" in /data/*) ;; *) echo "!! MIOPEN_CUSTOM_CACHE_DIR must be under /data: $MIOPEN_CUSTOM_CACHE_DIR" >&2; exit 2;; esac
+case "$MIOPEN_USER_DB_PATH$MIOPEN_CUSTOM_CACHE_DIR" in *[\ \'\"]*) echo "!! MIOPEN_* paths must not contain spaces or quotes" >&2; exit 2;; esac
+export MIOPEN_USER_DB_PATH MIOPEN_CUSTOM_CACHE_DIR
+MIOPEN_ENV="-e MIOPEN_USER_DB_PATH -e MIOPEN_CUSTOM_CACHE_DIR"
+
 ENGINES=("$@")
 [ ${#ENGINES[@]} -eq 0 ] && ENGINES=(chatterbox moss_vg orpheus qwen zonos)
 
@@ -101,14 +112,16 @@ fi
 # $1 = engine tag (names the environment freeze), $2 = apt/uv setup, $3 = the python
 # command to run as ai-mgr.
 run(){
-  docker run --rm $GPU $HF_ENV -e SONORA_ROCM_IMAGE="$IMG" \
+  docker run --rm $GPU $HF_ENV $MIOPEN_ENV -e SONORA_ROCM_IMAGE="$IMG" \
     -v /data:/data -v "$SONORA":/sonora "$IMG" bash -c "
     $SONORA_UV_BOOTSTRAP;
     $SONORA_UVPIP $SONORA_PIN_PYDANTIC >/dev/null 2>&1 || { echo '!! uv bootstrap or pydantic install failed' >&2; exit 1; };
     $2
     bash /sonora/scripts/container_as_ai_mgr.sh &&
+    mkdir -p \"\$MIOPEN_USER_DB_PATH\" \"\$MIOPEN_CUSTOM_CACHE_DIR\" &&
+    chown 105:109 \"\$MIOPEN_USER_DB_PATH\" \"\$MIOPEN_CUSTOM_CACHE_DIR\" &&
     $(capture_env_cmd "$1" "$ENV_DIR")
-    runuser -u ai-mgr -- bash -c 'umask 002; HF_TOKEN=\${HF_TOKEN:-} $3'"
+    runuser -u ai-mgr -- bash -c 'umask 002; HF_TOKEN=\${HF_TOKEN:-} MIOPEN_USER_DB_PATH=\${MIOPEN_USER_DB_PATH:-} MIOPEN_CUSTOM_CACHE_DIR=\${MIOPEN_CUSTOM_CACHE_DIR:-} $3'"
 }
 
 has(){ for e in "${ENGINES[@]}"; do [ "$e" = "$1" ] && return 0; done; return 1; }

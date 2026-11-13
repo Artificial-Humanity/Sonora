@@ -132,3 +132,19 @@ def test_an_unknown_probe_value_is_refused(bank_env):
     res, log = _synth(bank_env, probe="yes")
     assert res.returncode == 2 and "SYNTH_BANK_PROBE must be 0 or 1" in res.stderr
     assert log == []
+
+
+def test_miopen_cache_env_defaults_under_data_and_forwards_to_container(bank_env):
+    res, log = _synth(bank_env, probe="1")
+    assert res.returncode == 0, res.stdout + res.stderr
+    docker = "\n".join(log[_ran(log, "DOCKER")[0]:])
+    assert "-e MIOPEN_USER_DB_PATH -e MIOPEN_CUSTOM_CACHE_DIR" in docker
+    assert "MIOPEN_USER_DB_PATH=${MIOPEN_USER_DB_PATH:-}" in docker
+    assert "MIOPEN_CUSTOM_CACHE_DIR=${MIOPEN_CUSTOM_CACHE_DIR:-}" in docker
+
+
+def test_non_data_miopen_cache_dir_is_refused(bank_env):
+    res, log = _synth(bank_env, probe="1", MIOPEN_CUSTOM_CACHE_DIR="/tmp/miopen")
+    assert res.returncode == 2
+    assert "MIOPEN_CUSTOM_CACHE_DIR must be under /data" in res.stderr
+    assert log == []
