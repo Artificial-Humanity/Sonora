@@ -319,6 +319,72 @@ def test_a_growth_across_render_affecting_code_is_refused(tmp_path, monkeypatch,
     assert "render-affecting" in capsys.readouterr().err
 
 
+def test_replan_commit_requires_include_reserve(tmp_path, plannable, capsys):
+    args = _plan_args(tmp_path, _text_dir(tmp_path), include_reserve=False)
+    args.replan_commit = True
+    with pytest.raises(SystemExit):
+        s2c.cmd_plan(args)
+    assert "--include-reserve" in capsys.readouterr().err
+
+
+def test_replan_commit_advances_commit_and_records_prior_provenance(tmp_path, monkeypatch):
+    cdir, bank400 = _grow(tmp_path, monkeypatch, changed=["scripts/stages/synth_bank.sh"])
+    out = s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True),
+                               replan_commit=True)
+    assert out["commit"] == "bbb"
+    assert out["prior_commits"] == ["aaa"]
+    assert out["replan_changed_paths"] == ["scripts/stages/synth_bank.sh"]
+    # An engine pin change must still be refused even with replan_commit=True:
+    with pytest.raises(SystemExit):
+        s2c._refuse_existing(str(cdir), bank400,
+                               _meta(commit="bbb", pin={"wheel": "other"}, include_reserve=True),
+                               replan_commit=True)
+
+
+def test_replan_commit_allows_only_reviewed_infra_paths(tmp_path, monkeypatch):
+    assert s2c.REPLAN_INFRA_PATHS == frozenset({
+        "scripts/stages/synth_bank.sh",
+        "scripts/tools/render_step2_corpus.py",
+    })
+    assert "scripts/stages/synth_qwen_base.py" not in s2c.REPLAN_INFRA_PATHS
+    allowed = sorted(s2c.REPLAN_INFRA_PATHS)
+    cdir, bank400 = _grow(tmp_path, monkeypatch, changed=allowed)
+    out = s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True),
+                               replan_commit=True)
+    assert out["commit"] == "bbb"
+    assert out["prior_commits"] == ["aaa"]
+    assert out["replan_changed_paths"] == allowed
+
+
+@pytest.mark.parametrize("changed", [
+    ["scripts/stages/synth_qwen_base.py"],
+    ["scripts/stages/synth_bank.sh", "scripts/stages/synth_qwen_base.py"],
+])
+def test_replan_commit_refuses_output_affecting_changes(tmp_path, monkeypatch, capsys, changed):
+    cdir, bank400 = _grow(tmp_path, monkeypatch, changed=changed)
+    with pytest.raises(SystemExit) as exc:
+        s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True),
+                               replan_commit=True)
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "scripts/stages/synth_qwen_base.py" in err
+    assert "--out-root" in err
+
+
+def test_replan_without_replan_commit_at_same_commit_preserves_prior_provenance(
+        tmp_path, monkeypatch):
+    cdir, bank400 = _grow(tmp_path, monkeypatch, changed=["scripts/stages/synth_bank.sh"])
+    first = s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True),
+                                 replan_commit=True)
+    (cdir / "bank.json").write_text(json.dumps(bank400), encoding="utf-8")
+    (cdir / "plan.json").write_text(json.dumps(dict(first, lines=s2c.SPEAKER_LINES)),
+                                    encoding="utf-8")
+    second = s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True))
+    assert second["commit"] == "bbb"
+    assert second["prior_commits"] == ["aaa"]
+    assert second["replan_changed_paths"] == ["scripts/stages/synth_bank.sh"]
+
+
 def test_the_q_corpus_is_registered_in_prep_with_its_config_alias():
     import prep_staged_corpora as prep
     assert prep.STATS_CORPORA["q_synth_22k"] == 90
