@@ -45,6 +45,9 @@ import render_1cii as r2  # noqa: E402
 from synth_common import write_json_atomic, write_text_atomic  # noqa: E402
 
 TOOL = "scripts/tools/render_step2_corpus.py"
+# Reviewed non-output infrastructure paths that `--replan-commit` may cross when growing a
+# speaker's bank (360 -> 400). Never add synthesis scripts, prompts, or gates here.
+REPLAN_INFRA_PATHS = frozenset({"scripts/stages/synth_bank.sh", TOOL})
 VERSION = "step2c-v1"
 TEXT_SHA = "44f970bc60abfbc8f5b866aa7561e50ad123361fc39662c17591a3f0721d4bdd"
 TEXT_DIR = "/data/model-training/datasets/probes/qwen-step2-text"
@@ -360,7 +363,8 @@ def _refuse_existing(cdir, bank, meta, replan_commit=False):
     engine pin that changed; a bank that differs, except the 360 -> 400 `--include-reserve` growth
     (its first 360 lines unchanged); renders from another commit when the bank is not growing;
     and a growth across render-affecting code (unless `replan_commit` explicitly advances the
-    plan commit while recording `prior_commits` and `replan_changed_paths`). A growth without
+    plan commit across reviewed infrastructure changes in `REPLAN_INFRA_PATHS` while recording
+    `prior_commits` and `replan_changed_paths`). A growth without
     `replan_commit` keeps the plan's original commit, so cmd_render keeps checking the audio
     against the commit it was first planned under."""
     bank_path, plan_path = _os.path.join(cdir, "bank.json"), _os.path.join(cdir, "plan.json")
@@ -412,6 +416,13 @@ def _refuse_existing(cdir, bank, meta, replan_commit=False):
                 refuse("REFUSING: %s was planned at %s and the 360 -> 400 growth would run at %s; "
                        "render-affecting files differ: %s. Plan into a new --out-root."
                        % (cdir, old.get("commit"), meta["commit"], ", ".join(bad)))
+            disallowed = sorted(set(bad) - REPLAN_INFRA_PATHS)
+            if disallowed:
+                refuse("REFUSING: %s was planned at %s and --replan-commit only allows reviewed "
+                       "non-output infrastructure changes (%s); disallowed render-affecting paths "
+                       "differ: %s. Plan into a new --out-root."
+                       % (cdir, old.get("commit"), ", ".join(sorted(REPLAN_INFRA_PATHS)),
+                          ", ".join(disallowed)))
             updated = dict(meta)
             prior = list(old.get("prior_commits") or [])
             if old.get("commit") and old.get("commit") != meta["commit"]:

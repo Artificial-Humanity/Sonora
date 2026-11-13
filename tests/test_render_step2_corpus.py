@@ -341,6 +341,36 @@ def test_replan_commit_advances_commit_and_records_prior_provenance(tmp_path, mo
                                replan_commit=True)
 
 
+def test_replan_commit_allows_only_reviewed_infra_paths(tmp_path, monkeypatch):
+    assert s2c.REPLAN_INFRA_PATHS == frozenset({
+        "scripts/stages/synth_bank.sh",
+        "scripts/tools/render_step2_corpus.py",
+    })
+    assert "scripts/stages/synth_qwen_base.py" not in s2c.REPLAN_INFRA_PATHS
+    allowed = sorted(s2c.REPLAN_INFRA_PATHS)
+    cdir, bank400 = _grow(tmp_path, monkeypatch, changed=allowed)
+    out = s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True),
+                               replan_commit=True)
+    assert out["commit"] == "bbb"
+    assert out["prior_commits"] == ["aaa"]
+    assert out["replan_changed_paths"] == allowed
+
+
+@pytest.mark.parametrize("changed", [
+    ["scripts/stages/synth_qwen_base.py"],
+    ["scripts/stages/synth_bank.sh", "scripts/stages/synth_qwen_base.py"],
+])
+def test_replan_commit_refuses_output_affecting_changes(tmp_path, monkeypatch, capsys, changed):
+    cdir, bank400 = _grow(tmp_path, monkeypatch, changed=changed)
+    with pytest.raises(SystemExit) as exc:
+        s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True),
+                               replan_commit=True)
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "scripts/stages/synth_qwen_base.py" in err
+    assert "--out-root" in err
+
+
 def test_replan_without_replan_commit_at_same_commit_preserves_prior_provenance(
         tmp_path, monkeypatch):
     cdir, bank400 = _grow(tmp_path, monkeypatch, changed=["scripts/stages/synth_bank.sh"])

@@ -48,9 +48,22 @@ case "$BANK$OUT" in *[\ \'\"]*) echo "!! BANK/OUT must not contain spaces or quo
 # throwaway render containers stay warm across speakers (ai-mgr uid 105, gid 109).
 : "${MIOPEN_USER_DB_PATH:=/data/model-training/sonora/miopen-ai-mgr}"
 : "${MIOPEN_CUSTOM_CACHE_DIR:=/data/model-training/sonora/miopen-ai-mgr}"
-case "$MIOPEN_USER_DB_PATH" in /data/*) ;; *) echo "!! MIOPEN_USER_DB_PATH must be under /data: $MIOPEN_USER_DB_PATH" >&2; exit 2;; esac
-case "$MIOPEN_CUSTOM_CACHE_DIR" in /data/*) ;; *) echo "!! MIOPEN_CUSTOM_CACHE_DIR must be under /data: $MIOPEN_CUSTOM_CACHE_DIR" >&2; exit 2;; esac
-case "$MIOPEN_USER_DB_PATH$MIOPEN_CUSTOM_CACHE_DIR" in *[\ \'\"]*) echo "!! MIOPEN_* paths must not contain spaces or quotes" >&2; exit 2;; esac
+_data_root="$(realpath -m -- /data)"
+_validate_miopen_dir() {
+  local var="$1" val="$2" canon
+  case "$val" in *[\ \'\"]*) echo "!! MIOPEN_* paths must not contain spaces or quotes" >&2; exit 2;; esac
+  case "$val" in /data/*) ;; *) echo "!! $var must be under /data: $val" >&2; exit 2;; esac
+  case "/$val/" in */../*) echo "!! $var must not contain '..' traversal: $val" >&2; exit 2;; esac
+  canon="$(realpath -m -- "$val")" || { echo "!! $var could not be resolved: $val" >&2; exit 2; }
+  if [ "$_data_root" = "/" ]; then
+    echo "!! cannot resolve /data mount root" >&2
+    exit 2
+  fi
+  case "$canon" in "$_data_root"/*) ;; *) echo "!! $var must be under /data: $val" >&2; exit 2;; esac
+}
+for _var in MIOPEN_USER_DB_PATH MIOPEN_CUSTOM_CACHE_DIR; do
+  _validate_miopen_dir "$_var" "${!_var}"
+done
 export MIOPEN_USER_DB_PATH MIOPEN_CUSTOM_CACHE_DIR
 MIOPEN_ENV="-e MIOPEN_USER_DB_PATH -e MIOPEN_CUSTOM_CACHE_DIR"
 

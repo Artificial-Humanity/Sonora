@@ -154,10 +154,25 @@ def test_miopen_cache_env_defaults_under_data_and_forwards_to_container(bank_env
             % (default_dir, default_dir)) in log
 
 
-def test_non_data_miopen_cache_dir_is_refused(bank_env):
-    res, log = _synth(bank_env, probe="1", MIOPEN_CUSTOM_CACHE_DIR="/tmp/miopen")
+@pytest.mark.parametrize("var", ["MIOPEN_USER_DB_PATH", "MIOPEN_CUSTOM_CACHE_DIR"])
+@pytest.mark.parametrize("val", ["/tmp/miopen", "/data", "/data/", "/data/.", "relative/miopen"])
+def test_non_data_miopen_cache_dir_is_refused(bank_env, var, val):
+    res, log = _synth(bank_env, probe="1", **{var: val})
     assert res.returncode == 2
-    assert "MIOPEN_CUSTOM_CACHE_DIR must be under /data" in res.stderr
+    assert "%s must be under /data" % var in res.stderr
+    assert log == []
+
+
+@pytest.mark.parametrize("var", ["MIOPEN_USER_DB_PATH", "MIOPEN_CUSTOM_CACHE_DIR"])
+@pytest.mark.parametrize("val", [
+    "/data/../../tmp/cache",
+    "/data/sub/../other",
+    "/data/sub/..",
+])
+def test_miopen_cache_env_traversal_is_refused(bank_env, var, val):
+    res, log = _synth(bank_env, probe="1", **{var: val})
+    assert res.returncode == 2
+    assert "%s must not contain '..' traversal" % var in res.stderr
     assert log == []
 
 
@@ -171,4 +186,33 @@ def test_miopen_cache_env_with_spaces_or_quotes_is_refused(bank_env, var, val):
     res, log = _synth(bank_env, probe="1", **{var: val})
     assert res.returncode == 2
     assert "MIOPEN_* paths must not contain spaces or quotes" in res.stderr
+    assert log == []
+
+
+def test_valid_miopen_cache_overrides_are_accepted_and_forwarded(bank_env):
+    user_db = "/data/custom/miopen-user-db"
+    cache_dir = "/data/custom/miopen-cache"
+    res, log = _synth(bank_env, probe="1",
+                      MIOPEN_USER_DB_PATH=user_db,
+                      MIOPEN_CUSTOM_CACHE_DIR=cache_dir)
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert ("MIOPEN_ENV MIOPEN_USER_DB_PATH=%s MIOPEN_CUSTOM_CACHE_DIR=%s"
+            % (user_db, cache_dir)) in log
+
+
+@pytest.mark.parametrize("var", ["MIOPEN_USER_DB_PATH", "MIOPEN_CUSTOM_CACHE_DIR"])
+def test_miopen_symlink_outside_data_is_refused(bank_env, tmp_path, var):
+    data = tmp_path / "data"
+    bank_env["script"].write_text(
+        (REPO / "scripts" / "stages" / "synth_bank.sh").read_text(encoding="utf-8")
+        .replace("/data", str(data)),
+        encoding="utf-8",
+    )
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    escape = data / "miopen-escape"
+    escape.symlink_to(outside)
+    res, log = _synth(bank_env, probe="1", **{var: str(escape)})
+    assert res.returncode == 2
+    assert "%s must be under %s" % (var, data) in res.stderr
     assert log == []
