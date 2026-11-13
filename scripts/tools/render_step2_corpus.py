@@ -343,6 +343,15 @@ def changed_since(plan_commit, head):
     return changed
 
 
+def _copy_replan_provenance(target, old):
+    """Copy prior_commits and replan_changed_paths from `old` when present."""
+    out = dict(target)
+    for k in ("prior_commits", "replan_changed_paths"):
+        if k in old:
+            out[k] = old[k]
+    return out
+
+
 def _refuse_existing(cdir, bank, meta, replan_commit=False):
     """The re-plan guard. -> the plan.json meta to write.
 
@@ -411,16 +420,12 @@ def _refuse_existing(cdir, bank, meta, replan_commit=False):
                 updated["prior_commits"] = prior
             updated["replan_changed_paths"] = bad
             return updated
-        kept = dict(meta, commit=old.get("commit"))
-        for k in ("prior_commits", "replan_changed_paths"):
-            if k in old:
-                kept[k] = old[k]
-        return kept
+        return _copy_replan_provenance(dict(meta, commit=old.get("commit")), old)
     if renders and old.get("commit") != meta["commit"]:
         refuse("REFUSING: %s/audio holds renders planned at %s; this checkout is %s, and "
                "re-planning would mix two plans. Render against the existing plan, or plan into "
                "a new --out-root." % (cdir, old.get("commit"), meta["commit"]))
-    return meta
+    return _copy_replan_provenance(meta, old)
 
 
 def render_argv(out_root, speaker):

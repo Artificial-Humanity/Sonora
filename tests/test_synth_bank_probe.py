@@ -36,6 +36,13 @@ esac
 exit 0
 """
 STUB_LOGGER = '#!/usr/bin/env bash\necho "%s $*" >> "$STUB_LOG"\nexit 0\n'
+STUB_DOCKER = (
+    '#!/usr/bin/env bash\n'
+    'echo "DOCKER $*" >> "$STUB_LOG"\n'
+    'echo "MIOPEN_ENV MIOPEN_USER_DB_PATH=${MIOPEN_USER_DB_PATH:-}'
+    ' MIOPEN_CUSTOM_CACHE_DIR=${MIOPEN_CUSTOM_CACHE_DIR:-}" >> "$STUB_LOG"\n'
+    'exit 0\n'
+)
 
 
 @pytest.fixture
@@ -55,7 +62,7 @@ def bank_env(tmp_path):
     stubs.mkdir()
     for path, body in ((repo / ".venv" / "bin" / "python", STUB_PY),
                        (repo / "scripts" / "stages" / "eiv_score.sh", STUB_LOGGER % "EIV"),
-                       (stubs / "docker", STUB_LOGGER % "DOCKER")):
+                       (stubs / "docker", STUB_DOCKER)):
         path.write_text(body)
         path.chmod(0o755)
     campaign = data / "model-training" / "datasets" / "probes" / "cell"
@@ -65,10 +72,11 @@ def bank_env(tmp_path):
 
 
 def _synth(env, probe=None, **extra_env):
-    e = dict(os.environ, PATH="%s:%s" % (env["stubs"], os.environ["PATH"]),
+    e = dict(os.environ)
+    for k in ("SYNTH_BANK_PROBE", "HF_TOKEN", "MIOPEN_USER_DB_PATH", "MIOPEN_CUSTOM_CACHE_DIR"):
+        e.pop(k, None)
+    e.update(PATH="%s:%s" % (env["stubs"], os.environ["PATH"]),
              STUB_LOG=str(env["log"]), **extra_env)
-    e.pop("SYNTH_BANK_PROBE", None)
-    e.pop("HF_TOKEN", None)
     if probe is not None:
         e["SYNTH_BANK_PROBE"] = probe
     res = subprocess.run(["bash", str(env["script"]), str(env["campaign"] / "bank.json"),
@@ -141,10 +149,26 @@ def test_miopen_cache_env_defaults_under_data_and_forwards_to_container(bank_env
     assert "-e MIOPEN_USER_DB_PATH -e MIOPEN_CUSTOM_CACHE_DIR" in docker
     assert "MIOPEN_USER_DB_PATH=${MIOPEN_USER_DB_PATH:-}" in docker
     assert "MIOPEN_CUSTOM_CACHE_DIR=${MIOPEN_CUSTOM_CACHE_DIR:-}" in docker
+    default_dir = "/data/model-training/sonora/miopen-ai-mgr"
+    assert ("MIOPEN_ENV MIOPEN_USER_DB_PATH=%s MIOPEN_CUSTOM_CACHE_DIR=%s"
+            % (default_dir, default_dir)) in log
 
 
 def test_non_data_miopen_cache_dir_is_refused(bank_env):
     res, log = _synth(bank_env, probe="1", MIOPEN_CUSTOM_CACHE_DIR="/tmp/miopen")
     assert res.returncode == 2
     assert "MIOPEN_CUSTOM_CACHE_DIR must be under /data" in res.stderr
+    assert log == []
+
+
+@pytest.mark.parametrize("var,val", [
+    ("MIOPEN_USER_DB_PATH", "/data/miopen cache"),
+    ("MIOPEN_USER_DB_PATH", "/data/miopen'cache"),
+    ("MIOPEN_CUSTOM_CACHE_DIR", '/data/miopen"cache'),
+    ("MIOPEN_CUSTOM_CACHE_DIR", "/data/miopen cache"),
+])
+def test_miopen_cache_env_with_spaces_or_quotes_is_refused(bank_env, var, val):
+    res, log = _synth(bank_env, probe="1", **{var: val})
+    assert res.returncode == 2
+    assert "MIOPEN_* paths must not contain spaces or quotes" in res.stderr
     assert log == []

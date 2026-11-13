@@ -341,6 +341,20 @@ def test_replan_commit_advances_commit_and_records_prior_provenance(tmp_path, mo
                                replan_commit=True)
 
 
+def test_replan_without_replan_commit_at_same_commit_preserves_prior_provenance(
+        tmp_path, monkeypatch):
+    cdir, bank400 = _grow(tmp_path, monkeypatch, changed=["scripts/stages/synth_bank.sh"])
+    first = s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True),
+                                 replan_commit=True)
+    (cdir / "bank.json").write_text(json.dumps(bank400), encoding="utf-8")
+    (cdir / "plan.json").write_text(json.dumps(dict(first, lines=s2c.SPEAKER_LINES)),
+                                    encoding="utf-8")
+    second = s2c._refuse_existing(str(cdir), bank400, _meta(commit="bbb", include_reserve=True))
+    assert second["commit"] == "bbb"
+    assert second["prior_commits"] == ["aaa"]
+    assert second["replan_changed_paths"] == ["scripts/stages/synth_bank.sh"]
+
+
 def test_the_q_corpus_is_registered_in_prep_with_its_config_alias():
     import prep_staged_corpora as prep
     assert prep.STATS_CORPORA["q_synth_22k"] == 90
