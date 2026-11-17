@@ -56,7 +56,8 @@ def test_the_registered_input_digests():
     assert sb.INPUT_SHA256 == {
         "hnr_json": "b2f15110082e9abcc4f74454f3fb6ba1f493604f0937b956483865190abddab2",
         "vctk_hnr_from": "3bd8e2a61cdebd56dff96c7746b5418d6ee204f17b485b05fe7fb9083bd1be9f",
-        "s1_hnr_json": "93a1d91eab6905a4652991c500841a509a978008a16a13c9fee7f311d620d27c"}
+        "s1_hnr_json": "93a1d91eab6905a4652991c500841a509a978008a16a13c9fee7f311d620d27c",
+        "q_hnr_json": "baf398c8d54ce1ea42d4081c62c88e0639f3fe9b813642b117e48fbe73653cf1"}
 
 
 @pytest.mark.parametrize("arm,good,bad", [
@@ -652,10 +653,9 @@ def test_the_inputs_each_hum_fix_check_must_have_registered():
     assert rs.HUM_FIX_INPUTS == {5: ("vctk_hnr_from",), 6: ("s1_hnr_json",),
                                  7: ("hnr_json", "s1_hnr_json"), 8: ("s1_hnr_json",),
                                  9: ("hnr_json", "s1_hnr_json", "q_hnr_json")}
-    # Check 9's Q HNR table is measured from data/q_synth_22k and not yet pinned: until it is,
-    # the one unregistered input is named here and select refuses it.
+    # Every selection input, including Check 9's measured Q HNR table, is registered.
     pending = {n for c in rs.HUM_FIX_INPUTS for n in rs.HUM_FIX_INPUTS[c]} - set(sb.INPUT_SHA256)
-    assert pending == {"q_hnr_json"}
+    assert not pending
 
 
 @pytest.mark.parametrize("check", [6, 7, 8])

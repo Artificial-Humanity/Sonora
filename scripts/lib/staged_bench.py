@@ -100,10 +100,12 @@ CONTROL_SHA256 = {"C0": "d0d6b49b2e92a59e1caf43b82f0359c4c0940d7960b428caadee109
 CHECK9_F1_SHA256 = "250471d813c1f3189f1bda40332326374efa1ed2cbdaeed2321a711188273d56"
 # The hum-fix batch's registered selection inputs: `--hnr-json` (speaker_hnr_all.json) and
 # `--vctk-hnr-from` (baseline_bench/speakers.json) and `--s1-hnr-json`
-# (speaker_hnr_s1_rest.json). Checks 5-8 refuse any other.
+# (speaker_hnr_s1_rest.json), plus Check 9's `--q-hnr-json` (speaker_hnr_q.json).
+# Checks 5-9 refuse any other.
 INPUT_SHA256 = {"hnr_json": "b2f15110082e9abcc4f74454f3fb6ba1f493604f0937b956483865190abddab2",
                 "vctk_hnr_from": "3bd8e2a61cdebd56dff96c7746b5418d6ee204f17b485b05fe7fb9083bd1be9f",
-                "s1_hnr_json": "93a1d91eab6905a4652991c500841a509a978008a16a13c9fee7f311d620d27c"}
+                "s1_hnr_json": "93a1d91eab6905a4652991c500841a509a978008a16a13c9fee7f311d620d27c",
+                "q_hnr_json": "baf398c8d54ce1ea42d4081c62c88e0639f3fe9b813642b117e48fbe73653cf1"}
 F1_MAX_HNR_GAP = Fraction(1, 2)     # check 7: an S1 voice and its F1 voice, dB, inclusive
 # Each arm's audio path: 22.05 kHz + universal vocoder (stock's), or 24 kHz + ours. L is on
 # S1's path, but its round trip is of the ORIGINAL recording's 22.05 kHz copy, not
