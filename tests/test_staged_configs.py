@@ -206,8 +206,8 @@ def test_f1_is_s1s_config_on_its_own_corpus_table_and_statistics():
 
 def test_q_is_f1s_config_on_its_own_corpus_and_statistics():
     f1, q = y(DATA_CFG / "f1_dense.yaml"), y(DATA_CFG / "q_synth.yaml")
-    # Q's statistics are set once `mel-stats` writes them, so they are compared by key, not by
-    # value: the file's values are a placeholder until then.
+    # Each corpus has its own measured statistics. Their values are checked against the
+    # corresponding mel_statistics.json below when the artifacts are present.
     assert _differ(f1, q) - {"data_statistics"} == \
         {"name", "train_filelist_path", "valid_filelist_path"}
     assert q["name"] == "q_synth_22k" and q["n_spks"] == 90

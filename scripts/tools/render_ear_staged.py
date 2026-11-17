@@ -1003,8 +1003,8 @@ def render(args):
         corpus, n_spks, use_vat = EXPECT[arm]
         model = load_matcha(arm, spec["ckpts"][arm][0], ear_bench.DEVICE)
         if arm == "Q":
-            # Q's statistics are written by `mel-stats` from its own corpus. The config's values
-            # are a placeholder, so the gate reads the written file and refuses without it.
+            # Q's statistics are written by `mel-stats` from its own corpus. Read the measured
+            # file so a checkpoint normalized with another corpus's values is refused.
             stats_path = Path(DATA) / "q_synth_22k" / "mel_statistics.json"
             if not stats_path.is_file():
                 raise SystemExit("REFUSING: Q's mel statistics %s are not written yet; run "
