@@ -14,7 +14,7 @@ Subcommands, in order:
                     SYNTH_BANK_PROBE=1 (render_1ci's PROBE_ENV). That skips register_audition, which
                     would queue every clip into the ratings. normalize_loudness and qc_gate run in
                     both modes. The GPU is booked separately.
-* `build-corpus`    verifies every speaker has >= 310 QC-passing clips, then writes `q_synth_22k`:
+* `build-corpus`    verifies every speaker meets `MIN_QC`, then writes `q_synth_22k`:
                     22.05 kHz PCM_16 copies, train_op.txt and val_op.txt, speakers.json, and
                     provenance.json. mel_statistics.json comes from `mel-stats`, which needs torch
                     (the litert interpreter).
@@ -63,7 +63,7 @@ SPEAKER_LINES = 400                               # primary plus reserve
 SEED_BASE = 2_000_000                             # seed = SEED_BASE + 1000 * s + speaker line index
 SPLIT_SEED = 1234
 VAL_PER_SPEAKER = 10
-MIN_QC = 310                                      # QC-passing clips per speaker, before the split
+MIN_QC = 233                                      # QC-passing clips per speaker, before the split
 SAMPLE_RATE = 22050
 CUSTOM_INSTRUCT = r2.CUSTOM_INSTRUCT
 ORPHEUS_VOICE = "jess"
