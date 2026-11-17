@@ -115,7 +115,7 @@ def test_build_corpus_refuses_any_speaker_under_the_qc_floor(tmp_path, capsys):
     with pytest.raises(SystemExit):
         s2c.cmd_build_corpus(type("A", (), {"raw_root": str(raw), "out_dir": str(tmp_path / "o")})())
     err = capsys.readouterr().err
-    assert "under 310" in err and "spk_00=0" in err
+    assert "under 233" in err and "spk_00=0" in err
 
 
 def test_resample_to_gives_22050_pcm16(tmp_path):
@@ -623,17 +623,19 @@ def test_plan_writes_plan_json_before_bank_json(tmp_path, plannable, monkeypatch
     assert order == ["plan.json", "bank.json"]
 
 
-def _build_args(tmp_path, monkeypatch, texts):
-    """Run cmd_build_corpus on 90 speakers x 11 stub clips; `texts` maps a clip id to its text."""
+def _build_args(tmp_path, monkeypatch, texts, clips_per_speaker=11, override_floor=True):
+    """Stub expensive audio/G2P work; `texts` maps a clip id to its text."""
     import sys
     import types
     t = _table()
     raw = tmp_path / "raw"
     raw.mkdir(exist_ok=True)
     (raw / "speakers.json").write_text(json.dumps({"speakers": t}), encoding="utf-8")
-    monkeypatch.setattr(s2c, "MIN_QC", 11)
+    if override_floor:
+        monkeypatch.setattr(s2c, "MIN_QC", 11)
     monkeypatch.setattr(s2c, "qc_passing", lambda d, e: [
-        ("c%02d" % i, "/w/%02d.wav" % i, texts.get("c%02d" % i, "ok.")) for i in range(11)])
+        ("c%02d" % i, "/w/%02d.wav" % i, texts.get("c%02d" % i, "ok."))
+        for i in range(clips_per_speaker)])
     resampled = []
     monkeypatch.setattr(s2c, "resample_to", lambda wav, dst: resampled.append(dst) or 0)
     bb = types.ModuleType("baseline_bench")
@@ -647,6 +649,42 @@ def _build_args(tmp_path, monkeypatch, texts):
     for name, mod in (("baseline_bench", bb), ("matcha.text.op_g2p", g2p_mod)):
         monkeypatch.setitem(sys.modules, name, mod)
     return (type("A", (), {"raw_root": str(raw), "out_dir": str(tmp_path / "o")})(), resampled)
+
+
+@pytest.mark.parametrize("clips_per_speaker,train_per_speaker", [(233, 223), (234, 224)])
+def test_build_corpus_admits_233_and_keeps_all_passing_clips(
+        tmp_path, monkeypatch, clips_per_speaker, train_per_speaker):
+    from collections import Counter
+    args, _ = _build_args(tmp_path, monkeypatch, {}, clips_per_speaker=clips_per_speaker,
+                          override_floor=False)
+    assert s2c.cmd_build_corpus(args) == 0
+    out = tmp_path / "o"
+    train = (out / "train_op.txt").read_text().splitlines()
+    val = (out / "val_op.txt").read_text().splitlines()
+    assert Counter(row.split("|")[1] for row in train) == {
+        str(i): train_per_speaker for i in range(90)}
+    assert Counter(row.split("|")[1] for row in val) == {str(i): 10 for i in range(90)}
+    assert {row.split("|")[0] for row in train}.isdisjoint(row.split("|")[0] for row in val)
+    speakers = json.loads((out / "speakers.json").read_text())
+    assert speakers["n_spks"] == 90 and len(speakers["speakers"]) == 90
+    provenance = json.loads((out / "provenance.json").read_text())
+    assert provenance["min_qc"] == 233
+    assert provenance["rows"]["train"] == 90 * train_per_speaker
+    assert provenance["rows"]["val"] == 900
+
+
+def test_build_corpus_refuses_one_speaker_at_232_before_writing(tmp_path, monkeypatch, capsys):
+    args, resampled = _build_args(tmp_path, monkeypatch, {}, clips_per_speaker=233,
+                                  override_floor=False)
+    passing = s2c.qc_passing
+    monkeypatch.setattr(s2c, "qc_passing", lambda d, e: passing(d, e)[:-1]
+                        if d.endswith("spk_89") else passing(d, e))
+    with pytest.raises(SystemExit):
+        s2c.cmd_build_corpus(args)
+    err = capsys.readouterr().err
+    assert "1 speaker(s) under 233" in err and "spk_89=232" in err
+    assert resampled == []
+    assert not (tmp_path / "o").exists()
 
 
 def test_build_corpus_phonemizes_everything_before_resampling_anything(tmp_path, monkeypatch, capsys):
